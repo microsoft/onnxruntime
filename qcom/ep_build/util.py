@@ -6,9 +6,9 @@ import os
 import platform
 import shlex
 import subprocess
+from collections.abc import Mapping
 from datetime import datetime
 from pathlib import Path
-from typing import List, Mapping, Optional, Union
 
 
 def default_parallelism() -> int:
@@ -32,21 +32,19 @@ def echo(value: str) -> None:
     logging.info(value)
 
 
-def get_env_bool(key: str, default: Optional[bool] = None) -> Optional[bool]:
+def get_env_bool(key: str, default: bool | None = None) -> bool | None:
     val = os.environ.get(key, None)
     if val is None:
         return default
     return str_to_bool(val)
 
 
-def get_env_int(key: str, default: Optional[int] = None) -> Optional[int]:
+def get_env_int(key: str, default: int | None = None) -> int | None:
     val = os.environ.get(key, None)
     if val is None:
         return default
     int_val = int(val)
-    assert (
-        str(int_val) == val
-    ), f"Environment variable '{key}' is not a well-formed int."
+    assert str(int_val) == val, f"Environment variable '{key}' is not a well-formed int."
     return int_val
 
 
@@ -90,11 +88,11 @@ def process_output(process: subprocess.CompletedProcess):
 
 
 def run(
-    command: Union[str, List[str]],
+    command: str | list[str],
     check: bool = True,
-    env: Optional[Mapping[str, str]] = None,
-    cwd: Optional[Path] = None,
-    stdout: Optional[int] = None,
+    env: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
+    stdout: int | None = None,
     capture_output: bool = False,
     quiet: bool = False,
 ) -> subprocess.CompletedProcess:
@@ -111,9 +109,9 @@ def run(
 
 
 def run_and_get_output(
-    command: Union[str, List[str]],
+    command: str | list[str],
     check: bool = True,
-    cwd: Optional[Path] = None,
+    cwd: Path | None = None,
     capture_stderr: bool = False,
     quiet: bool = False,
 ) -> str:
@@ -128,12 +126,12 @@ def run_and_get_output(
 
 
 def run_with_venv(
-    venv: Optional[str],
-    command: Union[str, List[str]],
+    venv: Path | None,
+    command: str | list[str],
     check: bool = True,
-    env: Optional[Mapping[str, str]] = None,
-    cwd: Optional[Path] = None,
-    stdout: Optional[int] = None,
+    env: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
+    stdout: int | None = None,
     capture_output: bool = False,
     quiet: bool = False,
 ) -> subprocess.CompletedProcess:
@@ -141,17 +139,11 @@ def run_with_venv(
         full_command = command
     else:
         # `source` requires paths with forward slashes
-        activate_path = str(
-            (Path(venv) / Path(VENV_ACTIVATE_RELPATH)).absolute()
-        ).replace("\\", "/")
-        shell_command = f"source {activate_path} && " + (
-            command if isinstance(command, str) else shlex.join(command)
-        )
+        activate_path = str((venv / Path(VENV_ACTIVATE_RELPATH)).absolute()).replace("\\", "/")
+        shell_command = f"source {activate_path} && " + (command if isinstance(command, str) else shlex.join(command))
         full_command = [BASH_EXECUTABLE, "-c", shell_command]
     if not quiet:
-        echo(
-            f"$ {full_command if isinstance(full_command, str) else shlex.join(full_command)}"
-        )
+        echo(f"$ {full_command if isinstance(full_command, str) else shlex.join(full_command)}")
     return subprocess.run(
         full_command,
         stdout=stdout,
@@ -165,10 +157,10 @@ def run_with_venv(
 
 
 def run_with_venv_and_get_output(
-    venv: Optional[str],
-    command: Union[str, List[str]],
+    venv: Path | None,
+    command: str | list[str],
     check: bool = True,
-    cwd: Optional[Path] = None,
+    cwd: Path | None = None,
     capture_stderr: bool = False,
     quiet: bool = False,
 ) -> str:
@@ -204,21 +196,17 @@ class Colors:
 
 
 if on_windows():
-    BASH_EXECUTABLE = str(Path(os.environ["ProgramW6432"], "Git/bin/bash.exe"))
-    assert os.path.isfile(
-        BASH_EXECUTABLE
-    ), f"Bash executable not found in {BASH_EXECUTABLE}."
+    BASH_EXECUTABLE = str(Path(os.environ["ProgramW6432"], "Git/bin/bash.exe"))  # noqa: SIM112
+    assert os.path.isfile(BASH_EXECUTABLE), f"Bash executable not found in {BASH_EXECUTABLE}."
 else:
     BASH_EXECUTABLE = run_and_get_output(["which", "bash"], quiet=True)
 
 
-DEFAULT_PYTHON = "python310.exe" if on_windows() else "python3.10"
+DEFAULT_PYTHON = Path("python310.exe") if on_windows() else Path("python3.10")
 """Different python distributions have different executable names. Use this for a reasonable default."""
 
 
-REPO_ROOT = Path(
-    run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True)
-)
+REPO_ROOT = Path(run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True))
 
 
 VENV_ACTIVATE_RELPATH = "Scripts/activate" if on_windows() else "bin/activate"

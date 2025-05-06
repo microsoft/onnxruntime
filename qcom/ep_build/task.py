@@ -4,16 +4,17 @@
 import logging
 import shutil
 from abc import ABC, abstractmethod
+from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from typing import Callable, Iterable, List, Mapping, Optional, Union
 
 from .github import end_group, start_group
 from .util import BASH_EXECUTABLE, run_with_venv
 
 REPO_ROOT = (Path(__file__).parent / ".." / "..").resolve()
 
+
 class Task(ABC):
-    def __init__(self, group_name: Optional[str]) -> None:
+    def __init__(self, group_name: str | None) -> None:
         """
         Initialize a new instance.
 
@@ -60,7 +61,7 @@ class FailTask(Task):
 
 
 class ListTasksTask(Task):
-    def __init__(self, tasks: List[str]) -> None:
+    def __init__(self, tasks: list[str]) -> None:
         super().__init__(group_name=None)
         self.tasks = tasks
 
@@ -80,7 +81,7 @@ class ListTasksTask(Task):
 class NoOpTask(Task):
     """A Task that does nothing."""
 
-    def __init__(self, group_name: Optional[str] = None) -> None:
+    def __init__(self, group_name: str | None = None) -> None:
         super().__init__(group_name=group_name)
 
     def does_work(self) -> bool:
@@ -106,8 +107,8 @@ class RemovePathsTask(Task):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        paths: Union[Path, Iterable[Path]],
+        group_name: str | None,
+        paths: Path | Iterable[Path],
     ) -> None:
         super().__init__(group_name)
         self.__paths: Iterable[Path] = paths if isinstance(paths, Iterable) else [paths]
@@ -137,11 +138,11 @@ class RunExecutablesWithVenvTask(Task):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        venv: Optional[str],
-        executables_and_args: List[List[str]],
-        env: Optional[Mapping[str, str]] = None,
-        cwd: Optional[Path] = None,
+        group_name: str | None,
+        venv: Path | None,
+        executables_and_args: list[list[str]],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
     ) -> None:
         super().__init__(group_name)
         self.__venv = venv
@@ -154,20 +155,18 @@ class RunExecutablesWithVenvTask(Task):
 
     def run_task(self) -> None:
         for executable_and_args in self.__executables_and_args:
-            run_with_venv(
-                self.__venv, executable_and_args, env=self.__env, cwd=self.__cwd
-            )
+            run_with_venv(self.__venv, executable_and_args, env=self.__env, cwd=self.__cwd)
 
     @property
-    def executables_and_args(self) -> List[List[str]]:
+    def executables_and_args(self) -> list[list[str]]:
         return self.__executables_and_args
 
     @executables_and_args.setter
-    def executables_and_args(self, value: List[List[str]]) -> None:
+    def executables_and_args(self, value: list[list[str]]) -> None:
         self.__executables_and_args = value
 
     @property
-    def env(self) -> Optional[Mapping[str, str]]:
+    def env(self) -> Mapping[str, str] | None:
         return self.__env
 
 
@@ -178,10 +177,10 @@ class RunExecutablesTask(RunExecutablesWithVenvTask):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        executables_and_args: List[List[str]],
-        env: Optional[Mapping[str, str]] = None,
-        cwd: Optional[Path] = None,
+        group_name: str | None,
+        executables_and_args: list[list[str]],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
     ) -> None:
         super().__init__(group_name, None, executables_and_args, env, cwd)
 
@@ -193,13 +192,13 @@ class BashScriptsWithVenvTask(RunExecutablesWithVenvTask):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        venv: Optional[str],
-        scripts_and_args: List[List[str]],
-        env: Optional[Mapping[str, str]] = None,
-        cwd: Optional[Path] = None,
+        group_name: str | None,
+        venv: Path | None,
+        scripts_and_args: list[list[str]],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
     ) -> None:
-        executables_and_args = [[BASH_EXECUTABLE] + s_a for s_a in scripts_and_args]
+        executables_and_args = [[BASH_EXECUTABLE] + s_a for s_a in scripts_and_args]  # noqa: RUF005
         super().__init__(group_name, venv, executables_and_args, env, cwd)
 
 
@@ -210,10 +209,10 @@ class BashScriptsTask(BashScriptsWithVenvTask):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        scripts_and_args: List[List[str]],
-        env: Optional[Mapping[str, str]] = None,
-        cwd: Optional[Path] = None,
+        group_name: str | None,
+        scripts_and_args: list[list[str]],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
     ) -> None:
         super().__init__(group_name, None, scripts_and_args, env, cwd)
 
@@ -223,12 +222,12 @@ class CompositeTask(Task):
     A Task composed of a list of other Tasks.
     """
 
-    def __init__(self, group_name: Optional[str], tasks: List[Task]) -> None:
+    def __init__(self, group_name: str | None, tasks: Iterable[Task]) -> None:
         super().__init__(group_name)
         self.tasks = tasks
 
     def does_work(self) -> bool:
-        return any([t.does_work() for t in self.tasks])
+        return any(t.does_work() for t in self.tasks)
 
     def run_task(self) -> None:
         for task in self.tasks:
@@ -243,7 +242,7 @@ class ConditionalTask(Task):
 
     def __init__(
         self,
-        group_name: Optional[str],
+        group_name: str | None,
         condition: Callable[[], bool],
         true_task: Task,
         false_task: Task,

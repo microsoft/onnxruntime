@@ -7,15 +7,16 @@ import logging
 import re
 import sys
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple, Union
+from collections.abc import Callable, Sequence
+from typing import Any
 
 from .task import Task
 
-ALL_TASKS: List[str] = []
-PUBLIC_TASKS: List[str] = []
-TASK_DEPENDENCIES: Dict[str, List[str]] = {}
-TASK_DESCRIPTIONS: Dict[str, str] = {}
-SUMMARIZERS: List[str] = []
+ALL_TASKS: list[str] = []
+PUBLIC_TASKS: list[str] = []
+TASK_DEPENDENCIES: dict[str, list[str]] = {}
+TASK_DESCRIPTIONS: dict[str, str] = {}
+SUMMARIZERS: list[str] = []
 
 
 def task(func):
@@ -33,9 +34,9 @@ def public_task(description: str):
     return add_task
 
 
-def depends(deps: Sequence[Union[str, Tuple[bool, Union[str, Sequence[str]]]]]):
+def depends(deps: Sequence[str | tuple[bool, str | Sequence[str]]]):
     def add_dep(func: Any) -> Any:
-        task_deps: List[str] = []
+        task_deps: list[str] = []
         for dep in deps:
             if isinstance(dep, str):
                 task_deps.append(dep)
@@ -77,10 +78,10 @@ class Step:
 class Plan:
     """An ordered list of Tasks to execute."""
 
-    _steps: List[Step]
-    _skips: List[re.Pattern]
-    _plan_duration = Optional[datetime.timedelta]
-    _step_durations: List[Tuple[str, datetime.timedelta]]
+    _steps: list[Step]
+    _skips: list[re.Pattern]
+    _plan_duration = datetime.timedelta | None
+    _step_durations: list[tuple[str, datetime.timedelta]]
 
     def __init__(self) -> None:
         self._steps = []
@@ -90,7 +91,7 @@ class Plan:
         self._step_durations = []
         self.enable_report = True
 
-    def add_step(self, task: Task, step_id: Optional[str] = None) -> str:
+    def add_step(self, task: Task, step_id: str | None = None) -> str:
         if step_id is None:
             # Default to the name of the calling function
             step_id = sys._getframe(1).f_code.co_name
@@ -114,13 +115,10 @@ class Plan:
             func(s.step_id, s.task)
 
     def has_step(self, step_id: str) -> bool:
-        for s in self._steps:
-            if s.step_id == step_id:
-                return True
-        return False
+        return any(s.step_id == step_id for s in self._steps)
 
     def is_skipped(self, step_id: str) -> bool:
-        return any([r.match(step_id) for r in self._skips])
+        return any(r.match(step_id) for r in self._skips)
 
     def print(self) -> None:
         for step in self._steps:
@@ -138,25 +136,25 @@ class Plan:
             return
 
         step_id_lens = [len(s) for s, d in self._step_durations]
-        max_step_id_len = functools.reduce(lambda a, b: a if a > b else b, step_id_lens)  # type: ignore
+        max_step_id_len = functools.reduce(lambda a, b: max(b, a), step_id_lens)  # type: ignore
         print(f"{'Step':^{max_step_id_len}} {'Duration':^14}")
         print(f"{'-':-^{max_step_id_len}} {'-':-^14}")
         for step_id, duration in self._step_durations:
-            print(f"{step_id:<{max_step_id_len}} {str(duration):<14}")
+            print(f"{step_id:<{max_step_id_len}} {duration!s:<14}")
         if self._plan_duration:
             print(f"{'-':-^{max_step_id_len}} {'-':-^14}")
-            print(f"{'Total':<{max_step_id_len}} {str(self._plan_duration):<14}")
+            print(f"{'Total':<{max_step_id_len}} {self._plan_duration!s:<14}")
 
     def run(self) -> None:
         start_time = time.monotonic()
 
         def run_task(step_id: str, task: Task) -> None:
             if self.is_skipped(step_id):
-                logging.warn(f"Skipping {step_id}")
+                logging.warning(f"Skipping {step_id}")
             else:
                 step_start_time = time.monotonic()
 
-                caught: Optional[Exception] = None
+                caught: Exception | None = None
                 try:
                     task.run()
                 except Exception as ex:
@@ -184,5 +182,5 @@ class Plan:
         self._skips.append(re.compile(pattern))
 
     @property
-    def steps(self) -> List[str]:
+    def steps(self) -> list[str]:
         return [s.step_id for s in self._steps]

@@ -6,8 +6,8 @@ import argparse
 import logging
 import os
 import sys
+from collections.abc import Callable
 from pathlib import Path
-from typing import Callable, List, Optional
 
 from ep_build import self_test
 from ep_build.logging import initialize_logging
@@ -26,7 +26,8 @@ from ep_build.task import (
     NoOpTask,
 )
 from ep_build.tasks.build import BuildEpWindowsTask, InstallDepsWindowsTask
-from ep_build.util import REPO_ROOT
+from ep_build.tasks.python import CreateVenvTask, RunLinterTask
+from ep_build.util import DEFAULT_PYTHON, REPO_ROOT
 
 QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
 QNN_SDK_ROOT_ENV_VAR = "QNN_SDK_ROOT"
@@ -51,9 +52,7 @@ def parse_arguments():
         help='Task(s) to run. Specify "list" to show all tasks.',
     )
 
-    parser.add_argument(
-        "--dry-run", action="store_true", help="Print the plan, rather than running it."
-    )
+    parser.add_argument("--dry-run", action="store_true", help="Print the plan, rather than running it.")
     parser.add_argument(
         "--only",
         action="store_true",
@@ -67,11 +66,9 @@ def parse_arguments():
     parser.add_argument(
         "--qairt-sdk",
         type=Path,
-        help=f"Path to QAIRT SDK. Overrides {QAIRT_SDK_ROOT_ENV_VAR} environment variable."
+        help=f"Path to QAIRT SDK. Overrides {QAIRT_SDK_ROOT_ENV_VAR} environment variable.",
     )
-    parser.add_argument(
-        "--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip."
-    )
+    parser.add_argument("--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip.")
 
     args = parser.parse_args()
     return args
@@ -82,20 +79,28 @@ class TaskLibrary:
     The collection of tasks the build is capable of running and the relationships between them.
     In other words, this is the dependency graph.
     """
-    def __init__(self, qairt_sdk_root: Path) -> None:
+
+    def __init__(
+        self,
+        python_executable: Path,
+        venv_path: Path,
+        qairt_sdk_root: Path,
+    ) -> None:
+        self.__python_executable = python_executable
+        self.__venv_path = venv_path
         self.__qairt_sdk_root = qairt_sdk_root
 
     @staticmethod
-    def to_dot(highlight: List[str] = []) -> str:
+    def to_dot(highlight: list[str] | None = None) -> str:
         """
         Used by --print-task-graph to create a GraphViz representation of the build graph.
         """
-        elements: List[str] = []
+        elements: list[str] = []
         for tsk in ALL_TASKS:
-            task_attrs: List[str] = []
+            task_attrs: list[str] = []
             if tsk in PUBLIC_TASKS:
                 task_attrs.append("style=filled")
-            if tsk in highlight:
+            if highlight and tsk in highlight:
                 task_attrs.append("penwidth=4.0")
             if len(task_attrs) > 0:
                 elements.append(f"{tsk} [{' '.join(task_attrs)}]")
@@ -125,12 +130,12 @@ class TaskLibrary:
         )
 
     @task
+    def create_venv(self, plan: Plan) -> str:
+        return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
+
+    @task
     def install_deps_windows(self, plan: Plan) -> str:
-        return plan.add_step(
-            InstallDepsWindowsTask(
-                "Installing dependencies on Windows host."
-            )
-        )
+        return plan.add_step(InstallDepsWindowsTask("Installing dependencies on Windows host."))
 
     @public_task("Print a list of commonly used tasks; see also --task=list_all.")
     @depends(["list_public"])
@@ -144,6 +149,11 @@ class TaskLibrary:
     @task
     def list_public(self, plan: Plan) -> str:
         return plan.add_step(ListTasksTask(PUBLIC_TASKS))
+
+    @public_task("Run the source linter")
+    @depends(["create_venv"])
+    def run_linter(self, plan: Plan) -> str:
+        return plan.add_step(RunLinterTask(self.__venv_path))
 
     @public_task("Test ONNX Runtime")
     @depends(["test_ort_windows_arm64"])
@@ -163,8 +173,8 @@ class TaskLibrary:
         )
 
 
-def get_qairt_sdk_root(root_from_args: Optional[Path]) -> Path:
-    qairt_sdk: Optional[Path] = None
+def get_qairt_sdk_root(root_from_args: Path | None) -> Path:
+    qairt_sdk: Path | None = None
     if root_from_args is not None:
         qairt_sdk = root_from_args
     elif QAIRT_SDK_ROOT_ENV_VAR in os.environ:
@@ -185,14 +195,16 @@ def get_qairt_sdk_root(root_from_args: Optional[Path]) -> Path:
 
 
 def plan_from_dependencies(
-    main_tasks: List[str],
+    main_tasks: list[str],
+    python_executable: Path,
+    venv_path: Path,
     qairt_sdk_root: Path,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
     dependencies in a valid order. This is the default planner.
     """
-    task_library = TaskLibrary(qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, qairt_sdk_root)
     plan = Plan()
 
     # We always run summarizers, which perform conditional work on the output
@@ -212,20 +224,20 @@ def plan_from_dependencies(
         task_name = work_list.pop()
         if plan.has_step(task_name):
             continue
-        unfulfilled_deps: List[str] = []
+        unfulfilled_deps: list[str] = []
         for dep in TASK_DEPENDENCIES.get(task_name, []):
             if not plan.has_step(dep):
                 unfulfilled_deps.append(dep)
-                assert hasattr(
-                    task_library, dep
-                ), f"Non-existent task '{dep}' was declared as a dependency for '{task_name}'."
+                assert hasattr(task_library, dep), (
+                    f"Non-existent task '{dep}' was declared as a dependency for '{task_name}'."
+                )
         if len(unfulfilled_deps) == 0:
             # add task_name to plan
             task_adder: Callable[[Plan], str] = getattr(task_library, task_name)
             added_step = task_adder(plan)
-            assert (
-                added_step == task_name
-            ), f"Task function '{task_name}' added a task with incorrect id '{added_step}'."
+            assert added_step == task_name, (
+                f"Task function '{task_name}' added a task with incorrect id '{added_step}'."
+            )
         else:
             # Look at task_name again later when its deps are satisfied
             work_list.append(task_name)
@@ -235,14 +247,16 @@ def plan_from_dependencies(
 
 
 def plan_from_task_list(
-    tasks: List[str],
+    tasks: list[str],
+    python_executable: Path,
+    venv_path: Path,
     qairt_sdk_root: Path,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.
     Used by --only.
     """
-    task_library = TaskLibrary(qairt_sdk_root)
+    task_library = TaskLibrary(python_executable, venv_path, qairt_sdk_root)
     plan = Plan()
     for task_name in tasks:
         # add task_name to plan
@@ -266,7 +280,7 @@ def build_and_test():
 
     if len(args.task) > 0:
         planner = plan_from_task_list if args.only else plan_from_dependencies
-        plan = planner(args.task, qairt_sdk_root)
+        plan = planner(args.task, DEFAULT_PYTHON, VENV_PATH, qairt_sdk_root)
 
     if args.skip is not None:
         for skip in args.skip:

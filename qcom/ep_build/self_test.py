@@ -5,12 +5,10 @@
 Self-tests for build_and_test.py.
 """
 
-from typing import Optional, Type
-
 from . import plan
 
 
-def assert_task_dependencies_exist(task_library: Type) -> None:
+def assert_task_dependencies_exist(task_library: type) -> None:
     # Check ALL_TASKS for consistency
     for task_name in plan.ALL_TASKS:
         task_func = getattr(task_library, task_name, None)
@@ -21,37 +19,29 @@ def assert_task_dependencies_exist(task_library: Type) -> None:
 
     # Make sure ancillary task collections at least refer to real tasks
     unknown_publics = [t for t in plan.PUBLIC_TASKS if t not in task_set]
-    assert (
-        len(unknown_publics) == 0
-    ), f"These public tasks are not defined as tasks: {', '.join(unknown_publics)}"
+    assert len(unknown_publics) == 0, f"These public tasks are not defined as tasks: {', '.join(unknown_publics)}"
     unknown_descriptions = [t for t in plan.TASK_DESCRIPTIONS if t not in task_set]
-    assert (
-        len(unknown_publics) == 0
-    ), f"These descriptions are associated with undefined tasks: {', '.join(unknown_descriptions)}"
+    assert len(unknown_publics) == 0, (
+        f"These descriptions are associated with undefined tasks: {', '.join(unknown_descriptions)}"
+    )
 
     # Ensure that summarizers exist
-    unknown_summarizers = [
-        s for s in plan.SUMMARIZERS if getattr(task_library, s, None) is None
-    ]
-    assert (
-        len(unknown_publics) == 0
-    ), f"These summarizers have no implementing function: {', '.join(unknown_summarizers)}"
+    unknown_summarizers = [s for s in plan.SUMMARIZERS if getattr(task_library, s, None) is None]
+    assert len(unknown_publics) == 0, (
+        f"These summarizers have no implementing function: {', '.join(unknown_summarizers)}"
+    )
 
     # Verify that all dependency keys and values are tasks
     for task, deps in plan.TASK_DEPENDENCIES.items():
-        assert (
-            task in task_set
-        ), f"Task {task} has declared dependencies, but it does not exist"
+        assert task in task_set, f"Task {task} has declared dependencies, but it does not exist"
         unknown_deps = [d for d in deps if d not in task_set]
-        assert (
-            len(unknown_deps) == 0
-        ), f"Task {task} depends on these unknown dependencies: {', '.join(unknown_deps)}"
+        assert len(unknown_deps) == 0, f"Task {task} depends on these unknown dependencies: {', '.join(unknown_deps)}"
         assert task not in deps, f"Task {task} depends on itself."
 
 
 def assert_tasks_sorted() -> None:
     """Ensure that tasks are sorted alphabetically with ci_ functions following all others."""
-    last_task: Optional[str] = None
+    last_task: str | None = None
     in_ci_section = False
     for task_name in plan.ALL_TASKS:
         if not last_task:
@@ -61,7 +51,7 @@ def assert_tasks_sorted() -> None:
             in_ci_section = True
             last_task = task_name
             continue
-        assert (
-            task_name > last_task
-        ), f"TaskLibrary functions are sorted incorrectly. {task_name} must come before {last_task}."
+        assert task_name > last_task, (
+            f"TaskLibrary functions are sorted incorrectly. {task_name} must come before {last_task}."
+        )
         last_task = task_name

@@ -1,8 +1,8 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+from collections.abc import Mapping
 from pathlib import Path
-from typing import List, Mapping, Optional
 
 from ..task import RunExecutablesTask
 
@@ -16,10 +16,10 @@ class RunPowershellScriptsTask(RunExecutablesTask):
 
     def __init__(
         self,
-        group_name: Optional[str],
-        scripts_and_args: List[List[str]],
-        env: Optional[Mapping[str, str]] = None,
-        cwd: Optional[Path] = None,
+        group_name: str | None,
+        scripts_and_args: list[list[str]],
+        env: Mapping[str, str] | None = None,
+        cwd: Path | None = None,
     ) -> None:
-        executables_and_args = [[POWERSHELL_EXECUTABLE] + s_a for s_a in scripts_and_args]
+        executables_and_args = [[POWERSHELL_EXECUTABLE] + s_a for s_a in scripts_and_args]  # noqa: RUF005
         super().__init__(group_name, executables_and_args, env, cwd)
