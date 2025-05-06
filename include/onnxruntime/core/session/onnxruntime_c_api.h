@@ -6116,7 +6116,7 @@ struct OrtEpFactory {
    * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
    *                            session. This will include ep_options from GetSupportedDevices as well as any
    *                            user provided overrides.
-   *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
+   *                            Execution provider options will have been added with a prefix of 'ep.[ep name].'.
    *                            The OrtSessionOptions instance will NOT be valid after this call and should not be
    *                            stored for later use.
    * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
