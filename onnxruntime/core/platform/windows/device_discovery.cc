@@ -79,7 +79,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
   std::array<GUID, 3> guids = {
       GUID_DEVCLASS_DISPLAY,
       GUID_DEVCLASS_PROCESSOR,
-      GUID_DEVCLASS_SYSTEM,
+      GUID_DEVCLASS_COMPUTEACCELERATOR,
   };
 
   for (auto guid : guids) {
@@ -183,9 +183,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           entry->type = OrtHardwareDeviceType_GPU;
         } else if (guid == GUID_DEVCLASS_PROCESSOR) {
           entry->type = is_npu ? OrtHardwareDeviceType_NPU : OrtHardwareDeviceType_CPU;
-        } else if (guid == GUID_DEVCLASS_SYSTEM) {
+        } else if (guid == GUID_DEVCLASS_COMPUTEACCELERATOR) {
           if (!is_npu) {
-            // we're only iterating system devices to look for NPUs so drop anything else
+            // we're only iterating compute accelerator devices to look for NPUs so drop anything else
             device_info.erase(key);
             continue;
           }
