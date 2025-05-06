@@ -356,7 +356,14 @@ TEST(AutoEpSelection, PreferNpu) {
                        OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_PREFER_NPU);
 }
 
-extern "C" {
+// Disable EP selection delegate testing on Windows x86 builds.
+// There's a compilation error on the Zip-Nuget-* CI Pipeline for x86 related to
+// casting the concrete delegate functions declared in this file to the type `EpSelectionDelegate`.
+// Compiler version: 14.40.33807
+// build args: --config RelWithDebInfo --use_binskim_compliant_compile_flags --enable_lto --disable_rtti
+// --build_shared_lib --update --build --cmake_generator 'Visual Studio 17 2022' --enable_onnx_tests
+// --use_telemetry --enable_onnx_tests --enable_wcos --use_azure
+#if !defined(_M_IX86)
 static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_devices,
                                               _In_ size_t num_devices,
                                               _In_ const OrtKeyValuePairs* model_metadata,
@@ -411,7 +418,6 @@ static OrtStatus* ORT_API_CALL PolicyDelegateReturnError(_In_ const OrtEpDevice*
 
   return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Selection error.");
 }
-}
 
 // test providing a delegate
 TEST(AutoEpSelection, PolicyDelegate) {
@@ -438,7 +444,7 @@ TEST(AutoEpSelection, PolicyDelegate) {
                        /* auto_select */ true,
                        /*select_devices*/ nullptr,
                        std::nullopt,
-                       static_cast<EpSelectionDelegate>(PolicyDelegate));
+                       PolicyDelegate);
 }
 
 // test providing a delegate
@@ -467,7 +473,7 @@ TEST(AutoEpSelection, PolicyDelegateSelectsNothing) {
                            /* auto_select */ true,
                            /*select_devices*/ nullptr,
                            std::nullopt,
-                           static_cast<EpSelectionDelegate>(PolicyDelegateSelectNone),
+                           PolicyDelegateSelectNone,
                            /*test_session_creation_only*/ true),
       Ort::Exception);
 }
@@ -497,10 +503,11 @@ TEST(AutoEpSelection, PolicyDelegateReturnsError) {
                            /* auto_select */ true,
                            /*select_devices*/ nullptr,
                            std::nullopt,
-                           static_cast<EpSelectionDelegate>(PolicyDelegateReturnError),
+                           PolicyDelegateReturnError,
                            /*test_session_creation_only*/ true),
       Ort::Exception);
 }
+#endif  // !defined(_M_IX86)
 
 namespace {
 struct ExamplePluginInfo {
