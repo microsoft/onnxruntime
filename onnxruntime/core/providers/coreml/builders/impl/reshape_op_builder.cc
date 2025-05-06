@@ -49,10 +49,9 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (shape_constant) {
     Initializer unpacked_tensor(*shape_constant);
     new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
+    // ReshapeHelper applies the ONNX rules to create the concrete output shape
+    ReshapeHelper helper(TensorShape(input_shape), new_shape);
   }
-
-  // ReshapeHelper applies the ONNX rules to create the concrete output shape
-  ReshapeHelper helper(TensorShape(input_shape), new_shape);
 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -62,8 +61,8 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
     AddOperationInput(*reshape_op, "x", data_name);
     if (shape_constant) {
-    AddOperationInput(*reshape_op, "shape",
-                      model_builder.AddConstant(reshape_op->type(), "shape", ToConstSpan(new_shape)));
+      AddOperationInput(*reshape_op, "shape",
+                        model_builder.AddConstant(reshape_op->type(), "shape", ToConstSpan(new_shape)));
     } else {
       AddOperationInput(*reshape_op, "shape", new_shape_name);
     }
@@ -84,7 +83,7 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 bool AllPositiveShape(gsl::span<const int64_t> shape) {
-  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0 || dim == 0; });
+  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
 }
 
 bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
@@ -115,9 +114,9 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   const auto* new_shape_tensor = input_params.graph_viewer.GetConstantInitializer(new_shape_name);
 
   NodeAttrHelper helper(node);
-  const bool allow_zero = helper.Get("allow_zero", 0) == 1;
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
 
-  if (!new_shape_tensor && !allow_zero && input_defs[1]->Shape()) {
+  if (!new_shape_tensor && !allow_zero && input_defs[1]->Shape() && input_params.create_mlprogram) {
     // If the new shape is not a constant but the rank is known and zeroes are not
     // allowed, then we can assume that the new shape is valid
     return true;
@@ -138,7 +137,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  //CoreML reshape does not support 0 as a dimension
+  // CoreML reshape does not support 0 as a dimension
   if (allow_zero) {
     if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
       LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
