@@ -1799,6 +1799,7 @@ void addGlobalMethods(py::module& m) {
 #endif
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 /**
  * Calls the user's Python EP selection function and coverts the results to a format that can be used
  * by ORT to select OrtEpDevice instances. The user's function is set by calling
@@ -1860,6 +1861,7 @@ static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice
 
   return nullptr;
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
