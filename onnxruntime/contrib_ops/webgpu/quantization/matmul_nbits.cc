@@ -245,15 +245,15 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const uint32_t components_a = a.NumComponents();
   const uint32_t components_b = b.NumComponents() / 4;  // b is stored as uint32 which includs 4 uint8.
   constexpr uint32_t tile_size_k_vec = 16;
-  uint32_t elements_in_vec = components_b * (32 / nbits_);
-  uint32_t tile_k_size = tile_size_k_vec * elements_in_vec;
+  uint32_t elements_in_value_b = components_b * (32 / nbits_);
+  uint32_t tile_k_size = tile_size_k_vec * elements_in_value_b;
   const uint32_t a_length_per_tile = tile_k_size / components_a;
 
   shader.AdditionalImplementation() << "const a_length_per_tile = " << a_length_per_tile << "u;\n"
                                     << "const tile_size_k_vec = " << tile_size_k_vec << ";\n"
                                     << "const tile_size_k = " << tile_k_size << "u;\n"
                                     << "const tile_size = " << tile_size_ << "u;\n"
-                                    << "const elements_in_vec = " << elements_in_vec << "u;\n"
+                                    << "const elements_in_value_b = " << elements_in_value_b << "u;\n"
                                     << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
                                     << "const component_a = " << components_a << "u;\n"
                                     << "const component_b = " << components_b << "u;\n";
@@ -261,9 +261,9 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Shared memory
   var<workgroup> tile_A : array<input_a_value_t, a_length_per_tile>;
   var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
-  fn loadSHMA(batch: u32, a_global: u32, kidx_v: u32, col: u32)
+  fn loadSHMA(batch: u32, a_global: u32, kidx: u32, col: u32)
   {
-    let k_offset = kidx_v / component_a + col;
+    let k_offset = kidx / component_a + col;
     if (batch < uniforms.batch_count && k_offset < uniforms.K_of_a) {
       tile_A[col] = input_a[batch * uniforms.M * uniforms.K_of_a + a_global * uniforms.K_of_a + k_offset];
     } else {
@@ -281,21 +281,21 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   let idx = local_idx % tile_size_k_vec;
   let idy = local_idx / tile_size_k_vec;
 
-  for (var kidx_v = 0u; kidx_v < uniforms.K; kidx_v += tile_size_k)
+  for (var kidx = 0u; kidx < uniforms.K; kidx += tile_size_k)
   {
     for (var id = local_idx; id < a_length_per_tile; id += workgroup_size_x)
     {
-      loadSHMA(batch, a_global, kidx_v, id);
+      loadSHMA(batch, a_global, kidx, id);
     }
     workgroupBarrier();
 
     for (var local_row_offset = 0u; local_row_offset < tile_size; local_row_offset += sub_tile_count)
     {
       var b_global = b_global_base + local_row_offset + idy;
-      var k_offset = kidx_v / elements_in_vec + idx;
+      var k_offset = kidx / elements_in_value_b + idx;
       if (b_global < uniforms.N && k_offset < uniforms.K_of_b)
       {
-        let block_idx = (kidx_v + idx * elements_in_vec) / uniforms.block_size;
+        let block_idx = (kidx + idx * elements_in_value_b) / uniforms.block_size;
         let scale_b = scales_b[b_global * uniforms.blocks_per_col + block_idx];
         let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
         var b_value = input_b[b_global * uniforms.K_of_b + k_offset];
@@ -475,17 +475,17 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   constexpr uint32_t workgroup_size = 128;
   constexpr uint32_t tile_size = 8;
   constexpr uint32_t kU32Components = 4;
-  uint32_t elements_in_blob = components_b * kU32Components;
+  uint32_t components_b_with_u32 = components_b * kU32Components;
   uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
   MatMulNBitsProgram program{tile_size, nbits, has_zero_points};
   program.SetWorkgroupSize(workgroup_size);
   program.SetDispatchGroupSize((N + tile_size - 1) / tile_size, M, batch_count);
   program
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_a)},
-                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(elements_in_blob)},
+                  {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(components_b_with_u32)},
                   {scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank})
-      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / elements_in_blob}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
+      .AddUniformVariables({{M}, {N}, {K}, {K / components_a}, {n_blocks_per_col * blob_size / components_b_with_u32}, {block_size}, {n_blocks_per_col}, {zero_blocks_per_col}, {num_N_tile}, {batch_count}})
       .CacheHint(nbits, has_zero_points);
   if (has_zero_points) {
     program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
