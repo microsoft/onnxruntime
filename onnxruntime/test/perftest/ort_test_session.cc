@@ -18,7 +18,10 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+
+#ifdef USE_CUDA
 #include <cuda_runtime.h>
+#endif
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
