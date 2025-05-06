@@ -88,13 +88,13 @@ Status InstanceNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& channel_scale_shift = shader.AddInput("channel_scale_shift", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "let outputIndices = " << output.OffsetToIndices("global_idx")
+                            << "let outputIndices = " << output.OffsetToIndices("global_idx") << ";\n"
                             << "let batch = outputIndices[0];\n"
                             << "let channel = outputIndices[1];\n"
                             << "let channel_scale_shift_indices = channel_scale_shift_indices_t(batch, channel, 0);\n"
                             << "let channel_scale_shift = " << channel_scale_shift.GetByIndices("channel_scale_shift_indices") << ";\n"
                             << "let input_value = " << input.GetByOffset("global_idx") << ";\n"
-                            << "let output_value = input_value * output_value_t(channel_scale_sift.x) + output_value_t(channel_scale_shift.y);\n"
+                            << "let output_value = input_value * output_value_t(channel_scale_shift.x) + output_value_t(channel_scale_shift.y);\n"
                             << output.SetByOffset("global_idx", "output_value") << ";\n";
   return Status::OK();
 }
