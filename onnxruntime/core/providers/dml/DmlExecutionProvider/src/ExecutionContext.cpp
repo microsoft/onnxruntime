@@ -162,9 +162,16 @@ namespace Dml
     {
         assert(!m_closed);
 
-        if (!m_currentRecorder || !m_currentRecorder->HasUnsubmittedWork())
+        if (!m_currentRecorder)
         {
             // Nothing to flush
+            return;
+        }
+
+        if (!m_currentRecorder->HasUnsubmittedWork())
+        {
+            // Even if we have no queued work, we can still release resources that may no longer be needed.
+            ReleaseCompletedReferences();
             return;
         }
 
@@ -183,7 +190,7 @@ namespace Dml
         assert(!m_closed);
         // If something has been recorded into a command list but not submitted yet, it means that the *next* fence
         // value is the one to signal completion.
-        bool waitForUnsubmittedWork = (m_currentRecorder != nullptr);
+        bool waitForUnsubmittedWork = ((m_currentRecorder != nullptr) && (m_currentRecorder->HasUnsubmittedWork()));
         m_queue->QueueReference(object, waitForUnsubmittedWork);
     }
 
