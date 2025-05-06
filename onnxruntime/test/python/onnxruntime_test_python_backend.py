@@ -40,18 +40,28 @@ class TestBackend(unittest.TestCase):
         This case is handled specifically in ExecutionFrame::AllocateAsPerAllocationPlan().
         This test is to ensure that the case is covered.
         """
+        providers = onnxrt.get_available_providers()
+        has_qnn_ep = "QNNExecutionProvider" in providers
         name = get_name("alloc_tensor_reuse.onnx")
-        sess = onnxrt.InferenceSession(name, providers=onnxrt.get_available_providers())
+        sess = onnxrt.InferenceSession(name, providers=providers)
 
         run_options = onnxrt.RunOptions()
         run_options.only_execute_path_to_fetches = True
         inp0, inp1 = np.ones((10,), dtype=np.float32), np.ones((10,), dtype=np.float32)
 
         session_run_results = sess.run(["outp0"], {"inp0": inp0, "inp1": inp1}, run_options)
-        assert_allclose(session_run_results[0], -(inp0 + inp1))
+        if has_qnn_ep:
+            # QNN EP runs fp32 with fp16 precision, so relax tolerance.
+            assert_allclose(session_run_results[0], -(inp0 + inp1), rtol=1e-6, atol=1e-6)
+        else:
+            assert_allclose(session_run_results[0], -(inp0 + inp1))
 
         session_run_results = sess.run(["outp1"], {"inp0": inp0, "inp1": inp1}, run_options)
-        assert_allclose(session_run_results[0], -(inp0 - inp1))
+        if has_qnn_ep:
+            # QNN EP runs fp32 with fp16 precision, so relax tolerance.
+            assert_allclose(session_run_results[0], -(inp0 - inp1), rtol=1e-6, atol=1e-6)
+        else:
+            assert_allclose(session_run_results[0], -(inp0 - inp1))
 
 
 if __name__ == "__main__":
