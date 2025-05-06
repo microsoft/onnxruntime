@@ -84,7 +84,7 @@ const createScatterNDProgramInfo = (inputs: readonly TensorView[], attributes: S
   const outputShape = inputShape;
   // TODO: support bool with components 4.
   const components = 1;
-  const outputSize = Math.ceil(ShapeUtil.sizeToDimension(inputShape, indicesShape.length - 1) / components);
+  const outputSize = Math.ceil(ShapeUtil.sizeToDimension(indicesShape, indicesShape.length - 1) / components);
   const lastIndexDimension = indicesShape[indicesShape.length - 1];
   const numUpdatesElements = ShapeUtil.sizeFromDimension(inputShape, lastIndexDimension);
 
