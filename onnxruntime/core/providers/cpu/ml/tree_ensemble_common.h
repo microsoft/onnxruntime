@@ -310,7 +310,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
 #if defined(_TREE_DEBUG)
   std::cout << "TreeEnsemble:same_mode_=" << (same_mode_ ? 1 : 0) << "\n";
-  for(auto& node: nodes_) {
+  for (auto& node : nodes_) {
     std::cout << node.str() << "\n";
   }
 #endif
