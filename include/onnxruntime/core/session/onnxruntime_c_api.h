@@ -6124,7 +6124,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version <coming soon>. This is a placeholder.
+   * \since Version [coming soon]. This is a placeholder.
    */
   OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -6138,7 +6138,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep The OrtEp instance to release.
    *
-   * \since Version <coming soon>. This is a placeholder.
+   * \since Version [coming soon]. This is a placeholder.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 };
