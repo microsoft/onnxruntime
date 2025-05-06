@@ -8,11 +8,13 @@
 #include <string>
 
 #include "core/common/common.h"
+#include "core/session/allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/ort_apis.h"
+#include "core/session/ort_env.h"
 #include "core/session/utils.h"
 #else
 #include "core/common/common.h"
@@ -43,7 +45,8 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptio
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "The session_options argument must be a non-null pointer");
   }
 
-  auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>(*env, *session_options);
+  auto model_compile_options = std::make_unique<onnxruntime::ModelCompilationOptions>(env->GetEnvironment(),
+                                                                                      *session_options);
   *out = reinterpret_cast<OrtModelCompilationOptions*>(model_compile_options.release());
   return nullptr;
 #else
@@ -150,7 +153,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelExterna
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _Inout_ OrtAllocator* allocator, void** output_model_data_ptr, size_t* output_model_data_size_ptr) {
+                    _Inout_ OrtAllocator* ort_allocator, void** output_model_data_ptr, size_t* output_model_data_size_ptr) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
@@ -163,17 +166,18 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid output model buffer: size pointer is null");
   }
 
-  if (allocator == nullptr) {
+  if (ort_allocator == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid allocator for output model buffer: allocator pointer is null");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetOutputModelBuffer(allocator,
+  onnxruntime::AllocatorPtr allocator = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(ort_allocator);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetOutputModelBuffer(std::move(allocator),
                                                                               output_model_data_ptr,
                                                                               output_model_data_size_ptr));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
-  ORT_UNUSED_PARAMETER(allocator);
+  ORT_UNUSED_PARAMETER(ort_allocator);
   ORT_UNUSED_PARAMETER(output_model_data_ptr);
   ORT_UNUSED_PARAMETER(output_model_data_size_ptr);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
@@ -202,23 +206,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<const onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->Check());
-
-  std::unique_ptr<onnxruntime::InferenceSession> session;
-  const OrtSessionOptions* session_options = &model_compile_options->GetSessionOptions();
-
-  if (model_compile_options->InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options->GetInputModelPath());
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(session_options, env,
-                                                      input_model_path.c_str(),
-                                                      nullptr, 0, session));
-  } else {
-    ORT_API_RETURN_IF_ERROR(CreateSessionAndLoadModel(session_options, env, nullptr,
-                                                      model_compile_options->GetInputModelData(),
-                                                      model_compile_options->GetInputModelDataSize(), session));
-  }
-
-  ORT_API_RETURN_IF_ERROR(InitializeSession(session_options, *session));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::CompileModel(env->GetEnvironment(), *model_compile_options));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(env);

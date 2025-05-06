@@ -234,13 +234,13 @@ using PySessionOptions = OrtSessionOptions;
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
-      : env_(std::move(env)) {
+      : env_(std::move(env)), session_options_(so) {
     sess_ = std::make_unique<InferenceSession>(so.value, *env_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : env_(std::move(env)) {
+      : env_(std::move(env)), session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
@@ -251,6 +251,24 @@ struct PyInferenceSession {
     }
   }
 #endif
+
+  // Returns true if the session options have provider information from either
+  // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
+  // setting a selection policy (e.g., prefer gpu).
+  bool HasProvidersInSessionOptions() const {
+    return !session_options_.provider_factories.empty() ||
+           session_options_.value.ep_selection_policy.enable;
+  }
+
+  // Returns (and updates) a reference to the OrtSessionOptions for this inference session.
+  OrtSessionOptions& GetOrtSessionOptions() {
+    if (sess_) {
+      // Copy internal value from InferenceSession as it is the source of truth
+      // and the option configurations may have changed.
+      session_options_.value = sess_->GetSessionOptions();
+    }
+    return session_options_;
+  }
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
@@ -264,6 +282,7 @@ struct PyInferenceSession {
  private:
   std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
+  OrtSessionOptions session_options_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {
