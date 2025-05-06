@@ -113,10 +113,10 @@ public class TensorHelper {
 
       // data
       if (onnxTensor.getInfo().onnxType == TensorInfo.OnnxTensorType.ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING) {
-        String[] buffer = (String[])onnxTensor.getValue();
+        String[][] buffer = (String[][])onnxTensor.getValue();
         WritableArray dataArray = Arguments.createArray();
-        for (String value : buffer) {
-          dataArray.pushString(value);
+        for (String[] value : buffer) {
+          dataArray.pushString(value[0]);
         }
         outputTensor.putArray("data", dataArray);
       } else {
