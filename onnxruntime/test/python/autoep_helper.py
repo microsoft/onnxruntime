@@ -14,8 +14,8 @@ class AutoEpTestCase(unittest.TestCase):
     """
     Base class for TestCase classes that need to register and unregister EP libraries.
     Because EP libraries are registered with the ORT environment and all unit tests share
-    the same environment, this class provides hooks to clean up registered libraries before
-    and after each unit test runs.
+    the same environment, this class tracks which libraries have already been registered
+    so that they are not erroneously registered or unregistered.
 
     Derived classes must use 'self.register_execution_provider_library()' and
     'self.unregister_execution_provider_library()' to benefit from these utilities.
@@ -29,29 +29,12 @@ class AutoEpTestCase(unittest.TestCase):
         cls._tmp_dir_path = cls._tmp_model_dir.name
         # cls._tmp_dir_path = "."
 
+        # Track registered EP libraries across all tests.
+        cls._registered_providers = set()
+
     @classmethod
     def tearDownClass(cls):
         cls._tmp_model_dir.cleanup()
-
-    def setUp(self):
-        """
-        Called before running every unit test.
-        """
-        self._registered_providers = set()
-
-    def tearDown(self):
-        """
-        Called after running every unit tests.
-        """
-        # Unregister any providers we registered in the unit test.
-        for ep_registration_name in self._registered_providers:
-            try:
-                onnxrt.unregister_execution_provider_library(ep_registration_name)
-            except Fail as onnxruntime_error:
-                if "was not registered" in str(onnxruntime_error):
-                    pass  # Allow unregister to fail if the EP library was never registered.
-                else:
-                    raise onnxruntime_error
 
     def register_execution_provider_library(self, ep_registration_name: str, ep_lib_path: os.PathLike | str):
         if ep_registration_name in self._registered_providers:

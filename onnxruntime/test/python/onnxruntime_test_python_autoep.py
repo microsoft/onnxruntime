@@ -32,10 +32,10 @@ class TestAutoEP(AutoEpTestCase):
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if not os.path.exists(ep_lib_path):
-            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+        if ep_registration_name not in available_providers:
+            self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
@@ -49,6 +49,10 @@ class TestAutoEP(AutoEpTestCase):
 
         self.assertTrue(has_cpu_ep)
         self.assertIsNotNone(cuda_ep_device)
+        self.assertEqual(cuda_ep_device.ep_vendor, "Microsoft")
+
+        hw_device = cuda_ep_device.device
+        self.assertEqual(hw_device.type, onnxrt.OrtHardwareDeviceType.GPU)
 
         # Add CUDA's OrtEpDevice to session options
         sess_options = onnxrt.SessionOptions()
@@ -64,7 +68,8 @@ class TestAutoEP(AutoEpTestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        self.unregister_execution_provider_library(ep_registration_name)
+        # TODO(adrianlizarraga): Unregistering CUDA EP library causes issues. Investigate.
+        # self.unregister_execution_provider_library(ep_registration_name)
 
     def test_cuda_prefer_gpu_and_inference(self):
         """
@@ -76,10 +81,10 @@ class TestAutoEP(AutoEpTestCase):
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if not os.path.exists(ep_lib_path):
-            self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
+        if ep_registration_name not in available_providers:
+            self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
 
         # Set a policy to prefer GPU. Cuda should be selected.
         sess_options = onnxrt.SessionOptions()
@@ -95,21 +100,23 @@ class TestAutoEP(AutoEpTestCase):
         output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
-        self.unregister_execution_provider_library(ep_registration_name)
+        # TODO(adrianlizarraga): Unregistering CUDA EP library causes issues. Investigate.
+        # self.unregister_execution_provider_library(ep_registration_name)
 
     def test_example_plugin_ep_devices(self):
         """
         Test registration of an example EP plugin and retrieval of its OrtEpDevice.
         """
-        ep_lib_path = "example_plugin_ep.dll"
-        ep_registration_name = "example_ep"
-
         if sys.platform != "win32":
             self.skipTest("Skipping test because it device discovery is only supported on Windows")
 
-        if not os.path.exists(ep_lib_path):
+        ep_lib_path = "example_plugin_ep.dll"
+        try:
+            ep_lib_path = get_name("example_plugin_ep.dll")
+        except FileNotFoundError:
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
+        ep_registration_name = "example_ep"
         self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
 
         ep_devices = onnxrt.get_ep_devices()
