@@ -33,7 +33,7 @@ Below is the matrix of supported ROCm versions corresponding to Ubuntu builds.
 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 
 
-|ONNX Runtime Version|MIGraphX ROCm Release| Repo.Radeon link|
+|ONNX Runtime Version|MIGraphX ROCm Release| Repo.Radeon Python Version|
 |---|---|---|
 |main|5.4||
 |1.14|5.4||
@@ -45,14 +45,15 @@ Links for prebuild Python Wheels (.whl) are linked below corresponding to python
 |1.14|5.4||
 |1.15|5.4.x||
 |1.16|6.0.0||
-|1.16|6.0.2| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.0.2/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
-|1.17|6.1| [Python 3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp38-cp38-linux_x86_64.whl) [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
-|1.17|6.1.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1.3/onnxruntime_rocm-1.17.0-cp310-cp310-linux_x86_64.whl)|
-|1.18|6.2| [Python 3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp38-cp38-linux_x86_64.whl) [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
-|1.18|6.2.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
-|1.18|6.2.4| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.4/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
-|1.19|6.3| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) [Python 3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
-|1.19|6.3.1| [Python 3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) [Python 3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.16|6.0.2| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.0.2/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.17|6.1| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp38-cp38-linux_x86_64.whl)  [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.17|6.1.3| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1.3/onnxruntime_rocm-1.17.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp38-cp38-linux_x86_64.whl)  [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2.3| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.18|6.2.4| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.4/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)|
+|1.19|6.3| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl)  [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.19|6.3.1| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl)  [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.21|6.4.0| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp310-cp310-linux_x86_64.whl)  [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp312-cp312-linux_x86_64.whl)|
 
 ## Build
 For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx).
@@ -88,10 +89,24 @@ model on either the CPU or MIGraphX Execution Provider.
 
 These flags can be invoked via the Provider Options struct [link] when creating an Onnxruntime Session Object and invoking the MIGraphXExecutionProvider 
 
-Items are added as a python dictionary 
+Items are added as a python dictionary when invoking the migraphx execution provider
 
 |Session Option Flag | Values | Description|
 |---|---|---|
+| device_id | INT | Selecit the device ID specified for the session run (default will be device 0) | 
+| migraphx_fp16_enable | 1 or 0 | Enable FP16 quantization mode via the MIGraphX API of the input model|
+| migraphx_int8_enable | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set.|
+| migraphx_int8_calibration_table_name | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization |
+| migraphx_int8_use_native_calibration_table | 1 or 0 | Use a calibration table from Nvidia native int8 format or json dumped format|
+| migraphx_save_compiled_model | 1 or 0 | Enable saving a model as an MIGraphX (.mxr) format after compile |
+| migraphx_save_compiled_path  | <string> - Path to write .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
+| migraphx_load_compiled_model | 1 or 0 | Enable loading a model as an MIGraphX (.mxr) format after compile |
+| migraphx_load_compiled_path | <string> - Path to read .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
+| migraphx_exhaustive_tune | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost.|
+| migraphx_mem_limit | INT | Set the memory limit used for memory arena. Default uses ORTs default_memory_arena_cfg value. |
+| migraphx_external_alloc | Address | Address of external memory allocator function used for this EP. Useful for reading in larger models weights. |
+| migraphx_external_free | Address  | Address of external memory deallocator function used for this EP. Useful for unloadng what was allocated with the migraphx_external_alloc input |
+| migraphx_external_empty_cache | Address  | Address of external memory cache used for this model. Useful for caching results of externally allocated models. |
 
 
 ## Environment Variaables
