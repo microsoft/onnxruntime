@@ -275,8 +275,8 @@ QuantizeARowComputeBlkSum_CompInt8(
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const float32x4_t mul = vdupq_n_f32(inverse_scale);
 
-        I16VecType<QuantAUnsigned> sum_8_i16_0 = PrepareZeroI16();
-        I16VecType<QuantAUnsigned> sum_8_i16_1 = PrepareZeroI16();
+        I16VecType<QuantAUnsigned> sum_8_i16_0 = PrepareZeroI16<QuantAUnsigned>();
+        I16VecType<QuantAUnsigned> sum_8_i16_1 = PrepareZeroI16<QuantAUnsigned>();
 
         for (size_t kk = 0; kk < BlkLen; kk += 16) {
             const float32x4x4_t vfp32 = vld4q_f32(A + k + kk);
@@ -332,7 +332,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         float32x4_t absMax = vdupq_n_f32(0.0f);
 
         for (size_t kk = k; kk < CountK; kk += 4) {
-            size_t step = std::min(4, CountK - kk);
+            size_t step = std::min(static_cast<size_t>(4), CountK - kk);
             const float32x4_t v0 = LoadFloat32x4(A + kk, step);
             absMax = vmaxq_f32(absMax, vabsq_f32(v0));
         }
@@ -344,14 +344,10 @@ QuantizeARowComputeBlkSum_CompInt8(
         const float inverse_scale = (maxScalar != 0.0f) ? 127.f / maxScalar : 0.0f;
         const float32x4_t mul = vdupq_n_f32(inverse_scale);
 
-        if constexpr (QuantAUnsigned) {
-            uint16x8_t sum_8_u16 = vdupq_n_u16(0);
-        } else {
-            int16x8_t sum_8_i16 = vdupq_n_s16(0);
-        }
+        I16VecType<QuantAUnsigned> sum_8_i16 = PrepareZeroI16<QuantAUnsigned>();
 
         for (size_t kk = k; kk < CountK; kk += 4) {
-            size_t step = std::min(4, CountK - kk);
+            size_t step = std::min(static_cast<size_t>(4), CountK - kk);
             const float32x4_t vfp32 = LoadFloat32x4(A + kk, step);
             const float32x4_t v_f32 = vmulq_f32(vfp32, mul);
             const int32x4_t v_i32 = vcvtnq_s32_f32(v_f32);
@@ -365,7 +361,7 @@ QuantizeARowComputeBlkSum_CompInt8(
                 // accumulate Sum(a_i)
                 v_8_u8 = vand_u8(v_8_u8, vld1_u8(MASK + 8 - step));
                 const uint16x8_t i_8_u16 = vmovl_u8(v_8_u8);
-                sum_8_u16 = vaddq_u16(sum_8_u16, i_8_u16);
+                sum_8_i16 = vaddq_u16(sum_8_i16, i_8_u16);
             } else {
                 const int8x8_t v_8_i8 = vqmovn_s16(v_8_i16);
                 vst1_lane_s32(reinterpret_cast<int32_t*>(blob + kk), vreinterpret_s32_s8(v_8_i8), 0);
@@ -379,7 +375,7 @@ QuantizeARowComputeBlkSum_CompInt8(
         float qsum;
 
         if constexpr (QuantAUnsigned) {
-            qsum = static_cast<float>(vaddvq_u16(sum_8_u16));
+            qsum = static_cast<float>(vaddvq_u16(sum_8_i16));
         } else {
             qsum = static_cast<float>(vaddvq_s16(sum_8_i16));
         }
@@ -389,6 +385,28 @@ QuantizeARowComputeBlkSum_CompInt8(
         memset(blob + CountK, 0, BlkLen - (CountK % BlkLen));
     }
 }
+
+template
+void MLASCALL
+QuantizeARowComputeBlkSum_CompInt8<true>(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+);
+
+template
+void MLASCALL
+QuantizeARowComputeBlkSum_CompInt8<false>(
+    size_t BlkLen,
+    const float* A,
+    size_t CountK,
+    std::byte* QuantA,
+    float* QuantAScale,
+    float* AScaledBlkSum // scale_k * Sum_blklen(a_i)
+);
 
 namespace
 {
@@ -1642,61 +1660,10 @@ SQ4BitGemmKernel_CompInt8(
     return CountM;
 }
 
-template <bool QuantAUnsigned>
-using I8VecType = typename std::conditional<QuantAUnsigned, uint8x16_t, int8x16_t>::type;
-
-template <bool QuantAUnsigned>
-using I32VecType = typename std::conditional<QuantAUnsigned, uint32x4_t, int32x4_t>::type;
-
-template <bool QuantAUnsigned>
-I8VecType<QuantAUnsigned> MLAS_FORCEINLINE
-LoadVecI8(QuantAType<QuantAUnsigned>* QuantA)
-{
-    if constexpr (QuantAUnsigned) {
-        return vld1q_u8(QuantA);
-    } else {
-        return vld1q_s8(QuantA);
-    }
-}
-
-template <bool QuantAUnsigned>
-I32VecType<QuantAUnsigned> MLAS_FORCEINLINE
-PrepareZeroI32()
-{
-    if constexpr (QuantAUnsigned) {
-        return vdupq_n_u32(0);
-    } else {
-        return vdupq_n_s32(0);
-    }
-}
-
-template <bool QuantAUnsigned>
-I32VecType<QuantAUnsigned> MLAS_FORCEINLINE
-MulAccuLane(I32VecType<QuantAUnsigned>& accuVec, const I8VecType<QuantAUnsigned>& av, const uint8x16_t& bv, const int lane)
-{
-    if constexpr (QuantAUnsigned) {
-        return vdotq_laneq_u32(accuVec, bv, av, lane);
-    } else {
-        return vusdotq_laneq_s32(accuVec, bv, av, lane);
-    }
-}
-
-template <bool QuantAUnsigned>
-I32VecType<QuantAUnsigned> MLAS_FORCEINLINE
-MulAccu(I32VecType<QuantAUnsigned>& accuVec, const I8VecType<QuantAUnsigned>& av, const uint8x16_t& bv)
-{
-    if constexpr (QuantAUnsigned) {
-        return vdotq_u32(accuVec, bv, av);
-    } else {
-        return vusdotq_s32(accuVec, bv, av);
-    }
-}
-
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR2xC8Neon(
+Q8Int8GemmR2xC8DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -1725,7 +1692,7 @@ Q8Int8GemmR2xC8Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; n += NCols8) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -1745,14 +1712,14 @@ Q8Int8GemmR2xC8Neon(
                 const float32x4_t scaleA1B03 = vmulq_n_f32(scaleB.val[0], scaleA1);
                 const float32x4_t scaleA1B47 = vmulq_n_f32(scaleB.val[1], scaleA1);
 
-                I32VecType<QuantAUnsigned> acc0_03 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc0_47 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc1_03 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc1_47 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0_03 = vdupq_n_u32(0U);
+                uint32x4_t acc0_47 = vdupq_n_u32(0U);
+                uint32x4_t acc1_03 = vdupq_n_u32(0U);
+                uint32x4_t acc1_47 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
-                    const I8VecType<QuantAUnsigned> av1_16_i8 = LoadAVec(QuantAPtr + lda);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
+                    const uint8x16_t av1_16_i8 = vld1q_u8(QuantAPtr + lda);
 
                     uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
                     uint8x16_t bv_packed_0_47 = vld1q_u8(QuantBDataPtr + 16);
@@ -1763,34 +1730,34 @@ Q8Int8GemmR2xC8Neon(
                     uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 96);
                     uint8x16_t bv_packed_3_47 = vld1q_u8(QuantBDataPtr + 112);
 
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_0_03, 0);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_1_03, 1);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_2_03, 2);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_3_03, 3);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_0_03, av0_16_i8, 0);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_1_03, av0_16_i8, 1);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_2_03, av0_16_i8, 2);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_3_03, av0_16_i8, 3);
 
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_0_47, 0);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_1_47, 1);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_2_47, 2);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_3_47, 3);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_0_47, av0_16_i8, 0);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_1_47, av0_16_i8, 1);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_2_47, av0_16_i8, 2);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_3_47, av0_16_i8, 3);
 
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_0_03, 0);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_1_03, 1);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_2_03, 2);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_3_03, 3);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_0_03, av1_16_i8, 0);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_1_03, av1_16_i8, 1);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_2_03, av1_16_i8, 2);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_3_03, av1_16_i8, 3);
 
-                    acc1_47 = MulAccuLane<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_0_47, 0);
-                    acc1_47 = MulAccuLane<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_1_47, 1);
-                    acc1_47 = MulAccuLane<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_2_47, 2);
-                    acc1_47 = MulAccuLane<QuantAUnsigned>(acc1_47, av1_16_i8, bv_packed_3_47, 3);
+                    acc1_47 = vdotq_laneq_u32(acc1_47, bv_packed_0_47, av1_16_i8, 0);
+                    acc1_47 = vdotq_laneq_u32(acc1_47, bv_packed_1_47, av1_16_i8, 1);
+                    acc1_47 = vdotq_laneq_u32(acc1_47, bv_packed_2_47, av1_16_i8, 2);
+                    acc1_47 = vdotq_laneq_u32(acc1_47, bv_packed_3_47, av1_16_i8, 3);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
-                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
-                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
-                accf1_47 = vmlaq_f32(accf1_47, scaleA1B47, vcvtq_f32_s32(acc1_47));
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
+                accf1_47 = vmlaq_f32(accf1_47, scaleA1B47, vcvtq_f32_u32(acc1_47));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
@@ -1819,11 +1786,10 @@ Q8Int8GemmR2xC8Neon(
     }
 }
 
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR1xC8Neon(
+Q8Int8GemmR1xC8DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -1850,7 +1816,7 @@ Q8Int8GemmR1xC8Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; n += NCols8) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -1865,11 +1831,11 @@ Q8Int8GemmR1xC8Neon(
                 const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB.val[0], scaleA0);
                 const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB.val[1], scaleA0);
 
-                I32VecType<QuantAUnsigned> acc0_03 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc0_47 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0_03 = vdupq_n_u32(0U);
+                uint32x4_t acc0_47 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
 
                     uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
                     uint8x16_t bv_packed_0_47 = vld1q_u8(QuantBDataPtr + 16);
@@ -1880,22 +1846,22 @@ Q8Int8GemmR1xC8Neon(
                     uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 96);
                     uint8x16_t bv_packed_3_47 = vld1q_u8(QuantBDataPtr + 112);
 
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_0_03, 0);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_1_03, 1);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_2_03, 2);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_3_03, 3);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_0_03, av0_16_i8, 0);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_1_03, av0_16_i8, 1);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_2_03, av0_16_i8, 2);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_3_03, av0_16_i8, 3);
 
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_0_47, 0);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_1_47, 1);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_2_47, 2);
-                    acc0_47 = MulAccuLane<QuantAUnsigned>(acc0_47, av0_16_i8, bv_packed_3_47, 3);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_0_47, av0_16_i8, 0);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_1_47, av0_16_i8, 1);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_2_47, av0_16_i8, 2);
+                    acc0_47 = vdotq_laneq_u32(acc0_47, bv_packed_3_47, av0_16_i8, 3);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += NCols8 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
-                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_s32(acc0_47));
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf0_47 = vmlaq_f32(accf0_47, scaleA0B47, vcvtq_f32_u32(acc0_47));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols8;
@@ -1920,11 +1886,10 @@ Q8Int8GemmR1xC8Neon(
     }
 }
 
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR2xC4Neon(
+Q8Int8GemmR2xC4DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -1953,7 +1918,7 @@ Q8Int8GemmR2xC4Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; n += NCols4) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -1969,34 +1934,34 @@ Q8Int8GemmR2xC4Neon(
                 const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB, scaleA0);
                 const float32x4_t scaleA1B03 = vmulq_n_f32(scaleB, scaleA1);
 
-                I32VecType<QuantAUnsigned> acc0_03 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc1_03 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0_03 = vdupq_n_u32(0U);
+                uint32x4_t acc1_03 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
-                    const I8VecType<QuantAUnsigned> av1_16_i8 = LoadAVec(QuantAPtr + lda);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
+                    const uint8x16_t av1_16_i8 = vld1q_u8(QuantAPtr + lda);
 
                     uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
                     uint8x16_t bv_packed_1_03 = vld1q_u8(QuantBDataPtr + 16);
                     uint8x16_t bv_packed_2_03 = vld1q_u8(QuantBDataPtr + 32);
                     uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 48);
 
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_0_03, 0);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_1_03, 1);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_2_03, 2);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_3_03, 3);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_0_03, av0_16_i8, 0);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_1_03, av0_16_i8, 1);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_2_03, av0_16_i8, 2);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_3_03, av0_16_i8, 3);
 
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_0_03, 0);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_1_03, 1);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_2_03, 2);
-                    acc1_03 = MulAccuLane<QuantAUnsigned>(acc1_03, av1_16_i8, bv_packed_3_03, 3);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_0_03, av1_16_i8, 0);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_1_03, av1_16_i8, 1);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_2_03, av1_16_i8, 2);
+                    acc1_03 = vdotq_laneq_u32(acc1_03, bv_packed_3_03, av1_16_i8, 3);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
-                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_s32(acc1_03));
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
+                accf1_03 = vmlaq_f32(accf1_03, scaleA1B03, vcvtq_f32_u32(acc1_03));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
@@ -2021,11 +1986,10 @@ Q8Int8GemmR2xC4Neon(
     }
 }
 
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR1xC4Neon(
+Q8Int8GemmR1xC4DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -2052,7 +2016,7 @@ Q8Int8GemmR1xC4Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; n += NCols4) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -2065,26 +2029,26 @@ Q8Int8GemmR1xC4Neon(
                 const float32x4_t scaleB = vld1q_f32(QuantBScalePtr);
                 const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB, scaleA0);
 
-                I32VecType<QuantAUnsigned> acc0_03 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0_03 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
 
                     uint8x16_t bv_packed_0_03 = vld1q_u8(QuantBDataPtr);
                     uint8x16_t bv_packed_1_03 = vld1q_u8(QuantBDataPtr + 16);
                     uint8x16_t bv_packed_2_03 = vld1q_u8(QuantBDataPtr + 32);
                     uint8x16_t bv_packed_3_03 = vld1q_u8(QuantBDataPtr + 48);
 
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_0_03, 0);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_1_03, 1);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_2_03, 2);
-                    acc0_03 = MulAccuLane<QuantAUnsigned>(acc0_03, av0_16_i8, bv_packed_3_03, 3);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_0_03, av0_16_i8, 0);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_1_03, av0_16_i8, 1);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_2_03, av0_16_i8, 2);
+                    acc0_03 = vdotq_laneq_u32(acc0_03, bv_packed_3_03, av0_16_i8, 3);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += NCols4 * KStep16;
                 }
 
-                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_s32(acc0_03));
+                accf0_03 = vmlaq_f32(accf0_03, scaleA0B03, vcvtq_f32_u32(acc0_03));
 
                 ++QuantAScalePtr;
                 QuantBScalePtr += NCols4;
@@ -2107,11 +2071,10 @@ Q8Int8GemmR1xC4Neon(
     }
 }
 
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR2xC1Neon(
+Q8Int8GemmR2xC1DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -2138,7 +2101,7 @@ Q8Int8GemmR2xC1Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; ++n) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -2154,24 +2117,24 @@ Q8Int8GemmR2xC1Neon(
                 const float scaleA0B = scaleB * scaleA0;
                 const float scaleA1B = scaleB * scaleA1;
 
-                I32VecType<QuantAUnsigned> acc0 = PrepareZeroI32<QuantAUnsigned>();
-                I32VecType<QuantAUnsigned> acc1 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0 = vdupq_n_u32(0U);
+                uint32x4_t acc1 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
-                    const I8VecType<QuantAUnsigned> av1_16_i8 = LoadAVec(QuantAPtr + lda);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
+                    const uint8x16_t av1_16_i8 = vld1q_u8(QuantAPtr + lda);
 
                     uint8x16_t bv_packed = vld1q_u8(QuantBDataPtr);
 
-                    acc0 = MulAccu<QuantAUnsigned>(acc0, av0_16_i8, bv_packed);
-                    acc1 = MulAccu<QuantAUnsigned>(acc1, av1_16_i8, bv_packed);
+                    acc0 = vdotq_u32(acc0, bv_packed, av0_16_i8);
+                    acc1 = vdotq_u32(acc1, bv_packed, av1_16_i8);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += KStep16;
                 }
 
-                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
-                accf1 = vmlaq_n_f32(accf1, vcvtq_f32_s32(acc1), scaleA1B);
+                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
+                accf1 = vmlaq_n_f32(accf1, vcvtq_f32_u32(acc1), scaleA1B);
 
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
@@ -2199,11 +2162,10 @@ Q8Int8GemmR2xC1Neon(
     }
 }
 
-template <bool QuantAUnsigned>
 MLAS_FORCEINLINE void
-Q8Int8GemmR1xC1Neon(
+Q8Int8GemmR1xC1DotProd(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float* QuantBScale,
@@ -2227,7 +2189,7 @@ Q8Int8GemmR1xC1Neon(
         auto* SumPtr = C + m * ldc;
 
         for (size_t n = 0; n < CountN; ++n) {
-            const QuantAType<QuantAUnsigned>* QuantAPtr = QuantA + m * lda;
+            const uint8_t* QuantAPtr = QuantA + m * lda;
             const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
 
             const uint8_t* QuantBDataPtr = QuantBDataColPtr;
@@ -2240,20 +2202,20 @@ Q8Int8GemmR1xC1Neon(
                 const float scaleB = *QuantBScalePtr;
                 const float scaleA0B = scaleB * scaleA0;
 
-                I32VecType<QuantAUnsigned> acc0 = PrepareZeroI32<QuantAUnsigned>();
+                uint32x4_t acc0 = vdupq_n_u32(0U);
 
                 for (size_t k = 0; k < BlkLen; k += KStep16) {
-                    const I8VecType<QuantAUnsigned> av0_16_i8 = LoadAVec(QuantAPtr);
+                    const uint8x16_t av0_16_i8 = vld1q_u8(QuantAPtr);
 
                     uint8x16_t bv_packed = vld1q_u8(QuantBDataPtr);
 
-                    acc0 = MulAccu<QuantAUnsigned>(acc0, av0_16_i8, bv_packed);
+                    acc0 = vdotq_u32(acc0, bv_packed, av0_16_i8);
 
                     QuantAPtr += KStep16;
                     QuantBDataPtr += KStep16;
                 }
 
-                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_s32(acc0), scaleA0B);
+                accf0 = vmlaq_n_f32(accf0, vcvtq_f32_u32(acc0), scaleA0B);
 
                 ++QuantAScalePtr;
                 ++QuantBScalePtr;
@@ -2278,11 +2240,11 @@ Q8Int8GemmR1xC1Neon(
     }
 }
 
-template <bool QuantAUnsigned>
-void
-MlasQ8Int8GemmKernelNeon(
+template <>
+size_t
+MlasQ8Int8GemmKernelNeon<true>(
     const size_t BlkLen,
-    const QuantAType<QuantAUnsigned>* QuantA,
+    const uint8_t* QuantA,
     const float* QuantAScale,
     const uint8_t* QuantBData,
     const float * QuantBScale,
@@ -2311,7 +2273,7 @@ MlasQ8Int8GemmKernelNeon(
     size_t remainingCols4 = CountN % NCols4;
 
     if (multipleRows > 0 && multipleCols8 > 0) {
-        Q8Int8GemmR2xC8Neon<QuantAUnsigned>(
+        Q8Int8GemmR2xC8DotProd(
             BlkLen,
             QuantA,
             QuantAScale,
@@ -2327,7 +2289,7 @@ MlasQ8Int8GemmKernelNeon(
     }
 
     if (multipleRows > 0 && multipleCols4 > multipleCols8) {
-        Q8Int8GemmR2xC4Neon<QuantAUnsigned>(
+        Q8Int8GemmR2xC4DotProd(
             BlkLen,
             QuantA,
             QuantAScale,
@@ -2343,7 +2305,7 @@ MlasQ8Int8GemmKernelNeon(
     }
 
     if (multipleRows > 0 && remainingCols4 > 0) {
-        Q8Int8GemmR2xC1Neon<QuantAUnsigned>(
+        Q8Int8GemmR2xC1DotProd(
             BlkLen,
             QuantA,
             QuantAScale,
@@ -2359,7 +2321,7 @@ MlasQ8Int8GemmKernelNeon(
     }
 
     if (remainingRows > 0 && multipleCols8 > 0) {
-        Q8Int8GemmR1xC8Neon<QuantAUnsigned>(
+        Q8Int8GemmR1xC8DotProd(
             BlkLen,
             QuantA + multipleRows * lda,
             QuantAScale + multipleRows * lda_scale,
@@ -2374,7 +2336,7 @@ MlasQ8Int8GemmKernelNeon(
     }
 
     if (remainingRows > 0 && multipleCols4 > multipleCols8) {
-        Q8Int8GemmR1xC4Neon<QuantAUnsigned>(
+        Q8Int8GemmR1xC4DotProd(
             BlkLen,
             QuantA + multipleRows * lda,
             QuantAScale + multipleRows * lda_scale,
@@ -2389,7 +2351,7 @@ MlasQ8Int8GemmKernelNeon(
     }
 
     if (remainingRows > 0 && remainingCols4 > 0) {
-        Q8Int8GemmR1xC1Neon<QuantAUnsigned>(
+        Q8Int8GemmR1xC1DotProd(
             BlkLen,
             QuantA + multipleRows * lda,
             QuantAScale + multipleRows * lda_scale,

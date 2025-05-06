@@ -138,7 +138,7 @@ template <bool QuantAUnsigned>
 using QuantAType = typename std::conditional<QuantAUnsigned, uint8_t, int8_t>::type;
 
 template <bool QuantAUnsigned>
-void
+size_t
 MlasQ8Int8GemmKernelNeon(
     const size_t BlkLen,
     const QuantAType<QuantAUnsigned>* QuantA,

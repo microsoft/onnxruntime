@@ -69,7 +69,7 @@ QNBitGemmPackQuantBDataSize(
 #endif
     {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-        const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+        size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
         if (ComputeType == SQNBIT_CompInt8) {
             const size_t ScaleSize = N * BlockCountK * sizeof(float);
@@ -228,12 +228,10 @@ Q8PackQuantB(
   const size_t K,
   const size_t BlkLen)
 {
-    constexpr size_t BlkBitWidth = 8;
     constexpr size_t SubBlkLen = 4;
     const size_t BlkCountK = MlasDivRoundup(K, BlkLen);
     const size_t SubBlkPerBlk = BlkLen / SubBlkLen;
     const size_t StrideN = BlkCountK * BlkLen;
-    const size_t BlkSize = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
     const size_t Iterations = N * BlkCountK;
 
     // 4 rows x 8 columns pack together, then 4 rows x 4 columns, then per column.
@@ -287,12 +285,11 @@ Q8ComputePackBlkSum(
   float* BlockSum2Begin,
   MLAS_THREADPOOL* ThreadPool)
 {
+    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     std::vector<float> QuantBScaleBeginCopy(N * BlockCountK);
     std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, QuantBScaleBeginCopy.begin());
-    const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
     MlasTrySimpleParallel(ThreadPool, N * BlockCountK, [&](ptrdiff_t tid) {
-        constexpr size_t SubBlkLen = 4;
         const size_t n = tid / BlockCountK;
         const size_t n8 = n & (~7), n8_res = n & 7;
         const size_t n4 = n & (~3), n4_res = n & 3;
@@ -339,7 +336,7 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     size_t N,
     size_t K,
     size_t BlkLen,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE /* ComputeType */,
     const std::byte* QuantBDataBegin,
     const float* QuantBScaleBegin,
     bool HasZeroPoint,
@@ -349,7 +346,6 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
 )
 {
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
-    assert(ComputeType == SQNBIT_CompInt8);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
 
@@ -468,9 +464,9 @@ SQ8BitGemmKernel_BlkSum_CompInt8(
 {
     MlasQ8Int8GemmKernelNeon<QuantAUnsigned>(
         BlkLen,
-        QuantA,
+        reinterpret_cast<const QuantAType<QuantAUnsigned>*>(QuantA),
         QuantAScale,
-        QuantBData,
+        reinterpret_cast<const uint8_t*>(QuantBData),
         QuantBScale,
         C,
         CountM,
