@@ -18,6 +18,7 @@
 #include "providers.h"
 #include "TestCase.h"
 #include "strings_helper.h"
+#include <cuda_runtime.h>
 
 #ifdef USE_OPENVINO
 #include "nlohmann/json.hpp"
@@ -145,6 +146,10 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
                 "\nSupported options are:\n", options);
     }
     session_options.AppendExecutionProvider_CUDA_V2(*cuda_options);
+    if(performance_test_config.run_config.enable_cuda_io_binding)
+    {
+      device_memory_name_ = "Cuda";
+    }
 #else
     ORT_THROW("CUDA is not supported in this build\n");
 #endif
@@ -188,12 +193,20 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     cuda_options.do_copy_in_default_stream = !performance_test_config.run_config.do_cuda_copy_in_separate_stream;
     // TODO: Support arena configuration for users of perf test
     session_options.AppendExecutionProvider_CUDA(cuda_options);
+    if(performance_test_config.run_config.enable_cuda_io_binding)
+    {
+      device_memory_name_ = "Cuda";
+    }
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
 #ifdef USE_NV
     session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
+    if(performance_test_config.run_config.enable_cuda_io_binding)
+    {
+      device_memory_name_ = "Cuda";
+    }
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
@@ -855,7 +868,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
       return Ort::Value(nullptr);
     };
   } else {
-    Ort::MemoryInfo memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    Ort::MemoryInfo memory_info(nullptr); // Default initialize, will be overwritten
+    if(device_memory_name_ == "Cuda")
+    {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeDefault);
+    }
+    else
+    {
+      memory_info = Ort::MemoryInfo(device_memory_name_.data(), OrtArenaAllocator, 0, OrtMemTypeCPUOutput);
+    }
     custom_allocator_ = Ort::Allocator(session_, memory_info);
     allocator_ = custom_allocator_;
 
@@ -956,6 +977,7 @@ static void InitializeTensorWithSeed(int32_t seed, Ort::Value& tensor) {
 }
 
 bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
+  Ort::AllocatorWithDefaultOptions default_allocator;
   // iterate over all input nodes
   for (size_t i = 0; i < static_cast<size_t>(input_length_); i++) {
     Ort::TypeInfo type_info = session_.GetInputTypeInfo(i);
@@ -967,10 +989,65 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
       auto transform_fcn = [](int64_t input) { return (input == -1) ? -input : input; };
       std::transform(input_node_dim.begin(), input_node_dim.end(), input_node_dim.begin(), transform_fcn);
 
-      Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
+      if(device_memory_name_ != "Cuda")
+      {
+        Ort::Value input_tensor = Ort::Value::CreateTensor(allocator_, (const int64_t*)input_node_dim.data(),
                                                          input_node_dim.size(), tensor_info.GetElementType());
       InitializeTensorWithSeed(seed, input_tensor);
       PreLoadTestData(0, i, std::move(input_tensor));
+      }
+      //Create tensor on CPU, initialize and copy to CUDA tensor
+      else
+      {
+        Ort::Value default_tensor = Ort::Value::CreateTensor(default_allocator, (const int64_t*)input_node_dim.data(),
+                                                         input_node_dim.size(), tensor_info.GetElementType());
+        InitializeTensorWithSeed(seed, default_tensor);
+
+        // Get pointer to CPU tensor data
+        const void* default_ptr = default_tensor.GetTensorRawData();
+
+
+        size_t num_elements = tensor_info.GetElementCount();
+        size_t element_size;
+
+        // Determine element size based on ONNX type enum
+        switch (tensor_info.GetElementType()) {
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:   element_size = sizeof(float); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:   element_size = sizeof(uint8_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:    element_size = sizeof(int8_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:  element_size = sizeof(uint16_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:   element_size = sizeof(int16_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:   element_size = sizeof(int32_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:   element_size = sizeof(int64_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:    element_size = sizeof(bool); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16: element_size = sizeof(uint16_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:  element_size = sizeof(double); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:  element_size = sizeof(uint32_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:  element_size = sizeof(uint64_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16: element_size = sizeof(uint16_t); break;
+            #if !defined(DISABLE_FLOAT8_TYPES)
+            // Assuming Ort::Float8 types are defined and sizeof() gives 1 byte
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:   element_size = sizeof(Ort::Float8E4M3FN_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ: element_size = sizeof(Ort::Float8E4M3FNUZ_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:     element_size = sizeof(Ort::Float8E5M2_t); break;
+            case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ: element_size = sizeof(Ort::Float8E5M2FNUZ_t); break;
+            #endif
+            default: ORT_THROW("Unsupported tensor data type for CUDA copy: ", tensor_info.GetElementType());
+        }
+        size_t total_bytes = num_elements * element_size;
+
+        Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
+                                                          input_node_dim.size(), tensor_info.GetElementType());
+
+        void* cuda_ptr = cuda_tensor.GetTensorMutableData<void>();
+
+        // Copy the initialized data from CPU to GPU
+        cudaError_t cuda_err = cudaMemcpy(cuda_ptr, default_ptr, total_bytes, cudaMemcpyHostToDevice);
+        if (cuda_err != cudaSuccess) {
+          ORT_THROW("Failed to copy tensor data from CPU to CUDA device. CUDA Error: ", cudaGetErrorString(cuda_err));
+        }
+        PreLoadTestData(0, i, std::move(cuda_tensor));
+      }
     }
   }
   return true;
