@@ -126,8 +126,9 @@ class TestAutoEP(AutoEpTestCase):
             runtime_metadata: dict[str, str],
             max_selections: int,
         ) -> Sequence[onnxrt.OrtEpDevice]:
-            self.assertTrue(len(model_metadata) > 0)
-            self.assertTrue(len(ep_devices) >= 2 and max_selections >= 2)
+            self.assertGreater(len(model_metadata), 0)
+            self.assertGreaterEqual(len(ep_devices), 2)
+            self.assertGreaterEqual(max_selections, 2)
 
             cuda_ep_device = next((d for d in ep_devices if d.ep_name == ep_registration_name), None)
             self.assertIsNotNone(cuda_ep_device)
@@ -167,7 +168,7 @@ class TestAutoEP(AutoEpTestCase):
             runtime_metadata: dict[str, str],
             max_selections: int,
         ) -> Sequence[onnxrt.OrtEpDevice]:
-            self.assertTrue(len(ep_devices) >= 1)
+            self.assertGreaterEqual(len(ep_devices), 1)
             raise ValueError(custom_error_message)
 
         sess_options = onnxrt.SessionOptions()

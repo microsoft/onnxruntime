@@ -74,8 +74,9 @@ class TestCompileApi(AutoEpTestCase):
             runtime_metadata: dict[str, str],
             max_selections: int,
         ) -> Sequence[onnxrt.OrtEpDevice]:
-            self.assertTrue(len(model_metadata) > 0)
-            self.assertTrue(ep_devices and max_selections > 0)
+            self.assertGreater(len(ep_devices), 0)
+            self.assertGreater(len(model_metadata), 0)
+            self.assertGreater(max_selections, 0)
 
             # Select the first and last devices (if there are more than one)
             selected_devices = [ep_devices[0]]
