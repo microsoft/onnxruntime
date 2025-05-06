@@ -132,11 +132,6 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextFilePath, info.ep_context_file_path)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEpContextEmbedMode, info.ep_context_embed_mode)
           .AddAssignmentToReference(tensorrt::provider_option_names::kEngineHwCompatible, info.engine_hw_compatible)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaLocalDramSize, info.dla_local_dram_size)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaGlobalDramSize, info.dla_global_dram_size)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaManagedSramSize, info.dla_managed_sram_size)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticDramSize, info.tactic_dram_size)
-          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSharedMemorySize, info.tactic_shared_memory_size)
           .AddValueParser(
               tensorrt::provider_option_names::kONNXBytestream,
               [&onnx_bytestream](const std::string& value_str) -> Status {
@@ -148,6 +143,11 @@ TensorrtExecutionProviderInfo TensorrtExecutionProviderInfo::FromProviderOptions
           .AddAssignmentToReference(tensorrt::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
           .AddAssignmentToReference(tensorrt::provider_option_names::kOpTypesToExclude, info.op_types_to_exclude)
           .AddAssignmentToReference(tensorrt::provider_option_names::kPreviewFeatures, info.preview_features)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaLocalDramSize, info.dla_local_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaGlobalDramSize, info.dla_global_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kDlaManagedSramSize, info.dla_managed_sram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticDramSize, info.tactic_dram_size)
+          .AddAssignmentToReference(tensorrt::provider_option_names::kTacticSharedMemorySize, info.tactic_shared_memory_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
