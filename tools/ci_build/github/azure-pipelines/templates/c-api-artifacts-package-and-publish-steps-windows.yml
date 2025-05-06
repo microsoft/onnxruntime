@@ -43,7 +43,7 @@ steps:
         SymbolExpirationInDays: '36530'
         IndexableFileFormats: 'Default'
         DetailedLog: true
-        SymbolsArtifactName: 'Symbols_${{parameters.buildConfig}}'
+        SymbolsArtifactName: 'Symbols_${{parameters.buildConfig}}_$(Build.BuildId)'
 
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
