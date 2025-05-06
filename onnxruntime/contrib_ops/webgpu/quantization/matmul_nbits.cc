@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <string>
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
