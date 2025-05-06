@@ -1817,6 +1817,7 @@ static OrtStatus*(ORT_API_CALL PyDelegateWrapper)(_In_ const OrtEpDevice** ep_de
 
   // TODO: Check max_selected and return OrtStatus if necessary.
   assert(py_selected.size() <= max_selected);
+  ORT_UNUSED_PARAMETER(max_selected);
 
   *num_selected = py_selected.size();
   for (size_t i = 0; i < py_selected.size(); ++i) {
