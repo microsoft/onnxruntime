@@ -82,9 +82,9 @@ Status ScatterNDProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto calc_data_offset_snippet = [](size_t output_rank) -> std::string {
     std::ostringstream ss;
     if (output_rank < 2) {
-      ss << "    let element_count_dim = 1;\n";
+      ss << "    let element_count_dim = 1u;\n";
     } else {
-      ss << "    let element_count_dim = select(" << GetElementAt("uniforms.output_stride", "i - indices_start", output_rank - 1) << ", 1, i - indices_start == " << (output_rank - 1) << ");\n";
+      ss << "    let element_count_dim = select(" << GetElementAt("uniforms.output_stride", "i - indices_start", output_rank - 1) << ", 1u, i - indices_start == " << (output_rank - 1) << ");\n";
     }
     ss << "    let dim_value = " << GetElementAt("uniforms.output_shape", "i - indices_start", output_rank) << ";\n"
        << "    if (index >= 0) {\n"
