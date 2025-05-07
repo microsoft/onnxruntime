@@ -1698,7 +1698,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_name = original;
     bad_name.set_name("invalid");
 
-    status = graph.ReplaceInitializedTensor(std::move(bad_name));
+    status = graph.ReplaceInitializedTensor(bad_name);
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1706,7 +1706,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_type = original;
     bad_type.set_data_type(TensorProto_DataType_FLOAT16);
 
-    status = graph.ReplaceInitializedTensor(std::move(bad_type));
+    status = graph.ReplaceInitializedTensor(bad_type);
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1716,7 +1716,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     bad_dims.add_dims(2);
     bad_dims.add_dims(1);
 
-    status = graph.ReplaceInitializedTensor(std::move(bad_dims));
+    status = graph.ReplaceInitializedTensor(bad_dims);
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1729,23 +1729,36 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     status = graph.ReplaceInitializedTensor(valid_replacement);
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
-    auto tensor_data_matches = [](const ONNX_NAMESPACE::TensorProto& a, const ONNX_NAMESPACE::TensorProto& b) {
-      if (a.int32_data_size() != b.int32_data_size()) return false;
-      for (int i = 0; i < a.int32_data_size(); ++i) {
-        if (a.int32_data(i) != b.int32_data(i)) return false;
+    auto tensor_data_matches = [](const Graph& graph, const ONNX_NAMESPACE::TensorProto& a,
+                                  const ONNX_NAMESPACE::TensorProto& b) -> bool {
+      // For simplicity. We do not want to deal with external and raw data combinations.
+      Tensor tensor_a;
+      EXPECT_TRUE(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(), a, tensor_a).IsOK());
+      Tensor tensor_b;
+      EXPECT_TRUE(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(), b, tensor_b).IsOK());
+
+      EXPECT_EQ(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32, tensor_a.GetElementType());
+
+      if (tensor_a.GetElementType() != tensor_b.GetElementType()) {
+        return false;
       }
-      return true;
+      if (tensor_a.Shape() != tensor_b.Shape()) {
+        return false;
+      }
+      const auto span_a = tensor_a.DataAsSpan<int32_t>();
+      const auto span_b = tensor_b.DataAsSpan<int32_t>();
+      return std::equal(span_a.begin(), span_a.end(), span_b.begin());
     };
 
     // check retrieved tensor
     const ONNX_NAMESPACE::TensorProto* result;
     ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, result));
-    ASSERT_TRUE(tensor_data_matches(*result, valid_replacement));
+    ASSERT_TRUE(tensor_data_matches(graph, *result, valid_replacement));
 
     // check GraphProto content
     const ONNX_NAMESPACE::GraphProto graph_proto = graph.ToGraphProto();
     ASSERT_EQ(graph_proto.initializer_size(), 1);
-    ASSERT_TRUE(tensor_data_matches(graph_proto.initializer(0), valid_replacement));
+    ASSERT_TRUE(tensor_data_matches(graph, graph_proto.initializer(0), valid_replacement));
   }
 }
 
@@ -1822,13 +1835,13 @@ TEST_F(GraphTest, InjectExternalInitializedTensors) {
 
   const TensorProto* with_data = nullptr;
   ASSERT_TRUE(graph.GetInitializedTensor(initializer_name, with_data));
-  // No longer has external data
   if (with_data) {
-    ASSERT_FALSE(utils::HasExternalData(*with_data));
+    // This proto still has external data, but now it points to the OrtValue.
+    ASSERT_TRUE(utils::HasExternalData(*with_data));
     const auto& original_tensor = ort_value.Get<Tensor>();
-    Tensor replaced_tensor(original_tensor.DataType(), data_shape, std::make_shared<CPUAllocator>());
-    ASSERT_STATUS_OK(utils::TensorProtoToTensor(Env::Default(), tensor_data_dir_path, *with_data,
-                                                replaced_tensor));
+    Tensor replaced_tensor;
+    ASSERT_STATUS_OK(utils::CreateTensorFromTensorProto(Env::Default(), tensor_data_dir_path, *with_data,
+                                                        replaced_tensor));
     ASSERT_EQ(original_tensor.GetElementType(), replaced_tensor.GetElementType());
     const auto original_span = original_tensor.DataAsSpan<int32_t>();
     const auto replaced_span = replaced_tensor.DataAsSpan<int32_t>();

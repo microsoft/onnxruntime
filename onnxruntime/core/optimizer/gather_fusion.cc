@@ -27,7 +27,7 @@ static bool GetScalarInt64Initializer(const Graph& graph, const NodeArg& node_ar
   if (!optimizer_utils::IsScalar(node_arg)) return false;
   const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node_arg.Name());
   if (!tensor_proto || tensor_proto->data_type() != ONNX_NAMESPACE::TensorProto::INT64) return false;
-  Initializer init_const{*tensor_proto, graph.ModelPath()};
+  Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
   value = *(init_const.data<int64_t>());
   rank = tensor_proto->dims_size();
   return true;
@@ -256,7 +256,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
         axes_initializer_proto.add_dims(static_cast<int64_t>(1));
         axes_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
         axes_initializer_proto.add_int64_data(axis);
-        NodeArg* axes_arg = &graph_utils::AddInitializer(graph, axes_initializer_proto);
+        NodeArg* axes_arg = &graph_utils::AddInitializerWithExternalData(graph, axes_initializer_proto);
         Node& squeeze_node =
             graph.AddNode(graph.GenerateNodeName("Squeeze"), "Squeeze", "Squeeze for Fused Gather nodes",
                           {split_output_arg, axes_arg}, {original_output_arg});
@@ -272,7 +272,7 @@ Status GatherSliceToSplitFusion::ApplyImpl(Graph& graph, bool& modified, int gra
     split_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     split_initializer_proto.add_dims(static_cast<int64_t>(split_values.size()));
     split_initializer_proto.mutable_int64_data()->Add(split_values.begin(), split_values.end());
-    NodeArg* split_initializer_arg = &graph_utils::AddInitializer(graph, split_initializer_proto);
+    NodeArg* split_initializer_arg = &graph_utils::AddInitializerWithExternalData(graph, split_initializer_proto);
     const auto split_node_name = graph.GenerateNodeName(nodes_to_fuse[0].get().Name() + "/GatherSliceToSplitFusion");
     Node& split_node = graph.AddNode(split_node_name, "Split", "Split for Fused Gather nodes",
                                      {graph.GetNodeArg(node_arg->Name()), split_initializer_arg}, split_outputs);
@@ -359,7 +359,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
       unsqueeze_axes_initializer_proto.add_dims(static_cast<int64_t>(1));
       unsqueeze_axes_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
       unsqueeze_axes_initializer_proto.add_int64_data(static_cast<int64_t>(0));
-      NodeArg* unsqueeze_axes_arg = &graph_utils::AddInitializer(graph, unsqueeze_axes_initializer_proto);
+      NodeArg* unsqueeze_axes_arg = &graph_utils::AddInitializerWithExternalData(graph, unsqueeze_axes_initializer_proto);
 
       for (size_t i = 0; i < range_input_defs.size(); ++i) {
         Node& unsqueeze_node = graph.AddNode(graph.GenerateNodeName("Unsqueeze_" + std::to_string(i)), "Unsqueeze",
@@ -386,7 +386,7 @@ Status GatherToSliceFusion::ApplyImpl(Graph& graph, bool& modified, int graph_le
     } else {
       slice_axes_initializer_proto.add_int32_data(static_cast<int32_t>(axis));
     }
-    NodeArg* slice_axes_arg = &graph_utils::AddInitializer(graph, slice_axes_initializer_proto);
+    NodeArg* slice_axes_arg = &graph_utils::AddInitializerWithExternalData(graph, slice_axes_initializer_proto);
     Node& slice_node = graph.AddNode(graph.GenerateNodeName("Slice"), "Slice", "Slice for Fused Gather nodes",
                                      {gather_node.MutableInputDefs()[0], unsqueeze_outputs[0], unsqueeze_outputs[1],
                                       slice_axes_arg, unsqueeze_outputs[2]},

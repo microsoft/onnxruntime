@@ -36,12 +36,12 @@ bool ExpandElimination::SatisfyCondition(const Graph& graph, const Node& node, c
     return false;
   }
 
-  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  if (initializer->data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  Initializer initializer(graph, *tensor_proto, graph.ModelPath());
+  if (initializer.data_type() != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     return false;
   }
 
-  const int64_t* target_shapes = initializer->data<int64_t>();
+  const int64_t* target_shapes = initializer.data<int64_t>();
 
   // Check the dimensions starting at the trailing dimension.
   int i = input_shape->dim_size() - 1;

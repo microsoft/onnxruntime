@@ -47,7 +47,7 @@ inline bool Int8TensorProto2Uint8(
   // principle. A better solution is to provide an efficient const iterator for
   // TensorProto. This require coordination with onnx side.
 
-  Initializer temp(*src, graph.ModelPath());
+  Initializer temp(graph, *src, graph.ModelPath());
   int8_t* p = temp.data<int8_t>();
   bool should_convert = false;
   for (size_t i = 0; i < temp.size(); i++) {

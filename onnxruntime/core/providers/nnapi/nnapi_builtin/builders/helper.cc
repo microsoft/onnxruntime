@@ -203,7 +203,7 @@ common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, name, " is not a constant initializer");
     };
 
-    Initializer unpacked_tensor(*s, model_path);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *s, model_path);
     // The scale should be one or more floats
     scale = unpacked_tensor.DataAsSpan<float>()[0];
   }
@@ -215,7 +215,7 @@ common::Status GetQuantizationScaleAndZeroPoint(const GraphViewer& graph_viewer,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, name, " is not a constant initializer");
     };
 
-    Initializer unpacked_tensor(*zp, model_path);
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *zp, model_path);
     // Onnx quantization uses uint8 [int8 not yet supported], need to cast to int32_t used by NNAPI
     zero_point = static_cast<int32_t>(unpacked_tensor.DataAsByteSpan()[0]);
   }

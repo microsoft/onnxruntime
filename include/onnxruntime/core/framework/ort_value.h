@@ -18,7 +18,7 @@ class SparseTensor;
 class TensorSeq;
 }  // namespace onnxruntime
 
-#endif
+#endif  // SHARED_PROVIDER
 
 /**
    Represents both tensors and non-tensors.
@@ -37,8 +37,8 @@ struct OrtValue {
     type_ = type;
   }
 
-  void Init(void* pData, onnxruntime::MLDataType type, const std::function<void(void*)>& deleter) {
-    data_.reset(pData, deleter);
+  void Init(void* pData, onnxruntime::MLDataType type, std::function<void(void*)> deleter) {
+    data_.reset(pData, std::move(deleter));
     type_ = type;
   }
 

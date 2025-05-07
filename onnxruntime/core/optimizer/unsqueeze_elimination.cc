@@ -63,7 +63,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
     new_tensor_proto.add_dims(dim);
   }
 
-  auto& new_node_arg = graph_utils::AddInitializer(graph, new_tensor_proto);
+  auto& new_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_tensor_proto);
   // Remove the Unsqueeze node and replace it with the initializer.
   graph_utils::ReplaceNodeWithInitializer(graph, node, new_node_arg);
 

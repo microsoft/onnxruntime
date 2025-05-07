@@ -86,8 +86,7 @@ struct MatMulReplaceWithQLinear : public Action {
 // used together with DQMatMulNodeGroupSelector, which does the sanity check
 struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
   DQMatMulToMatMulNBitsAction(int64_t accuracy_level,
-                              concurrency::ThreadPool* intra_op_thread_pool,
-                              std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors);
+                              concurrency::ThreadPool* intra_op_thread_pool);
 
  private:
   std::string OpType(const RuntimeState&) const override { return op_type_; }
@@ -106,7 +105,6 @@ struct DQMatMulToMatMulNBitsAction : public ReplaceWithNew {
   const std::string op_type_;
   const std::vector<NodeAndMoveInfo> value_moves_;
   concurrency::ThreadPool* intra_op_thread_pool_;
-  std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors_;
 };
 
 struct GemmReplaceWithQuant : public Action {

@@ -38,6 +38,70 @@ Checks that new_initializer does not already exist in 'graph' before adding it.
 */
 NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
 
+/// <summary>
+/// Adds a new initializer to 'graph' with new_initializer that points to the OrtValue buffer
+/// </summary>
+/// <param name="graph">target graph</param>
+/// <param name="new_initializer">TensorProto with external data pointer</param>
+/// <param name="ort_value">ort_value with data</param>
+/// <returns></returns>
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                        OrtValue ort_value);
+
+/** Add a new initializer to 'graph'.
+ * Checks that new_initializer does not already exist in 'graph' before adding it.
+ * @param new_initializer tensor proto that has external data pointing to data within the ort_value
+ * @param tensor with data
+ * @returns The NodeArg for the new initializer.
+ * @remarks No matching graph input is created, so the initializer will be constant.
+ */
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer, Tensor&& tensor);
+
+/** Add a new initializer to 'graph'.
+ * The functions unpacks data into a tensor and converts tensor proto to a proto with external data.
+ * The initializer is then added to the graph and tensor is wrapped into OrtValue and added to
+ * ortvalue_initializers_;
+ * @param graph The graph to which the initializer will be added.
+ * @param new_initializer tensor proto that actually has data in it
+ * @returns The NodeArg for the new initializer.
+ *  @remarks No matching graph input is created, so the initializer will be constant.
+ */
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer);
+
+/// <summary>
+/// If the initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph along with its OrtValue if present
+/// </summary>
+/// <param name="src_graph">source graph s</param>
+/// <param name="dst_graph">destination</param>
+/// <param name="name">initializers name</param>
+/// <param name="load_inline">if external data is in memory, make copy inline.
+///  default is false. This is to accomodate EPs who load initializers on their own and do not understand
+///          our /*/_ORT_MEM_ADDR_/*/ external data reference</param>
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                   bool load_inline = false);
+
+/// <summary>
+/// If the constant initializer with the given name does not exist in the destination graph, but exists in the
+/// source graph, copy it to the destination graph along with its OrtValue if present.
+/// </summary>
+/// <param name="src_graph"></param>
+/// <param name="dst_graph"></param>
+/// <param name="name"></param>
+/// <param name="check_outer_scope">checks outerscope if true</param>
+void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                           const std::string& name, bool check_outer_scope);
+
+/// <summary>
+/// If the initializer is present with the graph and has external dat that points
+/// to an OrtValue, convert it to inline data. This is necessary for EPs that can not handle
+/// external initializers that are in memory since our in-memory external data is not ONNX standard.
+/// </summary>
+/// <param name="graph">Graph</param>
+/// <param name="name">intializer name</param>
+/// <returns>Status</returns>
+Status ConvertInitializerToInlineData(Graph& graph, const std::string& name);
+
 /** Gets the index of an output arg with the specified output arg name. */
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name);
 

@@ -4,9 +4,11 @@
 #include "orttraining/core/session/training_session.h"
 
 #include "core/framework/data_transfer_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
 #include "core/session/IOBinding.h"
+#include "core/optimizer/initializer.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
@@ -977,22 +979,18 @@ static Status UpdateWeightsBeforeSaving(
     if (!graph.GetInitializedTensor(name_and_ml_value.first, old_tensor_proto)) {
       continue;
     }
-    ONNX_NAMESPACE::TensorProto new_tensor_proto = *old_tensor_proto;
-    if (new_tensor_proto.has_raw_data()) {
-      auto* const raw_data = new_tensor_proto.mutable_raw_data();
-      auto dst_span = gsl::make_span(&(*raw_data)[0], raw_data->size());
-      ORT_RETURN_IF_ERROR(CopyTensorDataToByteSpan(
-          data_transfer_manager, src_tensor, cpu_alloc_info, dst_span));
-    } else {
-      ORT_ENFORCE(new_tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT);
-      auto* const float_data = new_tensor_proto.mutable_float_data();
-      auto dst_span = gsl::make_span(float_data->mutable_data(), float_data->size());
-      ORT_RETURN_IF_ERROR(CopyTensorDataToSpan(
-          data_transfer_manager, src_tensor, cpu_alloc_info, dst_span));
-    }
+
+    Initializer initializer{graph, *old_tensor_proto, graph.ModelPath()};
+    const auto chars_span = ReinterpretAsSpan<char>(initializer.MutableDataAsByteSpan());
+    ORT_RETURN_IF_ERROR(CopyTensorDataToByteSpan(
+        data_transfer_manager, src_tensor, cpu_alloc_info, chars_span));
+
+    TensorProto new_tensor_proto;
+    OrtValue ort_value;
+    initializer.ToProtoWithOrtValue(new_tensor_proto, ort_value);
 
     // Replace the TensorProto in the model.
-    ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(new_tensor_proto));
+    ORT_RETURN_IF_ERROR(graph.ReplaceInitializedTensor(new_tensor_proto, ort_value));
   }
   return Status::OK();
 }
