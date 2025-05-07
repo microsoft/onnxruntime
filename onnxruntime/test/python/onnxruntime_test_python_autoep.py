@@ -42,10 +42,9 @@ class TestAutoEP(AutoEpTestCase):
         has_cpu_ep = False
         cuda_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name
-            if ep_name == "CPUExecutionProvider":
+            if ep_device.ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
-            if ep_name == ep_name:
+            if ep_device.ep_name == ep_name:
                 cuda_ep_device = ep_device
 
         self.assertTrue(has_cpu_ep)
@@ -199,11 +198,9 @@ class TestAutoEP(AutoEpTestCase):
         has_cpu_ep = False
         test_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name
-
-            if ep_name == "CPUExecutionProvider":
+            if ep_device.ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
-            if ep_name == ep_name:
+            if ep_device.ep_name == ep_name:
                 test_ep_device = ep_device
 
         self.assertTrue(has_cpu_ep)
