@@ -28,24 +28,23 @@ class TestAutoEP(AutoEpTestCase):
         Test registration of CUDA EP, adding its OrtDevice to the SessionOptions, and running inference.
         """
         ep_lib_path = "onnxruntime_providers_cuda.dll"
-        ep_registration_name = "CUDAExecutionProvider"
+        ep_name = "CUDAExecutionProvider"
 
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if ep_registration_name not in available_providers:
+        if ep_name not in available_providers:
             self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_name, ep_lib_path)
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
         cuda_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name
-            if ep_name == "CPUExecutionProvider":
+            if ep_device.ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
-            if ep_name == ep_registration_name:
+            if ep_device.ep_name == ep_name:
                 cuda_ep_device = ep_device
 
         self.assertTrue(has_cpu_ep)
@@ -70,22 +69,22 @@ class TestAutoEP(AutoEpTestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
-        self.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_name)
 
     def test_cuda_prefer_gpu_and_inference(self):
         """
         Test selecting CUDA EP via the PREFER_GPU policy and running inference.
         """
         ep_lib_path = "onnxruntime_providers_cuda.dll"
-        ep_registration_name = "CUDAExecutionProvider"
+        ep_name = "CUDAExecutionProvider"
 
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if ep_registration_name not in available_providers:
+        if ep_name not in available_providers:
             self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_name, ep_lib_path)
 
         # Set a policy to prefer GPU. Cuda should be selected.
         sess_options = onnxrt.SessionOptions()
@@ -102,22 +101,22 @@ class TestAutoEP(AutoEpTestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
-        self.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_name)
 
     def test_cuda_ep_selection_delegate_and_inference(self):
         """
         Test selecting CUDA EP via the custom EP selection delegate function and then run inference.
         """
         ep_lib_path = "onnxruntime_providers_cuda.dll"
-        ep_registration_name = "CUDAExecutionProvider"
+        ep_name = "CUDAExecutionProvider"
 
         if sys.platform != "win32":
             self.skipTest("Skipping test because device discovery is only supported on Windows")
 
-        if ep_registration_name not in available_providers:
+        if ep_name not in available_providers:
             self.skipTest("Skipping test because it needs to run on CUDA EP")
 
-        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        self.register_execution_provider_library(ep_name, ep_lib_path)
 
         # User's custom EP selection function.
         def my_delegate(
@@ -130,7 +129,7 @@ class TestAutoEP(AutoEpTestCase):
             self.assertGreaterEqual(len(ep_devices), 2)
             self.assertGreaterEqual(max_selections, 2)
 
-            cuda_ep_device = next((d for d in ep_devices if d.ep_name == ep_registration_name), None)
+            cuda_ep_device = next((d for d in ep_devices if d.ep_name == ep_name), None)
             self.assertIsNotNone(cuda_ep_device)
 
             # Select the CUDA device and the ORT CPU EP device (should always be last)
@@ -150,7 +149,7 @@ class TestAutoEP(AutoEpTestCase):
         np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
 
         del sess  # Delete session before unregistering library
-        self.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_name)
 
     def test_custom_ep_selection_delegate_that_raises_error(self):
         """
@@ -192,18 +191,16 @@ class TestAutoEP(AutoEpTestCase):
         except FileNotFoundError:
             self.skipTest(f"Skipping test because EP library '{ep_lib_path}' cannot be found")
 
-        ep_registration_name = "example_ep"
-        self.register_execution_provider_library(ep_registration_name, os.path.realpath(ep_lib_path))
+        ep_name = "example_ep"
+        self.register_execution_provider_library(ep_name, os.path.realpath(ep_lib_path))
 
         ep_devices = onnxrt.get_ep_devices()
         has_cpu_ep = False
         test_ep_device = None
         for ep_device in ep_devices:
-            ep_name = ep_device.ep_name
-
-            if ep_name == "CPUExecutionProvider":
+            if ep_device.ep_name == "CPUExecutionProvider":
                 has_cpu_ep = True
-            if ep_name == ep_registration_name:
+            if ep_device.ep_name == ep_name:
                 test_ep_device = ep_device
 
         self.assertTrue(has_cpu_ep)
@@ -236,7 +233,7 @@ class TestAutoEP(AutoEpTestCase):
             sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
         self.assertIn("EP is not currently supported", str(context.exception))
 
-        self.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_name)
 
 
 if __name__ == "__main__":
