@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"

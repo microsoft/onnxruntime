@@ -9,9 +9,4 @@ struct HardwareCoreEnumerator {
   HardwareCoreEnumerator() = delete;
   static uint32_t DefaultIntraOpNumThreads();
 };
-typedef struct {
-  bool is_intel;
-  bool is_intel_specified_platform;
-} CheckIntelResult;
-CheckIntelResult CheckIntel();
 }  // namespace onnxruntime

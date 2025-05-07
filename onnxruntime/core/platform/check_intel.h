@@ -4,10 +4,10 @@
 #pragma once
 
 namespace onnxruntime {
-struct CheckIntelResult {
+typedef struct {
   bool is_intel;
   bool is_intel_specified_platform;
-};
+} CheckIntelResult;
 
 CheckIntelResult CheckIntel();
 }  // namespace onnxruntime
