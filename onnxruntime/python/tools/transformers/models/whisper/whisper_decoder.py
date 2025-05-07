@@ -13,10 +13,9 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
-
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
-from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
+from models.torch_export_patches import bypass_export_some_errors, string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from past_helper import PastKeyValuesHelper
@@ -229,7 +228,7 @@ class WhisperDecoder(torch.nn.Module):
             # Set dynamic axes for `input_ids` when using beam search op to {0: "batch_size"} only
             del dynamic_axes["input_ids"][1]
         return dynamic_axes
-    
+
     def dynamic_shapes(self, inputs):
         if len(inputs) == 3:
             n_layers = len(inputs[-1])
@@ -361,6 +360,7 @@ class WhisperDecoder(torch.nn.Module):
         use_encoder_hidden_states: bool = False,
         use_kv_cache_inputs: bool = True,
         use_dynamo_export: bool = False,
+        use_onnxscript_fusion_optimizations: bool = False,
     ):
         """Export decoder to ONNX
 
@@ -374,6 +374,7 @@ class WhisperDecoder(torch.nn.Module):
             use_encoder_hidden_states (bool, optional): use encoder_hidden_states as model input for decoder-init/decoder-without-past models. Defaults to False.
             use_kv_cache_inputs (bool, optional): use KV caches as model inputs for decoder-with-past models. Defaults to True.
             use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations. Defaults to False.
         """
         # Shape of decoder's tensors:
         # Required Inputs:
@@ -435,7 +436,6 @@ class WhisperDecoder(torch.nn.Module):
                         verbose=verbose,
                         optimize=True,
                     )
-
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             model = self.fix_inputs_and_outputs(model)

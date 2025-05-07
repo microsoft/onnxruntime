@@ -76,7 +76,7 @@ def parse_arguments(argv=None):
         "--optimize_onnx",
         required=False,
         action="store_true",
-        help="Use optimizer.py to optimize onnx model",
+        help="Apply ort-fusions optimizations from onnxscript after export. Also, use optimizer.py to optimize onnx model",
     )
     conversion_args.set_defaults(optimize_onnx=False)
 
@@ -392,6 +392,7 @@ def export_onnx_models(
                 use_kv_cache_inputs=(name == "decoder"),
                 # dynamo cannot be used for jump times as it contains control flows
                 use_dynamo_export=use_dynamo_export and name != "jump_times",
+                use_onnxscript_fusion_optimizations=optimize_onnx,
             )
         else:
             logger.info(f"Skip exporting: existing ONNX model {onnx_path}")

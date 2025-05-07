@@ -14,7 +14,7 @@ import numpy as np
 import onnx
 import torch
 from float16 import convert_float_to_float16
-from models.torch_export_patches import bypass_export_some_errors, string_type, torch_deepcopy
+from models.torch_export_patches import bypass_export_some_errors, string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
@@ -153,7 +153,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
     def dynamic_axes(self, input_names, output_names):
         dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
         return dynamic_axes
-    
+
     def dynamic_shapes(self, inputs, dynamic_axes):
         if len(inputs) == 1:
             dynamic_shapes = ({0: "batch_size"},)
@@ -259,6 +259,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         use_fp16_inputs: bool = False,
         use_int32_inputs: bool = True,
         use_dynamo_export: bool = False,
+        use_onnxscript_fusion_optimizations: bool = False,
     ):
         """Export encoder-decoder-init to ONNX
 
@@ -270,6 +271,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
             use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations. Defaults to False.
         """
         # Shape of encoder's tensors:
         # Inputs:
