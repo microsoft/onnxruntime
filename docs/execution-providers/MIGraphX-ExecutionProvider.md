@@ -35,7 +35,7 @@ For build instructions, please see the [BUILD page](../build/eps.md#amd-migraphx
 Below is the matrix of supported ROCm versions corresponding to Ubuntu builds. 
 
 As of ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
-All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/manylinux) for each corresponding to the ROCm release
+All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/rocm/manylinux) for each corresponding to the ROCm release
 
 |ONNX Runtime Version|MIGraphX ROCm Release| Python 3.8 | Python 3.10 | Python 3.12 |
 |---|---|---|---|---|
