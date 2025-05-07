@@ -14,7 +14,8 @@ index bc326c8b5..db5ad5052 100644
 @@ -127,8 +127,10 @@ else()
          rocm_check_target_ids(DEFAULT_GPU_TARGETS TARGETS "gfx1030")
      elseif(GPU_ARCH MATCHES "gfx11")
-         rocm_check_target_ids(DEFAULT_GPU_TARGETS TARGETS "gfx1100;gfx1101;gfx1102")
+-         rocm_check_target_ids(DEFAULT_GPU_TARGETS TARGETS "gfx1100;gfx1101;gfx1102")
++         rocm_check_target_ids(DEFAULT_GPU_TARGETS TARGETS "gfx1100;gfx1101;gfx1102;gfx1151")
 +    elseif(GPU_ARCH MATCHES "gfx12")
 +        rocm_check_target_ids(DEFAULT_GPU_TARGETS TARGETS "gfx1200;gfx1201")
      else()
@@ -259,7 +260,8 @@ index 55f562061..69a7abf62 100644
 --- a/include/ck/ck.hpp
 +++ b/include/ck/ck.hpp
 @@ -69,6 +69,9 @@ CK_DECLARE_ENV_VAR_BOOL(CK_LOGGING)
- #if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__)
+- #if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__)
++ #if defined(__gfx1100__) || defined(__gfx1101__) || defined(__gfx1102__) || defined(__gfx1103__) || defined(__gfx1151__)
  #define __gfx11__
  #endif
 +#if defined(__gfx1200__) || defined(__gfx1201__)
