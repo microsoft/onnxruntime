@@ -44,6 +44,12 @@ struct InvalidGraph : std::runtime_error {
 struct EPFail : std::runtime_error {
   explicit EPFail(const std::string& what) : std::runtime_error(what) {}
 };
+struct ModelLoadCanceled : std::runtime_error {
+  explicit ModelLoadCanceled(const std::string& what) : std::runtime_error(what) {}
+};
+struct ModelRequiresCompilation : std::runtime_error {
+  explicit ModelRequiresCompilation(const std::string& what) : std::runtime_error(what) {}
+};
 
 void RegisterExceptions(pybind11::module& m);
 

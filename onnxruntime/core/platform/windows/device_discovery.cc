@@ -75,11 +75,12 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
   const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
   const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
+  const GUID local_GUID_DEVCLASS_COMPUTEACCELERATOR = {0xf01a9d53, 0x3ff6, 0x48d2, 0x9f, 0x97, 0xc8, 0xa7, 0x00, 0x4b, 0xe1, 0x0c};
 
   std::array<GUID, 3> guids = {
       GUID_DEVCLASS_DISPLAY,
       GUID_DEVCLASS_PROCESSOR,
-      GUID_DEVCLASS_SYSTEM,
+      local_GUID_DEVCLASS_COMPUTEACCELERATOR,
   };
 
   for (auto guid : guids) {
@@ -183,9 +184,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           entry->type = OrtHardwareDeviceType_GPU;
         } else if (guid == GUID_DEVCLASS_PROCESSOR) {
           entry->type = is_npu ? OrtHardwareDeviceType_NPU : OrtHardwareDeviceType_CPU;
-        } else if (guid == GUID_DEVCLASS_SYSTEM) {
+        } else if (guid == local_GUID_DEVCLASS_COMPUTEACCELERATOR) {
           if (!is_npu) {
-            // we're only iterating system devices to look for NPUs so drop anything else
+            // we're only iterating compute accelerator devices to look for NPUs so drop anything else
             device_info.erase(key);
             continue;
           }

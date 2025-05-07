@@ -772,7 +772,7 @@ struct KeyValuePairsImpl : Ort::detail::Base<T> {
 // Const object holder that does not own the underlying object
 using ConstKeyValuePairs = detail::KeyValuePairsImpl<Ort::detail::Unowned<const OrtKeyValuePairs>>;
 
-/** \brief Wrapper around ::OrtKeyValuePair */
+/** \brief Wrapper around ::OrtKeyValuePairs */
 struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
   explicit KeyValuePairs(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
@@ -1103,8 +1103,10 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
                                                  const std::unordered_map<std::string, std::string>& ep_options);
 
   /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
-  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy,
-                                           EpSelectionDelegate* delegate = nullptr);
+  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicyDelegate
+  SessionOptionsImpl& SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
