@@ -172,6 +172,20 @@ inline const OrtCompileApi& GetCompileApi() {
   return *api;
 }
 
+/// <summary>
+/// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
+/// </summary>
+/// <returns>ORT C EP API reference</returns>
+inline const OrtEpApi& GetEpApi() {
+  auto* api = GetApi().GetEpApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("EP API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
 /** \brief IEEE 754 half-precision floating point data type
  *
  * \details This struct is used for converting float to float16 and back
@@ -561,6 +575,7 @@ ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
 ORT_DEFINE_RELEASE(KeyValuePairs)
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
 #undef ORT_DEFINE_RELEASE
 #undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
@@ -757,16 +772,22 @@ struct KeyValuePairsImpl : Ort::detail::Base<T> {
 // Const object holder that does not own the underlying object
 using ConstKeyValuePairs = detail::KeyValuePairsImpl<Ort::detail::Unowned<const OrtKeyValuePairs>>;
 
-/** \brief Wrapper around ::OrtKeyValuePair */
+/** \brief Wrapper around ::OrtKeyValuePairs */
 struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
   explicit KeyValuePairs(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
   explicit KeyValuePairs(OrtKeyValuePairs* p) : KeyValuePairsImpl<OrtKeyValuePairs>{p} {}
 
+  /// \brief Wraps OrtApi::CreateKeyValuePairs
   explicit KeyValuePairs();
+
+  /// \brief Wraps OrtApi::CreateKeyValuePairs and OrtApi::AddKeyValuePair
   explicit KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs);
 
+  /// \brief Wraps OrtApi::AddKeyValuePair
   void Add(const char* key, const char* value);
+
+  /// \brief Wraps OrtApi::RemoveKeyValuePair
   void Remove(const char* key);
 
   ConstKeyValuePairs GetConst() const { return ConstKeyValuePairs{this->p_}; }
@@ -806,9 +827,20 @@ struct EpDeviceImpl : Ort::detail::Base<T> {
 }  // namespace detail
 
 /** \brief Wrapper around ::OrtEpDevice
- * \remarks EpDevice is always read-only for API users.
+ * \remarks EpDevice is always read-only for ORT API users.
  */
 using ConstEpDevice = detail::EpDeviceImpl<Ort::detail::Unowned<const OrtEpDevice>>;
+
+/** \brief Mutable EpDevice that is created by EpApi users.
+ */
+struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
+  explicit EpDevice(std::nullptr_t) {}                                 ///< No instance is created
+  explicit EpDevice(OrtEpDevice* p) : EpDeviceImpl<OrtEpDevice>{p} {}  ///< Take ownership of a pointer created by C API
+
+  /// \brief Wraps OrtEpApi::CreateEpDevice
+  EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+           ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
+};
 
 /** \brief The Env (Environment)
  *
@@ -1053,18 +1085,28 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
   SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options);
   /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports QNN, SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
 
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
   SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
                                                  const KeyValuePairs& ep_options);
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
   SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
                                                  const std::unordered_map<std::string, std::string>& ep_options);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
+  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicyDelegate
+  SessionOptionsImpl& SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions

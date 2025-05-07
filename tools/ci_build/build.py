@@ -444,6 +444,7 @@ def generate_build_tree(
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_NV_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -1666,6 +1667,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
 
+            log.info("Testing AutoEP feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 
@@ -1759,6 +1763,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     ],
                     cwd=cwd,
                 )
+
+                if not args.disable_contrib_ops:
+                    log.info("Testing Python Compile API")
+                    run_subprocess(
+                        [sys.executable, "onnxruntime_test_python_compile_api.py"], cwd=cwd, dll_path=dll_path
+                    )
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
@@ -2187,18 +2197,6 @@ def main():
                 )
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
-
-    # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
-    # shared lib being build in a separate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
-    # shared lib
-    if args.enable_generic_interface and not (
-        args.use_nv_tensorrt_rtx
-        or args.use_tensorrt
-        or args.use_openvino
-        or args.use_vitisai
-        or (args.use_qnn and args.use_qnn != "static_lib")
-    ):
-        args.test = False
 
     if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         args.use_cuda = True

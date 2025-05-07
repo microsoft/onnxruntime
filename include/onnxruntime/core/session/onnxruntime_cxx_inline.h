@@ -593,6 +593,11 @@ inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
 }
 }  // namespace detail
 
+inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+                          ConstKeyValuePairs ep_metadata, ConstKeyValuePairs ep_options) {
+  ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -1141,6 +1146,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
 
   SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
 
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicy(this->p_, policy));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicyDelegate(this->p_, delegate, state));
   return *this;
 }
 

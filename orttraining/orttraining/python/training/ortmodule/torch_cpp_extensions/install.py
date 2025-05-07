@@ -57,7 +57,7 @@ def build_torch_cpp_extensions():
     )
 
     # Docker build don't have CUDA support, but Torch C++ extensions with CUDA may be forced
-    force_cuda = bool(os.environ.get("ONNXRUNTIME_FORCE_CUDA", False))
+    force_cuda = bool(os.environ.get("ONNXRUNTIME_FORCE_CUDA", None))
 
     os.chdir(ortmodule.ORTMODULE_TORCH_CPP_DIR)
 
