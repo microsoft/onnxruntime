@@ -120,7 +120,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                                             (PBYTE)buffer, sizeof(buffer), &size)) {
         uint32_t vendor_id = 0;
         uint32_t device_id = 0;
-                                      
+
         // PCI\VEN_xxxx&DEV_yyyy&...
         // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
