@@ -118,6 +118,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_HARDWAREID, &regDataType,
                                             (PBYTE)buffer, sizeof(buffer), &size)) {
+        uint32_t vendor_id = 0;
+        uint32_t device_id = 0;
+                                      
         // PCI\VEN_xxxx&DEV_yyyy&...
         // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
@@ -133,13 +136,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           return 0;
         };
 
-        uint32_t vendor_id = get_id(buffer, L"VEN_");
-        uint32_t device_id = get_id(buffer, L"DEV_");
-
         // Processor ID should come from CPUID mapping.
-        if (vendor_id == 0 && guid == GUID_DEVCLASS_PROCESSOR) {
+        if (guid == GUID_DEVCLASS_PROCESSOR) {
           vendor_id = CPUIDInfo::GetCPUIDInfo().GetCPUVendorId();
+        } else {
+          vendor_id = get_id(buffer, L"VEN_");
         }
+
+        device_id = get_id(buffer, L"DEV_");
 
         // Won't always have a vendor id from an ACPI entry.  ACPI is not defined for this purpose.
         if (vendor_id == 0 && device_id == 0) {
