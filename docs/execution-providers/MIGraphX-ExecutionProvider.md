@@ -116,7 +116,7 @@ Environment variables can be invoked on a global level. These are typically used
 export ORT_MIGRAPHX_XXXXX = <value> 
 ```
 
-or invoked before running a binary as
+or invoked before running a command as:
 
 ```
 ORT_MIGRAPHX_XXXX=<value> python3 example_script.py
