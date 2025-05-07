@@ -2661,7 +2661,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
     defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) ||         \
     defined(USE_CANN) ||                                                 \
     defined(USE_DNNL) ||                                                 \
-    defined(USE_ROCM)
+    defined(USE_ROCM) ||                                                 \
     defined(USE_MIGRAPHX)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
