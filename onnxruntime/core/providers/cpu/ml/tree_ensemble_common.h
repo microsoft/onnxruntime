@@ -147,7 +147,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Additional members
   size_t limit;
-  uint32_t i;
+  size_t i;
   InlinedVector<NODE_MODE_ONNX> cmodes;
   cmodes.reserve(attributes.nodes_modes.size());
   same_mode_ = true;

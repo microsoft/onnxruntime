@@ -48,9 +48,9 @@ struct ScoreValue {
   T score;
   unsigned char has_score;
   operator T() const { return has_score ? score : 0; }
-  T operator-() { return has_score ? -score : 0; }
-  T operator*(float val) { return has_score ? score * static_cast<T>(val) : 0; }
-  T operator*(double val) { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator-() const { return has_score ? -score : 0; }
+  T operator*(float val) const { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator*(double val) const { return has_score ? score * static_cast<T>(val) : 0; }
   ScoreValue<T>& operator=(ScoreValue<T> v) {
     this->score = v.score;
     this->has_score = v.has_score;
