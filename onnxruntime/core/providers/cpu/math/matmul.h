@@ -17,14 +17,6 @@ class MatMul final : public OpKernel {
   Status Compute(OpKernelContext* context) const override;
 };
 
-template <typename T1, typename T2, typename T2>
-class MatMul final : public OpKernel {
- public:
-  MatMul(const OpKernelInfo& info) : OpKernel(info) {}
-
-  Status Compute(OpKernelContext* context) const override;
-};
-
 template <>
 class MatMul<float> final : public OpKernel {
  public:
