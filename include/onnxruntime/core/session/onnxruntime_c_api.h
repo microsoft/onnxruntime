@@ -435,9 +435,9 @@ typedef enum OrtExecutionProviderDevicePolicy {
  * \param model_metadata The model metadata.
  * \param runtime_metadata The runtime metadata. May be nullptr.
  * \param selected Pre-allocated array to populate with selected OrtEpDevice pointers from ep_devices.
- * \param max_ep_devices The maximum number of devices that can be selected in the pre-allocated array.
-                         Currently the maximum is 8.
- * \param num_ep_devices The number of selected devices.
+ * \param max_selected The maximum number of devices that can be selected in the pre-allocated array.
+                       Currently the maximum is 8.
+ * \param num_selected The number of selected devices.
  * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
  *
  * \return OrtStatus* Selection status. Return nullptr on success.
@@ -6116,7 +6116,7 @@ struct OrtEpFactory {
    * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
    *                            session. This will include ep_options from GetSupportedDevices as well as any
    *                            user provided overrides.
-   *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
+   *                            Execution provider options will have been added with a prefix of 'ep.[ep name].'.
    *                            The OrtSessionOptions instance will NOT be valid after this call and should not be
    *                            stored for later use.
    * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
@@ -6124,7 +6124,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version <coming soon>. This is a placeholder.
+   * \since Version [coming soon]. This is a placeholder.
    */
   OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -6138,7 +6138,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep The OrtEp instance to release.
    *
-   * \since Version <coming soon>. This is a placeholder.
+   * \since Version [coming soon]. This is a placeholder.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 };
