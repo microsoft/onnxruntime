@@ -137,11 +137,11 @@ void CPUIDInfo::X86Init() {
         // Check for TPAUSE
         CheckIntelResult check_intel = CheckIntel();
         if (check_intel.is_intel) {
-        #ifdef __linux__
+#ifdef __linux__
           has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
-        #else
+#else
           has_tpause_ = (data[2] & (1 << 5)) != 0;
-        #endif
+#endif
         }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);

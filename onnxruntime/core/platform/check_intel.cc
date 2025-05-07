@@ -45,14 +45,13 @@ CheckIntelResult CheckIntel() {
     }
   }
 
-
 #elif defined(__linux__)
   unsigned int regs[4] = {0};
   __get_cpuid(0, &regs[0], &regs[1], &regs[2], &regs[3]);
 
   is_intel = (regs[1] == kVendorID_Intel[0] &&
-                   regs[2] == kVendorID_Intel[1] &&
-                   regs[3] == kVendorID_Intel[2]);
+              regs[2] == kVendorID_Intel[1] &&
+              regs[3] == kVendorID_Intel[2]);
   if (!is_intel) {
     return intel_check;  // if not an Intel CPU, return early
   }
