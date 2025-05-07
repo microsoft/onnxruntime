@@ -28,7 +28,9 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   ~VitisAIExecutionProvider() = default;
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                                                const IKernelLookup& /*kernel_lookup*/) const override;
+                                                                const IKernelLookup& /*kernel_lookup*/,
+                                                                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                                                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return 0; }
   common::Status OnRunStart(const onnxruntime::RunOptions& /*run_options*/) override;
@@ -43,6 +45,8 @@ class VitisAIExecutionProvider : public IExecutionProvider {
   const InlinedVector<const Node*> GetEpContextNodes() const override;
   virtual common::Status SetEpDynamicOptions(gsl::span<const char* const> /*keys*/,
                                              gsl::span<const char* const> /*values*/) override;
+
+  std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
   using my_ep_t = vaip_core::DllSafe<std::vector<std::unique_ptr<vaip_core::ExecutionProvider>>>;

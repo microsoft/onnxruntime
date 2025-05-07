@@ -3,7 +3,7 @@
 
 #include "core/mlas/inc/mlas.h"
 
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML) || defined(USE_XNNPACK)
 
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
@@ -30,7 +30,7 @@ struct ConvOpAndTestAttributes {
 
 /*
 Please notice that, we have predefined macros in the head of the file
-#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) || defined(USE_COREML)
 When we have these two macro defines, this UT will turn into green light and work.
 
 If attributes.activation is set the NhwcFusedConv contrib op is used.
@@ -518,7 +518,7 @@ TEST(ConvFp16Test, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -557,7 +557,7 @@ TEST(ConvFp16Test, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -601,7 +601,7 @@ TEST(ConvFp16Test, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {
@@ -968,7 +968,7 @@ TEST(ConvFp16Test, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {kWebGpuExecutionProvider}    // excluded EPs
   };
 
   vector<MLFloat16> X;
@@ -1082,7 +1082,7 @@ TEST(ConvFp16Test, Pointwise_3D) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<MLFloat16> X = {

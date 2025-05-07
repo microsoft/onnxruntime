@@ -30,17 +30,17 @@ class BaseOpBuilder : public IOpBuilder {
 
   // Operator support related.
  public:
-  bool IsOpSupported(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupported(const GraphViewer& graph_viewer, const Node& node,
                      const WebnnDeviceType device_type, const emscripten::val& wnn_limits,
                      const logging::Logger& logger) const override;
 
  protected:
-  virtual bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& /* node */,
+  virtual bool IsOpSupportedImpl(const GraphViewer& /* graph_viewer */, const Node& /* node */,
                                  const WebnnDeviceType /* device_type */, const logging::Logger& /* logger */) const {
     return true;
   }
 
-  virtual bool HasSupportedInputsImpl(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits,
+  virtual bool HasSupportedInputsImpl(const GraphViewer&, const Node& node, const emscripten::val& wnn_limits,
                                       const logging::Logger& logger) const;
   virtual bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                        const logging::Logger& logger) const;
@@ -52,11 +52,11 @@ class BaseOpBuilder : public IOpBuilder {
   // We still set the mininal supported opset to 1 as we couldn't
   // get the model opset version at this stage.
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 21; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 23; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;
-  bool HasSupportedInputs(const InitializedTensorSet& initializers, const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) const;
+  bool HasSupportedInputs(const GraphViewer&, const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) const;
   bool HasSupportedOutputs(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) const;
 
   const bool allow_empty_tensor_as_input_;  // Some operators can handle ignoring an empty tensor as input.

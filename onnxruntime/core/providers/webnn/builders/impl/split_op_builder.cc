@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
@@ -26,7 +25,7 @@ class SplitOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedOutputsImpl(const Node& node, const emscripten::val& wnn_limits,
                                const logging::Logger& logger) const override;
@@ -75,8 +74,8 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   // Check that the splits evenly divide.
   if (split_count > 0 && splits.empty() && input_shape[axis] % split_count != 0) {
     // Divide inputs into variable size outputs:
-    splits.insert(splits.end(), split_count - 1, narrow<uint32_t>(input_shape[axis]) / split_count);
-    splits.insert(splits.end(), narrow<uint32_t>(input_shape[axis]) % split_count);
+    splits.insert(splits.end(), split_count - 1, SafeInt<uint32_t>(input_shape[axis]) / split_count);
+    splits.insert(splits.end(), SafeInt<uint32_t>(input_shape[axis]) % split_count);
   }
 
   if (splits.empty()) {
@@ -95,7 +94,7 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                        const Node& node,
                                        const WebnnDeviceType /* device_type */,
                                        const logging::Logger& logger) const {
@@ -115,12 +114,13 @@ bool SplitOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
   const std::string split_name = GetTensorName(input_defs, 1);
   // Inputs contain optional 'split' input.
   if (!split_name.empty()) {
-    if (!Contains(initializers, split_name)) {
+    const auto* split_init = graph_viewer.GetConstantInitializer(split_name);
+    if (!split_init) {
       LOGS(logger, VERBOSE) << "The split must be a constant initializer.";
       return false;
     }
     // Values should be >= 0. Sum of the values must be equal to the dim value at 'axis' specified.
-    const auto& split_tensor = *initializers.at(input_defs[1]->Name());
+    const auto& split_tensor = *split_init;
     if (split_tensor.data_type() != ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64) {
       LOGS(logger, VERBOSE) << "The type of tensor's element data must be INT64.";
       return false;
@@ -169,13 +169,13 @@ bool SplitOpBuilder::HasSupportedOutputsImpl(const Node& node,
                                              const emscripten::val& wnn_limits,
                                              const logging::Logger& logger) const {
   const auto& output_defs = node.OutputDefs();
-  const auto& op_type = node.OpType();
+  const std::string_view op_type = node.OpType();
   int32_t output_type = 0;
 
   if (GetType(*output_defs[0], output_type, logger)) {
     // Chromium has changed the output name of split from 'output' to 'outputs',
     // to avoid breaking the existing API, we need to check both names.
-    std::string wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
+    const std::string_view wnn_output_name = wnn_limits["split"]["output"].isUndefined() ? "outputs" : "output";
     return IsDataTypeSupportedByOp(op_type, output_type, wnn_limits, wnn_output_name, "outputs", logger);
   }
 

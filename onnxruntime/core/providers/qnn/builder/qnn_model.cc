@@ -4,6 +4,7 @@
 #include "qnn_model.h"
 
 #include <iostream>
+#include <fstream>
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
@@ -32,22 +33,19 @@ bool QnnModel::GetGraphInfoFromModel(QnnModelWrapper& model_wrapper, const loggi
 Status QnnModel::SetGraphInputOutputInfo(const GraphViewer& graph_viewer,
                                          const onnxruntime::Node& fused_node,
                                          const logging::Logger& logger) {
-  auto graph_initializers = graph_viewer.GetAllInitializedTensors();
-  for (auto graph_ini : graph_initializers) {
-    initializer_inputs_.emplace(graph_ini.first);
-  }
   auto input_defs = fused_node.InputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(input_defs, input_names_, inputs_info_,
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(graph_viewer, input_defs, input_names_, inputs_info_,
                                               model_input_index_map_, logger, true));
 
   auto output_defs = fused_node.OutputDefs();
-  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(output_defs, output_names_, outputs_info_,
+  ORT_RETURN_IF_ERROR(ParseGraphInputOrOutput(graph_viewer, output_defs, output_names_, outputs_info_,
                                               model_output_index_map_, logger));
 
   return Status::OK();
 }
 
-Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
+Status QnnModel::ParseGraphInputOrOutput(const GraphViewer& graph_viewer,
+                                         ConstPointerContainer<std::vector<NodeArg*>>& input_output_defs,
                                          std::vector<std::string>& input_output_names,
                                          std::unordered_map<std::string, OnnxTensorInfo>& input_output_info_table,
                                          std::unordered_map<std::string, size_t>& input_output_index_map,
@@ -56,7 +54,7 @@ Status QnnModel::ParseGraphInputOrOutput(ConstPointerContainer<std::vector<NodeA
   for (size_t i = 0, end = input_output_defs.size(), index = 0; i < end; ++i) {
     const auto& name = input_output_defs[i]->Name();
     if (is_input) {
-      if (IsGraphInitializerInput(name)) {
+      if (graph_viewer.IsConstantInitializer(name, true)) {
         continue;  // exclude initializer inputs
       }
     }
@@ -94,7 +92,8 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                               const onnxruntime::Node& fused_node,
                               const qnn::ModelSettings& model_settings,
                               const logging::Logger& logger,
-                              const QnnGraph_Config_t** graph_configs) {
+                              const QnnGraph_Config_t** graph_configs,
+                              const std::string& json_qnn_graph_path) {
   LOGS(logger, VERBOSE) << "ComposeGraph Graph name: " << graph_viewer.Name();
 
   // Holder for the NodeUnits in the graph, this will guarantee the NodeUnits is
@@ -112,7 +111,6 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
                                                       qnn_backend_manager_->GetQnnBackendHandle(),
                                                       model_input_index_map_,
                                                       model_output_index_map_,
-                                                      initializer_inputs_,
                                                       qnn_backend_manager_->GetQnnBackendType(),
                                                       model_settings);
   bool rt = true;
@@ -137,7 +135,20 @@ Status QnnModel::ComposeGraph(const GraphViewer& graph_viewer,
     }
   }
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(), "Failed to compose Qnn graph.");
+  const bool build_json_graph = !json_qnn_graph_path.empty();
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.ComposeQnnGraph(build_json_graph), "Failed to compose Qnn graph.");
+
+  if (build_json_graph) {
+    const nlohmann::json& json_graph = qnn_model_wrapper.GetQnnJSONGraph();
+    std::ofstream ofs(json_qnn_graph_path);
+
+    if (ofs.is_open()) {
+      ofs << json_graph.dump();
+      ofs.close();
+    } else {
+      LOGS(logger, WARNING) << "Could not open JSON graph file: " << json_qnn_graph_path;
+    }
+  }
 
   rt = GetGraphInfoFromModel(qnn_model_wrapper, logger);
   if (!rt) {
@@ -169,14 +180,16 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   return Status::OK();
@@ -189,7 +202,9 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const static auto htp_shared_mem_info = HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool uses_shared_memory = (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
+                                   ort_value_memory_info.device.MemType() == htp_shared_mem_info.device.MemType());
 
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";

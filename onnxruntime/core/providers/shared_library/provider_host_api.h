@@ -2,8 +2,11 @@
 // Licensed under the MIT License.
 //
 #include "core/framework/provider_options.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+struct IExecutionProviderFactory;
+
 // The suppressed warning is: "The type with a virtual function needs either public virtual or protected nonvirtual destructor."
 // However, we do not allocate this type on heap.
 // Please do not new or delete this type(and subtypes).
@@ -31,6 +34,17 @@ struct Provider {
 
   virtual void Initialize() = 0;  // Called right after loading the shared library, if this throws any errors Shutdown() will be called and the library unloaded
   virtual void Shutdown() = 0;    // Called right before unloading the shared library
+
+  virtual Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+                                          const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                          size_t /*num_devices*/,
+                                          ProviderOptions& /*provider_options*/,
+                                          const OrtSessionOptions& /*session_options*/,
+                                          const OrtLogger& /*logger*/,
+                                          std::unique_ptr<IExecutionProvider>& /*ep*/) {
+    return Status(common::StatusCategory::NONE, common::NOT_IMPLEMENTED,
+                  "CreateIExecutionProvider is not implemented for this provider");
+  }
 
  protected:
   ~Provider() = default;  // Can only be destroyed through a subclass instance

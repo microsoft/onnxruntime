@@ -43,10 +43,12 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Elu", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
+    CreateSimpleOpBuilder("ScatterND", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
     CreateSimpleOpBuilder("Sin", *this);
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
+    CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
     CreateSimpleOpBuilder("Concat", *this);
@@ -133,6 +135,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
+
+  {
     CreateTopKOpBuilder("TopK", *this);
   }
 
@@ -166,6 +172,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateExpandOpBuilder("Expand", *this);
+  }
+
+  {
+    CreateEinsumOpBuilder("Einsum", *this);
   }
 
   {

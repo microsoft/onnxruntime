@@ -44,9 +44,7 @@ TEST(TensorOpTest, SpaceToDepthTest_1) {
       3.1f, 3.3f};
   test.AddOutput<float>("output", {N, C * blocksize * blocksize, H / blocksize, W / blocksize}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test  is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_1_double) {
@@ -111,9 +109,7 @@ TEST(TensorOpTest, SpaceToDepthTest_2) {
       88., 103., 106., 68., 71., 86., 89., 104., 107.};
   test.AddOutput<float>("output", {2, 27, 1, 2}, result);
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
+  test.Run(OpTester::ExpectResult::kExpectSuccess);
 }
 
 TEST(TensorOpTest, SpaceToDepthTest_3) {
@@ -327,8 +323,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_3) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky test is fixed.
+  // type not supported by QNN EP: MLFloat16 and unsigned char
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -392,8 +387,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_4) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  // type not supported by QNN EP: MLFloat16 and unsigned char
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -439,8 +433,7 @@ TYPED_TEST(TensorOpTest, DepthToSpaceTest_5) {
     ORT_THROW("Type not supported");
   }
 
-  // TODO: Test is flaky on QNN EP (CPU backend).
-  // Re-enable when the QnnCPUBackendTests.DISABLED_SpaceToDepth_Flaky2 test is fixed.
+  // type not supported by QNN EP: MLFloat16 and unsigned char
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kQnnExecutionProvider});
 }
 
@@ -472,6 +465,112 @@ TEST(TensorOpTest, DepthToSpaceTest_CRD_Batched) {
   result.insert(result.end(), result.rbegin(), result.rend());
 
   test.AddOutput<float>("output", {2, 1, 4, 6}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DefaultMode1) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+
+  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
+  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 18, 36, 54, 9, 27, 45, 63};
+
+  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DefaultMode2) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+
+  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
+  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                          29, 30, 31};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15, 16, 20, 17, 21, 24, 28, 25, 29, 18, 22, 19, 23, 26,
+                               30, 27, 31};
+
+  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DCR1) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "DCR");
+
+  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
+  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 18, 36, 54, 9, 27, 45, 63};
+
+  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_DCR2) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "DCR");
+
+  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
+  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                          29, 30, 31};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 4, 1, 5, 8, 12, 9, 13, 2, 6, 3, 7, 10, 14, 11, 15, 16, 20, 17, 21, 24, 28, 25, 29, 18, 22, 19, 23, 26,
+                               30, 27, 31};
+
+  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_CRD1) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "CRD");
+
+  constexpr int64_t N = 1, C = 8, H = 1, W = 1;
+  std::vector<float> X = {0, 9, 18, 27, 36, 45, 54, 63};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 9, 18, 27, 36, 45, 54, 63};
+
+  test.AddOutput<float>("output", {1, 2, 2, 2}, result);
+  test.Run();
+}
+
+TEST(TensorOpTest, DepthToSpaceTest_WebGPU_CRD2) {
+  OpTester test("DepthToSpace", 11);
+  constexpr int64_t blocksize = 2;
+  test.AddAttribute("blocksize", blocksize);
+  test.AddAttribute("mode", "CRD");
+
+  constexpr int64_t N = 2, C = 8, H = 1, W = 2;
+  std::vector<float> X = {0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28,
+                          29, 30, 31};
+
+  test.AddInput<float>("input", {N, C, H, W}, X);
+
+  std::vector<float> result = {0, 2, 1, 3, 4, 6, 5, 7, 8, 10, 9, 11, 12, 14, 13, 15, 16, 18, 17, 19, 20, 22, 21, 23, 24, 26, 25, 27, 28,
+                               30, 29, 31};
+
+  test.AddOutput<float>("output", {2, 2, 2, 4}, result);
   test.Run();
 }
 

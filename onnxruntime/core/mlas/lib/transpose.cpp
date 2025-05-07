@@ -16,6 +16,20 @@ Abstract:
 
 #include "mlasi.h"
 
+//
+// Define the parameters to execute segments of a transpose operation on worker
+// threads.
+//
+
+template<typename ElementType>
+struct MLAS_TRANPOSE_WORK_BLOCK {
+    ptrdiff_t ThreadCountM;
+    const ElementType* Input;
+    ElementType* Output;
+    size_t M;
+    size_t N;
+};
+
 #if defined(MLAS_SSE2_INTRINSICS)
 
 MLAS_FORCEINLINE
@@ -470,20 +484,20 @@ MlasTranspose8x8Block(
     __m128i c3 = __lsx_vilvh_h(b3, b2);
 
     __m128 d0 = (__m128)(__lsx_vilvl_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 0], 0), __lsx_vpickve2gr_d(d0, 0), 0), (__m128i *)&Output[OutputStride * 0], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 1], 0), __lsx_vpickve2gr_d(d0, 1), 0), (__m128i *)&Output[OutputStride * 1], 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 0], 0, 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 1], 0, 1);
 
     __m128 d1 = (__m128)(__lsx_vilvh_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 2], 0), __lsx_vpickve2gr_d(d1, 0), 0), (__m128i *)&Output[OutputStride * 2], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 3], 0), __lsx_vpickve2gr_d(d1, 1), 0), (__m128i *)&Output[OutputStride * 3], 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 2], 0, 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 3], 0, 1);
 
     __m128 d2 = (__m128)(__lsx_vilvl_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 4], 0), __lsx_vpickve2gr_d(d2, 0), 0), (__m128i *)&Output[OutputStride * 4], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 5], 0), __lsx_vpickve2gr_d(d2, 1), 0), (__m128i *)&Output[OutputStride * 5], 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 4], 0, 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 5], 0, 1);
 
     __m128 d3 = (__m128)(__lsx_vilvh_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 6], 0), __lsx_vpickve2gr_d(d3, 0), 0), (__m128i *)&Output[OutputStride * 6], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 7], 0), __lsx_vpickve2gr_d(d3, 1), 0), (__m128i *)&Output[OutputStride * 7], 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 6], 0, 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 7], 0, 1);
 }
 
 #endif
@@ -541,51 +555,69 @@ MlasTranspose8xNVector(
     MlasTranspose4xNVector(&Input[InputStride * 4], InputStride, &Output[OutputStride * 4], OutputStride);
 }
 
+template <typename ElementType>
 void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    )
+MlasTransposeThreaded(
+    void* Context,
+    ptrdiff_t ThreadId
+);
 /*++
 
 Routine Description:
 
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
+    This routine is invoked from a worker thread to execute a segment of a transpose
 
 Arguments:
 
-    Input - Supplies the input buffer.
+    Context - Supplies the pointer to the context for the threaded operation.
 
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
+    ThreadId - Supplies the current index of the threaded operation.
 
 Return Value:
 
     None.
 
 --*/
+
+template<>
+void
+MlasTransposeThreaded<uint32_t>(
+    void* Context,
+    ptrdiff_t ThreadId
+    )
 {
-    size_t n = N;
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint32_t>*)Context;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
+
+    //
+    // Set transpose parameters.
+    //
+
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+
+    const uint32_t* Input = WorkBlock->Input + IndexM * N;
+    uint32_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 4 columns
     // at a time.
     //
 
+    size_t n = N;
+
     while (n >= 4) {
 
         const uint32_t* s = Input;
         uint32_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS) || defined(MLAS_TARGET_POWER) || \
     defined(MLAS_LSX_INTRINSICS)
@@ -624,7 +656,7 @@ Return Value:
 
         const uint32_t* s = Input;
         uint32_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 4) {
 
@@ -650,68 +682,45 @@ Return Value:
     }
 }
 
+template<>
 void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+MlasTransposeThreaded<uint16_t>(
+    void* Context,
+    ptrdiff_t ThreadId
     )
 {
-    MlasTranspose(
-        reinterpret_cast<const uint32_t*>(Input),
-        reinterpret_cast<uint32_t*>(Output),
-        M,
-        N);
-}
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint16_t>*)Context;
 
+    //
+    // Partition the operation along the M dimension.
+    //
 
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    )
-/*++
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
 
-Routine Description:
+    //
+    // Set transpose parameters.
+    //
 
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
 
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
-
-Return Value:
-
-    None.
-
---*/
-{
-    size_t n = N;
+    const uint16_t* Input = WorkBlock->Input + IndexM * N;
+    uint16_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 4 columns
     // at a time.
     //
 
+    size_t n = N;
+
     while (n >= 4) {
 
         const uint16_t* s = Input;
         uint16_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
 
@@ -749,7 +758,7 @@ Return Value:
 
         const uint16_t* s = Input;
         uint16_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 4) {
 
@@ -775,52 +784,46 @@ Return Value:
     }
 }
 
-
+template<>
 void
-MLASCALL
-MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
-    size_t M,
-    size_t N
+MlasTransposeThreaded<uint8_t>(
+    void* Context,
+    ptrdiff_t ThreadId
     )
-/*++
-
-Routine Description:
-
-    This routine transposes the input matrix (M rows by N columns) to the
-    output matrix (N rows by M columns).
-
-Arguments:
-
-    Input - Supplies the input buffer.
-
-    Output - Supplies the output buffer.
-
-    M - Supplies the number of rows for the input matrix and the number of
-        columns for the output matrix.
-
-    N - Supplies the number of columns for the input matrix and the number of
-        rows for the output matrix.
-
-Return Value:
-
-    None.
-
---*/
 {
-    size_t n = N;
+    const auto* WorkBlock = (MLAS_TRANPOSE_WORK_BLOCK<uint8_t>*)Context;
+
+    //
+    // Partition the operation along the M dimension.
+    //
+
+    size_t IndexM;
+    size_t CountM;
+    MlasPartitionWork(ThreadId, WorkBlock->ThreadCountM, WorkBlock->M, &IndexM, &CountM);
+
+    //
+    // Set transpose parameters.
+    //
+
+    const size_t M = WorkBlock->M;
+    const size_t N = WorkBlock->N;
+
+    const uint8_t* Input = WorkBlock->Input + IndexM * N;
+    uint8_t* Output = WorkBlock->Output + IndexM;
 
     //
     // Transpose elements from the input matrix to the output matrix 8 columns
     // at a time.
     //
+
+    size_t n = N;
+
 #if defined(MLAS_TARGET_POWER)
     while (n >= 16) {
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
         while (m >= 16) {
 
             MlasTranspose16x16Block(s, N, d, M);
@@ -848,7 +851,7 @@ Return Value:
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
 #if defined(MLAS_SSE2_INTRINSICS) || defined(MLAS_NEON_INTRINSICS)  || defined(MLAS_LSX_INTRINSICS)
 
@@ -886,7 +889,7 @@ Return Value:
 
         const uint8_t* s = Input;
         uint8_t* d = Output;
-        size_t m = M;
+        size_t m = CountM;
 
         while (m >= 8) {
 
@@ -912,17 +915,140 @@ Return Value:
     }
 }
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
+    const DataType* Input,
+    DataType* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
+/*++
+
+Routine Description:
+
+    This routine transposes the input matrix (M rows by N columns) to the
+    output matrix (N rows by M columns).
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    M - Supplies the number of rows for the input matrix and the number of
+        columns for the output matrix.
+
+    N - Supplies the number of columns for the input matrix and the number of
+        rows for the output matrix.
+
+    ThreadPool - Supplies the thread pool object to use, else nullptr if the
+        base library threading support should be used.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_TRANPOSE_WORK_BLOCK<DataType> WorkBlock;
+
+    //
+    // Capture the transpose parameters to the work block.
+    //
+
+    WorkBlock.Input = Input;
+    WorkBlock.Output = Output;
+    WorkBlock.M = M;
+    WorkBlock.N = N;
+
+    //
+    // Compute the number of target threads given the complexity of the transpose
+    // operation. Limit the number of threads to the number of rows and try to
+    // keep each thread processing a minimum number of elements before using
+    // another thread.
+    //
+
+    ptrdiff_t ThreadCountM = MlasGetMaximumThreadCount(ThreadPool);
+
+    if (size_t(ThreadCountM) > M) {
+        ThreadCountM = ptrdiff_t(M);
+    }
+
+    WorkBlock.ThreadCountM = ThreadCountM;
+
+    MlasExecuteThreaded(MlasTransposeThreaded<DataType>, &WorkBlock, ThreadCountM, ThreadPool);
+}
+
+template
+void
+MLASCALL
+MlasTranspose<uint32_t>(
+    const uint32_t* Input,
+    uint32_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
+void
+MLASCALL
+MlasTranspose<uint16_t>(
+    const uint16_t* Input,
+    uint16_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template
+void
+MLASCALL
+MlasTranspose<uint8_t>(
+    const uint8_t* Input,
+    uint8_t* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+template<>
+void
+MLASCALL
+MlasTranspose<int8_t>(
     const int8_t* Input,
     int8_t* Output,
     size_t M,
-    size_t N)
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
 {
     MlasTranspose(
         reinterpret_cast<const uint8_t*>(Input),
         reinterpret_cast<uint8_t*>(Output),
         M,
-        N);
+        N,
+        ThreadPool);
+}
+
+template<>
+void
+MLASCALL
+MlasTranspose<float>(
+    const float* Input,
+    float* Output,
+    size_t M,
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
+    )
+{
+    MlasTranspose(
+        reinterpret_cast<const uint32_t*>(Input),
+        reinterpret_cast<uint32_t*>(Output),
+        M,
+        N,
+        ThreadPool);
 }

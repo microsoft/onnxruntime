@@ -23,11 +23,7 @@ static void RunSqueezeTestOnCPU(const std::string& op_type,  // Squeeze or Unsqu
                                 int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
                   provider_options,
@@ -132,11 +128,7 @@ static void RunSqueezeTestOnHTP(const std::string& op_type,  // Squeeze or Unsqu
                                 int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   RunQnnModelTest(BuildOpTestCase<DataType, int64_t>(op_type, {input_def}, {axes_def}, {}),
                   provider_options,
@@ -156,11 +148,8 @@ static void RunQDQSqueezeTestOnHTP(const std::string& op_type,
                                    bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float, int64_t>(op_type, {input_def}, {axes_def}, {});
   auto qdq_model_builder = BuildQDQSqueezeTestCase<QType>(op_type, input_def, axes_def, use_contrib_qdq);
@@ -214,11 +203,8 @@ TEST_F(QnnHTPBackendTests, Squeeze_Rank5_Rank2_f32) {
 
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(model_fn,
                   provider_options,
@@ -270,11 +256,8 @@ TEST_F(QnnHTPBackendTests, Unsqueeze_Rank3_Rank5_f32) {
 
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(model_fn,
                   provider_options,

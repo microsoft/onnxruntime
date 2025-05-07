@@ -6,6 +6,8 @@ if (onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD)
 endif()
 
 add_compile_definitions(USE_COREML=1)
+add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
+
 
 # Check if we can build the coremltools code for creating an mlpackage with an mlprogram.
 if(LINUX)
@@ -16,10 +18,6 @@ if(LINUX)
                     "Run `sudo apt install uuid-dev` if you need to test ML Program related CoreML EP code. ")
   endif()
 endif()
-
-
-add_compile_definitions(COREML_ENABLE_MLPROGRAM=1)
-
 
 # Compile CoreML proto definition to ${CMAKE_CURRENT_BINARY_DIR}/coreml_proto
 set(COREML_PROTO_ROOT ${coremltools_SOURCE_DIR}/mlmodel/format)
@@ -86,7 +84,6 @@ file(GLOB_RECURSE
   "${ONNXRUNTIME_ROOT}/core/providers/coreml/builders/*.cc"
 )
 
-
   # Add helpers to create mlpackage weights. limit to just the files we need to minimize the changes to make them
   # build on Windows and Linux.
 file(GLOB
@@ -113,7 +110,6 @@ set(coremltools_srcs
 )
 
 source_group(TREE ${coremltools_SOURCE_DIR} PREFIX coremltools FILES ${coremltools_srcs})
-
 
 # Add CoreML objective c++ source code
 if (APPLE)
@@ -156,8 +152,28 @@ onnxruntime_add_static_library(onnxruntime_providers_coreml
 
 onnxruntime_add_include_to_target(onnxruntime_providers_coreml
   onnxruntime_common onnxruntime_framework onnx onnx_proto ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11
-  safeint_interface
+  safeint_interface nlohmann_json::nlohmann_json
 )
+
+# In ONNX Runtime's code, when we need to use the json library, we have: `#include "nlohmann/json.hpp"`.
+# But, coremltool's code includes the json.hpp directly without the folder name: `#include "json.hpp"`.
+# Therefore here we need to tweak INCLUDE_DIRECTORIES a little bit to fix that.
+
+if(nlohmann_json_SOURCE_DIR)
+  target_include_directories(onnxruntime_providers_coreml PRIVATE ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann)
+elseif(TARGET nlohmann_json::nlohmann_json)
+  get_target_property(nlohmann_json_include_dirs nlohmann_json::nlohmann_json INTERFACE_INCLUDE_DIRECTORIES)
+  foreach(nlohmann_json_include_dir IN LISTS nlohmann_json_include_dirs)
+    target_include_directories(onnxruntime_providers_coreml PRIVATE "${nlohmann_json_include_dir}/nlohmann")
+  endforeach()
+endif()
+
+if(fp16_SOURCE_DIR)
+  set(FP16_INCLUDE_DIRS ${fp16_SOURCE_DIR}/include)
+else()
+  find_path(FP16_INCLUDE_DIRS "fp16.h")
+endif()
+target_include_directories(onnxruntime_providers_coreml PRIVATE ${FP16_INCLUDE_DIRS})
 
 onnxruntime_add_include_to_target(onnxruntime_providers_coreml coreml_proto)
 target_link_libraries(onnxruntime_providers_coreml PRIVATE coreml_proto)
@@ -168,31 +184,18 @@ if (APPLE)
 endif()
 
 
-# Setup coremltools fp16 and json dependencies for creating an mlpackage.
-#
-# fp16 depends on psimd
-FetchContent_Declare(psimd URL ${DEP_URL_psimd} URL_HASH SHA1=${DEP_SHA1_psimd})
-onnxruntime_fetchcontent_makeavailable(psimd)
-set(PSIMD_SOURCE_DIR ${psimd_SOURCE_DIR})
-FetchContent_Declare(fp16 URL ${DEP_URL_fp16} URL_HASH SHA1=${DEP_SHA1_fp16})
-set(FP16_BUILD_TESTS OFF CACHE INTERNAL "")
-set(FP16_BUILD_BENCHMARKS OFF CACHE INTERNAL "")
-onnxruntime_fetchcontent_makeavailable(fp16)
 
 # need to tweak the include paths to match what the coreml source code expects
 target_include_directories(onnxruntime_providers_coreml PRIVATE
-                          ${fp16_SOURCE_DIR}/include
-                          ${nlohmann_json_SOURCE_DIR}/single_include/nlohmann
-                          ${coremltools_SOURCE_DIR}
-                          ${coremltools_SOURCE_DIR}/mlmodel/src/
-                          ${coremltools_SOURCE_DIR}/modelpackage/src/
+                            ${coremltools_SOURCE_DIR}
+                            ${coremltools_SOURCE_DIR}/mlmodel/src/
+                            ${coremltools_SOURCE_DIR}/modelpackage/src/
 )
-
-add_dependencies(onnxruntime_providers_coreml nlohmann_json::nlohmann_json fp16)
 
 if (LINUX)
   target_link_libraries(onnxruntime_providers_coreml PRIVATE uuid)
 endif()
+
 
 
 if (APPLE)

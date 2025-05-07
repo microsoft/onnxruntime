@@ -7,6 +7,7 @@
 #include "core/flatbuffers/flatbuffers_utils.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/model.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/graph/model_load_utils.h"
 
 #ifdef _MSC_VER
@@ -81,7 +82,7 @@ Model::Model(const std::string& graph_name,
              const std::vector<ONNX_NAMESPACE::FunctionProto>& model_local_functions,
              const logging::Logger& logger,
              const ModelOptions& options)
-    : model_path_(model_path) {
+    : model_path_(model_path), check_load_cancellation_fn_(options.check_load_cancellation_fn) {
   model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
   model_proto_.mutable_graph()->set_name(graph_name);
   model_metadata_ = model_metadata;
@@ -160,7 +161,7 @@ Model::Model(const ModelProto& model_proto, const PathString& model_path,
 Model::Model(ModelProto&& model_proto, const PathString& model_path,
              const IOnnxRuntimeOpSchemaRegistryList* local_registries,
              const logging::Logger& logger, const ModelOptions& options)
-    : model_path_(model_path) {
+    : model_path_(model_path), check_load_cancellation_fn_(options.check_load_cancellation_fn) {
   if (!utils::HasGraph(model_proto)) {
     ORT_THROW("ModelProto does not have a graph.");
   }
@@ -434,6 +435,11 @@ Status Model::Load(const ModelProto& model_proto,
   ORT_TRY {
     model = std::make_unique<Model>(model_proto, model_path, local_registries, logger, options);
   }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), ex.what());
+    });
+  }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
@@ -473,6 +479,11 @@ Status Model::Load(ModelProto&& model_proto,
   ORT_TRY {
     model = std::make_unique<Model>(std::move(model_proto), model_path, local_registries, logger, options);
   }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), ex.what());
+    });
+  }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = Status(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to load model with error: " + std::string(ex.what()));
@@ -507,6 +518,11 @@ static Status LoadModelHelper(const T& file_path, Loader loader) {
 
   ORT_TRY {
     status = loader(fd);
+  }
+  ORT_CATCH(const OnnxRuntimeException& ex) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = Status(ex.Category(), ex.Code(), ex.what());
+    });
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -738,6 +754,36 @@ Status Model::Load(int fd, const PathString& model_path, std::shared_ptr<Model>&
   return Status::OK();
 }
 
+// static
+common::Status Model::LoadFromModelEditorApiModel(const OrtModel& model_editor_api_model,
+                                                  const IOnnxRuntimeOpSchemaRegistryList* local_registries,
+                                                  const ModelOptions& options,
+                                                  const logging::Logger& logger,
+                                                  std::unique_ptr<Model>& model) {
+  model = std::make_unique<Model>();
+  model->model_proto_.set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  // The optimizer Initializer class requires a path if external data is used, however in the Graph API usage the
+  // external data is pointing to pre-allocated memory and does not require a path. Set a dummy value to make it happy.
+  model->model_path_ = std::filesystem::path("_GRAPH_API_MODEL_");
+
+  auto schema_registry = std::make_shared<SchemaRegistryManager>();
+  if (local_registries != nullptr) {
+    for (const auto& schema_collection : *local_registries) {
+      schema_registry->RegisterRegistry(schema_collection);
+    }
+  }
+
+  ORT_RETURN_IF_ERROR(Graph::LoadFromModelEditorApiModel(*model_editor_api_model.graph,
+                                                         *model,
+                                                         model_editor_api_model.domain_to_version,
+                                                         schema_registry,
+                                                         options.strict_shape_type_inference,
+                                                         logger,
+                                                         model->graph_));
+
+  return Status::OK();
+}
+
 Status Model::Save(Model& model, int p_fd) {
   if (p_fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<p_fd> is less than 0.");
@@ -917,5 +963,4 @@ common::Status Model::LoadFromOrtFormat(const fbs::Model& fbs_model,
 #endif
   return Status::OK();
 }
-
 }  // namespace onnxruntime
