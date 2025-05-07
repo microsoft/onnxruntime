@@ -13,6 +13,7 @@ namespace onnxruntime {
 
 CheckIntelResult CheckIntel() {
   CheckIntelResult intel_check = {false, false};
+  bool is_intel = false;
   bool is_intel_specified_platform = false;
   constexpr unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 
@@ -29,7 +30,7 @@ CheckIntelResult CheckIntel() {
   __cpuid(regs_leaf0, 0);
   __cpuid(regs_leaf1, 0x1);
 
-  auto is_intel =
+  is_intel =
       (kVendorID_Intel[0] == regs_leaf0[1]) &&
       (kVendorID_Intel[1] == regs_leaf0[2]) &&
       (kVendorID_Intel[2] == regs_leaf0[3]);
@@ -49,7 +50,7 @@ CheckIntelResult CheckIntel() {
   unsigned int regs[4] = {0};
   __get_cpuid(0, &regs[0], &regs[1], &regs[2], &regs[3]);
 
-  bool is_intel = (regs[1] == kVendorID_Intel[0] &&
+  is_intel = (regs[1] == kVendorID_Intel[0] &&
                    regs[2] == kVendorID_Intel[1] &&
                    regs[3] == kVendorID_Intel[2]);
   if (!is_intel) {
