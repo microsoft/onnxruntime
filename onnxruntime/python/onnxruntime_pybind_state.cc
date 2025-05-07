@@ -1801,7 +1801,7 @@ void addGlobalMethods(py::module& m) {
 
 #if !defined(ORT_MINIMAL_BUILD)
 /**
- * Calls the user's Python EP selection function and coverts the results to a format that can be used
+ * Calls the user's Python EP selection function and converts the results to a format that can be used
  * by ORT to select OrtEpDevice instances. The user's function is set by calling
  * SessionOptions.set_provider_selection_policy_delegate() on the Python side. The result of this wrapper
  * function is used in core/session/provider_policy_context.cc.
