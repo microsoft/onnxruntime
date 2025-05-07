@@ -405,7 +405,6 @@ namespace Microsoft.ML.OnnxRuntime
 #else
             // TODO: Make this save the pointer, and not copy the whole structure across
             api_ = (OrtApi)OrtGetApi(ORT_API_VERSION);
-
             OrtGetVersionString = (DOrtGetVersionString)Marshal.GetDelegateForFunctionPointer(OrtGetApiBase().GetVersionString, typeof(DOrtGetVersionString));
 #endif
             OrtCreateStatus = (DOrtCreateStatus)Marshal.GetDelegateForFunctionPointer(
@@ -934,7 +933,7 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate void DOrtReleaseStatus(IntPtr /*(OrtStatus*)*/ statusPtr);
         public static DOrtReleaseStatus OrtReleaseStatus;
 
-        #endregion Status API
+#endregion Status API
 
 #region InferenceSession API
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
