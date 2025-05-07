@@ -3,11 +3,11 @@
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/platform/check_intel.h"
 
 #ifdef __linux__
-
+#include <x86intrin.h>
 #include <unistd.h>
-#include "core/platform/posix/hardware_core_enumerator_linux.h"
 #include <sys/syscall.h>
 #if !defined(__NR_getcpu)
 #include <asm-generic/unistd.h>
@@ -65,7 +65,6 @@ void decodeMIDR(uint32_t midr, uint32_t uarch[1]);
 #if defined(CPUIDINFO_ARCH_X86)
 #if defined(_MSC_VER)
 #include <intrin.h>
-#include "core/platform/windows/hardware_core_enumerator.h"
 #elif defined(__GNUC__)
 #include <cpuid.h>
 #endif
@@ -140,9 +139,18 @@ void CPUIDInfo::X86Init() {
         if (check_intel.is_intel) {
           if (data[2] & (1 << 5)) {
             has_tpause_ = true;
+          } 
+          else {
+            has_tpause_ = false;
+          }
+
+          #ifdef __linux__
+          if(__builtin_cpu_supports("waitpkg")) {
+            has_tpause_ = true;
           } else {
             has_tpause_ = false;
           }
+          #endif
         }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);

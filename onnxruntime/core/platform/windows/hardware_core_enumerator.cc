@@ -3,6 +3,7 @@
 
 #include "hardware_core_enumerator.h"
 #include "core/platform/windows/env.h"
+#include "core/platform/check_intel.h"
 #include <memory>
 #include <Windows.h>
 #include <assert.h>
@@ -41,42 +42,6 @@ uint32_t CountSetBits(DWORD input) {
     input &= input - 1;
   }
   return c;
-}
-
-CheckIntelResult CheckIntel() {
-  CheckIntelResult intel_check = {false, false};
-  bool is_intel_specified_platform = false;
-  constexpr unsigned int kVendorID_IntelSpecifiedPlatformIDs[] = {
-      // ExtendedModel, ExtendedFamily, Family Code, and Model Number
-      0xa06a,  // MTL
-      0xc065,  // ARL-H
-      0xb065   // ARL-U
-  };
-  const int kVendorID_Intel[3] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
-  int regs_leaf0[4];
-  int regs_leaf1[4];
-  __cpuid(regs_leaf0, 0);
-  __cpuid(regs_leaf1, 0x1);
-
-  auto is_intel =
-      (kVendorID_Intel[0] == regs_leaf0[1]) &&
-      (kVendorID_Intel[1] == regs_leaf0[2]) &&
-      (kVendorID_Intel[2] == regs_leaf0[3]);
-
-  if (!is_intel) {
-    return intel_check;  // if not an Intel CPU, return early
-  }
-
-  for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
-    if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
-      is_intel_specified_platform = true;
-    }
-  }
-
-  intel_check.is_intel = is_intel;
-  intel_check.is_intel_specified_platform = is_intel_specified_platform;
-
-  return intel_check;
 }
 
 static CoreCounter GetCoreInfo() {
@@ -122,10 +87,10 @@ uint32_t HardwareCoreEnumerator::DefaultIntraOpNumThreads() {
   auto cores = GetCoreInfo();
 #if !defined(_M_ARM64EC) && !defined(_M_ARM64) && !defined(__aarch64__)
 
-  CheckIntelResult check_Intel = CheckIntel();
+  CheckIntelResult check_intel = CheckIntel();
 
-  if (check_Intel.is_intel) {
-    if (check_Intel.is_intel_specified_platform) {
+  if (check_intel.is_intel) {
+    if (check_intel.is_intel_specified_platform) {
       // We want to exclude cores without an LLC
       return cores.LLCCores;
     } else {
