@@ -39,7 +39,7 @@ CheckIntelResult CheckIntel() {
     return intel_check;  // if not an Intel CPU, return early
   }
 
-  for (int intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
+  for (auto intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
     if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
       is_intel_specified_platform = true;
     }
