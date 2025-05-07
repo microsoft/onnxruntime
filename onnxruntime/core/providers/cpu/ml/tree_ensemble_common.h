@@ -298,7 +298,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     // to compress the structure. same_mode_ needs to evaluated again.
     same_mode_ = true;
     auto mode = nodes_[0].mode();
-    for(auto& node: nodes_) {
+    for (auto& node : nodes_) {
       if (node.is_not_leaf()) {
         if (node.mode() != mode) {
           same_mode_ = false;
@@ -310,7 +310,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
 #if defined(_TREE_DEBUG)
   std::cout << "TreeEnsemble:same_mode_=" << (same_mode_ ? 1 : 0) << "\n";
-  for(auto& node: nodes_) {
+  for (auto& node : nodes_) {
     std::cout << node.str() << "\n";
   }
 #endif
