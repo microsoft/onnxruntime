@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -19,45 +20,8 @@ namespace webgpu {
 
 namespace {
 
-std::string ReadZeroPoint(uint32_t nbits, bool has_zero_points) {
-  ORT_ENFORCE(nbits == 8 || nbits == 4, "Only 4/8 bits are supported for webgpu matmulnbits");
-  std::stringstream ss;
-  if (has_zero_points) {
-    ss << "const elements_in_uint32 = " << (32 / nbits) << "u;\n"
-       << "const bits = " << nbits << "u;\n";
-    ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  if (row < r_dim && col < c_dim) {
-    let offset = row * c_dim + col;
-
-    // u32 holds elements_in_uint32 packed nbits.
-    let array_index = offset / elements_in_uint32;
-    let component_index = offset % elements_in_uint32;
-    let packed_value = zero_points[array_index];
-
-    // Extract the nbits component
-    let shift_amount = component_index * bits;
-)";
-    ss << "    let masked_value = (packed_value >> shift_amount) & " << (nbits == 4 ? "0xFu" : "0xFF") << ";\n";
-    ss << R"(
-    return output_element_t(masked_value);
-  }
-  return output_element_t(0);
-}
-)";
-  } else {
-    ss << "const default_zero_point = " << (nbits == 4 ? 8 : 128) << ";\n";
-    ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  // The default zero point is 8.
-  return output_element_t(default_zero_point);
-}
-)";
-  }
-  return ss.str();
-}
-
 constexpr unsigned int kMinMForTileOptimization = 4;
+
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -134,7 +98,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
                                     << "  }\n"
                                     << "  return output_element_t(0);\n"
                                     << "}\n"
-                                    << ReadZeroPoint(nbits_, has_zero_points_);
+                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
 
   shader.AdditionalImplementation() << "\n"
                                     << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
@@ -272,7 +236,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 )ADDNL_FN"
-                                    << ReadZeroPoint(nbits_, has_zero_points_);
+                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
 
   shader.MainFunctionBody() << R"MAIN_FN(
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
