@@ -31,7 +31,7 @@ $BuildDir = (Join-Path $RepoRoot "build\Windows-$Arch")
 $CMakeGenerator = "Visual Studio 17 2022"
 $ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
 $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
-$ValidArchs = "arm64", "arm64ec"
+$ValidArchs = "arm64", "arm64ec", "x86_64"
 
 function Get-QairtSdkFilePath() {
     "$BuildDir\$Config\qairt-sdk-path.txt"
@@ -75,7 +75,19 @@ if (-Not ($ValidArchs -contains $Arch)) {
     throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
 }
 
+$ArchArg = $null
+if ($Arch -eq "x86_64")
+{
+    $HostArch = [System.Runtime.InteropServices.RuntimeInformation,mscorlib]::OSArchitecture
+    if ($HostArch -ne "x64") {
+        throw "Cross-compilation to $Arch is not supported on $HostArch host."
+    }
+} else {
+    $ArchArg = "--$Arch"
+}
+
 $Actions = @()
+$QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
 
 if ($Mode -eq "build")
 {
@@ -96,6 +108,10 @@ if ($Mode -eq "build")
 }
 elseif ($Mode -eq "test") {
     $Actions += "--test"
+    if ($Arch -ne "arm64") {
+        Write-Host "Disabling QNN tests on $Arch."
+        $QnnArgs = @()
+    }
 }
 else {
     throw "Unknown build mode $Mode."
@@ -104,12 +120,12 @@ else {
 Push-Location $RepoRoot
 .\build.bat `
     $Actions `
-    "--$Arch" `
+    $ArchArg `
     --config "$Config" `
     --build_shared_lib `
     --parallel `
     --cmake_generator "$CmakeGenerator" `
-    --use_qnn --qnn_home "$QairtSdkRoot" `
+    $QnnArgs `
     --build_dir "$BuildDir" `
     --path_to_protoc "$ProtocPath"
 Pop-Location

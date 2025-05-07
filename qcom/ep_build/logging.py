@@ -5,7 +5,7 @@ import logging
 from collections.abc import Mapping
 from typing import ClassVar
 
-from .util import Colors, on_ci
+from .util import Colors, is_host_in_ci
 
 _INITIALIZED = False
 
@@ -31,7 +31,7 @@ def initialize_logging() -> None:
         return
     _INITIALIZED = True
 
-    if on_ci():
+    if is_host_in_ci():
         ci_log_format = "[%(asctime)s] [bnt] [%(levelname)s] %(message)s"
         logging.basicConfig(level=logging.DEBUG, format=ci_log_format, force=True)
     else:

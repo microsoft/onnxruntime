@@ -27,7 +27,7 @@ from ep_build.task import (
 )
 from ep_build.tasks.build import BuildEpWindowsTask, InstallDepsWindowsTask
 from ep_build.tasks.python import CreateVenvTask, RunLinterTask
-from ep_build.util import DEFAULT_PYTHON, REPO_ROOT
+from ep_build.util import DEFAULT_PYTHON, REPO_ROOT, is_host_arm64
 
 QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
 QNN_SDK_ROOT_ENV_VAR = "QNN_SDK_ROOT"
@@ -113,7 +113,7 @@ class TaskLibrary:
         return f"digraph {{\n{elements_str}\n}}"
 
     @public_task("Build ONNX Runtime")
-    @depends(["build_ort_windows_arm64"])
+    @depends(["build_ort_windows_host"])
     def build(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
@@ -124,6 +124,26 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on ARM64",
                 "arm64",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
+
+    @task
+    @depends([
+        (is_host_arm64(), "build_ort_windows_arm64"),
+        (not is_host_arm64(), "build_ort_windows_x86_64"),
+    ])
+    def build_ort_windows_host(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
+    @depends(["install_deps_windows"])
+    def build_ort_windows_x86_64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Building ONNX Runtime for Windows on x86_64",
+                "x86_64",
                 self.__qairt_sdk_root,
                 "build",
             )
@@ -156,8 +176,16 @@ class TaskLibrary:
         return plan.add_step(RunLinterTask(self.__venv_path))
 
     @public_task("Test ONNX Runtime")
-    @depends(["test_ort_windows_arm64"])
+    @depends(["test_ort_windows"])
     def test(self, plan: Plan) -> str:
+        return plan.add_step(NoOpTask())
+
+    @task
+    @depends([
+        (is_host_arm64(), "test_ort_windows_arm64"),
+        (not is_host_arm64(), "test_ort_windows_x86_64"),
+    ])
+    def test_ort_windows(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
     @task
@@ -167,6 +195,18 @@ class TaskLibrary:
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on ARM64",
                 "arm64",
+                self.__qairt_sdk_root,
+                "test",
+            )
+        )
+
+    @task
+    @depends(["build_ort_windows_x86_64"])
+    def test_ort_windows_x86_64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Testing ONNX Runtime for Windows on x86_64",
+                "x86_64",
                 self.__qairt_sdk_root,
                 "test",
             )

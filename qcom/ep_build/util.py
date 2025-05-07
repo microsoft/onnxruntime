@@ -13,14 +13,14 @@ from pathlib import Path
 
 def default_parallelism() -> int:
     """A conservative number of processes across which to spread pytests desiring parallelism."""
-    from .github import on_github  # avoid circular import
+    from .github import is_host_github_runner  # avoid circular import
 
     cpu_count = os.cpu_count()
     if not cpu_count:
         return 1
 
     # In CI, saturate the machine
-    if on_github():
+    if is_host_github_runner():
         return cpu_count
 
     # When running locally, leave a little CPU for other uses
@@ -50,36 +50,36 @@ def get_env_int(key: str, default: int | None = None) -> int | None:
 
 def have_root() -> bool:
     # mypy/pyright are generally unhappy here because these calls aren't always available.
-    if on_windows():
+    if is_host_windows():
         import ctypes
 
         return ctypes.windll.shell32.IsUserAnAdmin() != 0  # type: ignore[attr-defined]
     return os.geteuid() == 0  # type:ignore[attr-defined]
 
 
-def on_arm64() -> bool:
+def is_host_arm64() -> bool:
     return platform.processor().startswith("ARMv8")
 
 
-def on_ci():
-    from .github import on_github  # avoid circular import
+def is_host_in_ci():
+    from .github import is_host_github_runner  # avoid circular import
 
-    return on_github()
-
-
-def on_user_linux():
-    return on_linux() and not on_ci()
+    return is_host_github_runner()
 
 
-def on_linux():
+def is_host_user_linux():
+    return is_host_linux() and not is_host_in_ci()
+
+
+def is_host_linux():
     return platform.uname().system == "Linux"
 
 
-def on_mac():
+def is_host_mac():
     return platform.uname().system == "Darwin"
 
 
-def on_windows():
+def is_host_windows():
     return platform.uname().system == "Windows"
 
 
@@ -186,28 +186,28 @@ def timestamp_brief() -> str:
 
 
 class Colors:
-    GREEN = "\033[0;32m" if not on_windows() else ""
-    GREY = "\033[0;37m" if not on_windows() else ""
-    RED = "\033[0;31m" if not on_windows() else ""
-    RED_BOLD = "\033[0;1;31m" if not on_windows() else ""
-    RED_REVERSED_VIDEO = "\033[0;7;31m" if not on_windows() else ""
-    YELLOW = "\033[0;33m" if not on_windows() else ""
-    OFF = "\033[0m" if not on_windows() else ""
+    GREEN = "\033[0;32m" if not is_host_windows() else ""
+    GREY = "\033[0;37m" if not is_host_windows() else ""
+    RED = "\033[0;31m" if not is_host_windows() else ""
+    RED_BOLD = "\033[0;1;31m" if not is_host_windows() else ""
+    RED_REVERSED_VIDEO = "\033[0;7;31m" if not is_host_windows() else ""
+    YELLOW = "\033[0;33m" if not is_host_windows() else ""
+    OFF = "\033[0m" if not is_host_windows() else ""
 
 
-if on_windows():
+if is_host_windows():
     BASH_EXECUTABLE = str(Path(os.environ["ProgramW6432"], "Git/bin/bash.exe"))  # noqa: SIM112
     assert os.path.isfile(BASH_EXECUTABLE), f"Bash executable not found in {BASH_EXECUTABLE}."
 else:
     BASH_EXECUTABLE = run_and_get_output(["which", "bash"], quiet=True)
 
 
-DEFAULT_PYTHON = Path("python310.exe") if on_windows() else Path("python3.10")
+DEFAULT_PYTHON = Path("python310.exe") if is_host_windows() else Path("python3.10")
 """Different python distributions have different executable names. Use this for a reasonable default."""
 
 
 REPO_ROOT = Path(run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True))
 
 
-VENV_ACTIVATE_RELPATH = "Scripts/activate" if on_windows() else "bin/activate"
+VENV_ACTIVATE_RELPATH = "Scripts/activate" if is_host_windows() else "bin/activate"
 """Where to find the bash script to source to activate a virtual environment."""
