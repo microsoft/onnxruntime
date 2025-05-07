@@ -1448,7 +1448,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="bytes">bytes</param>
         /// <param name="size">size in bytes</param>
         /// <param name="allocator">optional device allocator</param>
-        /// <param name="lora_adapter">resuling LoraAdapter instance</param>
+        /// <param name="lora_adapter">resulting LoraAdapter instance</param>
         /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapterFromArray(
