@@ -5,6 +5,7 @@
 #include "test/providers/provider_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "gtest/gtest.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/scoped_env_vars.h"
 #include "test/common/trt_op_test_utils.h"
 
@@ -328,6 +329,49 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     shape_overwrites["Y"] = {1, 5, 5};
     auto io_binding = generate_io_binding(session_object, shape_overwrites);
     session_object.Run(run_options, io_binding);
+  }
+}
+
+static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
+  // Access the underlying InferenceSession.
+  const OrtSession* ort_session = session;
+  const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
+  bool has_ep = false;
+
+  for (const auto& provider : s->GetRegisteredProviderTypes()) {
+    if (provider == ep_name) {
+      has_ep = true;
+      break;
+    }
+  }
+  return has_ep;
+}
+
+// Tests autoEP feature to automatically select an EP that supports the GPU.
+// Currently only works on Windows.
+TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
+  PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
+  PathString model_name_ctx = ORT_TSTR("nv_execution_provider_data_dyn_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
+  clearFileIfExists(model_name_ctx);
+  std::string graph_name = "test";
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  {
+    env.RegisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider, ORT_TSTR("onnxruntime_providers_nv_tensorrt_rtx.dll"));
+
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
+    Ort::Session session_object(env, model_name_ctx.c_str(), so);
+    EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
+
+    env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
   }
 }
 
