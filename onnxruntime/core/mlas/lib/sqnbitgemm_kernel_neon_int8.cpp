@@ -26,7 +26,7 @@ Abstract:
 #include "sqnbitgemm_q8_block.h"
 
 #ifdef USE_KLEIDIAI
-#include "kai/kai_common.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai_ukernel_interface.h"
 #endif
 
@@ -147,10 +147,22 @@ QuantizeA_Packed_CompInt8(
     std::byte* QuantA
 )
 {
-    const KleidiAIQ4BitGemmStrategy& strategy =
-        CountM == 1? GetKleidiAIGemvStrategy() : GetKleidiAIGemmStrategy();
+    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
+        CountM == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
 
-    strategy.RunLHSPack(CountM, CountK, A, QuantA);
+    const size_t mr = ukernel.get_mr();
+    const size_t kr = ukernel.get_kr();
+    const size_t sr = ukernel.get_sr();
+
+    const size_t src_stride = CountK * sizeof(float);
+    const size_t lhs_offset = kai_get_lhs_offset_lhs_quant_pack_qai8dxp_f32(0, src_stride);
+    const size_t lhs_packed_offset = kai_get_lhs_packed_offset_lhs_quant_pack_qai8dxp_f32(
+                            0, CountK, mr, kr, sr);
+
+    const float* src_ptr = reinterpret_cast<const float*>(reinterpret_cast<const std::byte*>(A) + lhs_offset);
+    void* dst_ptr = QuantA + lhs_packed_offset;
+
+    kai_run_lhs_quant_pack_qai8dxp_f32(CountM, CountK, mr, kr, sr, 0, src_ptr, src_stride, dst_ptr);
 }
 #endif
 
@@ -1443,11 +1455,22 @@ SQ4BitGemmKernel_Packed_CompInt8(
     const float* Bias
 )
 {
-    const KleidiAIQ4BitGemmStrategy& strategy =
-        RangeCountM == 1 && RangeStartM == 0? GetKleidiAIGemvStrategy() : GetKleidiAIGemmStrategy();
+    const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel ukernel =
+        RangeCountM == 1 && RangeStartM == 0? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
 
-    strategy.RunMatMul(BlkLen, QuantA, PackedQuantBData, C, RangeStartM, RangeCountM,
-        RangeStartN, RangeCountN, CountK, ldc);
+    const size_t dst_stride = ldc * sizeof(float);
+
+    const size_t lhs_packed_offset = ukernel.get_lhs_packed_offset(RangeStartM, CountK);
+    const size_t rhs_packed_offset = ukernel.get_rhs_packed_offset(RangeStartN, CountK, BlkLen);
+    const size_t dst_offset = ukernel.get_dst_offset(RangeStartM, RangeStartN, dst_stride);
+
+    const void* lhs_ptr = QuantA + lhs_packed_offset;
+    const void* rhs_ptr = PackedQuantBData + rhs_packed_offset;
+    float* dst_ptr = reinterpret_cast<float*>(reinterpret_cast<std::byte*>(C) + dst_offset);
+
+    ukernel.run_matmul(
+        RangeCountM, RangeCountN, CountK, BlkLen, lhs_ptr, rhs_ptr, dst_ptr, dst_stride, sizeof(float),
+        -std::numeric_limits<float>::max(), std::numeric_limits<float>::max());
 
     if (Bias != nullptr) {
         for (size_t m = RangeStartM; m < RangeStartM + RangeCountM; m++) {

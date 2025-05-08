@@ -18,10 +18,6 @@ Abstract:
 #include "qnbitgemm.h"
 #include "sqnbitgemm_q8_block.h"
 
-#ifdef USE_KLEIDIAI
-#include "kai_ukernel_interface.h"
-#endif
-
 #include <cassert>
 
 namespace
@@ -960,16 +956,9 @@ MlasQNBitGemmBatch(
         const size_t BlockedM = MlasDivRoundup(M, StrideM);
         const size_t max_nc = MlasDivRoundup(N * BlockedM, ThreadsPerGemm);
         if (max_nc < nc) {
-            size_t n_step = MLAS_QGEMM_STRIDEN_THREAD_ALIGN;
-#ifdef USE_KLEIDIAI
-            if (ComputeType == SQNBIT_CompInt8 &&
-                GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8 &&
-                GetMlasPlatform().QNBitGemmDispatch->UsePacked_CompInt8(K, BlkLen, has_zp_input)) {
-                n_step = GetKleidiAIGemmStrategy().GetNStep();
-            }
-#endif
             nc = std::min(
-                nc, MlasDivRoundup(max_nc, n_step) * n_step
+                nc, MlasDivRoundup(max_nc, MLAS_QGEMM_STRIDEN_THREAD_ALIGN) *
+                        MLAS_QGEMM_STRIDEN_THREAD_ALIGN
             );
         }
     }

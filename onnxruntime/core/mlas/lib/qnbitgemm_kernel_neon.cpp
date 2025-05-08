@@ -27,6 +27,8 @@ Abstract:
 
 #ifdef USE_KLEIDIAI
 #include "kai/kai_common.h"
+#include "kai/ukernels/matmul/pack/kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0.h"
+#include "kai/ukernels/matmul/pack/kai_lhs_quant_pack_qai8dxp_f32.h"
 #include "kai_ukernel_interface.h"
 #endif
 
@@ -56,7 +58,11 @@ Q4BitGemmPackQuantBDataSize(
 
 #ifdef USE_KLEIDIAI
     if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-        return GetKleidiAIGemmStrategy().GetRHSPackedSize(N, K, BlkLen);
+        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+        const size_t nr = ukernel.get_nr();
+        const size_t kr = ukernel.get_kr();
+        const size_t sr = ukernel.get_sr();
+        return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
     } else
 #endif
     {
@@ -161,8 +167,30 @@ SQ4BitGemmPackQuantBDataAndBlkSum(
 
 #ifdef USE_KLEIDIAI
     if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-        GetKleidiAIGemmStrategy().RunRHSPack(N, K, BlkLen, QuantBDataBegin,
-            QuantBScaleBegin, PackedQuantB.PackedQuantBData);
+        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+        std::byte* PackedQuantBDataBegin = PackedQuantB.PackedQuantBData;
+
+        const size_t nr = ukernel.get_nr();
+        const size_t kr = ukernel.get_kr();
+        const size_t sr = ukernel.get_sr();
+
+        kai_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0_params params;
+        params.lhs_zero_point = 1;
+        params.rhs_zero_point = 8;
+        params.scale_dt = kai_dt_bf16;
+
+        const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+        const size_t scales_len = N * BlockCountK;
+        std::vector<uint16_t> scales(scales_len);
+        for (size_t i = 0; i < scales_len; i++) {
+            const uint32_t* i32 = reinterpret_cast<const uint32_t*>(&QuantBScaleBegin[i]);
+            scales[i] = *i32 >> 16;
+        }
+
+        kai_run_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(1, N, K, nr, kr, sr, BlkLen,
+                reinterpret_cast<const uint8_t*>(QuantBDataBegin), BlockCountK * BlkLen / 2,
+                nullptr, scales.data(), BlockCountK * sizeof(uint16_t),
+                PackedQuantBDataBegin, 0, &params);
     } else
 #endif
     {
@@ -195,10 +223,13 @@ Q4BitGemmPerGemmWorkspaceSize(
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
             if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-                const KleidiAIQ4BitGemmStrategy& strategy =
-                    M == 1? GetKleidiAIGemvStrategy() : GetKleidiAIGemmStrategy();
+                const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
+                    M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
 
-                return strategy.GetLHSPackedSize(M, K);
+                const size_t mr = ukernel.get_mr();
+                const size_t kr = ukernel.get_kr();
+                const size_t sr = ukernel.get_sr();
+                return kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(M, K, mr, kr, sr);
             } else
 #endif
             {
