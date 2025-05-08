@@ -2216,7 +2216,7 @@ TEST(CApiTest, io_binding_qnn_htp_shared) {
     GTEST_SKIP() << "HTP shared memory allocator is unavailable.";
   }
 
-  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::MemoryInfo info_qnn_htp_shared("QnnHtpShared", OrtAllocatorType::OrtDeviceAllocator, 0, OrtMemTypeDefault);
 
   Ort::Allocator qnn_htp_shared_allocator(session, info_qnn_htp_shared);
   auto allocator_info = qnn_htp_shared_allocator.GetInfo();
