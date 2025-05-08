@@ -351,9 +351,6 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
 // Currently only works on Windows.
 TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
   PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
-  PathString model_name_ctx = ORT_TSTR("nv_execution_provider_data_dyn_test_ctx.onnx");
-  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
-  clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
 
@@ -368,7 +365,7 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
 
     Ort::SessionOptions so;
     so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
-    Ort::Session session_object(env, model_name_ctx.c_str(), so);
+    Ort::Session session_object(env, model_name.c_str(), so);
     EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
 
     env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
