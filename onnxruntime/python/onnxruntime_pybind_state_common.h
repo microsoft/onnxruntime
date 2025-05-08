@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
 #include "core/common/optional.h"
@@ -229,7 +231,20 @@ extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
-using PySessionOptions = OrtSessionOptions;
+#if !defined(ORT_MINIMAL_BUILD)
+using PyEpSelectionDelegate = std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+                                                                            const std::unordered_map<std::string, std::string>& model_metadata,
+                                                                            const std::unordered_map<std::string, std::string>& runtime_metadata,
+                                                                            size_t max_selections)>;
+#endif
+
+// Thin wrapper over internal C OrtSessionOptions to store additional state.
+struct PySessionOptions : public OrtSessionOptions {
+#if !defined(ORT_MINIMAL_BUILD)
+  // Callback function from Python application that allows the user to specify custom EP selection logic.
+  PyEpSelectionDelegate py_ep_selection_delegate;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
