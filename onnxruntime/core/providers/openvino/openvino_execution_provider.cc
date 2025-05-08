@@ -252,13 +252,13 @@ const InlinedVector<const Node*> OpenVINOExecutionProvider::GetEpContextNodes() 
 }
 
 OrtDevice OpenVINOExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
-#ifdef USE_OVEP_NPU_MEMORY
-  // Default device 0 is fine? Otherwise, we need to query it some place
-  return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::OPENVINO_NPU, 0);
-#else
+  // We refrain using this for intermediate values for now until there is clarity.
+  // #ifdef USE_OVEP_NPU_MEMORY
+  //  // Default device 0 is fine? Otherwise, we need to query it some place
+  //  return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::OPENVINO_NPU, 0);
+  // #else
   // Default CPU allocator
   return default_device_;
-#endif
 }
 
 }  // namespace openvino_ep
