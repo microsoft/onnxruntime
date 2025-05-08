@@ -310,12 +310,12 @@ Status LSTMOpBuilder::AddUnidirectionLSTM(QnnModelWrapper& qnn_model_wrapper,
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(onnx_inputs[i], input_tensor_infos[i]));
     }
   }
-  std::vector<TensorInfo> output_tensor_infos(onnx_outputs.size());
-  for (size_t i = 0; i < onnx_outputs.size(); i++) {
-    if (onnx_outputs[i].node_arg.Exists()) {
+  // becuase QNN LSTM three outputs are mandatory, we should provide them tensor info
+  std::vector<TensorInfo> output_tensor_infos(3);
+  for (size_t i = 0; i < 3; i++) {
+    if (onnx_outputs.size() > i && onnx_outputs[i].node_arg.Exists()) {
       ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(onnx_outputs[i], output_tensor_infos[i]));
     } else {
-      // becuase QNN LSTM three outputs are mandatory, we should provide them default dtypes
       output_tensor_infos[i].qnn_data_type = input_tensor_infos[0].qnn_data_type;
     }
   }
@@ -627,6 +627,7 @@ Status LSTMOpBuilder::AddUnidirectionLSTM(QnnModelWrapper& qnn_model_wrapper,
       }
     }
   }
+
   // add QNN LSTM
   // since HTP doesn't not support 3d yet, add #sequence_length LSTM node
   std::vector<std::string> qnn_all_hidden_state_names;
