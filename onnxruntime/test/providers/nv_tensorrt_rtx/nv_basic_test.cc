@@ -367,9 +367,9 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
     so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_GPU);
     Ort::Session session_object(env, model_name.c_str(), so);
     EXPECT_TRUE(SessionHasEp(session_object, kNvTensorRTRTXExecutionProvider));
-
-    env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
   }
+
+  env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
 }
 
 }  // namespace test
