@@ -5255,9 +5255,8 @@ struct OrtApi {
   /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
    * Returns the total number of bytes used to store the tensor data. For numeric tensors,
-   * this is sizeof(element_type) * total_element_count. For string tensors, this is the
-   * sizeof(std::string) * total_element_count. The latter does not take into account individual
-   * string buffers.
+   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors as
+   * well as tensors that contain strings will cause an error to be returned.
    *
    * \param[in] ort_value OrtValue instance containing a tensor
    * \param[out] size The total size of the tensor data in bytes

@@ -1742,12 +1742,11 @@ struct ConstValueImpl : Base<T> {
   /// Returns the total size of the tensor data in bytes.
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
-  /// <exception>Throws an exception if the OrtValue does not contain a tensor</exception>
+  /// <exception>Throws an exception if the OrtValue does not contain a tensor or
+  /// a tensor that contains strings</exception>
   /// <remarks>
   /// For numeric tensors, this is sizeof(element_type) * total_element_count.
   ///
-  /// This API does not take into account the size of actual string content for string tensors,
-  /// but reports sizeof(std::string) * total_element_count instead.
   /// </remarks>
   size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
 

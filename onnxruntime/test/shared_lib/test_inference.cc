@@ -456,17 +456,6 @@ TEST(CApiTest, TestGetTensorSizeInBytes) {
   TestGetTensorSizeInBytes<int64_t, 3>(cpu_meminfo.GetConst());
   TestGetTensorSizeInBytes<int64_t, 4>(cpu_meminfo.GetConst());
   TestGetTensorSizeInBytes<int64_t, 5>(cpu_meminfo.GetConst());
-
-  // Create an Ort::Value instance that contains two empty strings
-  // and verify that GetTensorSizeInBytes() returns 2 * sizeof(std::string) bytes.
-  auto allocator = std::make_unique<MockedOrtAllocator>();
-  const int64_t shape[] = {2};  // Tensor with 2 string elements
-  Ort::Value string_tensor = Ort::Value::CreateTensor(allocator.get(), shape, std::size(shape), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
-  // Get the tensor size in bytes
-  size_t tensor_size_bytes = string_tensor.GetTensorSizeInBytes();
-
-  // Verify it equals 2 * sizeof(std::string)
-  ASSERT_EQ(tensor_size_bytes, 2 * sizeof(std::string));
 }
 
 TEST(CApiTest, dim_param) {
