@@ -107,7 +107,7 @@ WEBGPU_ELEMENTWISE_IMPL(Log, "log(a)")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Log, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Log, 13, WebGpuSupportedFloatTypes())
 
-WEBGPU_ELEMENTWISE_IMPL(Sigmoid, "select(1.0 / (1.0 + exp(-a)), 1.0 - 1.0 / (1.0 + exp(abs(a))), a < (a - a))")
+WEBGPU_ELEMENTWISE_IMPL(Sigmoid, "select(1.0 / (1.0 + exp(-a)), 1.0 - 1.0 / (1.0 + exp(a)), a < (a - a))")
 WEBGPU_ELEMENTWISE_VERSIONED_KERNEL(Sigmoid, 6, 12, WebGpuSupportedFloatTypes())
 WEBGPU_ELEMENTWISE_KERNEL(Sigmoid, 13, WebGpuSupportedFloatTypes())
 
