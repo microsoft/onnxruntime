@@ -53,7 +53,7 @@ bool QnnModelWrapper::IsQnnTensorWrapperExist(const std::string& name) const {
   return model_tensors_map_.find(name) != model_tensors_map_.end();
 }
 
-bool QnnModelWrapper::IsQnnParamExist(const std::string& param_tensor_name) const {
+bool QnnModelWrapper::QnnParamExists(const std::string& param_tensor_name) const {
   return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
@@ -128,7 +128,7 @@ bool QnnModelWrapper::AddParamWrapper(QnnParamWrapper&& param_wrapper) {
     return false;
   }
 
-  if (IsQnnParamExist(param_tensor_name) == true) {
+  if (QnnParamExists(param_tensor_name) == true) {
     return true;
   }
 
