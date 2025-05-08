@@ -387,8 +387,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const bool has_zero_points = zero_points != nullptr;
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
   if (M >= kMinMForTileOptimization &&
-      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, context, y);
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, nbits, zero_blocks_per_col, context, y);
   }
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
