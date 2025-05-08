@@ -59,6 +59,14 @@
           list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:webgpu_dawn.dll")
         endif()
 
+        if (onnxruntime_USE_VCPKG)
+          set_target_properties(
+            dawn::webgpu_dawn PROPERTIES
+                IMPORTED_IMPLIB "webgpu_dawn.lib"
+                IMPORTED_LOCATION "webgpu_dawn.dll"
+          )
+        endif()
+
         list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:dawn::webgpu_dawn>")
       endif()
     else()
@@ -70,11 +78,19 @@
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
       # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
-      add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
-      add_dependencies(onnxruntime_providers_webgpu dxcompiler)
+      if (onnxruntime_USE_VCPKG)
+        find_package(directx-dxc CONFIG REQUIRED)
+        target_link_libraries(onnxruntime_providers_webgpu Microsoft::DirectXShaderCompiler)
+        target_link_libraries(onnxruntime_providers_webgpu Microsoft::DXIL)
+        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:Microsoft::DXIL>/dxil.dll")
+        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:Microsoft::DirectXShaderCompiler>/dxcompiler.dll")
+      else()
+        add_dependencies(onnxruntime_providers_webgpu copy_dxil_dll)
+        add_dependencies(onnxruntime_providers_webgpu dxcompiler)
 
-      list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
-      list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
+        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxil.dll")
+        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll")
+      endif()
     endif()
 
     if (onnxruntime_providers_webgpu_dll_deps)
