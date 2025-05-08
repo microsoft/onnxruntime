@@ -1275,17 +1275,62 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider,
                                                                      ORT_TSTR("onnxruntime_providers_qnn.dll")));
 
-  Ort::SessionOptions so;
-  so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
+  // Put Ort::Session in an internal scope because it must be destroyed before unregistering the QNN library.
+  {
+    Ort::SessionOptions so;
+    so.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
-  Ort::Session session(*ort_env, ort_model_path, so);
-  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+    Ort::Session session(*ort_env, ort_model_path, so);
+    EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+  }
 
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
 }
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 
+TEST_F(QnnHTPBackendTests, Session_GetEpGraphPartitioningInfo) {
+  Ort::SessionOptions session_options;
+  session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "1");
+  session_options.AppendExecutionProvider(kQnnExecutionProvider, ProviderOptions{{"backend_type", "htp"}});
+
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  Ort::Session session(*ort_env, ort_model_path, session_options);
+  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+
+  const OrtEpAssignedSubgraph* const* ep_subgraphs = nullptr;
+  size_t num_ep_subgraphs = 0;
+  OrtStatus* status = Ort::GetApi().Session_GetEpGraphPartitioningInfo(session, &ep_subgraphs, &num_ep_subgraphs);
+  ASSERT_TRUE(status == nullptr);
+
+  for (size_t i = 0; i < num_ep_subgraphs; i++) {
+    const OrtEpAssignedSubgraph* subgraph = ep_subgraphs[i];
+    std::string ep_name = Ort::GetApi().EpAssignedSubgraph_EpName(subgraph);
+    EXPECT_TRUE(ep_name == kQnnExecutionProvider || ep_name == kCpuExecutionProvider);
+    std::cout << ep_name << std::endl;
+
+    const char* const* op_types = nullptr;
+    size_t const* counts = nullptr;
+    size_t num_op_types = 0;
+    status = Ort::GetApi().EpAssignedSubgraph_GetOpTypeCounts(subgraph, &op_types, &counts, &num_op_types);
+    ASSERT_TRUE(status == nullptr);
+    for (size_t j = 0; j < num_op_types; j++) {
+      std::cout << "\t" << op_types[j] << ": " << counts[j] << std::endl;
+    }
+    std::cout << std::endl;
+
+    const OrtEpAssignedNode* const* ep_nodes = nullptr;
+    size_t num_nodes = 0;
+    status = Ort::GetApi().EpAssignedSubgraph_GetNodes(subgraph, &ep_nodes, &num_nodes);
+    ASSERT_TRUE(status == nullptr);
+    for (size_t k = 0; k < num_nodes; k++) {
+      const OrtEpAssignedNode* node = ep_nodes[k];
+      std::string node_name = Ort::GetApi().EpAssignedNode_Name(node);
+      std::string op_type = Ort::GetApi().EpAssignedNode_OpType(node);
+      std::cout << "\t" << op_type << ": " << node_name << std::endl;
+    }
+  }
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 #endif  // !defined(ORT_MINIMAL_BUILD)
 

@@ -25,6 +25,7 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
+#include "core/framework/partition_info.h"
 #include "core/framework/session_options.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
@@ -605,6 +606,9 @@ class InferenceSession {
 
   const Model& GetModel() const;
   const Environment& GetEnvironment() const;
+  const InlinedVector<const EpAssignedSubgraph*>& GetEpGraphPartitioningInfo() const {
+    return this->graph_partitioning_info_;
+  }
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -984,6 +988,10 @@ class InferenceSession {
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
+
+  // Enable partition info collection
+  InlinedVector<std::unique_ptr<EpAssignedSubgraph>> graph_partitioning_info_storage_;
+  InlinedVector<const EpAssignedSubgraph*> graph_partitioning_info_;
 };
 
 struct SessionIOBinding {

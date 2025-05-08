@@ -17,6 +17,11 @@ class Model;
 struct ConfigOptions;
 struct EpContextModelGenerationOptions;
 
+// OnPartitionAssignmentFunction is called by GraphPartitioner when a subgraph is assigned to
+// an execution provider. Can be used to collection partitioning information.
+using OnPartitionAssignmentFunction = std::function<void(const Graph& graph,
+                                                         const ComputeCapability& assigned_subgraph,
+                                                         const std::string& assigned_ep_type)>;
 class GraphPartitioner {
  public:
   enum class Mode {
@@ -51,7 +56,8 @@ class GraphPartitioner {
                    const logging::Logger& logger,
                    Mode mode = Mode::kNormal,
                    const EpContextModelGenerationOptions& ep_context_gen_options = {},
-                   const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+                   const layout_transformation::DebugGraphFn& debug_graph_fn = {},
+                   const OnPartitionAssignmentFunction& on_partition_assign_fn = {}) const;
 
   bool IsLoadCancellationFlagSet() const {
     return check_load_cancellation_fn_ && check_load_cancellation_fn_();

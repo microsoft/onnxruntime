@@ -1276,6 +1276,57 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+static void RecordPartitionInfo(InlinedVector<std::unique_ptr<EpAssignedSubgraph>>& partitioning_info,
+                                bool enable_per_node_info,
+                                const Graph& graph,
+                                const ComputeCapability& capability,
+                                const std::string& ep_name) {
+  auto assigned_subgraph = std::make_unique<EpAssignedSubgraph>();
+  assigned_subgraph->ep_name = ep_name;
+  // assigned_subgraph->ep_device = capability.ep_device;
+
+  InlinedVector<std::string>& op_types_storage = assigned_subgraph->op_types_storage;
+  InlinedVector<size_t>& op_type_counts = assigned_subgraph->op_type_counts;
+  gsl::span<NodeIndex> node_indices = capability.sub_graph->nodes;
+
+  for (NodeIndex node_index : node_indices) {
+    const Node* node = graph.GetNode(node_index);
+    if (node != nullptr) {
+      const std::string& op_type = node->OpType();
+      const size_t num_op_types = op_types_storage.size();
+
+      // Find index of the op_type.
+      size_t index = num_op_types;
+      for (size_t i = 0; i < num_op_types; ++i) {
+        if (op_types_storage[i] == op_type) {
+          index = i;
+          break;
+        }
+      }
+
+      // Increment count of op_type
+      if (index == num_op_types) {
+        op_types_storage.push_back(op_type);
+        op_type_counts.push_back(1);
+      } else {
+        op_type_counts[index] += 1;
+      }
+
+      // Add per-node info
+      if (enable_per_node_info) {
+        auto assigned_node = std::make_unique<EpAssignedNode>();
+        assigned_node->name = node->Name();
+        assigned_node->op_type = op_type;
+
+        assigned_subgraph->nodes.push_back(assigned_node.get());
+        assigned_subgraph->nodes_storage.push_back(std::move(assigned_node));
+      }
+    }
+  }
+
+  partitioning_info.push_back(std::move(assigned_subgraph));
+}
+
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
   // 1. Ensure we inline as many functions as possible. We refer to it as Ahead Of Time (AOT) function inlining.
@@ -1391,10 +1442,27 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     }
   }
 
+  OnPartitionAssignmentFunction on_partition_assign_fn;
+  bool record_ep_graph_partitioning =
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "0") == "1";
+  if (record_ep_graph_partitioning) {
+    on_partition_assign_fn = [this](const Graph& graph, const ComputeCapability& assigned_subgraph,
+                                    const std::string& assigned_ep_type) {
+      RecordPartitionInfo(this->graph_partitioning_info_storage_, true, graph, assigned_subgraph, assigned_ep_type);
+    };
+  }
+
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_,
-                                                       mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
+                                                       mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn,
+                                                       on_partition_assign_fn));
+  if (record_ep_graph_partitioning) {
+    for (std::unique_ptr<EpAssignedSubgraph>& ep_subgraph : graph_partitioning_info_storage_) {
+      ep_subgraph->SyncOpTypes();
+      graph_partitioning_info_.push_back(ep_subgraph.get());
+    }
+  }
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.

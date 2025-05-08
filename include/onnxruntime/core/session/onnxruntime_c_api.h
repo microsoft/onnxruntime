@@ -316,6 +316,8 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(EpAssignedSubgraph);
+ORT_RUNTIME_CLASS(EpAssignedNode);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -5251,6 +5253,79 @@ struct OrtApi {
    * \since Version 1.22.
    */
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+
+  /** \brief Get the list of OrtEpAssignedSubgraph instances for the session.
+   *
+   * Each OrtEpAssignedSubgraph instance contains details of the subgraph/nodes assigned to an execution provider,
+   * including the execution provider's name, the OrtEpDevice denoting the hardware configuration used for execution,
+   * and the name and operator type for every node.
+   *
+   * \param[in] session The OrtSession instance to query.
+   * \param[out] ep_subgraphs The OrtEpAssignedSubgraph instances denoting the EP graph partitioning.
+   * \param[out] num_ep_subgraphs The number of OrtEpAssignedSubgraph instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+                  _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                  _Out_ size_t* num_ep_subgraphs);
+
+  /** \brief Get the name of the execution provider to which the subgraph was assigned.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \return The execution provider name.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* EpAssignedSubgraph_EpName)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
+
+  /** \brief Get the number of nodes assigned to an execution provider by operator type.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \param[out] op_types Output parameter set to the list of unique node operator types.
+   * \param[out] op_type_counts Output parameter set to the list of operator type counts.
+   * \param[out] num_op_types The number of unique operator types.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetOpTypeCounts, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const char* const** op_types, _Outptr_ size_t const** op_type_counts,
+                  _Out_ size_t* num_op_types);
+
+  /** \brief Get the list of nodes assigned to an execution provider.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \param[out] ep_nodes Output parameter set to the list of OrtEpAssignedNode instances.
+   * \param[out] num_ep_nodes Output parameter set to the number of OrtEpAssignedNode instances returned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                  _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+
+  /** \brief Get the name of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance to query.
+   * \return The node's name.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* EpAssignedNode_Name)(_In_ const OrtEpAssignedNode* ep_node);
+
+  /** \brief Get the operator type of the node assigned to an execution provider.
+   *
+   * \param[in] ep_node The OrtEpAssignedNode instance to query.
+   * \return The node's operator type.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* EpAssignedNode_OpType)(_In_ const OrtEpAssignedNode* ep_node);
 };
 
 /*

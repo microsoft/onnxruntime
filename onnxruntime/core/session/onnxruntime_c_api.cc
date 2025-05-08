@@ -864,6 +864,84 @@ ORT_API_STATUS_IMPL(OrtApis::RunAsync, _Inout_ OrtSession* sess, _In_opt_ const 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
+                    _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
+                    _Out_ size_t* num_ep_subgraphs) {
+  API_IMPL_BEGIN
+  if (ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
+  }
+
+  if (num_ep_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_subgraphs' argument is null");
+  }
+
+  auto inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
+  const InlinedVector<const EpAssignedSubgraph*>& ep_subgraphs_internal = inference_session->GetEpGraphPartitioningInfo();
+
+  *ep_subgraphs = reinterpret_cast<const OrtEpAssignedSubgraph* const*>(ep_subgraphs_internal.data());
+  *num_ep_subgraphs = ep_subgraphs_internal.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(const char*, OrtApis::EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+  auto ep_subgraph_internal = reinterpret_cast<const EpAssignedSubgraph*>(ep_subgraph);
+  return ep_subgraph_internal->ep_name.c_str();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetOpTypeCounts, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const char* const** op_types, _Outptr_ size_t const** op_type_counts,
+                    _Out_ size_t* num_op_types) {
+  API_IMPL_BEGIN
+  if (op_types == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'op_types' argument is null");
+  }
+
+  if (op_type_counts == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'op_type_counts' argument is null");
+  }
+
+  if (num_op_types == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_op_types' argument is null");
+  }
+
+  auto ep_subgraph_internal = reinterpret_cast<const EpAssignedSubgraph*>(ep_subgraph);
+  *op_types = ep_subgraph_internal->op_types.data();
+  *op_type_counts = ep_subgraph_internal->op_type_counts.data();
+  *num_op_types = ep_subgraph_internal->op_types.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
+                    _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
+  API_IMPL_BEGIN
+  if (ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_nodes' argument is null");
+  }
+
+  if (num_ep_nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_ep_nodes' argument is null");
+  }
+
+  auto ep_subgraph_internal = reinterpret_cast<const EpAssignedSubgraph*>(ep_subgraph);
+  *ep_nodes = reinterpret_cast<const OrtEpAssignedNode* const*>(ep_subgraph_internal->nodes.data());
+  *num_ep_nodes = ep_subgraph_internal->nodes.size();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(const char*, OrtApis::EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node) {
+  auto ep_node_internal = reinterpret_cast<const EpAssignedNode*>(ep_node);
+  return ep_node_internal->name.c_str();
+}
+
+ORT_API(const char*, OrtApis::EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node) {
+  auto ep_node_internal = reinterpret_cast<const EpAssignedNode*>(ep_node);
+  return ep_node_internal->op_type.c_str();
+}
+
 struct OrtIoBinding {
   std::unique_ptr<::onnxruntime::IOBinding> binding_;
   explicit OrtIoBinding(std::unique_ptr<::onnxruntime::IOBinding>&& binding) : binding_(std::move(binding)) {}
@@ -2996,6 +3074,13 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::Session_GetEpGraphPartitioningInfo,
+    &OrtApis::EpAssignedSubgraph_EpName,
+    &OrtApis::EpAssignedSubgraph_GetOpTypeCounts,
+    &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedNode_Name,
+    &OrtApis::EpAssignedNode_OpType,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
