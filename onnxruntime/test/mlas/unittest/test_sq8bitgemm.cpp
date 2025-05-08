@@ -31,10 +31,156 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   std::uniform_real_distribution<float> distrib_f32_;
   MatrixGuardBuffer<uint8_t> inputB_, inputZp_, refB_, packedBuffer_;
   MatrixGuardBuffer<float> inputScale_, refScale_;
-  MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_;
+  MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_, refBlkSum2_;
+
+#ifdef MLAS_TARGET_ARM64
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* blkSum2) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    size_t n = 0;
+    for (; n - n % 8 + 8 <= N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t src_idx = n * ldb + k;
+        size_t dst_idx = n / 8 * 8 * ldb + k / 4 * 4 * 8 + (n % 8) * 4 + k % 4;
+        size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
+        dst[dst_idx] = src[src_idx];
+        if (blkSum2) {
+          blkSum2[blkSum_idx] += src[src_idx];
+        }
+      }
+    }
+    for (; n - n % 4 + 4 <= N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t src_idx = n * ldb + k;
+        size_t dst_idx = n / 4 * 4 * ldb + k / 4 * 4 * 4 + (n % 4) * 4 + k % 4;
+        size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
+        dst[dst_idx] = src[src_idx];
+        if (blkSum2) {
+          blkSum2[blkSum_idx] += src[src_idx];
+        }
+      }
+    }
+    for (; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t src_idx = n * ldb + k;
+        size_t dst_idx = n * ldb + k;
+        size_t blkSum_idx = n / 16 * 16 * BlkCount + k / BlkLen * 16 + n % 16;
+        dst[dst_idx] = src[src_idx];
+        if (blkSum2) {
+          blkSum2[blkSum_idx] += src[src_idx];
+        }
+      }
+    }
+  }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackB(const uint8_t* src, uint8_t* dst) {
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* blkSum2) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    size_t n = 0;
+    for (; n - n % 8 + 8 <= N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t src_idx = n * BlkCount + k;
+        size_t scale_dst_idx = n / 8 * 8 * BlkCount + k * 8 + n % 8;
+        size_t sum_dst_idx = n / 16 * 16 * BlkCount + k * 16 + n % 16;
+        float zp_val = (zp ? static_cast<float>(zp[src_idx]) : 128.f);
+        float vSum = -scale[src_idx] * zp_val;
+        packedScale[scale_dst_idx] = scale[src_idx];
+        blkSum[sum_dst_idx] = vSum;
+        if (blkSum2) {
+          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        }
+      }
+    }
+    for (; n - n % 4 + 4 <= N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t src_idx = n * BlkCount + k;
+        size_t scale_dst_idx = n / 4 * 4 * BlkCount + k * 4 + n % 4;
+        size_t sum_dst_idx = n / 16 * 16 * BlkCount + k * 16 + n % 16;
+        float zp_val = (zp ? static_cast<float>(zp[src_idx]) : 128.f);
+        float vSum = -scale[src_idx] * zp_val;
+        packedScale[scale_dst_idx] = scale[src_idx];
+        blkSum[sum_dst_idx] = vSum;
+        if (blkSum2) {
+          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        }
+      }
+    }
+    for (; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t src_idx = n * BlkCount + k;
+        size_t scale_dst_idx = n * BlkCount + k;
+        size_t sum_dst_idx = n / 16 * 16 * BlkCount + k * 16 + n % 16;
+        float zp_val = (zp ? static_cast<float>(zp[src_idx]) : 128.f);
+        float vSum = -scale[src_idx] * zp_val;
+        packedScale[scale_dst_idx] = scale[src_idx];
+        blkSum[sum_dst_idx] = vSum;
+        if (blkSum2) {
+          float vSum2 = -blkSum2[sum_dst_idx] + zp_val * std::min(BlkLen, K - k * BlkLen);
+          blkSum2[sum_dst_idx] = vSum2 * scale[src_idx];
+        }
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckB(const uint8_t* packedB, const uint8_t* refB) {
+    constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
+    size_t n = 0;
+    for (; n - n % 8 + 8 <= N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t idx = n / 8 * 8 * ldb + k / 4 * 4 * 8 + (n % 8) * 4 + k % 4;
+        ASSERT_EQ(packedB[idx], refB[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+
+    for (; n - n % 4 + 4 <= N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t idx = n / 4 * 4 * ldb + k / 4 * 4 * 4 + (n % 4) * 4 + k % 4;
+        ASSERT_EQ(packedB[idx], refB[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+
+    for (; n < N; ++n) {
+      for (size_t k = 0; k < K; ++k) {
+        size_t idx = n * ldb + k;
+        ASSERT_EQ(packedB[idx], refB[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void CheckScale(const float* packedScale, const float* refScale) {
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    size_t n = 0;
+    for (; n - n % 8 + 8 <= N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t idx = n / 8 * 8 * BlkCount + k * 8 + n % 8;
+        ASSERT_EQ(packedScale[idx], refScale[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+
+    for (; n - n % 4 + 4 <= N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t idx = n / 4 * 4 * BlkCount + k * 4 + n % 4;
+        ASSERT_EQ(packedScale[idx], refScale[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+
+    for (; n < N; ++n) {
+      for (size_t k = 0; k < BlkCount; ++k) {
+        size_t idx = n * BlkCount + k;
+        ASSERT_EQ(packedScale[idx], refScale[idx]) << " at n=" << n << " k=" << k;
+      }
+    }
+  }
+#else  // not MLAS_TARGET_ARM64
+  template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
+  void PrepackB(const uint8_t* src, uint8_t* dst, float* blkSum2) {
+    MLAS_UNREFERENCED_PARAMETER(blkSum2);
+
     constexpr size_t ldb = (K + BlkLen - 1) & (~(BlkLen - 1));
     size_t n = 0;
     for (; n + 4 <= N; n += 4) {
@@ -65,7 +211,9 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   }
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
-  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum) {
+  void PrepackBlkSumAndScale(const float* scale, const uint8_t* zp, float* packedScale, float* blkSum, float* blkSum2) {
+    MLAS_UNREFERENCED_PARAMETER(blkSum2);
+
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t BlkPerSubBlk = SubBlkLen > BlkLen ? SubBlkLen / BlkLen : 1;
 
@@ -174,10 +322,15 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
   }
+#endif // MLAS_TARGET_ARM64
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void CheckBlkSum(const float* packedBlkSum, const float* refBlkSum) {
-    size_t BlkCount = (K + BlkLen - 1) / BlkLen;
+    if (refBlkSum == nullptr) {
+      return;
+    }
+
+    constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
 
     for (size_t n = 0; n < N; ++n) {
       for (size_t k = 0; k < BlkCount; ++k) {
@@ -198,6 +351,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t PackBCount = N * Ldb;
     constexpr size_t ScaleCount = BlkCount * N;
     const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
+    const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -222,10 +376,13 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     auto* refB = refB_.GetBuffer(PackBCount, true);
     auto* refScale = refScale_.GetBuffer(ScaleCount, true);
     auto* refBlkSum = refBlkSum_.GetBuffer(((N + 15) & (~15)) * BlkCount, true);
+    auto* refBlkSum2 = quantAUnsigned ? refBlkSum2_.GetBuffer(((N + 15) & (~15)) * BlkCount, true) : nullptr;
+
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, quantAUnsigned);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, hasZp, nullptr, nullptr);
+        nullptr, hasZp, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         inputScale, hasZp, nullptr, nullptr);
@@ -233,14 +390,13 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         nullptr, hasZp, inputZp, nullptr);
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, false);
+    PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB, refBlkSum2);
+    PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum, refBlkSum2);
 
-    PrepackB<K, N, BlkLen, SubBlkLen>(inputB, refB);
-    PrepackBlkSumAndScale<K, N, BlkLen, SubBlkLen>(inputScale, inputZp, refScale, refBlkSum);
-
-    CheckB<K, N, BlkLen, SubBlkLen>(refB, reinterpret_cast<const uint8_t*>(packedQuantB.PackedQuantBData));
-    CheckScale<K, N, BlkLen, SubBlkLen>(refScale, packedQuantB.PackedQuantBScale);
-    CheckBlkSum<K, N, BlkLen, SubBlkLen>(refBlkSum, packedQuantB.QuantBBlkSum);
+    CheckB<K, N, BlkLen, SubBlkLen>(reinterpret_cast<const uint8_t*>(packedQuantB.PackedQuantBData), refB);
+    CheckScale<K, N, BlkLen, SubBlkLen>(packedQuantB.PackedQuantBScale, refScale);
+    CheckBlkSum<K, N, BlkLen, SubBlkLen>(packedQuantB.QuantBBlkSum, refBlkSum);
+    CheckBlkSum<K, N, BlkLen, SubBlkLen>(packedQuantB.QuantBBlkSum2, refBlkSum2);
   }
 
  public:
@@ -298,21 +454,25 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       Execute<1, 1, 256, 64>();
 
       Execute<16, 4, 16, 64>();
-      Execute<32, 4, 16, 64>();
-      Execute<64, 4, 16, 64>();
-      Execute<128, 4, 16, 64>();
+      Execute<32, 8, 16, 64>();
+      Execute<64, 12, 32, 64>();
+      Execute<128, 16, 64, 64>();
 
-      Execute<15, 5, 16, 64>();
-      Execute<15, 5, 32, 64>();
+      Execute<15, 3, 16, 64>();
+      Execute<15, 4, 32, 64>();
       Execute<15, 5, 64, 64>();
-      Execute<15, 5, 128, 64>();
-      Execute<15, 5, 256, 64>();
+      Execute<15, 6, 128, 64>();
+      Execute<15, 7, 256, 64>();
+      Execute<15, 8, 16, 64>();
+      Execute<15, 9, 16, 64>();
 
+      Execute<17, 3, 16, 64>();
+      Execute<17, 4, 32, 64>();
+      Execute<17, 5, 64, 64>();
+      Execute<17, 6, 128, 64>();
+      Execute<17, 7, 256, 64>();
       Execute<17, 8, 16, 64>();
-      Execute<17, 8, 32, 64>();
-      Execute<17, 8, 64, 64>();
-      Execute<17, 8, 128, 64>();
-      Execute<17, 8, 256, 64>();
+      Execute<17, 9, 16, 64>();
 
       Execute<159, 16, 16, 64>();
       Execute<160, 17, 32, 64>();
@@ -321,6 +481,10 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       Execute<159, 16, 256, 64>();
     }
   }
+};
+
+class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
+
 };
 
 class MlasSQ8BitGemmKernelTest : public MlasTestBase {

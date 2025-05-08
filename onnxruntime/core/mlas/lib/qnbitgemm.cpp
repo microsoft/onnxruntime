@@ -132,7 +132,7 @@ QNBitGemmPerGemmWorkspaceSize(
     }
 
     if (BlkBitWidth == 4 || BlkBitWidth == 8) {
-        return Dispatch->QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType);
+        return Dispatch->QNBitGemmPerGemmWorkspaceSize(M, N, K, BlkLen, HasZeroPoint, ComputeType, BlkBitWidth);
     }
 
     return 0;

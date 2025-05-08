@@ -53,21 +53,27 @@ QNBitGemmPackQuantBDataSize(
     MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
 )
 {
+    if constexpr (BlkBitWidth == 4) {
 #ifndef USE_KLEIDIAI
-    MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
-    MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
+        MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
+        MLAS_UNREFERENCED_PARAMETER(ComputeType);  // same size regardless of ComputeType
 #endif
 
 #ifdef USE_KLEIDIAI
-    if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
-        const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
-        const size_t nr = ukernel.get_nr();
-        const size_t kr = ukernel.get_kr();
-        const size_t sr = ukernel.get_sr();
-        return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
-    } else
+        if (ComputeType == SQNBIT_CompInt8 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
+            const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel = GetKleidiAIGemmUKernel();
+            const size_t nr = ukernel.get_nr();
+            const size_t kr = ukernel.get_kr();
+            const size_t sr = ukernel.get_sr();
+            return kai_get_rhs_packed_size_rhs_pack_nxk_qsi4c32p_qsu4c32s1s0(N, K, nr, kr, sr, BlkLen, kai_dt_bf16);
+        } else
 #endif
-    {
+        {
+            const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+            const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
+            return PackedQuantBDataSize;
+        }
+    } else {
         const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
         size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
 
@@ -239,12 +245,13 @@ Q8PackQuantB(
         ThreadPool, Iterations,
         [&](ptrdiff_t tid) {
             const size_t c = tid / BlkCountK;
-            const size_t c8 = c & (-7), c8_res = c & 7;
+            const size_t c8 = c & (~7), c8_res = c & 7;
             const size_t c4 = c & (~3), c4_res = c & 3;
             const size_t r_blk = tid % BlkCountK;
             size_t r_subblk = r_blk * SubBlkPerBlk;
 
             const std::byte* src = QuantBDataBegin + c * StrideN + r_blk * BlkLen;
+            const uint8_t* src8 = reinterpret_cast<const uint8_t*>(src);
 
             for (size_t i = 0; i < SubBlkPerBlk; ++i, src += SubBlkLen, ++r_subblk) {
                 if (c8 + 8 <= N) { // full 8 cols
@@ -263,7 +270,6 @@ Q8PackQuantB(
             }
 
             if (BlockSum2Begin) {
-                const uint8_t* src8 = reinterpret_cast<const uint8_t*>(src);
                 const int accu = std::accumulate(src8, src8 + std::min(BlkLen, K - r_blk * BlkLen), 0);
 
                 // for sgemmc
@@ -348,7 +354,6 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-
     if (QuantBDataBegin) {
         Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, PackedQuantB.QuantBBlkSum2, ThreadPool, N, K, BlkLen);
     }
@@ -373,7 +378,8 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t K,
     size_t BlkLen,
     bool HasZeroPoint,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    size_t BlkBitWidth
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -385,7 +391,7 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
+            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
                 const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
                     M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
 
