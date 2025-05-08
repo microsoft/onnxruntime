@@ -1738,6 +1738,14 @@ struct ConstValueImpl : Base<T> {
   /// <returns>byte length for the specified string element</returns>
   size_t GetStringTensorElementLength(size_t element_index) const;
 
+  /// <summary>
+  /// This API returns the size of the tensor in bytes iff this ort value
+  /// contains a tensor or primitive type. The API would throw an exception if the OrtValue
+  /// does not contain a tensor and does not have a primitive type.
+  /// </summary>
+  /// <returns>returns size in bytes</returns>
+  size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// The API returns the sparse data format this OrtValue holds in a sparse tensor.

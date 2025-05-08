@@ -5251,6 +5251,17 @@ struct OrtApi {
    * \since Version 1.22.
    */
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+
+  /** \brief Compute Tensor size in bytes.
+   *
+   * \param[in] ort_value containing a tensor
+   * \param[out] size The size of the tensor in bytes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 };
 
 /*

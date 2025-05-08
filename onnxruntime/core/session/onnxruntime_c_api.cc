@@ -1206,6 +1206,17 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _Out_ size_t* out) {
+  API_IMPL_BEGIN
+  if (!value->IsAllocated() || !value->IsTensor()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue is expected to contain a tensor");
+  }
+  const auto& tensor = value->Get<onnxruntime::Tensor>();
+  *out = tensor.SizeInBytes();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
                     size_t s_len, _Out_writes_all_(offsets_len) size_t* offsets, size_t offsets_len) {
   API_IMPL_BEGIN
@@ -2996,6 +3007,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+    &OrtApis::GetTensorSizeInBytes,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
