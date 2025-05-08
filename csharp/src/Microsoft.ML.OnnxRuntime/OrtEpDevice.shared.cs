@@ -10,18 +10,18 @@ namespace Microsoft.ML.OnnxRuntime
     /// Represents the combination of an execution provider and a hardware device 
     /// that the execution provider can utilize.
     /// </summary>
-    public class OrtEpDevice : SafeHandle
+    public class OrtEpDevice
     {
         /// <summary>
         /// Construct an OrtEpDevice from an existing native OrtEpDevice instance.
         /// </summary>
         /// <param name="epDeviceHandle">Native OrtEpDevice handle.</param>
         internal OrtEpDevice(IntPtr epDeviceHandle)
-            : base(epDeviceHandle, ownsHandle: false)
         {
+            _handle = epDeviceHandle;
         }
 
-        internal IntPtr Handle => handle;
+        internal IntPtr Handle => _handle;
 
         /// <summary>
         /// The name of the execution provider.
@@ -30,7 +30,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr namePtr = NativeMethods.OrtEpDevice_EpName(handle);
+                IntPtr namePtr = NativeMethods.OrtEpDevice_EpName(_handle);
                 return NativeOnnxValueHelper.StringFromNativeUtf8(namePtr);
             }
         }
@@ -42,7 +42,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr vendorPtr = NativeMethods.OrtEpDevice_EpVendor(handle);
+                IntPtr vendorPtr = NativeMethods.OrtEpDevice_EpVendor(_handle);
                 return NativeOnnxValueHelper.StringFromNativeUtf8(vendorPtr);
             }
         }
@@ -54,7 +54,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpMetadata(handle));
+                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpMetadata(_handle));
             }
         }
 
@@ -65,7 +65,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpOptions(handle));
+                return new OrtKeyValuePairs(NativeMethods.OrtEpDevice_EpOptions(_handle));
             }
         }
 
@@ -76,23 +76,11 @@ namespace Microsoft.ML.OnnxRuntime
         {
             get
             {
-                IntPtr devicePtr = NativeMethods.OrtEpDevice_Device(handle);
+                IntPtr devicePtr = NativeMethods.OrtEpDevice_Device(_handle);
                 return new OrtHardwareDevice(devicePtr);
             }
         }
 
-        /// <summary>
-        /// Indicates whether the native handle is invalid.
-        /// </summary>
-        public override bool IsInvalid => handle == IntPtr.Zero;
-
-        /// <summary>
-        /// No-op. OrtEpDevice is always read-only as the instance is owned by native ORT.
-        /// </summary>
-        /// <returns>True</returns>
-        protected override bool ReleaseHandle()
-        {
-            return true;
-        }
+        private readonly IntPtr _handle;
     }
 }

@@ -93,7 +93,7 @@ public class OrtAutoEpTests
     {
         var runTest = (Func<Dictionary<string, string>> getEpOptions) =>
         {
-            SessionOptions sessionOptions = new SessionOptions();
+            using SessionOptions sessionOptions = new SessionOptions();
             sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
 
             var epDevices = ortEnvInstance.GetEpDevices();
@@ -138,7 +138,7 @@ public class OrtAutoEpTests
     [Fact]
     public void SetEpSelectionPolicy()
     {
-        SessionOptions sessionOptions = new SessionOptions();
+        using SessionOptions sessionOptions = new SessionOptions();
         sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
 
         var epDevices = ortEnvInstance.GetEpDevices();
@@ -150,9 +150,136 @@ public class OrtAutoEpTests
         var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
 
         // session should load successfully
-        using (var session = new InferenceSession(model))
+        using (var session = new InferenceSession(model, sessionOptions))
         {
             Assert.NotNull(session);
+        }
+    }
+
+    private static List<OrtEpDevice> SelectionPolicyDelegate(IReadOnlyList<OrtEpDevice> epDevices,
+                                                              OrtKeyValuePairs modelMetadata,
+                                                              OrtKeyValuePairs runtimeMetadata,
+                                                              uint maxSelections)
+    {
+        Assert.NotEmpty(modelMetadata.Entries);
+        Assert.True(epDevices.Count > 0);
+
+        // select first device and last (if there are more than one).
+        var selected = new List<OrtEpDevice>();
+
+        selected.Add(epDevices[0]);
+
+        // add ORT CPU EP which is always last.
+        if (maxSelections > 2 && epDevices.Count > 1)
+        {
+            selected.Add(epDevices.Last());
+        }
+
+        return selected;
+    }
+
+    [Fact]
+    public void SetEpSelectionPolicyDelegate()
+    {
+        using SessionOptions sessionOptions = new SessionOptions();
+        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+
+        var epDevices = ortEnvInstance.GetEpDevices();
+        Assert.NotEmpty(epDevices);
+
+        // doesn't matter what the value is. should fallback to ORT CPU EP
+        sessionOptions.SetEpSelectionPolicyDelegate(SelectionPolicyDelegate);
+        
+        var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+        // session should load successfully
+        using (var session = new InferenceSession(model, sessionOptions))
+        {
+            Assert.NotNull(session);
+        }
+    }
+
+    // select max + 1, starting with all devices
+    private static List<OrtEpDevice> SelectionPolicyDelegateTooMany(IReadOnlyList<OrtEpDevice> epDevices,
+                                                                    OrtKeyValuePairs modelMetadata,
+                                                                    OrtKeyValuePairs runtimeMetadata,
+                                                                    uint maxSelections)
+    {
+        Assert.NotEmpty(modelMetadata.Entries);
+        Assert.True(epDevices.Count > 0);
+        var selected = new List<OrtEpDevice>(epDevices);
+
+        while (selected.Count < (maxSelections + 1))
+        {
+            selected.Add(epDevices.Last());
+        }
+
+        return selected;
+    }
+
+    [Fact]
+    public void SetEpSelectionPolicyDelegateTooMany()
+    {
+        using SessionOptions sessionOptions = new SessionOptions();
+        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+
+        var epDevices = ortEnvInstance.GetEpDevices();
+        Assert.NotEmpty(epDevices);
+
+        // select too many devices
+        sessionOptions.SetEpSelectionPolicyDelegate(SelectionPolicyDelegateTooMany);
+
+        var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+        // session should fail
+        try
+        {
+            using var session = new InferenceSession(model, sessionOptions);
+            Assert.Fail("Should have thrown an exception");
+        }
+        catch (OnnxRuntimeException ex)
+        {
+            // Current C++ max is 8. We copy all devices and keep adding until we exceed that.
+            const int max = 8;
+            var numSelected = epDevices.Count > max ? epDevices.Count : (max + 1);
+            var expected = "[ErrorCode:Fail] EP selection delegate failed: The number of selected devices " +
+                          $"({numSelected}) returned by the C# selection delegate exceeds the maximum ({max})";
+            Assert.Contains(expected, ex.Message);
+        }
+    }
+
+    // throw exception in user provided delegate
+    private static List<OrtEpDevice> SelectionPolicyDelegateThrows(IReadOnlyList<OrtEpDevice> epDevices,
+                                                                    OrtKeyValuePairs modelMetadata,
+                                                                    OrtKeyValuePairs runtimeMetadata,
+                                                                    uint maxSelections)
+    {
+        throw new ArgumentException("Test exception");
+    }
+
+    [Fact]
+    public void SetEpSelectionPolicyDelegateThrows()
+    {
+        using SessionOptions sessionOptions = new SessionOptions();
+        sessionOptions.LogSeverityLevel = OrtLoggingLevel.ORT_LOGGING_LEVEL_VERBOSE;
+
+        var epDevices = ortEnvInstance.GetEpDevices();
+        Assert.NotEmpty(epDevices);
+
+        sessionOptions.SetEpSelectionPolicyDelegate(SelectionPolicyDelegateThrows);
+
+        var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+
+        try
+        {
+            using var session = new InferenceSession(model, sessionOptions);
+            Assert.Fail("Should have thrown an exception");
+        }
+        catch (OnnxRuntimeException ex)
+        {
+            var expected = "[ErrorCode:Fail] EP selection delegate failed: " +
+                           "The C# selection delegate threw an exception: Test exception";
+            Assert.Contains(expected, ex.Message);
         }
     }
 }

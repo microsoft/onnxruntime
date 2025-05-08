@@ -12,41 +12,44 @@ namespace webgpu {
 
 using namespace onnxruntime::webgpu;
 
-class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
- public:
-  MatMulNBitsProgram(uint32_t output_number, uint32_t block_size, uint32_t tile_m, int components_b, bool has_zero_points, bool use_subgroup) : Program{"MatMulNBits"},
-                                                                                                                                                output_number_{output_number},
-                                                                                                                                                block_size_{block_size},
-                                                                                                                                                tile_m_{tile_m},
-                                                                                                                                                components_b_{components_b},
-                                                                                                                                                has_zero_points_{has_zero_points},
-                                                                                                                                                use_subgroup_(use_subgroup) {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  uint32_t output_number_;
-  uint32_t block_size_;
-  uint32_t tile_m_;
-  int components_b_;
-  bool has_zero_points_;
-  bool use_subgroup_;
-};
-
 class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgram> {
  public:
-  MatMulNBitsWideTileProgram(bool has_zero_points, uint32_t tile_m, uint32_t tile_n)
-      : Program{"MatMulNBitsWideTileProgram"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n) {}
+  MatMulNBitsWideTileProgram(bool has_zero_points, uint32_t tile_m, uint32_t tile_n, uint32_t nbits)
+      : Program{"MatMulNBitsWideTileProgram"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32});
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32},
+                                          {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
+                                          {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_M_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_zero_points_;
   uint32_t tile_m_;
   uint32_t tile_n_;
+  uint32_t nbits_;
+};
+
+class MatMulNBitsProgram final : public Program<MatMulNBitsProgram> {
+ public:
+  MatMulNBitsProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"MatMulNBits"}, tile_size_(tile_size), nbits_(nbits), has_zero_points_(has_zero_points) {}
+  Status GenerateShaderCode(ShaderHelper& sh) const override;
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
+      {"M", ProgramUniformVariableDataType::Uint32},
+      {"N", ProgramUniformVariableDataType::Uint32},
+      {"K", ProgramUniformVariableDataType::Uint32},
+      {"K_of_a", ProgramUniformVariableDataType::Uint32},
+      {"K_of_b", ProgramUniformVariableDataType::Uint32},
+      {"block_size", ProgramUniformVariableDataType::Uint32},
+      {"blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
+      {"num_N_tile", ProgramUniformVariableDataType::Uint32},
+      {"batch_count", ProgramUniformVariableDataType::Uint32});
+
+ private:
+  uint32_t tile_size_;
+  uint32_t nbits_;
+  bool has_zero_points_;
 };
 
 class MatMulNBits final : public WebGpuKernel {

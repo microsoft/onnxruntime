@@ -513,8 +513,9 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    bool has_zero_points) {
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
+  // Use 'vendor' to check for metal; 'backend' is always WEBGPU when running under wasm.
   bool use_dp4a = context.HasFeature(wgpu::FeatureName::Subgroups) &&
-                  context.AdapterInfo().backendType != wgpu::BackendType::Metal;
+                  context.AdapterInfo().vendor != std::string_view{"apple"};
   return (accuracy_level == 4 && block_size % 32 == 0 &&
           batch_count == 1 && components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
           !has_zero_points && use_dp4a);

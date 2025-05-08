@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA)
+#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
 
 #include <optional>
 
@@ -186,6 +186,10 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
 #ifdef USE_CUDA
   execution_providers.emplace_back(DefaultCudaExecutionProvider());
+#elif USE_WEBGPU
+  execution_providers.emplace_back(DefaultWebGpuExecutionProvider());
+#endif
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
   test.ConfigEps(std::move(execution_providers));
   test.RunWithConfig();
   execution_providers.clear();
@@ -226,8 +230,8 @@ void TestMatMul8BitsTyped() {
     RunTest8Bits<AType>(opts);
   }
 
-// CUDA does not support bias for MatMulNBits
-#if not defined(USE_CUDA)
+// CUDA/WEBGPU does not support bias for MatMulNBits
+#if !defined(USE_CUDA) && !defined(USE_WEBGPU)
   {
     TestOptions8Bits opts = base_opts;
     opts.has_bias = true;
@@ -279,7 +283,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float) {
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_WEBGPU)
 TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float16) {
   TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
   TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();

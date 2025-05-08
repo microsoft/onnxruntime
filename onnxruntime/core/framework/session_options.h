@@ -96,7 +96,8 @@ struct EpSelectionPolicy {
   // and no selection policy was explicitly provided.
   bool enable{false};
   OrtExecutionProviderDevicePolicy policy = OrtExecutionProviderDevicePolicy_DEFAULT;
-  EpSelectionDelegate* delegate{};
+  EpSelectionDelegate delegate{};
+  void* state{nullptr};  // state for the delegate
 };
 
 /**
