@@ -1206,14 +1206,14 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _Out_ size_t* out) {
+ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _Out_ size_t* size) {
   API_IMPL_BEGIN
 
   if (value == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input `value` argument must not be null");
   }
 
-  if (out == nullptr) {
+  if (size == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output `size` argument must not be null");
   }
 
@@ -1228,7 +1228,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "String tensors are not supported by this API");
   }
 
-  *out = tensor.SizeInBytes();
+  *size = tensor.SizeInBytes();
   return nullptr;
   API_IMPL_END
 }

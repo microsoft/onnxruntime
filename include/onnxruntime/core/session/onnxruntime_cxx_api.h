@@ -1743,7 +1743,7 @@ struct ConstValueImpl : Base<T> {
   /// </summary>
   /// <returns>The total size of the tensor data in bytes</returns>
   /// <exception>Throws an exception if the OrtValue does not contain a tensor or
-  /// a tensor that contains strings</exception>
+  /// if it contains a tensor that contains strings</exception>
   /// <remarks>
   /// For numeric tensors, this is sizeof(element_type) * total_element_count.
   ///
