@@ -103,13 +103,13 @@ Items are added as a python dictionary when invoking the MIGraphX execution prov
 |---|---|---|
 | device_id | INT | Select the device ID specified for the session run (default will be device 0) | 
 | migraphx_fp16_enable | 1 or 0 | Enable FP16 quantization mode via the MIGraphX API of the input model. |
-| migraphx_int8_enable | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API.\n Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=<valid path>).|
+| migraphx_int8_enable | 1 or 0 | Enable int8 static quantization mode of the input model via the MIGraphX API. Requires calibration table path vars to be set (migraphx_int8_calibration_table_name=valid path).|
 | migraphx_int8_calibration_table_name | <absolute path to calibration table> | Path to a set of input calibration data for int8 static model quantization. |
 | migraphx_int8_use_native_calibration_table | 1 or 0 | Use a calibration table from Nvidia native int8 format or json dumped format. |
 | migraphx_save_compiled_model | 1 or 0 | Enable saving a model as an MIGraphX (.mxr) format after compile when set to 1 |
-| migraphx_save_compiled_path  | <string> - Path to write .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. Requires migraphx_ssave_compiled_path to be set for this session |
-| migraphx_load_compiled_model | 1 or 0 | Enable loading a model as an MIGraphX (.mxr) format after compile when set to 1 ||
-| migraphx_load_compiled_path | <string> - Path to read .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
+| migraphx_save_compiled_path  | path string | Path to write .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. Requires migraphx_ssave_compiled_path to be set for this session |
+| migraphx_load_compiled_model | 1 or 0 | Enable loading a model as an MIGraphX (.mxr) format after compile when set to 1 |
+| migraphx_load_compiled_path | path string | Path to read .mxr file (default is ./compiled_model.mxr) | Path where the MIGraphX compiled model is stored. |
 | migraphx_exhaustive_tune | 1 or 0 (default 0) | Enable exhaustive tuning of parameters as part of compilation via the MIGraphX API. Adds additional compile time for a potential perf boost.|
 | migraphx_mem_limit | INT | Set the memory limit used for memory arena. Default uses ORTs default_memory_arena_cfg value. |
 | migraphx_external_alloc | Address | Address of external memory allocator function used for this EP. Useful for reading in larger models weights. |
