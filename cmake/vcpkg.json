@@ -98,6 +98,12 @@
       "dependencies": [
         "directx-headers"
       ]
+    },
+    "webgpu-ep": {
+      "description": "Build with WebGPU EP",
+      "dependencies": [
+        "dawn"
+      ]
     }
   },
   "overrides": [
