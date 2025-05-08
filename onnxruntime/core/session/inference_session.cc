@@ -1673,7 +1673,7 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
-static std::string ModelWeightDataType(const Graph& graph) {
+[[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
 
   for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
@@ -1711,7 +1711,7 @@ static std::size_t GetStringHash(const std::string& string, std::size_t prev_has
   return hash;
 }
 
-static std::string ComputeModelGraphHash(const Graph& graph) {
+[[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
   std::size_t final_hash = 0;
   const std::size_t node_hash_count = TelemetrySampleCount;
 
@@ -1755,7 +1755,7 @@ static std::string ComputeModelGraphHash(const Graph& graph) {
   return hash_stream.str();
 }
 
-static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
+[[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
   std::size_t final_hash = 0;
   const std::size_t node_hash_count = TelemetrySampleCount;
 
@@ -2001,14 +2001,19 @@ common::Status InferenceSession::Initialize() {
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
 #endif
-    // Generate and cache telemetry data for the model
-    InitializedTensorSet initializers = graph.GetAllInitializedTensors();
-    std::string model_weight_type = ModelWeightDataType(graph);
-    std::string model_graph_hash = ComputeModelGraphHash(graph);
-    std::string model_weight_hash = ComputeModelWeightHash(initializers);
-    SetWeightDataType(model_weight_type);
-    SetGraphHash(model_graph_hash);
-    SetWeightHash(model_weight_hash);
+    // Generate and cache telemetry data for the model when caller framework is WinAI
+    std::string model_weight_type, model_graph_hash, model_weight_hash;
+#ifdef ORT_CALLER_FRAMEWORK
+    if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
+      InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+      model_weight_type = ModelWeightDataType(graph);
+      model_graph_hash = ComputeModelGraphHash(graph);
+      model_weight_hash = ComputeModelWeightHash(initializers);
+      SetWeightDataType(model_weight_type);
+      SetGraphHash(model_graph_hash);
+      SetWeightHash(model_weight_hash);
+    }
+#endif
 
     // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
