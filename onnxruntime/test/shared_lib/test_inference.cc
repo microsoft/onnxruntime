@@ -430,9 +430,9 @@ void TestGetTensorSizeInBytes(Ort::ConstMemoryInfo cpu_meminfo) {
   constexpr const size_t expected_size_in_bytes = sizeof(T) * element_count_to_create;
   constexpr const std::array<int64_t, 2> dims = {1, static_cast<int64_t>(element_count_to_create)};
   std::array<T, element_count_to_create> data;
-  std::fill(data.begin(), data.end(), T(1));
+  std::fill(data.begin(), data.end(), T{1});
 
-  auto value = Ort::Value::CreateTensor<T>(cpu_meminfo, const_cast<float*>(data.data()),
+  auto value = Ort::Value::CreateTensor<T>(cpu_meminfo, data.data(),
                                            data.size(), dims.data(), dims.size());
 
   auto type_info = value.GetTypeInfo();
@@ -450,6 +450,23 @@ TEST(CApiTest, TestGetTensorSizeInBytes) {
   TestGetTensorSizeInBytes<float, 3>(cpu_meminfo.GetConst());
   TestGetTensorSizeInBytes<float, 4>(cpu_meminfo.GetConst());
   TestGetTensorSizeInBytes<float, 5>(cpu_meminfo.GetConst());
+
+  TestGetTensorSizeInBytes<int64_t, 1>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 2>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 3>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 4>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 5>(cpu_meminfo.GetConst());
+
+  // Create an Ort::Value instance that contains two empty strings
+  // and verify that GetTensorSizeInBytes() returns 2 * sizeof(std::string) bytes.
+  auto allocator = std::make_unique<MockedOrtAllocator>();
+  const int64_t shape[] = {2};  // Tensor with 2 string elements
+  Ort::Value string_tensor = Ort::Value::CreateTensor(allocator.get(), shape, std::size(shape), ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING);
+  // Get the tensor size in bytes
+  size_t tensor_size_bytes = string_tensor.GetTensorSizeInBytes();
+
+  // Verify it equals 2 * sizeof(std::string)
+  ASSERT_EQ(tensor_size_bytes, 2 * sizeof(std::string));
 }
 
 TEST(CApiTest, dim_param) {

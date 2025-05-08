@@ -5252,10 +5252,15 @@ struct OrtApi {
    */
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
 
-  /** \brief Compute Tensor size in bytes.
+  /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
    *
-   * \param[in] ort_value containing a tensor
-   * \param[out] size The size of the tensor in bytes.
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
+   * this is sizeof(element_type) * total_element_count. For string tensors, this is the
+   * sizeof(std::string) * total_element_count. The latter does not take into account individual
+   * string buffers.
+   *
+   * \param[in] ort_value OrtValue instance containing a tensor
+   * \param[out] size The total size of the tensor data in bytes
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

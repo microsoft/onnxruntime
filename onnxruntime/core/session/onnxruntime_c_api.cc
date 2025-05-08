@@ -1208,9 +1208,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* 
 
 ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _Out_ size_t* out) {
   API_IMPL_BEGIN
+
+  if (value == nullptr || out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Arguments must not be null");
+  }
+
   if (!value->IsAllocated() || !value->IsTensor()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue is expected to contain a tensor");
   }
+
   const auto& tensor = value->Get<onnxruntime::Tensor>();
   *out = tensor.SizeInBytes();
   return nullptr;
