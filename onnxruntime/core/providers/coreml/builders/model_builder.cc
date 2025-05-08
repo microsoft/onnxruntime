@@ -837,6 +837,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   input_output.set_name(name);
 
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
+  auto* tensor_type = input_output.mutable_type()->mutable_tensortype();
 
   std::vector<int64_t> shape;
   ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_), "Unable to get shape for ", input_output_type, ": ", name);
@@ -881,7 +882,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   }
 
   int32_t data_type;
-  {  // type
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -889,6 +889,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
 
     data_type = type_proto->tensor_type().elem_type();
+    if (create_ml_program_) {
+      tensor_type->set_datatype(OnnxDataTypeToMILSpec(data_type));
+    }
+   else {  // type
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         multi_array->set_datatype(ArrayFeatureType::FLOAT32);

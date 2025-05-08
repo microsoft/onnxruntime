@@ -131,6 +131,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
 
+    std::optional<int32_t> override_element_type;
     // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#module-coremltools.converters.mil.mil.ops.defs.iOS15.elementwise_binary
     std::string_view coreml_op_type;
     if (op_type == "Add") {
@@ -151,6 +152,9 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       }
     } else if (op_type == "Pow") {
       coreml_op_type = "pow";
+    } else if (op_type == "Equal") {
+      coreml_op_type = "equal";
+      // override_element_type = ONNX_NAMESPACE::TensorProto_DataType_INT32;
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "BinaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -163,7 +167,7 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       // "max" node may have variadic inputs
       AddVariadicInputs(&op, model_builder, node, logger);
     }
-    AddOperationOutput(*op, *node.OutputDefs()[0]);
+    AddOperationOutput(*op, *node.OutputDefs()[0], override_element_type);
     model_builder.AddOperation(std::move(op));
   } else {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
@@ -188,6 +192,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       layer->mutable_dividebroadcastable();
     } else if (op_type == "Pow") {
       layer->mutable_powbroadcastable();
+    } else if (op_type == "Equal") {
+      layer->mutable_equal();
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "BinaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -232,6 +238,15 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   }
 
   if (node.OpType() == "Max" && !input_params.create_mlprogram) {
+    return false;
+  }
+
+  // NeuralNetwork implementation of Equal returns a float value of 1.0 or 0.0
+  // (even though they have a boolean type)
+  // If there is an Equal node on NeuralNetwork between other ops supported by
+  // NeuralNetwork, this creates problems
+  // https://apple.github.io/coremltools/mlmodel/Format/NeuralNetwork.html#equallayerparams
+  if (node.OpType() == "Equal" && !input_params.create_mlprogram) {
     return false;
   }
 

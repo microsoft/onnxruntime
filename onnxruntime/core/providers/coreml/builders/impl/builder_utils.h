@@ -157,7 +157,8 @@ void AddIntermediateOperationOutput(COREML_SPEC::MILSpec::Operation& op, std::st
 /// </summary>
 /// <param name="op">Operation to update.</param>
 /// <param name="output">NodeArg with details of output to add.</param>
-void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output);
+void AddOperationOutput(COREML_SPEC::MILSpec::Operation& op, const NodeArg& output,
+                        std::optional<int32_t> override_element_type = std::nullopt);
 
 /// <summary>
 /// Add pad_type and pad values.

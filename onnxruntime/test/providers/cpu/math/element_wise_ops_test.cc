@@ -3577,7 +3577,7 @@ TEST(MathOpTest, Equal_float) {
   std::vector<int64_t> dims{4};
   test.AddInput<float>("A", dims, {1.0f, 0.0f, -1.0f, -1.0f});
   test.AddInput<float>("B", dims, {1.0f, 1.0f, 2.0f, -1.0f});
-  test.AddOutput<bool>("C", dims, {true, false, false, true});
+  test.AddOutput<bool>("FLOATOUTPUT", dims, {true, false, false, true});
   test.Run();
 }
 
