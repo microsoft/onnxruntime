@@ -8,7 +8,6 @@
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/builders/op_builder_factory.h"
 #include "core/providers/coreml/shape_utils.h"
-#include "core/providers/cpu/tensor/reshape_helper.h"
 #include "core/providers/shared/utils/utils.h"
 
 namespace onnxruntime {
@@ -35,6 +34,54 @@ void ReshapeOpBuilder::AddInitializersToSkip(ModelBuilder& model_builder, const 
   model_builder.AddInitializerToSkip(node.InputDefs()[1]->Name());
 }
 
+// modeled after onnxruntime/core/providers/cpu/tensor/reshape_helper.h
+// but allowing multiple symbolic dimensions in the input_shape
+// which requires us to manually calculate the input_shape Size (number of elements)
+void ReshapeHelper(const TensorShape& input_shape, TensorShapeVector& requested_shape) {
+    const auto input_dims = input_shape.NumDimensions();
+    int64_t input_size = 1; // number of elements in the input tensor, ignoring any -1 dimensions
+    int num_negative_one = 0;
+    for (size_t i = 0; i < input_dims; ++i) {
+      if (input_shape[i] == -1) {
+        ++num_negative_one;
+      } else {
+        input_size *= input_shape[i];
+      }
+    }
+
+    auto nDims = requested_shape.size();
+    ptrdiff_t unknown_dim = -1;
+    int64_t size = 1;
+    for (size_t i = 0; i < nDims; ++i) {
+      ORT_ENFORCE(requested_shape[i] >= -1, "A dimension cannot be less than -1, got ", requested_shape[i]);
+      if (requested_shape[i] == -1) {
+        ORT_ENFORCE(unknown_dim == -1, "At most one dimension can be -1.");
+        unknown_dim = i;
+      } else {
+        if (requested_shape[i] == 0) {
+          ORT_ENFORCE(i < input_shape.NumDimensions(),
+                      "The dimension with value zero exceeds"
+                      " the dimension size of the input tensor.");
+          requested_shape[i] = input_shape[i];
+        }
+        size *= requested_shape[i];
+      }
+    }
+
+    if (unknown_dim != -1) {
+      // calculate unknown dimension
+      ORT_ENFORCE(size != 0 && (input_size % size) == 0,
+                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
+                  ", requested shape:", TensorShape(requested_shape));
+      requested_shape[unknown_dim] = input_size / size;
+    } else {
+      // check if the output shape is valid.
+      ORT_ENFORCE(input_size == size,
+                  "The input tensor cannot be reshaped to the requested shape. Input shape:", input_shape,
+                  ", requested shape:", TensorShape(requested_shape));
+    }
+}
+
 Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const Node& node,
                                                const logging::Logger& logger) const {
@@ -50,7 +97,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     Initializer unpacked_tensor(*shape_constant);
     new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
     // ReshapeHelper applies the ONNX rules to create the concrete output shape
+<<<<<<< Updated upstream
     ReshapeHelper helper(TensorShape(input_shape), new_shape);
+=======
+    ReshapeHelper(TensorShape(input_shape), new_shape);
+>>>>>>> Stashed changes
   }
 
   if (model_builder.CreateMLProgram()) {
@@ -87,10 +138,12 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
 }
 
 bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
-  int input_negative_one_count = std::count(input_shape.begin(), input_shape.end(), -1);
-  if (input_negative_one_count > 0) return false;
+  // Count how many -1 dimensions exist in input_shape
+  auto input_negative_one_count = std::count(input_shape.begin(), input_shape.end(), -1);
   // Count how many -1 dimensions exist in new_shape
-  int negative_one_count = std::count(new_shape.begin(), new_shape.end(), -1);
+  auto negative_one_count = std::count(new_shape.begin(), new_shape.end(), -1);
+  // Count how many 0 dimensions exist in new_shape
+  auto zero_count = std::count(new_shape.begin(), new_shape.end(), 0);
 
   // Case 1: If new_shape has no -1 dimensions, it's always valid
   if (negative_one_count == 0) {
@@ -99,8 +152,10 @@ bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<
 
   // Case 2: If new_shape has exactly one -1 dimension, check if input_shape has at least one -1
   if (negative_one_count == 1) {
-    return std::any_of(input_shape.begin(), input_shape.end(),
-                       [](int64_t dim) { return dim == -1; });
+  // This isn't an explicit requirement of the spec, but to ensure that we can calculate the unknown
+  // dimension in reshape, check that the number of -1 (unknown) dimensions in the input shape is
+  // less than or equal to the number of -1 and 0's in the new shape.
+    return input_negative_one_count >= 1 && input_negative_one_count <= (negative_one_count + zero_count);
   }
 
   // Case 3: If new_shape has more than one -1 dimension, it's invalid
