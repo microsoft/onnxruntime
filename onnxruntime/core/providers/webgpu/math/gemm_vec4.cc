@@ -5,36 +5,62 @@
 
 #include "core/providers/webgpu/webgpu_utils.h"
 
+#include "core/providers/webgpu/math/matmul_utils.h"
 namespace onnxruntime {
 namespace webgpu {
 
-void GemmVec4Program::MatMulReadFnSource(ShaderHelper& shader, bool is_vec4) const {
+void GemmVec4Program::MatMulReadFnSource(ShaderHelper& shader, const ShaderVariableHelper& a,
+                                         const ShaderVariableHelper& b,
+                                         const ShaderVariableHelper& output,
+                                         const ShaderIndicesHelper& batch_dims) const {
   // We can’t treat `output_value_t` as the type of A and B, because output might not be a vec4, while A or B is.
+  int components = is_vec4_ ? 4 : 1;
   const std::string data_type = "output_element_t";
-  const std::string type_string = MakeScalarOrVectorType(is_vec4 ? 4 : 1 /*components */, data_type);
+  const std::string type_string = MakeScalarOrVectorType(components, data_type);
 
   shader.AdditionalImplementation()
-      << "fn mm_readA(row: u32, col: u32, total_rows: u32, total_cols: u32) -> " << type_string << " { \n"
-      << " if(col < total_cols && row < total_rows) {\n"
-      << "    return A[row * total_cols + col];\n"
-      << "  } else {\n"
-      << "    return " << type_string << "(0);\n"
-      << "  }\n"
-      << "}\n\n";
+      << "fn mm_readA(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
+      << "    var value = " << type_string << "(0.0);\n"
+      << "    let col = colIn * " << components << ";\n";
+  if (transA_) {
+    shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_a_outer)) {\n";
+  } else {
+    shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_inner)) {\n";
+  }
+  shader.AdditionalImplementation() << "        var a_indices: a_indices_t;\n"
+                                    << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
+                                    << a.IndicesSet("a_indices", a.Rank() - 2, "u32(row)") << "\n"
+                                    << a.IndicesSet("a_indices", a.Rank() - 1, "u32(colIn)") << "\n"
+                                    << "        value = " << a.GetByIndices("a_indices") << ";\n"
+                                    << "    }\n"
+                                    << "    return value;\n"
+                                    << "}\n\n";
 
+  // Add the mm_readB function
   shader.AdditionalImplementation()
-      << "fn mm_readB(row: u32, col: u32, total_rows: u32, total_cols: u32) -> " << type_string << "{ \n"
-      << "  if(col < total_cols && row < total_rows) {\n"
-      << "    return B[row * total_cols + col];\n"
-      << "  } else {\n"
-      << "    return " << type_string << "(0);\n"
-      << "  }\n"
-      << "}\n\n";
+      << "fn mm_readB(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
+      << "    var value = " << type_string << "(0.0);\n"
+      << "    let col = colIn * " << components << ";\n";
+
+  if (transB_) {
+    shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_b_outer) && col < i32(uniforms.dim_inner)) {\n";
+  } else {
+    shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_inner) && col < i32(uniforms.dim_b_outer)) {\n";
+  }
+
+  shader.AdditionalImplementation() << "        var b_indices: b_indices_t;\n"
+                                    << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
+                                    << b.IndicesSet("b_indices", b.Rank() - 2, "u32(row)") << "\n"
+                                    << b.IndicesSet("b_indices", b.Rank() - 1, "u32(colIn)") << "\n"
+                                    << "        value = " << b.GetByIndices("b_indices") << ";\n"
+                                    << "    }\n"
+                                    << "    return value;\n"
+                                    << "}\n\n";
 }
 
 void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const {
   shader.AdditionalImplementation()
-      << "fn mm_write(row: u32, col: u32, valuesIn: output_value_t) { \n";
+      << "fn mm_write(batch: i32, row: i32, col: i32, valuesIn: output_value_t) { \n";
 
   if (output_components_ == 1) {
     shader.AdditionalImplementation() << "  let total_cols = uniforms.N; \n";
@@ -43,7 +69,7 @@ void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVari
   }
 
   shader.AdditionalImplementation() << "var values = valuesIn; \n"
-                                    << "if(col < total_cols && row < uniforms.M) { \n";
+                                    << "if(col < i32(total_cols) && row < i32(uniforms.M)) { \n";
   if (need_handle_bias_) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
     shader.AdditionalImplementation() << "    values += output_element_t(uniforms.beta) * ";
@@ -53,14 +79,14 @@ void GemmVec4Program::MatMulWriteFnSource(ShaderHelper& shader, const ShaderVari
     // That means the shape of C is either {M,1} or {1,1}
     if (c_components_ == output_components_) {
       shader.AdditionalImplementation() << "output_value_t("
-                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(row, col)", output)) << ");\n";
+                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(u32(row), u32(col))", output)) << ");\n";
     } else if (c_is_scalar_) {
       shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
     } else {
       shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
     }
   }
-  shader.AdditionalImplementation() << "    output[row * total_cols + col] = values;\n"
+  shader.AdditionalImplementation() << "    output[row * i32(total_cols) + col] = values;\n"
                                     << "  }\n"
                                     << "}\n";
 }
@@ -81,151 +107,183 @@ Status GemmVec4Program::MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                                    uint32_t splitted_dim_inner) {
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
-  shader.MainFunctionBody() << "  var values = " << type_string << "(0);\n\n"
-                            << "  let tile_col_start = (workgroup_idx % uniforms.num_tile_n) * 8u;\n"
-                            << "  let tile_row_start = (workgroup_idx / uniforms.num_tile_n) * 32u;\n";
+  std::string write_data_to_sub_a_vec4_snippet =
+      transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
+                  : std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRow + innerRow, kStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
+  std::string write_data_to_sub_b_vec4_snippet =
+      transpose_b ? std::string("mm_Bsub[inputRow][inputCol] = mm_readB(batch, globalColStart + tileRowB + innerRow, kStart / innerElementSize + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
+                  : std::string("mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
+
+  // elements per thread
+  const auto elements_per_thread_x = elements_per_thread[0];
+  const auto elements_per_thread_y = elements_per_thread[1];
+
+  const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
+  const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
+  const auto tile_a_width = transpose_a ? tile_a_outer : tile_inner;
+  const auto tile_a_height = transpose_a ? tile_inner : tile_a_outer;
+  const auto inner_elements_size = tile_a_width / workgroup_size_x;
+  const auto row_per_thread_b = tile_inner / workgroup_size_y;
+
+  if (!((transpose_a && inner_elements_size == 4 && elements_per_thread[1] == 4) ||
+        (!transpose_a && (inner_elements_size == 3 || inner_elements_size == 4))) &&
+      tile_a_width % workgroup_size_x == 0 &&
+      tile_inner % workgroup_size_y == 0 &&
+      elements_per_thread_x == 4) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid matrix multiplication configuration inner_elements_size: ", inner_elements_size,
+                           " must be 3 or 4. tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ",
+                           workgroup_size_x, ". tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ",
+                           workgroup_size_y, ". elements_per_thread_x: ", elements_per_thread_x, " must be 4.");
+  }
+
+  shader.AdditionalImplementation()
+      << "var<workgroup> mm_Asub: array<array<vec" << inner_elements_size << "<" << data_type << ">, " << tile_a_width / inner_elements_size << ">, " << tile_a_height << ">;\n"
+      << "var<workgroup> mm_Bsub: array<array<vec4<" << data_type << ">, " << tile_b_outer / elements_per_thread_x << ">, " << tile_inner << ">;\n"
+      << "const rowPerThread = " << elements_per_thread_y << ";\n"
+      << "const colPerThread = " << elements_per_thread_x << ";\n"
+      << "const innerElementSize = " << inner_elements_size << ";\n"
+      << "const tileInner = " << tile_inner << ";\n";
+
+  shader.MainFunctionBody()
+      << "  let localRow = i32(local_id.y);\n"
+      << "  let tileRow = localRow * rowPerThread;\n"
+      << "  let tileCol = i32(local_id.x);\n"
+      << "  let globalRow = i32(global_id.y) * rowPerThread;\n"
+      << "  let globalCol = i32(global_id.x);\n"
+      << "  let batch = i32(global_id.z);\n"
+      << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
+      << "  let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "  let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+      << "  let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
+      << "  var kStart = 0;\n"
+      << "  var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+
+  // Loop over shared dimension.
+  shader.MainFunctionBody() << "  let tileRowB = localRow * " << row_per_thread_b << ";\n";
 
   if (need_handle_matmul) {
-    shader.AddInput("A", ShaderUsage::UseUniform);
-    shader.AddInput("B", ShaderUsage::UseUniform);
+    shader.MainFunctionBody() << "  for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
 
-    // Add shared memory arrays for tiling
-    shader.AdditionalImplementation() << "var<workgroup> tile_a: array<array< " << type_string << ", 8 >, 32 >;\n "
-                                      << "var<workgroup> tile_b: array<array< " << type_string << ", 8 >, 32 >;\n ";
-
+    // Load one tile of A into local memory.
     shader.MainFunctionBody()
-        << "  var k_start_a = 0u;\n"
-        << "  var k_start_b = 0u;\n\n"
-        << "  let num_tiles = (uniforms.K + 32 - 1) / 32;\n";
+        << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
+        << "      let inputRow = tileRow + innerRow;\n"
+        << "      let inputCol = tileCol;\n"
+        << "      " << write_data_to_sub_a_vec4_snippet
+        << "    }\n";
 
-    // Main loop for matrix multiplication
+    // Load one tile of B into local memory.
     shader.MainFunctionBody()
-        << "  for (var t = 0u; t < num_tiles; t = t + 1u) {\n";
-    // Load TILE_A
-    if (transpose_a) {
-      shader.MainFunctionBody() << R"TILE_A(
-        var row = k_start_a + (local_idx / 8u);
-        var col =  tile_row_start/4 + local_idx % 8u;
-        tile_a[local_idx / 8u][local_idx % 8u] = mm_readA(row, col, uniforms.K, uniforms.M4);
-        )TILE_A";
-    } else {
-      shader.MainFunctionBody() << R"TILE_A(
-        var row = tile_row_start + local_idx / 8u; // row is A index
-        var col = k_start_a + (local_idx % 8u); //
-        tile_a[local_idx / 8u][local_idx % 8u] = mm_readA(row, col, uniforms.M, uniforms.K4);
-        )TILE_A";
-    }
-    // Load TILE_B
-    if (transpose_b) {
-      shader.MainFunctionBody() << R"TILE_B(
-        row = tile_col_start * 4 + (local_idx / 8u);
-        col = k_start_b + (local_idx % 8u); // col is B index
-        // load 1 vec4 into tile_b
-        tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.N, uniforms.K4);
-        )TILE_B";
-    } else {
-      shader.MainFunctionBody() << R"TILE_B(
-        row = k_start_b + (local_idx / 8u); // row is B index
-        col = tile_col_start + (local_idx % 8u); // col is B index
-        // load 1 vec4 into tile_b
-        tile_b[local_idx / 8u][local_idx % 8u] = mm_readB(row, col, uniforms.K, uniforms.N4);
-        )TILE_B";
-    }
+        << "    for (var innerRow = 0; innerRow < " << row_per_thread_b << "; innerRow = innerRow + 1) {\n"
+        << "      let inputRow = tileRowB + innerRow;\n"
+        << "      let inputCol = tileCol;\n"
+        << "     " << write_data_to_sub_b_vec4_snippet
+        << "    }\n"
+        << "    kStart = kStart + tileInner;\n"
+        << "    workgroupBarrier();\n";
 
-    shader.MainFunctionBody() << "    workgroupBarrier();\n\n";
-
-    if (transpose_a) {
-      shader.MainFunctionBody() << "k_start_a = k_start_a + 32u; \n";
-    } else {
-      shader.MainFunctionBody() << "k_start_a = k_start_a + 8u; \n";
-    }
-
-    if (transpose_b) {
-      shader.MainFunctionBody() << "k_start_b = k_start_b + 8u; \n";
-    } else {
-      shader.MainFunctionBody() << "k_start_b = k_start_b + 32u; \n";
-    }
-
-    // Calculate output according to TILE_A and TILE_B
     if (transpose_a && transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-        // Calculate 4 output for each thread
-        // We read 32 vec4 from tile_a and 32 vec4 from tile_b in total.
-        for (var i = 0u; i < 32; i = i + 4u) {
-          let a1 = tile_a[i][local_idx / 32u];
-          let a2 = tile_a[i + 1u][local_idx / 32u];
-          let a3 = tile_a[i + 2u][local_idx / 32u];
-          let a4 = tile_a[i + 3u][local_idx / 32u];
-          let b1 = tile_b[(local_idx % 8) * 4][i / 4u];
-          let b2 = tile_b[(local_idx % 8) * 4 + 1u][i / 4u];
-          let b3 = tile_b[(local_idx % 8) * 4 + 2u][i / 4u];
-          let b4 = tile_b[(local_idx % 8) * 4 + 3u][i / 4u];
-
-          var vec_idx = local_idx / 8u % 4;
-
-          values[0] += a1[vec_idx] * b1[0] + a2[vec_idx] * b1[1] + a3[vec_idx] * b1[2] + a4[vec_idx] * b1[3];
-          values[1] += a1[vec_idx] * b2[0] + a2[vec_idx] * b2[1] + a3[vec_idx] * b2[2] + a4[vec_idx] * b2[3];
-          values[2] += a1[vec_idx] * b3[0] + a2[vec_idx] * b3[1] + a3[vec_idx] * b3[2] + a4[vec_idx] * b3[3];
-          values[3] += a1[vec_idx] * b4[0] + a2[vec_idx] * b4[1] + a3[vec_idx] * b4[2] + a4[vec_idx] * b4[3];
-        }
-        )CALC";
+      shader.MainFunctionBody()
+          << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
+          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
+          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
+          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+      if (inner_elements_size != 3) {
+        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+      }
+      shader.MainFunctionBody()
+          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
+          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
+          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
+          << "             acc[i].x += ACached0[i] * BCached0.x + ACached1[i] * BCached0.y + ACached2[i] * BCached0.z + ACached3[i] * BCached0.w;\n"
+          << "             acc[i].y += ACached0[i] * BCached1.x + ACached1[i] * BCached1.y + ACached2[i] * BCached1.z + ACached3[i] * BCached1.w;\n"
+          << "             acc[i].z += ACached0[i] * BCached2.x + ACached1[i] * BCached2.y + ACached2[i] * BCached2.z + ACached3[i] * BCached2.w;\n"
+          << "             acc[i].w += ACached0[i] * BCached3.x + ACached1[i] * BCached3.y + ACached2[i] * BCached3.z + ACached3[i] * BCached3.w;\n"
+          << "      }\n";
     } else if (transpose_a && !transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-        // Calculate 4 output for each thread
-        // We read 32 vec4 from tile_a and 32 vec4 from tile_b in total.
-        for (var i = 0u; i < 32; i = i + 1u) {
-          let a = tile_a[i][local_idx / 32u];
-          let b = tile_b[i][local_idx % 8u];
-          values += a[(local_idx / 8u) % 4] * b;
-        })CALC";
+      shader.MainFunctionBody()
+          << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
+          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
+          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
+          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+      if (inner_elements_size != 3) {
+        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+      }
+      shader.MainFunctionBody()
+          << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
+          << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
+          << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
+          << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+          << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
+          << "        let ACached = mm_Asub[tileCol][i];\n"
+          << "        acc[i] = BCached0 * ACached0[i] + acc[i];\n"
+          << "        acc[i] = BCached1 * ACached1[i] + acc[i];\n"
+          << "        acc[i] = BCached2 * ACached2[i] + acc[i];\n"
+          << "        " << (inner_elements_size == 3 ? "" : "acc[i] = BCached3 * ACached3[i] + acc[i];") << "\n"
+          << "      }\n";
     } else if (!transpose_a && transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-        for (var i = 0u; i < 32; i = i + 4u) {
-          let a = tile_a[local_idx / 8u][i/4u];
-          let b1 = tile_b[(local_idx % 8) * 4][i / 4u];
-          let b2 = tile_b[(local_idx % 8) * 4 + 1u][i / 4u];
-          let b3 = tile_b[(local_idx % 8) * 4 + 2u][i / 4u];
-          let b4 = tile_b[(local_idx % 8) * 4 + 3u][i / 4u];
-
-          values += vec4<output_element_t>(
-          dot(a, b1),
-          dot(a, b2),
-          dot(a, b3),
-          dot(a, b4)
-          );
-        })CALC";
+      shader.MainFunctionBody()
+          << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
+          << "      let BCached0 = mm_Bsub[tileCol * innerElementSize][k];\n"
+          << "      let BCached1 =  mm_Bsub[tileCol * innerElementSize + 1][k];\n"
+          << "      let BCached2 =  mm_Bsub[tileCol * innerElementSize + 2][k];\n";
+      if (inner_elements_size != 3) {
+        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[tileCol * innerElementSize + 3][k];\n";
+      }
+      shader.MainFunctionBody()
+          << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
+          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        acc[i].x += dot(ACached, BCached0);\n"
+          << "        acc[i].y += dot(ACached, BCached1);\n"
+          << "        acc[i].z += dot(ACached, BCached2);\n"
+          << "        " << (inner_elements_size == 3 ? "" : "acc[i].w += dot(ACached, BCached3);") << "\n"
+          << "      }\n";
     } else {
-      shader.MainFunctionBody() << R"CALC(
-        for (var i = 0u; i < 32; i = i + 4u) {
-          let a = tile_a[local_idx / 8u][i/4u];
-          let b1 = tile_b[i][local_idx % 8u];
-          let b2 = tile_b[i+1][local_idx % 8u];
-          let b3 = tile_b[i+2][local_idx % 8u];
-          let b4 = tile_b[i+3][local_idx % 8u];
-
-          values += a.x * b1 + a.y * b2 + a.z * b3 + a.w * b4;
-        })CALC";
+      shader.MainFunctionBody()
+          << "    for (var k = 0; k < tileInner / innerElementSize; k = k + 1) {\n"
+          << "      let BCached0 = mm_Bsub[k * innerElementSize][tileCol];\n"
+          << "      let BCached1 = mm_Bsub[k * innerElementSize + 1][tileCol];\n"
+          << "      let BCached2 = mm_Bsub[k * innerElementSize + 2][tileCol];\n";
+      if (inner_elements_size != 3) {
+        shader.MainFunctionBody() << "      let BCached3 = mm_Bsub[k * innerElementSize + 3][tileCol];\n";
+      }
+      shader.MainFunctionBody()
+          << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
+          << "        let ACached = mm_Asub[tileRow + i][k];\n"
+          << "        acc[i] = BCached0 * ACached.x + acc[i];\n"
+          << "        acc[i] = BCached1 * ACached.y + acc[i];\n"
+          << "        acc[i] = BCached2 * ACached.z + acc[i];\n"
+          << "        " << (inner_elements_size == 3 ? "" : "acc[i] = BCached3 * ACached.w + acc[i];") << "\n"
+          << "      }\n";
     }
-    shader.MainFunctionBody() << "    workgroupBarrier();\n"
-                              << "  }\n\n";
+    shader.MainFunctionBody()
+        << "    }\n"
+        << "    workgroupBarrier();\n"
+        << "  }\n";  // main for loop
 
-    // Calculate alpha
+    // Calculate alpha * acc
     if (alpha != 1.0f) {
-      shader.MainFunctionBody() << "  values = output_element_t(uniforms.alpha) * values;\n";
+      shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
+                                << "    acc[innerRow] = output_element_t(uniforms.alpha) * acc[innerRow];\n"
+                                << "  }\n";
     }
   }
 
-  shader.MainFunctionBody() << "  let m = tile_row_start + local_idx / 8u;\n"
-                            << "  let n = tile_col_start + local_idx % 8u;\n\n";
-
-  // Write output
+  // Write the results to the output buffer
+  shader.MainFunctionBody() << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n";
   if (output_components == 1) {
-    shader.MainFunctionBody() << " for (var i = 0u; i < 4u; i = i + 1u) {\n"
-                              << "    mm_write(m, 4 * n + i, values[i]);\n"
+    shader.MainFunctionBody() << " for (var i = 0; i < innerElementSize; i = i + 1) {\n"
+                              << "    mm_write(batch, globalRow + innerRow, globalCol * innerElementSize + i, acc[innerRow][i]);\n"
                               << "  }\n";
   } else {
-    shader.MainFunctionBody() << "  mm_write(m, n, values);\n";
+    shader.MainFunctionBody() << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n";
   }
+
+  shader.MainFunctionBody() << "  }\n";
+
   return Status::OK();
 }
 
@@ -244,162 +302,172 @@ Status GemmVec4Program::MakeMatMulPackedSource(ShaderHelper& shader,
                                                bool split_k,
                                                uint32_t splitted_dim_inner,
                                                bool sequentially_access_by_threads) {
-  const std::string type_string = MakeScalarOrVectorType(1 /*components */, data_type);
+  ORT_UNUSED_PARAMETER(split_k);
+  ORT_UNUSED_PARAMETER(splitted_dim_inner);
 
-  shader.MainFunctionBody() << "  var values = vec4< " << data_type << ">(0);\n\n"
-                            << "  let tile_col_start = (workgroup_idx % uniforms.num_tile_n) * 32u;\n"
-                            << "  let tile_row_start = (workgroup_idx / uniforms.num_tile_n) * 32u;\n";
+  const auto elements_per_thread_x = elements_per_thread[0];
+  const auto elements_per_thread_y = elements_per_thread[1];
 
-  if (need_handle_matmul) {
-    shader.AddInput("A", ShaderUsage::UseUniform);
-    shader.AddInput("B", ShaderUsage::UseUniform);
+  const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
+  const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
+  const auto tile_a_width = transpose_a ? tile_a_outer : tile_inner;
+  const auto tile_a_height = transpose_a ? tile_inner : tile_a_outer;
 
-    // Add shared memory arrays for tiling
-    shader.AdditionalImplementation() << "var<workgroup> tile_a: array<array< " << type_string << ", 32 >, 32 >;\n "
-                                      << "var<workgroup> tile_b: array<array< " << type_string << ", 32 >, 32 >;\n ";
-
-    shader.MainFunctionBody()
-        << "  var k_start_a = 0u;\n"
-        << "  var k_start_b = 0u;\n\n"
-        << "  let num_tiles = (uniforms.K + 32 - 1) / 32;\n";
-
-    // Main loop for matrix multiplication
-    shader.MainFunctionBody()
-        << "  for (var t = 0u; t < num_tiles; t = t + 1u) {\n";
-    // Load TILE_A
-    if (transpose_a) {
-      shader.MainFunctionBody() << "var row = k_start_a + (local_idx / 8u); \n"
-                                << "var col =  tile_row_start + (local_idx % 8u) * 4u; \n"
-                                << "tile_a[local_idx / 8u][(local_idx % 8u) * 4u] = mm_readA(row, col, uniforms.K, uniforms.M); \n"
-                                << "tile_a[local_idx / 8u][(local_idx % 8u) * 4u + 1u] = mm_readA(row, col + 1u, uniforms.K, uniforms.M); \n"
-                                << "tile_a[local_idx / 8u][(local_idx % 8u) * 4u + 2u] = mm_readA(row, col + 2u, uniforms.K, uniforms.M); \n"
-                                << "tile_a[local_idx / 8u][(local_idx % 8u) * 4u + 3u] = mm_readA(row, col + 3u, uniforms.K, uniforms.M); \n";
-
-    } else {
-      shader.MainFunctionBody() << R"TILE_A(
-                                    var row = tile_row_start + local_idx / 8u; // row is A index
-                                    var col = k_start_a + (local_idx % 8u) * 4; //
-                                    tile_a[local_idx / 8u][(local_idx % 8u) * 4] = mm_readA(row, col, uniforms.M, uniforms.K);
-                                    tile_a[local_idx / 8u][(local_idx % 8u) * 4 + 1u] = mm_readA(row, col + 1u, uniforms.M, uniforms.K);
-                                    tile_a[local_idx / 8u][(local_idx % 8u) * 4 + 2u] = mm_readA(row, col + 2u, uniforms.M, uniforms.K);
-                                    tile_a[local_idx / 8u][(local_idx % 8u) * 4 + 3u] = mm_readA(row, col + 3u, uniforms.M, uniforms.K);
-                                    )TILE_A";
-    }
-    // Load TILE_B
-    if (transpose_b) {
-      shader.MainFunctionBody() << R"TILE_B(
-                                    row = tile_col_start + (local_idx / 8u);
-                                    col = k_start_b + (local_idx % 8u) * 4u; // col is B index
-                                    // load 1 vec4 into tile_b
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4] = mm_readB(row, col, uniforms.N, uniforms.K);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 1u] = mm_readB(row, col + 1u, uniforms.N, uniforms.K);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 2u] = mm_readB(row, col + 2u, uniforms.N, uniforms.K);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 3u] = mm_readB(row, col + 3u, uniforms.N, uniforms.K);
-                                    )TILE_B";
-    } else {
-      shader.MainFunctionBody() << R"TILE_B(
-                                    row = k_start_b + (local_idx / 8u); // row is B index
-                                    col = tile_col_start + (local_idx % 8u) * 4u; // col is B index
-                                    // load 1 vec4 into tile_b
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4] = mm_readB(row, col, uniforms.K, uniforms.N);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 1u] = mm_readB(row, col + 1u, uniforms.K, uniforms.N);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 2u] = mm_readB(row, col + 2u, uniforms.K, uniforms.N);
-                                    tile_b[local_idx / 8u][(local_idx % 8u) * 4 + 3u] = mm_readB(row, col + 3u, uniforms.K, uniforms.N);
-                                    )TILE_B";
-    }
-
-    shader.MainFunctionBody() << "    workgroupBarrier();\n\n";
-
-    if (transpose_a) {
-      shader.MainFunctionBody() << "k_start_a = k_start_a + 32u; \n";
-    } else {
-      shader.MainFunctionBody() << "k_start_a = k_start_a + 32u; \n";
-    }
-
-    if (transpose_b) {
-      shader.MainFunctionBody() << "k_start_b = k_start_b + 32u; \n";
-    } else {
-      shader.MainFunctionBody() << "k_start_b = k_start_b + 32u; \n";
-    }
-
-    // Calculate output according to TILE_A and TILE_B
-    if (transpose_a && transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-                                    // Calculate 4 output for each thread
-                                    // We read 32 vec4 from tile_a and 32 vec4 from tile_b in total.
-                                    for (var i = 0u; i < 32; i = i + 1u) {
-                                      let a = tile_a[i][local_idx / 8u];
-                                      let b1 = tile_b[(local_idx % 8) * 4][i];
-                                      let b2 = tile_b[(local_idx % 8) * 4 + 1u][i];
-                                      let b3 = tile_b[(local_idx % 8) * 4 + 2u][i];
-                                      let b4 = tile_b[(local_idx % 8) * 4 + 3u][i];
-                                      values.x += a * b1;
-                                      values.y += a * b2;
-                                      values.z += a * b3;
-                                      values.w += a * b4;
-                                    }
-                                    )CALC";
-    } else if (transpose_a && !transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-                                    // Calculate 4 output for each thread
-                                    // We read 32 vec4 from tile_a and 32 vec4 from tile_b in total.
-                                    for (var i = 0u; i < 32; i = i + 1u) {
-                                      let a = tile_a[i][local_idx / 8u];
-                                      let b1 = tile_b[i][(local_idx % 8u) * 4];
-                                      let b2 = tile_b[i][(local_idx % 8u) * 4 + 1u];
-                                      let b3 = tile_b[i][(local_idx % 8u) * 4 + 2u];
-                                      let b4 = tile_b[i][(local_idx % 8u) * 4 + 3u];
-                                      values.x += a * b1;
-                                      values.y += a * b2;
-                                      values.z += a * b3;
-                                      values.w += a * b4;
-                                    })CALC";
-    } else if (!transpose_a && transpose_b) {
-      shader.MainFunctionBody() << R"CALC(
-                                    for (var i = 0u; i < 32; i = i + 1u) {
-                                      let a = tile_a[local_idx / 8u][i];
-                                      let b1 = tile_b[(local_idx % 8) * 4][i];
-                                      let b2 = tile_b[(local_idx % 8) * 4 + 1u][i];
-                                      let b3 = tile_b[(local_idx % 8) * 4 + 2u][i];
-                                      let b4 = tile_b[(local_idx % 8) * 4 + 3u][i];
-
-                                      values.x += a * b1;
-                                      values.y += a * b2;
-                                      values.z += a * b3;
-                                      values.w += a * b4;
-                                    }
-                                    )CALC";
-    } else {
-      shader.MainFunctionBody() << R"CALC(
-                                    for (var i = 0u; i < 32; i = i + 1u) {
-                                        let a = tile_a[local_idx / 8u][i];
-                                        let b1 = tile_b[i][(local_idx % 8u) * 4];
-                                        let b2 = tile_b[i][(local_idx % 8u) * 4 + 1u];
-                                        let b3 = tile_b[i][(local_idx % 8u) * 4  + 2u];
-                                        let b4 = tile_b[i][(local_idx % 8u) * 4  + 3u];
-                                        values.x += a * b1;
-                                        values.y += a * b2;
-                                        values.z += a * b3;
-                                        values.w += a * b4;
-                                    }
-                                    )CALC";
-    }
-    shader.MainFunctionBody() << "    workgroupBarrier();\n"
-                              << "  }\n\n";
-
-    // Calculate alpha
-    if (alpha != 1.0f) {
-      shader.MainFunctionBody() << "  values = output_element_t(uniforms.alpha) * values;\n";
-    }
+  if (!(tile_a_height % workgroup_size_y == 0 && tile_a_width % workgroup_size_x == 0 && tile_inner % workgroup_size_y == 0)) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "tile_a_height: ", tile_a_height, " must be divisible by WorkgroupSizeY: ", workgroup_size_y,
+                           ", tile_a_width: ", tile_a_width, " must be divisible by WorkgroupSizeX: ", workgroup_size_x,
+                           ", tile_inner: ", tile_inner, " must be divisible by WorkgroupSizeY: ", workgroup_size_y);
   }
 
-  shader.MainFunctionBody() << "  let m = tile_row_start + local_idx / 8u;\n"
-                            << "  let n = tile_col_start + (local_idx % 8u) * 4u;\n\n";
+  const auto row_per_thread_a = tile_a_height / workgroup_size_y;
+  const auto col_per_thread_a = tile_a_width / workgroup_size_x;
+  const auto row_per_thread_b = tile_inner / workgroup_size_y;
+  std::string write_data_to_sub_a_snippet = transpose_a ? std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, kStart + inputRow, globalRowStart + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
+                                                        : std::string("mm_Asub[inputRow][inputCol] = mm_readA(batch, globalRowStart + inputRow, kStart + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
+  std::string write_data_to_sub_b_snippet = transpose_b ? std::string("mm_Bsub[inputRow][inputCol] = mm_readB(batch, globalColStart + tileRowB + innerRow, kStart + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n"
+                                                        : std::string("mm_Bsub[inputRow][inputCol] = mm_readB(batch, kStart + inputRow, globalColStart + inputCol") + (batch_dims ? ", batchIndices" : "") + ");\n";
+  shader.AdditionalImplementation()
+      << "var<workgroup> mm_Asub: array<array<" << data_type << ", " << tile_a_width << ">, " << tile_a_height << ">;\n"
+      << "var<workgroup> mm_Bsub: array<array<" << data_type << ", " << tile_b_outer << ">, " << tile_inner << ">;\n"
+      << "const rowPerThread = " << elements_per_thread_y << ";\n"
+      << "const colPerThread = " << elements_per_thread_x << ";\n"
+      << "const tileInner = " << tile_inner << ";\n";
 
-  // Write output
-  shader.MainFunctionBody() << " for (var i = 0u; i < 4u; i = i + 1u) {\n"
-                            << "    mm_write(m, n + i, values[i]);\n"
-                            << "  }\n";
+  shader.MainFunctionBody() << " let batch = i32(global_id.z);\n"
+                            << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
+                            << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
+                            << " var kStart = 0;\n"
+                            << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
+
+  if (sequentially_access_by_threads) {
+    shader.MainFunctionBody() << "let localRow = i32(local_id.y);\n"
+                              << "let localCol = i32(local_id.x);\n"
+                              << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
+                              << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+                              << "\n"
+                              << "// Loop over shared dimension.\n"
+                              << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n"
+                              << "  // Load one tile of A into local memory.\n"
+                              << "  for (var inputRow = localRow; inputRow < " << tile_a_height << "; inputRow = inputRow + " << workgroup_size_y << ") {\n"
+                              << "    for (var inputCol = localCol; inputCol < " << tile_a_width << "; inputCol = inputCol + " << workgroup_size_x << ") {\n"
+                              << "      " << write_data_to_sub_a_snippet << "\n"
+                              << "    }\n"
+                              << "  }\n"
+                              << "  // Load one tile of B into local memory.\n"
+                              << "  for (var inputRow = localRow; inputRow < " << tile_inner << "; inputRow = inputRow + " << workgroup_size_y << ") {\n"
+                              << "        for (var inputCol = localCol; inputCol < " << tile_b_outer << "; inputCol = inputCol + " << workgroup_size_x << ") {\n"
+                              << "           " << write_data_to_sub_b_snippet << "\n "
+                              << "    }\n"
+                              << "  }\n"
+                              << "  kStart = kStart + tileInner;\n"
+                              << "  workgroupBarrier();\n"
+                              << "\n"
+                              << "  // Compute acc values for a single thread.\n"
+                              << "  var BCached : array<" << data_type << ", colPerThread>;\n"
+                              << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
+                              << "    for (var inner = 0; inner < colPerThread; inner = inner + 1) {\n"
+                              << "      BCached[inner] = mm_Bsub[k][localCol + inner * " << workgroup_size_x << "];\n"
+                              << "    }\n"
+                              << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
+                              << "      let ACached = " << (transpose_a ? "mm_Asub[k][localRow + innerRow * " + std::to_string(workgroup_size_y) + "];" : "mm_Asub[localRow + innerRow * " + std::to_string(workgroup_size_y) + "][k];") << "\n"
+                              << "      for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
+                              << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] +\n"
+                              << "            ACached * BCached[innerCol];\n"
+                              << "      }\n"
+                              << "    }\n"
+                              << "  }\n"
+                              << "  workgroupBarrier();\n"
+                              << "}\n"
+                              << "for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
+                              << "  let gRow = globalRowStart + localRow + innerRow * " << workgroup_size_y << ";\n"
+                              << "  for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
+                              << "    let gCol = globalColStart + localCol + innerCol * " << workgroup_size_x << ";\n"
+                              << "    mm_write(batch, gRow, gCol, acc[innerRow][innerCol]);\n"
+                              << "  }\n"
+                              << "}\n";
+  } else {
+    shader.MainFunctionBody()
+        << "let tileRow = i32(local_id.y) * rowPerThread;\n"
+        << "let tileCol = i32(local_id.x) * colPerThread;\n"
+        << "let globalRow = i32(global_id.y) * rowPerThread;\n"
+        << "let globalCol = i32(global_id.x) * colPerThread;\n"
+        << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
+        << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+        << "let tileRowA = i32(local_id.y) * " << row_per_thread_a << ";\n"
+        << "let tileColA = i32(local_id.x) * " << col_per_thread_a << ";\n"
+        << "let tileRowB = i32(local_id.y) * " << row_per_thread_b << ";\n";
+
+    if (need_handle_matmul) {
+      // Loop over shared dimension.
+      shader.MainFunctionBody()
+          << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
+
+      // Load one tile of A into local memory.
+      shader.MainFunctionBody()
+          << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_a << "); innerRow = innerRow + 1) {\n"
+          << "    for (var innerCol = 0; innerCol < i32(" << col_per_thread_a << "); innerCol = innerCol + 1) {\n"
+          << "      let inputRow = tileRowA + innerRow;\n"
+          << "      let inputCol = tileColA + innerCol;\n"
+          << "      " << write_data_to_sub_a_snippet << "\n"
+          << "    }\n"
+          << "  }\n";
+
+      // Load one tile of B into local memory.
+      shader.MainFunctionBody()
+          << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_b << "); innerRow = innerRow + 1) {\n"
+          << "    for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+          << "      let inputRow = tileRowB + innerRow;\n"
+          << "      let inputCol = tileCol + innerCol;\n"
+          << "           " << write_data_to_sub_b_snippet << "\n "
+          << "    }\n"
+          << "  }\n"
+          << "  kStart = kStart + tileInner;\n"
+          << "  workgroupBarrier();\n";
+
+      // Compute acc values for a single thread.
+      shader.MainFunctionBody()
+          << "var BCached: array<" << data_type << ", colPerThread>;\n"
+          << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
+          << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n";
+      if (transpose_b) {
+        shader.MainFunctionBody() << "      BCached[inner] = mm_Bsub[tileCol + inner][k];\n";
+      } else {
+        shader.MainFunctionBody()
+            << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n";
+      }
+      shader.MainFunctionBody() << "    }\n"
+                                << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n";
+      if (transpose_a) {
+        shader.MainFunctionBody() << "      let ACached = mm_Asub[k][tileRow + innerRow];\n";
+      } else {
+        shader.MainFunctionBody() << "      let ACached = mm_Asub[tileRow + innerRow][k];\n";
+      }
+      shader.MainFunctionBody() << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+                                << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
+                                << "      }\n"
+                                << "    }\n"
+                                << "  }\n"
+                                << "  workgroupBarrier();\n"
+                                << "}\n";
+
+      // Calculate alpha * acc
+      if (alpha != 1.0f) {
+        shader.MainFunctionBody() << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
+                                  << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+                                  << "    acc[innerRow][innerCol] = output_element_t(uniforms.alpha) * acc[innerRow][innerCol];\n"
+                                  << "  }\n"
+                                  << "}\n";
+      }
+    }
+    // Write the results to the output buffer
+    shader.MainFunctionBody()
+        << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
+        << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+        << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
+        << "  }\n"
+        << "}\n";
+  }
   return Status::OK();
 }
 
@@ -410,14 +478,20 @@ Status GemmVec4Program::GenerateShaderCode(ShaderHelper& shader) const {
   const std::string data_type = "output_element_t";
 
   // Each thread compute 4*1 elements
-  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 1, 1});
+  InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
+
+  const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
+
   if (need_handle_matmul_) {
-    MatMulReadFnSource(shader, is_vec4_);
+    const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+    const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+
+    MatMulReadFnSource(shader, a, b, output, batch_dims);
   }
   if (is_vec4_) {
-    MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, output_components_, need_handle_matmul_);
+    MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims, transA_, transB_, alpha_, output_components_, need_handle_matmul_);
   } else {
-    MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, output_components_, need_handle_matmul_);
+    MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims, transA_, transB_, alpha_, output_components_, need_handle_matmul_);
   }
   MatMulWriteFnSource(shader, output);
 
@@ -479,10 +553,31 @@ Status ApplyGemmVec4(const Tensor* a,
   const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
+  TensorShape outer_dims = TensorShape({});
+  const int64_t batch_size = outer_dims.Size();
+
+  // Get dimensions for matrix multiplication from TensorShape
+  uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
+  uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
+  uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
+
+  if (transA && transB) {
+    dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
+    dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
+    dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 2]);
+  } else if (transA && !transB) {
+    dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
+    dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
+    dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);
+  } else if (!transA && transB) {
+    dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);
+    dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);
+    dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 2]);
+  }
   program.CacheHint(alpha, transA, transB, c_is_scalar, is_vec4)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
-      .SetDispatchGroupSize(num_tile_n * num_tile_m)
-      .SetWorkgroupSize(256, 1, 1)
+      .SetDispatchGroupSize(num_tile_n, num_tile_m, 1)
+      .SetWorkgroupSize(GemmVec4Program::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmVec4Program::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmVec4Program::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddUniformVariables({{num_tile_n},
                             {M},
                             {N},
@@ -491,7 +586,11 @@ Status ApplyGemmVec4(const Tensor* a,
                             {N / 4},
                             {K / 4},
                             {alpha},
-                            {beta}});
+                            {beta},
+                            {M},
+                            {N},
+                            {K}})
+      .AddIndices(outer_dims);
 
   return context.RunProgram(program);
 }

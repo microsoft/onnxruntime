@@ -67,7 +67,14 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
       {"N4", ProgramUniformVariableDataType::Uint32},
       {"K4", ProgramUniformVariableDataType::Uint32},
       {"alpha", ProgramUniformVariableDataType::Float32},
-      {"beta", ProgramUniformVariableDataType::Float32});
+      {"beta", ProgramUniformVariableDataType::Float32},
+      {"dim_a_outer", ProgramUniformVariableDataType::Uint32},
+      {"dim_b_outer", ProgramUniformVariableDataType::Uint32},
+      {"dim_inner", ProgramUniformVariableDataType::Uint32});
+
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_X = 8;
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Y = 8;
+  constexpr static uint32_t MATMUL_PACKED_WORKGROUP_SIZE_Z = 1;
 
  private:
   bool transA_;
@@ -79,7 +86,10 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
   bool c_is_scalar_ = false;
   int output_components_;
   bool is_vec4_ = false;
-  void MatMulReadFnSource(ShaderHelper& shader, bool is_vec4) const;
+  void MatMulReadFnSource(ShaderHelper& shader, const ShaderVariableHelper& a,
+                          const ShaderVariableHelper& b,
+                          const ShaderVariableHelper& output,
+                          const ShaderIndicesHelper& batch_dims) const;
   void MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const;
 };
 

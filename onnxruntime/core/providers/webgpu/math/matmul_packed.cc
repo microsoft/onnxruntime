@@ -164,10 +164,10 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
 
   if (transpose_a) {
     shader.MainFunctionBody()
-        << "      let Acached0 = mm_Asub[k * innerElementSize][localRow];\n"
-        << "      let Acached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
-        << "      let Acached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
-        << (inner_elements_size == 3 ? "" : "      let Acached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
+        << "      let ACached0 = mm_Asub[k * innerElementSize][localRow];\n"
+        << "      let ACached1 = mm_Asub[k * innerElementSize + 1][localRow];\n"
+        << "      let ACached2 = mm_Asub[k * innerElementSize + 2][localRow];\n"
+        << (inner_elements_size == 3 ? "" : "      let ACached3 = mm_Asub[k * innerElementSize + 3][localRow];\n")
         << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
         << "        let ACached = mm_Asub[tileCol][i];\n"
         << "        acc[i] = BCached0 * ACached0[i] + acc[i];\n"
