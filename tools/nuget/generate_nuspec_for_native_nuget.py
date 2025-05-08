@@ -784,7 +784,7 @@ def generate_files(line_list, args):
             + '\\native" />'
         )
 
-    if is_dml_package:
+    if is_dml_package or is_windowsai_package:
         files_list.append(
             "<file src="
             + '"'
