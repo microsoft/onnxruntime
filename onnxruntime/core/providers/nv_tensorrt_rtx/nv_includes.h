@@ -9,7 +9,6 @@
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
 #endif
 
-
 #include <NvInfer.h>
 #include <NvInferPlugin.h>
 #include <NvInferRuntime.h>
