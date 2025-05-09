@@ -7,7 +7,7 @@
 
 namespace onnxruntime {
 #define REGISTER_ONNX_KERNEL_TYPED(T)                                                            \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(RMSNormalization, 23, T,                                      \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(RMSNormalization, 23, T,                                        \
                                  KernelDefBuilder()                                              \
                                      .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
                                      .TypeConstraint("U", DataTypeImpl::GetTensorType<float>()), \

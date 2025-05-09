@@ -51,8 +51,8 @@ TYPED_TEST(RMSNormalizationOpTest, RMSNorm) {
   test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-    {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-     kNnapiExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 TYPED_TEST(RMSNormalizationOpTest, RMSNorm_Scale) {
@@ -79,8 +79,8 @@ TYPED_TEST(RMSNormalizationOpTest, RMSNorm_Scale) {
   test.AddOutput<TypeParam>("Y", input_dims, GetTypedArray<TypeParam>(expected_output));
   // TRT, DNNL, OpenVINO and NNAPI, CoreML don't support this combination of datatypes
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-    {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
-     kNnapiExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kDnnlExecutionProvider, kOpenVINOExecutionProvider,
+            kNnapiExecutionProvider, kQnnExecutionProvider});
 }
 
 }  // namespace test
