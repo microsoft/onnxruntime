@@ -115,7 +115,7 @@ inline std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapa
 inline void ComputeCapability__SetHardwareDevice(ComputeCapability& capability,
                                                  const OrtHardwareDevice* hardware_device) {
 #if BUILD_QNN_EP_STATIC_LIB
-  return capability.hardware_device = hardware_device;
+  capability.hardware_device = hardware_device;
 #else
   capability.SetHardwareDevice(hardware_device);
 #endif
