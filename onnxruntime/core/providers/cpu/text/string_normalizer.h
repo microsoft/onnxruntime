@@ -27,7 +27,7 @@ class StringNormalizer : public OpKernel {
  private:
   bool is_case_sensitive_{true};
   CaseAction case_change_action_{NONE};
-  // Set this to lower because some characters do not have capital case.
+  // Set this to lower because some characters do not have upper case.
   // used for case-insensitive compare
   CaseAction compare_caseaction_{LOWER};
   std::string locale_name_;
