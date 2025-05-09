@@ -2198,7 +2198,7 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
 
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         args.use_cuda = True
 
     if args.build_wheel or args.gen_doc or args.enable_training:
