@@ -271,6 +271,10 @@ Status LSTMOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF((activations.size() >= 3 && (activations[0] != "sigmoid" || activations[1] != "tanh" || activations[2] != "tanh")) ||
                     (activations.size() == 6 && (activations[3] != "sigmoid" || activations[5] != "tanh" || activations[5] != "tanh")),
                 "QNN EP doesn't support non-default activations for LSTM.");
+  // TODO: Add support for layout==1
+  const int64_t layout = node_helper.Get("layout", static_cast<int64_t>(0));
+  ORT_RETURN_IF_NOT(layout == 0,
+                    "QNN EP: Unsupport layout mode %ld for %s.", layout, node_unit.Name().c_str());
   return Status::OK();
 }
 
@@ -326,9 +330,6 @@ Status LSTMOpBuilder::AddUnidirectionLSTM(QnnModelWrapper& qnn_model_wrapper,
   ORT_RETURN_IF_NOT(hidden_size > 0, "hidden size is not set for LSTM");
   const int64_t layout = node_helper.Get("layout", static_cast<int64_t>(0));
 
-  // TODO: Add support for layout==1
-  ORT_RETURN_IF_NOT(layout == 0,
-                    "QNN EP: Unsupport layout mode %ld for %s.", layout, node_name.c_str());
   const uint32_t input_size = input_tensor_infos[0].shape[2];
   const uint32_t batch_size = layout == 0 ? input_tensor_infos[0].shape[1] : input_tensor_infos[0].shape[0];
   const uint32_t seq_length = layout == 0 ? input_tensor_infos[0].shape[0] : input_tensor_infos[0].shape[1];
@@ -614,7 +615,7 @@ Status LSTMOpBuilder::AddUnidirectionLSTM(QnnModelWrapper& qnn_model_wrapper,
         qnn_lstm_input_names[qnn_input_indices[i]] = qnn_lstm_input_name;
       } else {
         // prepare zero initial values
-        std::string zero_initial_values_name = node_name + "_LSTM_initial_values";
+        std::string zero_initial_values_name = node_name + "_LSTM_initial_values_" + (i == 0 ? "h" : "c");
         QnnTensorWrapper zero_bias_tensor_wrapper(zero_initial_values_name,
                                                   QNN_TENSOR_TYPE_STATIC,
                                                   input_tensor_infos[0].qnn_data_type,
@@ -675,8 +676,8 @@ Status LSTMOpBuilder::AddUnidirectionLSTM(QnnModelWrapper& qnn_model_wrapper,
         node_name + "_QNN_LSTM_output_all_hidden_state_" + std::to_string(sequence_idx) + "_" + direction,
         node_name + "_QNN_LSTM_output_cell_state_" + std::to_string(sequence_idx) + "_" + direction,
         node_name + "_QNN_LSTM_output_hidden_state_" + std::to_string(sequence_idx) + "_" + direction};
-    qnn_lstm_input_names[10] = qnn_lstm_output_names[2];
-    qnn_lstm_input_names[11] = qnn_lstm_output_names[1];
+    qnn_lstm_input_names[10] = qnn_lstm_output_names[2];  // update initial_h
+    qnn_lstm_input_names[11] = qnn_lstm_output_names[1];  // update initial_c
     qnn_all_hidden_state_names[sequence_idx] = qnn_lstm_output_names[2];
 
     for (size_t j = 0; j < 3; j++) {

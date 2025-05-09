@@ -147,11 +147,10 @@ class ModelTestBuilder {
     }
   }
 
-  // Make optional input
-  template <typename T>
-  NodeArg* MakeOptionalInput() {
+  // Make optional tensor
+  NodeArg* MakeOptionalTensor() {
     ONNX_NAMESPACE::TypeProto type_proto;
-    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<T>());
+    type_proto.mutable_tensor_type()->set_elem_type(utils::ToTensorProtoElementType<float>());
     std::string name;
     return &graph_.GetOrCreateNodeArg(name, &type_proto);
   }
