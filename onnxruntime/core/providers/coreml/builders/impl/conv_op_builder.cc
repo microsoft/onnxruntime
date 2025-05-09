@@ -237,6 +237,16 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   const auto* weight_shape = input_defs[1]->Shape();
   int64_t num_dims = weight_shape ? weight_shape->dim_size() : -1;
 
+  std::vector<int64_t> weight_shape_vec;
+  std::vector<int64_t> x_shape_vec;
+  GetShape(*input_defs[1], weight_shape_vec, logger);
+  GetShape(*input_defs[0], x_shape_vec, logger);
+
+  if (!CheckShapeForLimit(weight_shape_vec) || !CheckShapeForLimit(x_shape_vec)) {
+    LOGS(logger, VERBOSE) << "Conv [" << name << "] has a shape with dimension > 16384. CoreML does not support conv operations with dim > 16384.";
+    return false;
+  }
+
   // ONNX spec requires N and C as first 2 dims
   if (num_dims != 3 && num_dims != 4) {
     LOGS(logger, VERBOSE) << "Conv [" << name << "] is " << num_dims - 2 << "D. "
