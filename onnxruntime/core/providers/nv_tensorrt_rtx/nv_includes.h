@@ -8,7 +8,6 @@
 #pragma warning(disable : 4100)  // Ignore warning C4100: unreferenced formal parameter
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::IPluginV2' was declared deprecated
 #endif
-#define TRT_WINML 1
 
 #include <NvInfer.h>
 #include <NvInferPlugin.h>
