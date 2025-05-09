@@ -11,15 +11,18 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/weightOnlyGemmProfiler.h"
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
-using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
-using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
-using ort_llm::kernels::weight_only::GemmIdCore;
-using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
+// using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+// using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
+// using ort_llm::kernels::weight_only::GemmIdCore;
+// using ort_llm::kernels::weight_only::GemmDims;
+// using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
 //using WeightOnlyGemmRunnerPtr=std::shared_ptr<CutlassFpAIntBGemmRunnerInterface>;
+
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -46,6 +49,13 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 
+    if constexpr (std::is_same<T, MLFloat16>::value) {
+      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_) {
+        use_fpA_intB_gemm_ = true;
+      }
+    }
+
+    /*
     gemmProfiler_ = std::make_shared<WeightOnlyQuantGemmPluginProfiler>(); // TODO: use factory to create singleton instance.
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
@@ -62,8 +72,21 @@ class MatMulNBits final : public CudaKernel {
           //gemmProfiler_->setWeightTypeId(WeightTypeId::INT4);
           //gemmProfiler_->setCudaKernelType(ort_llm::kernels::weight_only::KernelType::FP16Int4Groupwise, 80);
         }
+
+        int minM = 1;
+        int maxM = 8192;
+        GemmDims dims = {minM, maxM, N_, K_};
+
+        // size_t smoothedActSize = static_cast<size_t>(maxM) * static_cast<size_t>(maxK)
+        //     * (in[0].desc.type == nvinfer1::DataType::kFLOAT ? sizeof(float) : sizeof(half));
+        // m_workspaceMaxSize = smoothedActSize + weightOnlyGemmRunner_->getWorkspaceSize(maxM, N_, K_);
+
+
+        bool hasWeightOnlyCudaKernel = false;
+        gemmProfiler_->profileTactics(weightOnlyGemmRunner_, ort_llm::nvinfer1::DataType::kHALF, dims, gemmId_, hasWeightOnlyCudaKernel);
       }
-    }    
+    }*/
+
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -81,9 +104,9 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool use_fpA_intB_gemm_{false};
 
-  WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
-  mutable GemmProfilerPtr gemmProfiler_{nullptr};
-  GemmIdCore gemmId_{};
+  // WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
+  // mutable GemmProfilerPtr gemmProfiler_{nullptr};
+  // GemmIdCore gemmId_{};
 };
 
 }  // namespace cuda

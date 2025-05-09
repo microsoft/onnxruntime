@@ -9,9 +9,13 @@
 #include "core/framework/float16.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
+#include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "matmul_nbits.cuh"
 #include "dequantize_blockwise.cuh"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+//#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
+
 
 namespace onnxruntime {
 namespace contrib {
@@ -42,7 +46,6 @@ using namespace onnxruntime::cuda;
 //     return rets;
 // }
 
-
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* a = ctx->Input<Tensor>(0);
@@ -61,7 +64,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const auto* zero_points_data = zero_points == nullptr ? nullptr : zero_points->DataRaw();
   const auto* reorder_idx_data = reorder_idx == nullptr ? nullptr : reorder_idx->Data<int32_t>();
   const auto* bias_data = bias == nullptr ? nullptr : bias->Data<T>();
-  
+
   constexpr bool transa = false;
   constexpr bool transb = true;
   MatMulComputeHelper helper;
@@ -79,7 +82,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
-  
+
   auto& device_prop = this->GetDeviceProp();
   int sm = device_prop.major * 10 + device_prop.minor;
 
@@ -87,12 +90,136 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   int n =  SafeInt<int>(helper.N());
   int k =  SafeInt<int>(helper.K());
 
-  if (use_fpA_intB_gemm_ && sm >= 75) {
+  DUMP_TENSOR_INIT();
+
+  if (use_fpA_intB_gemm_ && nbits_ == 8 && m <= 16 && n % 32 == 0 && k % 64 == 0) {
+    #if DUMP_TENSOR_LEVEL > 0
+    DUMP_TENSOR_D("A", *a);
+    DUMP_TENSOR_D("B", *b);
+    DUMP_TENSOR_D("scales", *scales);
+    if (zero_points != nullptr) {
+      DUMP_TENSOR_D("zero_points", *zero_points);
+    }
+    if (reorder_idx != nullptr) {
+      DUMP_TENSOR_D("g_idx", *reorder_idx);
+    }
+    if (bias != nullptr) {
+      DUMP_TENSOR_D("bias", *bias);
+    }
+  #endif
+
+    fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
+                                                  ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
+                                                  : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
+    if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
+      size_t k_blocks = (k + block_size_ - 1) / block_size_;
+      size_t bytes = n * k_blocks  * sizeof(T);
+
+      IAllocatorUniquePtr<void> scale_space = this->GetScratchBuffer<void>(bytes, ctx->GetComputeStream());
+      CudaT* transposed_scales = reinterpret_cast<CudaT*>(scale_space.get());
+
+      CudaT* scaled_zero_points = nullptr;
+      IAllocatorUniquePtr<void> scaled_zp_space = this->GetScratchBuffer<void>(bytes, ctx->GetComputeStream());
+      scaled_zero_points = reinterpret_cast<CudaT*>(scaled_zp_space.get());
+
+      size_t weight_bytes = n * k;
+      IAllocatorUniquePtr<void> transpose_weight_space = this->GetScratchBuffer<void>(weight_bytes, ctx->GetComputeStream());
+      int8_t* transposed_weight = reinterpret_cast<int8_t*>(transpose_weight_space.get());
+
+      IAllocatorUniquePtr<void> processed_weight_space = this->GetScratchBuffer<void>(weight_bytes, ctx->GetComputeStream());
+      int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(processed_weight_space.get());
+
+      auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(n * k);
+
+      using ort_llm::kernels::cutlass_kernels::QuantType;
+      QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
+      if (nbits_ == 4) {
+        // transpose the weight to (k, n)
+        fpA_intB_gemm::unpack_int4_packed_transposed_tensor_to_int8_cuda(
+          stream,
+          transposed_weight,
+          blob_data,
+          n, k);
+        CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+        CUDA_CALL_THROW(cudaMemcpy(tranpose_weight_buffer.get(), transposed_weight, n * k, cudaMemcpyDeviceToHost));
+      } else {
+        auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
+        CUDA_CALL_THROW(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
+        // transpose the weight from (n, k) to (k, n)
+        for (int64_t i = 0; i < n; i++) {
+          for (int64_t j = 0; j < k; j++) {
+            tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
+          }
+        }
+      }
+
+#if DUMP_TENSOR_LEVEL > 0
+      // DUMP_CPU_TENSOR_INIT();
+      // DUMP_CPU_TENSOR_D("tranpose_weight", tranpose_weight_buffer.get(), n, k);
+      printf("tranpose_weight:\n");
+      for (int64_t i = 0; i < k; i++) {
+        for (int64_t j = 0; j < n; j++) {
+          printf("%d\t", int(tranpose_weight_buffer.get()[i * n + j]));
+        }
+        printf("\n");
+      }
+#endif
+      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
+      bool force_interleave = true;
+      ort_llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
+        reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
+        reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
+        {static_cast<size_t>(k), static_cast<size_t>(n)}, quant_type, force_interleave);
+
+      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k, cudaMemcpyHostToDevice));
+      CUDA_CALL_THROW(cudaDeviceSynchronize());
+
+      constexpr float kDefaultZeroPoint4Bit = 8.0f;
+      constexpr float kDefaultZeroPoint8Bit = 128.0f;
+      const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit: kDefaultZeroPoint8Bit;
+      if (zero_points != nullptr && !zero_points->IsDataType<T>()) { // zero point is uint8_t type
+        if (nbits_ == 4) {
+          fpA_intB_gemm::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+        } else {
+          fpA_intB_gemm::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+        }
+      } else { // zero point is not uint8_t type
+        fpA_intB_gemm::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+          stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
+          transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+      }
+
+      DUMP_STRING("k_blocks=", k_blocks, " n=", n);
+      DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
+      if (scaled_zero_points != nullptr){
+        DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
+      }
+
+      fpA_intB_gemm::Params params(a_data, nullptr, preprocessed_weight,
+                                   transposed_scales, scaled_zero_points,
+                                   bias_data, out_data,
+                                   1.f, m, n, k,
+                                   block_size_, cuda_kernel_type);
+
+      fpA_intB_gemm::kernel_launcher(sm, params, stream);
+
+      DUMP_TENSOR_D("out_data", out_data, m, n);
+      return Status::OK();
+    } else {
+      DUMP_STRING("Not supported by fpA_intB_gemm. sm=", sm,  " nbits=", nbits_, " block_size=", block_size_);
+    }
+
+    /*
     KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
     gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
 
     // get best tactic and check if CUDA kernel should be used
     bool use_cuda_kernel = false;
+
     auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
     TLLM_CHECK_WITH_INFO(bestTactic,
                          "No valid weight only per-channel GEMM tactic(It is usually caused by the failure to execute all candidate "
@@ -121,7 +248,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           workspace_size,
           stream);
     }
-    return Status::OK();
+    */
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
@@ -244,7 +371,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     }
   }
 
-  DUMP_TENSOR_INIT();
   DUMP_TENSOR_D("DeQuantized", b_data, N_, K_padded);
 
   const CudaT alpha = ToCudaType<T>::FromFloat(1.f);

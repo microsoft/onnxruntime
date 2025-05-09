@@ -1,0 +1,315 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
+#include <cassert>
+#include <cmath>
+#include <cstdint>
+#include <cuda_bf16.h>
+#include <cuda_fp16.h>
+#include <cuda_runtime.h>
+#include <cuda_runtime_api.h>
+#include <iostream>
+// #include <cutlass/cutlass.h>
+// #include <cutlass/numeric_conversion.h>
+// #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
+#include "core/providers/cuda/cuda_common.h"
+
+#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemm_details.h"
+
+namespace onnxruntime {
+namespace contrib {
+namespace cuda {
+namespace fpA_intB_gemm {
+
+void kernel_launcher(int arch, Params& params, cudaStream_t s)
+{
+#define EXEC(KType, A, B, Layout, ConverterInterleave)                                                                 \
+    if (params.type == KType)                                                                                          \
+    {                                                                                                                  \
+        select_gs<kernel_type_traits<KType>::isGroupwise, KernelDetails<A, B, Layout, ConverterInterleave, 64>>(       \
+            params, s);                                                                                                \
+        return;                                                                                                        \
+    }
+
+#define EXEC_W4A8(KType, A, B, Layout, ConverterInterleave)                                                            \
+    if (params.type == KType && params.apply_alpha_in_advance)                                                         \
+    {                                                                                                                  \
+        select_gs<kernel_type_traits<KType>::isGroupwise, KernelDetails<A, B, Layout, ConverterInterleave, 128>>(      \
+            params, s);                                                                                                \
+        return;                                                                                                        \
+    }
+
+    if (arch >= 75 && arch < 80)
+    {
+        EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+    }
+    else if (arch >= 80 && arch < 90)
+    {
+        if (arch == 89)
+        {
+            EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+            // EXEC_W4A8(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        }
+        EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+
+        // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::BF16Int8PerChannel, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        // EXEC(KernelType::BF16Int4PerChannel, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+    }
+    else if (arch >= 90)
+    {
+        // Dispatchers for W4A8 groupwise
+        EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC_W4A8(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+
+        EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+        EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+
+        // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC(KernelType::BF16Int8PerChannel, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC(KernelType::BF16Int4PerChannel, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+    }
+#undef EXEC
+}
+
+bool is_supported(int arch, KernelType kernel_type)
+{
+#define SUPPORT(Type)                                                                                                  \
+    if (kernel_type == Type)                                                                                           \
+        return true;
+
+    if (arch >= 75 && arch < 80)
+    {
+        SUPPORT(KernelType::FP16Int8Groupwise);
+        SUPPORT(KernelType::FP16Int4Groupwise);
+        // SUPPORT(KernelType::FP16Int8PerChannel);
+        // SUPPORT(KernelType::FP16Int4PerChannel);
+    }
+    else if (arch >= 80)
+    {
+        SUPPORT(KernelType::FP16Int8Groupwise);
+        SUPPORT(KernelType::FP16Int4Groupwise);
+        // SUPPORT(KernelType::FP16Int8PerChannel);
+        // SUPPORT(KernelType::FP16Int4PerChannel);
+        // SUPPORT(KernelType::BF16Int8Groupwise);
+        // SUPPORT(KernelType::BF16Int4Groupwise);
+        // SUPPORT(KernelType::BF16Int8PerChannel);
+        // SUPPORT(KernelType::BF16Int4PerChannel);
+    }
+    return false;
+#undef SUPPORT
+}
+
+
+// CUDA kernel to compute -scale * zero_point and transpose
+// Each thread computes one element of the OUTPUT matrix (shape [k, n])
+template<bool is_zero_point_int4_packed, typename T, typename Z>
+__global__ void computeScaledZeroPointAndTransposeKernel(
+    const T* scale,        // Input scale matrix [n, k]
+    const Z* zero_point,   // Input zero_point matrix [n, k]
+    T* transposed_scale,   // transposed scale [k, n]
+    T* scaled_zero_point,  // Output matrix [k, n]
+    int n,                 // Rows of input matrices
+    int k,                 // Columns of input matrices
+    float default_zero_point
+) {
+    // Calculate the output matrix coordinates [row, col] for this thread
+    // The output matrix has dimensions [k, n]
+    int out_row = blockIdx.y * blockDim.y + threadIdx.y;
+    int out_col = blockIdx.x * blockDim.x + threadIdx.x;
+
+    // Check bounds to ensure we are within the output matrix dimensions [k, n]
+    if (out_row < k && out_col < n) {
+        int in_row = out_col;
+        int in_col = out_row;
+        int64_t input_offset = static_cast<int64_t>(in_row) * k + in_col;
+        int64_t output_offset = static_cast<int64_t>(out_row) * n + out_col;
+
+        // Perform the computation: scaled_zero_point[out_row, out_col] = -scale[in_row, in_col] * zero_point[in_row, in_col]
+        T scale_val = scale[input_offset];
+        float zero_point_val;
+        if (zero_point != nullptr) {
+            if constexpr(is_zero_point_int4_packed) { // zero point is 4 bit, and two elements are packed into one bye.
+                int64_t packed_zp_offset = static_cast<int64_t>(in_row) * k + in_col / 2;
+                uint8_t packed_zp = zero_point[packed_zp_offset];
+                zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_zp >> 4) : (packed_zp & 0x0f));
+            } else {
+                zero_point_val = static_cast<float>(zero_point[input_offset]);
+            }
+        } else {
+            zero_point_val = default_zero_point;
+        }
+
+        // if (out_row == 0 && out_col == 0) {
+        //     printf("computeScaledZeroPointAndTransposeKernel: scale_val = %f, zero_point_val = %f, default_zp=%f\n", static_cast<float>(scale_val), zero_point_val, default_zero_point);
+        // }
+
+        float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
+        scaled_zero_point[output_offset] = static_cast<T>(result);
+        transposed_scale[output_offset] = scale_val;
+    }
+}
+
+template<bool is_zero_point_int4_packed, typename T, typename Z>
+void launch_scaled_zero_point_kernel(
+    cudaStream_t stream,
+    const T* scale,
+    const Z* zero_point,
+    T* transposed_scale,
+    T* scaled_zero_point,
+    int n, int k, float default_zero_point)
+{
+    constexpr int BLOCK_SIZE = 16;
+    dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 gridDim(
+        (n + blockDim.x - 1) / blockDim.x, // Grid size in x covers output columns (n)
+        (k + blockDim.y - 1) / blockDim.y  // Grid size in y covers output rows (k)
+    );
+
+    computeScaledZeroPointAndTransposeKernel<is_zero_point_int4_packed, T, Z><<<gridDim, blockDim, 0, stream>>>(
+        scale,
+        zero_point,
+        transposed_scale,
+        scaled_zero_point,
+        n,
+        k,
+        default_zero_point
+    );
+}
+
+// Explicit instantiations:
+template
+void launch_scaled_zero_point_kernel<false, float, float>(
+    cudaStream_t stream,
+    const float* scale,
+    const float* zero_point,
+    float* transposed_scale,
+    float* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+template
+void launch_scaled_zero_point_kernel<false, float, uint8_t>(
+    cudaStream_t stream,
+    const float* scale,
+    const uint8_t* zero_point,
+    float* transposed_scale,
+    float* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+
+template
+void launch_scaled_zero_point_kernel<false, half, half>(
+    cudaStream_t stream,
+    const half* scale,
+    const half* zero_point,
+    half* transposed_scale,
+    half* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+template
+void launch_scaled_zero_point_kernel<false, half, uint8_t>(
+    cudaStream_t stream,
+    const half* scale,
+    const uint8_t* zero_point,
+    half* transposed_scale,
+    half* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+// zero point is 4 bits packed.
+template
+void launch_scaled_zero_point_kernel<true, half, uint8_t>(
+    cudaStream_t stream,
+    const half* scale,
+    const uint8_t* zero_point,
+    half* transposed_scale,
+    half* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+// zero point is 4 bits packed.
+template
+void launch_scaled_zero_point_kernel<true, float, uint8_t>(
+    cudaStream_t stream,
+    const float* scale,
+    const uint8_t* zero_point,
+    float* transposed_scale,
+    float* scaled_zero_point,
+    int n, int k, float default_zero_point);
+
+// CUDA kernel to unpack int4 packed transposed tensor to int8
+__global__ void unpack_int4_transposed_to_int8_kernel(
+    const unsigned char* __restrict__ packed_weight,
+    signed char* __restrict__ unpacked_weight,
+    int total_packed_elements,
+    int input_last_dim_size,  // This is k/2
+    int output_last_dim_size  // This is n
+)
+{
+    int flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+    if (flat_idx < total_packed_elements) {
+        unsigned char packed_data = packed_weight[flat_idx];
+
+        // Extract the two int4 values
+        constexpr signed char default_zero_point = 8;
+        signed char elt_0 = (signed char)(packed_data & 0xff) - default_zero_point;  // Sign extension for lower 4 bits
+        signed char elt_1 = (signed char)(packed_data >> 4) - default_zero_point;    // Sign extension for upper 4 bits
+
+        // Calculate the corresponding indices in the input (n, k/2) tensor
+        // flat_idx maps to (c, r) in (n, k/2), where c is the row, r is the column
+        int c = flat_idx / input_last_dim_size; // Corresponds to 'n' dimension
+        int r = flat_idx % input_last_dim_size; // Corresponds to 'k/2' dimension
+
+        // The unpacked values go to (k, n) tensor at indices (2*i, j) and (2*i+1, j)
+        // In our mapping from (n, k/2) input to (k, n) output:
+        // i is the column in k/2 dimension of input -> 'r' in our kernel code
+        // j is the row in n dimension of input -> 'c' in our kernel code
+        // So, elt_0 goes to (2*r, c) and elt_1 goes to (2*r+1, c) in the (k, n) output.
+
+        int out_row_0 = 2 * r;
+        int out_row_1 = 2 * r + 1;
+        int out_col = c;
+
+        // Calculate flattened indices in the output (k, n) tensor
+        // The total number of columns in the output (k, n) tensor is 'n', which is output_last_dim_size
+        int flat_out_idx_0 = out_row_0 * output_last_dim_size + out_col;
+        int flat_out_idx_1 = out_row_1 * output_last_dim_size + out_col;
+
+        // Store the unpacked values
+        unpacked_weight[flat_out_idx_0] = elt_0;
+        unpacked_weight[flat_out_idx_1] = elt_1;
+    }
+}
+
+void unpack_int4_packed_transposed_tensor_to_int8_cuda(
+    cudaStream_t stream, void* unpacked_weight, const void* weight, int n, int k) {
+    int input_n_dim = static_cast<int>(n);
+    int input_k_packed_dim = static_cast<int>(k + 1) /2;
+
+    int total_packed_elements = input_n_dim * input_k_packed_dim;
+    int threads_per_block = 256;
+    int num_blocks = (total_packed_elements + threads_per_block - 1) / threads_per_block;
+
+    unpack_int4_transposed_to_int8_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+        (const unsigned char*)weight,
+        (signed char*)unpacked_weight,
+        total_packed_elements,
+        (int)input_k_packed_dim,
+        (int)input_n_dim);
+}
+
+
+}  // namespace fpA_intB_gemm
+}  // namespace cuda
+}  // namespace contrib
+}  // namespace onnxruntime
