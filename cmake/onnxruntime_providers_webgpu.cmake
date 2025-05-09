@@ -60,15 +60,19 @@
         endif()
 
         if (onnxruntime_USE_VCPKG)
-          set_target_properties(
-            dawn::webgpu_dawn PROPERTIES
-                IMPORTED_IMPLIB "webgpu_dawn.lib"
-                IMPORTED_LOCATION "webgpu_dawn.dll"
-          )
+          # Fix Dawn vcpkg build issue (missing IMPORTED_IMPLIB and IMPORTED_LOCATION for target dawn::webgpu_dawn)
+          get_target_property(webgpu_dawn_target_IMPORTED_IMPLIB dawn::webgpu_dawn IMPORTED_IMPLIB)
+          if (NOT webgpu_dawn_target_IMPORTED_IMPLIB)
+            set_target_properties(dawn::webgpu_dawn PROPERTIES IMPORTED_IMPLIB "webgpu_dawn.lib")
+          endif()
+          get_target_property(webgpu_dawn_target_IMPORTED_LOCATION dawn::webgpu_dawn IMPORTED_LOCATION)
+          if (NOT webgpu_dawn_target_IMPORTED_LOCATION)
+            set_target_properties(dawn::webgpu_dawn PROPERTIES IMPORTED_LOCATION "webgpu_dawn.dll")
+          endif()
         endif()
-
-        list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:dawn::webgpu_dawn>")
       endif()
+
+      list(APPEND onnxruntime_providers_webgpu_dll_deps "$<TARGET_FILE:dawn::webgpu_dawn>")
     else()
       if (NOT onnxruntime_USE_EXTERNAL_DAWN)
         target_link_libraries(onnxruntime_providers_webgpu dawn::dawn_native)
