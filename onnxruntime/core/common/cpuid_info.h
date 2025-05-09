@@ -33,6 +33,7 @@ class CPUIDInfo {
   bool HasSSE3() const { return has_sse3_; }
   bool HasSSE4_1() const { return has_sse4_1_; }
   bool IsHybrid() const { return is_hybrid_; }
+  bool HasTPAUSE() const { return has_tpause_; }
 
   // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
@@ -112,6 +113,7 @@ class CPUIDInfo {
   bool has_sse3_{false};
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
+  bool has_tpause_{false};
 
   std::vector<uint32_t> core_uarchs_;  // micro-arch of each core
 
