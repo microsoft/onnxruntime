@@ -31,6 +31,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
   std::uniform_real_distribution<float> distrib_f32_;
   MatrixGuardBuffer<uint8_t> inputB_, inputZp_, refB_, packedBuffer_;
   MatrixGuardBuffer<float> inputScale_, refScale_;
+  MatrixGuardBuffer<float> inputBlkSum_, refBlkSum_, refBlkSum2_;
 
 #ifdef MLAS_TARGET_ARM64
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
@@ -375,6 +376,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     auto* refB = refB_.GetBuffer(PackBCount, true);
     auto* refScale = refScale_.GetBuffer(ScaleCount, true);
     auto* refBlkSum = refBlkSum_.GetBuffer(((N + 15) & (~15)) * BlkCount, true);
+    auto* refBlkSum2 = quantAUnsigned ? refBlkSum2_.GetBuffer(((N + 15) & (~15)) * BlkCount, true) : nullptr;
 
     PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, quantAUnsigned);
 
@@ -491,7 +493,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
   MatrixGuardBuffer<float> inputA_, refScale_, refBlkSum_;
 
   template <size_t M, size_t K, size_t BlkLen>
-  void QuantA(const float* inputA, uint8_t* quantA, float* scale, float* blkSum, bool quantAUnsigned) {
+  void QuantA(const float* inputA, uint8_t* quantA, float* scalePtr, float* blkSum, bool quantAUnsigned) {
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t lda = BlkCount * BlkLen;
     for (size_t i = 0; i < M; ++i) {
@@ -504,7 +506,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
 
         float scale = vAbsMax / 127.f;
         float invScale = vAbsMax == 0.f ? 0.f : 127.f / vAbsMax;
-        scale[i * BlkCount + j] = scale;
+        scalePtr[i * BlkCount + j] = scale;
 
         float vSum = 0.f;
         for (size_t k = 0; k < BlkLen; ++k) {
@@ -515,7 +517,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
               quantA[idx] = static_cast<uint8_t>(v + 128.f);
               vSum += v + 128.f;
             } else {
-              *(reinterpret_cast<int8_t>(quantA) + idx) = static_cast<int8_t>(v);
+              reinterpret_cast<int8_t*>(quantA)[idx] = static_cast<int8_t>(v);
               vSum += v;
             }
           } else {
@@ -553,13 +555,13 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
   void TestQuantA() {
     if (!MlasIsQNBitGemmAvailable(8, BlkLen, SQNBIT_CompInt8)) return;
 
-    const auto QuantizeARow2 = GetMlasPlatform().QNBitGemmDispatch->QuantizeARowComputeBlkSum_CompInt8;
+    const auto* dispatch = GetMlasPlatform().QNBitGemmDispatch;
     constexpr size_t Bits = 8;
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
     constexpr size_t Lda = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
     constexpr size_t PackACount = M * Lda;
     constexpr size_t ScaleCount = M * BlkCount;
-    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
+    const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8);
     const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
@@ -573,20 +575,25 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     auto* refScale = refScale_.GetBuffer(ScaleCount, true);
     auto* refBlkSum = refBlkSum_.GetBuffer(ScaleCount, true);
 
-    const size_t Alignment = QNBitGemmPerGemmWorkspaceAlignment(Bits, BlkLen, SQNBIT_CompInt8);
-    auto* quantAPtr = (workspace + Alignment - 1) & (~(Alignment - 1));
-    auto* scaleAPtr = quantAPtr + PackACount;
+    const size_t Alignment = dispatch->QNBitGemmPerGemmWorkspaceAlignment(BlkLen, SQNBIT_CompInt8);
+    const uintptr_t WorkspaceAddress = reinterpret_cast<uintptr_t>(workspace);
+    auto* quantAPtr = reinterpret_cast<std::byte*>((WorkspaceAddress + Alignment - 1) & (~(Alignment - 1)));
+    auto* scaleAPtr = reinterpret_cast<float*>(quantAPtr + PackACount);
     auto* blkSumAPtr = scaleAPtr + ScaleCount;
 
     for (size_t i = 0; i < M; ++i) {
-      QuantizeARow2(BlkLen, inputA + i * K, K, workspace + i * Lda, scaleAPtr + i * BlkCount, blkSumAPtr + i * BlkCount);
+      dispatch->QuantizeARowComputeBlkSum_CompInt8(BlkLen, inputA + i * K, K, quantAPtr + i * Lda, scaleAPtr + i * BlkCount, blkSumAPtr + i * BlkCount);
     }
+    std::cout << "QuantA M " << M << " K " << K << " BlkLen " << BlkLen << std::endl;
 
     QuantA<M, K, BlkLen>(inputA, refQuantA, refScale, refBlkSum, quantAUnsigned);
-
-    CheckQuantA<M, K, BlkLen>(quantAPtr, refQuantA);
+    std::cout << "Finished QuantA ref " << std::endl;
+    CheckQuantA<M, K, BlkLen>(reinterpret_cast<uint8_t*>(quantAPtr), refQuantA);
+    std::cout << "Finished CheckQuantA" << std::endl;
     CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
+    std::cout << "Finished CheckScale" << std::endl;
     CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
+    std::cout << "Finished CheckBlkSum" << std::endl;
   }
 
  public:
@@ -826,6 +833,7 @@ static UNUSED_VARIABLE bool added_to_main = AddTestRegister([](bool is_short_exe
   size_t count = 0;
   if (is_short_execute) {
     count += MlasDirectShortExecuteTests<MlasSQ8BitPrepackTest>::RegisterShortExecute();
+    count += MlasDirectShortExecuteTests<MlasSQ8BitQuantAKernelTest>::RegisterShortExecute();
     count += MlasDirectShortExecuteTests<MlasSQ8BitGemmKernelTest>::RegisterShortExecute();
   }
   return count;
