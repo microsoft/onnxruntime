@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -1289,31 +1290,63 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
 }
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 
+// Tests querying session for information about which nodes where assigned to the EPs in the session.
 TEST_F(QnnHTPBackendTests, Session_GetEpGraphPartitioningInfo) {
   Ort::SessionOptions session_options;
   session_options.AddConfigEntry(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "1");
   session_options.AppendExecutionProvider(kQnnExecutionProvider, ProviderOptions{{"backend_type", "htp"}});
 
-  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx";
+  const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "layout_transform_const_folding.qdq.onnx";
   Ort::Session session(*ort_env, ort_model_path, session_options);
-  EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
+  ASSERT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
 
   std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphPartitioningInfo();
 
+  // QNN EP offloads QuantizeLinear and DequantizeLinear nodes that are attached to model inputs/outputs to the cpu
+  // for performance. So, with a graph with 2 inputs and 2 outputs, we should have 5 subgraphs/partitions:
+  //  - Subgraph 1: QuantizeLinear for input 1 is assigned to CPU EP
+  //  - Subgraph 2: QuantizeLinear for input 2 is assigned to CPU EP
+  //  - Subgraph 3: Bulk of the graph is assigned to QNN EP
+  //  - Subgraph 4: DequantizeLinear for output 1 is assigned to CPU EP
+  //  - Subgraph 5: DequantizeLinear for output 2 is assigned to CPU EP
+  ASSERT_EQ(ep_subgraphs.size(), 5);
+
   for (auto subgraph : ep_subgraphs) {
     std::string ep_name = subgraph.EpName();
-    EXPECT_TRUE(ep_name == kQnnExecutionProvider || ep_name == kCpuExecutionProvider);
-    std::cout << ep_name << std::endl;
+    ASSERT_TRUE(ep_name == kQnnExecutionProvider || ep_name == kCpuExecutionProvider);
 
     std::unordered_map<std::string, size_t> op_type_counts = subgraph.GetOpTypeCounts();
-    for (const auto& [op_type, count] : op_type_counts) {
-      std::cout << "\t" << op_type << ": " << count << std::endl;
-    }
-    std::cout << std::endl;
+    const std::vector<Ort::ConstEpAssignedNode> ep_nodes = subgraph.GetNodes();
 
-    std::vector<Ort::ConstEpAssignedNode> ep_nodes = subgraph.GetNodes();
-    for (auto ep_node : ep_nodes) {
-      std::cout << "\t" << ep_node.OpType() << ": " << ep_node.Name() << std::endl;
+    if (ep_name == kCpuExecutionProvider) {
+      ASSERT_EQ(op_type_counts.size(), 1);
+      if (auto it = op_type_counts.find("QuantizeLinear"); it != op_type_counts.end()) {
+        ASSERT_EQ(it->second, 1);
+      } else {
+        it = op_type_counts.find("DequantizeLinear");
+        ASSERT_TRUE(it != op_type_counts.end());
+        ASSERT_EQ(it->second, 1);
+      }
+
+      ASSERT_EQ(ep_nodes.size(), 1);
+
+      std::string op_type = ep_nodes[0].OpType();
+      ASSERT_TRUE(op_type == "QuantizeLinear" || op_type == "DequantizeLinear");
+    } else /*if (ep_name == kQnnExecutionProvider)*/ {
+      ASSERT_EQ(op_type_counts.size(), 5);
+      ASSERT_EQ(op_type_counts["Transpose"], 1);
+      ASSERT_EQ(op_type_counts["DequantizeLinear"], 7);
+      ASSERT_EQ(op_type_counts["Mul"], 2);
+      ASSERT_EQ(op_type_counts["Conv"], 1);
+      ASSERT_EQ(op_type_counts["QuantizeLinear"], 4);
+
+      ASSERT_EQ(ep_nodes.size(), 15);
+      auto it = std::find_if(ep_nodes.begin(), ep_nodes.end(),
+                             [](const Ort::ConstEpAssignedNode& n) -> bool { return std::strncmp(n.OpType(), "Conv", 4) == 0; });
+      ASSERT_TRUE(it != ep_nodes.end());
+      std::string conv_name = it->Name();
+      ASSERT_EQ(conv_name.rfind("conv_node", 0), 0);  // Check node name starts with "conv_node".
+                                                      // Note that layout transformation may add a suffix to node names
     }
   }
 }
