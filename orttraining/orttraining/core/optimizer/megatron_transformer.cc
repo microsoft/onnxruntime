@@ -171,8 +171,8 @@ bool MegatronTransformer::PartitionWeightByColumn(const Graph& graph, const Node
     LOGS_DEFAULT(WARNING) << "Checkpointing is not currently supported for graphs requiring partitioning of weight with stride > 1";
   }
 
-  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  const float* a_weight = initializer->data<float>();
+  auto initializer = Initializer{graph, *tensor_proto, graph.ModelPath()};
+  const float* a_weight = initializer.data<float>();
 
   std::string new_initializer_name = original_name + "_column_rank_" + std::to_string(horizontal_parallel_rank_);
 
@@ -306,8 +306,8 @@ bool MegatronTransformer::PartitionWeightByRow(const Graph& graph, const NodeArg
                           << horizontal_parallel_size_ << ", not supported currently.";
     return false;
   }
-  auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-  const float* a_weight = initializer->data<float>();
+  auto initializer = Initializer{graph, *tensor_proto, graph.ModelPath()};
+  const float* a_weight = initializer.data<float>();
 
   std::string new_initializer_name = original_name + "_row_rank_" + std::to_string(horizontal_parallel_rank_);
 
@@ -453,15 +453,15 @@ Status MegatronTransformer::TransformGPT2MLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  NodeArg& a_weight_partition_arg = graph_utils::AddInitializer(graph, a_weight_initializer_partition);
+  NodeArg& a_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, a_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(node, 1, a_weight_partition_arg);
   updated_weight_names_.insert({a_weight_arg->Name(), a_weight_partition_arg.Name()});
 
-  NodeArg& a_bias_partition_arg = graph_utils::AddInitializer(graph, a_bias_initializer_partition);
+  NodeArg& a_bias_partition_arg = graph_utils::AddInitializerWithExternalData(graph, a_bias_initializer_partition);
   graph_utils::ReplaceNodeInput(add_node, 1, a_bias_partition_arg);
   updated_weight_names_.insert({b_weight_arg->Name(), a_bias_partition_arg.Name()});
 
-  NodeArg& b_weight_partition_arg = graph_utils::AddInitializer(graph, b_weight_initializer_partition);
+  NodeArg& b_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, b_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(matmul2_node, 1, b_weight_partition_arg);
   updated_weight_names_.insert({a_bias_arg->Name(), b_weight_partition_arg.Name()});
 
@@ -600,15 +600,15 @@ Status MegatronTransformer::TransformBARTMLP(Graph& graph, bool& modified,
     return skip_status;
   }
 
-  NodeArg& dense_wi_weight_partition_arg = graph_utils::AddInitializer(graph, dense_wi_weight_initializer_partition);
+  NodeArg& dense_wi_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, dense_wi_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(*second_op, 0, dense_wi_weight_partition_arg);
   updated_weight_names_.insert({dense_wi_weight_arg->Name(), dense_wi_weight_partition_arg.Name()});
 
-  NodeArg& dense_wi_bias_partition_arg = graph_utils::AddInitializer(graph, dense_wi_bias_initializer_partition);
+  NodeArg& dense_wi_bias_partition_arg = graph_utils::AddInitializerWithExternalData(graph, dense_wi_bias_initializer_partition);
   graph_utils::ReplaceNodeInput(biasgelu_node, 1, dense_wi_bias_partition_arg);
   updated_weight_names_.insert({dense_wi_bias_arg->Name(), dense_wi_bias_partition_arg.Name()});
 
-  NodeArg& dense_wo_weight_partition_arg = graph_utils::AddInitializer(graph, dense_wo_weight_initializer_partition);
+  NodeArg& dense_wo_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, dense_wo_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(*transpose_op_ptr, 0, dense_wo_weight_partition_arg);
   updated_weight_names_.insert({dense_wo_weight_arg->Name(), dense_wo_weight_partition_arg.Name()});
 
@@ -787,15 +787,15 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
 
     // The number of the values should be more than 2, and the 3rd value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    if (init_const->size() != 3 && init_const->size() != 4) {
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    if (init_const.size() != 3 && init_const.size() != 4) {
       is_reshape_valid = false;
       break;
     }
 
-    const int64_t* val = init_const->data<int64_t>();
+    const int64_t* val = init_const.data<int64_t>();
     if (val[2] % horizontal_parallel_size_ != 0) {
-      LOGS_DEFAULT(WARNING) << (init_const->size() == 3 ? "Hidden size " : "Number of attention heads ") << val[2]
+      LOGS_DEFAULT(WARNING) << (init_const.size() == 3 ? "Hidden size " : "Number of attention heads ") << val[2]
                             << " is not divisible by horizontal_parallel_size_ "
                             << horizontal_parallel_size_ << ", not supported currently.";
       is_reshape_valid = false;
@@ -814,15 +814,15 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
                [](Node* node_ptr) { return node_ptr != nullptr; });
 
   // Replace by the partition weights.
-  NodeArg& qkv_weight_partition_arg = graph_utils::AddInitializer(graph, qkv_weight_initializer_partition);
+  NodeArg& qkv_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, qkv_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(node, 1, qkv_weight_partition_arg);
   updated_weight_names_.insert({qkv_weight_arg->Name(), qkv_weight_partition_arg.Name()});
 
-  NodeArg& qkv_bias_partition_arg = graph_utils::AddInitializer(graph, qkv_bias_initializer_partition);
+  NodeArg& qkv_bias_partition_arg = graph_utils::AddInitializerWithExternalData(graph, qkv_bias_initializer_partition);
   graph_utils::ReplaceNodeInput(add_node, 1, qkv_bias_partition_arg);
   updated_weight_names_.insert({qkv_bias_arg->Name(), qkv_bias_partition_arg.Name()});
 
-  NodeArg& dense_weight_partition_arg = graph_utils::AddInitializer(graph, dense_weight_initializer_partition);
+  NodeArg& dense_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, dense_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(matmul_node, 1, dense_weight_partition_arg);
   updated_weight_names_.insert({dense_weight_arg->Name(), dense_weight_partition_arg.Name()});
 
@@ -836,9 +836,9 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     const ONNX_NAMESPACE::TensorProto* tensor;
     graph.GetInitializedTensor(shape_arg->Name(), tensor);
     auto data_type = tensor->data_type();
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    const int64_t* val = init_const->data<int64_t>();
-    int64_t size = init_const->size();
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    const int64_t* val = init_const.data<int64_t>();
+    int64_t size = init_const.size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
     tensor_partition.set_name(graph.GenerateNodeArgName("partition_" + shape_arg->Name()));
     tensor_partition.set_data_type(data_type);
@@ -849,7 +849,7 @@ Status MegatronTransformer::TransformGPT2Attention(Graph& graph, bool& modified,
     val_partition.insert(val_partition.end(), val, val + size);
     val_partition[2] /= horizontal_parallel_size_;
     tensor_partition.set_raw_data(val_partition.data(), size * sizeof(int64_t));
-    NodeArg& node_arg_partition = graph_utils::AddInitializer(graph, tensor_partition);
+    NodeArg& node_arg_partition = graph_utils::AddInitializerWithExternalData(graph, tensor_partition);
     graph_utils::ReplaceNodeInput(*node_ptr, 1, node_arg_partition);
     graph.RemoveInitializedTensor(shape_arg->Name());
   }
@@ -1068,12 +1068,12 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     }
     // The number of the values should be more than idx, and the idx'th value should be divisible by parallel size,
     // i.e., the attention head number should be divisible by parallel size.
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    if (init_const->size() <= idx) {
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    if (init_const.size() <= idx) {
       is_reshape_valid = false;
       break;
     }
-    const int64_t* val = init_const->data<int64_t>();
+    const int64_t* val = init_const.data<int64_t>();
     if (val[idx] % horizontal_parallel_size_ != 0) {
       LOGS_DEFAULT(WARNING) << "dim[" << idx << "]: " << val[idx]
                             << " is not divisible by horizontal_parallel_size_ "
@@ -1130,7 +1130,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
   size_t i = 0;
   for (auto trans_ptr : weight_transpose_node_ptrs) {
     auto weight_name = trans_ptr->MutableInputDefs()[0]->Name();
-    NodeArg& qkv_weight_partition_arg = graph_utils::AddInitializer(graph, qkv_weight_initializer_partitions[i]);
+    NodeArg& qkv_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, qkv_weight_initializer_partitions[i]);
     graph_utils::ReplaceNodeInput(*trans_ptr, 0, qkv_weight_partition_arg);
     graph.RemoveInitializedTensor(weight_name);
     updated_weight_names_.insert({weight_name, qkv_weight_partition_arg.Name()});
@@ -1139,14 +1139,14 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
   i = 0;
   for (auto add_ptr : bias_add_node_ptrs) {
     auto bias_name = add_ptr->MutableInputDefs()[1]->Name();
-    NodeArg& qkv_bias_partition_arg = graph_utils::AddInitializer(graph, qkv_bias_initializer_partitions[i]);
+    NodeArg& qkv_bias_partition_arg = graph_utils::AddInitializerWithExternalData(graph, qkv_bias_initializer_partitions[i]);
     graph_utils::ReplaceNodeInput(*add_ptr, 1, qkv_bias_partition_arg);
     graph.RemoveInitializedTensor(bias_name);
     updated_weight_names_.insert({bias_name, qkv_bias_partition_arg.Name()});
     i++;
   }
 
-  NodeArg& dense_weight_partition_arg = graph_utils::AddInitializer(graph, dense_weight_initializer_partition);
+  NodeArg& dense_weight_partition_arg = graph_utils::AddInitializerWithExternalData(graph, dense_weight_initializer_partition);
   graph_utils::ReplaceNodeInput(*last_transpose, 0, dense_weight_partition_arg);
   graph.RemoveInitializedTensor(dense_weight_arg->Name());
   updated_weight_names_.insert({dense_weight_arg->Name(), dense_weight_partition_arg.Name()});
@@ -1162,11 +1162,12 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     int64_t idx = x.second;
     auto shape_arg = node_ptr->MutableInputDefs()[1];
     const ONNX_NAMESPACE::TensorProto* tensor;
-    graph.GetInitializedTensor(shape_arg->Name(), tensor);
+    ORT_RETURN_IF_NOT(graph.GetInitializedTensor(shape_arg->Name(), tensor),
+                      "Expecting initializer present: ", shape_arg->Name());
     auto data_type = tensor->data_type();
-    auto init_const = std::make_unique<Initializer>(*tensor, graph.ModelPath());
-    const int64_t* val = init_const->data<int64_t>();
-    int64_t size = init_const->size();
+    auto init_const = Initializer{graph, *tensor, graph.ModelPath()};
+    const int64_t* val = init_const.data<int64_t>();
+    int64_t size = init_const.size();
     ONNX_NAMESPACE::TensorProto tensor_partition;
     tensor_partition.set_name(graph.GenerateNodeArgName("partition_" + shape_arg->Name()));
     tensor_partition.set_data_type(data_type);
@@ -1177,7 +1178,7 @@ Status MegatronTransformer::TransformBARTAttention(Graph& graph, bool& modified,
     val_partition.insert(val_partition.end(), val, val + size);
     val_partition[idx] /= horizontal_parallel_size_;
     tensor_partition.set_raw_data(val_partition.data(), size * sizeof(int64_t));
-    NodeArg& node_arg_partition = graph_utils::AddInitializer(graph, tensor_partition);
+    NodeArg& node_arg_partition = graph_utils::AddInitializerWithExternalData(graph, tensor_partition);
     graph_utils::ReplaceNodeInput(*node_ptr, 1, node_arg_partition);
     graph.RemoveInitializedTensor(shape_arg->Name());
   }
