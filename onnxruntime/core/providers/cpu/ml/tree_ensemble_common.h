@@ -147,14 +147,19 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
 
   // Additional members
   size_t limit;
-  uint32_t i;
+  size_t i;
   InlinedVector<NODE_MODE_ONNX> cmodes;
   cmodes.reserve(attributes.nodes_modes.size());
   same_mode_ = true;
+  bool check_same_mode_again = false;
   int fpos = -1;
   for (i = 0, limit = attributes.nodes_modes.size(); i < limit; ++i) {
     cmodes.push_back(attributes.nodes_modes[i]);
     if (cmodes[i] == NODE_MODE_ONNX::LEAF) continue;
+    // The struture may be compressed if it contains only BRANCH_EQ
+    // and if ai.onnx.ml == 3, it changes the branch mode into BRANCH_MEMBER.
+    // same_mode_ needs to be recomputed again.
+    check_same_mode_again |= cmodes[i] == NODE_MODE_ONNX::BRANCH_EQ;
     if (fpos == -1) {
       fpos = static_cast<int>(i);
       continue;
@@ -236,7 +241,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
   std::vector<size_t> updated_mapping(attributes.nodes_treeids.size(), 0);
   int64_t previous_tree_id = -1;
-  for (i = 0; i < n_nodes_; ++i) {
+  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
     if (previous_tree_id == -1 || (previous_tree_id != node_tree_ids[i].tree_id)) {
       // New tree.
       int64_t tree_id = node_tree_ids[i].tree_id;
@@ -288,6 +293,27 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
     }
   }
 
+  if (same_mode_ && check_same_mode_again) {
+    // A node BRANCH_EQ may have been changed into BRANCH_MEMBER
+    // to compress the structure. same_mode_ needs to evaluated again.
+    same_mode_ = true;
+    auto mode = nodes_[0].mode();
+    for (auto& node : nodes_) {
+      if (node.is_not_leaf()) {
+        if (node.mode() != mode) {
+          same_mode_ = false;
+          break;
+        }
+      }
+    }
+  }
+
+#if defined(_TREE_DEBUG)
+  std::cout << "TreeEnsemble:same_mode_=" << (same_mode_ ? 1 : 0) << "\n";
+  for (auto& node : nodes_) {
+    std::cout << node.str() << "\n";
+  }
+#endif
   return Status::OK();
 }
 
