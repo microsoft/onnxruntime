@@ -23,6 +23,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -1799,38 +1800,69 @@ void addGlobalMethods(py::module& m) {
 #endif
 }
 
-// TODO(adrianlizarraga): C API's delegate function needs a void* param to store state.
-// using PyEpSelectionDelegate = std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
-//                                                                            const std::unordered_map<std::string, std::string>& model_metadata,
-//                                                                            const std::unordered_map<std::string, std::string>& runtime_metadata)>;
-//
-// static OrtStatus* PyDelegateWrapper(void* delegate_state,
-//                                     _In_ const OrtEpDevice** ep_devices,
-//                                     _In_ size_t num_devices,
-//                                     _In_ const OrtKeyValuePairs* model_metadata,
-//                                     _In_opt_ const OrtKeyValuePairs* runtime_metadata,
-//                                     _Inout_ const OrtEpDevice** selected,
-//                                     _In_ size_t max_selected,
-//                                     _Out_ size_t* num_selected) {
-//   PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(delegate_state);
-//   std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
-//   std::unordered_map<std::string, std::string> py_model_metadata =
-//       model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
-//   std::unordered_map<std::string, std::string> py_runtime_metadata =
-//       runtime_metadata ? runtime_metadata->entries : std::unordered_map<std::string, std::string>{};
-//
-//   std::vector<const OrtEpDevice*> py_selected = (*actual_delegate)(py_ep_devices, py_model_metadata, py_runtime_metadata);
-//
-//   // TODO: Check max_selected and return OrtStatus if necessary.
-//   assert(py_selected.size() <= max_selected);
-//
-//   *num_selected = py_selected.size();
-//   for (size_t i = 0; i < py_selected.size(); ++i) {
-//     selected[i] = py_selected[i];
-//   }
-//
-//   return nullptr;
-// };
+#if !defined(ORT_MINIMAL_BUILD)
+/**
+ * Calls the user's Python EP selection function and converts the results to a format that can be used
+ * by ORT to select OrtEpDevice instances. The user's function is set by calling
+ * SessionOptions.set_provider_selection_policy_delegate() on the Python side. The result of this wrapper
+ * function is used in core/session/provider_policy_context.cc.
+ *
+ * @param ep_devices OrtEpDevices to select from.
+ * @param num_devices Number of OrtEpDevices to select from.
+ * @param model_metadata Model's metadata.
+ * @param runtime_metadata Runtime metadata.
+ * @param selected Pre-allocated OrtEpDevice buffer to update with selected devices.
+ * @param max_selected Maximum number of entries in the pre-allocated 'selected' buffer.
+ * @param state Opaque state that holds a pointer to the user's Python function.
+ *
+ * @return nullptr OrtStatus* to indicate success.
+ */
+static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice** ep_devices,
+                                                          _In_ size_t num_devices,
+                                                          _In_ const OrtKeyValuePairs* model_metadata,
+                                                          _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                          _Inout_ const OrtEpDevice** selected,
+                                                          _In_ size_t max_selected,
+                                                          _Out_ size_t* num_selected,
+                                                          _In_ void* state) {
+  PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(state);
+  std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
+  std::unordered_map<std::string, std::string> py_model_metadata =
+      model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
+  std::unordered_map<std::string, std::string> py_runtime_metadata =
+      runtime_metadata ? runtime_metadata->entries : std::unordered_map<std::string, std::string>{};
+
+  *num_selected = 0;
+  std::vector<const OrtEpDevice*> py_selected;
+  OrtStatus* status = nullptr;
+
+  // Call the Python delegate function and convert any exceptions to a status.
+  ORT_TRY {
+    py_selected = (*actual_delegate)(py_ep_devices, py_model_metadata, py_runtime_metadata, max_selected);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what()));
+    });
+  }
+
+  if (status != nullptr) {
+    return status;
+  }
+
+  if (py_selected.size() > max_selected) {
+    return ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "selected too many EP devices (", py_selected.size(), "). ",
+                                       "The limit is ", max_selected, " EP devices."));
+  }
+
+  *num_selected = py_selected.size();
+  for (size_t i = 0; i < py_selected.size(); ++i) {
+    selected[i] = py_selected[i];
+  }
+
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
@@ -2086,21 +2118,47 @@ must refer to the same execution provider.)pbdoc")
       .def(
           // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
           "set_provider_selection_policy",
-          [](PySessionOptions* sess_options,
+          [](PySessionOptions* py_sess_options,
              OrtExecutionProviderDevicePolicy policy) {
 #if !defined(ORT_MINIMAL_BUILD)
-            sess_options->value.ep_selection_policy.enable = true;
-            sess_options->value.ep_selection_policy.policy = policy;
-            sess_options->value.ep_selection_policy.delegate = nullptr;  // TODO: need a void* param in delegate.
+            py_sess_options->py_ep_selection_delegate = nullptr;
+
+            py_sess_options->value.ep_selection_policy.enable = true;
+            py_sess_options->value.ep_selection_policy.policy = policy;
+            py_sess_options->value.ep_selection_policy.delegate = nullptr;
+            py_sess_options->value.ep_selection_policy.state = nullptr;
 #else
-            ORT_UNUSED_PARAMETER(sess_options);
+            ORT_UNUSED_PARAMETER(py_sess_options);
             ORT_UNUSED_PARAMETER(policy);
             ORT_THROW("EP selection policies are not supported in this build");
 #endif
           },
           R"pbdoc(Sets the execution provider selection policy for the session. Allows users to specify a
-selection policy for automatic execution provider (EP) selection, or provide a delegate callback
-for custom selection logic.)pbdoc")
+selection policy for automatic execution provider (EP) selection.)pbdoc")
+      .def(
+          // Equivalent to the C API's SessionOptionsSetEpSelectionPolicyDelegate.
+          "set_provider_selection_policy_delegate",
+          [](PySessionOptions* py_sess_options,
+             PyEpSelectionDelegate delegate_fn) {
+#if !defined(ORT_MINIMAL_BUILD)
+            py_sess_options->py_ep_selection_delegate = delegate_fn;  // Store python callback in PySessionOptions
+
+            py_sess_options->value.ep_selection_policy.enable = true;
+            py_sess_options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+            py_sess_options->value.ep_selection_policy.delegate = PyEpSelectionPolicyWrapper;
+            py_sess_options->value.ep_selection_policy.state =
+                reinterpret_cast<void*>(&py_sess_options->py_ep_selection_delegate);
+#else
+            ORT_UNUSED_PARAMETER(py_sess_options);
+            ORT_UNUSED_PARAMETER(delegate_fn);
+            ORT_THROW("EP selection policies are not supported in this build");
+#endif
+          },
+          R"pbdoc(Sets the execution provider selection policy delegate for the session. Allows users to specify a
+custom selection policy function for automatic execution provider (EP) selection. The delegate must return a list of
+selected OrtEpDevice instances. The signature of the delegate is
+def custom_delegate(ep_devices: Sequence[OrtEpDevice], model_metadata: dict[str, str], runtime_metadata: dict[str, str],
+max_selections: int) -> Sequence[OrtEpDevice])pbdoc")
       .def(
           "has_providers",
           [](PySessionOptions* sess_options) -> bool {

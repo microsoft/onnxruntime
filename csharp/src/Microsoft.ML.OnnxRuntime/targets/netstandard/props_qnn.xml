@@ -12,7 +12,7 @@
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'ARM64'">
     <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64x/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
 
@@ -24,7 +24,7 @@
 
   <ItemDefinitionGroup Condition="'$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')">
    <Link>
-      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64x/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
+      <AdditionalDependencies>$(MSBuildThisFileDirectory)../../runtimes/win-arm64/native/onnxruntime.lib;%(AdditionalDependencies)</AdditionalDependencies>
    </Link>
   </ItemDefinitionGroup>
 
@@ -36,7 +36,7 @@
 
   <PropertyGroup>
     <EnginePlatform Condition="'$(Platform)' == 'Win32'">x86</EnginePlatform>
-    <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64x</EnginePlatform>
+    <EnginePlatform Condition="'$(Platform)' == 'ARM64'">arm64</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' == 'ARM'">arm</EnginePlatform>
     <EnginePlatform Condition="'$(Platform)' != 'Win32' AND '$(Platform)' != 'ARM64'">$(Platform)</EnginePlatform>
   </PropertyGroup>
@@ -47,31 +47,31 @@
 
   <ItemGroup>
     <!-- x64 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
           Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime.dll')">
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll')">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime_providers_shared.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll"
           Condition="('$(PlatformTarget)' == 'x64' OR ('$(PlatformTarget)' == 'AnyCPU' AND '$(Prefer32Bit)' != 'true')) AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime_providers_shared.dll')">
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll')">
       <Link>onnxruntime_providers_shared.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
 
     <!-- arm64 -->
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime.dll"
           Condition="'$(PlatformTarget)' == 'ARM64'">
       <Link>onnxruntime.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
     </None>
-    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime_providers_shared.dll"
+    <None Include="$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll"
           Condition="'$(PlatformTarget)' == 'ARM64' AND
-                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64x\native\onnxruntime_providers_shared.dll')">
+                     Exists('$(MSBuildThisFileDirectory)..\..\runtimes\win-arm64\native\onnxruntime_providers_shared.dll')">
       <Link>onnxruntime_providers_shared.dll</Link>
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
       <Visible>false</Visible>
