@@ -599,6 +599,8 @@ ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_de
 
 ORT_API(const OrtEpApi*, GetEpApi);
 
+ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
 ORT_API_STATUS_IMPL(Session_GetEpGraphPartitioningInfo, _In_ const OrtSession* session,
                     _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
                     _Out_ size_t* num_ep_subgraphs);

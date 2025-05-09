@@ -2014,10 +2014,12 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
   }
 
   // Remove subgraphs if its size is less than the predefined minimal size
-  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end(); ++it) {
+  for (auto it = supported_nodes_vector.begin(); it != supported_nodes_vector.end();) {
     const size_t subgraph_size = it->first.size();
     if (subgraph_size < min_subgraph_size_) {
-      supported_nodes_vector.erase(it--);
+      it = supported_nodes_vector.erase(it);
+    } else {
+      ++it;
     }
   }
 

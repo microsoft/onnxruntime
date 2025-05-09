@@ -1335,6 +1335,33 @@ ORT_API_STATUS_IMPL(OrtApis::GetStringTensorElementLength, _In_ const OrtValue* 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::GetTensorSizeInBytes, _In_ const OrtValue* value, _Out_ size_t* size) {
+  API_IMPL_BEGIN
+
+  if (value == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Input `value` argument must not be null");
+  }
+
+  if (size == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Output `size` argument must not be null");
+  }
+
+  if (!value->IsAllocated() || !value->IsTensor()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue is expected to contain a tensor");
+  }
+
+  const auto& tensor = value->Get<onnxruntime::Tensor>();
+
+  // Check if this is a string tensor
+  if (tensor.IsDataTypeString()) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "String tensors are not supported by this API");
+  }
+
+  *size = tensor.SizeInBytes();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::GetStringTensorContent, _In_ const OrtValue* value, _Out_writes_bytes_all_(s_len) void* s,
                     size_t s_len, _Out_writes_all_(offsets_len) size_t* offsets, size_t offsets_len) {
   API_IMPL_BEGIN
@@ -3125,6 +3152,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtApis::GetTensorSizeInBytes,
 
     &OrtApis::Session_GetEpGraphPartitioningInfo,
     &OrtApis::EpAssignedSubgraph_EpName,

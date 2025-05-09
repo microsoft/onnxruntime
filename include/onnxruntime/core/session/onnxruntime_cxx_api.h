@@ -1778,6 +1778,18 @@ struct ConstValueImpl : Base<T> {
   /// <returns>byte length for the specified string element</returns>
   size_t GetStringTensorElementLength(size_t element_index) const;
 
+  /// <summary>
+  /// Returns the total size of the tensor data in bytes.
+  /// </summary>
+  /// <returns>The total size of the tensor data in bytes</returns>
+  /// <exception>Throws an exception if the OrtValue does not contain a tensor or
+  /// if it contains a tensor that contains strings</exception>
+  /// <remarks>
+  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  ///
+  /// </remarks>
+  size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// The API returns the sparse data format this OrtValue holds in a sparse tensor.
