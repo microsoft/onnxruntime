@@ -13,7 +13,7 @@ namespace webgpu {
 
 class GemmVec4Program final : public Program<GemmVec4Program> {
  public:
-  GemmVec4Program(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components)
+  GemmVec4Program(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false)
       : Program{"GemmVec4"},
         transA_{transA},
         transB_{transB},
@@ -22,12 +22,41 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
         need_handle_matmul_{need_handle_matmul},
         c_components_(c_components),
         c_is_scalar_(c_is_scalar),
-        output_components_(output_components) {}
+        output_components_(output_components),
+        is_vec4_(is_vec4) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  void MatMulReadFnSource(ShaderHelper& shader) const;
-  void MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const;
+  static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
+                                           const InlinedVector<int64_t>& elements_per_thread,
+                                           uint32_t workgroup_size_x,
+                                           uint32_t workgroup_size_y,
+                                           const std::string& data_type,
+                                           const ShaderIndicesHelper* batch_dims,
+                                           bool transpose_a = false,
+                                           bool transpose_b = false,
+                                           float alpha = 1.0f,
+                                           int output_components = 4,
+                                           bool need_handle_matmul = true,
+                                           uint32_t tile_inner = 32,
+                                           bool split_k = false,
+                                           uint32_t splitted_dim_inner = 32);
+
+  static Status MakeMatMulPackedSource(ShaderHelper& shader,
+                                       const InlinedVector<int64_t>& elements_per_thread,
+                                       uint32_t workgroup_size_x,
+                                       uint32_t workgroup_size_y,
+                                       const std::string& data_type,
+                                       const ShaderIndicesHelper* batch_dims,
+                                       bool transpose_a = false,
+                                       bool transpose_b = false,
+                                       float alpha = 1.0f,
+                                       int output_components = 4,
+                                       bool need_handle_matmul = true,
+                                       uint32_t tile_inner = 32,
+                                       bool split_k = false,
+                                       uint32_t splitted_dim_inner = 32,
+                                       bool sequentially_access_by_threads = false);
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_tile_n", ProgramUniformVariableDataType::Uint32},
@@ -49,6 +78,9 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
   int c_components_;
   bool c_is_scalar_ = false;
   int output_components_;
+  bool is_vec4_ = false;
+  void MatMulReadFnSource(ShaderHelper& shader, bool is_vec4) const;
+  void MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const;
 };
 
 Status ApplyGemmVec4(const Tensor* a,
@@ -60,9 +92,6 @@ Status ApplyGemmVec4(const Tensor* a,
                      float beta,
                      ComputeContext& context,
                      Tensor* y);
-
-bool CanApplyGemmVec4(const Tensor* a,
-                      const Tensor* b);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

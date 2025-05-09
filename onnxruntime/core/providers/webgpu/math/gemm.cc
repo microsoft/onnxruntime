@@ -198,42 +198,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  // First try vec4 optimization if possible
-  if (CanApplyGemmVec4(A, B)) {
-    return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
-  }
-
-  // WebGPU doesn't support binding a zero-sized buffer, so we need to check if A or B is empty.
-  bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;
-  bool need_handle_bias = C && beta_;
-
-  GemmProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
-
-  if (need_handle_matmul) {
-    program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
-                       {B, ProgramTensorMetadataDependency::Type}});
-  }
-
-  if (need_handle_bias) {
-    program.AddInput({C, ProgramTensorMetadataDependency::Rank});
-  }
-
-  const uint32_t TILE_SIZE = 16;
-  const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
-  const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
-
-  program.CacheHint(alpha_, transA_, transB_)
-      .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
-      .SetDispatchGroupSize(num_tile_n * num_tile_m)
-      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
-      .AddUniformVariables({{num_tile_n},
-                            {M},
-                            {N},
-                            {K},
-                            {alpha_},
-                            {beta_}});
-
-  return context.RunProgram(program);
+  return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
 }
 
 }  // namespace webgpu
