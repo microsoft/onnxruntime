@@ -42,7 +42,7 @@ class CPUExecutionProvider : public IExecutionProvider {
  private:
   CPUExecutionProviderInfo info_;
   std::vector<FuseRuleFn> fuse_rules_;
-  const OrtHardwareDevice* hardware_device_;
+  const OrtHardwareDevice* hardware_device_ = nullptr;
 };
 
 // Registers all available CPU kernels

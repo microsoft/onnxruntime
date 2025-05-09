@@ -2007,64 +2007,6 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ep_nodes[0].op_type, "Mul")
         self.assertEqual(ep_nodes[0].name, "mul_1")
 
-    def test_get_graph_provider_partitioning_info_qnn(self):
-        """
-        Tests querying for information about the nodes assigned to the CPU and QNN EPs.
-        """
-
-        if "QNNExecutionProvider" not in onnxrt.get_available_providers():
-            self.skipTest("Skipping test because it requires QNN EP")
-
-        # Create session options that enables recording EP graph partitioning info.
-        session_options = onnxrt.SessionOptions()
-        session_options.add_session_config_entry("session.record_ep_graph_partitioning_info", "1")
-        session_options.add_provider("QNNExecutionProvider", {"backend_type": "htp"})
-
-        session = onnxrt.InferenceSession(
-            get_name("layout_transform_const_folding.qdq.onnx"), sess_options=session_options
-        )
-
-        # Query session for information on each subgraph assigned to an EP.
-        ep_subgraphs = session.get_provider_graph_partitioning_info()
-
-        # QNN EP offloads QuantizeLinear and DequantizeLinear nodes that are attached to model inputs/outputs to the cpu
-        # for performance. So, with a graph with 2 inputs and 2 outputs, we should have 5 subgraphs/partitions:
-        #  - Subgraph 1: QuantizeLinear for input 1 is assigned to CPU EP
-        #  - Subgraph 2: QuantizeLinear for input 2 is assigned to CPU EP
-        #  - Subgraph 3: Bulk of the graph is assigned to QNN EP
-        #  - Subgraph 4: DequantizeLinear for output 1 is assigned to CPU EP
-        #  - Subgraph 5: DequantizeLinear for output 2 is assigned to CPU EP
-        self.assertEqual(len(ep_subgraphs), 5)
-
-        for ep_subgraph in ep_subgraphs:
-            self.assertIn(ep_subgraph.ep_name, ("QNNExecutionProvider", "CPUExecutionProvider"))
-
-            if ep_subgraph.ep_name == "CPUExecutionProvider":
-                op_type_counts: dict[str, int] = ep_subgraph.get_op_type_counts()
-                self.assertEqual(len(op_type_counts), 1)
-                if "QuantizeLinear" in op_type_counts:
-                    self.assertEqual(op_type_counts["QuantizeLinear"], 1)
-                else:
-                    self.assertEqual(op_type_counts["DequantizeLinear"], 1)
-
-                ep_nodes = ep_subgraph.get_nodes()
-                self.assertEqual(len(ep_nodes), 1)
-                self.assertIn(ep_nodes[0].op_type, ("QuantizeLinear", "DequantizeLinear"))
-            else:
-                # QNNExecutionProvider
-                op_type_counts: dict[str, int] = ep_subgraph.get_op_type_counts()
-                self.assertEqual(op_type_counts["Transpose"], 1)
-                self.assertEqual(op_type_counts["DequantizeLinear"], 7)
-                self.assertEqual(op_type_counts["Mul"], 2)
-                self.assertEqual(op_type_counts["Conv"], 1)
-                self.assertEqual(op_type_counts["QuantizeLinear"], 4)
-
-                ep_nodes = ep_subgraph.get_nodes()
-                self.assertEqual(len(ep_nodes), 15)  # Won't match the original model due to layout transformation
-                conv_node = next((n for n in ep_nodes if n.op_type == "Conv"), None)
-                self.assertIsNotNone(conv_node)
-                self.assertTrue(conv_node.name.startswith("conv_node"))  # Layout transformation adds name suffixes
-
 
 if __name__ == "__main__":
     unittest.main(verbosity=1)

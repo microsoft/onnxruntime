@@ -1387,7 +1387,7 @@ static void TestGetEpPartitionInfo(std::optional<OrtExecutionProviderDevicePolic
 // Tests querying session for information about which nodes where assigned to the EPs in the session.
 TEST_F(QnnHTPBackendTests, Session_GetEpGraphPartitioningInfo) {
   TestGetEpPartitionInfo(/*policy*/ std::nullopt);  // Explicitly add QNN to session options
-#if defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
+#if defined(_WIN32) && !BUILD_QNN_EP_STATIC_LIB
   // Test with auto EP policy. Should now be able to get OrtHardwareDevice per subgraph.
   TestGetEpPartitionInfo(OrtExecutionProviderDevicePolicy_PREFER_NPU);
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
