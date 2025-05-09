@@ -12,9 +12,21 @@
     { "name": "protobuf", "version>=": "3.21.12" },
     { "name": "spirv-headers", "version>=": "1.4.304.1" },
     { "name": "spirv-tools", "version>=": "1.4.304.1" },
-    { "name": "vulkan-headers", "version>=": "1.4.304.1#1" },
-    { "name": "vulkan-loader", "version>=": "1.4.304.1" },
-    { "name": "vulkan-utility-libraries", "version>=": "1.4.304.1" }
+    {
+      "name": "vulkan-headers",
+      "version>=": "1.4.304.1#1",
+      "platform": "(windows | linux) & (arm64 | x64)"
+    },
+    {
+      "name": "vulkan-loader",
+      "version>=": "1.4.304.1",
+      "platform": "(windows | linux) & (arm64 | x64)"
+    },
+    {
+      "name": "vulkan-utility-libraries",
+      "version>=": "1.4.304.1",
+      "platform": "(windows | linux) & (arm64 | x64)"
+    }
   ],
   "supports": "!static",
   "features": {
