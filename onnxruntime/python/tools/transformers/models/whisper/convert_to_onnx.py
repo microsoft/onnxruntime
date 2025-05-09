@@ -76,7 +76,9 @@ def parse_arguments(argv=None):
         "--optimize_onnx",
         required=False,
         action="store_true",
-        help="Apply ort-fusions optimizations from onnxscript after export. Also, use optimizer.py to optimize onnx model",
+        help="Apply ort-fusions optimizations from onnxscript when using the new Dynamo exporter, "
+        "These optimizations are applied if torch>=2.7 and transformers>=4.48, "
+        "For transformers<4.48, optimizer.py is used to optimize onnx model.",
     )
     conversion_args.set_defaults(optimize_onnx=False)
 
@@ -308,7 +310,7 @@ def parse_arguments(argv=None):
         "--use_dynamo_export",
         action="store_true",
         help="Use the new Dynamo exporter instead of the old TorchScript exporter, "
-        "This should be set to true if torch>=2.6 and transformers>=4.48.",
+        "This should be set to true if torch>=2.7 and transformers>=4.48.",
     )
     parser.set_defaults(use_dynamo_export=False)
 

@@ -136,15 +136,29 @@ class WhisperDecoder(torch.nn.Module):
                     [past_kv_cache[block.attn.value], kv_cache[block.attn.value]], dim=1
                 ).detach()
 
+        temp_kv_cache = {}
+        if past_key_values is None:
+            for idx in range(0, len(kv_cache.keys()), 4):
+                temp_kv_cache["block.attn.key" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx]]
+                temp_kv_cache["block.attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 1]]
+                temp_kv_cache["block.cross_attn.key" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 2]]
+                temp_kv_cache["block.cross_attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 3]]
+            
         present_self, present_cross = [], []
-        for block in self.model.decoder.blocks:
+        for idx, block in enumerate(self.model.decoder.blocks):
             # Group self and cross values
-            present_self.append(kv_cache[block.attn.key])
-            present_self.append(kv_cache[block.attn.value])
+            if past_key_values is None:
+                present_self.append(temp_kv_cache["block.attn.key" + "." + str(idx)])
+                present_self.append(temp_kv_cache["block.attn.value" + "." + str(idx)])
+            else:
+                present_self.append(kv_cache[block.attn.key])
+                present_self.append(kv_cache[block.attn.value])
             if past_key_values is None:
                 # Return present_self_* and present_cross_* for decoder-init
-                present_cross.append(kv_cache[block.cross_attn.key])
-                present_cross.append(kv_cache[block.cross_attn.value])
+                #present_cross.append(kv_cache[block.cross_attn.key])
+                #present_cross.append(kv_cache[block.cross_attn.value])
+                present_cross.append(temp_kv_cache["block.cross_attn.key" + "." + str(idx)])
+                present_cross.append(temp_kv_cache["block.cross_attn.value" + "." + str(idx)])
 
         # Convert present KV caches (BxSxD --> BxSxNxH --> BxNxSxH) after OpenAI's forward pass
         present_self = [
