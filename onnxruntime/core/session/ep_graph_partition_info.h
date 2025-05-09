@@ -8,7 +8,7 @@
 #include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
 
-struct OrtEpDevice;  // TODO: Move session/abi_devices.h to framework
+struct OrtHardwareDevice;
 
 namespace onnxruntime {
 struct EpAssignedNode {
@@ -29,11 +29,12 @@ struct EpAssignedSubgraph {
   InlinedVector<const char*> op_types;
   InlinedVector<size_t> op_type_counts;
 
-  // EPs must set this in every ComputeCapability.
-  const OrtEpDevice* ep_device = nullptr;
+  // The hardware device that runs the nodes in this subgraph.
+  // Can be nullptr if the EP does not support autoEP.
+  const OrtHardwareDevice* hardware_device = nullptr;
 
   // Can be expensive to store metadata for every node in the partition.
-  // Storing per-node info has to be explicitly enabled.
+  // Should storing per-node info have to be explicitly enabled?
   std::vector<std::unique_ptr<EpAssignedNode>> nodes_storage;
   std::vector<const EpAssignedNode*> nodes;
 

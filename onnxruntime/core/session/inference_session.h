@@ -25,12 +25,12 @@
 #include "core/framework/session_state.h"
 #include "core/framework/tuning_results.h"
 #include "core/framework/framework_provider_common.h"
-#include "core/framework/partition_info.h"
 #include "core/framework/session_options.h"
 #include "core/graph/basic_types.h"
 #include "core/optimizer/graph_transformer_level.h"
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/insert_cast_transformer.h"
+#include "core/session/ep_graph_partition_info.h"
 #include <mutex>
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
 #include "core/language_interop_ops/language_interop_ops.h"
@@ -606,9 +606,12 @@ class InferenceSession {
 
   const Model& GetModel() const;
   const Environment& GetEnvironment() const;
+
+#if !defined(ORT_MINIMAL_BUILD)
   const std::vector<const EpAssignedSubgraph*>& GetEpGraphPartitioningInfo() const {
     return this->graph_partitioning_info_;
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -989,9 +992,11 @@ class InferenceSession {
   std::optional<NodeStatsRecorder> node_stats_recorder_;
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
   // Enable partition info collection
   std::vector<std::unique_ptr<EpAssignedSubgraph>> graph_partitioning_info_storage_;
   std::vector<const EpAssignedSubgraph*> graph_partitioning_info_;
+#endif  // !defind(ORT_MINIMAL_BUILD)
 };
 
 struct SessionIOBinding {

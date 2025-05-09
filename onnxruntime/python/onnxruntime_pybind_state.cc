@@ -42,8 +42,8 @@
 #include "core/session/lora_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
-#include "core/framework/partition_info.h"
-#include "core/session/abi_devices.h"
+#include "core/framework/abi_devices.h"
+#include "core/session/ep_graph_partition_info.h"
 #include "core/session/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
 #include "core/session/utils.h"
@@ -2021,7 +2021,15 @@ operator type as the value)pbdoc")
             return ep_subgraph->nodes;
           },
           py::return_value_policy::reference_internal,
-          R"pbdoc(List of nodes in the subgraph.)pbdoc");
+          R"pbdoc(List of nodes in the subgraph.)pbdoc")
+      .def_property_readonly(
+          "device",
+          [](const EpAssignedSubgraph* ep_subgraph) -> const OrtHardwareDevice* {
+            return ep_subgraph->hardware_device;
+          },
+          R"pbdoc(The OrtHardwareDevice instance for the device that will execute this subgraph.
+Can be None if not specified by the provider.)pbdoc",
+          py::return_value_policy::reference_internal);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -2738,7 +2746,15 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
-      .def("get_provider_graph_partitioning_info", [](const PyInferenceSession* sess) -> const std::vector<const EpAssignedSubgraph*>& { return sess->GetSessionHandle()->GetEpGraphPartitioningInfo(); }, py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")
+      .def("get_provider_graph_partitioning_info", [](const PyInferenceSession* sess) -> const std::vector<const EpAssignedSubgraph*>& {
+#if !defined(ORT_MINIMAL_BUILD)
+        return sess->GetSessionHandle()->GetEpGraphPartitioningInfo();
+#else
+        ORT_UNUSED_PARAMETER(sess);
+        ORT_THROW("EP graph partitioning information is not supported in this build");
+#endif
+      },
+           py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")
       .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();

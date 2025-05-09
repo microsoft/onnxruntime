@@ -610,6 +610,7 @@ ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetOpTypeCounts, _In_ const OrtEpAssigned
                     _Out_ size_t* num_op_types);
 ORT_API_STATUS_IMPL(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                     _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
+ORT_API(const OrtHardwareDevice*, EpAssignedSubgraph_Device, _In_ const OrtEpAssignedSubgraph* ep_subgraph);
 
 // OrtEpAssignedNode accessors.
 ORT_API(const char*, EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node);

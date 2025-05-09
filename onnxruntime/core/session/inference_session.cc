@@ -1276,6 +1276,7 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 static void RecordPartitionInfo(std::vector<std::unique_ptr<EpAssignedSubgraph>>& partitioning_info,
                                 bool enable_per_node_info,
                                 const Graph& graph,
@@ -1283,7 +1284,7 @@ static void RecordPartitionInfo(std::vector<std::unique_ptr<EpAssignedSubgraph>>
                                 const std::string& ep_name) {
   auto assigned_subgraph = std::make_unique<EpAssignedSubgraph>();
   assigned_subgraph->ep_name = ep_name;
-  // assigned_subgraph->ep_device = capability.ep_device;
+  assigned_subgraph->hardware_device = capability.hardware_device;
 
   InlinedVector<std::string>& op_types_storage = assigned_subgraph->op_types_storage;
   InlinedVector<size_t>& op_type_counts = assigned_subgraph->op_type_counts;
@@ -1326,6 +1327,7 @@ static void RecordPartitionInfo(std::vector<std::unique_ptr<EpAssignedSubgraph>>
 
   partitioning_info.push_back(std::move(assigned_subgraph));
 }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool saving_model_in_ort_format) {
   // The transformer order:
@@ -1443,6 +1445,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   OnPartitionAssignmentFunction on_partition_assign_fn;
+#if !defined(ORT_MINIMAL_BUILD)
   bool record_ep_graph_partitioning =
       session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsRecordEpGraphPartitioningInfo, "0") == "1";
   if (record_ep_graph_partitioning) {
@@ -1451,18 +1454,21 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
       RecordPartitionInfo(this->graph_partitioning_info_storage_, true, graph, assigned_subgraph, assigned_ep_type);
     };
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Do partitioning based on execution providers' capabilities.
   ORT_RETURN_IF_ERROR_SESSIONID_(partitioner.Partition(graph, session_state_->GetMutableFuncMgr(), transform_layout_fn,
                                                        session_options_.config_options, *session_logger_,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn,
                                                        on_partition_assign_fn));
+#if !defined(ORT_MINIMAL_BUILD)
   if (record_ep_graph_partitioning) {
     for (std::unique_ptr<EpAssignedSubgraph>& ep_subgraph : graph_partitioning_info_storage_) {
       ep_subgraph->SyncOpTypes();
       graph_partitioning_info_.push_back(ep_subgraph.get());
     }
   }
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
   // apply Level2 and higher transformers.
   // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.

@@ -6,7 +6,7 @@
 #include <string>
 #include <unordered_set>
 
-#include "core/session/abi_devices.h"
+#include "core/framework/abi_devices.h"
 namespace onnxruntime {
 
 class DeviceDiscovery {

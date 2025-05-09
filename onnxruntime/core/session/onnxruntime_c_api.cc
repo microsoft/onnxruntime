@@ -868,6 +868,7 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtS
                     _Outptr_ const OrtEpAssignedSubgraph* const** ep_subgraphs,
                     _Out_ size_t* num_ep_subgraphs) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   if (ep_subgraphs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_subgraphs' argument is null");
   }
@@ -882,18 +883,31 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtS
   *ep_subgraphs = reinterpret_cast<const OrtEpAssignedSubgraph* const*>(ep_subgraphs_internal.data());
   *num_ep_subgraphs = ep_subgraphs_internal.size();
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(session);
+  ORT_UNUSED_PARAMETER(ep_subgraphs);
+  ORT_UNUSED_PARAMETER(num_ep_subgraphs);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph partitioning information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
 ORT_API(const char*, OrtApis::EpAssignedSubgraph_EpName, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+#if !defined(ORT_MINIMAL_BUILD)
   auto ep_subgraph_internal = reinterpret_cast<const EpAssignedSubgraph*>(ep_subgraph);
   return ep_subgraph_internal->ep_name.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetOpTypeCounts, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                     _Outptr_ const char* const** op_types, _Outptr_ size_t const** op_type_counts,
                     _Out_ size_t* num_op_types) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   if (op_types == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'op_types' argument is null");
   }
@@ -911,12 +925,20 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetOpTypeCounts, _In_ const OrtE
   *op_type_counts = ep_subgraph_internal->op_type_counts.data();
   *num_op_types = ep_subgraph_internal->op_types.size();
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(op_types);
+  ORT_UNUSED_PARAMETER(op_type_counts);
+  ORT_UNUSED_PARAMETER(num_op_types);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph partitioning information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                     _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
   if (ep_nodes == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'ep_nodes' argument is null");
   }
@@ -929,17 +951,46 @@ ORT_API_STATUS_IMPL(OrtApis::EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssign
   *ep_nodes = reinterpret_cast<const OrtEpAssignedNode* const*>(ep_subgraph_internal->nodes.data());
   *num_ep_nodes = ep_subgraph_internal->nodes.size();
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  ORT_UNUSED_PARAMETER(ep_nodes);
+  ORT_UNUSED_PARAMETER(num_ep_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "EP graph partitioning information is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
 }
 
+ORT_API(const OrtHardwareDevice*, OrtApis::EpAssignedSubgraph_Device, _In_ const OrtEpAssignedSubgraph* ep_subgraph) {
+#if !defined(ORT_MINIMAL_BUILD)
+  auto ep_subgraph_internal = reinterpret_cast<const EpAssignedSubgraph*>(ep_subgraph);
+  return ep_subgraph_internal->hardware_device;
+#else
+  ORT_UNUSED_PARAMETER(ep_subgraph);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+}
+
 ORT_API(const char*, OrtApis::EpAssignedNode_Name, _In_ const OrtEpAssignedNode* ep_node) {
+#if !defined(ORT_MINIMAL_BUILD)
   auto ep_node_internal = reinterpret_cast<const EpAssignedNode*>(ep_node);
   return ep_node_internal->name.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 ORT_API(const char*, OrtApis::EpAssignedNode_OpType, _In_ const OrtEpAssignedNode* ep_node) {
+#if !defined(ORT_MINIMAL_BUILD)
   auto ep_node_internal = reinterpret_cast<const EpAssignedNode*>(ep_node);
   return ep_node_internal->op_type.c_str();
+#else
+  ORT_UNUSED_PARAMETER(ep_node);
+  fprintf(stderr, "EP graph partitioning information is not supported in this build\n");
+  return nullptr;
+#endif  // !defined(ORT_MINIMAL_BUILD)
 }
 
 struct OrtIoBinding {
@@ -3079,6 +3130,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::EpAssignedSubgraph_EpName,
     &OrtApis::EpAssignedSubgraph_GetOpTypeCounts,
     &OrtApis::EpAssignedSubgraph_GetNodes,
+    &OrtApis::EpAssignedSubgraph_Device,
     &OrtApis::EpAssignedNode_Name,
     &OrtApis::EpAssignedNode_OpType,
 };

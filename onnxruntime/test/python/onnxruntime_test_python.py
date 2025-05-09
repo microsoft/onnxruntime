@@ -1971,6 +1971,42 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ep_nodes[0].op_type, "Mul")
         self.assertEqual(ep_nodes[0].name, "mul_1")
 
+    def test_get_graph_provider_partitioning_info_auto_ep_prefer_cpu(self):
+        """
+        Tests querying for information about the nodes assigned to the CPU EP when using a PREFER_CPU policy.
+        """
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because device discovery is only supported on Windows")
+
+        # Create session options that enables recording EP graph partitioning info.
+        session_options = onnxrt.SessionOptions()
+        session_options.add_session_config_entry("session.record_ep_graph_partitioning_info", "1")
+        session_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_CPU)
+
+        session = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=session_options)
+
+        # Query session for information on each subgraph assigned to an EP.
+        ep_subgraphs = session.get_provider_graph_partitioning_info()
+
+        # Check that the single subgraph was assigned to CPU EP
+        self.assertEqual(len(ep_subgraphs), 1)
+        self.assertEqual(ep_subgraphs[0].ep_name, "CPUExecutionProvider")
+
+        # Check that the hardware device corresponds to the cpu
+        hardware_device = ep_subgraphs[0].device
+        self.assertEqual(hardware_device.type, onnxrt.OrtHardwareDeviceType.CPU)
+
+        # Should have 1 Mul op
+        op_type_counts: dict[str, int] = ep_subgraphs[0].get_op_type_counts()
+        self.assertIn("Mul", op_type_counts)
+        self.assertEqual(op_type_counts["Mul"], 1)
+
+        # Check that the node's op_type and name are equal to the expected values.
+        ep_nodes = ep_subgraphs[0].get_nodes()
+        self.assertEqual(len(ep_nodes), 1)
+        self.assertEqual(ep_nodes[0].op_type, "Mul")
+        self.assertEqual(ep_nodes[0].name, "mul_1")
+
     def test_get_graph_provider_partitioning_info_qnn(self):
         """
         Tests querying for information about the nodes assigned to the CPU and QNN EPs.

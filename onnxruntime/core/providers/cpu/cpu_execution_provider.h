@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "core/framework/abi_devices.h"
 #include "core/framework/execution_provider.h"
 #include "core/graph/constants.h"
 
@@ -31,10 +32,17 @@ class CPUExecutionProvider : public IExecutionProvider {
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant = nullptr) const override;
+  void SetHardwareDevice(const OrtHardwareDevice* hardware_device);
 
  private:
   CPUExecutionProviderInfo info_;
   std::vector<FuseRuleFn> fuse_rules_;
+  const OrtHardwareDevice* hardware_device_;
 };
 
 // Registers all available CPU kernels

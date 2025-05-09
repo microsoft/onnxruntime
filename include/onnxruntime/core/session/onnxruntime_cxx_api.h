@@ -867,6 +867,7 @@ struct EpAssignedSubgraphImpl : Ort::detail::Base<T> {
   const char* EpName() const;
   std::unordered_map<std::string, size_t> GetOpTypeCounts() const;
   std::vector<ConstEpAssignedNode> GetNodes() const;
+  Ort::ConstHardwareDevice Device() const;
 };
 }  // namespace detail
 

@@ -112,6 +112,15 @@ inline std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapa
 #endif
 }
 
+inline void ComputeCapability__SetHardwareDevice(ComputeCapability& capability,
+                                                 const OrtHardwareDevice* hardware_device) {
+#if BUILD_QNN_EP_STATIC_LIB
+  return capability.hardware_device = hardware_device;
+#else
+  capability.SetHardwareDevice(hardware_device);
+#endif
+}
+
 inline std::vector<NodeIndex>& IndexedSubGraph__Nodes(IndexedSubGraph& indexed_sub_graph) {
 #if BUILD_QNN_EP_STATIC_LIB
   return indexed_sub_graph.nodes;

@@ -53,6 +53,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
+  void SetHardwareDevice(const OrtHardwareDevice* hw_device) { hardware_device_ = hw_device; }
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -105,6 +107,8 @@ class QNNExecutionProvider : public IExecutionProvider {
   // Whether this is set depends on a session option enabling it and if the RPCMEM dynamic library is available.
   // This is potentially shared with HtpSharedMemoryAllocator which may be returned by CreatePreferredAllocators().
   std::shared_ptr<qnn::RpcMemLibrary> rpcmem_library_ = nullptr;
+
+  const OrtHardwareDevice* hardware_device_ = nullptr;
 
   class PerThreadContext final {
    public:

@@ -682,6 +682,7 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
                               std::vector<std::unique_ptr<ComputeCapability>>& result,
                               const std::function<std::string()>& gen_metadef_name,
+                              const OrtHardwareDevice* hardware_device,
                               const logging::Logger& logger) {
   std::unordered_set<const Node*> supported_nodes{};
   std::vector<std::vector<const Node*>> supported_groups{};
@@ -713,8 +714,10 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
       supported_groups.begin(), supported_groups.end(),
       std::back_inserter(result),
       [&](const auto& supported_partition) {
-        return utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN,
-                                            /*drop_constant_initializers*/ false);  // TODO: could this be set to true?
+        auto capability = utils::MakeComputeCapability(graph_viewer, supported_partition, gen_metadef_name, QNN,
+                                                       /*drop_constant_initializers*/ false);  // TODO: could this be set to true?
+        ComputeCapability__SetHardwareDevice(*capability, hardware_device);
+        return capability;
       });
 
   const size_t num_of_partitions = result.size();
@@ -753,7 +756,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
   // no need to setup QNN backend
   if (is_qnn_ctx_model && share_ep_contexts_ && SharedContext::GetInstance().HasSharedQnnModels()) {
     if (EpSharedContextsHasAllGraphs(graph_viewer, logger)) {
-      PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, logger);
+      PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, hardware_device_, logger);
       return result;
     }
   }
@@ -788,7 +791,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
 
   // For model with EPContext, make sure each partition only has one single EPContext node
   if (is_qnn_ctx_model) {
-    PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, logger);
+    PartitionCtxModel(graph_viewer, num_nodes_in_graph, result, gen_metadef_name, hardware_device_, logger);
     return result;
   }
 
@@ -862,6 +865,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     }
 
     if (is_valid_partition) {
+      ComputeCapability__SetHardwareDevice(*partition, hardware_device_);
       result.push_back(std::move(partition));
       num_of_supported_nodes += nodes_in_partition;
     }

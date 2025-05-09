@@ -3643,4 +3643,28 @@ std::unique_ptr<IDataTransfer> CPUExecutionProvider::GetDataTransfer() const {
   return std::make_unique<CPUDataTransfer>();
 }
 
+std::vector<std::unique_ptr<ComputeCapability>>
+CPUExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph,
+                                    const IKernelLookup& kernel_lookup,
+                                    const GraphOptimizerRegistry&,
+                                    IResourceAccountant*) const {
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  for (const auto& node : graph.Nodes()) {
+    if (const KernelCreateInfo* kernel_create_info = kernel_lookup.LookUpKernel(node);
+        kernel_create_info != nullptr) {
+      std::unique_ptr<IndexedSubGraph> sub_graph = std::make_unique<IndexedSubGraph>();
+      sub_graph->nodes.push_back(node.Index());
+      // Note: Creating a ComputeCapability with a OrtHardwareDevice, which is not done in the default implementation
+      // of GetCapability()
+      result.push_back(std::make_unique<ComputeCapability>(std::move(sub_graph), hardware_device_));
+    }
+  }
+
+  return result;
+}
+
+void CPUExecutionProvider::SetHardwareDevice(const OrtHardwareDevice* hardware_device) {
+  this->hardware_device_ = hardware_device;
+}
+
 }  // namespace onnxruntime

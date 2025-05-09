@@ -641,6 +641,11 @@ inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() co
 }
 
 template <typename T>
+inline ConstHardwareDevice EpAssignedSubgraphImpl<T>::Device() const {
+  return ConstHardwareDevice(GetApi().EpAssignedSubgraph_Device(this->p_));
+}
+
+template <typename T>
 inline const char* EpAssignedNodeImpl<T>::Name() const {
   return GetApi().EpAssignedNode_Name(this->p_);
 }

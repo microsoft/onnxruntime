@@ -79,24 +79,22 @@ struct QNN_Provider : Provider {
     return std::make_shared<onnxruntime::QNNProviderFactory>(*provider_options, config_options);
   }
 
-  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
                                   const OrtKeyValuePairs* const* /*ep_metadata*/,
                                   size_t num_devices,
                                   ProviderOptions& provider_options,
                                   const OrtSessionOptions& session_options,
-                                  const OrtLogger& logger,
+                                  const OrtLogger& /*logger*/,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
     if (num_devices != 1) {
       return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "QNN EP only supports one device.");
     }
 
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
+    auto qnn_ep = std::make_unique<QNNExecutionProvider>(provider_options, config_options);
+    qnn_ep->SetHardwareDevice(devices[0]);
 
-    std::array<const void*, 2> configs_array = {&provider_options, config_options};
-    const void* arg = reinterpret_cast<const void*>(&configs_array);
-    auto ep_factory = CreateExecutionProviderFactory(arg);
-    ep = ep_factory->CreateProvider(session_options, logger);
-
+    ep = std::move(qnn_ep);
     return Status::OK();
   }
 

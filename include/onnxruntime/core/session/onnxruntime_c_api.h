@@ -5309,6 +5309,15 @@ struct OrtApi {
   ORT_API2_STATUS(EpAssignedSubgraph_GetNodes, _In_ const OrtEpAssignedSubgraph* ep_subgraph,
                   _Outptr_ const OrtEpAssignedNode* const** ep_nodes, _Out_ size_t* num_ep_nodes);
 
+  /** \brief Get the hardware device the execution provider uses to execute the nodes in the assigned subgraph.
+   *
+   * \param[in] ep_subgraph The OrtEpAssignedSubgraph instance to query.
+   * \return The OrtHardwareDevice instance that executes the subgraph.
+   *
+   * \since Version 1.22.
+   */
+  const OrtHardwareDevice*(ORT_API_CALL* EpAssignedSubgraph_Device)(_In_ const OrtEpAssignedSubgraph* ep_subgraph);
+
   /** \brief Get the name of the node assigned to an execution provider.
    *
    * \param[in] ep_node The OrtEpAssignedNode instance to query.
