@@ -241,7 +241,7 @@ Status TreeEnsembleCommon<InputType, ThresholdType, OutputType>::Init(
   // updated_mapping will translates the old position of each node to the new node position in nodes_.
   std::vector<size_t> updated_mapping(attributes.nodes_treeids.size(), 0);
   int64_t previous_tree_id = -1;
-  for (i = 0; i < n_nodes_; ++i) {
+  for (i = 0; i < static_cast<size_t>(n_nodes_); ++i) {
     if (previous_tree_id == -1 || (previous_tree_id != node_tree_ids[i].tree_id)) {
       // New tree.
       int64_t tree_id = node_tree_ids[i].tree_id;
