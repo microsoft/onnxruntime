@@ -9,27 +9,31 @@ on:
       - main
 
 jobs:
-  Windows-Build-Test-All:
+  build-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64"]
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: false
 
-      - name: Windows aarch64 Build
+      - name: Build Windows x86_64
         shell: cmd
         run: |
-          ${{ vars.VCVARSALL }} amd64 && ^
-          .\build.bat --config RelWithDebInfo --build_shared_lib --parallel ^
-          --cmake_generator "Visual Studio 17 2022" ^
-          --use_qnn --qnn_home ${{ vars.QNN_SDK_ROOT }} --arm64 ^
-          --build_dir build_arm64 --path_to_protoc_exe ${{ vars.PROTOC_PATH }}
+          python .\qcom\build_and_test.py build_ort_windows_x86_64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
 
-      - name: Windows X86_64 Build
+      - name: Test Windows x86_64
         shell: cmd
         run: |
-          ${{ vars.VCVARSALL }} amd64 && ^
-          .\build.bat --config RelWithDebInfo --build_shared_lib --parallel ^
-          --compile_no_warning_as_error --cmake_generator "Visual Studio 17 2022" ^
-          --use_qnn --qnn_home ${{ vars.QNN_SDK_ROOT }} ^
-          --build_dir build_x86
+          python .\qcom\build_and_test.py test_ort_windows_x86_64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
+
+  build-windows-arm64:
+    runs-on: ["self-hosted", "Windows", "X64"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build Windows ARM64
+        shell: cmd
+        run: |
+          python .\qcom\build_and_test.py build_ort_windows_arm64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
