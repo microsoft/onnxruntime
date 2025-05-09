@@ -10,8 +10,16 @@
     { "name": "vcpkg-cmake-config", "host": true },
     { "name": "abseil", "version>=": "20250127.1" },
     { "name": "protobuf", "version>=": "3.21.12" },
-    { "name": "spirv-headers", "version>=": "1.4.304.1" },
-    { "name": "spirv-tools", "version>=": "1.4.304.1" },
+    {
+      "name": "spirv-headers",
+      "version>=": "1.4.304.1",
+      "platform": "!emscripten"
+    },
+    {
+      "name": "spirv-tools",
+      "version>=": "1.4.304.1",
+      "platform": "!emscripten"
+    },
     {
       "name": "vulkan-headers",
       "version>=": "1.4.304.1#1",
