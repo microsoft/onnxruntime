@@ -185,17 +185,14 @@ Status ResizeOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                         "QNN EP: Resize on the NPU does not support nearest_mode ", nearest_mode.c_str());
 #endif
 
-      const bool use_resize_nn_op = nearest_mode == "floor";
+      // Use ResizeNearestNeighbor for rank-4 inputs.
+      const bool use_resize_nn_op = input_rank == 4;
 
       // If HTP uses ResizeNearestNeighbor ("floor"), then the "pytorch_half_pixel" coordinate_transformation_mode
       // is not supported.
-      ORT_RETURN_IF(use_resize_nn_op && transformation_mode == "pytorch_half_pixel",
+      ORT_RETURN_IF(!use_resize_nn_op && nearest_mode == "floor" && transformation_mode == "pytorch_half_pixel",
                     "QNN EP: Resize on the NPU does not support the combination of nearest_mode == 'floor' ",
                     " and coordinate_transformation_mode == 'pytorch_half_pixel'.");
-
-      // QNN's ResizeNearestNeighbor requires rank 4 inputs.
-      ORT_RETURN_IF(use_resize_nn_op && input_rank != 4,
-                    "QNN EP: Resize on the NPU with nearest_mode == 'floor' requires an input with rank 4.");
 
 #if QNN_API_VERSION_MAJOR >= 2 && QNN_API_VERSION_MINOR >= 14
       // QNN's Resize only supports "round_prefer_ceil" if transformation_mode is "align_corners".
@@ -267,11 +264,11 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   std::string qnn_op_type = "Resize";
 
-  if (is_npu_backend && input_rank == 4 && interp_mode == "nearest" && nearest_mode == "floor") {
+  if (is_npu_backend && input_rank == 4 && interp_mode == "nearest") {
     // Translate Resize with
-    // {input_rank: 4, mode: "nearest", nearest_mode: "floor", coordinate_transformation_mode: XXX} to
-    // QNN's ResizeNearestNeighbor operator on the HTP backend. This combination of parameters is not supported on HTP
-    // via QNN's Resize operator. Note that QNN's ResizeNearestNeighbor operator always uses "floor" rounding.
+    // {input_rank: 4, mode: "nearest", coordinate_transformation_mode: XXX} to
+    // QNN's ResizeNearestNeighbor operator on the HTP backend. QNN ResizeNearestNeighbor
+    // seems to be faster than QNN Resize.
     qnn_op_type = "ResizeNearestNeighbor";
 
     // 'align_corners'

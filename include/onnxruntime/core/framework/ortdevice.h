@@ -103,7 +103,7 @@ struct OrtDevice {
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
-  return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type();
+  return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type() && left.GetAlignment() == other.GetAlignment();
 }
 
 inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {

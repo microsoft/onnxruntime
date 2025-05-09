@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.2.3
+    value: 6.4
 
 jobs:
 - job: Linux_Build

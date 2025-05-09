@@ -989,41 +989,63 @@ namespace Microsoft.ML.OnnxRuntime
                                                           out UIntPtr numSelected,
                                                           IntPtr state)
             {
-                Span<IntPtr> epDevicesIntPtrs;
-                Span<IntPtr> selectedDevicesIntPtrs;
-                EpSelectionPolicyConnector connector = (EpSelectionPolicyConnector)GCHandle.FromIntPtr(state).Target;
+                numSelected = UIntPtr.Zero;
 
-                unsafe
+                try
                 {
-                    void* ptr = epDevicesIn.ToPointer();
-                    epDevicesIntPtrs = new Span<IntPtr>(ptr, checked((int)numDevices));
+
+                    Span<IntPtr> epDevicesIntPtrs;
+                    Span<IntPtr> selectedDevicesIntPtrs;
+                    EpSelectionPolicyConnector connector = (EpSelectionPolicyConnector)GCHandle.FromIntPtr(state).Target;
+
+                    unsafe
+                    {
+                        void* ptr = epDevicesIn.ToPointer();
+                        epDevicesIntPtrs = new Span<IntPtr>(ptr, checked((int)numDevices));
+                    }
+
+                    List<OrtEpDevice> epDevices = new List<OrtEpDevice>();
+                    for (int i = 0; i < numDevices; i++)
+                    {
+
+                        epDevices.Add(new OrtEpDevice(epDevicesIntPtrs[i]));
+                    }
+
+                    OrtKeyValuePairs modelMetadata = new OrtKeyValuePairs(modelMetadataIn);
+                    OrtKeyValuePairs runtimeMetadata = new OrtKeyValuePairs(runtimeMetadataIn);
+
+                    var selected = connector._csharpDelegate(epDevices, modelMetadata, runtimeMetadata, maxSelected);
+
+                    if (selected.Count > maxSelected)
+                    {
+                        var error = $"The number of selected devices ({selected.Count}) returned by " +
+                                    $"the C# selection delegate exceeds the maximum ({maxSelected}).";
+                        IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                        return status;
+                    }
+
+                    numSelected = (UIntPtr)selected.Count;
+
+                    unsafe
+                    {
+                        void* ptr = selectedOut.ToPointer();
+                        selectedDevicesIntPtrs = new Span<IntPtr>(ptr, (int)maxSelected);
+                    }
+
+                    int idx = 0;
+                    foreach (var epDevice in selected)
+                    {
+                        selectedDevicesIntPtrs[idx] = epDevice.Handle;
+                        idx++;
+                    }
                 }
-
-                List<OrtEpDevice> epDevices = new List<OrtEpDevice>();
-                for (int i = 0; i < numDevices; i++)
+                catch (Exception ex)
                 {
-
-                    epDevices.Add(new OrtEpDevice(epDevicesIntPtrs[i]));
-                }
-
-                OrtKeyValuePairs modelMetadata = new OrtKeyValuePairs(modelMetadataIn);
-                OrtKeyValuePairs runtimeMetadata = new OrtKeyValuePairs(runtimeMetadataIn);
-
-                var selected = connector._csharpDelegate(epDevices, modelMetadata, runtimeMetadata, maxSelected);
-
-                numSelected = (UIntPtr)selected.Count;
-
-                unsafe
-                {
-                    void* ptr = selectedOut.ToPointer();
-                    selectedDevicesIntPtrs = new Span<IntPtr>(ptr, (int)maxSelected);
-                }
-
-                int idx = 0;
-                foreach (var epDevice in selected)
-                {
-                    selectedDevicesIntPtrs[idx] = epDevice.Handle;
-                    idx++;
+                    var error = $"The C# selection delegate threw an exception: {ex.Message}";
+                    IntPtr status = NativeMethods.OrtCreateStatus((uint)ErrorCode.Fail,
+                                            NativeOnnxValueHelper.StringToZeroTerminatedUtf8(error));
+                    return status;
                 }
 
                 return IntPtr.Zero;

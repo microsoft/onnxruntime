@@ -399,6 +399,15 @@ TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestHalfPixelRoundPreferFloor_Unsupport
                               ExpectedEPNodeAssignment::None);  // No longer supported as of QNN SDK 2.21
 }
 
+// Test 2x QDQ Resize mode: "nearest", coordinate_transformation_mode: "half_pixel", nearest_mode: "round_prefer_Ceil"
+// Maps to QNN's ResizeNearesetNeighbor operator.
+TEST_F(QnnHTPBackendTests, ResizeU8_2xNearestHalfPixelRoundPreferCeil) {
+  std::vector<float> input_data = GetFloatDataInRange(-10.0f, 10.0f, 48);
+  RunQDQResizeOpTest<uint8_t>(TestInputDef<float>({1, 3, 4, 4}, false, input_data),
+                              {1, 3, 8, 8}, "nearest", "half_pixel", "round_prefer_ceil",
+                              ExpectedEPNodeAssignment::All);
+}
+
 // Test 2x QDQ Resize mode: "nearest", coordinate_transformation_mode: "align_corners", nearest_mode: "round_prefer_ceil"
 // Maps to QNN's Resize operator.
 // UPDATE: "round_prefer_ceil" is supported as of QNN SDK 2.21 if using "align_corners". (Unsupported in QNN SDK 2.19).

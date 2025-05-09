@@ -1824,6 +1824,13 @@ inline size_t ConstValueImpl<T>::GetStringTensorElementLength(size_t element_ind
 }
 
 template <typename T>
+inline size_t ConstValueImpl<T>::GetTensorSizeInBytes() const {
+  size_t out;
+  ThrowOnError(GetApi().GetTensorSizeInBytes(this->p_, &out));
+  return out;
+}
+
+template <typename T>
 template <typename R>
 inline const R* ConstValueImpl<T>::GetTensorData() const {
   R* out;

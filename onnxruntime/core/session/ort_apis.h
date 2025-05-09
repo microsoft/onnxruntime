@@ -598,4 +598,7 @@ ORT_API(const OrtKeyValuePairs*, EpDevice_EpOptions, _In_ const OrtEpDevice* ep_
 ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_device);
 
 ORT_API(const OrtEpApi*, GetEpApi);
+
+ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
 }  // namespace OrtApis

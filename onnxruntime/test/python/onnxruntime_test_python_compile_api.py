@@ -6,6 +6,7 @@ import os
 import platform
 import sys
 import unittest
+from collections.abc import Sequence
 
 import onnx
 from autoep_helper import AutoEpTestCase
@@ -33,8 +34,8 @@ class TestCompileApi(AutoEpTestCase):
             self.skipTest("Skipping test because provider selection policies are only supported on Windows")
 
         ep_lib_path = "onnxruntime_providers_qnn.dll"
-        ep_registration_name = "QNNExecutionProvider"
-        self.register_execution_provider_library(ep_registration_name, ep_lib_path)
+        ep_name = "QNNExecutionProvider"
+        self.register_execution_provider_library(ep_name, ep_lib_path)
 
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled0.onnx")
@@ -50,7 +51,47 @@ class TestCompileApi(AutoEpTestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
-        self.unregister_execution_provider_library(ep_registration_name)
+        self.unregister_execution_provider_library(ep_name)
+
+    def test_compile_with_ep_selection_delegate(self):
+        """
+        Tests compiling a model (to/from files) using an EP selection delegate callback.
+        """
+        if sys.platform != "win32":
+            self.skipTest("Skipping test because provider selection policies are only supported on Windows")
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.delegate.onnx")
+
+        # User's custom EP selection function.
+        def my_delegate(
+            ep_devices: Sequence[onnxrt.OrtEpDevice],
+            model_metadata: dict[str, str],
+            runtime_metadata: dict[str, str],
+            max_selections: int,
+        ) -> Sequence[onnxrt.OrtEpDevice]:
+            self.assertGreater(len(ep_devices), 0)
+            self.assertGreater(len(model_metadata), 0)
+            self.assertGreater(max_selections, 0)
+
+            # Select the first and last devices (if there are more than one)
+            selected_devices = [ep_devices[0]]
+            if max_selections > 2 and len(ep_devices) > 1:
+                selected_devices.append(ep_devices[-1])  # ORT CPU EP is always last
+
+            return selected_devices
+
+        session_options = onnxrt.SessionOptions()
+        session_options.set_provider_selection_policy_delegate(my_delegate)
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))
 
     def test_compile_with_input_and_output_files(self):
         """
