@@ -801,7 +801,8 @@ InitializeWorkspace_CompInt8(
     const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    size_t BlkBitWidth
 );
 
 template <>
@@ -815,7 +816,8 @@ InitializeWorkspace_CompInt8<float>(
     const MLAS_QNBIT_GEMM_DATA_PARAMS<float>* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    size_t BlkBitWidth
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -829,7 +831,7 @@ InitializeWorkspace_CompInt8<float>(
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
-    if (UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
+    if (BlkBitWidth == 4 && UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
@@ -882,7 +884,8 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     const MLAS_QNBIT_GEMM_DATA_PARAMS<MLAS_FP16>* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    size_t BlkBitWidth
 ) {
     MLAS_UNREFERENCED_PARAMETER(M);
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -893,6 +896,7 @@ InitializeWorkspace_CompInt8<MLAS_FP16>(
     MLAS_UNREFERENCED_PARAMETER(Workspace);
     MLAS_UNREFERENCED_PARAMETER(PerGemmWorkspaceStride);
     MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+    MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
 }
 
 template <typename T>
@@ -905,7 +909,8 @@ using InitializeWorkspaceFn = std::function<void(
     const MLAS_QNBIT_GEMM_DATA_PARAMS<T>* DataParams,
     void* Workspace,
     size_t PerGemmWorkspaceStride,
-    MLAS_THREADPOOL* ThreadPool
+    MLAS_THREADPOOL* ThreadPool,
+    size_t BlkBitWidth
 )>;
 
 template <typename T>
@@ -1018,7 +1023,7 @@ MlasQNBitGemmBatch(
     if (const auto InitializeWorkspaceOperation = GetInitializeWorkspace<T>(Variant);
         InitializeWorkspaceOperation != nullptr) {
         InitializeWorkspaceOperation(
-            M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool
+            M, N, K, BatchN, BlkLen, DataParams, Workspace, PerGemmWorkspaceStride, ThreadPool, BlkBitWidth
         );
     }
 
