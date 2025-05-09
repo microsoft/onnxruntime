@@ -425,6 +425,39 @@ TEST_P(CApiTestWithProvider, simple) {
                        nullptr, nullptr);
 }
 
+template <class T, size_t element_count_to_create>
+void TestGetTensorSizeInBytes(Ort::ConstMemoryInfo cpu_meminfo) {
+  constexpr const size_t expected_size_in_bytes = sizeof(T) * element_count_to_create;
+  constexpr const std::array<int64_t, 2> dims = {1, static_cast<int64_t>(element_count_to_create)};
+  std::array<T, element_count_to_create> data;
+  std::fill(data.begin(), data.end(), T{1});
+
+  auto value = Ort::Value::CreateTensor<T>(cpu_meminfo, data.data(),
+                                           data.size(), dims.data(), dims.size());
+
+  auto type_info = value.GetTypeInfo();
+  ASSERT_EQ(type_info.GetONNXType(), ONNX_TYPE_TENSOR);
+  auto tensor_type_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_type_info.GetElementCount();
+  ASSERT_EQ(expected_size_in_bytes / sizeof(T), element_count);
+  ASSERT_EQ(expected_size_in_bytes, value.GetTensorSizeInBytes());
+}
+
+TEST(CApiTest, TestGetTensorSizeInBytes) {
+  Ort::MemoryInfo cpu_meminfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  TestGetTensorSizeInBytes<float, 1>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 2>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 3>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 4>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 5>(cpu_meminfo.GetConst());
+
+  TestGetTensorSizeInBytes<int64_t, 1>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 2>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 3>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 4>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 5>(cpu_meminfo.GetConst());
+}
+
 TEST(CApiTest, dim_param) {
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
