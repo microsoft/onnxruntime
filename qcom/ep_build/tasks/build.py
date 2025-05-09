@@ -3,8 +3,24 @@
 
 from pathlib import Path
 
+from ..task import BashScriptsTask
 from ..util import REPO_ROOT
 from .windows import RunPowershellScriptsTask
+
+
+class BuildEpLinuxTask(BashScriptsTask):
+    def __init__(
+        self,
+        group_name: str | None,
+        qairt_sdk_root: Path,
+        mode: str,
+    ) -> None:
+        cmd = [
+            str(REPO_ROOT / "qcom" / "scripts" / "linux" / "build.sh"),
+            f"--qairt_sdk_root={qairt_sdk_root}",
+            f"--mode={mode}",
+        ]
+        super().__init__(group_name, [cmd])
 
 
 class BuildEpWindowsTask(RunPowershellScriptsTask):

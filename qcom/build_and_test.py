@@ -25,9 +25,19 @@ from ep_build.task import (
     ListTasksTask,
     NoOpTask,
 )
-from ep_build.tasks.build import BuildEpWindowsTask, InstallDepsWindowsTask
+from ep_build.tasks.build import (
+    BuildEpLinuxTask,
+    BuildEpWindowsTask,
+    InstallDepsWindowsTask,
+)
 from ep_build.tasks.python import CreateVenvTask, RunLinterTask
-from ep_build.util import DEFAULT_PYTHON, REPO_ROOT, is_host_arm64
+from ep_build.util import (
+    DEFAULT_PYTHON,
+    REPO_ROOT,
+    is_host_arm64,
+    is_host_linux,
+    is_host_windows,
+)
 
 QAIRT_SDK_ROOT_ENV_VAR = "QAIRT_SDK_ROOT"
 QNN_SDK_ROOT_ENV_VAR = "QNN_SDK_ROOT"
@@ -113,9 +123,24 @@ class TaskLibrary:
         return f"digraph {{\n{elements_str}\n}}"
 
     @public_task("Build ONNX Runtime")
-    @depends(["build_ort_windows_host"])
+    @depends(
+        [
+            (is_host_linux(), "build_ort_linux"),
+            (is_host_windows(), "build_ort_windows_host"),
+        ]
+    )
     def build(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
+
+    @task
+    def build_ort_linux(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Building ONNX Runtime for Linux",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
 
     @task
     @depends(["install_deps_windows"])
@@ -130,10 +155,12 @@ class TaskLibrary:
         )
 
     @task
-    @depends([
-        (is_host_arm64(), "build_ort_windows_arm64"),
-        (not is_host_arm64(), "build_ort_windows_x86_64"),
-    ])
+    @depends(
+        [
+            (is_host_arm64(), "build_ort_windows_arm64"),
+            (not is_host_arm64(), "build_ort_windows_x86_64"),
+        ]
+    )
     def build_ort_windows_host(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
@@ -176,15 +203,33 @@ class TaskLibrary:
         return plan.add_step(RunLinterTask(self.__venv_path))
 
     @public_task("Test ONNX Runtime")
-    @depends(["test_ort_windows"])
+    @depends(
+        [
+            (is_host_linux(), "test_ort_linux"),
+            (is_host_windows(), "test_ort_windows"),
+        ]
+    )
     def test(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
     @task
-    @depends([
-        (is_host_arm64(), "test_ort_windows_arm64"),
-        (not is_host_arm64(), "test_ort_windows_x86_64"),
-    ])
+    @depends(["build_ort_linux"])
+    def test_ort_linux(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Testing ONNX Runtime for Linux",
+                self.__qairt_sdk_root,
+                "test",
+            )
+        )
+
+    @task
+    @depends(
+        [
+            (is_host_arm64(), "test_ort_windows_arm64"),
+            (not is_host_arm64(), "test_ort_windows_x86_64"),
+        ]
+    )
     def test_ort_windows(self, plan: Plan) -> str:
         return plan.add_step(NoOpTask())
 
