@@ -598,6 +598,59 @@ inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardwar
   ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
 }
 
+namespace detail {
+template <typename T>
+inline const char* EpAssignedSubgraphImpl<T>::EpName() const {
+  return GetApi().EpAssignedSubgraph_EpName(this->p_);
+}
+
+template <typename T>
+inline std::unordered_map<std::string, size_t> EpAssignedSubgraphImpl<T>::GetOpTypeCounts() const {
+  size_t num_op_types = 0;
+  const char* const* op_types_ptr = nullptr;
+  size_t const* op_type_counts_ptr = nullptr;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetOpTypeCounts(this->p_, &op_types_ptr, &op_type_counts_ptr,
+                                                           &num_op_types));
+
+  std::unordered_map<std::string, size_t> op_type_counts_map;
+  if (num_op_types > 0) {
+    op_type_counts_map.reserve(num_op_types);
+    for (size_t i = 0; i < num_op_types; ++i) {
+      op_type_counts_map[op_types_ptr[i]] = op_type_counts_ptr[i];
+    }
+  }
+
+  return op_type_counts_map;
+}
+
+template <typename T>
+inline std::vector<ConstEpAssignedNode> EpAssignedSubgraphImpl<T>::GetNodes() const {
+  size_t num_ep_nodes = 0;
+  const OrtEpAssignedNode* const* ep_node_ptrs = nullptr;
+  ThrowOnError(GetApi().EpAssignedSubgraph_GetNodes(this->p_, &ep_node_ptrs, &num_ep_nodes));
+
+  std::vector<ConstEpAssignedNode> ep_nodes;
+  if (num_ep_nodes > 0) {
+    ep_nodes.reserve(num_ep_nodes);
+    for (size_t i = 0; i < num_ep_nodes; ++i) {
+      ep_nodes.emplace_back(ep_node_ptrs[i]);
+    }
+  }
+
+  return ep_nodes;
+}
+
+template <typename T>
+inline const char* EpAssignedNodeImpl<T>::Name() const {
+  return GetApi().EpAssignedNode_Name(this->p_);
+}
+
+template <typename T>
+inline const char* EpAssignedNodeImpl<T>::OpType() const {
+  return GetApi().EpAssignedNode_OpType(this->p_);
+}
+}  // namespace detail
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -1382,6 +1435,23 @@ inline int ConstSessionImpl<T>::GetOpset(const std::string& domain) const {
   return opset;
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+template <typename T>
+inline std::vector<ConstEpAssignedSubgraph> ConstSessionImpl<T>::GetEpGraphPartitioningInfo() const {
+  size_t num_ep_subgraphs = 0;
+  const OrtEpAssignedSubgraph* const* ep_subgraph_ptrs = nullptr;
+  ThrowOnError(GetApi().Session_GetEpGraphPartitioningInfo(this->p_, &ep_subgraph_ptrs, &num_ep_subgraphs));
+
+  std::vector<ConstEpAssignedSubgraph> ep_subgraphs;
+  if (num_ep_subgraphs > 0) {
+    ep_subgraphs.reserve(num_ep_subgraphs);
+    for (size_t i = 0; i < num_ep_subgraphs; ++i) {
+      ep_subgraphs.emplace_back(ep_subgraph_ptrs[i]);
+    }
+  }
+
+  return ep_subgraphs;
+}
 
 template <typename T>
 std::vector<ValueInfo> ConstSessionImpl<T>::GetInputs() const {

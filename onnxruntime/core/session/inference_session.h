@@ -606,7 +606,7 @@ class InferenceSession {
 
   const Model& GetModel() const;
   const Environment& GetEnvironment() const;
-  const InlinedVector<const EpAssignedSubgraph*>& GetEpGraphPartitioningInfo() const {
+  const std::vector<const EpAssignedSubgraph*>& GetEpGraphPartitioningInfo() const {
     return this->graph_partitioning_info_;
   }
 
@@ -990,8 +990,8 @@ class InferenceSession {
 #endif
 
   // Enable partition info collection
-  InlinedVector<std::unique_ptr<EpAssignedSubgraph>> graph_partitioning_info_storage_;
-  InlinedVector<const EpAssignedSubgraph*> graph_partitioning_info_;
+  std::vector<std::unique_ptr<EpAssignedSubgraph>> graph_partitioning_info_storage_;
+  std::vector<const EpAssignedSubgraph*> graph_partitioning_info_;
 };
 
 struct SessionIOBinding {

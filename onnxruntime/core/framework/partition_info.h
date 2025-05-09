@@ -5,6 +5,7 @@
 
 #include <string>
 #include <unordered_map>
+#include "core/common/common.h"
 #include "core/common/inlined_containers_fwd.h"
 
 struct OrtEpDevice;  // TODO: Move session/abi_devices.h to framework
@@ -16,15 +17,20 @@ struct EpAssignedNode {
 };
 
 struct EpAssignedSubgraph {
-  std::string ep_name;
-  InlinedVector<std::string> op_types_storage;
+  EpAssignedSubgraph() = default;
+  EpAssignedSubgraph(EpAssignedSubgraph&&) = default;
+  EpAssignedSubgraph& operator=(EpAssignedSubgraph&&) = default;
+  ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpAssignedSubgraph);
 
-  // Make returning these via the C API easer.
+  std::string ep_name;
+
+  // Store in arrays (instead of map) to make returning these via the C API easer.
+  InlinedVector<std::string> op_types_storage;
   InlinedVector<const char*> op_types;
   InlinedVector<size_t> op_type_counts;
 
   // EPs must set this in every ComputeCapability.
-  const OrtEpDevice* ep_device;
+  const OrtEpDevice* ep_device = nullptr;
 
   // Can be expensive to store metadata for every node in the partition.
   // Storing per-node info has to be explicitly enabled.

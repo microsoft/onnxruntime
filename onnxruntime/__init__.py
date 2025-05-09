@@ -22,6 +22,8 @@ __author__ = "Microsoft"
 # the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import (
+        EpAssignedSubgraph,  # noqa: F401
+        EpDevice,  # noqa: F401
         ExecutionMode,  # noqa: F401
         ExecutionOrder,  # noqa: F401
         GraphOptimizationLevel,  # noqa: F401
@@ -30,7 +32,7 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
-        OrtEpDevice,  # noqa: F401
+        OrtEpAssignedNode,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401
         OrtHardwareDeviceType,  # noqa: F401

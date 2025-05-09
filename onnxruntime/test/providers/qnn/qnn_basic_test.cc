@@ -1298,36 +1298,22 @@ TEST_F(QnnHTPBackendTests, Session_GetEpGraphPartitioningInfo) {
   Ort::Session session(*ort_env, ort_model_path, session_options);
   EXPECT_TRUE(SessionHasEp(session, kQnnExecutionProvider));
 
-  const OrtEpAssignedSubgraph* const* ep_subgraphs = nullptr;
-  size_t num_ep_subgraphs = 0;
-  OrtStatus* status = Ort::GetApi().Session_GetEpGraphPartitioningInfo(session, &ep_subgraphs, &num_ep_subgraphs);
-  ASSERT_TRUE(status == nullptr);
+  std::vector<Ort::ConstEpAssignedSubgraph> ep_subgraphs = session.GetEpGraphPartitioningInfo();
 
-  for (size_t i = 0; i < num_ep_subgraphs; i++) {
-    const OrtEpAssignedSubgraph* subgraph = ep_subgraphs[i];
-    std::string ep_name = Ort::GetApi().EpAssignedSubgraph_EpName(subgraph);
+  for (auto subgraph : ep_subgraphs) {
+    std::string ep_name = subgraph.EpName();
     EXPECT_TRUE(ep_name == kQnnExecutionProvider || ep_name == kCpuExecutionProvider);
     std::cout << ep_name << std::endl;
 
-    const char* const* op_types = nullptr;
-    size_t const* counts = nullptr;
-    size_t num_op_types = 0;
-    status = Ort::GetApi().EpAssignedSubgraph_GetOpTypeCounts(subgraph, &op_types, &counts, &num_op_types);
-    ASSERT_TRUE(status == nullptr);
-    for (size_t j = 0; j < num_op_types; j++) {
-      std::cout << "\t" << op_types[j] << ": " << counts[j] << std::endl;
+    std::unordered_map<std::string, size_t> op_type_counts = subgraph.GetOpTypeCounts();
+    for (const auto& [op_type, count] : op_type_counts) {
+      std::cout << "\t" << op_type << ": " << count << std::endl;
     }
     std::cout << std::endl;
 
-    const OrtEpAssignedNode* const* ep_nodes = nullptr;
-    size_t num_nodes = 0;
-    status = Ort::GetApi().EpAssignedSubgraph_GetNodes(subgraph, &ep_nodes, &num_nodes);
-    ASSERT_TRUE(status == nullptr);
-    for (size_t k = 0; k < num_nodes; k++) {
-      const OrtEpAssignedNode* node = ep_nodes[k];
-      std::string node_name = Ort::GetApi().EpAssignedNode_Name(node);
-      std::string op_type = Ort::GetApi().EpAssignedNode_OpType(node);
-      std::cout << "\t" << op_type << ": " << node_name << std::endl;
+    std::vector<Ort::ConstEpAssignedNode> ep_nodes = subgraph.GetNodes();
+    for (auto ep_node : ep_nodes) {
+      std::cout << "\t" << ep_node.OpType() << ": " << ep_node.Name() << std::endl;
     }
   }
 }

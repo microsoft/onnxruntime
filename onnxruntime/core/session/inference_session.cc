@@ -1276,7 +1276,7 @@ common::Status InferenceSession::ApplyUpdates(const OrtModel& model_editor_api_m
   return model_->MainGraph().UpdateUsingModelEditorApiModel(model_editor_api_model);
 }
 
-static void RecordPartitionInfo(InlinedVector<std::unique_ptr<EpAssignedSubgraph>>& partitioning_info,
+static void RecordPartitionInfo(std::vector<std::unique_ptr<EpAssignedSubgraph>>& partitioning_info,
                                 bool enable_per_node_info,
                                 const Graph& graph,
                                 const ComputeCapability& capability,

@@ -877,7 +877,7 @@ ORT_API_STATUS_IMPL(OrtApis::Session_GetEpGraphPartitioningInfo, _In_ const OrtS
   }
 
   auto inference_session = reinterpret_cast<const onnxruntime::InferenceSession*>(session);
-  const InlinedVector<const EpAssignedSubgraph*>& ep_subgraphs_internal = inference_session->GetEpGraphPartitioningInfo();
+  const std::vector<const EpAssignedSubgraph*>& ep_subgraphs_internal = inference_session->GetEpGraphPartitioningInfo();
 
   *ep_subgraphs = reinterpret_cast<const OrtEpAssignedSubgraph* const*>(ep_subgraphs_internal.data());
   *num_ep_subgraphs = ep_subgraphs_internal.size();

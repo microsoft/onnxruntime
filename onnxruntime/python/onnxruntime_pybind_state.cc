@@ -41,6 +41,7 @@
 #include "core/session/lora_adapters.h"
 
 #if !defined(ORT_MINIMAL_BUILD)
+#include "core/framework/partition_info.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ep_factory_internal.h"
 #include "core/session/provider_policy_context.h"
@@ -1888,23 +1889,23 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
   py::class_<OrtHardwareDevice> py_hw_device(m, "OrtHardwareDevice", R"pbdoc(ONNX Runtime hardware device information.)pbdoc");
   py_hw_device.def_property_readonly(
                   "type",
-                  [](OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
+                  [](const OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
                   R"pbdoc(Hardware device's type.)pbdoc")
       .def_property_readonly(
           "vendor_id",
-          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
+          [](const OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
           R"pbdoc(Hardware device's vendor identifier.)pbdoc")
       .def_property_readonly(
           "vendor",
-          [](OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
+          [](const OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
           R"pbdoc(Hardware device's vendor name.)pbdoc")
       .def_property_readonly(
           "device_id",
-          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
+          [](const OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
           R"pbdoc(Hardware device's unique identifier.)pbdoc")
       .def_property_readonly(
           "metadata",
-          [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
+          [](const OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
             return hw_device->metadata.entries;
           },
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
@@ -1914,31 +1915,81 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
 for model inference.)pbdoc");
   py_ep_device.def_property_readonly(
                   "ep_name",
-                  [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
+                  [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
                   R"pbdoc(The execution provider's name.)pbdoc")
       .def_property_readonly(
           "ep_vendor",
-          [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
+          [](const OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
           R"pbdoc(The execution provider's vendor name.)pbdoc")
       .def_property_readonly(
           "ep_metadata",
-          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_metadata.entries;
           },
           R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
-          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+          [](const OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
             return ep_device->ep_options.entries;
           },
           R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "device",
-          [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
+          [](const OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
             return *ep_device->device;
           },
           R"pbdoc(The OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
           py::return_value_policy::reference_internal);
+
+  py::class_<EpAssignedNode> py_ep_node(m, "EpAssignedNode",
+                                        R"pbdoc(Contains information about a node assigned to an execution
+provider)pbdoc");
+  py_ep_node
+      .def_property_readonly(
+          "name",
+          [](const EpAssignedNode* ep_node) -> std::string {
+            return ep_node->name;
+          },
+          R"pbdoc(The node's name)pbdoc")
+      .def_property_readonly(
+          "op_type",
+          [](const EpAssignedNode* ep_node) -> std::string {
+            return ep_node->op_type;
+          },
+          R"pbdoc(The node's operator type)pbdoc");
+
+  py::class_<EpAssignedSubgraph> py_ep_subgraph(m, "EpAssignedSubgraph",
+                                                R"pbdoc(Contains information about a subgraph assigned to an execution
+provider)pbdoc");
+  py_ep_subgraph
+      .def_property_readonly(
+          "ep_name",
+          [](const EpAssignedSubgraph* ep_subgraph) -> std::string {
+            return ep_subgraph->ep_name;
+          },
+          R"pbdoc(The name of the execution provider to which this subgraph is assigned.)pbdoc")
+      .def(
+          "get_op_type_counts",
+          [](const EpAssignedSubgraph* ep_subgraph) -> std::unordered_map<std::string, size_t> {
+            gsl::span<const std::string> op_types = ep_subgraph->op_types_storage;
+            gsl::span<const size_t> op_type_counts = ep_subgraph->op_type_counts;
+            std::unordered_map<std::string, size_t> result;
+            result.reserve(op_types.size());
+            for (size_t i = 0; i < op_types.size(); ++i) {
+              result[op_types[i]] = op_type_counts[i];
+            }
+
+            return result;
+          },
+          R"pbdoc(Dictionary with 'operator type' as the key and the number of instances (i.e., counts) of that
+operator type as the value)pbdoc")
+      .def(
+          "get_nodes",
+          [](const EpAssignedSubgraph* ep_subgraph) -> const std::vector<const EpAssignedNode*>& {
+            return ep_subgraph->nodes;
+          },
+          py::return_value_policy::reference_internal,
+          R"pbdoc(List of nodes in the subgraph.)pbdoc");
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -2629,6 +2680,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       })
       .def("get_providers", [](const PyInferenceSession* sess) -> const std::vector<std::string>& { return sess->GetSessionHandle()->GetRegisteredProviderTypes(); }, py::return_value_policy::reference_internal)
       .def("get_provider_options", [](const PyInferenceSession* sess) -> const ProviderOptionsMap& { return sess->GetSessionHandle()->GetAllProviderOptions(); }, py::return_value_policy::reference_internal)
+      .def("get_provider_graph_partitioning_info", [](const PyInferenceSession* sess) -> const std::vector<const EpAssignedSubgraph*>& { return sess->GetSessionHandle()->GetEpGraphPartitioningInfo(); }, py::return_value_policy::reference_internal, R"pbdoc(Returns information on the subgraph/nodes assigned to execution providers in the session.)pbdoc")
       .def_property_readonly("session_options", [](const PyInferenceSession* sess) -> PySessionOptions* {
             auto session_options = std::make_unique<PySessionOptions>();
             session_options->value = sess->GetSessionHandle()->GetSessionOptions();
