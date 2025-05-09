@@ -7,6 +7,7 @@
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
+#include "core/providers/webgpu/tensor/transpose.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -99,20 +100,112 @@ REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 1, 10);
 REGISTER_REDUCE_VERSIONED_KERNEL(ArgMin, 11, 12);
 REGISTER_REDUCE_KERNEL(ArgMin, 13);
 
-Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
+std::unordered_map<std::string, ReduceOpType> reduce_op_types = {
+    {"ReduceMax", ReduceOpType::Max},
+    {"ReduceMin", ReduceOpType::Min},
+    {"ReduceMean", ReduceOpType::Mean},
+    {"ReduceSum", ReduceOpType::Sum},
+    {"ReduceProd", ReduceOpType::Prod},
+    {"ReduceSumSquare", ReduceOpType::SumSquare},
+    {"ReduceLogSumExp", ReduceOpType::LogSumExp},
+    {"ReduceL1", ReduceOpType::L1},
+    {"ReduceL2", ReduceOpType::L2},
+    {"ReduceLogSum", ReduceOpType::LogSum},
+    {"ArgMax", ReduceOpType::ArgMax},
+    {"ArgMin", ReduceOpType::ArgMin},
+    {"ArgMax_select_last_index", ReduceOpType::ArgMax_select_last_index},
+    {"ArgMin_select_last_index", ReduceOpType::ArgMin_select_last_index},
+};
+
+std::unordered_map<ReduceOpType, std::string> reduce_op_code_map = {
+    {ReduceOpType::Max, "select(bestValue, candidate, candidate > bestValue)"},
+    {ReduceOpType::Min, "select(bestValue, candidate, candidate < bestValue)"},
+    {ReduceOpType::Mean, "bestValue + candidate"},
+    {ReduceOpType::Sum, "bestValue + candidate"},
+    {ReduceOpType::Prod, "bestValue * candidate"},
+    {ReduceOpType::SumSquare, "bestValue + candidate * candidate"},
+    {ReduceOpType::LogSumExp, "bestValue + output_value_t(exp(f32(candidate)))"},
+    {ReduceOpType::L1, "bestValue + abs(candidate)"},
+    {ReduceOpType::L2, "bestValue + candidate * candidate"},
+    {ReduceOpType::LogSum, "bestValue + candidate"},
+};
+
+std::unordered_map<ReduceOpType, std::string> reduce_op_shared_code_map = {
+    {ReduceOpType::Max, "select(bestValue, candidate, candidate > bestValue)"},
+    {ReduceOpType::Min, "select(bestValue, candidate, candidate < bestValue)"},
+    {ReduceOpType::Mean, "bestValue + candidate"},
+    {ReduceOpType::Sum, "bestValue + candidate"},
+    {ReduceOpType::Prod, "bestValue * candidate"},
+    {ReduceOpType::SumSquare, "bestValue + candidate"},
+    {ReduceOpType::LogSumExp, "bestValue + candidate"},
+    {ReduceOpType::L1, "bestValue + candidate"},
+    {ReduceOpType::L2, "bestValue + candidate"},
+    {ReduceOpType::LogSum, "bestValue + candidate"},
+};
+
+std::unordered_map<ReduceOpType, std::string> reduce_op_init_values_map = {
+    {ReduceOpType::Max, "_A[offset]"},
+    {ReduceOpType::Min, "_A[offset]"},
+    {ReduceOpType::Mean, "0"},
+    {ReduceOpType::Sum, "0"},
+    {ReduceOpType::Prod, "1"},
+    {ReduceOpType::SumSquare, "0"},
+    {ReduceOpType::LogSumExp, "0"},
+    {ReduceOpType::L1, "0"},
+    {ReduceOpType::L2, "0"},
+    {ReduceOpType::LogSum, "0"},
+};
+
+std::unordered_map<ReduceOpType, std::string> reduce_op_output_values_map = {
+    {ReduceOpType::Max, "bestValue"},
+    {ReduceOpType::Min, "bestValue"},
+    {ReduceOpType::Mean, "bestValue"},
+    {ReduceOpType::Sum, "bestValue"},
+    {ReduceOpType::Prod, "bestValue"},
+    {ReduceOpType::SumSquare, "bestValue"},
+    {ReduceOpType::LogSumExp, "log(f32(bestValue))"},
+    {ReduceOpType::L1, "bestValue"},
+    {ReduceOpType::L2, "sqrt(f32(bestValue))"},
+    {ReduceOpType::LogSum, "log(f32(bestValue))"},
+};
+
+std::unordered_map<ReduceOpType, ReduceOpSpecificCode> reduce_op_naive_code_map = {
+    {ReduceOpType::Max, {"var max_element = first_element;", "max_element = max(max_element, current_element);", "let output_value = output_value_t(max_element);"}},
+    {ReduceOpType::Min, {"var min_element = first_element;", "min_element = min(min_element, current_element);", "let output_value = output_value_t(min_element);"}},
+    {ReduceOpType::Mean, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(sum / f32(uniforms.reduce_size));"}},
+    {ReduceOpType::Sum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(sum);"}},
+    {ReduceOpType::Prod, {"var prod = f32(1);", "prod *= f32(current_element);", "let output_value = output_value_t(prod);"}},
+    {ReduceOpType::SumSquare, {"var sum_square = f32(0);", "sum_square += f32(current_element * current_element);", "let output_value = output_value_t(sum_square);"}},
+    {ReduceOpType::LogSumExp, {"var log_sum_exp = f32(0);", "log_sum_exp += exp(f32(current_element));", "let output_value = output_value_t(log(log_sum_exp));"}},
+    {ReduceOpType::L1, {"var l1 = f32(0);", "l1 += abs(f32(current_element));", "let output_value = output_value_t(l1);"}},
+    {ReduceOpType::L2, {"var l2 = f32(0);", "l2 += f32(current_element * current_element);", "let output_value = output_value_t(sqrt(l2));"}},
+    {ReduceOpType::LogSum, {"var sum = f32(0);", "sum += f32(current_element);", "let output_value = output_value_t(log(sum));"}},
+    {ReduceOpType::ArgMax, {"var best_element = first_element; var best_index = u32(0);", "if (current_element > best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
+    {ReduceOpType::ArgMin, {"var best_element = first_element;; var best_index = u32(0);", "if (current_element < best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
+    {ReduceOpType::ArgMax_select_last_index, {"var best_element = first_element; var best_index = u32(0);", "if (current_element >= best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
+    {ReduceOpType::ArgMin_select_last_index, {"var best_element = first_element;; var best_index = u32(0);", "if (current_element <= best_element) { best_element = current_element; best_index = last_index; };", "let output_value = output_value_t(best_index);"}},
+};
+
+ReduceOpType StringToReduceOp(std::string name) {
+  ORT_ENFORCE(reduce_op_types.find(name) != reduce_op_types.end(), "Unsupported reduction op type: ", name);
+  return reduce_op_types[name];
+}
+
+Status ReduceNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& code = reduce_op_naive_code_map.at(reduce_op_type_);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   if (is_input_empty_) {
     shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                              << code_[0]
-                              << code_[2]
+                              << code.loop_header_
+                              << code.loop_footer_
                               << output.SetByOffset("global_idx", "output_value");
     return Status::OK();
   }
   const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   bool reduce_on_all_axes = no_op_with_empty_axes_ == false && axes_.empty();
-  std::string loop_header = code_[0].find("first_element") == std::string::npos ? code_[0] : "let first_element = " + input.GetByIndices("input_indices") + ";\n" + code_[0] + "\n";
-  std::string loop_body = "let current_element: input_value_t = " + input.GetByIndices("input_indices") + ";\n" + code_[1];
-  std::string loop_footer = code_[2];
+  std::string loop_header = code.loop_header_.find("first_element") == std::string::npos ? code.loop_header_ : "let first_element = " + input.GetByIndices("input_indices") + ";\n" + code.loop_header_ + "\n";
+  std::string loop_body = "let current_element: input_value_t = " + input.GetByIndices("input_indices") + ";\n" + code.loop_body_;
+  std::string loop_footer = code.loop_footer_;
   const auto input_rank = input.Rank();
   for (int i = 0, l = 0; i < input_rank; ++i) {
     if (reduce_on_all_axes || std::find(axes_.begin(), axes_.end(), i) != axes_.end()) {
@@ -152,11 +245,49 @@ Status ReduceKernelProgram::GenerateShaderCode(ShaderHelper& shader) const {
   return Status::OK();
 }
 
+Status ReduceSharedProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  const auto& input = shader.AddInput("_A", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
+  shader.AdditionalImplementation()
+      << "var<workgroup> aBestValues : array<output_value_t, " << workgroup_size_ << ">;\n\n"
+      << "fn DIV_CEIL(a : u32, b : u32) -> u32 {\n"
+      << "  return ((a - 1u) / b + 1u);\n"
+      << "}\n";
+  shader.MainFunctionBody() << "let outputIndex = global_idx / " << workgroup_size_ << ";\n"
+                            << "let offset = outputIndex * uniforms.reduceSize;\n"
+                            << "var bestValue = output_value_t(" << reduce_op_init_values_map[reduce_op_type_] << ");\n"
+                            << "let length = uniforms.reduceSize;\n"
+                            << "for (var k = local_idx; k < length; k += " << workgroup_size_ << ") {\n"
+                            << "  let candidate = output_value_t(" << input.GetByOffset("offset + k") << ");\n"
+                            << "  bestValue = " << reduce_op_code_map[reduce_op_type_] << ";\n"
+                            << "}\n"
+                            << "aBestValues[local_idx] = bestValue;\n"
+                            << "workgroupBarrier();\n"
+                            << "var reduceSize = min(length, " << workgroup_size_ << ");\n"
+                            << "for (var currentSize = reduceSize / 2; reduceSize > 1; currentSize = reduceSize / 2) {\n"
+                            << "  let interval = DIV_CEIL(reduceSize, 2u);\n"
+                            << "  if (local_idx < currentSize) {\n"
+                            << "    let candidate = aBestValues[local_idx + interval];\n"
+                            << "    bestValue = " << reduce_op_shared_code_map[reduce_op_type_] << ";\n"
+                            << "    aBestValues[local_idx] = bestValue;\n"
+                            << "  }\n"
+                            << "  reduceSize = interval;\n"
+                            << "  workgroupBarrier();\n"
+                            << "}\n"
+                            << "if (local_idx == 0) {\n"
+                            << "  let outputValue = output_value_t(" << (reduce_op_type_ == ReduceOpType::Mean ? "(bestValue / output_element_t(uniforms.reduceSize))" : reduce_op_output_values_map[reduce_op_type_]) << ");\n"
+                            << "  " << output.SetByOffset("outputIndex", "outputValue") << ";\n"
+                            << "}\n";
+  return Status::OK();
+}
+
 template <bool allow_multi_axes>
 Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) const {
   const auto* input_tensor = context.Input(0);
   ORT_RETURN_IF_ERROR(CheckInput(input_tensor));
   InlinedVector<uint32_t> input_axes;
+  bool add_suffix = name_ == "ArgMax" || name_ == "ArgMin";
+  ReduceOpType reduce_op_type = StringToReduceOp(name_ + std::string((select_last_index_ != 0 && add_suffix) ? "_select_last_index" : ""));
   auto rank = input_tensor->Shape().NumDimensions();
   auto transform_axis = [rank](int64_t axis) {
     if (axis < 0) {
@@ -190,14 +321,13 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
         // For ReduceSumSquare with scalar input, output = input * input
         auto output = context.Output(0, input_tensor->Shape());
         // We need to run the operation even for scalar inputs for these ops
-        const auto code = GetOpSpecificCode(input_tensor);
         constexpr uint32_t output_size = 1;
-        constexpr uint32_t reduce_axes = 0;
-        ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, false);
+        constexpr uint32_t reduce_size = 1;
+        ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, false);
         program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
             .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank})
             .SetDispatchGroupSize(1)
-            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_axes}});
+            .AddUniformVariables({{output_size}, {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)}, {reduce_size}});
         return context.RunProgram(program);
       } else {
         // For other ops, or when axes is empty with noop_with_empty_axes_ true, just copy the input
@@ -213,166 +343,110 @@ Status ReduceKernel<allow_multi_axes>::ComputeInternal(ComputeContext& context) 
       std::iota(input_axes.begin(), input_axes.end(), 0);
     }
   }
-  const auto code = GetOpSpecificCode(input_tensor);
-  // Compute output shape
-  std::vector<int64_t> output_shape;
-  bool is_input_empty = false;
-  for (size_t i = 0; i < input_tensor->Shape().NumDimensions(); ++i) {
-    is_input_empty |= input_tensor->Shape()[i] == 0;
-    if (std::find(input_axes.begin(), input_axes.end(), i) != input_axes.end()) {
-      if (keepdims_) {
-        output_shape.push_back(1);
-      }
-    } else {
-      output_shape.push_back(input_tensor->Shape()[i]);
-    }
-  }
-  TensorShape output_tensor_shape(output_shape);
-  int64_t output_size = output_tensor_shape.Size();
-  if (output_size == 0) {
-    ORT_IGNORE_RETURN_VALUE(context.Output(0, output_tensor_shape));
-    return Status::OK();
-  }
-
-  auto input_rank = input_tensor->Shape().NumDimensions();
   // reduce_axes element is either 1 or 0 depending on whether the axis is reduced or not
   std::vector<uint32_t> reduce_axes;
-  reduce_axes.resize(input_rank, 0);
+  reduce_axes.resize(rank, 0);
   for (auto axis : input_axes) {
     reduce_axes[axis] = 1;
   }
-
-  ReduceKernelProgram program(name_, keepdims_, noop_with_empty_axes_, input_axes, code, is_input_empty);
-  if (!is_input_empty) {
-    program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+  size_t output_size = 1;
+  size_t reduce_size = 1;
+  // Compute output shape
+  TensorShapeVector output_shape_vector;
+  bool is_input_empty = false;
+  for (size_t i = 0; i < input_tensor->Shape().NumDimensions(); ++i) {
+    is_input_empty |= input_tensor->Shape()[i] == 0;
+    if (reduce_axes[i] == 1) {
+      if (keepdims_) {
+        output_shape_vector.push_back(1);
+      }
+      reduce_size *= input_tensor->Shape()[i];
+    } else {
+      output_shape_vector.push_back(input_tensor->Shape()[i]);
+      output_size *= input_tensor->Shape()[i];
+    }
+  }
+  TensorShape output_shape(output_shape_vector);
+  if (output_size == 0) {
+    ORT_IGNORE_RETURN_VALUE(context.Output(0, output_shape));
+    return Status::OK();
   }
 
-  // TODO: the ReduceKernel class is designed to use `keepdims_`, `noop_with_empty_axes_` and input axes as uniform variables,
-  //       but the current implementation does not work without them in cache key.
-  //       This is a temporary workaround to make it work. We should fix this in the future.
-  program.CacheHint(keepdims_,
-                    noop_with_empty_axes_,
-                    select_last_index_,
-                    absl::StrJoin(input_axes, ","))
-      .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(output_size)},
-                            {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
-                            {reduce_axes}});
+  bool use_naive_reduction = name_ == "ArgMin" || name_ == "ArgMax" || (reduce_size < 32 && output_size > 1024) || is_input_empty || input_tensor->Shape().NumDimensions() == 0;
 
-  return context.RunProgram(program);
-}
+  if (use_naive_reduction) {
+    ReduceNaiveProgram program(name_, reduce_op_type, keepdims_, noop_with_empty_axes_, input_axes, is_input_empty);
+    if (!is_input_empty) {
+      program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+    }
 
-ReduceOpSpecificCode ReduceMean::GetOpSpecificCode(const Tensor* input_tensor) const {
-  const TensorShape& input_shape = input_tensor->Shape();
-  size_t input_rank = input_shape.NumDimensions();
-  std::string loop_header = "var sum = f32(0);";
-  std::string loop_body = "sum += f32(current_element);";
-  std::stringstream ss;
-  ss << "var size: u32 = 1;\n"
-     << "for (var i: u32 = 0; i < " << input_rank << "; i += 1) { \n"
-     << "  let index_reduced_or_not = " << GetElementAt("uniforms.reduce_axes", "i", input_rank) << ";\n"
-     << "  if (index_reduced_or_not == 1) { \n"
-     << "    size = size * " << GetElementAt("uniforms.input_shape", "i", input_rank) << ";\n"
-     << "  }\n"
-     << "}\n"
-     << "let output_value = output_value_t(sum / f32(size));";
-  std::string loop_footer = ss.str();
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
+    // TODO: the ReduceKernel class is designed to use `keepdims_`, `noop_with_empty_axes_` and input axes as uniform variables,
+    //       but the current implementation does not work without them in cache key.
+    //       This is a temporary workaround to make it work. We should fix this in the future.
+    program.CacheHint(keepdims_,
+                      noop_with_empty_axes_,
+                      select_last_index_,
+                      absl::StrJoin(input_axes, ","))
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                              {static_cast<uint32_t>(noop_with_empty_axes_ ? 1 : 0)},
+                              {static_cast<uint32_t>(reduce_size)}});
 
-ReduceOpSpecificCode ReduceMax::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var max_element = first_element;";
-  std::string loop_body = "max_element = max(max_element, current_element);";
-  std::string loop_footer = "let output_value = output_value_t(max_element);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceMin::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var min_element = first_element;";
-  std::string loop_body = "min_element = min(min_element, current_element);";
-  std::string loop_footer = "let output_value = output_value_t(min_element);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceSum::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var sum = f32(0);";
-  std::string loop_body = "sum += f32(current_element);";
-  std::string loop_footer = "let output_value = output_value_t(sum);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceProd::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var prod = f32(1);";
-  std::string loop_body = "prod *= f32(current_element);";
-  std::string loop_footer = "let output_value = output_value_t(prod);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceL1::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var l1 = f32(0);";
-  std::string loop_body = "l1 += abs(f32(current_element));";
-  std::string loop_footer = "let output_value = output_value_t(l1);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceL2::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var l2 = f32(0);";
-  std::string loop_body = "let t = f32(current_element); l2 += (t * t);";
-  std::string loop_footer = "l2 = sqrt(l2); let output_value = output_value_t(l2);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceLogSum::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var sum = f32(0);";
-  std::string loop_body = "sum += f32(current_element);";
-  std::string loop_footer = "let log_sum = log(sum); let output_value = output_value_t(log_sum);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceSumSquare::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var sum_square = f32(0);";
-  std::string loop_body = "let t = f32(current_element); sum_square += (t * t);";
-  std::string loop_footer = "let output_value = output_value_t(sum_square);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-ReduceOpSpecificCode ReduceLogSumExp::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string loop_header = "var sum_exp = f32(0);";
-  std::string loop_body = "sum_exp += exp(f32(current_element));";
-  std::string loop_footer = "let log_sum_exp = log(sum_exp); let output_value = output_value_t(log_sum_exp);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-
-ReduceOpSpecificCode ArgMin::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string op = (select_last_index_) ? "<=" : "<";
-  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
-  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
-  std::string loop_footer = "let output_value = output_value_t(best_index);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
-}
-
-ReduceOpSpecificCode ArgMax::GetOpSpecificCode(const Tensor* input_tensor) const {
-  ORT_UNUSED_PARAMETER(input_tensor);
-  std::string op = (select_last_index_) ? ">=" : ">";
-  std::string loop_header = "var best_element = first_element; var best_index = u32(0);";
-  std::string loop_body = "if (current_element " + op + " best_element) { best_element = current_element; best_index = last_index; };";
-  std::string loop_footer = "let output_value = output_value_t(best_index);";
-  ReduceOpSpecificCode code({loop_header, loop_body, loop_footer});
-  return code;
+    return context.RunProgram(program);
+  } else {
+    bool are_axes_innermost = true;
+    size_t axes_rank = input_axes.size();
+    for (size_t i = 0; i < input_axes.size() && are_axes_innermost; ++i) {
+      if (input_axes[axes_rank - 1 - i] != rank - 1 - i) {
+        are_axes_innermost = false;
+        break;
+      }
+    }
+    Tensor input_transpose;
+    if (!are_axes_innermost) {
+      InlinedVector<size_t> perm;
+      for (size_t i = 0; i < rank; ++i) {
+        if (reduce_axes[i] == 0) {
+          perm.push_back(static_cast<size_t>(i));
+        }
+      }
+      for (size_t i = 0; i < rank; ++i) {
+        if (reduce_axes[i] == 1) {
+          perm.push_back(static_cast<size_t>(i));
+        }
+      }
+      // If the axes are not innermost, we need to reorder the input tensor to make them innermost
+      TensorShapeVector input_shape_vector = input_tensor->Shape().AsShapeVector();
+      TensorShapeVector input_transpose_shape_vector(input_shape_vector.size());
+      for (size_t i = 0; i < input_shape_vector.size(); ++i) {
+        input_transpose_shape_vector[i] = input_shape_vector[perm[i]];
+      }
+      TensorShape input_transpose_shape(input_transpose_shape_vector);
+      input_transpose = context.CreateGPUTensor(input_tensor->DataType(), input_transpose_shape);
+      TransposeProgram transpose_program(perm, false);
+      transpose_program.CacheHint(absl::StrJoin(perm, "-"))
+          .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+          .AddOutput({&input_transpose, ProgramTensorMetadataDependency::TypeAndRank})
+          .SetDispatchGroupSize((input_tensor->Shape().Size() + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+          .AddUniformVariable({static_cast<uint32_t>(input_transpose_shape.Size())});
+      ORT_RETURN_IF_ERROR(context.RunProgram(transpose_program));
+      input_tensor = &input_transpose;
+    }
+    auto workgroup_size = output_size == 1 ? static_cast<uint32_t>(256) : static_cast<uint32_t>(WORKGROUP_SIZE);
+    ReduceSharedProgram program(name_, reduce_op_type, workgroup_size);
+    program.CacheHint(keepdims_,
+                      noop_with_empty_axes_,
+                      select_last_index_,
+                      workgroup_size,
+                      absl::StrJoin(input_axes, ","))
+        .AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank})
+        .AddOutput({context.Output(0, output_shape), ProgramTensorMetadataDependency::TypeAndRank})
+        .SetDispatchGroupSize(static_cast<uint32_t>(output_size))
+        .SetWorkgroupSize(workgroup_size)
+        .AddUniformVariable({static_cast<uint32_t>(reduce_size)});
+    return context.RunProgram(program);
+  }
 }
 
 }  // namespace webgpu

@@ -185,15 +185,16 @@ Status MatMulProgram::MakeMatMulPackedVec4Source(ShaderHelper& shader,
         << "        " << (inner_elements_size == 3 ? "" : "acc[i] = BCached3 * ACached.w + acc[i];") << "\n"
         << "      }\n";
   }
-  shader.MainFunctionBody() << "    workgroupBarrier();\n"
-                            << "  }\n";  // main for loop
+  shader.MainFunctionBody()
+      << "    }\n"
+      << "    workgroupBarrier();\n"
+      << "  }\n";  // main for loop
 
   // Write the results to the output buffer
   shader.MainFunctionBody()
       << "  for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
       << "    mm_write(batch, globalRow + innerRow, globalCol, acc[innerRow]);\n"
-      << "  }\n"
-      << "}\n";
+      << "  }\n";
 
   return Status::OK();
 }
@@ -217,8 +218,8 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
 
   const auto tile_a_outer = workgroup_size_y * elements_per_thread_y;
   const auto tile_b_outer = workgroup_size_x * elements_per_thread_x;
-  const auto tile_a_width = tile_inner;
-  const auto tile_a_height = tile_a_outer;
+  const auto tile_a_width = transpose_a ? tile_a_outer : tile_inner;
+  const auto tile_a_height = transpose_a ? tile_inner : tile_a_outer;
 
   if (!(tile_a_height % workgroup_size_y == 0 && tile_a_width % workgroup_size_x == 0 && tile_inner % workgroup_size_y == 0)) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -243,7 +244,7 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
                             << (nullptr != batch_dims ? "  let batchIndices = " + batch_dims->OffsetToIndices("u32(batch)") + ";\n" : "")
                             << " let num_tiles = (uniforms.dim_inner - 1) / tileInner + 1;\n"
                             << " var kStart = 0;\n"
-                            << " var acc: array<vec4<" << data_type << ">, rowPerThread>;\n";
+                            << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
 
   if (sequentially_access_by_threads) {
     shader.MainFunctionBody() << "let localRow = i32(local_id.y);\n"
@@ -277,7 +278,7 @@ Status MatMulProgram::MakeMatMulPackedSource(ShaderHelper& shader,
                               << "      BCached[inner] = mm_Bsub[k][localCol + inner * " << workgroup_size_x << "];\n"
                               << "    }\n"
                               << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-                              << "      let ACached = " << (transpose_a ? "mm_Asub[k][localCol + innerRow * " + std::to_string(workgroup_size_y) + "];" : "mm_Asub[localRow + innerRow * " + std::to_string(workgroup_size_y) + "][k];") << "\n"
+                              << "      let ACached = " << (transpose_a ? "mm_Asub[k][localRow + innerRow * " + std::to_string(workgroup_size_y) + "];" : "mm_Asub[localRow + innerRow * " + std::to_string(workgroup_size_y) + "][k];") << "\n"
                               << "      for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
                               << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] +\n"
                               << "            ACached * BCached[innerCol];\n"

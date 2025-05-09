@@ -13,11 +13,12 @@
 #include <istream>
 
 #include "core/providers/shared_library/provider_api.h"
-#include "core/providers/openvino/ov_versions/capability.h"
-#include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/backend_manager.h"
-#include "core/providers/openvino/ibackend.h"
 #include "core/providers/openvino/backend_utils.h"
+#include "core/providers/openvino/contexts.h"
+#include "core/providers/openvino/ibackend.h"
+#include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/ov_versions/capability.h"
 #include "core/providers/openvino/qdq_transformations/qdq_stripping.h"
 
 namespace onnxruntime {
@@ -320,9 +321,10 @@ static bool IsQDQGraph(const onnxruntime::GraphViewer& graph_viewer) {
   return false;
 }
 
-static void DumpOpenVINOEPModel(const std::filesystem::path& onnx_model_path_name,
-                                ONNX_NAMESPACE::ModelProto* model_proto,
-                                const onnxruntime::Node& fused_node) {
+static void DumpOpenVINOEPModel([[maybe_unused]] const std::filesystem::path& onnx_model_path_name,
+                                [[maybe_unused]] ONNX_NAMESPACE::ModelProto* model_proto,
+                                [[maybe_unused]] const onnxruntime::Node& fused_node) {
+#ifndef RELEASE
   if (openvino_ep::backend_utils::IsDebugEnabled()) {
     auto model_name = onnx_model_path_name.empty() ? "unknown.onnx" : onnx_model_path_name.filename();
 
@@ -331,11 +333,13 @@ static void DumpOpenVINOEPModel(const std::filesystem::path& onnx_model_path_nam
     if (dash != std::string::npos) {
       auto new_name = model_name.stem().string() + subgraph_name.substr(dash, std::string::npos);
       model_name.replace_filename(new_name);
+      model_name.replace_extension(".onnx");
     }
 
     std::fstream dump(model_name, std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(dump);
   }
+#endif
 }
 
 std::unique_ptr<ONNX_NAMESPACE::ModelProto>
@@ -358,14 +362,29 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     }
   };
 
+  [[maybe_unused]] bool enable_ovep_qdq_optimizer = session_context_.enable_qdq_optimizer && IsQDQGraph(subgraph);
+  [[maybe_unused]] std::optional<bool> enable_compiler_qdq_optimization = queryOVProperty("NPU_QDQ_OPTIMIZATION", session_context_.device_type);
+#if (((OPENVINO_VERSION_MAJOR == 2025) && (OPENVINO_VERSION_MINOR > 0)) || (OPENVINO_VERSION_MAJOR > 2025))
+  if (session_context_.device_type.find("NPU") != std::string::npos && session_context_.enable_qdq_optimizer) {
+    if (enable_compiler_qdq_optimization.has_value() && enable_compiler_qdq_optimization.value()) {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]: Compiler QDQ optimization pass is enabled";
+      OVCore::Get()->core.set_property("NPU", {ov::intel_npu::qdq_optimization(true)});
+      // disabling OVEP qdq stripping
+      // at this stage provider option "enable_qdq_optimizer" is still true but OVEP stripping is (disabled) false
+      // as compiler stripping is enabled
+      enable_ovep_qdq_optimizer = false;
+    } else {
+      LOGS_DEFAULT(INFO) << "[OpenVINO-EP]: OVEP QDQ optimization pass is enabled";
+    }
+  }
+#endif
+
   const auto& onnx_model_path_name = subgraph.ModelPath();
   // QDQ stripping enabled only for the NPU
   if (session_context_.device_type.find("NPU") != std::string::npos &&
-      session_context_.enable_qdq_optimizer &&
-      IsQDQGraph(subgraph)) {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 1";
+      (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
-    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, model, shared_context_.shared_weights);
+    Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
     print_model_proto_duration();
@@ -373,7 +392,7 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
     ORT_ENFORCE(status.IsOK(), status.ErrorMessage());
     return model_proto;
   } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] QDQ optimization pass status: 0";
+    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] OVEP QDQ optimization pass is disabled";
     auto model = subgraph.CreateModel(logger);
     auto model_proto = model->ToProto();
     model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);

@@ -35,7 +35,7 @@ static ov::element::Type ConvertONNXToOVType(ONNXTensorElementDataType onnx_type
     case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
       return ov::element::bf16;
     default:
-      return ov::element::undefined;
+      return ov::element::dynamic;
   }
 }
 

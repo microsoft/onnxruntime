@@ -11,6 +11,7 @@
 #include <functional>
 #include <gsl/gsl>
 #include "core/common/inlined_containers.h"
+#include "core/framework/allocator.h"
 #include "core/framework/config_options.h"
 #include "core/framework/ort_value.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -83,10 +84,20 @@ struct EpContextModelGenerationOptions {
   std::string output_model_file_path;
   void** output_model_buffer_ptr = nullptr;
   size_t* output_model_buffer_size_ptr = nullptr;
-  OrtAllocator* output_model_buffer_allocator = nullptr;
+  AllocatorPtr output_model_buffer_allocator = nullptr;
 
   std::string output_external_initializers_file_path;
   size_t output_external_initializer_size_threshold = 0;
+};
+
+struct EpSelectionPolicy {
+  // flag to detect that a policy was set by the user.
+  // need to preserve current behavior of defaulting to CPU EP if no EPs are explicitly registered
+  // and no selection policy was explicitly provided.
+  bool enable{false};
+  OrtExecutionProviderDevicePolicy policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  EpSelectionDelegate delegate{};
+  void* state{nullptr};  // state for the delegate
 };
 
 /**
@@ -174,6 +185,7 @@ struct SessionOptions {
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h
   ConfigOptions config_options;
+
   std::unordered_map<std::string, const OrtValue*> initializers_to_share_map;
 
   // See onnxruntime_c_api.h for detailed documentation.
@@ -220,6 +232,11 @@ struct SessionOptions {
   // copied internally and the flag needs to be accessible across all copies.
   std::shared_ptr<std::atomic_bool> load_cancellation_flag = std::make_shared<std::atomic_bool>(false);
 
+  // Policy to guide Execution Provider selection
+  EpSelectionPolicy ep_selection_policy = {false,
+                                           OrtExecutionProviderDevicePolicy::OrtExecutionProviderDevicePolicy_DEFAULT,
+                                           nullptr};
+
   // Options for generating compile EPContext models were previously stored in session_option.configs as
   // string key/value pairs. To support more advanced options, such as setting input/output buffers, we
   // now have to store EPContext options in a struct of type EpContextModelGenerationOptions.
@@ -251,6 +268,7 @@ inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_
      << " use_per_session_threads:" << session_options.use_per_session_threads
      << " thread_pool_allow_spinning:" << session_options.thread_pool_allow_spinning
      << " use_deterministic_compute:" << session_options.use_deterministic_compute
+     << " ep_selection_policy:" << session_options.ep_selection_policy.policy
      << " config_options: { " << session_options.config_options << " }"
   //<< " initializers_to_share_map:"          << session_options.initializers_to_share_map
 #if !defined(ORT_MINIMAL_BUILD) && !defined(DISABLE_EXTERNAL_INITIALIZERS)

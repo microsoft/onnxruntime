@@ -135,6 +135,7 @@ static void QNBitGemmArgs(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK(QNBITGEMM<float, 4>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
+BENCHMARK(QNBITGEMM<float, 8>)->Apply(QNBitGemmArgs<float>)->UseRealTime();
 BENCHMARK(QNBITGEMM<MLAS_FP16, 4>)->Apply(QNBitGemmArgs<MLAS_FP16>)->UseRealTime();
 
 // This test gets benchmark arguments from environment variables.

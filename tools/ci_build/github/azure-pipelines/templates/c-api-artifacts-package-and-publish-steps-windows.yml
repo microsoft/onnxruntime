@@ -31,6 +31,20 @@ parameters:
   default: true
 
 steps:
+    - task: PublishSymbols@2
+      displayName: 'Publish Build Debug Symbols'
+      condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
+      inputs:
+        SymbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
+        SearchPattern: '*.pdb'
+        IndexSources: true
+        PublishSymbols: true
+        SymbolServerType: 'TeamServices'
+        SymbolExpirationInDays: '36530'
+        IndexableFileFormats: 'Default'
+        DetailedLog: true
+        SymbolsArtifactName: 'Symbols_${{parameters.artifactNameNoVersionString}}_$(Build.BuildId)'
+
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
       inputs:
@@ -66,6 +80,7 @@ steps:
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libQnnHtp*.so $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\libqnnhtp*.cat $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib /Y
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnCpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
+          copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnGpu.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtp.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpPrepare.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib
           copy $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\QnnHtpV68Stub.dll $(Build.BinariesDirectory)\${{parameters.artifactName}}\lib

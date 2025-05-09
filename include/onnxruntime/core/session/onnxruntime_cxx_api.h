@@ -172,6 +172,20 @@ inline const OrtCompileApi& GetCompileApi() {
   return *api;
 }
 
+/// <summary>
+/// This returns a reference to the ORT C EP API. Used if authoring a plugin execution provider.
+/// </summary>
+/// <returns>ORT C EP API reference</returns>
+inline const OrtEpApi& GetEpApi() {
+  auto* api = GetApi().GetEpApi();
+  if (api == nullptr) {
+    // minimal build
+    ORT_CXX_API_THROW("EP API is not available in this build", ORT_FAIL);
+  }
+
+  return *api;
+}
+
 /** \brief IEEE 754 half-precision floating point data type
  *
  * \details This struct is used for converting float to float16 and back
@@ -559,11 +573,12 @@ ORT_DEFINE_RELEASE(ValueInfo);
 ORT_DEFINE_RELEASE(Node);
 ORT_DEFINE_RELEASE(Graph);
 ORT_DEFINE_RELEASE(Model);
-#if !defined(ORT_MINIMAL_BUILD)
+ORT_DEFINE_RELEASE(KeyValuePairs)
 ORT_DEFINE_RELEASE_FROM_API_STRUCT(ModelCompilationOptions, GetCompileApi);
-#endif  // !defined(ORT_MINIMAL_BUILD)
+ORT_DEFINE_RELEASE_FROM_API_STRUCT(EpDevice, GetEpApi);
 
 #undef ORT_DEFINE_RELEASE
+#undef ORT_DEFINE_RELEASE_FROM_API_STRUCT
 
 /** \brief This is a tagging template type. Use it with Base<T> to indicate that the C++ interface object
  *   has no ownership of the underlying C object.
@@ -676,6 +691,7 @@ struct AllocatedFree {
 
 struct AllocatorWithDefaultOptions;
 struct Env;
+struct EpDevice;
 struct Graph;
 struct Model;
 struct Node;
@@ -738,6 +754,94 @@ struct ThreadingOptions : detail::Base<OrtThreadingOptions> {
   ThreadingOptions& SetGlobalCustomJoinThreadFn(OrtCustomJoinThreadFn ort_custom_join_thread_fn);
 };
 
+namespace detail {
+template <typename T>
+struct KeyValuePairsImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  const char* GetValue(const char* key) const;
+
+  // get the pairs in unordered_map. needs to copy to std::string so the hash works as expected
+  std::unordered_map<std::string, std::string> GetKeyValuePairs() const;
+  // get the pairs in two vectors. entries will be 1:1 between keys and values. avoids copying to std::string
+  void GetKeyValuePairs(std::vector<const char*>& keys, std::vector<const char*>& values) const;
+};
+}  // namespace detail
+
+// Const object holder that does not own the underlying object
+using ConstKeyValuePairs = detail::KeyValuePairsImpl<Ort::detail::Unowned<const OrtKeyValuePairs>>;
+
+/** \brief Wrapper around ::OrtKeyValuePairs */
+struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
+  explicit KeyValuePairs(std::nullptr_t) {}  ///< No instance is created
+  /// Take ownership of a pointer created by C API
+  explicit KeyValuePairs(OrtKeyValuePairs* p) : KeyValuePairsImpl<OrtKeyValuePairs>{p} {}
+
+  /// \brief Wraps OrtApi::CreateKeyValuePairs
+  explicit KeyValuePairs();
+
+  /// \brief Wraps OrtApi::CreateKeyValuePairs and OrtApi::AddKeyValuePair
+  explicit KeyValuePairs(const std::unordered_map<std::string, std::string>& kv_pairs);
+
+  /// \brief Wraps OrtApi::AddKeyValuePair
+  void Add(const char* key, const char* value);
+
+  /// \brief Wraps OrtApi::RemoveKeyValuePair
+  void Remove(const char* key);
+
+  ConstKeyValuePairs GetConst() const { return ConstKeyValuePairs{this->p_}; }
+};
+
+namespace detail {
+template <typename T>
+struct HardwareDeviceImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  OrtHardwareDeviceType Type() const;
+  uint32_t VendorId() const;
+  uint32_t DeviceId() const;
+  const char* Vendor() const;
+  ConstKeyValuePairs Metadata() const;
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtHardwareDevice
+ * \remarks HardwareDevice is always read-only for API users.
+ */
+using ConstHardwareDevice = detail::HardwareDeviceImpl<Ort::detail::Unowned<const OrtHardwareDevice>>;
+
+namespace detail {
+template <typename T>
+struct EpDeviceImpl : Ort::detail::Base<T> {
+  using B = Ort::detail::Base<T>;
+  using B::B;
+
+  const char* EpName() const;
+  const char* EpVendor() const;
+  ConstKeyValuePairs EpMetadata() const;
+  ConstKeyValuePairs EpOptions() const;
+  ConstHardwareDevice Device() const;
+};
+}  // namespace detail
+
+/** \brief Wrapper around ::OrtEpDevice
+ * \remarks EpDevice is always read-only for ORT API users.
+ */
+using ConstEpDevice = detail::EpDeviceImpl<Ort::detail::Unowned<const OrtEpDevice>>;
+
+/** \brief Mutable EpDevice that is created by EpApi users.
+ */
+struct EpDevice : detail::EpDeviceImpl<OrtEpDevice> {
+  explicit EpDevice(std::nullptr_t) {}                                 ///< No instance is created
+  explicit EpDevice(OrtEpDevice* p) : EpDeviceImpl<OrtEpDevice>{p} {}  ///< Take ownership of a pointer created by C API
+
+  /// \brief Wraps OrtEpApi::CreateEpDevice
+  EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+           ConstKeyValuePairs ep_metadata = {}, ConstKeyValuePairs ep_options = {});
+};
+
 /** \brief The Env (Environment)
  *
  * The Env holds the logging state used by all other objects.
@@ -769,7 +873,14 @@ struct Env : detail::Base<OrtEnv> {
 
   Env& CreateAndRegisterAllocator(const OrtMemoryInfo* mem_info, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocator
 
-  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
+  Env& CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo* mem_info,
+                                    const std::unordered_map<std::string, std::string>& options,
+                                    const OrtArenaCfg* arena_cfg);  ///< Wraps OrtApi::CreateAndRegisterAllocatorV2
+
+  Env& RegisterExecutionProviderLibrary(const char* registration_name, const std::basic_string<ORTCHAR_T>& path);  ///< Wraps OrtApi::RegisterExecutionProviderLibrary
+  Env& UnregisterExecutionProviderLibrary(const char* registration_name);                                          ///< Wraps OrtApi::UnregisterExecutionProviderLibrary
+
+  std::vector<ConstEpDevice> GetEpDevices() const;
 };
 
 /** \brief Custom Op Domain
@@ -920,7 +1031,7 @@ struct ConstSessionOptionsImpl : Base<T> {
 
   std::string GetConfigEntry(const char* config_key) const;  ///< Wraps OrtApi::GetSessionConfigEntry
   bool HasConfigEntry(const char* config_key) const;         ///< Wraps OrtApi::HasSessionConfigEntry
-  std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def);
+  std::string GetConfigEntryOrDefault(const char* config_key, const std::string& def) const;
 };
 
 template <typename T>
@@ -974,13 +1085,28 @@ struct SessionOptionsImpl : ConstSessionOptionsImpl<T> {
   SessionOptionsImpl& AppendExecutionProvider_TensorRT(const OrtTensorRTProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_TensorRT_V2(const OrtTensorRTProviderOptionsV2& provider_options);  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_TensorRT
   SessionOptionsImpl& AppendExecutionProvider_MIGraphX(const OrtMIGraphXProviderOptions& provider_options);       ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_MIGraphX
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_CANN
   SessionOptionsImpl& AppendExecutionProvider_CANN(const OrtCANNProviderOptions& provider_options);
-  ///< Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_Dnnl
   SessionOptionsImpl& AppendExecutionProvider_Dnnl(const OrtDnnlProviderOptions& provider_options);
   /// Wraps OrtApi::SessionOptionsAppendExecutionProvider. Currently supports QNN, SNPE and XNNPACK.
   SessionOptionsImpl& AppendExecutionProvider(const std::string& provider_name,
                                               const std::unordered_map<std::string, std::string>& provider_options = {});
+
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
+  SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
+                                                 const KeyValuePairs& ep_options);
+  /// Append EPs that have been registered previously with the OrtEnv.
+  /// Wraps OrtApi::SessionOptionsAppendExecutionProvider_V2
+  SessionOptionsImpl& AppendExecutionProvider_V2(Env& env, const std::vector<ConstEpDevice>& ep_devices,
+                                                 const std::unordered_map<std::string, std::string>& ep_options);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicy
+  SessionOptionsImpl& SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy);
+
+  /// Wraps OrtApi::SessionOptionsSetEpSelectionPolicyDelegate
+  SessionOptionsImpl& SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state = nullptr);
 
   SessionOptionsImpl& SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn);  ///< Wraps OrtApi::SessionOptionsSetCustomCreateThreadFn
   SessionOptionsImpl& SetCustomThreadCreationOptions(void* ort_custom_thread_creation_options);      ///< Wraps OrtApi::SessionOptionsSetCustomThreadCreationOptions
@@ -1012,7 +1138,6 @@ struct SessionOptions : detail::SessionOptionsImpl<OrtSessionOptions> {
   ConstSessionOptions GetConst() const { return ConstSessionOptions{this->p_}; }
 };
 
-#if !defined(ORT_MINIMAL_BUILD)
 /** \brief Options object used when compiling a model.
  *
  * Wraps ::OrtModelCompilationOptions object and methods
@@ -1021,9 +1146,7 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
   using Base = detail::Base<OrtModelCompilationOptions>;
   using Base::Base;
 
-  explicit ModelCompilationOptions(std::nullptr_t) {}              ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
-  explicit ModelCompilationOptions(OrtModelCompilationOptions* p)  ///< Takes ownership of an OrtModelCompilationOptions
-      : detail::Base<OrtModelCompilationOptions>{p} {}
+  explicit ModelCompilationOptions(std::nullptr_t) {}  ///< Create an empty ModelCompilationOptions object, must be assigned a valid one to be used.
 
   ModelCompilationOptions(const Env& env, const SessionOptions& session_options);  ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
   ModelCompilationOptions(const Env& env, ConstSessionOptions session_options);    ///< Wraps OrtApi::CreateModelCompilationOptionsFromSessionOptions
@@ -1046,7 +1169,6 @@ struct ModelCompilationOptions : detail::Base<OrtModelCompilationOptions> {
  * \return A Status indicating success or failure.
  */
 Status CompileModel(const Env& env, const ModelCompilationOptions& model_compilation_options);
-#endif  // !defined(ORT_MINIMAL_BUILD)
 
 /** \brief Wrapper around ::OrtModelMetadata
  *

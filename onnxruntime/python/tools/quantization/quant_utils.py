@@ -869,7 +869,7 @@ def write_calibration_table(calibration_cache, dir="."):
         file.write(buf)
 
     # Deserialize data (for validation)
-    if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+    if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
         cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
         dict_len = cal_table.DictLength()
         for i in range(dict_len):

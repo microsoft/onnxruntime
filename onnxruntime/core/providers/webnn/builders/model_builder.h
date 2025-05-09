@@ -89,6 +89,9 @@ class ModelBuilder {
   InlinedHashMap<std::string, emscripten::val> wnn_operands_;
   std::vector<std::string> input_names_;
   std::vector<std::string> output_names_;
+  // The output names which need to be casted to int32.
+  std::vector<std::string> cast_required_output_names_;
+  std::vector<std::vector<uint8_t>> unpacked_tensors_;
 
   InlinedHashMap<std::string, OnnxTensorInfo> input_output_info_;
 
@@ -157,7 +160,7 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     desc.set("dimensions", dims);
     emscripten::val buffer = emscripten::val::undefined();
     if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
+      ORT_THROW("WebNN backend does not support data type: ", data_type);
     }
     auto num_elements = Product(shape);
     switch (data_type) {
@@ -250,7 +253,7 @@ const emscripten::val& ModelBuilder::CreateOrGetConstant(const int32_t& data_typ
     desc.set("dimensions", dims);
     emscripten::val buffer = emscripten::val::undefined();
     if (!SetWebnnDataType(desc, data_type)) {
-      ORT_THROW("Unsupported data type: " + std::to_string(data_type));
+      ORT_THROW("WebNN backend does not support data type: ", data_type);
     }
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
