@@ -6,7 +6,9 @@
 #include "core/platform/check_intel.h"
 
 #ifdef __linux__
-#include <x86intrin.h>
+#if !defined(__ANDROID__)
+    #include <x86intrin.h>
+#endif
 #include <unistd.h>
 #include <sys/syscall.h>
 #if !defined(__NR_getcpu)
@@ -137,8 +139,10 @@ void CPUIDInfo::X86Init() {
         // Check for TPAUSE
         CheckIntelResult check_intel = CheckIntel();
         if (check_intel.is_intel) {
-#ifdef __linux__
+#ifdef __linux__ 
+#if !defined(__ANDROID__)
           has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
+#endif
 #else
           has_tpause_ = (data[2] & (1 << 5)) != 0;
 #endif
