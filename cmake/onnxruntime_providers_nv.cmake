@@ -1,6 +1,7 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
   find_package(CUDAToolkit REQUIRED 12.8)
+  enable_language(CUDA)
   if(onnxruntime_DISABLE_CONTRIB_OPS)
     message( FATAL_ERROR "To compile TensorRT execution provider contrib ops have to be enabled to dump an engine using com.microsoft:EPContext node." )
   endif()
@@ -48,8 +49,6 @@
     MESSAGE(STATUS "Can't find NV_TRT_MAJOR_RTX macro")
   endif()
 
-  # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
-  # for example, nvinfer_10.dll, nvonnxparser_10.dll ...
   if (WIN32)
     set(NVINFER_LIB "tensorrt_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
     set(PARSER_LIB "tensorrt_onnxparser_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
