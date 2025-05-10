@@ -34,10 +34,10 @@ steps:
     - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
         parameters:
+          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main') }}：
+            symbolExpiryTime: 60
           includePublicSymbolServer: true
           symbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
-          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}
-            symbolExpiryTime: 60
           symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
           symbolsVersion: $(Build.BuildId)
           symbolProject: 'ONNX Runtime'         
