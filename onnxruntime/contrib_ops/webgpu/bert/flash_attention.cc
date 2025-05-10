@@ -569,8 +569,8 @@ Status FlashAttentionDecodeQKTProgram::GenerateShaderCode(ShaderHelper& shader) 
                                     << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << R"ADDNL_FN(
 var<workgroup> tile_q: array<q_value_t, tile_size_k_vec>;
-var<workgroup> inner_qk_values: array<array<q_element_t, tile_size_k_vec>, tile_size>;
-var<workgroup> tile_qk: array<q_element_t, tile_size>;
+var<workgroup> inner_qk_values: array<array<f32, tile_size_k_vec>, tile_size>;
+var<workgroup> tile_qk: array<f32, tile_size>;
 )ADDNL_FN";
 
   if (has_attention_bias_) {
@@ -602,11 +602,11 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
         tile_q[local_idx] = q[q_offset + k + local_idx];
       }
       workgroupBarrier();
-      let q_data = tile_q[local_col];
+      let q_data = vec4<f32>(tile_q[local_col]);
       if (k + local_col < uniforms.head_size_vec) {
         for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
           if (total_seq_offset + row_offset + local_row < total_sequence_length) {
-            inner_qk_values[row_offset + local_row][local_col] += dot(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col], q_data);
+            inner_qk_values[row_offset + local_row][local_col] += dot(vec4<f32>(present_key[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col]), q_data);
           }
         }
       }
@@ -614,15 +614,15 @@ var<workgroup> tile_qk: array<q_element_t, tile_size>;
     }
 
     if (local_idx < tile_size && total_seq_offset + local_idx < total_sequence_length && head_idx < uniforms.num_heads) {
-      var sum = q_element_t(0);
+      var sum = f32(0);
       for (var i = 0u; i < tile_size_k_vec; i++) {
         sum += inner_qk_values[local_idx][i];
       }
 
       let output_idx = head_idx * total_sequence_length + total_seq_offset + local_idx;
-      sum = sum * q_element_t(uniforms.alpha) + loadAttentionBias(output_idx);
+      sum = sum * uniforms.alpha + f32(loadAttentionBias(output_idx));
       tile_qk[local_idx] = sum;
-      output[output_idx] = sum;
+      output[output_idx] = q_element_t(sum);
     }
     workgroupBarrier();
 
