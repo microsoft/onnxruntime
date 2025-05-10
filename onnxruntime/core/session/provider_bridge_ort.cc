@@ -842,11 +842,17 @@ struct ProviderHostImpl : ProviderHost {
   const ConfigOptions& SessionOptions__GetConfigOptions(const OrtSessionOptions* p) override { return p->value.config_options; }
   bool SessionOptions__GetEnableProfiling(const OrtSessionOptions* p) override { return p->value.enable_profiling; };
   // ComputeCapability (wrapped)
-  std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph) override { return std::make_unique<ComputeCapability>(std::move(t_sub_graph)); }
+  std::unique_ptr<ComputeCapability> ComputeCapability__construct(std::unique_ptr<IndexedSubGraph> t_sub_graph,
+                                                                  const OrtHardwareDevice* hardware_device) override {
+    return std::make_unique<ComputeCapability>(std::move(t_sub_graph), hardware_device);
+  }
   void ComputeCapability__operator_delete(ComputeCapability* p) override { delete p; }
   std::unique_ptr<IndexedSubGraph>& ComputeCapability__SubGraph(ComputeCapability* p) override { return p->sub_graph; }
   void ComputeCapability__copy_optimization_func(ComputeCapability* p, ComputeCapability* selection_cc) override { p->optimization_func = selection_cc->optimization_func; }
   void ComputeCapability__add_nodes_to_optimize(ComputeCapability* p, std::unique_ptr<ComputeCapability> optimization_cc) override { p->nodes_to_optimize.push_back(std::move(optimization_cc)); }
+  void ComputeCapability__SetHardwareDevice(ComputeCapability* p, const OrtHardwareDevice* hardware_device) override {
+    p->hardware_device = hardware_device;
+  }
 
   // DataTransferManager (wrapped)
   Status DataTransferManager__CopyTensor(const DataTransferManager* p, const Tensor& src, Tensor& dst) override { return p->CopyTensor(src, dst); }

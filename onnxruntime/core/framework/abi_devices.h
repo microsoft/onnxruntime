@@ -7,7 +7,7 @@
 #include <unordered_map>
 
 #include "core/common/hash_combine.h"
-#include "core/session/abi_key_value_pairs.h"
+#include "core/framework/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
 
 struct OrtHardwareDevice {

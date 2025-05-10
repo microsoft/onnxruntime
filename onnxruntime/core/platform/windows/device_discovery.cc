@@ -12,7 +12,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
-#include "core/session/abi_devices.h"
+#include "core/framework/abi_devices.h"
 
 //// For SetupApi info
 #include <Windows.h>
@@ -39,7 +39,6 @@ using Microsoft::WRL::ComPtr;
 #include <wil/com.h>
 
 #include "core/common/cpuid_info.h"
-#include "core/session/abi_devices.h"
 
 namespace onnxruntime {
 // unsupported in minimal build. also needs xbox specific handling to be implemented.

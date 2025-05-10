@@ -4,6 +4,7 @@
 #pragma once
 #include <functional>
 #include "core/common/common.h"
+#include "core/framework/abi_devices.h"
 #include "core/graph/indexed_sub_graph.h"
 #include "core/graph/graph.h"
 #include "core/optimizer/graph_optimizer_registry.h"
@@ -25,6 +26,9 @@ struct ComputeCapability {
   ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph)
       : sub_graph(std::move(t_sub_graph)) {}
 
+  ComputeCapability(std::unique_ptr<IndexedSubGraph> t_sub_graph, const OrtHardwareDevice* hw_device)
+      : sub_graph(std::move(t_sub_graph)), hardware_device(hw_device) {}
+
   // Optional function to optimize this ComputeCapability.
   // This will be called by ORT once the ComputeCapability is assigned to the EP.
   std::function<Status(Graph&,
@@ -41,5 +45,9 @@ struct ComputeCapability {
   //  - inputs and outputs will be unchanged
   //  - constant_initializers MAY change if we constant fold an initializer during optimization
   std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;
+
+  // Optionally set by EP to indicate the device that will execute the subgraph.
+  // Used by InferenceSession when collecting graph partitioning info for the user.
+  const OrtHardwareDevice* hardware_device = nullptr;
 };
 }  // namespace onnxruntime

@@ -11,12 +11,12 @@
 #include "core/common/basic_types.h"
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
+#include "core/framework/abi_devices.h"
 #include "core/framework/allocator.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
 
-#include "core/session/abi_devices.h"
 #include "core/session/ep_library.h"
 #include "core/session/onnxruntime_c_api.h"
 

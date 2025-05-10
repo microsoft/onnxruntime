@@ -22,6 +22,8 @@ __author__ = "Microsoft"
 # the saved exception is raised after device version validation.
 try:
     from onnxruntime.capi._pybind_state import (
+        EpAssignedNode,  # noqa: F401
+        EpAssignedSubgraph,  # noqa: F401
         ExecutionMode,  # noqa: F401
         ExecutionOrder,  # noqa: F401
         GraphOptimizationLevel,  # noqa: F401

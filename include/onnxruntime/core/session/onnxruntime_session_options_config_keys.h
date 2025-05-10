@@ -364,3 +364,6 @@ static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload
 // - "0": EP compile is not disabled. [DEFAULT]
 // - "1": EP compile is disabled.
 static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";
+
+// Enables recording of the subgraphs assigned to execution providers in the session.
+static const char* const kOrtSessionOptionsRecordEpGraphPartitioningInfo = "session.record_ep_graph_partitioning_info";

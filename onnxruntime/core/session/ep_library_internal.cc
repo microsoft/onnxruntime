@@ -3,10 +3,10 @@
 
 #include "core/session/ep_library_internal.h"
 
+#include "core/framework/abi_devices.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
-#include "core/session/abi_devices.h"
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api.h"
@@ -42,7 +42,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   };
 
   const auto create_cpu_ep = [](OrtEpFactory* /*factory*/,
-                                const OrtHardwareDevice* const* /*devices*/,
+                                const OrtHardwareDevice* const* devices,
                                 const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                 size_t num_devices,
                                 const OrtSessionOptions* session_options,
@@ -54,8 +54,10 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
     }
 
     CPUExecutionProviderInfo epi{session_options->value.enable_cpu_mem_arena};
-    *ep = std::make_unique<CPUExecutionProvider>(epi);
-    (*ep)->SetLogger(session_logger->ToInternal());
+    auto cpu_ep = std::make_unique<CPUExecutionProvider>(epi);
+    cpu_ep->SetLogger(session_logger->ToInternal());
+    cpu_ep->SetHardwareDevice(devices[0]);
+    *ep = std::move(cpu_ep);
 
     return nullptr;
   };
