@@ -1357,7 +1357,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// This API helps the user to process a map OrtValue without
         /// having to deal with the lifespan of intermediate OrtValues.
         ///
-        /// each API value is fed to the vistor functor.
+        /// each API value is fed to the visitor functor.
         /// </summary>
         /// <param name="visitor">visitor function</param>
         /// <param name="allocator">Allocator to use for intermediate values</param>
