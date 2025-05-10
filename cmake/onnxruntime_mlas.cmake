@@ -42,6 +42,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/qnbitgemm.cpp
   ${MLAS_SRC_DIR}/llama_cpp_api.h
   ${MLAS_SRC_DIR}/llama_cpp_api.cpp
+  ${MLAS_SRC_DIR}/llama_cpp_impl.cpp
   ${MLAS_SRC_DIR}/sqnbitgemm_q8_block.h
   ${MLAS_SRC_DIR}/flashattn.cpp
   ${MLAS_SRC_DIR}/cast.cpp

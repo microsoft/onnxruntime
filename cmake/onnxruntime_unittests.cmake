@@ -1486,7 +1486,8 @@ endif()
     endif()
     target_include_directories(onnxruntime_mlas_test PRIVATE ${ONNXRUNTIME_ROOT}/core/mlas/inc ${ONNXRUNTIME_ROOT}
             ${CMAKE_CURRENT_BINARY_DIR})
-    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common ggml)
+    target_link_libraries(onnxruntime_mlas_test PRIVATE GTest::gtest GTest::gmock ${ONNXRUNTIME_MLAS_LIBS} onnxruntime_common
+      ggml onnxruntime_framework onnxruntime_test_utils)
     if (CPUINFO_SUPPORTED AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
       target_link_libraries(onnxruntime_mlas_test PRIVATE cpuinfo)
     endif()

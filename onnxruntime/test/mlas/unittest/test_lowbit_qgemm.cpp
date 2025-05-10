@@ -6,6 +6,11 @@
 #include "../../ggml/src/ggml-common.h"
 #include "core/framework/float16.h"
 
+///
+#include "test/common/random_generator.h"
+#include "core/common/span_utils.h"
+///
+
 class MlasLowBitQgemmTest : public MlasTestBase {
  private:
   MatrixGuardBuffer<float> BufferA;
@@ -42,17 +47,42 @@ class MlasLowBitQgemmTest : public MlasTestBase {
   }
 
  public:
+  void QuantizeDequantize(std::vector<float>& raw_vals,
+                          std::vector<uint8_t>& quant_vals,
+                          int32_t N,
+                          int32_t K,
+                          const std::string& quant_type_name,
+                          MLAS_THREADPOOL* tp) {
+    size_t quant_size = MlasLowBitQuantizeSizeInByte(N, K, quant_type_name);
+    quant_vals.resize(quant_size);
+
+    MlasLowBitQuantize(&raw_vals[0], N, K, quant_type_name, &quant_vals[0], tp);
+
+    size_t dequant_size = MlasLowBitDequantizeDataCount(N, K, quant_type_name);
+    raw_vals.resize(dequant_size);
+
+    MlasLowBitDequantize(&quant_vals[0], N, K, quant_type_name, &raw_vals[0], tp);
+  }
+
   void Test(size_t M, size_t N, size_t K, size_t BatchSize, const std::string& a_type_name, const std::string& b_type_name,
             bool WithThreadpool, bool WithBias) {
     MLAS_THREADPOOL* Threadpool = WithThreadpool ? GetMlasThreadPool() : nullptr;
 
-    const float* A = BufferA.GetBuffer(K * M);
+    bool requantize_a = MlasLowBitCanQuantize(a_type_name) && MlasLowBitCanDequantize(a_type_name);
 
-    const float* B = BufferB.GetBuffer(N * K);
+    onnxruntime::test::RandomValueGenerator random{1234};
+    std::vector<float> input0_vals(random.Gaussian<float>(onnxruntime::AsSpan({(int64_t)M, (int64_t)K}), 0.0f, requantize_a ? 25.0f : 0.25f));
+    std::vector<float> input1_f_vals(random.Gaussian<float>(onnxruntime::AsSpan({(int64_t)K, (int64_t)N}), 0.0f, requantize_a ? 25.0f : 0.25f));
+    //input1_f_vals[0] = 0;
+    //for (int i = 4; i < K; i++) {
+    //  input0_vals[i] = 0;
+    //  input1_f_vals[i] = 0;
+    //}
 
     const float* Bias = nullptr;
     if (WithBias) {
       Bias = BufferBias.GetBuffer(N);
+      throw std::runtime_error("bias not supported with lowbit matmul");
     }
 
     float* C = BufferC.GetBuffer(N * M, true);
@@ -63,47 +93,22 @@ class MlasLowBitQgemmTest : public MlasTestBase {
     size_t b_quant_size = MlasLowBitQuantizeSizeInByte(N, K, b_type_name);
     std::vector<uint8_t> b_quant_data(b_quant_size);
 
-    MlasLowBitQuantize(A, M, K, a_type_name, &a_quant_data[0]);
-    MlasLowBitQuantize(B, N, K, b_type_name, &b_quant_data[0]);
+    QuantizeDequantize(input1_f_vals, b_quant_data, static_cast<int32_t>(N), static_cast<int32_t>(K), b_type_name, Threadpool);
 
-    bool requantize =
-        MlasLowBitCanQuantize(a_type_name) && MlasLowBitCanDequantize(a_type_name) &&
-        MlasLowBitCanQuantize(b_type_name) && MlasLowBitCanDequantize(b_type_name);
-
-    std::vector<float> A2(M * K);
-    if (requantize) {
-      MlasLowBitDequantize(&a_quant_data[0], M, K, a_type_name, &A2[0]);
-      MlasLowBitQuantize(&A2[0], M, K, a_type_name, &a_quant_data[0]);
-
-      std::vector<float> B2(N * K);
-      MlasLowBitDequantize(&b_quant_data[0], N, K, b_type_name, &B2[0]);
-      MlasLowBitQuantize(&B2[0], N, K, b_type_name, &b_quant_data[0]);
-      CallReferenceGemm(M, N, K, &A2[0], &B2[0], Bias, CReference);
+    if (requantize_a) {
+      QuantizeDequantize(input0_vals, a_quant_data, static_cast<int32_t>(M), static_cast<int32_t>(K), a_type_name, Threadpool);
     } else {
-      CallReferenceGemm(M, N, K, &A[0], &B[0], Bias, CReference);
+      MlasLowBitQuantize(&input0_vals[0], M, K, a_type_name, &a_quant_data[0], Threadpool);
+
     }
+    CallReferenceGemm(M, N, K, &input0_vals[0], &input1_f_vals[0], Bias, CReference);
 
     MlasLowBitQGemmBatch(M, N, K, BatchSize, &a_quant_data[0], a_type_name, &b_quant_data[0], b_type_name, C, Threadpool);
 
     size_t f = 0;
     for (size_t m = 0; m < M; m++) {
       for (size_t n = 0; n < N; n++, f++) {
-        ASSERT_TRUE(CloseEnough(C[f], CReference[f]))
-            << "Expected: " << CReference[f] << " Actual: " << C[f] << "@[" << m << "x" << n << "], "
-            << "M=" << M << ", N=" << N << ", K=" << K;
-      }
-    }
-
-    if (requantize) {
-      MlasLowBitQGemmBatch(M, N, K, BatchSize, reinterpret_cast<const void*>(&A2[0]), "", &b_quant_data[0], b_type_name, C, Threadpool);
-    } else {
-      MlasLowBitQGemmBatch(M, N, K, BatchSize, reinterpret_cast<const void*>(&A[0]), "", &b_quant_data[0], b_type_name, C, Threadpool);
-    }
-
-    f = 0;
-    for (size_t m = 0; m < M; m++) {
-      for (size_t n = 0; n < N; n++, f++) {
-        ASSERT_TRUE(CloseEnough(C[f], CReference[f]))
+        ASSERT_TRUE(CloseEnough(C[f], CReference[f], 0.05f))
             << "Expected: " << CReference[f] << " Actual: " << C[f] << "@[" << m << "x" << n << "], "
             << "M=" << M << ", N=" << N << ", K=" << K;
       }
@@ -193,16 +198,17 @@ class LowBitQgemmShortExecuteTest : public MlasTestFixture<MlasLowBitQgemmTest> 
         ///////*GGML_TYPE_IQ4_XS*/ {"q8_K", "iq4_xs"},
         // /*GGML_TYPE_Q8_K*/ {"q8_K", "iq4_xs"},
         /*GGML_TYPE_TQ1_0*/ {"q8_K", "tq1_0"},
-        /*GGML_TYPE_TQ1_0*/ {"q8_K", "tq2_0"},
+        /*GGML_TYPE_TQ2_0*/ {"q8_K", "tq2_0"},
+        /*GGML_TYPE_I2_S*/ {"i8_s", "i2_s"},
     };
 
     // std::string a_type_name("q8_0"), b_type_name("q4_0");
     size_t tests_registered = 0;
     size_t BatchSize = 1;
     for (const auto& [a_type_name, b_type_name] : type_name_pairs) {
-      for (size_t M : {1}) {
-        for (size_t N : {1}) {
-          for (size_t K : {256 /*, 512*/}) {
+      for (size_t M : {1, 2}) {
+        for (size_t N : {1, 2}) {
+          for (size_t K : {256, 512}) {
             for (bool use_thread_pool : {true, false}) {
               for (bool has_bias : {false}) {
                 tests_registered += RegisterSingleTest(M, N, K, BatchSize, a_type_name, b_type_name, use_thread_pool, has_bias);

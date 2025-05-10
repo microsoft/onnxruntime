@@ -60,4 +60,4 @@ cudnn_frontend;https://github.com/NVIDIA/cudnn-frontend/archive/refs/tags/v1.7.0
 dawn;https://github.com/google/dawn/archive/4cb1f9be152a4fa6bb695c08cd707ab078a1e2fb.zip;de39336b7715f53c14eec61072293b85cc73b691
 kleidiai;https://github.com/ARM-software/kleidiai/archive/refs/tags/v1.4.0.tar.gz;22d3b57b54a61c194ab256ff11b0353a3b220244
 # llama_cpp;https://github.com/ggml-org/llama.cpp/archive/refs/tags/b4964.zip;156f77fa1b5085c939fa75fdaa704530b98e54bc
-llama_cpp;https://github.com/liqunfu/llama.cpp/archive/a3af657f5608fa91b910fff71a7ab1bd932346ae.zip;c3a424b2fcf433e491697761fe1334b9945a6564
+llama_cpp;https://github.com/liqunfu/llama.cpp/archive/bde5ffed4eea547ef80634e98ecebfeec9da3723.zip;39e6b2ace17e5ce5c84a0907940ca9fbff0bc67f

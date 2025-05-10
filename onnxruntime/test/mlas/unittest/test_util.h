@@ -255,7 +255,7 @@ inline void ReorderInputNchw(const int64_t* input_shape, const float* S, float* 
   }
 }
 
-inline bool CloseEnough(float actual, float expected) {
+inline bool CloseEnough(float actual, float expected, float rtol=0.005) {
   if (std::isnan(actual)) {
     return std::isnan(expected);
   }
@@ -265,5 +265,5 @@ inline bool CloseEnough(float actual, float expected) {
   if (top > 0.0001) {
     ratio = diff / top;
   }
-  return ratio < 0.005;
+  return ratio < rtol;
 }

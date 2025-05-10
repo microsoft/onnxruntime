@@ -8,6 +8,7 @@
 #define GGML_COMMON_DECL_C
 #include "../../ggml/src/ggml-common.h"
 
+#include "llama_cpp_impl.h"
 #include "mlas_qnbit.h"
 #include <vector>
 #include <unordered_map>
@@ -47,7 +48,14 @@ MlasLowBitQuantizeSizeInByte(const size_t N, const size_t K, const ggml_type qua
     const struct ggml_type_traits* type_traits = ggml_get_type_traits(quant_type);
     const size_t a_blk_count_k = (K + type_traits->blck_size - 1) / type_traits->blck_size;
     size_t a_stride = type_traits->type_size * a_blk_count_k;
+    if (quant_type == GGML_TYPE_I8_S) {
+        a_stride += (sizeof(float) + sizeof(int32_t));
+    }
     size_t quant_size = N * a_stride;
+    if (quant_type == GGML_TYPE_I2_S) {
+        // 4 weights per byte plus scale
+        quant_size = quant_size / 4 + sizeof(float);
+    }
     return quant_size;
 }
 
@@ -71,6 +79,35 @@ MlasLowBitDequantizeDataCount(const size_t N, const size_t K, const std::string&
 }
 
 void
+MlasLowBitQuantizeRow(const struct ggml_type_traits_cpu* cpu_type_traits, const ggml_type quant_type, 
+  const float* data_row, uint8_t* quant_data_row, const size_t K, const size_t K_padded)
+{
+    if (K_padded == K) {
+        if (quant_type == GGML_TYPE_I8_S) {
+            float* n = (float*)(&quant_data_row[K]);
+            int32_t* sum = (int32_t*)(&quant_data_row[K + sizeof(float)]);
+
+            // Define function pointer type for quantize_row_i8_s
+            typedef void (*quantize_row_i8_s_t)(const float* GGML_RESTRICT x, void* GGML_RESTRICT y, int64_t k, float* n, int32_t* sum);
+
+            // Cast cpu_type_traits->from_float to quantize_row_i8_s_t
+            quantize_row_i8_s_t I8_S_from_float = reinterpret_cast<quantize_row_i8_s_t>(cpu_type_traits->from_float);
+
+            // Call the casted function
+            I8_S_from_float(data_row, quant_data_row, K_padded, n, sum);
+        } else if (quant_type == GGML_TYPE_I2_S) {
+            throw std::runtime_error("GGML_TYPE_I2_S is not per row quantized.");
+        } else {
+            cpu_type_traits->from_float(data_row, quant_data_row, K_padded);
+        }
+    } else {
+        std::vector<float> data_padded(K_padded, 0);
+        std::copy(data_row, data_row + K, &data_padded[0]);
+        cpu_type_traits->from_float(&data_padded[0], quant_data_row, K_padded);
+    }
+}
+
+void
 MlasLowBitQuantize(const float* data, const size_t N, const size_t K, const ggml_type quant_type, uint8_t* quant_data, MLAS_THREADPOOL* ThreadPool)
 {
     const struct ggml_type_traits* type_traits = ggml_get_type_traits(quant_type);
@@ -79,27 +116,22 @@ MlasLowBitQuantize(const float* data, const size_t N, const size_t K, const ggml
     size_t a_stride = type_traits->type_size * a_blk_count_k;
     const struct ggml_type_traits_cpu* cpu_type_traits = ggml_get_type_traits_cpu(quant_type);
 
+    if (quant_type == GGML_TYPE_I8_S) {
+        a_stride += sizeof(float) + sizeof(int32_t);
+    }
+
+    if (quant_type == GGML_TYPE_I2_S) {
+        // quant_weights is not used thus nullptr.
+        quantize_i2_s(data, quant_data, N, K, nullptr);
+        return;
+    }
     if (ThreadPool == nullptr) {
         for (size_t n = 0; n < N; n++) {
-            // padding
-            if (K_padded == K) {
-                cpu_type_traits->from_float(data + n * K, &quant_data[n * a_stride], K_padded);
-            } else {
-                std::vector<float> data_padded(K_padded, 0);
-                std::copy(data + n * K, data + n * K + K, &data_padded[0]);
-                cpu_type_traits->from_float(&data_padded[0], &quant_data[n * a_stride], K_padded);
-            }
+            MlasLowBitQuantizeRow(cpu_type_traits, quant_type, data + n * K, &quant_data[n * a_stride], K, K_padded);
         }
     } else {
         MlasTrySimpleParallel(ThreadPool, N, [&](ptrdiff_t n) {
-            if (K_padded == K) {
-                cpu_type_traits->from_float(data + n * K, &quant_data[n * a_stride], K_padded);
-            } else {
-                // padding
-                std::vector<float> data_padded(K_padded, 0);
-                std::copy(data + n * K, data + n * K + K, &data_padded[0]);
-                cpu_type_traits->from_float(&data_padded[0], &quant_data[n * a_stride], K_padded);
-            }
+            MlasLowBitQuantizeRow(cpu_type_traits, quant_type, data + n * K, &quant_data[n * a_stride], K, K_padded);
         });
     }
 }
@@ -109,6 +141,25 @@ MlasLowBitQuantize(const float* data, const size_t N, const size_t K, const std:
 {
     const ggml_type quant_type = quant_name_to_type(quant_type_name);
     MlasLowBitQuantize(data, N, K, quant_type, quant_data, ThreadPool);
+}
+
+void
+MlasLowBitDequantizeRow(const struct ggml_type_traits* type_traits, const uint8_t* quant_data, float* dequant_data, const size_t K, ggml_type quant_type)
+{
+    if (quant_type == GGML_TYPE_I8_S) {
+        float* act_scales = (float*)(&quant_data[K]);
+
+        // Define function pointer type for quantize_row_i8_s
+        typedef void (*dequantize_row_i8_s_t)(const int8_t* GGML_RESTRICT y, float* GGML_RESTRICT x, int64_t n, const float* GGML_RESTRICT act_scales);
+
+        dequantize_row_i8_s_t I8_S_to_float = reinterpret_cast<dequantize_row_i8_s_t>(type_traits->to_float);
+
+        // Call the casted function
+        const int8_t* quant_data_row = reinterpret_cast<const int8_t*>(&quant_data[0]);
+        I8_S_to_float(quant_data_row, &dequant_data[0], K, act_scales);
+    } else {
+        type_traits->to_float(&quant_data[0], &dequant_data[0], K);
+    }
 }
 
 void
@@ -122,14 +173,22 @@ MlasLowBitDequantize(const uint8_t* quant_data, const size_t N, const size_t K, 
     // but that is fine the caller get the dequantized data regardless of K being passed or not.
     assert(K_padded == K);
     size_t a_stride = type_traits->type_size * a_blk_count_k;
+    if (quant_type == GGML_TYPE_I8_S) {
+        // float* act_scales, int32_t* act_sums
+        a_stride += sizeof(float) + sizeof(int32_t);
+    }
 
+    if (quant_type == GGML_TYPE_I2_S) {
+        dequantize_i2_s(quant_data, dequant_data, N, K);
+        return;
+    }
     if (ThreadPool == nullptr) {
         for (size_t n = 0; n < N; n++) {
-            type_traits->to_float(&quant_data[n * a_stride], &dequant_data[n * K_padded], K_padded);
+            MlasLowBitDequantizeRow(type_traits, &quant_data[n * a_stride], &dequant_data[n * K_padded], K_padded, quant_type);
         }
     } else {
         MlasTrySimpleParallel(ThreadPool, N, [&](ptrdiff_t n) {
-            type_traits->to_float(&quant_data[n * a_stride], &dequant_data[n * K_padded], K_padded);
+            MlasLowBitDequantizeRow(type_traits, &quant_data[n * a_stride], &dequant_data[n * K_padded], K_padded, quant_type);
         });
     }
 }
@@ -166,10 +225,18 @@ MlasLowBitQGemmTile(
     const struct ggml_type_traits* a_type_traits = ggml_get_type_traits(a_quant_type);
     const size_t a_blk_count_k = (K + a_type_traits->blck_size - 1) / a_type_traits->blck_size;
     size_t a_stride = a_type_traits->type_size * a_blk_count_k;
+    if (a_quant_type == GGML_TYPE_I8_S) {
+        a_stride += sizeof(float) + sizeof(int32_t);
+    }
 
     const struct ggml_type_traits* b_type_traits = ggml_get_type_traits(b_quant_type);
     const size_t b_blk_count_k = (K + b_type_traits->blck_size - 1) / b_type_traits->blck_size;
     size_t b_stride = b_type_traits->type_size * b_blk_count_k;
+    float* i2_s_scale = nullptr;
+    if (b_quant_type == GGML_TYPE_I2_S) {
+        b_stride /= 4;
+        i2_s_scale = (float*)(b_quant_data + (batch_index + 1) * N * b_stride);
+    }
 
     size_t a_batch_stride = M * K * a_stride;
     size_t b_batch_stride = N * K * b_stride;
@@ -185,7 +252,12 @@ MlasLowBitQGemmTile(
         float* s = c_data_row;
         const uint8_t* vx = b_quant_data + batch_index * b_batch_stride + RangeStartN * b_stride;
         for (size_t n = RangeStartN; n < RangeStartN + RangeCountN; n++, vx += b_stride, s++) {
-          cpu_dot_fn(static_cast<int>(K), s, bs_unused, vx, bx_unused, vy, by_unused, nrc_unused);
+            cpu_dot_fn(static_cast<int>(K), s, bs_unused, vx, bx_unused, vy, by_unused, nrc_unused);
+            if (b_quant_type == GGML_TYPE_I2_S) {
+                float* act_scales = (float*)(&vy[K]);
+                int32_t* act_sums = (int32_t*)((const char*)act_scales + sizeof(float));
+                *s = (*s - *act_sums) / (*act_scales) * (*i2_s_scale);
+            }
         }
     }
 }
@@ -301,6 +373,9 @@ bool
 MlasLowBitCanQuantize(const std::string& quant_type_name)
 {
     ggml_type quant_type = quant_name_to_type(quant_type_name);
+    if (quant_type == GGML_TYPE_I2_S) {
+        return true;
+    }
     const struct ggml_type_traits_cpu* cpu_type_traits = ggml_get_type_traits_cpu(quant_type);
     if (cpu_type_traits->from_float != nullptr) {
         return true;
@@ -317,6 +392,9 @@ bool
 MlasLowBitCanDequantize(const std::string& quant_type_name)
 {
     ggml_type quant_type = quant_name_to_type(quant_type_name);
+    if (quant_type == GGML_TYPE_I2_S) {
+        return true;
+    }
     const struct ggml_type_traits* type_traits = ggml_get_type_traits(quant_type);
     if (type_traits->to_float != nullptr) {
         return true;
