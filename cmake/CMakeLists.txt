@@ -89,7 +89,6 @@ option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
 option(onnxruntime_USE_PREINSTALLED_EIGEN "Use pre-installed EIGEN. Need to provide eigen_SOURCE_PATH if turn this on." OFF)
-option(onnxruntime_USE_EIGEN_PACKAGE "Use Eigen obtained via find_package. Note that onnxruntime is incompatible with the current major Eigen release. See the eigen commit in cmake/deps.txt." OFF)
 option(onnxruntime_BUILD_BENCHMARKS "Build ONNXRuntime micro-benchmarks" OFF)
 option(onnxruntime_USE_VSINPU "Build with VSINPU support" OFF)
 
