@@ -34,7 +34,7 @@ steps:
     - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
         parameters:
-          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
             symbolExpiryTime: 60
           includePublicSymbolServer: true
           symbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
