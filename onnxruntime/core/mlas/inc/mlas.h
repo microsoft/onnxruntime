@@ -685,6 +685,8 @@ MlasSymmQgemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     );
@@ -692,6 +694,7 @@ MlasGemmPackBSize(
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
