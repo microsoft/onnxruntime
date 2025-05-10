@@ -69,7 +69,7 @@ steps:
       $PSDefaultParameterValues['Invoke-RestMethod:ContentType'] = "application/json"
       $PSDefaultParameterValues['Invoke-RestMethod:Method'] = "POST"
 
-      $BaseUri = "https://symbolrequestprod.trafficmanager.net/projects/${{ parameters.symbolProject }}/requests"
+      $BaseUri = "https://symbolrequestppe.trafficmanager.net/projects/${{ parameters.symbolProject }}/requests"
 
       # Prepare the request
       $expiration = (Get-Date).Add([TimeSpan]::FromDays(${{ parameters.symbolExpiryTime }}))
