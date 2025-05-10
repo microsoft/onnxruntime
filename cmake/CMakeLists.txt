@@ -974,7 +974,7 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
 if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-    
+
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
@@ -1796,6 +1796,7 @@ if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
   endif()
   list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 endif()
+list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
@@ -1910,33 +1911,58 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-if(TARGET onnxruntime)
 # Install
-  include(GNUInstallDirs)
-  include(CMakePackageConfigHelpers)
-  set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
-  string(APPEND PROJECT_CONFIG_CONTENT
-        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
-  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
-  install(EXPORT ${PROJECT_NAME}Targets
-    NAMESPACE ${PROJECT_NAME}::
-    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-# Create config for find_package()
-  configure_package_config_file(
-    "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
-    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+include(CMakePackageConfigHelpers)
 
-  write_basic_package_version_file(
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    VERSION ${ORT_VERSION}
-    COMPATIBILITY SameMajorVersion)
+set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
 
-  install(
-    FILES
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+if (NOT onnxruntime_BUILD_SHARED_LIB)
+string(APPEND PROJECT_CONFIG_CONTENT
+      "include(CMakeFindDependencyMacro)\n\
+      find_dependency(absl)\n\
+      find_dependency(date)\n\
+      find_dependency(Eigen3)\n\
+      find_dependency(nlohmann_json)\n\
+      find_dependency(ONNX)\n\
+      find_dependency(re2)\n\
+      find_dependency(flatbuffers)\n\
+      find_dependency(cpuinfo)\n\
+      find_dependency(protobuf)\n\
+      find_dependency(Boost COMPONENTS mp11)\n\
+      find_dependency(Microsoft.GSL 4.0)\n\
+      if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
+      find_dependency(Iconv)\n\
+      endif()\n\
+      find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+      add_library(safeint_interface IMPORTED INTERFACE)\n\
+      target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+      ")
 endif()
+
+string(APPEND PROJECT_CONFIG_CONTENT
+      "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
+
+
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
+install(EXPORT ${PROJECT_NAME}Targets
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+
+# Create config for find_package()
+configure_package_config_file(
+  "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
+  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+write_basic_package_version_file(
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  VERSION ${ORT_VERSION}
+  COMPATIBILITY SameMajorVersion)
+
+install(
+  FILES
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
 
 if(DEFINED BUILD_AS_ARM64X)
   set(ARM64X_TARGETS onnxruntime)
