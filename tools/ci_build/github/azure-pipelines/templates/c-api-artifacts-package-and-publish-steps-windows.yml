@@ -31,19 +31,16 @@ parameters:
   default: true
 
 steps:
-    - task: PublishSymbols@2
-      displayName: 'Publish Build Debug Symbols'
-      condition: and(succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-      inputs:
-        SymbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
-        SearchPattern: '*.pdb'
-        IndexSources: true
-        PublishSymbols: true
-        SymbolServerType: 'TeamServices'
-        SymbolExpirationInDays: '36530'
-        IndexableFileFormats: 'Default'
-        DetailedLog: true
-        SymbolsArtifactName: 'Symbols_${{parameters.artifactNameNoVersionString}}_$(Build.BuildId)'
+    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+      - template: publish-symbolrequestprod-api.yml
+        parameters:
+          includePublicSymbolServer: true
+          symbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
+          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}
+            symbolExpiryTime: 60
+          symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
+          symbolsVersion: $(Build.BuildId)
+          symbolProject: 'ONNX Runtime'         
 
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
