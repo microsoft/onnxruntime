@@ -1930,7 +1930,9 @@ string(APPEND PROJECT_CONFIG_CONTENT
       find_dependency(protobuf)\n\
       find_dependency(Boost COMPONENTS mp11)\n\
       find_dependency(Microsoft.GSL 4.0)\n\
+      if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
       find_dependency(Iconv)\n\
+      endif()\n\
       find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
       add_library(safeint_interface IMPORTED INTERFACE)\n\
       target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
