@@ -1790,11 +1790,8 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
-    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
-  endif()
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
+if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
+  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
 endif()
 list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
