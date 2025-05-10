@@ -1933,6 +1933,9 @@ string(APPEND PROJECT_CONFIG_CONTENT
       if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
       find_dependency(Iconv)\n\
       endif()\n\
+      if(WIN32)\n\
+      find_dependency(wil)\n\
+      endif()\n\
       find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
       add_library(safeint_interface IMPORTED INTERFACE)\n\
       target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
