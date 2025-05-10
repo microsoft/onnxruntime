@@ -13,7 +13,7 @@ Foreach
   1. call GetCapability
   2. IF EP.DesiredFormat == NHWC
     2.1. Invoke Layout Transformer
-    2.2 If graph is modified -> call GetCapability (layout transformer can add new nodes to the graph)
+    2.2. If graph is modified -> call GetCapability (layout transformer can add new nodes to the graph)
   3 Compile
 ```
 
