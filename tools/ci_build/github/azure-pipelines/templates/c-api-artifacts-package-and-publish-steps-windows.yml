@@ -40,7 +40,8 @@ steps:
           symbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
           symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
           symbolsVersion: $(Build.BuildId)
-          symbolProject: 'ONNX Runtime'         
+          symbolProject: 'ONNX Runtime'
+          subscription: 'OnnxrunTimeCodeSign_20240611'          
 
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
