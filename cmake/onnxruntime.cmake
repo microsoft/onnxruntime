@@ -153,17 +153,14 @@ else()
 endif()
 
 
-if (APPLE OR ${CMAKE_SYSTEM_NAME} MATCHES "^iOS")
-    target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
-    if (${CMAKE_SYSTEM_NAME} STREQUAL "iOS")
-      set_target_properties(onnxruntime PROPERTIES
-        MACOSX_RPATH TRUE
-        INSTALL_RPATH_USE_LINK_PATH FALSE
-        BUILD_WITH_INSTALL_NAME_DIR TRUE
-        INSTALL_NAME_DIR @rpath)
-    else()
-        set_target_properties(onnxruntime PROPERTIES INSTALL_RPATH "@loader_path")
-    endif()
+if (APPLE)
+  target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
+  set_target_properties(onnxruntime PROPERTIES
+    MACOSX_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+    INSTALL_RPATH_USE_LINK_PATH FALSE
+    BUILD_WITH_INSTALL_NAME_DIR TRUE
+    INSTALL_NAME_DIR @rpath)
 endif()
 
 
