@@ -31,7 +31,7 @@ parameters:
   default: true
 
 steps:
-    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
         parameters:
           ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
