@@ -288,9 +288,10 @@ if(NOT TARGET Boost::mp11)
      EXCLUDE_FROM_ALL
      FIND_PACKAGE_ARGS NAMES Boost
     )
-    onnxruntime_fetchcontent_makeavailable(mp11)
+    FetchContent_Populate(mp11)
     if(NOT TARGET Boost::mp11)
-      add_library(Boost::mp11 ALIAS Boost::headers)
+      add_library(Boost::mp11 IMPORTED INTERFACE)
+      target_include_directories(Boost::mp11 INTERFACE $<BUILD_INTERFACE:${mp11_SOURCE_DIR}/include>)
     endif()
   endif()
 endif()

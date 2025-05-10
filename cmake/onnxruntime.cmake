@@ -57,6 +57,7 @@ get_c_cxx_api_headers(ONNXRUNTIME_PUBLIC_HEADERS)
 # nm -C -g --defined libonnxruntime.so |grep -v '\sA\s' | cut -f 3 -d ' ' | sort
 # after build
 
+if(onnxruntime_BUILD_SHARED_LIB)
 list(APPEND SYMBOL_FILES "${REPO_ROOT}/tools/ci_build/gen_def.py")
 foreach(f ${ONNXRUNTIME_PROVIDER_NAMES})
   list(APPEND SYMBOL_FILES "${ONNXRUNTIME_ROOT}/core/providers/${f}/symbols.txt")
@@ -73,6 +74,7 @@ add_custom_command(OUTPUT ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_s
 
 add_custom_target(onnxruntime_generate_def ALL DEPENDS ${SYMBOL_FILE} ${CMAKE_CURRENT_BINARY_DIR}/generated_source.c)
 endif()
+
 if(WIN32)
   onnxruntime_add_shared_library(onnxruntime
     ${SYMBOL_FILE}
@@ -163,8 +165,6 @@ if (APPLE)
     INSTALL_NAME_DIR @rpath)
 endif()
 
-
-
 if(CMAKE_SYSTEM_NAME STREQUAL "Android" AND onnxruntime_MINIMAL_BUILD)
   # target onnxruntime is a shared library, the dummy __cxa_demangle is only attach to it to avoid
   # affecting downstream ort library users with the behavior of dummy __cxa_demangle. So the dummy
@@ -183,6 +183,8 @@ if(CMAKE_SYSTEM_NAME STREQUAL "Android" OR (onnxruntime_MINIMAL_BUILD AND UNIX))
     set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_RELEASE -s)
     set_target_properties(onnxruntime PROPERTIES LINK_FLAGS_MINSIZEREL -s)
   endif()
+endif()
+
 endif()
 
 # we need to copy C/C++ API headers to be packed into Android AAR package
