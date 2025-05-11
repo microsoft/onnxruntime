@@ -36,7 +36,6 @@
       "platform": "(windows | linux) & (arm64 | x64)"
     }
   ],
-  "supports": "!static",
   "features": {
     "windows-use-d3d12": {
       "description": "Enable D3D12 backend on Windows.",
