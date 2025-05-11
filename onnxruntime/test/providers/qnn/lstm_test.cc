@@ -1019,7 +1019,7 @@ TEST_F(QnnCPUBackendTests, LSTM_FP32_sanity_bidirectional_wo_HC) {
       TestInputDef<float>({num_direction, 4 * hidden_size, input_size}, false, -1.0f, 1.0f),   // W
       TestInputDef<float>({num_direction, 4 * hidden_size, hidden_size}, false, -1.0f, 1.0f),  // R
       std::ref(B_def),                                                                         // B
-      std::nullopt,                                                                         // initial_h
+      std::nullopt,                                                                            // initial_h
       std::nullopt,                                                                            // initial_c
       std::ref(P_def),                                                                         // P
       true,                                                                                    // has_Y
