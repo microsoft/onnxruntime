@@ -1,7 +1,7 @@
 # NOTE: dynamic library vs. static library
 #
-# The Dawn vcpkg port requires to be built as a shared library, and we are building Dawn as a shared library. However,
-# we need to set the `BUILD_SHARED_LIBS` option to `OFF` in this portfile. See the explanation below.
+# We are building Dawn as a shared library `webgpu_dawn`. However, we need to set the `BUILD_SHARED_LIBS` option to
+# `OFF` in this portfile. See the explanation below.
 #
 # In CMake convention, the `BUILD_SHARED_LIBS` option is used to control whether a library is built as a shared library or a static library.
 # However, in the Dawn repository, there are multiple targets. Instead of building each target as a shared library, Dawn
