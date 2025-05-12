@@ -27,37 +27,6 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  static Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
-                                           const InlinedVector<int64_t>& elements_per_thread,
-                                           uint32_t workgroup_size_x,
-                                           uint32_t workgroup_size_y,
-                                           const std::string& data_type,
-                                           const ShaderIndicesHelper* batch_dims,
-                                           bool transpose_a = false,
-                                           bool transpose_b = false,
-                                           float alpha = 1.0f,
-                                           int output_components = 4,
-                                           bool need_handle_matmul = true,
-                                           uint32_t tile_inner = 32,
-                                           bool split_k = false,
-                                           uint32_t splitted_dim_inner = 32);
-
-  static Status MakeMatMulPackedSource(ShaderHelper& shader,
-                                       const InlinedVector<int64_t>& elements_per_thread,
-                                       uint32_t workgroup_size_x,
-                                       uint32_t workgroup_size_y,
-                                       const std::string& data_type,
-                                       const ShaderIndicesHelper* batch_dims,
-                                       bool transpose_a = false,
-                                       bool transpose_b = false,
-                                       float alpha = 1.0f,
-                                       int output_components = 4,
-                                       bool need_handle_matmul = true,
-                                       uint32_t tile_inner = 32,
-                                       bool split_k = false,
-                                       uint32_t splitted_dim_inner = 32,
-                                       bool sequentially_access_by_threads = false);
-
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_tile_n", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -86,11 +55,6 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
   bool c_is_scalar_ = false;
   int output_components_;
   bool is_vec4_ = false;
-  void MatMulReadFnSource(ShaderHelper& shader, const ShaderVariableHelper& a,
-                          const ShaderVariableHelper& b,
-                          const ShaderVariableHelper& output,
-                          const ShaderIndicesHelper& batch_dims) const;
-  void MatMulWriteFnSource(ShaderHelper& shader, const ShaderVariableHelper& output) const;
 };
 
 Status ApplyGemmVec4(const Tensor* a,
