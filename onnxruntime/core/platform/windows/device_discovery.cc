@@ -12,6 +12,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env.h"
 #include "core/session/abi_devices.h"
 
 //// For SetupApi info
@@ -56,6 +57,26 @@ struct DeviceInfo {
   std::unordered_map<std::wstring, std::wstring> metadata;
 };
 
+struct DriverInfo {
+  std::wstring driver_versions;
+  std::wstring driver_names;
+
+  void AddDevice(const std::wstring& driver_version, const std::wstring& driver_name) {
+    if (!driver_version.empty()) {
+      if (!driver_versions.empty()) {
+        driver_versions += L", ";
+      }
+      driver_versions += driver_version;
+    }
+    if (!driver_name.empty()) {
+      if (!driver_names.empty()) {
+        driver_names += L", ";
+      }
+      driver_names += driver_name;
+    }
+  }
+};
+
 uint64_t GetDeviceKey(uint32_t vendor_id, uint32_t device_id) {
   return (uint64_t(vendor_id) << 32) | device_id;
 }
@@ -90,6 +111,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
   const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
   const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
   const GUID local_GUID_DEVCLASS_COMPUTEACCELERATOR = {0xf01a9d53, 0x3ff6, 0x48d2, 0x9f, 0x97, 0xc8, 0xa7, 0x00, 0x4b, 0xe1, 0x0c};
+
+  std::unordered_map<OrtHardwareDeviceType, DriverInfo> device_version_info;
 
   std::array<GUID, 3> guids = {
       GUID_DEVCLASS_DISPLAY,
@@ -232,9 +255,50 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           entry->vendor = std::wstring(buffer, wcslen(buffer));
         }
       }
+
+      // Generate telemetry event to log the GPU and NPU driver name and version.
+      if (entry->type == OrtHardwareDeviceType_CPU) {
+        // Skip processor entries for telemetry.
+        continue;
+      }
+
+      // Open the device's driver registry key
+      HKEY dev_reg_key = SetupDiOpenDevRegKey(devInfo, &devData,
+                                              DICS_FLAG_GLOBAL,
+                                              0,
+                                              DIREG_DRV,
+                                              KEY_READ);
+
+      if (dev_reg_key != INVALID_HANDLE_VALUE) {
+        // Query the "DriverVersion" string
+        std::wstring driver_version_str;
+        wchar_t driver_version[256];
+        DWORD str_size = sizeof(driver_version);
+        DWORD type = 0;
+        if (RegQueryValueExW(dev_reg_key, L"DriverVersion",
+                             nullptr, &type,
+                             reinterpret_cast<LPBYTE>(driver_version),
+                             &str_size) == ERROR_SUCCESS &&
+                             type == REG_SZ) {
+          // Ensure proper null termination of a string retrieved from the Windows Registry API.
+          driver_version[(str_size / sizeof(wchar_t)) - 1] = 0;
+          driver_version_str = driver_version;
+        }
+        RegCloseKey(dev_reg_key);
+        device_version_info[entry->type].AddDevice(driver_version_str, entry->description);
+      }
     }
 
     SetupDiDestroyDeviceInfoList(devInfo);
+  }
+
+  // Log driver information for GPUs and NPUs
+  const Env& env = Env::Default();
+  for (const auto& [type, info] : device_version_info) {
+    if (!info.driver_versions.empty() || !info.driver_names.empty()) {
+      const std::string_view driver_class = (type == OrtHardwareDeviceType_GPU) ? "GPU" : "NPU";
+      env.GetTelemetryProvider().LogDriverInfoEvent(driver_class, info.driver_names, info.driver_versions);
+    }
   }
 
   return device_info;
