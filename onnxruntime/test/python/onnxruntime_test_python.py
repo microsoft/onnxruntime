@@ -1382,6 +1382,8 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue1.shape(), [3, 2])
         self.assertEqual(ortvalue1.data_type(), "tensor(float)")
         self.assertEqual(ortvalue1.is_tensor(), True)
+        # Assumes float32 and shape {3, 2} as above
+        self.assertEqual(ortvalue1.tensor_size_in_bytes(), 4 * 2 * 3)
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         # Pass in the constructed OrtValue to a session via Run() and check results
