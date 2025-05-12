@@ -109,7 +109,7 @@ python -m onnxruntime.tools.convert_onnx_models_to_ort <onnx model file or dir>
 
 where:
 
-* onnx mode file or dir is a path to .onnx file or directory containing one or more .onnx models
+* onnx model file or dir is a path to .onnx file or directory containing one or more .onnx models
 
 The current optional arguments are available by running the script with the `--help` argument.
 Supported arguments and defaults differ slightly across ONNX Runtime versions.
