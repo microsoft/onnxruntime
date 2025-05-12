@@ -92,8 +92,8 @@ accumulate_q8_blklen64_r1c1blk1_avx2(
     __m256& acc0
 )
 {
-    __m256i bv0_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
-    __m256i bv1_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
+    __m256i bv0_32_epi8 = _mm256_load_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+    __m256i bv1_32_epi8 = _mm256_load_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
     __m256 scale_8_ps = _mm256_set1_ps(scale_a0b);
 
 #if !defined(__GNUC__) || (__GNUC__ > 10)
@@ -150,8 +150,8 @@ accumulate_q8_blklen64_r2c1blk1_avx2(
     __m256& acc1
 )
 {
-    __m256i bv0_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
-    __m256i bv1_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
+    __m256i bv0_32_epi8 = _mm256_load_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+    __m256i bv1_32_epi8 = _mm256_load_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
     __m256 scale0_8_ps = _mm256_set1_ps(scale_a0b);
     __m256 scale1_8_ps = _mm256_set1_ps(scale_a1b);
 
@@ -417,10 +417,10 @@ Q8Int8GemmR2xC4BlkLen64Avx2(
                 const float scale_a1b3 = (*(QuantBScalePtr + 3)) * scale_a1;
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
-                    const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
-                    const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
-                    const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda + 32));
+                    const __m256i av_00_epi8 = _mm256_load_si256((const __m256i*)QuantAPtr);
+                    const __m256i av_01_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + 32));
+                    const __m256i av_10_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + lda));
+                    const __m256i av_11_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + lda + 32));
 
                     accumulate_q8_blklen64_r2c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, scale_a0b0, scale_a1b0, acc[0], acc[NCols4]);
                     accumulate_q8_blklen64_r2c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + SubblkDataSizeInBytes, scale_a0b1, scale_a1b1, acc[1], acc[NCols4 + 1]);
@@ -588,10 +588,10 @@ Q8Int8GemmR2xC1BlkLen64Avx2(
                 const float scale_a1b0 = (*QuantBScalePtr) * scale_a1;
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
-                    const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
-                    const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
-                    const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda + 32));
+                    const __m256i av_00_epi8 = _mm256_load_si256((const __m256i*)QuantAPtr);
+                    const __m256i av_01_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + 32));
+                    const __m256i av_10_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + lda));
+                    const __m256i av_11_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + lda + 32));
 
                     accumulate_q8_blklen64_r2c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, scale_a0b0, scale_a1b0, acc0, acc1);
 
@@ -752,8 +752,8 @@ Q8Int8GemmR1xC4BlkLen64Avx2(
                 const float scale_a0b3 = (*(QuantBScalePtr + 3)) * scale_a0;
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
-                    const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+                    const __m256i av_00_epi8 = _mm256_load_si256((const __m256i*)QuantAPtr);
+                    const __m256i av_01_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + 32));
 
                     accumulate_q8_blklen64_r1c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr, scale_a0b0, acc[0]);
                     accumulate_q8_blklen64_r1c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr + SubblkDataSizeInBytes, scale_a0b1, acc[1]);
@@ -910,8 +910,8 @@ Q8Int8GemmR1xC1BlkLen64Avx2(
                 const float scale_a0b0 = (*QuantBScalePtr) * scale_a0;
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
-                    const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+                    const __m256i av_00_epi8 = _mm256_load_si256((const __m256i*)QuantAPtr);
+                    const __m256i av_01_epi8 = _mm256_load_si256((const __m256i*)(QuantAPtr + 32));
 
                     accumulate_q8_blklen64_r1c1blk1_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr, scale_a0b0, acc0);
 
