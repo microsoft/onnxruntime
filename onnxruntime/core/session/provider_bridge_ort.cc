@@ -3263,15 +3263,14 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateMIGraphXProviderOptionsWithValue,
   OrtAllocator* allocator;
   GetAllocatorWithDefaultOptions(&allocator);
   if (sv == onnxruntime::migraphx_provider_option::kDeviceId) {
-    int device_id;
-    auto r = std::from_chars(sv.data(), sv.data() + sv.length(), device_id);
-    if (r.ec == std::errc::invalid_argument) {
+    auto dv = std::string_view{static_cast<char*>(value)};
+    if (std::from_chars(dv.data(), dv.data() + dv.length(), migraphx_options->device_id).ec == std::errc::invalid_argument) {
       ORT_THROW("Cannot convert from string to integer - invalid argument");
     }
-    migraphx_options->device_id = device_id;
   } else
   if (sv == onnxruntime::migraphx_provider_option::kModelCacheDir) {
-    migraphx_options->migraphx_cache_dir = onnxruntime::StrDup(static_cast<char*>(value), allocator);
+    auto sd = std::string_view{static_cast<char*>(value)};
+    migraphx_options->migraphx_cache_dir = onnxruntime::StrDup(sd.data(), allocator);
   } else {
     ORT_THROW("Unsupported provider option name: '" + std::string{sv} + "'");
   }

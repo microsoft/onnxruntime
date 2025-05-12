@@ -326,7 +326,7 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
         
-        private IntPtr _modelCacheDirPtr = Marshal.StringToHGlobalAnsi("model_cache_dir");
+        private IntPtr _modelCacheDirPtr = Marshal.StringToHGlobalAnsi("migraphx_model_cache_dir");
         private string _modelCacheDir = "";
         
         #region Constructor
@@ -402,7 +402,7 @@ namespace Microsoft.ML.OnnxRuntime
 
         private void UpdateProviderOptionWithValue(IntPtr key, string value)
         {
-            IntPtr valuePtr = Marshal.StringToHGlobalAuto(value);
+            IntPtr valuePtr = Marshal.StringToHGlobalAnsi(value);
             var nativeStatus = NativeMethods.OrtUpdateMIGraphXProviderOptionsWithValue(handle, key, valuePtr);
             Marshal.FreeHGlobal(valuePtr);
             NativeApiStatus.VerifySuccess(nativeStatus);
