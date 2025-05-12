@@ -10,9 +10,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class GemmProgram final : public Program<GemmProgram> {
+class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
  public:
-  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
+  GemmNaiveProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
       : Program{"Gemm"},
         transA_{transA},
         transB_{transB},

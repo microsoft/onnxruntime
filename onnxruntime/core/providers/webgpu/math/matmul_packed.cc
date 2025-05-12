@@ -23,7 +23,7 @@ Status MatMulProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   // declare the read and write functions
   MatMulReadFnSource(shader, a, b, output, batch_dims, false, false, is_vec4_);
-  MatMulWriteFnSource(shader, output, has_bias_, false, 1, is_vec4_ ? 4 : 1, false, apply_activation);
+  MatMulWriteFnSource(shader, output, has_bias_, false /* is_gemm */, 1, is_vec4_ ? 4 : 1, false, apply_activation, is_channels_last_);
   std::string data_type = "a_element_t";
   // generate the main function
   if (is_vec4_) {

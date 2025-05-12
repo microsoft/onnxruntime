@@ -11,9 +11,9 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class GemmVec4Program final : public Program<GemmVec4Program> {
+class GemmProgram final : public Program<GemmProgram> {
  public:
-  GemmVec4Program(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false)
+  GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false)
       : Program{"GemmVec4"},
         transA_{transA},
         transB_{transB},
@@ -57,15 +57,14 @@ class GemmVec4Program final : public Program<GemmVec4Program> {
   bool is_vec4_ = false;
 };
 
-Status ApplyGemmVec4(const Tensor* a,
-                     const Tensor* b,
-                     const Tensor* c,
-                     bool transA,
-                     bool transB,
-                     float alpha,
-                     float beta,
-                     ComputeContext& context,
-                     Tensor* y);
+Status ApplyGemmPacked(const Tensor* a,
+                       const Tensor* b,
+                       const Tensor* c,
+                       bool transA,
+                       bool transB,
+                       float alpha,
+                       float beta,
+                       ComputeContext& context);
 
 }  // namespace webgpu
 }  // namespace onnxruntime

@@ -38,7 +38,7 @@ WEBGPU_GEMM_VERSIONED_KERNEL(9, 10)
 WEBGPU_GEMM_VERSIONED_KERNEL(11, 12)
 WEBGPU_GEMM_KERNEL(13)
 
-Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
+Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const uint32_t TILE_SIZE = 16;
 
   // Add shared memory arrays
@@ -182,23 +182,11 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensors A and B must be 2 dimensional.");
   }
 
-  uint32_t M = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[1] : A_shape[0]);
-  uint32_t K = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[0] : A_shape[1]);
-  uint32_t N = onnxruntime::narrow<uint32_t>(transB_ ? B_shape[0] : B_shape[1]);
-
   if ((transA_ ? A_shape[0] : A_shape[1]) != (transB_ ? B_shape[1] : B_shape[0])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inner dimensions of A and B must match.");
   }
 
-  std::vector<int64_t> output_dims{M, N};
-  auto* Y = context.Output(0, output_dims);
-  int64_t output_size = Y->Shape().Size();
-
-  if (output_size == 0) {
-    return Status::OK();
-  }
-
-  return ApplyGemmVec4(A, B, C, transA_, transB_, alpha_, beta_, context, Y);
+  return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
 }
 
 }  // namespace webgpu
