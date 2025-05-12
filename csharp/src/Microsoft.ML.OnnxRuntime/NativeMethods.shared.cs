@@ -368,6 +368,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_Device;
 
         public IntPtr GetEpApi;
+        public IntPtr GetTensorSizeInBytes;
         
         public IntPtr CreateMIGraphXProviderOptions;
         public IntPtr UpdateMIGraphXProviderOptions;
