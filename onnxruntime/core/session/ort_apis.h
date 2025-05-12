@@ -599,6 +599,8 @@ ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_de
 
 ORT_API(const OrtEpApi*, GetEpApi);
 
+ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
 ORT_API_STATUS_IMPL(CreateMIGraphXProviderOptions, _Outptr_ OrtMIGraphXProviderOptions** out);
 ORT_API_STATUS_IMPL(UpdateMIGraphXProviderOptions, _Inout_ OrtMIGraphXProviderOptions* migraphx_options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,

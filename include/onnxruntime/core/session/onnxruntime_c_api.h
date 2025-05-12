@@ -5252,6 +5252,21 @@ struct OrtApi {
    */
   const OrtEpApi*(ORT_API_CALL* GetEpApi)();
 
+  /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
+   *
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
+   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
+   * that are tensors that contain strings will cause an error to be returned.
+   *
+   * \param[in] ort_value OrtValue instance containing a tensor
+   * \param[out] size The total size of the tensor data in bytes
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
   /// @}
   /// \name OrtMIGraphXProviderOptions
   /// @{
