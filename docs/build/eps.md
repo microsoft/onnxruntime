@@ -46,7 +46,7 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The CUDA execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.2 and cuDNN 8.9. Check [here](../execution-providers/CUDA-ExecutionProvider.md#requirements) for more version information.
+   * The CUDA execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.x and cuDNN 9. Check [here](../execution-providers/CUDA-ExecutionProvider.md#requirements) for more version information.
    * The path to the CUDA installation must be provided via the CUDA_HOME environment variable, or the `--cuda_home` parameter. The installation directory should contain `bin`, `include` and `lib` sub-directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation must be provided via the CUDNN_HOME environment variable, or `--cudnn_home` parameter. In Windows, the installation directory should contain `bin`, `include` and `lib` sub-directories.
