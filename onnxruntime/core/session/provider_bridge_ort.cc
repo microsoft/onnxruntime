@@ -6,6 +6,7 @@
 
 #include <optional>
 #include <utility>
+#include <charconv>
 
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
@@ -3244,6 +3245,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions* ptr) {
 #ifdef USE_MIGRAPHX
   std::unique_ptr<OrtMIGraphXProviderOptions> p(ptr);
+  if(ptr->migraphx_cache_dir != nullptr) {
+    onnxruntime::AllocatorDefaultFree(const_cast<char*>(ptr->migraphx_cache_dir));
+  }
 #else
   ORT_UNUSED_PARAMETER(ptr);
 #endif
@@ -3255,6 +3259,22 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateMIGraphXProviderOptionsWithValue,
                     _In_ void* value) {
   API_IMPL_BEGIN
 #ifdef USE_MIGRAPHX
+  auto sv = std::string_view{key};
+  OrtAllocator* allocator;
+  GetAllocatorWithDefaultOptions(&allocator);
+  if (sv == onnxruntime::migraphx_provider_option::kDeviceId) {
+    int device_id;
+    auto r = std::from_chars(sv.data(), sv.data() + sv.length(), device_id);
+    if (r.ec == std::errc::invalid_argument) {
+      ORT_THROW("Cannot convert from string to integer - invalid argument");
+    }
+    migraphx_options->device_id = device_id;
+  } else
+  if (sv == onnxruntime::migraphx_provider_option::kModelCacheDir) {
+    migraphx_options->migraphx_cache_dir = onnxruntime::StrDup(static_cast<char*>(value), allocator);
+  } else {
+    ORT_THROW("Unsupported provider option name: '" + std::string{sv} + "'");
+  }
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(migraphx_options);

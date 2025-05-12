@@ -677,7 +677,7 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
   const char* migraphx_cache_dir;                    // MIGraphX model cache directory
-  int migraphx_exhaustive_tune;                      // MIGraphX tuned compile  Default = false
+  int migraphx_exhaustive_tune;                      // MIGraphX tuned compile. Default = false
   size_t migraphx_mem_limit;
   int migraphx_arena_extend_strategy;
 } OrtMIGraphXProviderOptions;

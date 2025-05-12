@@ -366,7 +366,9 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_EpMetadata;
         public IntPtr EpDevice_EpOptions;
         public IntPtr EpDevice_Device;
-                
+
+        public IntPtr GetEpApi;
+        
         public IntPtr CreateMIGraphXProviderOptions;
         public IntPtr UpdateMIGraphXProviderOptions;
         public IntPtr GetMIGraphXProviderOptionsAsString;
@@ -621,6 +623,12 @@ namespace Microsoft.ML.OnnxRuntime
             OrtUpdateMIGraphXProviderOptions = (DOrtUpdateMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.UpdateMIGraphXProviderOptions, typeof(DOrtUpdateMIGraphXProviderOptions));
             OrtGetMIGraphXProviderOptionsAsString = (DOrtGetMIGraphXProviderOptionsAsString)Marshal.GetDelegateForFunctionPointer(api_.GetMIGraphXProviderOptionsAsString, typeof(DOrtGetMIGraphXProviderOptionsAsString));
             OrtReleaseMIGraphXProviderOptions = (DOrtReleaseMIGraphXProviderOptions)Marshal.GetDelegateForFunctionPointer(api_.ReleaseMIGraphXProviderOptions, typeof(DOrtReleaseMIGraphXProviderOptions));
+            OrtUpdateMIGraphXProviderOptionsWithValue =
+                (DOrtUpdateMIGraphXProviderOptionsWithValue)Marshal.GetDelegateForFunctionPointer(
+                    api_.UpdateMIGraphXProviderOptionsWithValue, typeof(DOrtUpdateMIGraphXProviderOptionsWithValue));
+            OrtGetMIGraphXProviderOptionsByName =
+                (DOrtGetMIGraphXProviderOptionsByName)Marshal.GetDelegateForFunctionPointer(
+                    api_.GetMIGraphXProviderOptionsByName, typeof(DOrtGetMIGraphXProviderOptionsByName));
             OrtCreateAndRegisterAllocatorV2 = (DCreateAndRegisterAllocatorV2)Marshal.GetDelegateForFunctionPointer(api_.CreateAndRegisterAllocatorV2, typeof(DCreateAndRegisterAllocatorV2));
             OrtRunAsync = (DOrtRunAsync)Marshal.GetDelegateForFunctionPointer(api_.RunAsync, typeof(DOrtRunAsync));
             CreateLoraAdapter = (DCreateLoraAdapter)Marshal.GetDelegateForFunctionPointer(api_.CreateLoraAdapter,
@@ -975,6 +983,34 @@ namespace Microsoft.ML.OnnxRuntime
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate void DOrtReleaseMIGraphXProviderOptions(IntPtr /*(OrtMIGraphXProviderOptions*)*/ migraphxProviderOptionsInstance);
         public static DOrtReleaseMIGraphXProviderOptions OrtReleaseMIGraphXProviderOptions;
+
+        /// <summary>
+        /// Update native OrtMIGraphXProviderOptions with value
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        /// <param name="providerOptionsKey">configuration key of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValue">configuration value of OrtMIGraphXProviderOptions</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtUpdateMIGraphXProviderOptionsWithValue(
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(char*)*/ providerOptionsKey,
+            IntPtr /*(char*)*/ providerOptionsValue);
+        public static DOrtUpdateMIGraphXProviderOptionsWithValue OrtUpdateMIGraphXProviderOptionsWithValue;
+
+        /// <summary>
+        /// Get native OrtMIGraphXProviderOptions value by name
+        /// </summary>
+        /// <param name="migraphxProviderOptionsInstance">native instance of OrtMIGraphXProviderOptions to be released</param>
+        /// <param name="providerOptionsKey">configuration key of OrtMIGraphXProviderOptions</param>
+        /// <param name="providerOptionsValue">configuration value of OrtMIGraphXProviderOptions to return</param>
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr DOrtGetMIGraphXProviderOptionsByName(
+            IntPtr /*(OrtMIGraphXProviderOptions**)*/ migraphxProviderOptionsInstance,
+            IntPtr /*(char*)*/ providerOptionsKey,
+            out IntPtr /*(char**)*/ providerOptionsValue);
+        public static DOrtGetMIGraphXProviderOptionsByName OrtGetMIGraphXProviderOptionsByName;
+
+        
 #endregion
 
 #region Status API

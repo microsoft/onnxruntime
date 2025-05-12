@@ -304,7 +304,31 @@ namespace Microsoft.ML.OnnxRuntime
             }
         }
 
+        public int DeviceId
+        {
+            get { return _deviceId; }
+            set
+            {
+                UpdateProviderOptionWithValue(_deviceIdPtr, value.ToString());
+                _deviceId = value;
+            }
+        }
+        private IntPtr _deviceIdPtr = Marshal.StringToHGlobalAnsi("device_id");
+        private int _deviceId = 0;
 
+        public string ModelCacheDir
+        {
+            get { return _modelCacheDir; }
+            set
+            {
+                UpdateProviderOptionWithValue(_modelCacheDirPtr, value);
+                _modelCacheDir = value;
+            }
+        }
+        
+        private IntPtr _modelCacheDirPtr = Marshal.StringToHGlobalAnsi("model_cache_dir");
+        private string _modelCacheDir = "";
+        
         #region Constructor
 
         /// <summary>
@@ -317,6 +341,16 @@ namespace Microsoft.ML.OnnxRuntime
 
         #endregion
 
+        #region Finalizer
+
+        ~OrtMIGraphXProviderOptions()
+        {
+            Marshal.FreeHGlobal(_deviceIdPtr);
+            Marshal.FreeHGlobal(_modelCacheDirPtr);
+        }
+        
+        #endregion
+        
         #region Public Methods
 
         /// <summary>
@@ -351,7 +385,7 @@ namespace Microsoft.ML.OnnxRuntime
         {
             ProviderOptionsUpdater.Update(providerOptions, handle, UpdateMIGraphXProviderOptions);
         }
-
+        
         #endregion
 
         #region Public Properties
@@ -366,6 +400,13 @@ namespace Microsoft.ML.OnnxRuntime
 
         #region Private Methods
 
+        private void UpdateProviderOptionWithValue(IntPtr key, string value)
+        {
+            IntPtr valuePtr = Marshal.StringToHGlobalAuto(value);
+            var nativeStatus = NativeMethods.OrtUpdateMIGraphXProviderOptionsWithValue(handle, key, valuePtr);
+            Marshal.FreeHGlobal(valuePtr);
+            NativeApiStatus.VerifySuccess(nativeStatus);
+        }
 
         #endregion
 
