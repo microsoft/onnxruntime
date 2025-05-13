@@ -209,7 +209,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
     {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
     {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
     {"MultiHeadAttention", {"add", "cast", "concat", "constant", "div", "matmul", "reshape", "softmax", "transpose"}},
-    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
+    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "slice", "split"}},
     {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
     {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
 };
