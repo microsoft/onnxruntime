@@ -705,7 +705,7 @@ Status FlashAttentionDecodeSplitVxProgram::GenerateShaderCode(ShaderHelper& shad
                                     << "const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
                                     << "const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n";
   shader.AdditionalImplementation() << R"HELPER_FN(
-var<workgroup> tile_qk: array<f32, tile_size>;
+var<workgroup> tile_qk: array<present_value_element_t, tile_size>;
 var<workgroup> tile_output: array<present_value_value_t, head_size_vec>;
 var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, sub_tile_count>;
 
@@ -723,25 +723,25 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
     let present_offset = u32(head_idx / uniforms.n_reps) * uniforms.head_size_vec * uniforms.present_sequence_length;
 
     // Calculate the global max and sum in qk.
-    var g_max = f32(-3.402823e+38f);
-    var g_sum = f32(0);
     if (head_idx < uniforms.num_heads)
     {
-    for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
-    {
-      let meta_offset = head_idx * uniforms.num_total_seq_length_tile + i;
-      g_max = max(g_max, metadata[meta_offset].x);
-    }
-    for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
-    {
-      let meta_offset = head_idx * uniforms.num_total_seq_length_tile + i;
-      let m_value = metadata[meta_offset];
-      g_sum += exp(m_value.x - g_max) * m_value.y;
-    }
+      var g_max = f32(-3.402823e+38f);
+      var g_sum = f32(0);
+      for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
+      {
+        let meta_offset = head_idx * uniforms.num_total_seq_length_tile + i;
+        g_max = max(g_max, metadata[meta_offset].x);
+      }
+      for (var i = 0u; i < uniforms.num_total_seq_length_tile; i++)
+      {
+        let meta_offset = head_idx * uniforms.num_total_seq_length_tile + i;
+        let m_value = metadata[meta_offset];
+        g_sum += exp(m_value.x - g_max) * m_value.y;
+      }
 
-    if (total_seq_offset + local_idx < total_sequence_length) {
-       tile_qk[local_idx] = exp(qk[head_idx * total_sequence_length + total_seq_offset + local_idx] - g_max) / g_sum;
-    }
+      if (total_seq_offset + local_idx < total_sequence_length) {
+        tile_qk[local_idx] = present_value_element_t(exp(qk[head_idx * total_sequence_length + total_seq_offset + local_idx] - g_max) / g_sum);
+      }
     }
     for (var k: u32 = 0u; k < uniforms.head_size_vec; k += tile_size_k_vec) {
       var value = present_value_value_t(0);
@@ -751,7 +751,7 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
       if (k + local_col < uniforms.head_size_vec) {
         for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
           if (total_seq_offset + row_offset + local_row < total_sequence_length) {
-            value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col] * present_value_element_t(tile_qk[row_offset + local_row]);
+            value += present_value[present_offset + (total_seq_offset + row_offset + local_row) * uniforms.head_size_vec + k + local_col] * tile_qk[row_offset + local_row];
           }
         }
       }
