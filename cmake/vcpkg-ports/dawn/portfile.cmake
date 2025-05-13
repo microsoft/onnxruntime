@@ -16,7 +16,7 @@
 # The following function call ensures BUILD_SHARED_LIBS is set to OFF.
 vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 
-if(CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+if(VCPKG_TARGET_IS_EMSCRIPTEN)
     message(FATAL_ERROR "This port is currently not supported on Emscripten.")
 endif()
 
@@ -32,39 +32,43 @@ list(APPEND onnxruntime_vcpkg_DAWN_OPTIONS
 
     -DDAWN_BUILD_SAMPLES=OFF
     -DDAWN_ENABLE_NULL=OFF
-
     -DDAWN_BUILD_TESTS=OFF
-
-    -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON
-    -DDAWN_ENABLE_INSTALL=ON
-
-    -DDAWN_ENABLE_DESKTOP_GL=OFF
-    -DDAWN_ENABLE_OPENGLES=OFF
-    -DDAWN_SUPPORTS_GLFW_FOR_WINDOWING=OFF
-    -DDAWN_USE_GLFW=OFF
-    -DDAWN_USE_WINDOWS_UI=OFF
-    -DTINT_BUILD_GLSL_WRITER=OFF
-    -DTINT_BUILD_GLSL_VALIDATOR=OFF
-
-    -DDAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG=OFF
-    -DDAWN_USE_X11=OFF
-
-    -DTINT_BUILD_TESTS=OFF
-    -DTINT_BUILD_CMD_TOOLS=OFF
-    -DTINT_BUILD_IR_BINARY=OFF
-    -DTINT_BUILD_SPV_READER=OFF
-    -DTINT_BUILD_WGSL_WRITER=ON
-
-    -DDAWN_ENABLE_SPIRV_VALIDATION=OFF
-
-    # explicitly set the jinja2 and markupsafe directories to empty strings
-    # when they are empty, the python script will import them from the system
-    #
-    # pip install jinja2 markupsafe
-    #
-    -DDAWN_JINJA2_DIR=
-    -DDAWN_MARKUPSAFE_DIR=
 )
+
+if (NOT VCPKG_TARGET_IS_EMSCRIPTEN)
+    list(APPEND onnxruntime_vcpkg_DAWN_OPTIONS
+
+        -DDAWN_BUILD_MONOLITHIC_LIBRARY=ON
+        -DDAWN_ENABLE_INSTALL=ON
+
+        -DDAWN_ENABLE_DESKTOP_GL=OFF
+        -DDAWN_ENABLE_OPENGLES=OFF
+        -DDAWN_SUPPORTS_GLFW_FOR_WINDOWING=OFF
+        -DDAWN_USE_GLFW=OFF
+        -DDAWN_USE_WINDOWS_UI=OFF
+        -DTINT_BUILD_GLSL_WRITER=OFF
+        -DTINT_BUILD_GLSL_VALIDATOR=OFF
+
+        -DDAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG=OFF
+        -DDAWN_USE_X11=OFF
+
+        -DTINT_BUILD_TESTS=OFF
+        -DTINT_BUILD_CMD_TOOLS=OFF
+        -DTINT_BUILD_IR_BINARY=OFF
+        -DTINT_BUILD_SPV_READER=OFF
+        -DTINT_BUILD_WGSL_WRITER=ON
+
+        -DDAWN_ENABLE_SPIRV_VALIDATION=OFF
+
+        # explicitly set the jinja2 and markupsafe directories to empty strings
+        # when they are empty, the python script will import them from the system
+        #
+        # pip install jinja2 markupsafe
+        #
+        -DDAWN_JINJA2_DIR=
+        -DDAWN_MARKUPSAFE_DIR=
+    )
+endif()
 
 if(VCPKG_TARGET_IS_WINDOWS)
     # feature detection on Windows
