@@ -23,7 +23,6 @@ limitations under the License.
 #include "layer_norm.cuh"
 #include "embed_layer_norm_impl.h"
 #include <cuda_fp16.h>
-#include <cuda/std/algorithm>
 
 using namespace onnxruntime::cuda;
 using namespace cub;
