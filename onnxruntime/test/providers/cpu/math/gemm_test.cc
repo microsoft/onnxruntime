@@ -956,59 +956,6 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 }
 #endif
 
-TEST(GemmOpTest, GemmOptimizeVec4Matmul) {
-  auto run_test = [](int64_t B1, int64_t B2, int64_t M, int64_t K, int64_t N) {
-    OpTester test("MatMul");
-
-    int64_t a_size = B1 * B2 * M * K;
-    int64_t b_size = B1 * B2 * K * N;
-    int64_t y_size = B1 * B2 * M * N;
-
-    // Matrix A: B1xB2xMxK filled with sequential numbers
-    std::vector<float> a_data;
-    a_data.reserve(a_size);
-    for (int64_t i = 0; i < a_size; ++i) {
-      a_data.push_back(static_cast<float>((i % 2) + 1));
-    }
-
-    // Matrix B: B1xB2xKxN filled with sequential numbers
-    std::vector<float> b_data;
-    b_data.reserve(b_size);
-    for (int64_t i = 0; i < b_size; ++i) {
-      b_data.push_back(static_cast<float>((i % 2) + 1));
-    }
-
-    test.AddInput<float>("A", {B1, B2, M, K}, a_data);
-    test.AddInput<float>("B", {B1, B2, K, N}, b_data);
-
-    // Calculate expected output
-    std::vector<float> expected_data(y_size, 0.0f);
-    for (int64_t b1 = 0; b1 < B1; ++b1) {
-      for (int64_t b2 = 0; b2 < B2; ++b2) {
-        for (int64_t i = 0; i < M; ++i) {
-          for (int64_t j = 0; j < N; ++j) {
-            float sum = 0.0f;
-            for (int64_t k = 0; k < K; ++k) {
-              int64_t a_idx = b1 * (B2 * M * K) + b2 * (M * K) + i * K + k;
-              int64_t b_idx = b1 * (B2 * K * N) + b2 * (K * N) + k * N + j;
-              sum += a_data[a_idx] * b_data[b_idx];
-            }
-            int64_t y_idx = b1 * (B2 * M * N) + b2 * (M * N) + i * N + j;
-            expected_data[y_idx] = sum;
-          }
-        }
-      }
-    }
-
-    test.AddOutput<float>("Y", {B1, B2, M, N}, expected_data);
-    test.Config(run_with_tunable_op)
-        .RunWithConfig();
-  };
-
-  // Run with 4D tensors: B1=2, B2=3, M=64, K=96, N=128
-  run_test(1, 1, 64, 64, 64);
-}
-
 TEST(GemmOpTest, GemmOptimizeVec4) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");

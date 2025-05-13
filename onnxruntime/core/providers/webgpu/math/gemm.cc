@@ -136,7 +136,8 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
       program.AddInput({C, ProgramTensorMetadataDependency::Rank});
     }
 
-    program.AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
+    program.CacheHint(alpha_, transA_, transB_)
+        .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
         .AddUniformVariables({
@@ -147,6 +148,7 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
             {alpha_},                              // alpha
             {beta_}                                // beta
         });
+    return context.RunProgram(program);
   }
 
   return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
