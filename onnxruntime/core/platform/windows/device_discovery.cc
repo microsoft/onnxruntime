@@ -279,7 +279,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                              nullptr, &type,
                              reinterpret_cast<LPBYTE>(driver_version),
                              &str_size) == ERROR_SUCCESS &&
-                             type == REG_SZ) {
+            type == REG_SZ) {
           // Ensure proper null termination of a string retrieved from the Windows Registry API.
           driver_version[(str_size / sizeof(wchar_t)) - 1] = 0;
           driver_version_str = driver_version;
