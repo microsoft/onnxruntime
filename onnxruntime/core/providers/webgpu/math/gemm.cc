@@ -140,14 +140,12 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
         .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
         .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
         .SetWorkgroupSize(WORKGROUP_SIZE)
-        .AddUniformVariables({
-            {static_cast<uint32_t>(output_size)},  // output_size
-            {static_cast<uint32_t>(M)},            // M
-            {static_cast<uint32_t>(N)},            // N
-            {static_cast<uint32_t>(K)},            // K
-            {alpha_},                              // alpha
-            {beta_}                                // beta
-        });
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                              {static_cast<uint32_t>(M)},
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {alpha_},
+                              {beta_}});
     return context.RunProgram(program);
   }
 
