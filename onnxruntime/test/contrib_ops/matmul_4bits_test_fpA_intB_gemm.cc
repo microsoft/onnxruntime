@@ -59,74 +59,78 @@ struct TestOptions8Bits {
 };
 
 enum class DType {
-    Float32,
-    Float16,
-    UInt8,
-    Int8
+  Float32,
+  Float16,
+  UInt8,
+  Int8
 };
 
 struct TensorInfo {
-    DType dtype;
-    std::vector<int> shape;
+  DType dtype;
+  std::vector<int> shape;
 
-    std::vector<int64_t> dims() const {
-        std::vector<int64_t> dims(shape.size());
-        std::transform(shape.begin(), shape.end(), dims.begin(), [](int dim) { return static_cast<int64_t>(dim); });
-        return dims;
-    }
+  std::vector<int64_t> dims() const {
+    std::vector<int64_t> dims(shape.size());
+    std::transform(shape.begin(), shape.end(), dims.begin(), [](int dim) { return static_cast<int64_t>(dim); });
+    return dims;
+  }
 
-    size_t size() const {return std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<size_t>());}
+  size_t size() const { return std::accumulate(shape.begin(), shape.end(), 1, std::multiplies<size_t>()); }
 };
 
 template <typename T, typename T2>
 std::vector<T2> parse_tensor_data(const std::string& filename, TensorInfo& info_out) {
-    std::ifstream file(filename);
-    if (!file) throw std::runtime_error("Failed to open file");
+  std::ifstream file(filename);
+  if (!file) throw std::runtime_error("Failed to open file");
 
-    std::string dtype_line, shape_line;
-    std::getline(file, dtype_line);
-    std::getline(file, shape_line);
+  std::string dtype_line, shape_line;
+  std::getline(file, dtype_line);
+  std::getline(file, shape_line);
 
-    // Parse dtype
-    if (dtype_line == "float32") info_out.dtype = DType::Float32;
-    else if (dtype_line == "float16") info_out.dtype = DType::Float16;
-    else if (dtype_line == "uint8") info_out.dtype = DType::UInt8;
-    else if (dtype_line == "int8") info_out.dtype = DType::Int8;
-    else throw std::runtime_error("Unsupported dtype");
+  // Parse dtype
+  if (dtype_line == "float32")
+    info_out.dtype = DType::Float32;
+  else if (dtype_line == "float16")
+    info_out.dtype = DType::Float16;
+  else if (dtype_line == "uint8")
+    info_out.dtype = DType::UInt8;
+  else if (dtype_line == "int8")
+    info_out.dtype = DType::Int8;
+  else
+    throw std::runtime_error("Unsupported dtype");
 
-    // Parse shape
-    std::istringstream shape_stream(shape_line);
-    int ndim;
-    shape_stream >> ndim;
-    info_out.shape.resize(ndim);
-    for (int i = 0; i < ndim; ++i)
-        shape_stream >> info_out.shape[i];
+  // Parse shape
+  std::istringstream shape_stream(shape_line);
+  int ndim;
+  shape_stream >> ndim;
+  info_out.shape.resize(ndim);
+  for (int i = 0; i < ndim; ++i)
+    shape_stream >> info_out.shape[i];
 
-    // Read data
-    std::vector<T> values;
-    std::string line;
-    while (std::getline(file, line)) {
-        std::istringstream line_stream(line);
-        T val;
-        while (line_stream >> val) {
-            values.push_back(val);
-        }
+  // Read data
+  std::vector<T> values;
+  std::string line;
+  while (std::getline(file, line)) {
+    std::istringstream line_stream(line);
+    T val;
+    while (line_stream >> val) {
+      values.push_back(val);
     }
+  }
 
-    if (values.size() != info_out.size())
-        throw std::runtime_error("Data size does not match shape");
+  if (values.size() != info_out.size())
+    throw std::runtime_error("Data size does not match shape");
 
-    if constexpr (std::is_same<T, T2>::value) {
-        return values;
-    } else {
-      std::vector<T2> values_output;
-      values_output.resize(values.size());
-      std::transform(values.begin(), values.end(), values_output.begin(), [](T val) { return static_cast<T2>(val); });
+  if constexpr (std::is_same<T, T2>::value) {
+    return values;
+  } else {
+    std::vector<T2> values_output;
+    values_output.resize(values.size());
+    std::transform(values.begin(), values.end(), values_output.begin(), [](T val) { return static_cast<T2>(val); });
 
-      return values_output;
-    }
+    return values_output;
+  }
 }
-
 
 [[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions8Bits& opts) {
   return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
@@ -231,7 +235,7 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
     } else {
       test.AddInput<T1>("zero_points", tensor_info_matmulnbits_zp.dims(), FloatsToMLFloat16s(matmulnbits_zp), true);
     }
-  } else { // zero point is optional
+  } else {  // zero point is optional
     test.AddOptionalInputEdge<uint8_t>();
   }
 
@@ -276,7 +280,6 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
 #endif
 }
 
-
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
 void TestMatMul8BitsTyped() {
   TestOptions8Bits base_opts{};
@@ -300,11 +303,10 @@ void TestMatMul8BitsTyped() {
 }
 }  // namespace
 
-
 TEST(MatMulNBits, Fp16_int4_gemm) {
   // TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
   // TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();
-  
+
   TestMatMul8BitsTyped<MLFloat16, 2, 64, 128, 64, 4>();
 
   // TestMatMul8BitsTyped<MLFloat16, 2, 64, 64, 64, 4>();

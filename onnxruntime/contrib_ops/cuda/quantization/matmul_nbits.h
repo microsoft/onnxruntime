@@ -21,8 +21,7 @@ using namespace onnxruntime::cuda;
 // using ort_llm::kernels::weight_only::GemmIdCore;
 // using ort_llm::kernels::weight_only::GemmDims;
 // using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
-//using WeightOnlyGemmRunnerPtr=std::shared_ptr<CutlassFpAIntBGemmRunnerInterface>;
-
+// using WeightOnlyGemmRunnerPtr=std::shared_ptr<CutlassFpAIntBGemmRunnerInterface>;
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -36,14 +35,13 @@ class MatMulNBits final : public CudaKernel {
     constexpr size_t kInputIndexScale = 2;
     constexpr size_t kInputIndexZeroPoints = 3;
     constexpr size_t kInputIndexGroupIndex = 4;
-    //constexpr size_t kInputIndexBias = 5;
-
+    // constexpr size_t kInputIndexBias = 5;
 
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    //has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
+    // has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
 
-    if (has_zero_points_){
+    if (has_zero_points_) {
       int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
       int32_t scale_type = info.node().InputDefs()[kInputIndexScale]->TypeAsProto()->tensor_type().elem_type();
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
@@ -86,7 +84,6 @@ class MatMulNBits final : public CudaKernel {
         gemmProfiler_->profileTactics(weightOnlyGemmRunner_, ort_llm::nvinfer1::DataType::kHALF, dims, gemmId_, hasWeightOnlyCudaKernel);
       }
     }*/
-
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
@@ -99,7 +96,7 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
-  //bool has_bias_{false};
+  // bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
   bool use_fpA_intB_gemm_{false};

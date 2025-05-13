@@ -12,10 +12,9 @@
 #include "contrib_ops/cpu/utils/dump_tensor.h"
 #include "matmul_nbits.cuh"
 #include "dequantize_blockwise.cuh"
-//#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+// #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
 #include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
-
 
 namespace onnxruntime {
 namespace contrib {
@@ -86,14 +85,14 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   auto& device_prop = this->GetDeviceProp();
   int sm = device_prop.major * 10 + device_prop.minor;
 
-  int m =  SafeInt<int>(helper.M());
-  int n =  SafeInt<int>(helper.N());
-  int k =  SafeInt<int>(helper.K());
+  int m = SafeInt<int>(helper.M());
+  int n = SafeInt<int>(helper.N());
+  int k = SafeInt<int>(helper.K());
 
   DUMP_TENSOR_INIT();
 
   if (use_fpA_intB_gemm_ && m <= 16 && n % (nbits_ == 8 ? 32 : 64) == 0 && k % 64 == 0) {
-    #if DUMP_TENSOR_LEVEL > 0
+#if DUMP_TENSOR_LEVEL > 0
     DUMP_TENSOR_D("A", *a);
     DUMP_TENSOR_D("B", *b);
     DUMP_TENSOR_D("scales", *scales);
@@ -106,14 +105,14 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (bias != nullptr) {
       DUMP_TENSOR_D("bias", *bias);
     }
-  #endif
+#endif
 
     fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
-                                                  ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
-                                                  : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
+                                                     ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
+                                                     : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
     if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
       size_t k_blocks = (k + block_size_ - 1) / block_size_;
-      size_t scale_bytes = n * k_blocks  * sizeof(T);
+      size_t scale_bytes = n * k_blocks * sizeof(T);
 
       IAllocatorUniquePtr<void> scale_space = this->GetScratchBuffer<void>(scale_bytes, ctx->GetComputeStream());
       CudaT* transposed_scales = reinterpret_cast<CudaT*>(scale_space.get());
@@ -143,12 +142,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       if (nbits_ == 4) {
         // transpose the weight and add default zp.
         fpA_intB_gemm::unpack_uint4_transposed_to_int8_cuda(
-          stream,
-          packed_transposed_weight,
-          transposed_weight,
-          blob_data,
-          n,
-          k);
+            stream,
+            packed_transposed_weight,
+            transposed_weight,
+            blob_data,
+            n,
+            k);
         CUDA_CALL_THROW(cudaStreamSynchronize(stream));
         DUMP_TENSOR_D("transposed_weight in GPU", transposed_weight, k, n);
         DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n / 2);
@@ -172,45 +171,45 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           }
           printf("\n");
         }
-  #endif
+#endif
       }
 
-      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k  / (8 / nbits_));
+      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
       bool force_interleave = false;
       ort_llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
-        reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
-        reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
-        {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type,
-        force_interleave);
+          reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
+          reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
+          {static_cast<size_t>(k), static_cast<size_t>(n)},
+          quant_type,
+          force_interleave);
 
-      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_),  cudaMemcpyHostToDevice));
+      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
       CUDA_CALL_THROW(cudaDeviceSynchronize());
 
       DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n / 2);
 
       constexpr float kDefaultZeroPoint4Bit = 8.0f;
       constexpr float kDefaultZeroPoint8Bit = 128.0f;
-      const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit: kDefaultZeroPoint8Bit;
-      if (zero_points != nullptr && !zero_points->IsDataType<T>()) { // zero point is uint8_t type
+      const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
+      if (zero_points != nullptr && !zero_points->IsDataType<T>()) {  // zero point is uint8_t type
         if (nbits_ == 4) {
           fpA_intB_gemm::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
-            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
-            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+              transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
         } else {
           fpA_intB_gemm::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
-            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
-            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+              transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
         }
-      } else { // zero point is not uint8_t type
+      } else {  // zero point is not uint8_t type
         fpA_intB_gemm::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
-          stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
-          transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
+            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
       }
 
       DUMP_STRING("k_blocks=", k_blocks, " n=", n);
       DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
-      if (scaled_zero_points != nullptr){
+      if (scaled_zero_points != nullptr) {
         DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
       }
 
@@ -225,7 +224,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       DUMP_TENSOR_D("out_data", out_data, m, n);
       return Status::OK();
     } else {
-      DUMP_STRING("Not supported by fpA_intB_gemm. sm=", sm,  " nbits=", nbits_, " block_size=", block_size_);
+      DUMP_STRING("Not supported by fpA_intB_gemm. sm=", sm, " nbits=", nbits_, " block_size=", block_size_);
     }
 
     /*

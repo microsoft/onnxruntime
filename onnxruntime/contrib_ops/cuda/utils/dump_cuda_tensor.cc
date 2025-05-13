@@ -236,7 +236,6 @@ void CudaTensorConsoleDumper::Print(const char* name, const size_t* tensor, int 
     DumpGpuTensor<size_t>(name, tensor, dim0, dim1, true);
 }
 
-
 void CudaTensorConsoleDumper::Print(const char* name, const int8_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
     DumpGpuTensor<int8_t>(name, tensor, dim0, dim1, true);
@@ -266,7 +265,6 @@ void CudaTensorConsoleDumper::Print(const char* name, const uint8_t* tensor, int
   if (is_enabled_)
     DumpGpuTensor<uint8_t>(name, tensor, dim0, dim1, dim2, dim3, true);
 }
-
 
 void CudaTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
   if (is_enabled_)
