@@ -1231,8 +1231,42 @@ def generate_build_tree(
             vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
 
             if args.build_wasm:
-                env["EMSDK"] = emsdk_dir
-                vcpkg_keep_env_vars += ["EMSDK", "EMSDK_NODE", "EMSDK_PYTHON"]
+                emsdk_vars = ["EMSDK", "EMSDK_NODE", "EMSDK_PYTHON"]
+
+                # If environment variables 'EMSDK' is not set, run emsdk_env to set them
+                if "EMSDK" not in os.environ:
+                    if is_windows():
+                        # Run `cmd /s /c call .\\emsdk_env && set` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["cmd", "/s", "/c", "call .\\emsdk_env && set"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+                    else:
+                        # Run `sh -c ". ./emsdk_env.sh && printenv"` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["sh", "-c", ". ./emsdk_env.sh && printenv"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+
+                    # check for EMSDK environment variables and set them in the environment
+                    for line in emsdk_env.stdout.decode().splitlines():
+                        if "=" in line:
+                            key, value = line.rstrip().split("=", 1)
+                            if key in emsdk_vars:
+                                os.environ[key] = value
+
+                for var in emsdk_vars:
+                    if var in os.environ:
+                        env[var] = os.environ[var]
+                    elif var == "EMSDK":
+                        # EMSDK must be set, but EMSDK_NODE and EMSDK_PYTHON are optional
+                        raise BuildError(
+                            "EMSDK environment variable is not set correctly. Please run `emsdk_env` to set them."
+                        )
+
+                vcpkg_keep_env_vars += emsdk_vars
 
             #
             # Workaround for vcpkg failed to find the correct path of Python
