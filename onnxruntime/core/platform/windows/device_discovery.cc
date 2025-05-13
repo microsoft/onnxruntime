@@ -12,6 +12,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env.h"
 #include "core/session/abi_devices.h"
 
 //// For SetupApi info
@@ -56,6 +57,26 @@ struct DeviceInfo {
   std::unordered_map<std::wstring, std::wstring> metadata;
 };
 
+struct DriverInfo {
+  std::wstring driver_versions;
+  std::wstring driver_names;
+
+  void AddDevice(const std::wstring& driver_version, const std::wstring& driver_name) {
+    if (!driver_version.empty()) {
+      if (!driver_versions.empty()) {
+        driver_versions += L", ";
+      }
+      driver_versions += driver_version;
+    }
+    if (!driver_name.empty()) {
+      if (!driver_names.empty()) {
+        driver_names += L", ";
+      }
+      driver_names += driver_name;
+    }
+  }
+};
+
 uint64_t GetDeviceKey(uint32_t vendor_id, uint32_t device_id) {
   return (uint64_t(vendor_id) << 32) | device_id;
 }
@@ -68,6 +89,20 @@ uint64_t GetLuidKey(LUID luid) {
   return (uint64_t(luid.HighPart) << 32) | luid.LowPart;
 }
 
+// Converts a wide string (up to 4 characters) representing a hardware ID component (e.g., "ABCD" from "VEN_ABCD")
+// into a uint32_t. The conversion is done in a little-endian manner, meaning the first character
+// of the string becomes the least significant byte of the integer, and the fourth character
+// becomes the most significant byte.
+uint32_t WStringToUint32Id(const std::wstring& vendor_name) {
+  uint32_t vendor_id = 0;
+  for (size_t i = 0; i < 4 && i < vendor_name.size(); ++i) {
+    // For little-endian, place each character at the appropriate byte position
+    // First character goes into lowest byte, last character into highest byte
+    vendor_id |= static_cast<unsigned char>(vendor_name[i] & 0xFF) << (i * 8);
+  }
+  return vendor_id;
+}
+
 // returns info for display and processor entries. key is (vendor_id << 32 | device_id)
 // npus: (vendor_id << 32 | device_id) for devices we think are NPUs from DXCORE
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus) {
@@ -75,11 +110,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
   const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
   const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
+  const GUID local_GUID_DEVCLASS_COMPUTEACCELERATOR = {0xf01a9d53, 0x3ff6, 0x48d2, 0x9f, 0x97, 0xc8, 0xa7, 0x00, 0x4b, 0xe1, 0x0c};
+
+  std::unordered_map<OrtHardwareDeviceType, DriverInfo> device_version_info;
 
   std::array<GUID, 3> guids = {
       GUID_DEVCLASS_DISPLAY,
       GUID_DEVCLASS_PROCESSOR,
-      GUID_DEVCLASS_SYSTEM,
+      local_GUID_DEVCLASS_COMPUTEACCELERATOR,
   };
 
   for (auto guid : guids) {
@@ -103,27 +141,32 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_HARDWAREID, &regDataType,
                                             (PBYTE)buffer, sizeof(buffer), &size)) {
+        uint32_t vendor_id = 0;
+        uint32_t device_id = 0;
+
         // PCI\VEN_xxxx&DEV_yyyy&...
         // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
         const auto get_id = [](const std::wstring& hardware_id, const std::wstring& prefix) -> uint32_t {
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
             auto id = hardware_id.substr(idx + prefix.size(), 4);
-            if (std::all_of(id.begin(), id.end(), iswxdigit)) {
-              return std::stoul(id, nullptr, 16);
+            if (id.size() == 4) {
+              // DXCore reports vendor and device IDs as 32-bit integer representations of the ASCII string.
+              return WStringToUint32Id(id);
             }
           }
 
           return 0;
         };
 
-        uint32_t vendor_id = get_id(buffer, L"VEN_");
-        uint32_t device_id = get_id(buffer, L"DEV_");
-
         // Processor ID should come from CPUID mapping.
-        if (vendor_id == 0 && guid == GUID_DEVCLASS_PROCESSOR) {
+        if (guid == GUID_DEVCLASS_PROCESSOR) {
           vendor_id = CPUIDInfo::GetCPUIDInfo().GetCPUVendorId();
+        } else {
+          vendor_id = get_id(buffer, L"VEN_");
         }
+
+        device_id = get_id(buffer, L"DEV_");
 
         // Won't always have a vendor id from an ACPI entry.  ACPI is not defined for this purpose.
         if (vendor_id == 0 && device_id == 0) {
@@ -183,9 +226,9 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           entry->type = OrtHardwareDeviceType_GPU;
         } else if (guid == GUID_DEVCLASS_PROCESSOR) {
           entry->type = is_npu ? OrtHardwareDeviceType_NPU : OrtHardwareDeviceType_CPU;
-        } else if (guid == GUID_DEVCLASS_SYSTEM) {
+        } else if (guid == local_GUID_DEVCLASS_COMPUTEACCELERATOR) {
           if (!is_npu) {
-            // we're only iterating system devices to look for NPUs so drop anything else
+            // we're only iterating compute accelerator devices to look for NPUs so drop anything else
             device_info.erase(key);
             continue;
           }
@@ -212,9 +255,50 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           entry->vendor = std::wstring(buffer, wcslen(buffer));
         }
       }
+
+      // Generate telemetry event to log the GPU and NPU driver name and version.
+      if (entry->type == OrtHardwareDeviceType_CPU) {
+        // Skip processor entries for telemetry.
+        continue;
+      }
+
+      // Open the device's driver registry key
+      HKEY dev_reg_key = SetupDiOpenDevRegKey(devInfo, &devData,
+                                              DICS_FLAG_GLOBAL,
+                                              0,
+                                              DIREG_DRV,
+                                              KEY_READ);
+
+      if (dev_reg_key != INVALID_HANDLE_VALUE) {
+        // Query the "DriverVersion" string
+        std::wstring driver_version_str;
+        wchar_t driver_version[256];
+        DWORD str_size = sizeof(driver_version);
+        DWORD type = 0;
+        if (RegQueryValueExW(dev_reg_key, L"DriverVersion",
+                             nullptr, &type,
+                             reinterpret_cast<LPBYTE>(driver_version),
+                             &str_size) == ERROR_SUCCESS &&
+            type == REG_SZ) {
+          // Ensure proper null termination of a string retrieved from the Windows Registry API.
+          driver_version[(str_size / sizeof(wchar_t)) - 1] = 0;
+          driver_version_str = driver_version;
+        }
+        RegCloseKey(dev_reg_key);
+        device_version_info[entry->type].AddDevice(driver_version_str, entry->description);
+      }
     }
 
     SetupDiDestroyDeviceInfoList(devInfo);
+  }
+
+  // Log driver information for GPUs and NPUs
+  const Env& env = Env::Default();
+  for (const auto& [type, info] : device_version_info) {
+    if (!info.driver_versions.empty() || !info.driver_names.empty()) {
+      const std::string_view driver_class = (type == OrtHardwareDeviceType_GPU) ? "GPU" : "NPU";
+      env.GetTelemetryProvider().LogDriverInfoEvent(driver_class, info.driver_names, info.driver_versions);
+    }
   }
 
   return device_info;

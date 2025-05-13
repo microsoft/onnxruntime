@@ -772,7 +772,7 @@ struct KeyValuePairsImpl : Ort::detail::Base<T> {
 // Const object holder that does not own the underlying object
 using ConstKeyValuePairs = detail::KeyValuePairsImpl<Ort::detail::Unowned<const OrtKeyValuePairs>>;
 
-/** \brief Wrapper around ::OrtKeyValuePair */
+/** \brief Wrapper around ::OrtKeyValuePairs */
 struct KeyValuePairs : detail::KeyValuePairsImpl<OrtKeyValuePairs> {
   explicit KeyValuePairs(std::nullptr_t) {}  ///< No instance is created
   /// Take ownership of a pointer created by C API
@@ -1737,6 +1737,18 @@ struct ConstValueImpl : Base<T> {
   /// <param name="element_index"></param>
   /// <returns>byte length for the specified string element</returns>
   size_t GetStringTensorElementLength(size_t element_index) const;
+
+  /// <summary>
+  /// Returns the total size of the tensor data in bytes.
+  /// </summary>
+  /// <returns>The total size of the tensor data in bytes</returns>
+  /// <exception>Throws an exception if the OrtValue does not contain a tensor or
+  /// if it contains a tensor that contains strings</exception>
+  /// <remarks>
+  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  ///
+  /// </remarks>
+  size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
