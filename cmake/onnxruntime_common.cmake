@@ -102,10 +102,12 @@ if(WIN32)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
 elseif(NOT APPLE)
-   set_source_files_properties(
-        ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
-        PROPERTIES COMPILE_FLAGS "-mwaitpkg"
-   )
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64" AND NOT ANDROID)
+    set_source_files_properties(
+      ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+      PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+    )
+  endif()
 endif()
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
