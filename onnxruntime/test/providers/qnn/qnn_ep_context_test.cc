@@ -560,6 +560,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
 // Tests compiling an OrtModel created using the OrtModelEditor API.
 TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputFile) {
   std::vector<std::unique_ptr<std::vector<float>>> weights;  // Model weights must remain valid through inference
+                                                             // if we want to avoid a copy.
 
   // Create OrtModel with a Gemm. X input is 3x4, Y initializer is 4x8, Z output is 3x8.
   Ort::Graph graph;
@@ -590,7 +591,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputFile) {
 
   auto mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
   auto y_tensor = Ort::Value::CreateTensor(mem_info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
-  graph.AddInitializer("Y", y_tensor, /*data is external*/ false);  // TODO: external data does not serialize to proto (error)
+  graph.AddInitializer("Y", y_tensor, /*data is external, avoid copy*/ true);
 
   std::vector<Ort::Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}, {onnxruntime::kMSDomain, 1}};
   Ort::Model model(opsets);

@@ -179,11 +179,18 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
   unpacked_tensor.resize(tensor_byte_size);
-  ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
-      external_file_path.c_str(),
-      file_offset,
-      tensor_byte_size,
-      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+  if (external_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    // the value in location is the memory address of the data
+    const void* ext_data_buf = reinterpret_cast<const void*>(file_offset);
+    const size_t ext_data_len = tensor_byte_size;
+    std::memcpy(unpacked_tensor.data(), ext_data_buf, ext_data_len);
+  } else {
+    ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
+        external_file_path.c_str(),
+        file_offset,
+        tensor_byte_size,
+        gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+  }
 
   return Status::OK();
 }
