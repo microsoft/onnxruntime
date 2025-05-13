@@ -246,66 +246,139 @@ void launch_scaled_zero_point_kernel<true, float, uint8_t>(
     float* scaled_zero_point,
     int n, int k, float default_zero_point);
 
-// CUDA kernel to unpack int4 packed transposed tensor to int8
-__global__ void unpack_int4_transposed_to_int8_kernel(
+// CUDA kernel to unpack int4 to int8 and transposed tensor
+__global__ void unpack_uint4_transposed_to_int8_kernel(
     const unsigned char* __restrict__ packed_weight,
-    signed char* __restrict__ unpacked_weight,
+    signed char* __restrict__ transposed_weight,
+    signed char* __restrict__ packed_transposed_weight,
     int total_packed_elements,
-    int input_last_dim_size,  // This is k/2
-    int output_last_dim_size  // This is n
-)
-{
-    int flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+    int n,
+    int k) {
+  int flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
 
-    if (flat_idx < total_packed_elements) {
-        unsigned char packed_data = packed_weight[flat_idx];
+  if (flat_idx < total_packed_elements) {
+    unsigned char packed_data = packed_weight[flat_idx];
 
-        // Extract the two int4 values
-        constexpr signed char default_zero_point = 8;
-        signed char elt_0 = (signed char)(packed_data & 0xff) - default_zero_point;  // Sign extension for lower 4 bits
-        signed char elt_1 = (signed char)(packed_data >> 4) - default_zero_point;    // Sign extension for upper 4 bits
+    // Extract the two int4 values
+    constexpr signed char default_zero_point = 8;
+    signed char elt_0 = (signed char)(packed_data & 0x0f) - default_zero_point;  // Sign extension for lower 4 bits
+    signed char elt_1 = (signed char)(packed_data >> 4) - default_zero_point;    // Sign extension for upper 4 bits
 
-        // Calculate the corresponding indices in the input (n, k/2) tensor
-        // flat_idx maps to (c, r) in (n, k/2), where c is the row, r is the column
-        int c = flat_idx / input_last_dim_size; // Corresponds to 'n' dimension
-        int r = flat_idx % input_last_dim_size; // Corresponds to 'k/2' dimension
+    // Calculate the corresponding indices in the input (n, k/2) tensor
+    // flat_idx maps to (c, r) in (n, k/2), where c is the row, r is the column
+    const int input_cols = k / 2;   // Number of columns in the input tensor
+    int c = flat_idx / input_cols;  // Corresponds to 'n' dimension
+    int r = flat_idx % input_cols;  // Corresponds to 'k/2' dimension
 
-        // The unpacked values go to (k, n) tensor at indices (2*i, j) and (2*i+1, j)
-        // In our mapping from (n, k/2) input to (k, n) output:
-        // i is the column in k/2 dimension of input -> 'r' in our kernel code
-        // j is the row in n dimension of input -> 'c' in our kernel code
-        // So, elt_0 goes to (2*r, c) and elt_1 goes to (2*r+1, c) in the (k, n) output.
+    int out_row_0 = 2 * r;
+    int out_row_1 = 2 * r + 1;
+    int out_col = c;
 
-        int out_row_0 = 2 * r;
-        int out_row_1 = 2 * r + 1;
-        int out_col = c;
+    // Calculate the corresponding indices in the output (k, n) tensor
+    int flat_out_idx_0 = out_row_0 * n + out_col;
+    int flat_out_idx_1 = out_row_1 * n + out_col;
 
-        // Calculate flattened indices in the output (k, n) tensor
-        // The total number of columns in the output (k, n) tensor is 'n', which is output_last_dim_size
-        int flat_out_idx_0 = out_row_0 * output_last_dim_size + out_col;
-        int flat_out_idx_1 = out_row_1 * output_last_dim_size + out_col;
+    transposed_weight[flat_out_idx_0] = elt_0;
+    transposed_weight[flat_out_idx_1] = elt_1;
 
-        // Store the unpacked values
-        unpacked_weight[flat_out_idx_0] = elt_0;
-        unpacked_weight[flat_out_idx_1] = elt_1;
+    int out_idx_0 = flat_out_idx_0 / 2;
+    int out_idx_1 = flat_out_idx_1 / 2;
+
+    // if ( flat_out_idx_0 >=2 && flat_out_idx_0 < 4) {
+    //     printf("out_row_0=%d, out_col=%d, flat_out_idx_0=%d, flat_out_idx_1=%d, packed_data=%d, elt_0=%d, elt_1=%d out_idx_0=%d out_idx_1=%d add_0=%d add_1=%d\n",
+    //            out_row_0, out_col, flat_out_idx_0, flat_out_idx_1, int(packed_data), int(elt_0), int(elt_1),
+    //            out_idx_0, out_idx_1,
+    //            int(flat_out_idx_0 % 2 == 0 ? elt_0 : elt_0 * 16),
+    //            int(flat_out_idx_1 % 2 == 0 ? elt_1 : elt_1 * 16));
+    // }
+
+    if (flat_out_idx_0 % 2 == 0) {
+      packed_transposed_weight[out_idx_0] += elt_0;
+    } else {
+      packed_transposed_weight[out_idx_0] += elt_0 * 16;
     }
+
+    if (flat_out_idx_1 % 2 == 0) { // lower 4 bits
+      packed_transposed_weight[out_idx_1] += elt_1;
+    } else { // higher 4 bits
+      packed_transposed_weight[out_idx_1] += elt_1 * 16;
+    }
+  }
 }
 
-void unpack_int4_packed_transposed_tensor_to_int8_cuda(
-    cudaStream_t stream, void* unpacked_weight, const void* weight, int n, int k) {
-    int input_n_dim = static_cast<int>(n);
-    int input_k_packed_dim = static_cast<int>(k + 1) /2;
 
-    int total_packed_elements = input_n_dim * input_k_packed_dim;
+// CUDA kernel to 4 packed transposed tensor to int8
+__global__ void unpack_uint4_transposed_to_int8_kernel(
+    const unsigned char* __restrict__ packed_weight,
+    signed char* __restrict__ transposed_weight,
+    signed char* __restrict__ packed_transposed_weight,
+    int n,
+    int k) {
+  int flat_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (flat_idx < n * k / 2) {
+    unsigned char packed_data = packed_weight[flat_idx];
+
+    // Extract the two int4 values
+    constexpr signed char default_zero_point = 8;
+    signed char elt_0 = (signed char)(packed_data & 0x0f) - default_zero_point;  // Sign extension for lower 4 bits
+    signed char elt_1 = (signed char)(packed_data >> 4) - default_zero_point;    // Sign extension for upper 4 bits
+
+    // Calculate the corresponding indices in the input (n, k/2) tensor
+    // flat_idx maps to (c, r) in (n, k/2), where c is the row, r is the column
+    const int input_cols = k / 2;   // Number of columns in the input tensor
+    int c = flat_idx / input_cols;  // Corresponds to 'n' dimension
+    int r = flat_idx % input_cols;  // Corresponds to 'k/2' dimension
+
+    int out_row_0 = 2 * r;
+    int out_row_1 = 2 * r + 1;
+    int out_col = c;
+
+    // Calculate the corresponding indices in the output (k, n) tensor
+    int flat_out_idx_0 = out_row_0 * n + out_col;
+    int flat_out_idx_1 = out_row_1 * n + out_col;
+
+    transposed_weight[flat_out_idx_0] = elt_0;
+    transposed_weight[flat_out_idx_1] = elt_1;
+ }
+}
+
+// CUDA kernel to 4 packed transposed tensor to int8
+__global__ void pack_uint4_to_int8_kernel(
+    signed char* __restrict__ transposed_weight,
+    signed char* __restrict__ packed_transposed_weight,
+    int n,
+    int k) {
+  int out_idx = blockIdx.x * blockDim.x + threadIdx.x;
+
+  if (out_idx < n * k / 2) {
+    int low_idx = 2 * out_idx;
+    int high_idx = low_idx + 1;
+    signed char elt_0 = transposed_weight[low_idx];
+    signed char elt_1 = transposed_weight[high_idx];
+    packed_transposed_weight[out_idx] = (unsigned char)((elt_0 & 0x0f) | ((elt_1 & 0x0f) << 4));
+  }
+}
+
+
+
+void unpack_uint4_transposed_to_int8_cuda(
+    cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight, const void* weight, int n, int k) {
     int threads_per_block = 256;
-    int num_blocks = (total_packed_elements + threads_per_block - 1) / threads_per_block;
+    int num_blocks = (n * k / 2 + threads_per_block - 1) / threads_per_block;
 
-    unpack_int4_transposed_to_int8_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+    unpack_uint4_transposed_to_int8_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
         (const unsigned char*)weight,
-        (signed char*)unpacked_weight,
-        total_packed_elements,
-        (int)input_k_packed_dim,
-        (int)input_n_dim);
+        (signed char*)transposed_weight,
+        (signed char*)packed_transposed_weight,
+        n,
+        k);
+
+    pack_uint4_to_int8_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
+        (signed char*) transposed_weight,
+        (signed char*) packed_transposed_weight,
+        n,
+        k);
 }
 
 

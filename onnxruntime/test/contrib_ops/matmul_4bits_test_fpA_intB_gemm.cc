@@ -39,7 +39,7 @@ namespace test {
 
 namespace {
 
-constexpr int QBits = 8;
+constexpr int QBits = 4;
 
 struct TestOptions8Bits {
   int64_t M{1};
@@ -144,26 +144,20 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
                 N = opts.N;
 
   TensorInfo tensor_info_activation;
-  std::vector<float> activation = parse_tensor_data<float, float>("woq_1_32_64_64_activation.txt", tensor_info_activation);
+  std::vector<float> activation = parse_tensor_data<float, float>("woq_2_64_128_64_activation.txt", tensor_info_activation);
 
   TensorInfo tensor_info_ref_weight;
-  std::vector<float> ref_weight = parse_tensor_data<float, float>("woq_1_32_64_64_ref_weight.txt", tensor_info_ref_weight);
+  std::vector<float> ref_weight = parse_tensor_data<float, float>("woq_2_64_128_64_ref_weight.txt", tensor_info_ref_weight);
 
   TensorInfo tensor_info_matmulnbits_weight;
-  std::vector<uint8_t> matmulnbits_weight = parse_tensor_data<int, uint8_t>("woq_1_32_64_64_matmulnbits_weight.txt", tensor_info_matmulnbits_weight);
+  std::vector<uint8_t> matmulnbits_weight = parse_tensor_data<int, uint8_t>("woq_2_64_128_64_matmulnbits_weight.txt", tensor_info_matmulnbits_weight);
 
   TensorInfo tensor_info_matmulnbits_scale;
-  std::vector<float> matmulnbits_scale = parse_tensor_data<float, float>("woq_1_32_64_64_matmulnbits_scale.txt", tensor_info_matmulnbits_scale);
+  std::vector<float> matmulnbits_scale = parse_tensor_data<float, float>("woq_2_64_128_64_matmulnbits_scale.txt", tensor_info_matmulnbits_scale);
   std::vector<MLFloat16> matmulnbits_scale_fp16 = FloatsToMLFloat16s(matmulnbits_scale);
 
   TensorInfo tensor_info_matmulnbits_zp;
-  std::vector<float> matmulnbits_zp = parse_tensor_data<float, float>("woq_1_32_64_64_matmulnbits_zp.txt", tensor_info_matmulnbits_zp);
-
-  // walkround to fix the sign of zero point.
-  std::vector<float> matmulnbits_zp_fixed;
-  matmulnbits_zp_fixed.resize(matmulnbits_zp.size());
-  std::transform(matmulnbits_zp.begin(), matmulnbits_zp.end(), matmulnbits_zp_fixed.begin(), [](float val) { return -val; });
-  matmulnbits_zp = matmulnbits_zp_fixed;
+  std::vector<float> matmulnbits_zp = parse_tensor_data<float, float>("woq_2_64_128_64_matmulnbits_zp.txt", tensor_info_matmulnbits_zp);
 
   std::vector<MLFloat16> matmulnbits_zp_fp16 = FloatsToMLFloat16s(matmulnbits_zp);
 
@@ -307,12 +301,12 @@ void TestMatMul8BitsTyped() {
 }  // namespace
 
 
-TEST(MatMulNBits, Fp16_int8_gemm) {
+TEST(MatMulNBits, Fp16_int4_gemm) {
   // TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
   // TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();
-
-  TestMatMul8BitsTyped<MLFloat16, 1, 32, 64, 64, 4>();
   
+  TestMatMul8BitsTyped<MLFloat16, 2, 64, 128, 64, 4>();
+
   // TestMatMul8BitsTyped<MLFloat16, 2, 64, 64, 64, 4>();
 }
 

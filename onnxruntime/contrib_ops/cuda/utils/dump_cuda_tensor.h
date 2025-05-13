@@ -18,6 +18,11 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
 
   void Print(const char* name, const size_t* tensor, int dim0, int dim1) const override;
 
+  void Print(const char* name, const int8_t* tensor, int dim0, int dim1) const;
+  void Print(const char* name, const int8_t* tensor, int dim0, int dim1, int dim2) const;
+  void Print(const char* name, const int8_t* tensor, int dim0, int dim1, int dim2, int dim3) const;
+  void Print(const char* name, const int8_t* tensor, gsl::span<const int64_t>& dims) const;
+
   void Print(const char* name, const uint8_t* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const uint8_t* tensor, int dim0, int dim1, int dim2) const override;
   void Print(const char* name, const uint8_t* tensor, int dim0, int dim1, int dim2, int dim3) const override;

@@ -92,7 +92,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   DUMP_TENSOR_INIT();
 
-  if (use_fpA_intB_gemm_ && nbits_ == 8 && m <= 16 && n % 32 == 0 && k % 64 == 0) {
+  if (use_fpA_intB_gemm_ && m <= 16 && n % (nbits_ == 8 ? 32 : 64) == 0 && k % 64 == 0) {
     #if DUMP_TENSOR_LEVEL > 0
     DUMP_TENSOR_D("A", *a);
     DUMP_TENSOR_D("B", *b);
@@ -113,66 +113,81 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                   : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
     if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
       size_t k_blocks = (k + block_size_ - 1) / block_size_;
-      size_t bytes = n * k_blocks  * sizeof(T);
+      size_t scale_bytes = n * k_blocks  * sizeof(T);
 
-      IAllocatorUniquePtr<void> scale_space = this->GetScratchBuffer<void>(bytes, ctx->GetComputeStream());
+      IAllocatorUniquePtr<void> scale_space = this->GetScratchBuffer<void>(scale_bytes, ctx->GetComputeStream());
       CudaT* transposed_scales = reinterpret_cast<CudaT*>(scale_space.get());
 
       CudaT* scaled_zero_points = nullptr;
-      IAllocatorUniquePtr<void> scaled_zp_space = this->GetScratchBuffer<void>(bytes, ctx->GetComputeStream());
+      IAllocatorUniquePtr<void> scaled_zp_space = this->GetScratchBuffer<void>(scale_bytes, ctx->GetComputeStream());
+
       scaled_zero_points = reinterpret_cast<CudaT*>(scaled_zp_space.get());
 
       size_t weight_bytes = n * k;
       IAllocatorUniquePtr<void> transpose_weight_space = this->GetScratchBuffer<void>(weight_bytes, ctx->GetComputeStream());
       int8_t* transposed_weight = reinterpret_cast<int8_t*>(transpose_weight_space.get());
 
+      size_t packed_weight_bytes = n * k / (8 / nbits_);
+
+      // uint8 does not need to be packed so we do not need to allocate extra space.
+      IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetScratchBuffer<void>(nbits_ == 4 ? packed_weight_bytes : 0, ctx->GetComputeStream());
+      int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
+
       IAllocatorUniquePtr<void> processed_weight_space = this->GetScratchBuffer<void>(weight_bytes, ctx->GetComputeStream());
       int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(processed_weight_space.get());
 
-      auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(n * k);
+      auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
 
       using ort_llm::kernels::cutlass_kernels::QuantType;
       QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
       if (nbits_ == 4) {
-        // transpose the weight to (k, n)
-        fpA_intB_gemm::unpack_int4_packed_transposed_tensor_to_int8_cuda(
+        // transpose the weight and add default zp.
+        fpA_intB_gemm::unpack_uint4_transposed_to_int8_cuda(
           stream,
+          packed_transposed_weight,
           transposed_weight,
           blob_data,
-          n, k);
+          n,
+          k);
         CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-        CUDA_CALL_THROW(cudaMemcpy(tranpose_weight_buffer.get(), transposed_weight, n * k, cudaMemcpyDeviceToHost));
+        DUMP_TENSOR_D("transposed_weight in GPU", transposed_weight, k, n);
+        DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n / 2);
+
+        CUDA_CALL_THROW(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
       } else {
         auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
         CUDA_CALL_THROW(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
+
         // transpose the weight from (n, k) to (k, n)
         for (int64_t i = 0; i < n; i++) {
           for (int64_t j = 0; j < k; j++) {
             tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
           }
         }
+#if DUMP_TENSOR_LEVEL > 0
+        printf("tranpose_weight in CPU (%d, %d):\n", k, n);
+        for (int64_t i = 0; i < k; i++) {
+          for (int64_t j = 0; j < n; j++) {
+            printf("%d\t", int(tranpose_weight_buffer.get()[i * n + j]));
+          }
+          printf("\n");
+        }
+  #endif
       }
 
-#if DUMP_TENSOR_LEVEL > 0
-      // DUMP_CPU_TENSOR_INIT();
-      // DUMP_CPU_TENSOR_D("tranpose_weight", tranpose_weight_buffer.get(), n, k);
-      printf("tranpose_weight:\n");
-      for (int64_t i = 0; i < k; i++) {
-        for (int64_t j = 0; j < n; j++) {
-          printf("%d\t", int(tranpose_weight_buffer.get()[i * n + j]));
-        }
-        printf("\n");
-      }
-#endif
-      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
-      bool force_interleave = true;
+      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k  / (8 / nbits_));
+      bool force_interleave = false;
       ort_llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
         reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
         reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
-        {static_cast<size_t>(k), static_cast<size_t>(n)}, quant_type, force_interleave);
+        {static_cast<size_t>(k), static_cast<size_t>(n)},
+        quant_type,
+        force_interleave);
 
-      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k, cudaMemcpyHostToDevice));
+      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_),  cudaMemcpyHostToDevice));
       CUDA_CALL_THROW(cudaDeviceSynchronize());
+
+      DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n / 2);
 
       constexpr float kDefaultZeroPoint4Bit = 8.0f;
       constexpr float kDefaultZeroPoint8Bit = 128.0f;
