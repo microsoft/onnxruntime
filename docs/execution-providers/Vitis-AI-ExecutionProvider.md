@@ -102,11 +102,11 @@ To leverage the C++ APIs, use the following example as a reference:
 
 ```c++
 // ...
-#include <experimental_onnxruntime_cxx_api.h>
+#include <onnxruntime_cxx_api.h>
 // include user header files
 // ...
 
-auto onnx_model_path = "resnet50.onnx" // Replace resnet50.onnx with your model name
+std::basic_string<ORTCHAR_T> model_file = "resnet50.onnx" // Replace resnet50.onnx with your model name
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "resnet50_pt");
 auto session_options = Ort::SessionOptions();
 
@@ -119,19 +119,28 @@ options["log_level"] = "info";
 // Create an inference session using the Vitis AI execution provider
 session_options.AppendExecutionProvider_VitisAI(options);
 
-auto session = Ort::Experimental::Session(env, model_name, session_options);
+auto session = Ort::Session(env, model_file.c_str(), session_options);
 
-auto input_shapes = session.GetInputShapes();
-// preprocess input data
-// ...
-
+// get inputs and outputs
+Ort::AllocatorWithDefaultOptions allocator;
+std::vector<std::string> input_names;
+std::vector<std::int64_t> input_shapes;
+auto input_count = session.GetInputCount();
+for (std::size_t i = 0; i < input_count; i++) {
+    input_names.emplace_back(session.GetInputNameAllocated(i, allocator).get());
+    input_shapes = session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+}
+std::vector<std::string> output_names;
+auto output_count = session.GetOutputCount();
+for (std::size_t i = 0; i < output_count; i++) {
+   output_names.emplace_back(session.GetOutputNameAllocated(i, allocator).get());
+}
 // Create input tensors and populate input data
 std::vector<Ort::Value> input_tensors;
-input_tensors.push_back(Ort::Experimental::Value::CreateTensor<float>(
-      input_data.data(), input_data.size(), input_shapes[0]));
+...
 
-auto output_tensors = session.Run(session.GetInputNames(), input_tensors,
-                                      session.GetOutputNames());
+auto output_tensors = session.Run(Ort::RunOptions(), input_names.data(), input_tensors.data(),
+                    input_count, output_names.data(), output_count);
 // postprocess output data
 // ...
 
