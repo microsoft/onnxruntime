@@ -117,7 +117,7 @@ options["cache_key"] = "abcdefg"; // Replace abcdefg with your model name, eg. o
 options["log_level"] = "info";
 
 // Create an inference session using the Vitis AI execution provider
-session_options.AppendExecutionProvider("VitisAI", options);
+session_options.AppendExecutionProvider_VitisAI(options);
 
 auto session = Ort::Experimental::Session(env, model_name, session_options);
 
