@@ -16,7 +16,6 @@ struct OrtSessionOptions;
 struct OrtStatus;
 struct OrtPrepackedWeightsContainer;
 namespace onnxruntime {
-class Environment;
 class InferenceSession;
 class ModelCompilationOptions;
 }  // namespace onnxruntime
@@ -24,6 +23,7 @@ class ModelCompilationOptions;
 #if !defined(ORT_MINIMAL_BUILD)
 struct OrtModel;
 namespace onnxruntime {
+class Environment;
 class EpLibrary;
 class EpFactoryInternal;
 struct IExecutionProviderFactory;
