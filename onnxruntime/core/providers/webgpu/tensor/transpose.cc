@@ -132,6 +132,9 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
   }
 
   uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
+  if (output_size == 0) {
+    return Status::OK();
+  }
   TransposeProgram program{permutations, use_shared};
 
   if (use_shared) {
