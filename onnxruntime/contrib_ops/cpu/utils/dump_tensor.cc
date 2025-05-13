@@ -72,6 +72,8 @@ void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, i
     DumpCpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1, dim2);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
     DumpCpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1, dim2);
+  } else if (dataType == DataTypeImpl::GetType<int8_t>()) {
+    DumpCpuTensor<int8_t>(name, tensor.Data<int8_t>(), dim0, dim1, dim2);
   } else if (dataType == DataTypeImpl::GetType<uint8_t>()) {
     DumpCpuTensor<uint8_t>(name, tensor.Data<uint8_t>(), dim0, dim1, dim2);
   } else {
@@ -89,6 +91,8 @@ void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1) {
     DumpCpuTensor<int32_t>(name, tensor.Data<int32_t>(), dim0, dim1);
   } else if (dataType == DataTypeImpl::GetType<int64_t>()) {
     DumpCpuTensor<int64_t>(name, tensor.Data<int64_t>(), dim0, dim1);
+  } else if (dataType == DataTypeImpl::GetType<int8_t>()) {
+    DumpCpuTensor<int8_t>(name, tensor.Data<int8_t>(), dim0, dim1);
   } else if (dataType == DataTypeImpl::GetType<uint8_t>()) {
     DumpCpuTensor<uint8_t>(name, tensor.Data<uint8_t>(), dim0, dim1);
   } else {
@@ -137,102 +141,6 @@ void CpuTensorConsoleDumper::Print(const std::string& value) const {
   std::cout << value << std::endl;
 }
 
-void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<float>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<MLFloat16>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<size_t>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int64_t>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int32_t>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const uint8_t* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<uint8_t>(name, tensor, dim0, dim1);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<float>(name, tensor, dim0, dim1, dim2);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<MLFloat16>(name, tensor, dim0, dim1, dim2);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int64_t>(name, tensor, dim0, dim1, dim2);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int32_t>(name, tensor, dim0, dim1, dim2);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const uint8_t* tensor, int dim0, int dim1, int dim2) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<uint8_t>(name, tensor, dim0, dim1, dim2);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<float>(name, tensor, dim0 * dim1, dim2, dim3);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<MLFloat16>(name, tensor, dim0 * dim1, dim2, dim3);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2, int dim3) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int64_t>(name, tensor, dim0 * dim1, dim2, dim3);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2, int dim3) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<int32_t>(name, tensor, dim0 * dim1, dim2, dim3);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const uint8_t* tensor, int dim0, int dim1, int dim2, int dim3) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<uint8_t>(name, tensor, dim0 * dim1, dim2, dim3);
-}
-
 void CpuTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
   if (!is_enabled_)
     return;
@@ -268,25 +176,36 @@ void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, b
   }
 }
 
-void CpuTensorConsoleDumper::Print(const char* name, const int32_t* tensor, gsl::span<const int64_t>& dims) const {
-  PrintTensorByDims<CpuTensorConsoleDumper, int32_t>(this, name, tensor, dims);
+void CpuTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
+  if (!is_enabled_)
+    return;
+  DumpCpuTensor<size_t>(name, tensor, dim0, dim1);
 }
 
-void CpuTensorConsoleDumper::Print(const char* name, const int64_t* tensor, gsl::span<const int64_t>& dims) const {
-  PrintTensorByDims<CpuTensorConsoleDumper, int64_t>(this, name, tensor, dims);
-}
+#define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                                     \
+  void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const {                     \
+    if (is_enabled_)                                                                                                        \
+      DumpCpuTensor<dtype>(name, tensor, dim0, dim1);                                                                       \
+  }                                                                                                                         \
+  void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const {           \
+    if (is_enabled_)                                                                                                        \
+      DumpCpuTensor<dtype>(name, tensor, dim0, dim1, dim2);                                                                 \
+  }                                                                                                                         \
+  void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const { \
+    if (is_enabled_)                                                                                                        \
+      DumpCpuTensor<dtype>(name, tensor, dim0, dim1, dim2, dim3);                                                           \
+  }                                                                                                                         \
+  void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const {         \
+    PrintTensorByDims<CpuTensorConsoleDumper, dtype>(this, name, tensor, dims);                                             \
+  }
 
-void CpuTensorConsoleDumper::Print(const char* name, const float* tensor, gsl::span<const int64_t>& dims) const {
-  PrintTensorByDims<CpuTensorConsoleDumper, float>(this, name, tensor, dims);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const MLFloat16* tensor, gsl::span<const int64_t>& dims) const {
-  PrintTensorByDims<CpuTensorConsoleDumper, MLFloat16>(this, name, tensor, dims);
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const uint8_t* tensor, gsl::span<const int64_t>& dims) const {
-  PrintTensorByDims<CpuTensorConsoleDumper, uint8_t>(this, name, tensor, dims);
-}
+TENSOR_DUMPER_PRINT_TYPE(int8_t)
+TENSOR_DUMPER_PRINT_TYPE(uint8_t)
+TENSOR_DUMPER_PRINT_TYPE(int32_t)
+TENSOR_DUMPER_PRINT_TYPE(int64_t)
+TENSOR_DUMPER_PRINT_TYPE(float)
+TENSOR_DUMPER_PRINT_TYPE(MLFloat16)
+#undef TENSOR_DUMPER_PRINT_TYPE
 
 #else
 
@@ -294,45 +213,6 @@ CpuTensorConsoleDumper::CpuTensorConsoleDumper() {
 }
 
 void CpuTensorConsoleDumper::Print(const std::string&) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const float*, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int32_t*, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const float*, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const float*, int, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, int, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int64_t*, int, int, int, int) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const int32_t*, int, int, int, int) const {
 }
 
 void CpuTensorConsoleDumper::Print(const char*, const Tensor&) const {
@@ -347,17 +227,27 @@ void CpuTensorConsoleDumper::Print(const char*, int, bool) const {
 void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
 }
 
-void CpuTensorConsoleDumper::Print(const char*, const int32_t*, gsl::span<const int64_t>&) const {
+void CpuTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
 }
 
-void CpuTensorConsoleDumper::Print(const char*, const int64_t*, gsl::span<const int64_t>&) const {
-}
+#define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                            \
+  void CpuTensorConsoleDumper::Print(const char*, const dtype*, int, int) const {                  \
+  }                                                                                                \
+  void CpuTensorConsoleDumper::Print(const char*, const dtype*, int, int, int) const {             \
+  }                                                                                                \
+  void CpuTensorConsoleDumper::Print(const char*, const dtype*, int, int, int, int) const {        \
+  }                                                                                                \
+  void CpuTensorConsoleDumper::Print(const char*, const dtype*, gsl::span<const int64_t>&) const { \
+  }
 
-void CpuTensorConsoleDumper::Print(const char*, const float*, gsl::span<const int64_t>&) const {
-}
+TENSOR_DUMPER_PRINT_TYPE(int8_t)
+TENSOR_DUMPER_PRINT_TYPE(uint8_t)
+TENSOR_DUMPER_PRINT_TYPE(int32_t)
+TENSOR_DUMPER_PRINT_TYPE(int64_t)
+TENSOR_DUMPER_PRINT_TYPE(float)
+TENSOR_DUMPER_PRINT_TYPE(MLFloat16)
+#undef TENSOR_DUMPER_PRINT_TYPE
 
-void CpuTensorConsoleDumper::Print(const char*, const MLFloat16*, gsl::span<const int64_t>&) const {
-}
 #endif
 
 }  // namespace contrib
