@@ -15,9 +15,9 @@ CheckIntelResult CheckIntel() {
   CheckIntelResult intel_check = {false, false};
   bool is_intel = false;
   bool is_intel_specified_platform = false;
-  constexpr unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
 
 #if defined(_WIN32)
+  constexpr unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
   constexpr unsigned int kVendorID_IntelSpecifiedPlatformIDs[] = {
       // ExtendedModel, ExtendedFamily, Family Code, and Model Number
       0xa06a,  // MTL
@@ -31,9 +31,9 @@ CheckIntelResult CheckIntel() {
   __cpuid(regs_leaf1, 0x1);
 
   is_intel =
-      (kVendorID_Intel[0] == regs_leaf0[1]) &&
-      (kVendorID_Intel[1] == regs_leaf0[2]) &&
-      (kVendorID_Intel[2] == regs_leaf0[3]);
+      (kVendorID_Intel[0] == static_cast<unsigned int>(regs_leaf0[1])) &&
+      (kVendorID_Intel[1] == static_cast<unsigned int>(regs_leaf0[2])) &&
+      (kVendorID_Intel[2] == static_cast<unsigned int>(regs_leaf0[3]));
 
   if (!is_intel) {
     return intel_check;  // if not an Intel CPU, return early
@@ -46,6 +46,7 @@ CheckIntelResult CheckIntel() {
   }
 
 #elif defined(__linux__)
+  constexpr unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
   unsigned int regs[4] = {0};
   __get_cpuid(0, &regs[0], &regs[1], &regs[2], &regs[3]);
 
