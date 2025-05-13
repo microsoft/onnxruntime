@@ -24,7 +24,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, output, batch_dims, transA_, transB_, is_vec4_);
+    MatMulReadFnSource(shader, a, b, batch_dims, transA_, transB_, is_vec4_);
   }
   if (is_vec4_) {
     ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims, transA_, transB_, alpha_, need_handle_matmul_, output_components_));

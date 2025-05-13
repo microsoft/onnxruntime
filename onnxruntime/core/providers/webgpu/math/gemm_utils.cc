@@ -58,7 +58,6 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
 void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
-                        const ShaderVariableHelper& output,
                         const ShaderIndicesHelper& batch_dims,
                         bool transA,
                         bool transB,
@@ -149,6 +148,9 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   uint32_t tile_inner,
                                   bool split_k,
                                   uint32_t splitted_dim_inner) {
+  ORT_UNUSED_PARAMETER(split_k);
+  ORT_UNUSED_PARAMETER(splitted_dim_inner);
+
   const std::string type_string = MakeScalarOrVectorType(4 /*components */, data_type);
 
   std::string write_data_to_sub_a_vec4_snippet =
