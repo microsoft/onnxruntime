@@ -625,9 +625,13 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  if (onnxruntime_USE_VCPKG)
+  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    # vcpkg does not support Emscripten yet
     find_package(dawn REQUIRED)
   else()
+    #
+    # Please keep the following in sync with cmake/vcpkg-ports/dawn/portfile.cmake
+    #
     set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
     set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
     set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
