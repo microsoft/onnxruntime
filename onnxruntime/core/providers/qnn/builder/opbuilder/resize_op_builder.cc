@@ -264,7 +264,7 @@ Status ResizeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
   const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   std::string qnn_op_type = "Resize";
 
-  if (is_npu_backend && input_rank == 4 && interp_mode == "nearest") {
+  if (is_npu_backend && input_rank == 4 && interp_mode == "nearest" && nearest_mode == "floor") {
     // Translate Resize with
     // {input_rank: 4, mode: "nearest", coordinate_transformation_mode: XXX} to
     // QNN's ResizeNearestNeighbor operator on the HTP backend. QNN ResizeNearestNeighbor
