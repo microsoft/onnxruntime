@@ -28,5 +28,7 @@ ORT_API_STATUS_IMPL(ModelCompilationOptions_SetOutputModelBuffer, _In_ OrtModelC
 ORT_API_STATUS_IMPL(ModelCompilationOptions_SetEpContextEmbedMode, _In_ OrtModelCompilationOptions* model_compile_options,
                     bool embed_ep_context_in_model);
 ORT_API_STATUS_IMPL(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+ORT_API_STATUS_IMPL(ModelCompilationOptions_SetInputModel, _In_ OrtModelCompilationOptions* model_compile_options,
+                    _In_ const OrtModel* input_model);
 
 }  // namespace OrtCompileAPI

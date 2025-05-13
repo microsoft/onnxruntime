@@ -557,6 +557,69 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   allocator.Free(output_model_buffer);
 }
 
+// Tests compiling an OrtModel created using the OrtModelEditor API.
+TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputFile) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;  // Model weights must remain valid through inference
+
+  // Create OrtModel with a Gemm. X input is 3x4, Y initializer is 4x8, Z output is 3x8.
+  Ort::Graph graph;
+  std::vector<Ort::ValueInfo> graph_inputs;
+  std::vector<Ort::ValueInfo> graph_outputs;
+
+  Ort::TensorTypeAndShapeInfo x_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            {3, 4}, nullptr);
+  auto x_type_info = Ort::TypeInfo::CreateTensorInfo(x_tensor_info.GetConst());
+  graph_inputs.emplace_back("X", x_type_info.GetConst());
+
+  Ort::TensorTypeAndShapeInfo z_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            {3, 8}, nullptr);
+  auto z_type_info = Ort::TypeInfo::CreateTensorInfo(z_tensor_info.GetConst());
+  graph_outputs.emplace_back("Z", z_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  std::vector<Ort::OpAttr> attrs;
+  Ort::Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attrs);
+  graph.AddNode(node);
+
+  std::vector<int64_t> y_dims = {4, 8};
+  weights.emplace_back(std::make_unique<std::vector<float>>(32));
+  auto& y_values = *weights.back();
+  std::iota(y_values.begin(), y_values.end(), 1.0f);
+
+  auto mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto y_tensor = Ort::Value::CreateTensor(mem_info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
+  graph.AddInitializer("Y", y_tensor, /*data is external*/ false);  // TODO: external data does not serialize to proto (error)
+
+  std::vector<Ort::Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}, {onnxruntime::kMSDomain, 1}};
+  Ort::Model model(opsets);
+  model.AddGraph(graph);
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_ortmodel_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModel(model.GetConst());
+  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+  // Make sure the compiled model was generated and has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+}
+
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
 // The generated Onnx model has 1 FusedMatMul node and 1 EPContext node
 TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport1) {

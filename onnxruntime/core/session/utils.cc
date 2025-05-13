@@ -262,22 +262,48 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
 namespace onnxruntime {
 #if !defined(ORT_MINIMAL_BUILD)
+// Creates a session from an OrtModel (created by model editor API).
+Status CreateSessionFromModel(const OrtSessionOptions* options,
+                              const Environment& env,
+                              const OrtModel* ort_model,
+                              std::unique_ptr<onnxruntime::InferenceSession>& sess) {
+  sess = std::make_unique<onnxruntime::InferenceSession>(
+      options == nullptr ? onnxruntime::SessionOptions() : options->value,
+      env);
+
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (options && !options->custom_op_domains_.empty()) {
+    ORT_RETURN_IF_ERROR(sess->AddCustomOpDomains(options->custom_op_domains_));
+  }
+#endif
+
+  ORT_RETURN_IF_ERROR(sess->Load(*ort_model));
+  return Status::OK();
+}
+
 Status CompileModel(const Environment& env, const ModelCompilationOptions& model_compile_options) {
   ORT_RETURN_IF_ERROR(model_compile_options.Check());
 
   std::unique_ptr<onnxruntime::InferenceSession> session;
   const OrtSessionOptions* session_options = &model_compile_options.GetSessionOptions();
 
-  if (model_compile_options.InputModelComesFromFile()) {
-    PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
+  if (const std::string* model_path_ptr = model_compile_options.TryGetInputModelPath();
+      model_path_ptr != nullptr) {
+    PathString input_model_path = ToPathString(*model_path_ptr);
     ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env,
                                                                input_model_path.c_str(),
                                                                nullptr, 0, session)));
-  } else {
+  } else if (const gsl::span<const std::byte>* model_buffer_ptr = model_compile_options.TryGetInputModelBuffer();
+             model_buffer_ptr != nullptr) {
     ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                               model_compile_options.GetInputModelData(),
-                                                               model_compile_options.GetInputModelDataSize(),
+                                                               model_buffer_ptr->data(),
+                                                               model_buffer_ptr->size(),
                                                                session)));
+  } else if (const OrtModel* ort_model = model_compile_options.TryGetInputOrtModel(); ort_model != nullptr) {
+    ORT_RETURN_IF_ERROR(CreateSessionFromModel(session_options, env, ort_model, session));
+  } else {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Invalid input model passed to CompileModel(): ",
+                           "expected a file path, a buffer, or an OrtModel, but received an unknown kind of model.");
   }
 
   ORT_RETURN_IF_ERROR(ToStatus(InitializeSession(session_options, *session)));

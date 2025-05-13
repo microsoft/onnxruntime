@@ -16,13 +16,14 @@ struct OrtSessionOptions;
 struct OrtStatus;
 struct OrtPrepackedWeightsContainer;
 namespace onnxruntime {
+class Environment;
 class InferenceSession;
 class ModelCompilationOptions;
 }  // namespace onnxruntime
 
 #if !defined(ORT_MINIMAL_BUILD)
+struct OrtModel;
 namespace onnxruntime {
-class Environment;
 class EpLibrary;
 class EpFactoryInternal;
 struct IExecutionProviderFactory;
@@ -43,6 +44,19 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace onnxruntime {
+
+/// <summary>
+/// Creates a session from an OrtModel instance.
+/// </summary>
+/// <param name="options">Optional session options</param>
+/// <param name="env">Reference to the Environment</param>
+/// <param name="ort_model">The OrtModel instance</param>
+/// <param name="sess">The session to create and initialize</param>
+/// <returns>A Status indicating an error or success.</returns>
+Status CreateSessionFromModel(const OrtSessionOptions* options,
+                              const onnxruntime::Environment& env,
+                              const OrtModel* ort_model,
+                              std::unique_ptr<onnxruntime::InferenceSession>& sess);
 
 /// <summary>
 /// Compiles an ONNX model into a model with EPContext nodes. Each EPContext node represents a subgraph compiled for

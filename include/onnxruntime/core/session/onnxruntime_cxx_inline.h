@@ -801,6 +801,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelFromBuffer
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(
+    ConstModel input_model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, input_model));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
     const ORTCHAR_T* output_model_path) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelPath(this->p_, output_model_path));

@@ -5964,6 +5964,18 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+
+  /** \brief Sets the input OrtModel instance to compile.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] input_model The OrtModel instance of the model to compile.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetInputModel, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const OrtModel* input_model);
 };
 
 ORT_RUNTIME_CLASS(Ep);

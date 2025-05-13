@@ -216,12 +216,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateSessionFromModel, _In_ const OrtEnv
   *out = nullptr;
 
   ORT_TRY {
-    sess = std::make_unique<onnxruntime::InferenceSession>(
-        options == nullptr ? onnxruntime::SessionOptions() : options->value,
-        env->GetEnvironment());
-
-    ORT_API_RETURN_IF_STATUS_NOT_OK(sess->Load(*model));
-
+    ORT_API_RETURN_IF_STATUS_NOT_OK(onnxruntime::CreateSessionFromModel(options, env->GetEnvironment(), model, sess));
     ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess));
 
     *out = reinterpret_cast<OrtSession*>(sess.release());
