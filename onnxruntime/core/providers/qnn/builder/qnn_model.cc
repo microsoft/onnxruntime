@@ -298,6 +298,7 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
     auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
+    const auto start = std::chrono::steady_clock::now();
     execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
                                                 qnn_inputs.data(),
                                                 static_cast<uint32_t>(qnn_inputs.size()),
@@ -305,6 +306,10 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
                                                 static_cast<uint32_t>(qnn_outputs.size()),
                                                 profile_backend_handle,
                                                 nullptr);
+    const auto execute_duration = std::chrono::steady_clock::now() - start;
+
+    LOGS(logger, VERBOSE) << "graphExecute for '" << graph_info_->Name() << "' took "
+                          << std::chrono::duration_cast<std::chrono::microseconds>(execute_duration).count() << "us";
 
     // NOTE: This function returns immediately when profiling is disabled.
     // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
