@@ -526,13 +526,19 @@ struct ConfigOptions final {
 };
 
 struct ComputeCapability final {
-  static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph) { return g_host->ComputeCapability__construct(std::move(t_sub_graph)); }
+  static std::unique_ptr<ComputeCapability> Create(std::unique_ptr<IndexedSubGraph> t_sub_graph,
+                                                   const OrtHardwareDevice* hardware_device = nullptr) {
+    return g_host->ComputeCapability__construct(std::move(t_sub_graph), hardware_device);
+  }
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
 
   void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
   void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
+  void SetHardwareDevice(const OrtHardwareDevice* hardware_device) {
+    g_host->ComputeCapability__SetHardwareDevice(this, hardware_device);
+  }
 
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;
