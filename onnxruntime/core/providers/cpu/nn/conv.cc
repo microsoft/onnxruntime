@@ -32,7 +32,7 @@ Status Conv<T>::Compute(OpKernelContext* context) const {
   const int64_t N = X->Shape()[0];
   const int64_t C = X->Shape()[1];
   const int64_t M = W->Shape()[0];
-  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W));
+  ORT_RETURN_IF_ERROR(conv_attrs_.ValidateInputShape(X, W, B));
 
   TensorShapeVector kernel_shape;
   ORT_RETURN_IF_ERROR(conv_attrs_.ComputeKernelShape(W->Shape(), kernel_shape));
