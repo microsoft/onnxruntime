@@ -65,23 +65,22 @@ Status ApplyGemmPacked(const Tensor* a,
 
   const bool is_vec4 = a_shape[1] % 4 == 0 && b_shape[1] % 4 == 0;
 
+  // Components for A, B
   int components = is_vec4 ? 4 : 1;
-  int c_components = 4;
-  int output_components = N % 4 == 0 ? 4 : 1;
+  // Components for Y
+  int output_components = (is_vec4 && N % 4 == 0) ? 4 : 1;
 
+  // Components for C. The computation of components for C below is more complex because C in GEMM
+  // might be broadcast to the output, and broadcasting requires the components to be consistent.
+  int c_components = is_vec4 ? 4 : 1;
   bool c_is_scalar = false;
-
-  // We use vec4 for C when its last dimension equals N and N is divisible by 4.
+  // We use vec4 for C when its last dimension equals N and output used vec4.
   if (need_handle_bias) {
     const auto& c_shape = c->Shape();
     int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
-    c_components = (c_last_dim == N && N % 4 == 0) ? 4 : 1;
+    c_components = (c_last_dim == N && output_components == 4) ? 4 : 1;
     c_is_scalar = c_shape.Size() == 1;
   }
-
-  // We use vec4 for y when N is divisible by 4.
-  c_components = is_vec4 ? c_components : 1;
-  output_components = is_vec4 ? output_components : 1;
 
   GemmProgram program{transA, transB, alpha, need_handle_bias, need_handle_matmul, c_components, c_is_scalar, output_components, is_vec4};
 

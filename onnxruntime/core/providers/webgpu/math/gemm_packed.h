@@ -14,7 +14,7 @@ namespace webgpu {
 class GemmProgram final : public Program<GemmProgram> {
  public:
   GemmProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul, int c_components, bool c_is_scalar, int output_components, bool is_vec4 = false)
-      : Program{"GemmVec4"},
+      : Program{"Gemm"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},

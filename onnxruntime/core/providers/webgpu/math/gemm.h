@@ -13,7 +13,7 @@ namespace webgpu {
 class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
  public:
   GemmNaiveProgram(bool transA, bool transB, float alpha, bool need_handle_bias, bool need_handle_matmul)
-      : Program{"Gemm"},
+      : Program{"GemmNaive"},
         transA_{transA},
         transB_{transB},
         alpha_{alpha},
@@ -23,7 +23,7 @@ class GemmNaiveProgram final : public Program<GemmNaiveProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_tile_n", ProgramUniformVariableDataType::Uint32},
+      {"output_size", ProgramUniformVariableDataType::Uint32},
       {"M", ProgramUniformVariableDataType::Uint32},
       {"N", ProgramUniformVariableDataType::Uint32},
       {"K", ProgramUniformVariableDataType::Uint32},
