@@ -60,6 +60,10 @@ class WindowsTelemetry : public Telemetry {
 
   void LogExecutionProviderEvent(LUID* adapterLuid) const override;
 
+  void LogDriverInfoEvent(const std::string_view device_class,
+                          const std::wstring_view& driver_names,
+                          const std::wstring_view& driver_versions) const override;
+
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
