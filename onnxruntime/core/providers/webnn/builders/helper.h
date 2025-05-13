@@ -183,6 +183,10 @@ inline bool IsEmptyTensor(const GraphViewer& graph_viewer, const std::string& na
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
+inline bool IsOnnxDomain(std::string_view domain) {
+  return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
+}
+
 inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
   return tensor_index < defs.size() && defs[tensor_index]->Exists();
 }
