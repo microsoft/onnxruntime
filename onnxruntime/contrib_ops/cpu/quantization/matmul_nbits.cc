@@ -682,6 +682,8 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
+  // TODO: verify shape of input tensors.
+
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -729,8 +731,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
           .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())          \
           .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())     \
           .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(),    \
-                                 DataTypeImpl::GetTensorType<float>(),      \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
+                                 DataTypeImpl::GetTensorType<T1>()})        \
           .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),    \
       MatMulNBits<T1>);
 

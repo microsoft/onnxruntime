@@ -866,7 +866,10 @@ class DefaultWeightOnlyQuantizer:
             kwargs["N"] = cols
             kwargs["bits"] = bits
             kwargs["block_size"] = self.config.block_size
-            if self.config.accuracy_level is not None:
+
+            # Default value of accuracy_level is 0. This attribute is deprecated since most EPs ignore this attribute.
+            if self.config.accuracy_level:
+                logger.warning("accuracy_level is deprecated.")
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
             matmul_qbit_node = onnx.helper.make_node(

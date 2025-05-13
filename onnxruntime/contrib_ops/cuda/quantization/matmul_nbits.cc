@@ -29,6 +29,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
   }
 
+  //TODO: check input tensor shape
+
   const auto* a_data = a->Data<T>();
   const uint8_t* blob_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<T>();
@@ -207,7 +209,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()}),
     MatMulNBits<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -218,7 +221,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     MatMulNBits<MLFloat16>);
 
 }  // namespace cuda

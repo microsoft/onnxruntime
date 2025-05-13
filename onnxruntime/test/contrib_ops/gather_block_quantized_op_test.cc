@@ -48,6 +48,7 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const int64_t gather_axis,
                              const int64_t quantize_axis,
                              const int64_t block_size,
+                             const int64_t bits,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
@@ -57,6 +58,7 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     test.AddAttribute<int64_t>("gather_axis", gather_axis);
     test.AddAttribute<int64_t>("quantize_axis", quantize_axis);
     test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("bits", bits);
 
     test.AddInput<T1>("data", data_shape, data);
     test.AddInput<Tind>("indices", indices_shape, indices, indices_is_initializer);
@@ -106,10 +108,34 @@ ToType(const std::vector<int>& vec) {
   return result;
 }
 
+template <typename T>
+typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
+void ConvertZeroPoint(const std::vector<int>& vec, int /*bits*/) {
+  return ToType<T>(vec);
+}
+
+template ConvertZeroPoint<uint8_t>(const std::vector<int>& vec, int bits)
+{
+  std::vector<uint8_t> result;
+  if (bits == 4) {
+    for (size_t i = 0; i + 1 < vec.size(); i += 2) {
+      result.push_back((vec[i + 1] + 8) * 16 + vec[i] + 8);
+    }
+  } else {
+    for (size_t i = 0; i < vec.size(); i++) {
+      result.push_back(vec[i] + 128);
+    }
+  }
+
+  return result;
+}
+
+
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithZeroPoints(int64_t gather_axis,
                               int64_t quantize_axis,
-                              int64_t block_size) {
+                              int64_t block_size,
+                              int64_t bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -134,10 +160,11 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           gather_axis,
                           quantize_axis,
                           block_size,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectFailure);
@@ -189,6 +216,7 @@ void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                           gather_axis,
                           quantize_axis,
                           block_size,
+                          4,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectFailure);
@@ -221,6 +249,15 @@ TEST(GatherBlockQuantizedOpTest, InvalidQuantizeAxis) {
   Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, -4, 16);
 }
 
+TEST(GatherBlockQuantizedOpTest, NotSupportedBits) {
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 1);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 2);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 3);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 5);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 6);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 7);
+}
+
 template <typename T1, typename T2, typename Tind>
 void Test_ShapeMismatch_WithZeroPoints() {
   std::vector<int> data = {-8, -7, -6, -5,
@@ -241,16 +278,18 @@ void Test_ShapeMismatch_WithZeroPoints() {
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
+  constexpr int bits = 4;
   RunGatherBlockQuantized(ToType<T1>(data),
                           data_shape,
                           ToType<Tind>(indices),
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           0,
                           2,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectFailure);
@@ -282,16 +321,18 @@ void Test_InvalidIndices_WithZeroPoints() {
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
+  constexpr int bits = 4;
   RunGatherBlockQuantized(ToType<T1>(data),
                           data_shape,
                           ToType<Tind>(indices),
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           0,
                           2,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectFailure);
@@ -304,7 +345,7 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 }
 
 template <typename T1, typename T2, typename Tind>
-void Test_GatherAxis0_WithZeroPoints() {
+void Test_GatherAxis0_WithZeroPoints(int bits=4) {
   std::vector<int> data = {-8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8,
                            -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4,
                            0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0,
@@ -330,10 +371,11 @@ void Test_GatherAxis0_WithZeroPoints() {
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           0,
                           2,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -343,10 +385,11 @@ void Test_GatherAxis0_WithZeroPoints() {
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           -3,
                           -1,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -361,10 +404,14 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints) {
   Test_GatherAxis0_WithZeroPoints<Int4x2, float, int64_t>();
   Test_GatherAxis0_WithZeroPoints<UInt4x2, MLFloat16, int64_t>();
   Test_GatherAxis0_WithZeroPoints<Int4x2, MLFloat16, int64_t>();
+  Test_GatherAxis0_WithZeroPoints<uint8_t, float, int32_t>();
+  Test_GatherAxis0_WithZeroPoints<uint8_t, MLFloat16, int64_t>();
+  Test_GatherAxis0_WithZeroPoints<uint8_t, float, int32_t>(8);
+  Test_GatherAxis0_WithZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
 
 template <typename T1, typename T2, typename Tind>
-void Test_GatherAxis0_NoZeroPoints() {
+void Test_GatherAxis0_NoZeroPoints(int bits=4) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -392,6 +439,7 @@ void Test_GatherAxis0_NoZeroPoints() {
                           0,
                           2,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -405,6 +453,7 @@ void Test_GatherAxis0_NoZeroPoints() {
                           -3,
                           -1,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -417,8 +466,10 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int64_t>();
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int32_t>();
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int32_t>();
-  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>();
-  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>();
+  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(4);
+  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(4);
+  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
+  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -443,16 +494,18 @@ void Test_GatherAxis1_WithZeroPoints() {
                                -5.f, -4.f, -2.f, -2.f};
   std::vector<int64_t> output_shape = {2, 1, 3, 4};
 
+  constexpr int bits = 4;
   RunGatherBlockQuantized(ToType<T1>(data),
                           data_shape,
                           ToType<Tind>(indices),
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           1,
                           1,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -462,10 +515,11 @@ void Test_GatherAxis1_WithZeroPoints() {
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           -2,
                           -2,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -504,16 +558,18 @@ void Test_GatherAxis2_WithZeroPoints() {
                                6.f, 5.f, 6.f, 3.f, -3.f, -4.f};
   std::vector<int64_t> output_shape = {2, 3, 2, 1};
 
+  constexpr int bits = 4;
   RunGatherBlockQuantized(ToType<T1>(data),
                           data_shape,
                           ToType<Tind>(indices),
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           2,
                           0,
                           16,
+                          bits,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);
@@ -523,10 +579,11 @@ void Test_GatherAxis2_WithZeroPoints() {
                           indices_shape,
                           ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(zero_points),
+                          ConvertZeroPoint<T1>(zero_points, bits),
                           -1,
                           -3,
                           16,
+                          4,
                           ToType<T2>(output),
                           output_shape,
                           OpTester::ExpectResult::kExpectSuccess);

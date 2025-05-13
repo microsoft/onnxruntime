@@ -3428,29 +3428,35 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
       });
 
   static const char* MatMulNBits_ver1_doc = R"DOC(
-MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
+MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7, 8).
+
+It is a combination of linear dequantization (https://onnx.ai/onnx/operators/onnx__DequantizeLinear.html) for weights, and a MatMul (https://onnx.ai/onnx/operators/onnx__MatMul.html) with the dequantized weight.
   1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
   2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
      And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
   3. Input B's scale and zero point are specified by input scales and zero_points.
 
-  Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-  - n_blocks_per_col = (K + block_size - 1) / block_size
-  - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
+  Input B is stored as uint8_t with shape: (N, k_blocks, blob_size) in which:
+  - k_blocks = (K + block_size - 1) / block_size
+  - blob_size = block_size * bits / 8
+
   For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
     - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
         4bit example:
         |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
-    - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
-        3bit example:
+    -   3bit example:
         |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
   The last uint_8 may have some bits unused.
 
+The dequantization formula is weight = (quantized_weight - zero_point) * scale.
 
-Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-  - [N * CeilDiv(n_blocks_per_col * bits, 8)]
-  If zero_points has same type as A, it's not packed and has the same shape as Scales.
+When zero point is not provided, the default value of zero point is 2^(bits-1): 8 for 4 bits; 128 for 8 bits.
+
+Input scales is stored in same data type of input A, and its shape is (N, k_blocks).
+
+Input zero_points is stored as uint8_t or same data type of input A.
+  When zero_points has uint8_t type, it uses same packing method as input B. The shape is (N, (k_blocks * bits + 7) / 8).
+  If zero_points has same type as A, it's not packed and has the same shape as Scales: (N, K_blocks).
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(MatMulNBits)
@@ -3461,6 +3467,7 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
       .Attr("N", "size of each output feature", AttributeProto::INT)
       .Attr("bits", "number of bits used for weight quantization (default 4)", AttributeProto::INT)
       .Attr("block_size", "number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.", AttributeProto::INT)
+      // accuracy_level is ignored in most providers except CPU provider.
       .Attr("accuracy_level",
             "The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) "
             "(default unset). It is used to control how input A is quantized or downcast internally while "
@@ -3472,7 +3479,8 @@ Input zero_points is stored as uint8_t or same as type(A). It has the same packi
       .Input(1, "B", "1 or 2 dimensional data blob", "T2")
       .Input(2, "scales", "quantization scale", "T1")
       .Input(3, "zero_points", "quantization zero points", "T3", OpSchema::Optional)
-      .Input(4, "g_idx", "group_idx", "T4", OpSchema::Optional)
+      // group_idx is deprecated.
+      .Input(4, "g_idx", "group_idx.", "T4", OpSchema::Optional)
       .Input(5, "bias", "Bias to add to result. It should have shape [N].", "T1", OpSchema::Optional)
       .Output(0, "Y", "tensor. The output tensor has the same rank as the input. ", "T1")
       .TypeConstraint("T1", {"tensor(float)", "tensor(float16)"}, "Constrain input and output types to float/half_float tensors.")
@@ -3569,9 +3577,9 @@ MatMulBnb4 is a MatMul with weight quantized with 4 bits using either FP4 or NF4
   static const char* GatherBlockQuantized_ver1_doc = R"DOC(
 GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
-     `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
+     `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
   2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
-     If `zero_points` is not provided, 0 is the zero point except when data is uint8 type then the default zero point is 8.
+     If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
@@ -3594,6 +3602,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
+      .Attr("bits",
+            "Number of bits used for weight quantization.",
+            AttributeProto::INT,
+            static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
