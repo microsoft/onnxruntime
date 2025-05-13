@@ -55,9 +55,9 @@ class WhisperEncoder(torch.nn.Module):
 
     def dynamic_shapes(self, input_names, dynamic_axes):
         if len(input_names) == 1:
-            dynamic_shapes = ({0: "batch_size"},)
+            dynamic_shapes = [{0: "batch_size"}]
         elif len(input_names) == 2:
-            dynamic_shapes = ({0: "batch_size"}, {0: "batch_size"})
+            dynamic_shapes = [{0: "batch_size"}, {0: "batch_size"}]
         else:
             raise NotImplementedError(f"inputs={input_names}, dynamic_axes={dynamic_axes}")
         return dynamic_shapes
@@ -110,7 +110,7 @@ class WhisperEncoder(torch.nn.Module):
 
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = self.dynamic_axes(input_names, output_names)
+        dynamic_axes = tuple(self.dynamic_axes(input_names, output_names))
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:

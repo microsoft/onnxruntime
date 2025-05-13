@@ -136,6 +136,10 @@ class WhisperDecoder(torch.nn.Module):
                     [past_kv_cache[block.attn.value], kv_cache[block.attn.value]], dim=1
                 ).detach()
 
+        # Workaround for dynamo-exporter, which creates a copy of the decoder blocks
+        # when decoder is called twice, (in the case of encoder-decoder-init models).
+        # so, we cannot directly use the block.attn.key/value names as keys.
+        # Store them as str keys in a format "name+block_idx"
         temp_kv_cache = {}
         if past_key_values is None:
             for idx in range(0, len(kv_cache.keys()), 4):
@@ -143,7 +147,7 @@ class WhisperDecoder(torch.nn.Module):
                 temp_kv_cache["block.attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 1]]
                 temp_kv_cache["block.cross_attn.key" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 2]]
                 temp_kv_cache["block.cross_attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 3]]
-            
+
         present_self, present_cross = [], []
         for idx, block in enumerate(self.model.decoder.blocks):
             # Group self and cross values
@@ -155,8 +159,8 @@ class WhisperDecoder(torch.nn.Module):
                 present_self.append(kv_cache[block.attn.value])
             if past_key_values is None:
                 # Return present_self_* and present_cross_* for decoder-init
-                #present_cross.append(kv_cache[block.cross_attn.key])
-                #present_cross.append(kv_cache[block.cross_attn.value])
+                # present_cross.append(kv_cache[block.cross_attn.key])
+                # present_cross.append(kv_cache[block.cross_attn.value])
                 present_cross.append(temp_kv_cache["block.cross_attn.key" + "." + str(idx)])
                 present_cross.append(temp_kv_cache["block.cross_attn.value" + "." + str(idx)])
 
@@ -248,7 +252,7 @@ class WhisperDecoder(torch.nn.Module):
     def dynamic_shapes(self, inputs):
         if len(inputs) == 3:
             n_layers = len(inputs[-1])
-            dynamic_shapes = (
+            dynamic_shapes = [
                 {0: "batch_size", 1: "sequence_length"},
                 {0: "batch_size"},
                 [
@@ -260,9 +264,9 @@ class WhisperDecoder(torch.nn.Module):
                     )
                 ]
                 * n_layers,
-            )
+            ]
         else:
-            dynamic_shapes = ({0: "batch_size", 1: "sequence_length"}, {0: "batch_size"})
+            dynamic_shapes = [{0: "batch_size", 1: "sequence_length"}, {0: "batch_size"}]
         return dynamic_shapes
 
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
@@ -417,7 +421,7 @@ class WhisperDecoder(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = self.dynamic_axes(input_names, output_names)
+        dynamic_axes = tuple(self.dynamic_axes(input_names, output_names))
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:

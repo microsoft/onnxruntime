@@ -15,7 +15,6 @@ import onnx
 import torch
 import torch.nn.functional as F
 import torch.utils.cpp_extension
-from common_onnx_export import export_to_onnx
 from onnx_model import OnnxModel
 from transformers import WhisperConfig
 from whisper_inputs import convert_inputs_for_ort, get_model_dynamic_axes, get_sample_jump_times_inputs
@@ -321,7 +320,6 @@ class WhisperJumpTimes(torch.nn.Module):
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
         use_int32_inputs: bool = True,
-        use_dynamo_export: bool = True,
     ):
         """Export word-level timestamps to ONNX
 
@@ -332,7 +330,6 @@ class WhisperJumpTimes(torch.nn.Module):
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
-            use_dynamo_export (bool, optional): use dynamo exporter
         """
         # Shape of timestamps's tensors:
         # Inputs:
@@ -410,19 +407,18 @@ class WhisperJumpTimes(torch.nn.Module):
 
             # Create torch ops and map them to ORT contrib ops before export
             self.create_torch_ops()
-            export_to_onnx(
-                model=self,
-                inputs=inputs,
-                out_path=out_path,
+            torch.onnx.export(
+                self,
+                args=inputs,
+                f=out_path,
                 export_params=True,
                 input_names=input_names,
                 output_names=output_names,
                 dynamic_axes=dynamic_axes,
-                opset_version=18 if use_dynamo_export else 17,
+                opset_version=17,
                 do_constant_folding=True,
                 verbose=verbose,
                 custom_opsets={"com.microsoft": 1},
-                use_dynamo_export=use_dynamo_export,
             )
 
             if use_external_data_format:

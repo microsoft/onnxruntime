@@ -158,9 +158,9 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
     def dynamic_shapes(self, inputs, dynamic_axes):
         if len(inputs) == 1:
-            dynamic_shapes = ({0: "batch_size"},)
+            dynamic_shapes = [{0: "batch_size"}]
         elif len(inputs) == 2:
-            dynamic_shapes = ({0: "batch_size"}, {0: "batch_size", 1: "sequence_length"})
+            dynamic_shapes = [{0: "batch_size"}, {0: "batch_size", 1: "sequence_length"}]
         else:
             raise NotImplementedError(f"inputs={string_type(inputs, with_shape=True)}, dynamic_axes={dynamic_axes}")
         return dynamic_shapes
@@ -315,7 +315,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
                     verbose=verbose,
                 )
             else:
-                dynamic_shapes = self.dynamic_shapes(inputs, dynamic_axes)
+                dynamic_shapes = tuple(self.dynamic_shapes(inputs, dynamic_axes))
                 with bypass_export_some_errors(patch_transformers=True):
                     torch.onnx.export(
                         self,

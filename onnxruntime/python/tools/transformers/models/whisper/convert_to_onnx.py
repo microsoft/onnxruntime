@@ -360,13 +360,6 @@ def export_onnx_models(
         logger.warning("You MUST pass `--use_external_data_format` because model size > 2GB")
         raise Exception("Please pass `--use_external_data_format` for this model.")
 
-    try:
-        import ninja  # noqa: F401
-    except ImportError:
-        if "jump_times" in models:
-            print("Skipping jum_times, ninja not installed")
-            del models["jump_times"]
-
     output_paths = []
     for name, model in models.items():
         print(f"========> Handling {name} model......")
@@ -392,8 +385,7 @@ def export_onnx_models(
                 use_int32_inputs=use_int32_inputs,
                 use_encoder_hidden_states=(name == "decoder_init"),
                 use_kv_cache_inputs=(name == "decoder"),
-                # dynamo cannot be used for jump times as it contains control flows
-                use_dynamo_export=use_dynamo_export and name != "jump_times",
+                use_dynamo_export=use_dynamo_export,
                 use_onnxscript_fusion_optimizations=optimize_onnx,
             )
         else:

@@ -193,6 +193,7 @@ class WhisperHelper:
                 use_onnxscript_fusion_optimizations,
             )
         elif isinstance(model, WhisperJumpTimes):
+            # Dynamo-exporter cannot be used for jump times as it contains control flows
             model.export_onnx(
                 onnx_model_path,
                 provider,
@@ -200,7 +201,6 @@ class WhisperHelper:
                 use_external_data_format,
                 use_fp16_inputs,
                 use_int32_inputs,
-                use_dynamo_export,
             )
         else:
             raise ValueError(f"Unknown instance for model detected: {type(model)}")
@@ -253,7 +253,7 @@ class WhisperHelper:
                     output_qk_dtype = 10
                 else:
                     output_qk_dtype = 1
-                m = add_output_qk_to_mha(m, dtype=output_qk_dtype ,skip_node_idxs=list(range(0, 2 * num_layers, 2)))
+                m = add_output_qk_to_mha(m, dtype=output_qk_dtype, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 
