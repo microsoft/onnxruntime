@@ -178,6 +178,8 @@ void graph_save(const Graph& graph, const std::string& filename, const std::stri
   *model_proto->mutable_graph() = *graph_proto_subgraph;
   auto& logger = logging::LoggingManager::DefaultLogger();
   auto model = Model::Create(std::move(*model_proto), ToPathString(filename), nullptr, logger);
+  auto status = model->MainGraph().Resolve();
+  vai_assert(status.IsOK(), "graph resolve error:" + status.ErrorMessage());
   if (initializer_size_threshold == std::numeric_limits<size_t>::max()) {
     model_proto = model->ToProto();
   } else {
