@@ -20,6 +20,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
+#include "core/common/parse_string.h"
 #include <gsl/gsl>
 #include <unordered_map>
 #include <utility>
@@ -1321,7 +1322,10 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
   return std::make_unique<GPUDataTransfer>();
 }
 
-Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  auto graph_annotation_str =
+  run_options.GetConfigOptions().GetConfigEntry("nv_profile_index");
+  TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
   return Status::OK();
 }
 
@@ -2686,6 +2690,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    if (trt_profiles.size() >= 2)
+    {
+      trt_context->setOptimizationProfileAsync(nv_profile_index_, stream);
+    }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity

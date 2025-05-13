@@ -263,6 +263,7 @@ class NvExecutionProvider : public IExecutionProvider {
   bool cuda_graph_enable_ = false;
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
+  int nv_profile_index_ = 0;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
