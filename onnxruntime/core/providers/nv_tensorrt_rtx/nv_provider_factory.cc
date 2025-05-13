@@ -229,7 +229,6 @@ struct NvTensorRtRtxEpFactory : OrtEpFactory {
   const std::string ep_name;
   const std::string vendor{"NVIDIA"};
 
-  // NVIDIA vendor ID. Refer to the ACPI ID registry (search NVIDIA): https://uefi.org/ACPI_ID_List
   const uint32_t vendor_id{0x10de};
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
