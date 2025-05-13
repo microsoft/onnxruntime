@@ -11,6 +11,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/weightOnlyGemmProfiler.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -48,8 +49,14 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_) {
-        use_fpA_intB_gemm_ = true;
+      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_ && N_ % (nbits_ == 8 ? 32 : 64) == 0 && K_ % 64 == 0) {
+        fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
+                                                         ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
+                                                         : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
+        int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
+        if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
+          use_fpA_intB_gemm_ = true;
+        }
       }
     }
 
@@ -104,6 +111,10 @@ class MatMulNBits final : public CudaKernel {
   // WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   // mutable GemmProfilerPtr gemmProfiler_{nullptr};
   // GemmIdCore gemmId_{};
+  mutable std::once_flag fpA_intB_init_once_flag_;
+  mutable IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
+  mutable IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
+  mutable IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
 };
 
 }  // namespace cuda
