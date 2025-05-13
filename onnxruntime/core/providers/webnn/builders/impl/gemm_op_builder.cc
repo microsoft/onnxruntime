@@ -91,7 +91,7 @@ Status GemmOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const N
       a_zero_point = model_builder.GetOperand(node.InputDefs()[2]->Name());
       std::vector<int64_t> a_zero_point_shape;
       ORT_RETURN_IF_NOT(GetShape(*input_defs[2], a_zero_point_shape, logger), "Cannot get shape of a_zero_point");
-      // Scale is not used by MatMulInteger but required by DequantizeLinear, set it to deafult value 1.0f.
+      // Scale is not used by MatMulInteger but required by DequantizeLinear. So set it to deafult value 1.0f.
       // The scale input should have the same shape as the zero point input.
       a_scale = model_builder.CreateOrGetConstant<float>(ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
                                                          1.0f,
@@ -269,7 +269,7 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   }
 
   if (op_type == "MatMulInteger") {
-    // The first decomposed op of MatMulInteger is DequantizeLinear,
+    // The first decomposed op of MatMulInteger is DequantizeLinear, and so
     // we only need to ensure it supports the input0_type.
     return IsDataTypeSupportedByOp("DequantizeLinear", input0_type, wnn_limits, "input", "x", logger);
   } else {
@@ -287,7 +287,7 @@ bool GemmOpBuilder::HasSupportedOutputsImpl(const Node& node, const emscripten::
   }
 
   if (op_type == "MatMulInteger") {
-    // The last decomposed op of MatMulInteger is Cast,
+    // The last decomposed op of MatMulInteger is Cast, and so
     // we only need to ensure it supports the output_type.
     return IsDataTypeSupportedByOp("Cast", output_type, wnn_limits, "output", "Output", logger);
   } else {
