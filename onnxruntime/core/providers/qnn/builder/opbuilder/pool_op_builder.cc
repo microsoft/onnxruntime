@@ -79,8 +79,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
     auto dilations = node_helper.Get("dilations", std::vector<int32_t>{1});
     ORT_RETURN_IF_NOT(dilations.size() == 1, "QNN Pool1D: dilations must have length 1 or omitted!");
-  }
-  else {
+  } else {
     auto dilations = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
     ORT_RETURN_IF_NOT(dilations.size() == 2, "QNN Pool2D: dilations must have length 2 or omitted!");
   }
