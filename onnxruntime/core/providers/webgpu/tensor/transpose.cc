@@ -158,17 +158,17 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   const TensorShape& input_shape = input_tensor->Shape();
   int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
-  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
-  if (output_size == 0) {
-    return Status::OK();
-  }
-
   TensorShapeVector output_dims(rank);
   InlinedVector<size_t> default_perm(rank);
   const InlinedVector<size_t>* p_perm = nullptr;
   ORT_RETURN_IF_ERROR(ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm));
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
+
+  uint32_t output_size = output_shape.Size();
+  if (output_size == 0) {
+    return Status::OK();
+  }
 
   return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);
 }
