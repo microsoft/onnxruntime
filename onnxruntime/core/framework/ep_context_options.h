@@ -66,7 +66,7 @@ struct ModelGenOptions {
 //    std::ostream out_stream(out_stream_buf.get());
 class OutStreamBuf : public std::streambuf {
  public:
-  OutStreamBuf(OutStreamHolder out_stream_holder);
+  explicit OutStreamBuf(OutStreamHolder out_stream_holder);
   ~OutStreamBuf();
 
   Status GetStatus() const {

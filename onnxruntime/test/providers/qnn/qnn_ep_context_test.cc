@@ -26,6 +26,14 @@ namespace test {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
+// Returns QNN provider options that use the HTP backend (npu) and do not offload graph I/O qdq.
+static ProviderOptions QnnHTPOptionsWithoutQDQOffloading() {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  return provider_options;
+}
+
 static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
   const auto& attributes = node.GetAttributes();
   if (auto entry = attributes.find(attr_name); entry != attributes.end()) {
@@ -649,10 +657,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
 
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
-  ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
-  provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
 
   const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_ortmodel_ctx.onnx");
   std::filesystem::remove(output_model_file);
@@ -682,24 +687,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
 
 // Tests using an OrtOutStreamFunc function that writes too much.
 TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_WriteTooMuch) {
-  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_writetoomuch.onnx");
-  std::filesystem::remove(input_model_file);
-
-  // Create a test model and save it to a file.
+  // Create a test model (in memory).
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
-  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+  std::string model_data = test_model.Serialize();
 
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
-  ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
-  provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
   compile_options.SetOutputModelOutStream(WriteTooMuchToStream, nullptr);  // Set output stream that writes too much
   compile_options.SetEpContextEmbedMode(true);
 
@@ -712,24 +711,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_WriteTooMuch) {
 
 // Tests using an OrtOutStreamFunc function that returns an error.
 TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
-  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_returnstatus.onnx");
-  std::filesystem::remove(input_model_file);
-
-  // Create a test model and save it to a file.
+  // Create a test model (in memory).
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
-  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+  std::string model_data = test_model.Serialize();
 
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
-  ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
-  provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
   compile_options.SetOutputModelOutStream(ReturnStatusFromStream, nullptr);  // Set output stream that returns error
   compile_options.SetEpContextEmbedMode(true);
 
@@ -743,24 +736,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
 // Tests using an OrtOutStreamFunc function that never writes any data. ORT should abort write attempts
 // with an error to prevent a potential infinite loop.
 TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_NoWrite_AbortInfiniteWriteLoop) {
-  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_zerowrite.onnx");
-  std::filesystem::remove(input_model_file);
-
-  // Create a test model and save it to a file.
+  // Create a test model (in memory).
   TestModel test_model;
   CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
-  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+  std::string model_data = test_model.Serialize();
 
   // Initialize session options with QNN EP
   Ort::SessionOptions so;
-  ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
-  provider_options["offload_graph_io_quantization"] = "0";
-  so.AppendExecutionProvider("QNN", provider_options);
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
 
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
   compile_options.SetOutputModelOutStream(NoWriteStream, nullptr);  // Set output stream that doesn't write data.
   compile_options.SetEpContextEmbedMode(true);
 
