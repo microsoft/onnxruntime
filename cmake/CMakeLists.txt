@@ -1908,70 +1908,74 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-# Install
-include(CMakePackageConfigHelpers)
+if(NOT onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_WEBGPU)
+  message(WARNING "CMake target files will not be generated for static onnxruntime builds with webgpu support")
+else()
+  # Install
+  include(CMakePackageConfigHelpers)
 
-set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+  set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
 
-if (NOT onnxruntime_BUILD_SHARED_LIB)
-string(APPEND PROJECT_CONFIG_CONTENT
-      "include(CMakeFindDependencyMacro)\n\
-      find_dependency(absl)\n\
-      find_dependency(date)\n\
-      find_dependency(Eigen3)\n\
-      find_dependency(nlohmann_json)\n\
-      find_dependency(ONNX)\n\
-      find_dependency(re2)\n\
-      find_dependency(flatbuffers)\n\
-      find_dependency(cpuinfo)\n\
-      find_dependency(protobuf)\n\
-      find_dependency(Boost COMPONENTS mp11)\n\
-      find_dependency(Microsoft.GSL 4.0)\n\
-      if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
-      find_dependency(Iconv)\n\
-      endif()\n\
-      if(WIN32)\n\
-      find_dependency(wil)\n\
-      endif()\n\
-      find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
-      add_library(safeint_interface IMPORTED INTERFACE)\n\
-      target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
-      ")
-endif()
-
-string(APPEND PROJECT_CONFIG_CONTENT
-      "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
-
-
-file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
-install(EXPORT ${PROJECT_NAME}Targets
-  NAMESPACE ${PROJECT_NAME}::
-  DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-
-# Create config for find_package()
-configure_package_config_file(
-  "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
-  INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-
-write_basic_package_version_file(
-  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-  VERSION ${ORT_VERSION}
-  COMPATIBILITY SameMajorVersion)
-
-install(
-  FILES
-  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
-  "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
-  DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-
-if(DEFINED BUILD_AS_ARM64X)
-  set(ARM64X_TARGETS onnxruntime)
-
-  # Add additional ARM64X build targets
-  if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(CMakeFindDependencyMacro)\n\
+        find_dependency(absl)\n\
+        find_dependency(date)\n\
+        find_dependency(Eigen3)\n\
+        find_dependency(nlohmann_json)\n\
+        find_dependency(ONNX)\n\
+        find_dependency(re2)\n\
+        find_dependency(flatbuffers)\n\
+        find_dependency(cpuinfo)\n\
+        find_dependency(protobuf)\n\
+        find_dependency(Boost COMPONENTS mp11)\n\
+        find_dependency(Microsoft.GSL 4.0)\n\
+        if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
+        find_dependency(Iconv)\n\
+        endif()\n\
+        if(WIN32)\n\
+        find_dependency(wil)\n\
+        endif()\n\
+        find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+        add_library(safeint_interface IMPORTED INTERFACE)\n\
+        target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+        ")
   endif()
 
-  include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
+
+
+  file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
+  install(EXPORT ${PROJECT_NAME}Targets
+    NAMESPACE ${PROJECT_NAME}::
+    DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
+
+  # Create config for find_package()
+  configure_package_config_file(
+    "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
+    INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+  write_basic_package_version_file(
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    VERSION ${ORT_VERSION}
+    COMPATIBILITY SameMajorVersion)
+
+  install(
+    FILES
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
+    "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
+    DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
+
+  if(DEFINED BUILD_AS_ARM64X)
+    set(ARM64X_TARGETS onnxruntime)
+
+    # Add additional ARM64X build targets
+    if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+    endif()
+
+    include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
+  endif()
 endif()
