@@ -64,6 +64,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | LRN | ai.onnx(7-12, 13+) | pad, averagePool2d, transpose, add, mul, pow, div | |
 | LSTM | ai.onnx(7-13, 14-21, 22+) | lstm | Only supports 'layout' == 0, 'input_forget' == 0. 'clip' is not supported. The activation functions in 'activations' must be one of 'Relu', 'Tanh', 'Sigmoid'. Forward and backward activations must be the same if bidirectional. 'sequence_lens' if present should be constant with values equal to the first dimension length of input 'X' |
 | MatMul | ai.onnx(7-8, 9-12, 13+) | matmul | |
+| MatMulInteger | ai.onnx(10+) | cast, dequantizeLinear, matmul | |
 | MatMulNBits | com.microsoft(1+) | add, dequantizeLinear, matmul, reshape, transpose | Inputs 'B' and 'zero_points' (if present) should be constants, input 'g_idx' is not supported, only bits=4 is supported |
 | Max | ai.onnx(7, 8-11, 12, 13+) | max | |
 | MaxPool | ai.onnx(7, 8-9, 10, 11, 12+) | maxPool2d | Only supports 4-D input, 2-D 'kernel_shape', 'storage_order' != 1, one output |
