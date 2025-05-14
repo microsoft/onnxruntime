@@ -137,7 +137,7 @@ stages:
               symbolExpiryTime: 60
             includePublicSymbolServer: true
             symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
-            symbolsArtifactName: onnxruntime_cpu_win_x64_${{ parameters.PYTHON_VERSION }}
+            symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
             symbolsVersion: $(Build.BuildId)
             symbolProject: 'ONNX Runtime'
             subscription: 'OnnxrunTimeCodeSign_20240611'
