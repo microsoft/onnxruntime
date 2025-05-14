@@ -223,7 +223,7 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelOutStre
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
   ORT_UNUSED_PARAMETER(write_stream_func);
-  ORT_UNUSED_PARAMETER(state);
+  ORT_UNUSED_PARAMETER(stream_state);
   return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD)
   API_IMPL_END
