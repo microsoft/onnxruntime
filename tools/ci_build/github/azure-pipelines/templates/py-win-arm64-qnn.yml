@@ -33,6 +33,20 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+  templateContext:
+    sdl:
+      codeSignValidation:
+        enabled: true
+        # TODO: check why pyd file was not signed
+        break: false
+        additionalTargetsGlobPattern: f|**\*.pyd
+      psscriptanalyzer:
+        enabled: true
+      binskim:
+        preReleaseVersion: '4.3.1'
+        enabled: true
+        scanOutputDirectoryOnly: true
+        analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
   strategy:
     matrix:
       Python311_arm64:
@@ -124,6 +138,18 @@ jobs:
       workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
       createLogFile: true
 
+  - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+    - template: publish-symbolrequestprod-api.yml
+      parameters:
+        ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
+          symbolExpiryTime: 60
+        includePublicSymbolServer: true
+        symbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+        symbolsArtifactName: onnxruntime_qnn_win_arm64_$(PythonVersion)
+        symbolsVersion: $(Build.BuildId)
+        symbolProject: 'ONNX Runtime'
+        subscription: 'OnnxrunTimeCodeSign_20240611'
+
   # Esrp signing
   - template: win-esrp-dll.yml
     parameters:
@@ -181,4 +207,3 @@ jobs:
     inputs:
       GdnPublishTsaOnboard: false
       GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
-

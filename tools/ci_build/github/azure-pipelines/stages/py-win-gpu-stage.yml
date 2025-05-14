@@ -133,6 +133,19 @@ stages:
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
+
+          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+            - template: publish-symbolrequestprod-api.yml
+              parameters:
+                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
+                  symbolExpiryTime: 60
+                includePublicSymbolServer: true
+                symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+                symbolsArtifactName: onnxruntime_cpu_win_x64_${{ parameters.PYTHON_VERSION }}
+                symbolsVersion: $(Build.BuildId)
+                symbolProject: 'ONNX Runtime'
+                subscription: 'OnnxrunTimeCodeSign_20240611'
+
           # Esrp signing
           - template: ../templates/win-esrp-dll.yml
             parameters:
@@ -170,7 +183,6 @@ stages:
       pool:
         name: ${{parameters.MACHINE_POOL}}
       steps:
-
         - checkout: self
           clean: true
           submodules: none
