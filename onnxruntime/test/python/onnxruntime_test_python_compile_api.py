@@ -13,7 +13,7 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import ModelRequiresCompilation
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -175,6 +175,77 @@ class TestCompileApi(AutoEpTestCase):
         output_model_bytes = model_compiler.compile_to_bytes()
         self.assertTrue(isinstance(output_model_bytes, bytes))
         self.assertGreater(len(output_model_bytes), 0)
+
+    def test_compile_from_file_to_stream(self):
+        """
+        Tests compiling a model (from files) to an output stream using a custom write functor.
+        """
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.stream.onnx")
+
+        with open(output_model_path, "wb") as output_fd:
+            # User's custom write functor. Writes the model to a file.
+            def my_write_func(buffer: bytes) -> int:
+                self.assertGreater(len(buffer), 0)
+                return output_fd.write(buffer)
+
+            session_options = onnxrt.SessionOptions()
+            if provider:
+                session_options.add_provider(provider, provider_options)
+
+            model_compiler = onnxrt.ModelCompiler(
+                session_options,
+                input_model_path,
+                embed_compiled_data_into_model=True,
+                external_initializers_file_path=None,
+            )
+            model_compiler.compile_to_stream(my_write_func)
+
+        self.assertTrue(os.path.exists(output_model_path))
+        onnx.checker.check_model(output_model_path)  # Check that compiled model can be loaded.
+
+    def test_compile_to_stream_that_raises_exception(self):
+        """
+        Tests compiling a model to an output stream that always raises an exception.
+        """
+        provider = None
+        provider_options = dict()
+        if "QNNExecutionProvider" in available_providers:
+            provider = "QNNExecutionProvider"
+            provider_options["backend_type"] = "htp"
+        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
+
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+
+        # User's custom write functor that raises an exception.
+        test_py_error_message = "My Python Error"
+
+        def my_write_func(buffer: bytes) -> int:
+            self.assertGreater(len(buffer), 0)
+            raise ValueError(test_py_error_message)
+
+        session_options = onnxrt.SessionOptions()
+        if provider:
+            session_options.add_provider(provider, provider_options)
+
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+        )
+
+        # Try to compile and expect ORT to raise a Fail exception that contains our message.
+        with self.assertRaises(Fail) as context:
+            model_compiler.compile_to_stream(my_write_func)
+        self.assertIn(test_py_error_message, str(context.exception))
 
     def test_fail_load_uncompiled_model_and_then_compile(self):
         """
