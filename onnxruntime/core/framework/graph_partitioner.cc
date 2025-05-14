@@ -9,6 +9,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/string_utils.h"
 #include "core/framework/compute_capability.h"
+#include "core/framework/ep_context_options.h"
 #include "core/framework/execution_providers.h"
 #include "core/framework/func_kernel.h"
 #include "core/framework/kernel_lookup.h"
@@ -794,7 +795,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
 
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -824,15 +825,16 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
-  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
-                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+  const auto* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
+  const auto* output_stream_holder = ep_context_gen_options.TryGetOutputModelStream();
+  const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
-  std::filesystem::path context_cache_path;
-  if (!saving_to_buffer || !graph.ModelPath().empty()) {
-    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+  std::filesystem::path valid_output_model_path;
+  if (output_model_path_ptr != nullptr || !graph.ModelPath().empty()) {
+    std::string output_model_path = (output_model_path_ptr != nullptr) ? *output_model_path_ptr : "";
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(output_model_path,
                                                   graph.ModelPath(),
-                                                  context_cache_path,
+                                                  valid_output_model_path,
                                                   ep_context_gen_options.overwrite_existing_output_file));
   }
 
@@ -894,25 +896,27 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
 
-  if (saving_to_buffer) {
+  if (output_buffer_holder != nullptr) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
     // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
     ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
-                                                                                                   context_cache_path,
+                                                                                                   valid_output_model_path,
                                                                                                    model_saving_options);
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
 
-    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    AllocatorPtr allocator = output_buffer_holder->buffer_allocator;
     IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
     model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
 
-    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
-    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
+    *output_buffer_holder->buffer_size_ptr = buffer_size;
+    *output_buffer_holder->buffer_ptr = buffer.release();
+  } else if (output_stream_holder != nullptr) {
+    // TODO
   } else {
-    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, valid_output_model_path,
                                                             external_ini_path, model_saving_options));
   }
 
@@ -1164,7 +1168,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
                                    Mode mode,
-                                   const EpContextModelGenerationOptions& ep_context_gen_options,
+                                   const epctx::ModelGenOptions& ep_context_gen_options,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -1211,12 +1215,15 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
-      // Check before EP compile graphs
-      std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
-                                                    context_cache_path,
-                                                    ep_context_gen_options.overwrite_existing_output_file));
+    if (ep_context_gen_options.enable) {
+      if (const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
+          output_model_path_ptr != nullptr) {
+        // Check before EP compile graphs
+        std::filesystem::path context_cache_path;
+        ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(*output_model_path_ptr, graph.ModelPath(),
+                                                      context_cache_path,
+                                                      ep_context_gen_options.overwrite_existing_output_file));
+      }
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs

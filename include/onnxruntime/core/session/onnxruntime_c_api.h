@@ -453,6 +453,24 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
                                                       _Out_ size_t* num_selected,
                                                       _In_ void* state);
 
+/** \brief Function that writes a buffer to a stream.
+ *
+ * \param state Opaque pointer holding the state for the user's stream.
+ * \param buffer The buffer to write to the stream.
+ * \param buffer_num_bytes The size of the buffer in bytes.
+ * \param num_bytes_written Output parameter that should be set to the number of bytes written to
+ *                          the stream. ONNX Runtime will continuously call this write function until
+ *                          all bytes have been written to the stream.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* WriteToStreamFunc)(_In_ void* state,
+                                                    _In_ const void* buffer,
+                                                    _In_ size_t buffer_num_bytes,
+                                                    _Out_ size_t* num_bytes_written);
+
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
@@ -5976,6 +5994,19 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetInputModel, _In_ OrtModelCompilationOptions* model_compile_options,
                   _In_ const OrtModel* input_model);
+
+  /** \brief Sets the WriteToStreamFunc function that ONNX Runtime should call to write the output model to a stream.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] write_stream_func The WriteToStreamFunc function to call when writing out the model.
+   * \param[in] state Opaque state passed as the first argument to WriteToStreamFunc.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelStream, _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ WriteToStreamFunc write_stream_func, _In_ void* state);
 };
 
 ORT_RUNTIME_CLASS(Ep);

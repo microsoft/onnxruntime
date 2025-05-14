@@ -207,6 +207,28 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelStream,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options,
+                    _In_ WriteToStreamFunc write_stream_func, _In_ void* state) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+
+  if (write_stream_func == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "WriteToStreamFunc function for output model is null");
+  }
+
+  model_compile_options->SetOutputModelStream(write_stream_func, state);
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(write_stream_func);
+  ORT_UNUSED_PARAMETER(state);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
                     bool embed_ep_context_in_model) {
@@ -252,6 +274,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
     &OrtCompileAPI::CompileModel,
     &OrtCompileAPI::ModelCompilationOptions_SetInputModel,
+    &OrtCompileAPI::ModelCompilationOptions_SetOutputModelStream,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

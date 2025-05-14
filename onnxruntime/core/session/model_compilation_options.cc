@@ -9,6 +9,7 @@
 #include <utility>
 
 #include "core/framework/allocator.h"
+#include "core/framework/ep_context_options.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/environment.h"
 
@@ -45,13 +46,12 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
   ConfigOptions& config_options = session_options_.value.config_options;
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
-  ep_context_gen_options.output_model_file_path = output_model_path;
+  ep_context_gen_options.output_model_location = output_model_path;
 
-  if (ep_context_gen_options.output_model_file_path.size() <= ConfigOptions::kMaxValueLength) {
-    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
-                                                  ep_context_gen_options.output_model_file_path.c_str());
+  if (output_model_path.size() <= ConfigOptions::kMaxValueLength) {
+    Status status = config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, output_model_path.c_str());
     ORT_ENFORCE(status.IsOK());  // Should not fail because both key/value strings are below the min string lengths
                                  // required by ConfigOptions::AddConfigEntry().
   } else {
@@ -72,7 +72,7 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
     logging::LoggingManager* log_manager = env_.GetLoggingManager();
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
       const logging::Logger& logger = log_manager->DefaultLogger();
-      LOGS(logger, WARNING) << "Output model path length (" << ep_context_gen_options.output_model_file_path.size()
+      LOGS(logger, WARNING) << "Output model path length (" << output_model_path.size()
                             << ") exceeds limit of " << ConfigOptions::kMaxKeyLength << " characters."
                             << "ORT will still generated the expected output file, but EPs will see an empty "
                             << "output model path in SessionOption's ConfigOptions.";
@@ -93,10 +93,19 @@ Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr a
                                                      size_t* output_model_buffer_size_ptr) {
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
-  session_options_.value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_allocator = std::move(allocator);
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::BufferHolder{
+      output_model_buffer_ptr,
+      output_model_buffer_size_ptr,
+      std::move(allocator),
+  };
   return Status::OK();
+}
+
+void ModelCompilationOptions::SetOutputModelStream(WriteToStreamFunc write_stream_func, void* stream_state) {
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::StreamHolder{
+      write_stream_func,
+      stream_state,
+  };
 }
 
 Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_model) {
@@ -125,11 +134,6 @@ const OrtModel* ModelCompilationOptions::TryGetInputOrtModel() const {
 }
 
 Status ModelCompilationOptions::ResetOutputModelSettings() {
-  EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
-  ep_context_gen_options.output_model_file_path.clear();
-  ep_context_gen_options.output_model_buffer_ptr = nullptr;
-  ep_context_gen_options.output_model_buffer_size_ptr = nullptr;
-  ep_context_gen_options.output_model_buffer_allocator = nullptr;
   return session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
 }
 
@@ -161,36 +165,45 @@ Status ModelCompilationOptions::Check() const {
   }
 
   // Check output model settings
-  const EpContextModelGenerationOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
+  const epctx::ModelGenOptions& ep_context_gen_options = session_options_.value.ep_context_gen_options;
 
-  const bool explicit_output_to_file = !ep_context_gen_options.output_model_file_path.empty();
-  const bool output_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr;
+  const bool has_no_output_model_location = std::holds_alternative<std::monostate>(
+      ep_context_gen_options.output_model_location);
 
-  if (!explicit_output_to_file && !output_to_buffer && input_model_path_ptr != nullptr) {
-    // User did not specify an output file or an output buffer. We default to generating an output file
+  if (has_no_output_model_location && input_model_path_ptr != nullptr) {
+    // User did not specify an output file, output buffer, or output stream. We default to generating an output file
     // with a name based on the input file name, so do not return an error.
     return Status::OK();
   }
 
-  if (!explicit_output_to_file && !output_to_buffer) {
+  if (has_no_output_model_location) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Unable to generate an output model path: require an input model path if the location "
-                           "of the output model (e.g., file or buffer) is not specified.");
+                           "of the output model (e.g., file, buffer, or stream) is not specified.");
   }
 
-  if (explicit_output_to_file && output_to_buffer) {
+  const epctx::BufferHolder* output_buffer_ptr = ep_context_gen_options.TryGetOutputModelBuffer();
+
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_ptr == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Output model to compile must be saved either to a file or to a buffer, but not both.");
+                           "Invalid buffer configuration for output model: buffer pointer is null");
   }
 
-  if (output_to_buffer && ep_context_gen_options.output_model_buffer_size_ptr == nullptr) {
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_size_ptr == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: size pointer is null");
   }
 
-  if (output_to_buffer && ep_context_gen_options.output_model_buffer_allocator == nullptr) {
+  if (output_buffer_ptr != nullptr && output_buffer_ptr->buffer_allocator == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Invalid buffer configuration for output model: allocator is null");
+  }
+
+  const epctx::StreamHolder* output_stream_ptr = ep_context_gen_options.TryGetOutputModelStream();
+
+  if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid write-to-stream function for output model: function pointer is null");
   }
 
   return Status::OK();
