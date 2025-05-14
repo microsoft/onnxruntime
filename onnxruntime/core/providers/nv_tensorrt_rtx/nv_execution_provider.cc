@@ -5,6 +5,7 @@
 #include <list>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
@@ -1326,7 +1327,7 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   if (multi_profile_enable_ == true){
     auto graph_annotation_str =
-    run_options.GetConfigOptions().GetConfigEntry("nv_profile_index");
+    run_options.GetConfigOptions().GetConfigEntry(nv::run_option_names::kProfileIndex);
     TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
   }
   return Status::OK();

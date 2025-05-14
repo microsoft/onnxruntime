@@ -35,5 +35,8 @@ constexpr const char* kONNXBytestreamSize = "nv_onnx_bytestream_size";
 constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 
 }  // namespace provider_option_names
+namespace run_option_names {
+constexpr const char* kProfileIndex = "nv_profile_index";
+}
 }  // namespace nv
 }  // namespace onnxruntime
