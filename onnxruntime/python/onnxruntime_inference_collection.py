@@ -1006,6 +1006,13 @@ class OrtValue:
         """
         return self._ortvalue.element_type()
 
+    def tensor_size_in_bytes(self) -> int:
+        """
+        Returns the size of the data in the OrtValue in bytes
+        if the OrtValue is a tensor.
+        """
+        return self._ortvalue.tensor_size_in_bytes()
+
     def has_value(self) -> bool:
         """
         Returns True if the OrtValue corresponding to an
