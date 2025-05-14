@@ -33,6 +33,7 @@ function save_qairt_sdk_path() {
   echo "${1}" > "${qairt_sdk_file_path}"
 }
 
+qairt_sdk_root=
 for i in "$@"; do
   case $i in
     --config=*)
@@ -52,6 +53,10 @@ for i in "$@"; do
       ;;
   esac
 done
+
+if [ -z "${qairt_sdk_root}" ]; then
+    qairt_sdk_root="$(get_qairt_contentdir)"
+fi
 
 export PATH="$(get_cmake_bindir):$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
 

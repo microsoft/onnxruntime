@@ -49,6 +49,7 @@ class CreateVenvTask(CompositeTask):
                     executables_and_args=[
                         ["pip", "install", "-r", f"{REPO_ROOT}/requirements-dev.txt"],
                         ["lintrunner", "init"],
+                        ["pip", "install", "-r", f"{REPO_ROOT}/qcom/requirements.txt"],
                     ],
                 ),
             ],

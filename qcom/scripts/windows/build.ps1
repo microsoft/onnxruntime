@@ -6,7 +6,7 @@ param (
                HelpMessage = "The architecture for which to build.")]
     [string]$Arch,
 
-    [Parameter(Mandatory = $true,
+    [Parameter(Mandatory = $false,
                HelpMessage = "Path to QAIRT SDK.")]
     [string]$QairtSdkRoot,
 
@@ -20,7 +20,11 @@ param (
 
     [Parameter(Mandatory = $false,
                HelpMessage = "Force regeneration of build system.")]
-    [bool]$Update = $false
+    [bool]$Update = $false,
+
+    [Parameter(Mandatory = $false,
+               HelpMessage = "Python virtual environment to activate.")]
+    [string]$PyVEnv
 )
 
 $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\..\..\..").Path
@@ -30,8 +34,18 @@ $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.De
 $BuildDir = (Join-Path $RepoRoot "build\Windows-$Arch")
 $CMakeGenerator = "Visual Studio 17 2022"
 $ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
-$QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
 $ValidArchs = "arm64", "arm64ec", "x86_64"
+
+if ($PyVEnv -ne "") {
+    . (Join-Path $PyVEnv "Scripts\Activate.ps1")
+}
+
+if ($QairtSdkRoot -eq "") {
+    $QairtSdkRoot = (Install-Package qairt)
+}
+else {
+    $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
+}
 
 function Get-QairtSdkFilePath() {
     "$BuildDir\$Config\qairt-sdk-path.txt"
@@ -93,7 +107,8 @@ if ($Mode -eq "build")
 {
     if (!(Test-Path $ProtocPath)) {
         Write-Host "$ProtocPath does not exist"
-        & $(Get-NugetPath) `
+        $Nuget = (Join-Path (Install-Package nuget_win) "nuget.exe")
+        & $Nuget `
             restore "$RepoRoot\packages.config" `
             -PackagesDirectory "$BuildDir\$Config" `
             -ConfigFile "$RepoRoot\NuGet.config"

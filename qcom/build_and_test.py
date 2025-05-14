@@ -28,7 +28,6 @@ from ep_build.task import (
 from ep_build.tasks.build import (
     BuildEpLinuxTask,
     BuildEpWindowsTask,
-    InstallDepsWindowsTask,
 )
 from ep_build.tasks.python import CreateVenvTask, RunLinterTask
 from ep_build.util import (
@@ -76,7 +75,7 @@ def parse_arguments():
     parser.add_argument(
         "--qairt-sdk",
         type=Path,
-        help=f"Path to QAIRT SDK. Overrides {QAIRT_SDK_ROOT_ENV_VAR} environment variable.",
+        help=f"Path to QAIRT SDK. Overrides default version and {QAIRT_SDK_ROOT_ENV_VAR}, {QNN_SDK_ROOT_ENV_VAR}, and {SNPE_ROOT_ENV_VAR} environment variables.",
     )
     parser.add_argument("--skip", metavar="TASK_RE", type=str, nargs="+", help="List of tasks to skip.")
 
@@ -94,7 +93,7 @@ class TaskLibrary:
         self,
         python_executable: Path,
         venv_path: Path,
-        qairt_sdk_root: Path,
+        qairt_sdk_root: Path | None,
     ) -> None:
         self.__python_executable = python_executable
         self.__venv_path = venv_path
@@ -133,21 +132,24 @@ class TaskLibrary:
         return plan.add_step(NoOpTask())
 
     @task
+    @depends(["create_venv"])
     def build_ort_linux(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Building ONNX Runtime for Linux",
+                self.__venv_path,
                 self.__qairt_sdk_root,
                 "build",
             )
         )
 
     @task
-    @depends(["install_deps_windows"])
+    @depends(["create_venv"])
     def build_ort_windows_arm64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on ARM64",
+                self.__venv_path,
                 "arm64",
                 self.__qairt_sdk_root,
                 "build",
@@ -165,11 +167,12 @@ class TaskLibrary:
         return plan.add_step(NoOpTask())
 
     @task
-    @depends(["install_deps_windows"])
+    @depends(["create_venv"])
     def build_ort_windows_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpWindowsTask(
                 "Building ONNX Runtime for Windows on x86_64",
+                self.__venv_path,
                 "x86_64",
                 self.__qairt_sdk_root,
                 "build",
@@ -179,10 +182,6 @@ class TaskLibrary:
     @task
     def create_venv(self, plan: Plan) -> str:
         return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
-
-    @task
-    def install_deps_windows(self, plan: Plan) -> str:
-        return plan.add_step(InstallDepsWindowsTask("Installing dependencies on Windows host."))
 
     @public_task("Print a list of commonly used tasks; see also --task=list_all.")
     @depends(["list_public"])
@@ -218,6 +217,7 @@ class TaskLibrary:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Testing ONNX Runtime for Linux",
+                self.__venv_path,
                 self.__qairt_sdk_root,
                 "test",
             )
@@ -239,6 +239,7 @@ class TaskLibrary:
         return plan.add_step(
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on ARM64",
+                self.__venv_path,
                 "arm64",
                 self.__qairt_sdk_root,
                 "test",
@@ -251,6 +252,7 @@ class TaskLibrary:
         return plan.add_step(
             BuildEpWindowsTask(
                 "Testing ONNX Runtime for Windows on x86_64",
+                self.__venv_path,
                 "x86_64",
                 self.__qairt_sdk_root,
                 "test",
@@ -258,7 +260,7 @@ class TaskLibrary:
         )
 
 
-def get_qairt_sdk_root(root_from_args: Path | None) -> Path:
+def get_qairt_sdk_root(root_from_args: Path | None) -> Path | None:
     qairt_sdk: Path | None = None
     if root_from_args is not None:
         qairt_sdk = root_from_args
@@ -269,9 +271,8 @@ def get_qairt_sdk_root(root_from_args: Path | None) -> Path:
     elif SNPE_ROOT_ENV_VAR in os.environ:
         qairt_sdk = Path(os.environ[SNPE_ROOT_ENV_VAR])
     else:
-        raise RuntimeError(
-            f"Must specify location of QAIRT SDK with environment variable {QAIRT_SDK_ROOT_ENV_VAR}, {QNN_SDK_ROOT_ENV_VAR}, {SNPE_ROOT_ENV_VAR}, or --qairt-sdk."
-        )
+        # Let the build fetch QAIRT
+        return None
 
     if not qairt_sdk.exists():
         raise FileNotFoundError(f"QAIRT SDK root {qairt_sdk} does not exist.")
@@ -283,7 +284,7 @@ def plan_from_dependencies(
     main_tasks: list[str],
     python_executable: Path,
     venv_path: Path,
-    qairt_sdk_root: Path,
+    qairt_sdk_root: Path | None,
 ) -> Plan:
     """
     Uses a work list algorithm to create a Plan to build the given tasks and their
@@ -335,7 +336,7 @@ def plan_from_task_list(
     tasks: list[str],
     python_executable: Path,
     venv_path: Path,
-    qairt_sdk_root: Path,
+    qairt_sdk_root: Path | None,
 ) -> Plan:
     """
     Planner that just instantiates the given tasks with no attempt made to satisfy dependencies.

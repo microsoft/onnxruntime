@@ -202,7 +202,7 @@ else:
     BASH_EXECUTABLE = run_and_get_output(["which", "bash"], quiet=True)
 
 
-DEFAULT_PYTHON = Path("python310.exe") if is_host_windows() else Path("python3.10")
+DEFAULT_PYTHON = Path("python.exe") if is_host_windows() else Path("python3.10")
 """Different python distributions have different executable names. Use this for a reasonable default."""
 
 

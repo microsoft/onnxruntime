@@ -3,32 +3,37 @@
 
 from pathlib import Path
 
-from ..task import BashScriptsTask
+from ..task import BashScriptsWithVenvTask
 from ..util import REPO_ROOT
 from .windows import RunPowershellScriptsTask
 
 
-class BuildEpLinuxTask(BashScriptsTask):
+class BuildEpLinuxTask(BashScriptsWithVenvTask):
     def __init__(
         self,
         group_name: str | None,
-        qairt_sdk_root: Path,
+        venv: Path | None,
+        qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "linux" / "build.sh"),
-            f"--qairt_sdk_root={qairt_sdk_root}",
             f"--mode={mode}",
         ]
-        super().__init__(group_name, [cmd])
+
+        if qairt_sdk_root is not None:
+            cmd.append(f"--qairt_sdk_root={qairt_sdk_root}")
+
+        super().__init__(group_name, venv, [cmd])
 
 
 class BuildEpWindowsTask(RunPowershellScriptsTask):
     def __init__(
         self,
         group_name: str | None,
+        venv: Path | None,
         arch: str,
-        qairt_sdk_root: Path,
+        qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:
         cmd = [
@@ -37,18 +42,11 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
             arch,
             "-Mode",
             mode,
-            "-QairtSdkRoot",
-            str(qairt_sdk_root),
         ]
-        super().__init__(group_name, [cmd])
 
+        if venv is not None:
+            cmd.extend(["-PyVEnv", str(venv)])
+        if qairt_sdk_root is not None:
+            cmd.extend(["-QairtSdkRoot", str(qairt_sdk_root)])
 
-class InstallDepsWindowsTask(RunPowershellScriptsTask):
-    def __init__(
-        self,
-        group_name: str | None,
-    ) -> None:
-        cmd = [
-            str(REPO_ROOT / "qcom" / "scripts" / "windows" / "install_deps.ps1"),
-        ]
         super().__init__(group_name, [cmd])
