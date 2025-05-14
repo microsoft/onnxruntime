@@ -32,6 +32,7 @@ constexpr const char* kProfilesOptShapes = "nv_profile_opt_shapes";
 constexpr const char* kCudaGraphEnable = "nv_cuda_graph_enable";
 constexpr const char* kONNXBytestream = "nv_onnx_bytestream";
 constexpr const char* kONNXBytestreamSize = "nv_onnx_bytestream_size";
+constexpr const char* kMultiProfileEnable = "nv_multi_profile_enable";
 
 }  // namespace provider_option_names
 }  // namespace nv

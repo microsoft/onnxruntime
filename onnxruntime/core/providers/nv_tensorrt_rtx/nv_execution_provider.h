@@ -261,6 +261,7 @@ class NvExecutionProvider : public IExecutionProvider {
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
+  bool multi_profile_enable_ = false;
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;

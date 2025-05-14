@@ -42,6 +42,7 @@ struct NvExecutionProviderInfo {
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
   bool cuda_graph_enable{false};
+  bool multi_profile_enable{false};
   bool dump_ep_context_model{false};
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};

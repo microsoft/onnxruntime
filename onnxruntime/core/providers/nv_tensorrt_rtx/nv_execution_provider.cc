@@ -1141,6 +1141,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   cuda_graph_enable_ = info.cuda_graph_enable;
+  multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
   // Validate setting
@@ -1323,9 +1324,11 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
 }
 
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  auto graph_annotation_str =
-  run_options.GetConfigOptions().GetConfigEntry("nv_profile_index");
-  TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
+  if (multi_profile_enable_ == true){
+    auto graph_annotation_str =
+    run_options.GetConfigOptions().GetConfigEntry("nv_profile_index");
+    TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
+  }
   return Status::OK();
 }
 
@@ -2691,7 +2694,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
-    if (trt_profiles.size() >= 2)
+    if (multi_profile_enable_ == true)
     {
       trt_context->setOptimizationProfileAsync(nv_profile_index_, stream);
     }
