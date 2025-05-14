@@ -14,7 +14,7 @@ namespace webgpu {
 Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
-  // Each thread compute 4*1 elements
+  // Each thread compute 4*4 elements
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
 
   const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);

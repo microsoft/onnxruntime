@@ -385,6 +385,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                             << " var kStart = 0;\n"
                             << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
 
+  // sequentially_access_by_threads is true only for Conv Op. See `conv.cc`.
   if (sequentially_access_by_threads) {
     shader.MainFunctionBody() << "let localRow = i32(local_id.y);\n"
                               << "let localCol = i32(local_id.x);\n"

@@ -1083,13 +1083,10 @@ TEST(GemmOpTest, GemmOptimizeVec4TransA) {
   run_test(72, 80, 84);
 
   run_test(2, 3, 4);
-  run_test(33, 67, 99);
   run_test(1, 1, 1);
   run_test(63, 64, 65);
   run_test(33, 33, 33);
   run_test(33, 67, 99);
-  run_test(1, 1, 1);
-  run_test(63, 64, 65);
   run_test(31, 31, 31);
   run_test(129, 129, 129);
 }

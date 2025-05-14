@@ -47,7 +47,7 @@ Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  var value = output_value_t(0);\n"
                             << "\n";
 
-  // When K == 0, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer,
+  // When A or B is empty, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer.
   if (need_handle_matmul_) {
     const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
     const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);

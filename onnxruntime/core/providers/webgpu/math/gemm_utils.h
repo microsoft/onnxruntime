@@ -26,6 +26,8 @@ void MatMulWriteFnSource(ShaderHelper& shader,
                          std::string activation_snippet = "",
                          bool is_channels_last = false);
 
+// The two following functions are used to generate shader code for vec4 and scalar.
+// It is used in GEMM, Matmul, and Conv.
 Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   const InlinedVector<int64_t>& elements_per_thread,
                                   uint32_t workgroup_size_x,
@@ -37,7 +39,7 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
                                   float alpha = 1.0f,
                                   bool need_handle_matmul = true,
                                   // When B is transposed, the components of output is might 1 though A and B is vec4.
-                                  // e.g. A{32, 32}, B{33, 32}=>Y{32, 33}
+                                  // e.g. A{32, 32}, B{33, 32} => Y{32, 33}
                                   int output_components = 4,
                                   uint32_t tile_inner = 32,
                                   bool split_k = false,
