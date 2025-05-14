@@ -830,6 +830,14 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelOutStream(
+    OrtOutStreamWriteFunc write_stream_func, void* stream_state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelOutStream(this->p_,
+                                                                                    write_stream_func,
+                                                                                    stream_state));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
     bool embed_ep_context_in_model) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(

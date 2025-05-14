@@ -12,17 +12,26 @@
 
 namespace onnxruntime {
 namespace epctx {
+/// <summary>
+/// Holds the buffer that will store the output model and the allocator used to allocate the memory.
+/// </summary>
 struct BufferHolder {
   void** buffer_ptr = nullptr;
   size_t* buffer_size_ptr = nullptr;
   AllocatorPtr buffer_allocator = nullptr;
 };
 
+/// <summary>
+/// Holds the opaque stream state and the write function that ORT calls to write out the output model.
+/// </summary>
 struct OutStreamHolder {
   OrtOutStreamWriteFunc write_func = nullptr;
   void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
 };
 
+/// <summary>
+/// Stores EPContext model generation options. Used in SessionOptions.
+/// </summary>
 struct ModelGenOptions {
   ModelGenOptions() = default;
 

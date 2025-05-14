@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -557,8 +558,45 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   allocator.Free(output_model_buffer);
 }
 
-// Tests compiling an OrtModel created using the OrtModelEditor API.
-TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputFile) {
+// Implementation of OrtOutStreamWriteFunc that writes out model to a file.
+static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
+                                                 size_t* num_bytes_written) {
+  std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
+
+  // Write out file in chunks of at most 2048 bytes to test multiple calls to this function.
+  size_t write_amount = std::min(static_cast<size_t>(2048), buffer_num_bytes);
+  outfile->write(reinterpret_cast<const char*>(buffer), write_amount);
+  *num_bytes_written = write_amount;
+
+  return nullptr;
+}
+
+// Implementation of OrtOutStreamWriteFunc that writes too much, resulting in an error.
+static OrtStatus* ORT_API_CALL WriteTooMuchToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
+                                                    size_t* num_bytes_written) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+
+  // Incorrectly say we wrote more than requested. ORT should return an error on call to CompileModel().
+  *num_bytes_written = buffer_num_bytes + 1;
+  return nullptr;
+}
+
+// Implementation of OrtOutStreamWriteFunc that directly returns an OrtStatus indicating an error.
+static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
+                                                      size_t* num_bytes_written) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_num_bytes);
+
+  *num_bytes_written = 0;
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
+}
+
+// Test using the CompileModel() API with settings:
+//   - input OrtModel created via OrtModelEditor API
+//   - write output model to custom stream
+TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
   std::vector<std::unique_ptr<std::vector<float>>> weights;  // Model weights must remain valid through inference
                                                              // if we want to avoid a copy.
 
@@ -607,18 +645,87 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputFile) {
   const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_ortmodel_ctx.onnx");
   std::filesystem::remove(output_model_file);
 
+  // Open an output file. Test will incrementally write the output model to file
+  // via calls to our OrtOutStreamWriteFunc callback.
+  ASSERT_FALSE(std::filesystem::exists(output_model_file));
+  std::ofstream outfile(output_model_file, std::ios::binary);
+
   // Create model compilation options from the session options.
   Ort::ModelCompilationOptions compile_options(*ort_env, so);
   compile_options.SetInputModel(model.GetConst());
-  compile_options.SetOutputModelPath(output_model_file);
+  compile_options.SetOutputModelOutStream(TestWriteToStream, reinterpret_cast<void*>(&outfile));  // Set output stream
   compile_options.SetEpContextEmbedMode(true);
 
   // Compile the model.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
   ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
 
-  // Make sure the compiled model was generated and has the expected number of EPContext nodes.
+  // Make sure the compiled model was generated (via our write stream function)
+  // and has the expected number of EPContext nodes.
   ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 1, 0);
+}
+
+// Tests using an OrtOutStreamFunc function that writes too much.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_WriteTooMuch) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_writetoomuch.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelOutStream(WriteTooMuchToStream, nullptr);  // Set output stream that writes too much
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect an error status because our stream wrote too much.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_TRUE(status.GetErrorMessage().find("OrtOutStreamWriteFunc wrote more bytes") != std::string::npos);
+}
+
+// Tests using an OrtOutStreamFunc function that returns an error.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_returnstatus.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelOutStream(ReturnStatusFromStream, nullptr);  // Set output stream that returns error
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect a specific error status.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
