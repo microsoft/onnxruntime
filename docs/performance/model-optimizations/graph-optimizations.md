@@ -143,7 +143,7 @@ session = rt.InferenceSession("<model_path>", sess_options)
 
   OrtSession* session;
   const ORTCHAR_T* model_path = ORT_TSTR("model_path");
-  g_ort->CreateSession(env, model_path, session_option, &session);
+  g_ort->CreateSession(env, model_path, session_options, &session);
 ```
 
 #### C# API Example

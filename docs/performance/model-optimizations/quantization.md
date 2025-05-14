@@ -233,7 +233,7 @@ We provide two end-to end examples: [Yolo V3](https://github.com/microsoft/onnxr
 
 ## Quantize to Int4/UInt4
 
-ONNX Runtime can quantize certain operators in a model to 4 bit integer types. Block-wise weight-only quantizaiton is applied to the operators. The supported op types are:
+ONNX Runtime can quantize certain operators in a model to 4 bit integer types. Block-wise weight-only quantization is applied to the operators. The supported op types are:
 - [MatMul](https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul):
   - The node is quantized only if the input `B` is constant
   - support QOperator or QDQ format.
@@ -263,7 +263,7 @@ model_int4_path="path/to/save/quantized/model.onnx"
 
 quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
   block_size=128, # 2's exponential and >= 16
-  is_symmetric=True, # if true, quantize to Int4. otherwsie, quantize to uint4.
+  is_symmetric=True, # if true, quantize to Int4. otherwise, quantize to uint4.
   accuracy_level=4, # used by MatMulNbits, see https://github.com/microsoft/onnxruntime/blob/main/docs/ContribOperators.md#attributes-35
   quant_format=quant_utils.QuantFormat.QOperator, 
   op_types_to_quantize=("MatMul","Gather"), # specify which op types to quantize
@@ -272,7 +272,7 @@ quant_config = matmul_4bits_quantizer.DefaultWeightOnlyQuantConfig(
 model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
 quant = matmul_4bits_quantizer.MatMul4BitsQuantizer(
   model, 
-  nodes_to_exclude=None, # specify a list of nodes to exclude from quantizaiton
+  nodes_to_exclude=None, # specify a list of nodes to exclude from quantization
   nodes_to_include=None, # specify a list of nodes to force include from quantization
   algo_config=quant_config,)
 quant.process()
