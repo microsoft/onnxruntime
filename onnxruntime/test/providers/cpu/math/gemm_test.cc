@@ -430,7 +430,7 @@ TYPED_TEST(GemmOpTypedTests, TestGemm2DBroadcast_2) {
                             {static_cast<TypeParam>(11.0f), static_cast<TypeParam>(12.0f), static_cast<TypeParam>(13.0f),
                              static_cast<TypeParam>(-9.0f), static_cast<TypeParam>(-8.0f), static_cast<TypeParam>(-7.0f)});
   test.Config(run_with_tunable_op)
-      .ConfigExcludeEps({kQnnExecutionProvider}) // Accuracy issues with QNN CPU backend since QNN 2.34
+      .ConfigExcludeEps({kQnnExecutionProvider})  // Accuracy issues with QNN CPU backend since QNN 2.34
       .RunWithConfig();
 }
 
