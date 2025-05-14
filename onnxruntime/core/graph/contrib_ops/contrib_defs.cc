@@ -1188,7 +1188,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                             OpSchema()
-                                .SetDoc("Beam Search for whisper model, especiall with cross_qk features etc.")
+                                .SetDoc("Beam Search for whisper model, especially with cross_qk features etc.")
                                 .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts (i.e. the start of transcription token id)", AttributeProto::INT, static_cast<int64_t>(-1))
@@ -2079,7 +2079,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
                                 .SetDoc(R"DOC(
 Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
 During quantization, the matrix is divided into blocks, where each block is a
-continguous subset inside each column. Each block is quantized into a
+contiguous subset inside each column. Each block is quantized into a
 sequence of 4b integers with a scaling factor and an optional offset.
 Currently 3 quantization types are supported:
 (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
@@ -2691,12 +2691,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                 .SetDoc(R"DOC(Generic Gemm for float and float 8.)DOC")
                                 .Attr(
                                     "transA",
-                                    "Whether A should be transposed. Float 8 only supprted transA=0.",
+                                    "Whether A should be transposed. Float 8 only supported transA=0.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
                                     "transB",
-                                    "Whether B should be transposed. Float 8 only supprted transB=1.",
+                                    "Whether B should be transposed. Float 8 only supported transB=1.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
@@ -3388,7 +3388,7 @@ where
 scale = 1. / (1. - ratio).
 ```
 
-This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+This op functions in much the same was as Dropout-11 and Dropout-13 do, except that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropout)
