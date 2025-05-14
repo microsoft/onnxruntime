@@ -78,8 +78,6 @@ class OutStreamBuf : public std::streambuf {
   int sync() override;
 
  private:
-  int FlushBuffer();
-
   OutStreamHolder out_stream_holder_{};
   std::array<char, 4096> buffer_{};
   Status last_status_{};

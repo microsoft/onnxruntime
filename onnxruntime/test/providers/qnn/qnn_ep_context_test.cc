@@ -558,7 +558,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   allocator.Free(output_model_buffer);
 }
 
-// Implementation of OrtOutStreamWriteFunc that writes out model to a file.
+// Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
 static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
                                                  size_t* num_bytes_written) {
   std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
@@ -594,7 +594,7 @@ static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const 
 }
 
 // Test using the CompileModel() API with settings:
-//   - input OrtModel created via OrtModelEditor API
+//   - input OrtModel created via the model editor API
 //   - write output model to custom stream
 TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
   std::vector<std::unique_ptr<std::vector<float>>> weights;  // Model weights must remain valid through inference

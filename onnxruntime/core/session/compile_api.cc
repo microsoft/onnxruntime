@@ -209,16 +209,16 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
 
 ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetOutputModelOutStream,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options,
-                    _In_ OrtOutStreamWriteFunc write_stream_func, _In_ void* state) {
+                    _In_ OrtOutStreamWriteFunc write_stream_func, _In_ void* stream_state) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
 
   if (write_stream_func == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "WriteToStreamFunc function for output model is null");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtOutStreamWriteFunc function for output model is null");
   }
 
-  model_compile_options->SetOutputModelOutStream(write_stream_func, state);
+  model_compile_options->SetOutputModelOutStream(write_stream_func, stream_state);
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);

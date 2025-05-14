@@ -46,7 +46,7 @@ const OutStreamHolder* ModelGenOptions::TryGetOutputModelOutStream() const {
 // class OutStreamBuf
 
 OutStreamBuf::OutStreamBuf(OutStreamHolder out_stream_holder) : out_stream_holder_(out_stream_holder) {
-  setp(buffer_.data(), buffer_.data() + buffer_.size() - 1);  // Leave room for overflow character
+  setp(buffer_.data(), buffer_.data() + buffer_.size());
 }
 
 OutStreamBuf::~OutStreamBuf() {
@@ -54,23 +54,19 @@ OutStreamBuf::~OutStreamBuf() {
 }
 
 std::streambuf::int_type OutStreamBuf::overflow(std::streambuf::int_type ch) {
+  if (sync() == -1) {
+    return traits_type::eof();
+  }
+
   if (ch != traits_type::eof()) {
     *pptr() = static_cast<char>(ch);
     pbump(1);
-  }
-
-  if (FlushBuffer() == -1) {
-    return traits_type::eof();
   }
 
   return ch;
 }
 
 int OutStreamBuf::sync() {
-  return FlushBuffer();
-}
-
-int OutStreamBuf::FlushBuffer() {
   std::ptrdiff_t num_bytes = pptr() - pbase();
   if (num_bytes == 0) {
     return 0;
