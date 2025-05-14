@@ -1228,9 +1228,62 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
-            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN;EMSDK;EMSDK_NODE;EMSDK_PYTHON"
+            vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
+
             if args.build_wasm:
-                env["EMSDK"] = emsdk_dir
+                emsdk_vars = ["EMSDK", "EMSDK_NODE", "EMSDK_PYTHON"]
+
+                # If environment variables 'EMSDK' is not set, run emsdk_env to set them
+                if "EMSDK" not in os.environ:
+                    if is_windows():
+                        # Run `cmd /s /c call .\\emsdk_env && set` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["cmd", "/s", "/c", "call .\\emsdk_env && set"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+                    else:
+                        # Run `sh -c ". ./emsdk_env.sh && printenv"` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["sh", "-c", ". ./emsdk_env.sh && printenv"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+
+                    # check for EMSDK environment variables and set them in the environment
+                    for line in emsdk_env.stdout.decode().splitlines():
+                        if "=" in line:
+                            key, value = line.rstrip().split("=", 1)
+                            if key in emsdk_vars:
+                                os.environ[key] = value
+
+                for var in emsdk_vars:
+                    if var in os.environ:
+                        env[var] = os.environ[var]
+                    elif var == "EMSDK":
+                        # EMSDK must be set, but EMSDK_NODE and EMSDK_PYTHON are optional
+                        raise BuildError(
+                            "EMSDK environment variable is not set correctly. Please run `emsdk_env` to set them."
+                        )
+
+                vcpkg_keep_env_vars += emsdk_vars
+
+            #
+            # Workaround for vcpkg failed to find the correct path of Python
+            #
+            # Since vcpkg does not inherit the environment variables `PATH` from the parent process, CMake will fail to
+            # find the Python executable if the Python executable is not in the default location. This usually happens
+            # to the Python installed by Anaconda.
+            #
+            # To minimize the impact of this problem, we set the `Python3_ROOT_DIR` environment variable to the
+            # directory of current Python executable.
+            #
+            # see https://cmake.org/cmake/help/latest/module/FindPython3.html
+            #
+            env["Python3_ROOT_DIR"] = str(Path(os.path.dirname(sys.executable)).resolve())
+            vcpkg_keep_env_vars += ["Python3_ROOT_DIR"]
+
+            env["VCPKG_KEEP_ENV_VARS"] = ";".join(vcpkg_keep_env_vars)
 
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
