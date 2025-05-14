@@ -1,0 +1,90 @@
+# This file was copied from https://github.com/microsoft/devhome/blob/main/build/templates/publish-symbolrequestprod-api.yml#L71
+parameters:
+  - name: includePublicSymbolServer
+    type: boolean
+    default: false
+  - name: symbolsFolder
+    type: string
+    default: '$(Build.SourcesDirectory)/bin'
+  - name: searchPattern
+    type: string
+    default: '**/*.pdb'
+  - name: jobName
+    type: string
+    default: PublishSymbols
+  - name: indexSources
+    type: boolean
+    default: true
+  - name: symbolExpiryTime
+    type: string
+    default: 36530 # This is the default from PublishSymbols@2
+  - name: symbolsArtifactName
+    type: string
+    default: ''
+  - name: symbolsVersion
+    type: string
+    default: ''
+  - name: symbolProject
+    type: string
+  - name: subscription
+    type: string
+
+steps:
+  - powershell: |-
+      Get-PackageProvider -Name NuGet -ForceBootstrap
+      Install-Module -Verbose -AllowClobber -Force Az.Accounts, Az.Storage, Az.Network, Az.Resources, Az.Compute
+    displayName: Install Azure Module Dependencies
+
+  # Transit the Azure token from the Service Connection into a secret variable for the rest of the pipeline to use.
+  - task: AzurePowerShell@5
+    displayName: Generate an Azure Token
+    inputs:
+      azureSubscription: ${{ parameters.subscription }}
+      azurePowerShellVersion: LatestVersion
+      pwsh: true
+      ScriptType: InlineScript
+      Inline: |-
+        $AzToken = (Get-AzAccessToken -ResourceUrl api://30471ccf-0966-45b9-a979-065dbedb24c1).Token
+        Write-Host "##vso[task.setvariable variable=SymbolAccessToken;issecret=true]$AzToken"
+
+  - task: PublishSymbols@2
+    displayName: Publish Symbols (to current Azure DevOps tenant)
+    continueOnError: True
+    inputs:
+      SearchPattern: ${{ parameters.searchPattern }}
+      IndexSources: ${{ parameters.indexSources }}
+      DetailedLog: true
+      SymbolsMaximumWaitTime: 30
+      SymbolServerType: 'TeamServices'
+      SymbolsProduct: 'onnxruntime'
+      SymbolsVersion: ${{ parameters.symbolsVersion }}
+      SymbolsArtifactName: '${{ parameters.symbolsArtifactName }}_${{ parameters.symbolsVersion }}'
+      SymbolExpirationInDays: ${{ parameters.symbolExpiryTime }}
+    env:
+      LIB: $(Build.SourcesDirectory)
+
+  - pwsh: |-
+      # Prepare the defaults for IRM
+      $PSDefaultParameterValues['Invoke-RestMethod:Headers'] = @{ Authorization = "Bearer $(SymbolAccessToken)" }
+      $PSDefaultParameterValues['Invoke-RestMethod:ContentType'] = "application/json"
+      $PSDefaultParameterValues['Invoke-RestMethod:Method'] = "POST"
+
+      $BaseUri = "https://symbolrequestprod.trafficmanager.net/projects/${{ parameters.symbolProject }}/requests"
+
+      # Prepare the request
+      $expiration = (Get-Date).Add([TimeSpan]::FromDays(${{ parameters.symbolExpiryTime }}))
+      $createRequestBody = @{
+        requestName = "${{ parameters.symbolsArtifactName }}_${{ parameters.symbolsVersion }}";
+        expirationTime = $expiration.ToString();
+      }
+      Write-Host "##[debug]Starting request $($createRequestBody.requestName) with expiration date of $($createRequestBody.expirationTime)"
+      Invoke-RestMethod -Uri "$BaseUri" -Body ($createRequestBody | ConvertTo-Json -Compress) -Verbose
+
+      # Request symbol publication
+      $publishRequestBody = @{
+        publishToInternalServer = $true;
+        publishToPublicServer = $${{ parameters.includePublicSymbolServer }};
+      }
+      Write-Host "##[debug]Submitting request $($createRequestBody.requestName) ($($publishRequestBody | ConvertTo-Json -Compress))"
+      Invoke-RestMethod -Uri "$BaseUri/$($createRequestBody.requestName)" -Body ($publishRequestBody | ConvertTo-Json -Compress) -Verbose
+    displayName: Publish Symbols using internal REST API
