@@ -329,9 +329,16 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
                               const std::vector<QnnTensorWrapper>& tensor_wrappers,
                               bool is_input) {
-  size_t tensor_count = tensor_wrappers.size();
-  ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
-  qnn_tensor_infos.resize(tensor_count);
+  if (is_input) {
+    // Reserve qnn_tensor_infos according to the number of graph inputs.
+    auto input_count = GetGraphInputNumber();
+    ORT_RETURN_IF(0 == input_count, "Zero input number!");
+    qnn_tensor_infos.resize(input_count);
+  } else {
+    size_t tensor_count = tensor_wrappers.size();
+    ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
+    qnn_tensor_infos.resize(tensor_count);
+  }
 
   for (auto& tensor_wrapper : tensor_wrappers) {
     ORT_RETURN_IF(utils::QnnTensorHasDynamicShape(tensor_wrapper.GetQnnTensor()),
@@ -347,6 +354,21 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
     qnn_tensor_info.tensor_wrapper = &tensor_wrapper;
     qnn_tensor_info.tensor_byte_size = static_cast<uint32_t>(length);
     qnn_tensor_info.ort_index = ort_index;
+  }
+  // The number of graph inputs and the number of tensor wrappers may not match.
+  // - For example, for ResizeNearestNeighbor op, Qnn only cares about the 1st input,
+  //   so the rest of the inputs are not converted to tensor wrappers.
+  // - However, these remaining inputs still appear in the graph inputs, resulting in
+  //   a discrepancy in the input quantities.
+  // If not all inputs are used, erase the empty allocations in qnn_tensor_infos.
+  if (is_input) {
+    for (auto iter = qnn_tensor_infos.begin(); iter != qnn_tensor_infos.end();) {
+      if ((*iter).tensor_wrapper == nullptr) {
+        iter = qnn_tensor_infos.erase(iter);
+      } else {
+        ++iter;
+      }
+    }
   }
   return Status::OK();
 }
