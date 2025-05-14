@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include <cassert>
+#include <limits>
+#include <string>
+#include <utility>
 #include "core/common/common.h"
 #include "core/framework/ep_context_options.h"
 #include "core/framework/error_code_helper.h"
@@ -53,6 +56,7 @@ OutStreamBuf::~OutStreamBuf() {
   sync();
 }
 
+// Called when the buffer_ is full. Flushes the buffer_ (via sync()) and then writes the overflow character to buffer_.
 std::streambuf::int_type OutStreamBuf::overflow(std::streambuf::int_type ch) {
   if (sync() == -1) {
     return traits_type::eof();
@@ -66,13 +70,18 @@ std::streambuf::int_type OutStreamBuf::overflow(std::streambuf::int_type ch) {
   return ch;
 }
 
+// Flushes the entire buffer_ to the user's write function.
 int OutStreamBuf::sync() {
+  if (!last_status_.IsOK()) {
+    return -1;
+  }
+
   std::ptrdiff_t num_bytes = pptr() - pbase();
   if (num_bytes == 0) {
     return 0;
   }
 
-  // Can only call pbump() with an int, so can only write at most 2^31 - 1.
+  // Can only call pbump() with an int, so can only write at most (2^31 - 1) bytes.
   if (num_bytes > std::numeric_limits<int>::max()) {
     num_bytes = std::numeric_limits<int>::max();
   }
@@ -103,6 +112,12 @@ int OutStreamBuf::sync() {
     if (bytes_written > static_cast<size_t>(bytes_remaining)) {
       last_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtOutStreamWriteFunc wrote more bytes (", bytes_written,
                                      ") than requested (", bytes_remaining, ").");
+      return -1;
+    }
+
+    if (bytes_written == 0) {
+      last_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtOutStreamWriteFunc failed to write any data. ",
+                                     "Stopping write attempts to avoid a potential infinite loop.");
       return -1;
     }
 

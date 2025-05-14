@@ -593,6 +593,18 @@ static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const 
   return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
 }
 
+// Implementation of OrtOutStreamWriteFunc that never writes any data. ORT should abort writing attempts to prevent
+// an infinite loop.
+static OrtStatus* ORT_API_CALL NoWriteStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
+                                             size_t* num_bytes_written) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_num_bytes);
+
+  *num_bytes_written = 0;
+  return nullptr;
+}
+
 // Test using the CompileModel() API with settings:
 //   - input OrtModel created via the model editor API
 //   - write output model to custom stream
@@ -726,6 +738,37 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
   EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
+}
+
+// Tests using an OrtOutStreamFunc function that never writes any data. ORT should abort write attempts
+// with an error to prevent a potential infinite loop.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_NoWrite_AbortInfiniteWriteLoop) {
+  const ORTCHAR_T* input_model_file = ORT_TSTR("./compileapi_outputstream_zerowrite.onnx");
+  std::filesystem::remove(input_model_file);
+
+  // Create a test model and save it to a file.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  ASSERT_STATUS_OK(test_model.Save(input_model_file));
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelPath(input_model_file);
+  compile_options.SetOutputModelOutStream(NoWriteStream, nullptr);  // Set output stream that doesn't write data.
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect an error status because our stream would be stuck in an infinite loop.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_TRUE(status.GetErrorMessage().find("OrtOutStreamWriteFunc failed to write any data") != std::string::npos);
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary

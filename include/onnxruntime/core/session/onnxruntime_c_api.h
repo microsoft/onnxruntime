@@ -5847,8 +5847,9 @@ struct OrtCompileApi {
 
   /** \brief Sets the file path to the input ONNX model to compile.
    *
-   * The input model's location (e.g., file path or memory buffer) must be set with either
-   * ModelCompilationOptions_SetInputModelPath or ModelCompilationOptions_SetInputModelFromBuffer.
+   * The input model's location (e.g., file path, memory buffer, or OrtModel) must be set with one of the functions that
+   * begin with ModelCompilationOptions_SetInputModel____, otherwise CompileModel() will return an OrtStatus with error
+   * code ORT_INVALID_ARGUMENT.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] input_model_path Null terminated string of the path (wchar on Windows, char otherwise).
@@ -5862,8 +5863,9 @@ struct OrtCompileApi {
 
   /** \brief Sets the buffer that stores the bytes of the loaded ONNX model to compile.
    *
-   * The input model's location (e.g., file path or memory buffer) must be set with either
-   * ModelCompilationOptions_SetInputModelPath or ModelCompilationOptions_SetInputModelFromBuffer.
+   * The input model's location (e.g., file path, memory buffer, or OrtModel) must be set with one of the functions that
+   * begin with ModelCompilationOptions_SetInputModel____, otherwise CompileModel() will return an OrtStatus with error
+   * code ORT_INVALID_ARGUMENT.
    *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] input_model_data Buffer containing the loaded ONNX model bytes.
@@ -5983,6 +5985,10 @@ struct OrtCompileApi {
 
   /** \brief Sets the input OrtModel instance to compile.
    *
+   * The input model's location (e.g., file path, memory buffer, or OrtModel) must be set with one of the functions that
+   * begin with ModelCompilationOptions_SetInputModel____, otherwise CompileModel() will return an OrtStatus with error
+   * code ORT_INVALID_ARGUMENT.
+   *
    * \param[in] model_compile_options The OrtModelCompilationOptions instance.
    * \param[in] input_model The OrtModel instance to compile.
    *
@@ -5995,7 +6001,9 @@ struct OrtCompileApi {
 
   /** \brief Sets an output stream used to write out the output model's serialized ONNX bytes.
    *
-   * The write function is called repeatedly until then entire output model has been written out.
+   * The provided write function is called repeatedly until then entire output model has been written out. Each call to
+   * the write function must write at least one byte, otherwise CompileModel() will return an OrtStatus with error code
+   * ORT_FAIL.
    *
    * The output model's destination (e.g., file path, memory buffer, or stream) can be set with any of the functions
    * that begin with ModelCompilationOptions_SetOutputModel____.
