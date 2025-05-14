@@ -25,6 +25,7 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <cublas_v2.h>
 #include <cub/cub.cuh>
 

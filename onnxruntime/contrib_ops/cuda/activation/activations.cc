@@ -44,7 +44,8 @@ namespace cuda {
 #define UNARY_ACTIVATION_OP_HFD(name, ver, domain)        \
   UNARY_ACTIVATION_OP_TYPED(name, ver, domain, MLFloat16) \
   UNARY_ACTIVATION_OP_TYPED(name, ver, domain, float)     \
-  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, double)    \
+  UNARY_ACTIVATION_OP_TYPED(name, ver, domain, BFloat16)
 
 UNARY_ACTIVATION_OP_HFD(Affine, 1, kOnnxDomain);
 UNARY_ACTIVATION_OP_HFD(ParametricSoftplus, 1, kOnnxDomain);
@@ -54,6 +55,7 @@ UNARY_ACTIVATION_OP_HFD(QuickGelu, 1, kMSDomain);
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
+REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, BFloat16)
 
 }  // namespace cuda
 }  // namespace contrib
