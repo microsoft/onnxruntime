@@ -165,7 +165,7 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
 
-  uint32_t output_size = output_shape.Size();
+  int64_t output_size = output_shape.Size();
   if (output_size == 0) {
     return Status::OK();
   }
