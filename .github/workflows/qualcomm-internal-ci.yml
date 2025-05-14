@@ -26,6 +26,13 @@ jobs:
         run: |
           python .\qcom\build_and_test.py test_ort_windows_x86_64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows x86_64
+          path: |
+            ${{ github.workspace }}/build/Windows-x86_64/RelWithDebInfo/CTestTestfile.cmake
+            ${{ github.workspace }}/build/Windows-x86_64/RelWithDebInfo/RelWithDebInfo
+
   build-windows-arm64:
     runs-on: ["self-hosted", "Windows", "X64"]
     steps:
@@ -37,3 +44,10 @@ jobs:
         shell: cmd
         run: |
           python .\qcom\build_and_test.py build_ort_windows_arm64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows ARM64
+          path: |
+            ${{ github.workspace }}/build/Windows-arm64/RelWithDebInfo/CTestTestfile.cmake
+            ${{ github.workspace }}/build/Windows-arm64/RelWithDebInfo/RelWithDebInfo
