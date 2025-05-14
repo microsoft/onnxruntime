@@ -123,11 +123,28 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
-            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache
             ${{ parameters.build_py_parameters }}
             --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
+
+
+      - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+        - template: ../templates/publish-symbolrequestprod-api.yml
+          parameters:
+            ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
+              symbolExpiryTime: 60
+            includePublicSymbolServer: true
+            symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime\capi'
+            symbolsArtifactName: onnxruntime_cpu_win_x64_${{ parameters.PYTHON_VERSION }}
+            symbolsVersion: $(Build.BuildId)
+            symbolProject: 'ONNX Runtime'
+            subscription: 'OnnxrunTimeCodeSign_20240611'
+            searchPattern: |
+              **/onnxruntime.pdb
+              **/onnxruntime_providers_shared.pdb
+              **/onnxruntime_pybind11_state.pdb
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml

@@ -132,7 +132,13 @@ jobs:
         symbolsVersion: $(Build.BuildId)
         symbolProject: 'ONNX Runtime'
         subscription: 'OnnxrunTimeCodeSign_20240611'
-
+        searchPattern: |
+          **/onnxruntime.pdb
+          **/onnxruntime_providers_shared.pdb
+          **/onnxruntime_providers_cuda.pdb
+          **/onnxruntime_providers_tensorrt.pdb
+          **/onnxruntime_providers_dml.pdb
+          **/onnxruntime_pybind11_state.pdb
   # Esrp signing
   - template: win-esrp-dll.yml
     parameters:
