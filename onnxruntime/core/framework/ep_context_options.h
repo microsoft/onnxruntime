@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <array>
+#include <streambuf>
 #include <string>
 #include <variant>
 #include "core/framework/allocator.h"
@@ -16,28 +18,10 @@ struct BufferHolder {
   AllocatorPtr buffer_allocator = nullptr;
 };
 
-struct StreamHolder {
-  WriteToStreamFunc write_func;
-  void* state;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
+struct OutStreamHolder {
+  OrtOutStreamWriteFunc write_func = nullptr;
+  void* stream_state = nullptr;  // Opaque pointer to user's stream state. Passed as first argument to write_func.
 };
-
-/*
-class WriteFuncStreamBuf : public std::streambuf {
- public:
-  WriteFuncStreamBuf(StreamHolder write_func_holder);
-  ~WriteFuncStreamBuf();
-
- protected:
-  int_type overflow(int_type ch) override;
-  int sync() override;
-
- private:
-  int FlushBuffer();
-
-  StreamHolder write_func_holder_;
-  std::array<char, 4096> buffer_;
-};
-*/
 
 struct ModelGenOptions {
   ModelGenOptions() = default;
@@ -50,11 +34,11 @@ struct ModelGenOptions {
   bool error_if_no_compiled_nodes = false;
   bool embed_ep_context_in_model = false;
 
-  std::variant<std::monostate,  // Initial state (no output model location)
-               std::string,     // output model path
-               BufferHolder,    // buffer to save output model
-               StreamHolder>    // Function to write the output model to a user's stream.
-      output_model_location;
+  std::variant<std::monostate,   // Initial state (no output model location)
+               std::string,      // output model path
+               BufferHolder,     // buffer to save output model
+               OutStreamHolder>  // Function to write the output model to a user's stream.
+      output_model_location{};
 
   std::string output_external_initializers_file_path;
   size_t output_external_initializer_size_threshold = 0;
@@ -62,7 +46,35 @@ struct ModelGenOptions {
   bool HasOutputModelLocation() const;
   const std::string* TryGetOutputModelPath() const;
   const BufferHolder* TryGetOutputModelBuffer() const;
-  const StreamHolder* TryGetOutputModelStream() const;
+  const OutStreamHolder* TryGetOutputModelOutStream() const;
 };
+
+// Class that wraps the user's OrtOutStreamWriteFunc function to enable use with
+// C++'s std::ostream.
+// Example:
+//    OutStreamHolder stream_holder{write_func, stream_state};
+//    std::unique_ptr<OutStreamBuf> out_stream_buf = std::make_unique<OutStreamBuf>(stream_holder);
+//    std::ostream out_stream(out_stream_buf.get());
+class OutStreamBuf : public std::streambuf {
+ public:
+  OutStreamBuf(OutStreamHolder out_stream_holder);
+  ~OutStreamBuf();
+
+  Status GetStatus() const {
+    return last_status_;
+  }
+
+ protected:
+  int_type overflow(int_type ch) override;
+  int sync() override;
+
+ private:
+  int FlushBuffer();
+
+  OutStreamHolder out_stream_holder_{};
+  std::array<char, 4096> buffer_{};
+  Status last_status_{};
+};
+
 }  // namespace epctx
 }  // namespace onnxruntime

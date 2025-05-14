@@ -101,8 +101,8 @@ Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr a
   return Status::OK();
 }
 
-void ModelCompilationOptions::SetOutputModelStream(WriteToStreamFunc write_stream_func, void* stream_state) {
-  session_options_.value.ep_context_gen_options.output_model_location = epctx::StreamHolder{
+void ModelCompilationOptions::SetOutputModelOutStream(OrtOutStreamWriteFunc write_stream_func, void* stream_state) {
+  session_options_.value.ep_context_gen_options.output_model_location = epctx::OutStreamHolder{
       write_stream_func,
       stream_state,
   };
@@ -199,7 +199,7 @@ Status ModelCompilationOptions::Check() const {
                            "Invalid buffer configuration for output model: allocator is null");
   }
 
-  const epctx::StreamHolder* output_stream_ptr = ep_context_gen_options.TryGetOutputModelStream();
+  const epctx::OutStreamHolder* output_stream_ptr = ep_context_gen_options.TryGetOutputModelOutStream();
 
   if (output_stream_ptr != nullptr && output_stream_ptr->write_func == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

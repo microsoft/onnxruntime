@@ -83,11 +83,11 @@ class ModelCompilationOptions {
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>
-  /// Sets the function to write the output model to a stream.
+  /// Sets an output stream (write function + state) used to write out the compiled model.
   /// </summary>
   /// <param name="write_stream_func">Write function</param>
   /// <param name="stream_state">The stream state</param>
-  void SetOutputModelStream(WriteToStreamFunc write_stream_func, void* stream_state);
+  void SetOutputModelOutStream(OrtOutStreamWriteFunc write_stream_func, void* stream_state);
 
   /// <summary>
   /// Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext

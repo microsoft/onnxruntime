@@ -825,8 +825,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
-  const auto* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
-  const auto* output_stream_holder = ep_context_gen_options.TryGetOutputModelStream();
+  const epctx::BufferHolder* output_buffer_holder = ep_context_gen_options.TryGetOutputModelBuffer();
+  const epctx::OutStreamHolder* output_stream_holder = ep_context_gen_options.TryGetOutputModelOutStream();
   const std::string* output_model_path_ptr = ep_context_gen_options.TryGetOutputModelPath();
 
   std::filesystem::path valid_output_model_path;
@@ -897,9 +897,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   ModelSavingOptions model_saving_options{ini_size_threshold};
 
   if (output_buffer_holder != nullptr) {
+    // Write output model into a buffer ORT allocates for the user.
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
-    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
-    // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
     ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
                                                                                                    valid_output_model_path,
                                                                                                    model_saving_options);
@@ -914,8 +913,22 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     *output_buffer_holder->buffer_size_ptr = buffer_size;
     *output_buffer_holder->buffer_ptr = buffer.release();
   } else if (output_stream_holder != nullptr) {
-    // TODO
+    // Write output model to user's output stream.
+    ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
+    ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
+                                                                                                   valid_output_model_path,
+                                                                                                   model_saving_options);
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
+
+    auto out_stream_buf = std::make_unique<epctx::OutStreamBuf>(*output_stream_holder);
+    std::ostream out_stream(out_stream_buf.get());
+
+    model_proto.SerializeToOstream(&out_stream);
+    ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
+    // Write output model to file.
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, valid_output_model_path,
                                                             external_ini_path, model_saving_options));
   }
