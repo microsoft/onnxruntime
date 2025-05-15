@@ -1280,7 +1280,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   ORT_RETURN_IF(!tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
-                "Need to specify a cvs file via provider option profiling_file_path if ETW not enabled.");
+                "Need to specify a CSV file via provider option profiling_file_path if ETW not enabled.");
 
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
@@ -1311,7 +1311,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     }
 
     std::ofstream outfile;
-    if (!tracelogging_provider_ep_enabled) {
+    if (!profiling_file_path_.empty()) {
       // Write to CSV in append mode
       std::ifstream infile(profiling_file_path_.c_str());
       bool exists = infile.good();
@@ -1334,10 +1334,11 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
                                     tracelogging_provider_ep_enabled));
     }
 
-    if (!tracelogging_provider_ep_enabled) {
-      outfile.close();
-      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
-    } else {
+    if (outfile) {
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to file ("
+                              << profiling_file_path_ << ")";
+    }
+    if (tracelogging_provider_ep_enabled) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
   }
@@ -1399,11 +1400,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
   std::string message = GetEventTypeString(event_data.type);
   std::string unit = GetUnitString(event_data.unit);
 
-#ifndef _WIN32
-  tracelogging_provider_ep_enabled = false;
-#endif
-
-  if (!tracelogging_provider_ep_enabled) {
+  if (outfile) {
     outfile << "UNKNOWN"
             << ","
             << message << ","
@@ -1413,7 +1410,9 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
             << ","
             << eventLevel << ","
             << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
-  } else {
+  }
+
+  if (tracelogging_provider_ep_enabled) {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         (uint64_t)0,
@@ -1443,11 +1442,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
   std::string message = GetEventTypeString(event_data_extended.v1.type);
   std::string unit = GetUnitString(event_data_extended.v1.unit);
 
-#ifndef _WIN32
-  tracelogging_provider_ep_enabled = false;
-#endif
-
-  if (!tracelogging_provider_ep_enabled) {
+  if (outfile) {
     if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
       outfile << event_data_extended.v1.timestamp << ","
               << message << ","
@@ -1458,7 +1453,9 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
               << eventLevel << ","
               << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
     }
-  } else {
+  }
+
+  if (tracelogging_provider_ep_enabled) {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         event_data_extended.v1.timestamp,
