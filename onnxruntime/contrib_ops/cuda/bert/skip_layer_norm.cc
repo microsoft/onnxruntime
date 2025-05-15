@@ -123,7 +123,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
           skip_size);
     }
     else {
-    LaunchSkipLayerNormKernel<CudaT, Simplified>(
+      LaunchSkipLayerNormKernel<CudaT, Simplified>(
         Stream(ctx),
         reinterpret_cast<CudaT*>(output->MutableData<T>()),
         sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
