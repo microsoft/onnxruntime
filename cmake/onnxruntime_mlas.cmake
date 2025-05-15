@@ -790,7 +790,7 @@ if (PLATFORM_NAME STREQUAL "macabi")
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_mlas
+    install(TARGETS onnxruntime_mlas EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
