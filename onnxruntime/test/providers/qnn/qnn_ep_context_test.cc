@@ -567,50 +567,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
 }
 
 // Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
-static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
-                                                 size_t* num_bytes_written) {
+static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
   std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
-
-  // Write out file in chunks of at most 2048 bytes to test multiple calls to this function.
-  size_t write_amount = std::min(static_cast<size_t>(2048), buffer_num_bytes);
-  outfile->write(reinterpret_cast<const char*>(buffer), write_amount);
-  *num_bytes_written = write_amount;
-
-  return nullptr;
-}
-
-// Implementation of OrtOutStreamWriteFunc that writes too much, resulting in an error.
-static OrtStatus* ORT_API_CALL WriteTooMuchToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
-                                                    size_t* num_bytes_written) {
-  ORT_UNUSED_PARAMETER(stream_state);
-  ORT_UNUSED_PARAMETER(buffer);
-
-  // Incorrectly say we wrote more than requested. ORT should return an error on call to CompileModel().
-  *num_bytes_written = buffer_num_bytes + 1;
-  return nullptr;
+  outfile->write(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
 }
 
 // Implementation of OrtOutStreamWriteFunc that directly returns an OrtStatus indicating an error.
-static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
-                                                      size_t* num_bytes_written) {
+static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
   ORT_UNUSED_PARAMETER(stream_state);
   ORT_UNUSED_PARAMETER(buffer);
   ORT_UNUSED_PARAMETER(buffer_num_bytes);
-
-  *num_bytes_written = 0;
   return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
-}
-
-// Implementation of OrtOutStreamWriteFunc that never writes any data. ORT should abort writing attempts to prevent
-// an infinite loop.
-static OrtStatus* ORT_API_CALL NoWriteStream(void* stream_state, const void* buffer, size_t buffer_num_bytes,
-                                             size_t* num_bytes_written) {
-  ORT_UNUSED_PARAMETER(stream_state);
-  ORT_UNUSED_PARAMETER(buffer);
-  ORT_UNUSED_PARAMETER(buffer_num_bytes);
-
-  *num_bytes_written = 0;
-  return nullptr;
 }
 
 // Test using the CompileModel() API with settings:
@@ -685,30 +653,6 @@ TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
   CheckEpContextNodeCounts(output_model_file, 1, 0);
 }
 
-// Tests using an OrtOutStreamFunc function that writes too much.
-TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_WriteTooMuch) {
-  // Create a test model (in memory).
-  TestModel test_model;
-  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
-  std::string model_data = test_model.Serialize();
-
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
-
-  // Create model compilation options from the session options.
-  Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
-  compile_options.SetOutputModelOutStream(WriteTooMuchToStream, nullptr);  // Set output stream that writes too much
-  compile_options.SetEpContextEmbedMode(true);
-
-  // Compile the model. Expect an error status because our stream wrote too much.
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
-  EXPECT_TRUE(status.GetErrorMessage().find("OrtOutStreamWriteFunc wrote more bytes") != std::string::npos);
-}
-
 // Tests using an OrtOutStreamFunc function that returns an error.
 TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   // Create a test model (in memory).
@@ -731,31 +675,6 @@ TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
   ASSERT_FALSE(status.IsOK());
   EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
   EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
-}
-
-// Tests using an OrtOutStreamFunc function that never writes any data. ORT should abort write attempts
-// with an error to prevent a potential infinite loop.
-TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_NoWrite_AbortInfiniteWriteLoop) {
-  // Create a test model (in memory).
-  TestModel test_model;
-  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
-  std::string model_data = test_model.Serialize();
-
-  // Initialize session options with QNN EP
-  Ort::SessionOptions so;
-  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
-
-  // Create model compilation options from the session options.
-  Ort::ModelCompilationOptions compile_options(*ort_env, so);
-  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
-  compile_options.SetOutputModelOutStream(NoWriteStream, nullptr);  // Set output stream that doesn't write data.
-  compile_options.SetEpContextEmbedMode(true);
-
-  // Compile the model. Expect an error status because our stream would be stuck in an infinite loop.
-  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
-  ASSERT_FALSE(status.IsOK());
-  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
-  EXPECT_TRUE(status.GetErrorMessage().find("OrtOutStreamWriteFunc failed to write any data") != std::string::npos);
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary

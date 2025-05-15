@@ -191,9 +191,9 @@ class TestCompileApi(AutoEpTestCase):
 
         with open(output_model_path, "wb") as output_fd:
             # User's custom write functor. Writes the model to a file.
-            def my_write_func(buffer: bytes) -> int:
+            def my_write_func(buffer: bytes):
                 self.assertGreater(len(buffer), 0)
-                return output_fd.write(buffer)
+                output_fd.write(buffer)
 
             session_options = onnxrt.SessionOptions()
             if provider:
@@ -218,7 +218,7 @@ class TestCompileApi(AutoEpTestCase):
         # User's custom write functor that raises an exception.
         test_py_error_message = "My Python Error"
 
-        def my_write_func(buffer: bytes) -> int:
+        def my_write_func(buffer: bytes):
             self.assertGreater(len(buffer), 0)
             raise ValueError(test_py_error_message)
 

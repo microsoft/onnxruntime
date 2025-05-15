@@ -15,7 +15,7 @@ class Environment;
 namespace python {
 // Type of the function provided by Python code that is called by ORT to write out the compiled model.
 // Returns the number of bytes written to the underlying stream.
-using PyOutStreamWriteFunc = std::function<size_t(const pybind11::bytes& buffer)>;
+using PyOutStreamWriteFunc = std::function<void(const pybind11::bytes& buffer)>;
 
 /// <summary>
 /// Class exposed to Python that enables compiling ONNX models.

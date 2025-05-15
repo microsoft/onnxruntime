@@ -458,7 +458,6 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
  * \param steam_state Opaque pointer holding the state for the user's stream.
  * \param buffer The buffer to write to the stream.
  * \param buffer_num_bytes The size of the buffer in bytes.
- * \param num_bytes_written Output parameter that should be set to the number of bytes written to the stream.
  *
  * \return OrtStatus* Write status. Return nullptr on success.
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
@@ -466,8 +465,7 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
  */
 typedef OrtStatus*(ORT_API_CALL* OrtOutStreamWriteFunc)(_In_ void* stream_state,
                                                         _In_ const void* buffer,
-                                                        _In_ size_t buffer_num_bytes,
-                                                        _Out_ size_t* num_bytes_written);
+                                                        _In_ size_t buffer_num_bytes);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -6001,9 +5999,8 @@ struct OrtCompileApi {
 
   /** \brief Sets an output stream used to write out the output model's serialized ONNX bytes.
    *
-   * The provided write function is called repeatedly until then entire output model has been written out. Each call to
-   * the write function must write at least one byte, otherwise CompileModel() will return an OrtStatus with error code
-   * ORT_FAIL.
+   * The provided write function may be called repeatedly until then entire output model has been written out. Each call
+   * to the write function is expected to write the entire buffer to the underlying stream.
    *
    * The output model's destination (e.g., file path, memory buffer, or stream) can be set with any of the functions
    * that begin with ModelCompilationOptions_SetOutputModel____.

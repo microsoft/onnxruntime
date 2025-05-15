@@ -80,20 +80,18 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
  * @param stream_state Opaque state that holds a pointer to the user's Python function.
  * @param buffer The buffer to write out. Contains a portion of the compiled ONNX model's bytes.
  * @param buffer_num_bytes The number of bytes to write out.
- * @param num_bytes_written Output parameter set to the actual number of bytes written by the user's Python function.
  *
  * @return nullptr OrtStatus* to indicate success.
  */
 static OrtStatus* ORT_API_CALL PyOutStreamWriteFuncWrapper(void* stream_state, const void* buffer,
-                                                           size_t buffer_num_bytes, size_t* num_bytes_written) {
+                                                           size_t buffer_num_bytes) {
   PyOutStreamWriteFunc* py_write_func = reinterpret_cast<PyOutStreamWriteFunc*>(stream_state);
   OrtStatus* status = nullptr;
 
   // Call the Python write function and convert any exceptions to a status.
-  *num_bytes_written = 0;
   ORT_TRY {
     pybind11::bytes py_bytes(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
-    *num_bytes_written = (*py_write_func)(py_bytes);
+    (*py_write_func)(py_bytes);
   }
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&]() {

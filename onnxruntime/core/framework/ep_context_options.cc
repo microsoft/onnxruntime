@@ -86,46 +86,26 @@ int OutStreamBuf::sync() {
     num_bytes = std::numeric_limits<int>::max();
   }
 
-  std::ptrdiff_t bytes_remaining = num_bytes;
   char* ptr = pbase();
 
-  while (bytes_remaining > 0) {
-    size_t bytes_written = 0;
-    Status status = Status::OK();
+  Status status = Status::OK();
 
-    ORT_TRY {
-      status = ToStatus(out_stream_holder_.write_func(out_stream_holder_.stream_state,
-                                                      ptr, bytes_remaining, &bytes_written));
-    }
-    ORT_CATCH(const std::exception& e) {
-      ORT_HANDLE_EXCEPTION([&]() {
-        status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                                 "Caught exception while calling user's OrtOutStreamWriteFunc callback: ", e.what());
-      });
-    }
-
-    if (!status.IsOK()) {
-      last_status_ = std::move(status);
-      return -1;
-    }
-
-    if (bytes_written > static_cast<size_t>(bytes_remaining)) {
-      last_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtOutStreamWriteFunc wrote more bytes (", bytes_written,
-                                     ") than requested (", bytes_remaining, ").");
-      return -1;
-    }
-
-    if (bytes_written == 0) {
-      last_status_ = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "OrtOutStreamWriteFunc failed to write any data. ",
-                                     "Stopping write attempts to avoid a potential infinite loop.");
-      return -1;
-    }
-
-    bytes_remaining -= static_cast<std::ptrdiff_t>(bytes_written);
-    ptr += bytes_written;
+  ORT_TRY {
+    status = ToStatus(out_stream_holder_.write_func(out_stream_holder_.stream_state,
+                                                    ptr, num_bytes));
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
+                               "Caught exception while calling user's OrtOutStreamWriteFunc callback: ", e.what());
+    });
   }
 
-  assert(ptr == pptr());
+  if (!status.IsOK()) {
+    last_status_ = std::move(status);
+    return -1;
+  }
+
   pbump(-static_cast<int>(num_bytes));  // Reset internal pointer to point to the beginning of the buffer_
   return 0;
 }
