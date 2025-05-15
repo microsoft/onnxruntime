@@ -10,19 +10,22 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
+#include "contrib_ops/cuda/llm/gemmProfiler.h"
 #include "contrib_ops/cuda/llm/weightOnlyGemmProfiler.h"
 #include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
-// using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
-// using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
-// using ort_llm::kernels::weight_only::GemmIdCore;
-// using ort_llm::kernels::weight_only::GemmDims;
-// using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
-// using WeightOnlyGemmRunnerPtr=std::shared_ptr<CutlassFpAIntBGemmRunnerInterface>;
+using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
+using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
+using ort_llm::kernels::weight_only::GemmIdCore;
+using ort_llm::kernels::weight_only::GemmDims;
+using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
+using WeightOnlyGemmRunnerPtr=std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -57,45 +60,17 @@ class MatMulNBits final : public CudaKernel {
         if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
           use_fpA_intB_gemm_ = true;
         }
+
+        RunGemmProfile(use_fpA_intB_gemm_, sm);
       }
     }
-
-    /*
-    gemmProfiler_ = std::make_shared<WeightOnlyQuantGemmPluginProfiler>(); // TODO: use factory to create singleton instance.
-
-    if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || block_size_ == 128) && (nbits_ == 4 || nbits_ == 8) && has_zero_points_ && !has_g_idx_ && is_zero_points_scale_same_type_) {
-        use_fpA_intB_gemm_ = true;
-        gemmId_ = GemmIdCore(N_, K_, ort_llm::nvinfer1::DataType::kHALF);
-
-        if (nbits_ == 8) {
-          weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-          // gemmProfiler_->setWeightTypeId(WeightTypeId::INT8);
-        }
-        else if (nbits_ == 4) {
-          weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-          //gemmProfiler_->setWeightTypeId(WeightTypeId::INT4);
-          //gemmProfiler_->setCudaKernelType(ort_llm::kernels::weight_only::KernelType::FP16Int4Groupwise, 80);
-        }
-
-        int minM = 1;
-        int maxM = 8192;
-        GemmDims dims = {minM, maxM, N_, K_};
-
-        // size_t smoothedActSize = static_cast<size_t>(maxM) * static_cast<size_t>(maxK)
-        //     * (in[0].desc.type == nvinfer1::DataType::kFLOAT ? sizeof(float) : sizeof(half));
-        // m_workspaceMaxSize = smoothedActSize + weightOnlyGemmRunner_->getWorkspaceSize(maxM, N_, K_);
-
-
-        bool hasWeightOnlyCudaKernel = false;
-        gemmProfiler_->profileTactics(weightOnlyGemmRunner_, ort_llm::nvinfer1::DataType::kHALF, dims, gemmId_, hasWeightOnlyCudaKernel);
-      }
-    }*/
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
+  void RunGemmProfile(bool hasCudaKernel, int sm);
+
   int64_t K_;
   int64_t N_;
   int64_t block_size_;
@@ -108,9 +83,11 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool use_fpA_intB_gemm_{false};
 
-  // WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
-  // mutable GemmProfilerPtr gemmProfiler_{nullptr};
-  // GemmIdCore gemmId_{};
+  WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
+  mutable GemmProfilerPtr gemmProfiler_{nullptr};
+  GemmIdCore gemmId_{};
+
+
   mutable std::once_flag fpA_intB_init_once_flag_;
   mutable IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
   mutable IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;

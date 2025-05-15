@@ -19,6 +19,12 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
+using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
+using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
+using ort_llm::kernels::weight_only::WeightTypeId;
+
+static GemmPluginProfilerManager<WeightOnlyQuantGemmPluginProfiler> s_profilerManager;
+static std::once_flag s_gemm_profiler_once_flag;
 
 // template <typename T>
 // std::vector<ort_llm::cutlass_extensions::CutlassGemmConfig> get_configs(T& runner, int k)
@@ -43,6 +49,37 @@ using namespace onnxruntime::cuda;
 //     }
 //     return rets;
 // }
+
+template <typename T>
+void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm) {
+  std::call_once(s_gemm_profiler_once_flag, [&]() {
+    // TODO: use factory to create singleton instance.
+    gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false, /*skip*/ false);
+    gemmId_ = GemmIdCore(N_, K_, ort_llm::nvinfer1::DataType::kHALF);
+
+    if (nbits_ == 8) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+      gemmProfiler_->setWeightTypeId(WeightTypeId::INT8);
+    } else if (nbits_ == 4) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+      gemmProfiler_->setWeightTypeId(WeightTypeId::INT4);
+    }
+
+    using ort_llm::kernels::weight_only::KernelType;
+    KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+    gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
+
+    int minM = 1;
+    int maxM = 8192;
+    GemmDims dims = {minM, maxM, N_, K_};
+
+    // size_t smoothedActSize = static_cast<size_t>(maxM) * static_cast<size_t>(maxK)
+    //     * (in[0].desc.type == nvinfer1::DataType::kFLOAT ? sizeof(float) : sizeof(half));
+    // m_workspaceMaxSize = smoothedActSize + weightOnlyGemmRunner_->getWorkspaceSize(maxM, N_, K_);
+
+    gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
+  });
+}
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -90,22 +127,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   DUMP_TENSOR_INIT();
 
-  if (use_fpA_intB_gemm_ && m <= 16) {
-#if DUMP_TENSOR_LEVEL > 0
-    DUMP_TENSOR_D("A", *a);
-    DUMP_TENSOR_D("B", *b);
-    DUMP_TENSOR_D("scales", *scales);
-    if (zero_points != nullptr) {
-      DUMP_TENSOR_D("zero_points", *zero_points);
-    }
-    if (reorder_idx != nullptr) {
-      DUMP_TENSOR_D("g_idx", *reorder_idx);
-    }
-    if (bias != nullptr) {
-      DUMP_TENSOR_D("bias", *bias);
-    }
-#endif
-
+  if (use_fpA_intB_gemm_ && m < 16) {
     fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
                                                      ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
                                                      : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
@@ -156,21 +178,12 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
         CUDA_CALL_THROW(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
 
-        // transpose the weight from (n, k) to (k, n)
+        // Transpose the weight from (n, k) to (k, n), and convert to int8_t by subtracting 128.
         for (int64_t i = 0; i < n; i++) {
           for (int64_t j = 0; j < k; j++) {
             tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
           }
         }
-#if DUMP_TENSOR_LEVEL > 0
-        printf("tranpose_weight in CPU (%d, %d):\n", k, n);
-        for (int64_t i = 0; i < k; i++) {
-          for (int64_t j = 0; j < n; j++) {
-            printf("%d\t", int(tranpose_weight_buffer.get()[i * n + j]));
-          }
-          printf("\n");
-        }
-#endif
       }
 
       auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
@@ -213,53 +226,45 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
     });
 
-    fpA_intB_gemm::Params params(a_data, nullptr, fpA_intB_weight_buffer_.get(),
-                                 fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
-                                 bias_data, out_data,
-                                 1.f, m, n, k,
-                                 block_size_, cuda_kernel_type);
+      auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+      if (bestTactic->enableCudaKernel) {
+        // ort_llm::kernels::weight_only::Params params(a_data, nullptr, blob_data,
+        //                                              scales_data, zero_points_data, bias_data, out_data, 1.f, m, n, k, block_size_, cuda_kernel_type);
+        // ort_llm::kernels::weight_only::kernel_launcher(sm, params, stream);
 
-    fpA_intB_gemm::kernel_launcher(sm, params, stream);
+        fpA_intB_gemm::Params params(a_data, /*pre_quant_scale*/ nullptr, fpA_intB_weight_buffer_.get(),
+                                     fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
+                                     bias_data, out_data,
+                                     1.f, m, n, k,
+                                     block_size_, cuda_kernel_type);
+
+        fpA_intB_gemm::kernel_launcher(sm, params, stream);
+      } else {
+        const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+        auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
+        weightOnlyGemmRunner_->gemm(
+            a_data,
+            fpA_intB_weight_buffer_.get(),
+            fpA_intB_scale_buffer_.get(),
+            fpA_intB_zero_buffer_.get(),
+            bias_data,
+            out_data,
+            m, n, k,
+            block_size_,
+            *bestTactic,
+            reinterpret_cast<char*>(workspace_buffer.get()),
+            workspace_size,
+            stream);
+      }
+
+
+
+
 
     DUMP_TENSOR_D("out_data", out_data, m, n);
     return Status::OK();
 
-    /*
-    KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-    gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
 
-    // get best tactic and check if CUDA kernel should be used
-    bool use_cuda_kernel = false;
-
-    auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
-    TLLM_CHECK_WITH_INFO(bestTactic,
-                         "No valid weight only per-channel GEMM tactic(It is usually caused by the failure to execute all candidate "
-                         "configurations of the CUTLASS kernel, please pay attention to the warning information when building the "
-                         "engine.)");
-
-    use_cuda_kernel = bestTactic->enableCudaKernel;
-    if (use_cuda_kernel) {
-      ort_llm::kernels::weight_only::Params params(a_data, nullptr, blob_data,
-                                                   scales_data, zero_points_data, bias_data, out_data, 1.f, m, n, k, block_size_, cuda_kernel_type);
-      ort_llm::kernels::weight_only::kernel_launcher(sm, params, stream);
-    } else {
-      const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-      auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
-      weightOnlyGemmRunner_->gemm(
-          a_data,
-          blob_data,
-          scales_data,
-          zero_points_data,
-          bias_data,
-          out_data,
-          m, n, k,
-          block_size_,
-          *bestTactic,
-          reinterpret_cast<char*>(workspace_buffer.get()),
-          workspace_size,
-          stream);
-    }
-    */
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
