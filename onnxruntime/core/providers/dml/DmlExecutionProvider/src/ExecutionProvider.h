@@ -293,7 +293,7 @@ namespace Dml
                 const onnxruntime::GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 onnxruntime::IResourceAccountant* resource_accountant) const final override;
 
-        onnxruntime::common::Status OnSessionInitializationEnd() override
+        onnxruntime::common::Status OnSessionInitializationEnd(uint32_t) override
         {
             return m_impl->OnSessionInitializationEnd();
         }

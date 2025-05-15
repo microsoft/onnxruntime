@@ -855,6 +855,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 #endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
+  context_.OnReleaseSession(session_id_);
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
 
@@ -864,10 +865,11 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   return profiler;
 }
 
-Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
+Status WebGpuExecutionProvider::OnSessionInitializationEnd(uint32_t session_id) {
   if (allocator_ != nullptr) {
     allocator_->OnSessionInitializationEnd();
   }
+  session_id_ = session_id;
   return Status::OK();
 }
 
@@ -881,7 +883,7 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
   }
 
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-    ORT_NOT_IMPLEMENTED("graph capture not implemented");
+    context_.CaptureBegin(session_id_);
   }
   return Status::OK();
 }
@@ -889,8 +891,8 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& /*run_options*/) {
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(0)) {
     if (IsGraphCaptureAllowed()) {
-      ORT_NOT_IMPLEMENTED("graph capture not implemented");
-      // is_graph_captured_ = true;
+      context_.CaptureEnd();
+      is_graph_captured_ = true;
     } else {
       IncrementRegularRunCountBeforeGraphCapture();
     }
@@ -921,7 +923,7 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int) {
   ORT_ENFORCE(IsGraphCaptured(0));
-  ORT_ENFORCE(false);
+  context_.Replay(session_id_);
   return Status::OK();
 }
 

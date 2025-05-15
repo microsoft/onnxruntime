@@ -64,6 +64,7 @@ std::unique_ptr<IExecutionProvider> QnnExecutionProviderWithOptions(const Provid
                                                                     const SessionOptions* session_options = nullptr);
 std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider();
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options);
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider();
 std::unique_ptr<IExecutionProvider> DefaultDmlExecutionProvider();
 

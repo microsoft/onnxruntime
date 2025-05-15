@@ -37,7 +37,11 @@ class DisabledCacheManager : public IBufferCacheManager {
     wgpuBufferRelease(buffer);
   }
 
-  void OnRefresh() override {
+  void ReleaseCapturedBuffers(uint32_t /*session_id*/) override {
+    // no-op
+  }
+
+  void OnRefresh(SStatus /*session_status*/, uint32_t /*session_id*/) override {
     // no-op
   }
 };
@@ -59,7 +63,11 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh() override {
+  void ReleaseCapturedBuffers(uint32_t /*session_id*/) override {
+    // no-op
+  }
+
+  void OnRefresh(SStatus /*session_status*/, uint32_t /*session_id*/) override {
     Release();
     pending_buffers_.clear();
   }
@@ -103,9 +111,27 @@ class SimpleCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh() override {
+  void ReleaseCapturedBuffers(uint32_t session_id) override {
+    auto it = captured_buffers_.find(session_id);
+    if (it != captured_buffers_.end()) {
+      for (auto& buffer : it->second) {
+        wgpuBufferRelease(buffer);
+      }
+      captured_buffers_.erase(session_id);
+    }
+  }
+
+  void OnRefresh(SStatus session_status, uint32_t session_id) override {
     for (auto& buffer : pending_buffers_) {
-      buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
+      if (session_status == SStatus::Default) {
+        buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
+      } else {
+        auto it = captured_buffers_.find(session_id);
+        if (it == captured_buffers_.end()) {
+          captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());
+        }
+        captured_buffers_[session_id].emplace_back(buffer);
+      }
     }
     pending_buffers_.clear();
   }
@@ -120,11 +146,18 @@ class SimpleCacheManager : public IBufferCacheManager {
         wgpuBufferRelease(buffer);
       }
     }
+    for (auto& pair : captured_buffers_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
   }
 
  protected:
   std::map<size_t, std::vector<WGPUBuffer>> buffers_;
   std::vector<WGPUBuffer> pending_buffers_;
+  // session_id -> WGPUBuffer[] mapping.
+  std::unordered_map<uint32_t, std::vector<WGPUBuffer>> captured_buffers_;
 };
 
 // TODO: maybe use different bucket size for storage and uniform buffers?
@@ -196,17 +229,32 @@ class BucketCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh() override {
-    // TODO: consider graph capture. currently not supported
+  void ReleaseCapturedBuffers(uint32_t session_id) override {
+    auto it = captured_buffers_.find(session_id);
+    if (it != captured_buffers_.end()) {
+      for (auto& buffer : it->second) {
+        wgpuBufferRelease(buffer);
+      }
+      captured_buffers_.erase(session_id);
+    }
+  }
 
+  void OnRefresh(SStatus session_status, uint32_t session_id) override {
     for (auto& buffer : pending_buffers_) {
       auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.emplace_back(buffer);
+      if (session_status == SStatus::Default) {
+        auto it = buckets_.find(buffer_size);
+        if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
+          it->second.emplace_back(buffer);
+        } else {
+          wgpuBufferRelease(buffer);
+        }
       } else {
-        wgpuBufferRelease(buffer);
+        auto it = captured_buffers_.find(session_id);
+        if (it == captured_buffers_.end()) {
+          captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());
+        }
+        captured_buffers_[session_id].emplace_back(buffer);
       }
     }
 
@@ -218,6 +266,11 @@ class BucketCacheManager : public IBufferCacheManager {
       wgpuBufferRelease(buffer);
     }
     for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+    for (auto& pair : captured_buffers_) {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
       }
@@ -246,6 +299,8 @@ class BucketCacheManager : public IBufferCacheManager {
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<WGPUBuffer> pending_buffers_;
+  // session_id -> WGPUBuffer[] mapping.
+  std::unordered_map<uint32_t, std::vector<WGPUBuffer>> captured_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
@@ -383,6 +438,11 @@ void BufferManager::Release(WGPUBuffer buffer) {
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
 
+void BufferManager::ReleaseCapturedBuffers(uint32_t session_id) {
+  GetCacheManager(wgpu::BufferUsage::Storage).ReleaseCapturedBuffers(session_id);
+  GetCacheManager(wgpu::BufferUsage::Uniform).ReleaseCapturedBuffers(session_id);
+}
+
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
@@ -407,11 +467,11 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
   memcpy(dst, mapped_data, size);
 }
 
-void BufferManager::RefreshPendingBuffers() {
-  storage_cache_->OnRefresh();
-  uniform_cache_->OnRefresh();
-  query_resolve_cache_->OnRefresh();
-  default_cache_->OnRefresh();
+void BufferManager::RefreshPendingBuffers(SStatus session_status, uint32_t session_id) {
+  storage_cache_->OnRefresh(session_status, session_id);
+  uniform_cache_->OnRefresh(session_status, session_id);
+  query_resolve_cache_->OnRefresh(session_status, session_id);
+  default_cache_->OnRefresh(session_status, session_id);
 }
 
 IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {

@@ -14,6 +14,13 @@ namespace webgpu {
 
 class WebGpuContext;
 
+// For command capture and replay
+enum class SStatus {
+  Default,
+  Capturing,
+  Replaying
+};
+
 enum class BufferCacheMode {
   Disabled,
   LazyRelease,
@@ -48,8 +55,11 @@ class IBufferCacheManager {
   // release a buffer
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
+  // release captured buffers
+  virtual void ReleaseCapturedBuffers(uint32_t session_id) = 0;
+
   // when a stream refresh is requested
-  virtual void OnRefresh() = 0;
+  virtual void OnRefresh(SStatus session_status, uint32_t session_id) = 0;
 };
 
 //
@@ -67,7 +77,8 @@ class BufferManager {
                                                               wgpu::BufferUsage::CopyDst);
   void Release(WGPUBuffer buffer);
   void Download(WGPUBuffer src, void* dst, size_t size);
-  void RefreshPendingBuffers();
+  void RefreshPendingBuffers(SStatus session_status, uint32_t session_id);
+  void ReleaseCapturedBuffers(uint32_t session_id);
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;

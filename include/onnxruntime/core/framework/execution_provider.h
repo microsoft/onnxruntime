@@ -264,7 +264,7 @@ class IExecutionProvider {
      This provides an opportunity for execution providers to optionally synchronize and
      clean up its temporary resources to reduce memory and ensure the first run is fast.
   */
-  virtual common::Status OnSessionInitializationEnd() { return Status::OK(); }
+  virtual common::Status OnSessionInitializationEnd(uint32_t /*session_id*/) { return Status::OK(); }
 
   struct FusedNodeAndGraph {
     const std::reference_wrapper<onnxruntime::Node> fused_node;

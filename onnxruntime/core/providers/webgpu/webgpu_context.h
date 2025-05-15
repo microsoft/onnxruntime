@@ -116,6 +116,11 @@ class WebGpuContext final {
     }
   }
 
+  void CaptureBegin(uint32_t session_id);
+  void CaptureEnd();
+  void Replay(uint32_t session_id);
+  void OnReleaseSession(uint32_t session_id);
+
   void Flush();
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
@@ -237,6 +242,21 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
+
+  SStatus session_status_{SStatus::Default};
+
+  struct CapturedCommandInfo {
+    wgpu::ComputePipeline compute_pipeline;
+    wgpu::BindGroup bind_group;
+    std::array<uint32_t, 3> dispatch_group;
+  };
+  // A session_id to a vector of corresponding commands map for replay
+  std::unordered_map<uint32_t, std::vector<CapturedCommandInfo>> captured_commands_map_;
+
+  // A session_id to a vector of corresponding kernel info map for profiling during replay
+  std::unordered_map<uint32_t, std::vector<PendingKernelInfo>> captured_kernels_map_;
+
+  uint32_t session_id_ = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;

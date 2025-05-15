@@ -2291,7 +2291,7 @@ common::Status InferenceSession::Initialize() {
 
   if (status.IsOK()) {
     for (auto& xp : execution_providers_) {
-      auto end_status = xp->OnSessionInitializationEnd();
+      auto end_status = xp->OnSessionInitializationEnd(session_id_);
       if (status.IsOK()) {
         status = end_status;
       }
