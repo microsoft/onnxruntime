@@ -61,10 +61,10 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 #endif
 }
 
-  template <>
-  __device__ inline nv_bfloat16 Rsqrt(const nv_bfloat16& x) {
-    return hrsqrt(x);
-  }
+template <>
+__device__ inline nv_bfloat16 Rsqrt(const nv_bfloat16& x) {
+  return hrsqrt(x);
+}
 
 __device__ inline nv_bfloat162 AddHalf2(const nv_bfloat162 a, const nv_bfloat162 b) {
   return __hadd2(a, b);
@@ -90,7 +90,7 @@ struct KeyValuePairSum {
   }
 
   __device__ inline cub::KeyValuePair<nv_bfloat16, nv_bfloat16> operator()(const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& a,
-                                                             const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& b) {
+                                                                           const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& b) {
     const nv_bfloat162 a2 = __halves2bfloat162(a.key, a.value);
     const nv_bfloat162 b2 = __halves2bfloat162(b.key, b.value);
     const nv_bfloat162 res = AddHalf2(a2, b2);

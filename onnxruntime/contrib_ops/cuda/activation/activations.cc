@@ -55,7 +55,6 @@ UNARY_ACTIVATION_OP_HFD(QuickGelu, 1, kMSDomain);
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, MLFloat16)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, float)
 REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, double)
-REGISTER_ACTIVATION_KERNEL(ThresholdedRelu, 1, kOnnxDomain, BFloat16)
 
 }  // namespace cuda
 }  // namespace contrib
