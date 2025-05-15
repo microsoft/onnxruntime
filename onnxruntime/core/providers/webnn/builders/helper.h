@@ -183,6 +183,10 @@ inline bool IsEmptyTensor(const GraphViewer& graph_viewer, const std::string& na
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
 }
 
+inline bool IsOnnxDomain(std::string_view domain) {
+  return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
+}
+
 inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
   return tensor_index < defs.size() && defs[tensor_index]->Exists();
 }
@@ -206,7 +210,7 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
     {"MatMulInteger", {"cast", "dequantizeLinear", "matmul"}},
     {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
     {"MultiHeadAttention", {"add", "cast", "concat", "constant", "div", "matmul", "reshape", "softmax", "transpose"}},
-    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
+    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "slice", "split"}},
     {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
     {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
 };
