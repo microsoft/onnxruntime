@@ -1474,7 +1474,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .SetDoc(GemmaRotaryEmbedding_ver1_doc)
         .Input(0,
                "emb",
-               "embeddding - 3D tensor with shape (batch_size, seq_len, dim)",
+               "embedding - 3D tensor with shape (batch_size, seq_len, dim)",
                "U")
         .Input(1,
                "q",
