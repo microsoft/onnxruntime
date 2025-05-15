@@ -1,6 +1,6 @@
 {
   "name": "dawn",
-  "version-string": "46e0a6d9e20b565fe7f1424600b458ca787eece3",
+  "version-string": "4cb1f9be152a4fa6bb695c08cd707ab078a1e2fb",
   "port-version": 1,
   "description": "Dawn, a native WebGPU implementation.",
   "homepage": "https://dawn.googlesource.com/dawn",
