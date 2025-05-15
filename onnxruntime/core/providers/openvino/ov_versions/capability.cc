@@ -126,9 +126,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
       }
     }
 
-    // Initializers need to be part of meta_def->inputs
-    Iterable2String(inputs, ng_required_initializers);
-
     // Fill outputs with names
     Iterable2String(outputs, graph_viewer_.GetOutputs());
 
