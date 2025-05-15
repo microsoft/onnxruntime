@@ -1002,69 +1002,7 @@ bool OnnxRuntimeTestSession::PopulateGeneratedInputTestData(int32_t seed) {
         // Get pointer to CPU tensor data
         const void* default_ptr = default_tensor.GetTensorRawData();
 
-        size_t num_elements = tensor_info.GetElementCount();
-        size_t element_size;
-
-        // Determine element size based on ONNX type enum
-        switch (tensor_info.GetElementType()) {
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT:
-            element_size = sizeof(float);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8:
-            element_size = sizeof(uint8_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8:
-            element_size = sizeof(int8_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT16:
-            element_size = sizeof(uint16_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT16:
-            element_size = sizeof(int16_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32:
-            element_size = sizeof(int32_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_INT64:
-            element_size = sizeof(int64_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL:
-            element_size = sizeof(bool);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16:
-            element_size = sizeof(uint16_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE:
-            element_size = sizeof(double);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT32:
-            element_size = sizeof(uint32_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT64:
-            element_size = sizeof(uint64_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16:
-            element_size = sizeof(uint16_t);
-            break;
-#if !defined(DISABLE_FLOAT8_TYPES)
-          // Assuming Ort::Float8 types are defined and sizeof() gives 1 byte
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FN:
-            element_size = sizeof(Ort::Float8E4M3FN_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E4M3FNUZ:
-            element_size = sizeof(Ort::Float8E4M3FNUZ_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2:
-            element_size = sizeof(Ort::Float8E5M2_t);
-            break;
-          case ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ:
-            element_size = sizeof(Ort::Float8E5M2FNUZ_t);
-            break;
-#endif
-          default:
-            ORT_THROW("Unsupported tensor data type for CUDA copy: ", tensor_info.GetElementType());
-        }
-        size_t total_bytes = num_elements * element_size;
+        size_t total_bytes = default_tensor.GetTensorSizeInBytes();
 
         Ort::Value cuda_tensor = Ort::Value::CreateTensor(allocator_, input_node_dim.data(),
                                                           input_node_dim.size(), tensor_info.GetElementType());
