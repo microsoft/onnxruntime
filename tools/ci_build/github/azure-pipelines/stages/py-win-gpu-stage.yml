@@ -134,10 +134,10 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
 
 
-          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
             - template: ../templates/publish-symbolrequestprod-api.yml
               parameters:
-                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
+                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
                   symbolExpiryTime: 60
                 includePublicSymbolServer: true
                 symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
