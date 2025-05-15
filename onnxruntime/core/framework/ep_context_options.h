@@ -69,7 +69,7 @@ class OutStreamBuf : public std::streambuf {
   explicit OutStreamBuf(OutStreamHolder out_stream_holder);
   ~OutStreamBuf();
 
-  Status GetStatus() const {
+  const Status& GetStatus() const {
     return last_status_;
   }
 

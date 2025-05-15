@@ -926,6 +926,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     std::ostream out_stream(out_stream_buf.get());
 
     model_proto.SerializeToOstream(&out_stream);
+    out_stream.flush();
     ORT_RETURN_IF_ERROR(out_stream_buf->GetStatus());
   } else {
     // Write output model to file.

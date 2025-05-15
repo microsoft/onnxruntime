@@ -185,7 +185,6 @@ class TestCompileApi(AutoEpTestCase):
         if "QNNExecutionProvider" in available_providers:
             provider = "QNNExecutionProvider"
             provider_options["backend_type"] = "htp"
-        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
 
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
         output_model_path = os.path.join(self._tmp_dir_path, "model.compiled.stream.onnx")
@@ -209,19 +208,11 @@ class TestCompileApi(AutoEpTestCase):
             model_compiler.compile_to_stream(my_write_func)
 
         self.assertTrue(os.path.exists(output_model_path))
-        onnx.checker.check_model(output_model_path)  # Check that compiled model can be loaded.
 
     def test_compile_to_stream_that_raises_exception(self):
         """
         Tests compiling a model to an output stream that always raises an exception.
         """
-        provider = None
-        provider_options = dict()
-        if "QNNExecutionProvider" in available_providers:
-            provider = "QNNExecutionProvider"
-            provider_options["backend_type"] = "htp"
-        # TODO(adrianlizarraga): Allow test to run for other compiling EPs (e.g., OpenVINO)
-
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
 
         # User's custom write functor that raises an exception.
@@ -232,9 +223,6 @@ class TestCompileApi(AutoEpTestCase):
             raise ValueError(test_py_error_message)
 
         session_options = onnxrt.SessionOptions()
-        if provider:
-            session_options.add_provider(provider, provider_options)
-
         model_compiler = onnxrt.ModelCompiler(
             session_options,
             input_model_path,

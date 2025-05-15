@@ -101,10 +101,7 @@ static OrtStatus* ORT_API_CALL PyOutStreamWriteFuncWrapper(void* stream_state, c
     });
   }
 
-  if (status != nullptr) {
-    return status;
-  }
-  return nullptr;
+  return status;
 }
 
 onnxruntime::Status PyModelCompiler::CompileToOutStream(PyOutStreamWriteFunc& write_func) {
