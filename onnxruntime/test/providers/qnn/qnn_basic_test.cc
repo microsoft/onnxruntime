@@ -26,6 +26,8 @@ using namespace onnxruntime::logging;
 
 #define ORT_MODEL_FOLDER ORT_TSTR("testdata/")
 
+constexpr std::string_view kDlcOutputDir("dlc_output");
+
 // in test_main.cc
 extern std::unique_ptr<Ort::Env> ort_env;
 extern "C" void ortenv_setup();
@@ -334,19 +336,61 @@ TEST_F(QnnHTPBackendTests, RunConvInt4Model) {
 }
 #endif  // #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-// Helper function that runs an ONNX model with a NHWC Resize operator to test that
-// type/shape inference succeeds during layout transformation.
-// Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
-//
-// The models passed to this function are subgraphs extracted from a larger model that exhibited
-// shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
-// types and shapes.
-static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bool enable_qnn_saver = false,
-                               std::string htp_graph_finalization_opt_mode = "",
-                               std::string qnn_context_priority = "",
-                               std::string soc_model = "",
-                               std::string htp_arch = "",
-                               std::string device_id = "") {
+enum class TestBackend {
+  Cpu,
+  Htp,
+  Saver,
+  Ir,
+};
+
+static std::string ToBackendLibName(TestBackend backend) {
+  switch (backend) {
+    case TestBackend::Cpu:
+      return "Cpu";
+    case TestBackend::Htp:
+      return "Htp";
+    case TestBackend::Saver:
+      return "Saver";
+    case TestBackend::Ir:
+      return "Ir";
+    default:
+      assert(false && "Invalid TestBackend value.");
+      return "";
+  }
+}
+
+static void AddSerializerConfigs(TestBackend serializer_backend, onnxruntime::ProviderOptions& options) {
+  std::string serializer_lib = ToBackendLibName(serializer_backend);
+  std::string serializer_path_key;
+
+  switch (serializer_backend) {
+    case TestBackend::Ir:
+      serializer_path_key = "qnn_ir_backend_path";
+      options["dump_qnn_ir_dlc"] = "1";
+      options["dump_qnn_ir_dlc_dir"] = kDlcOutputDir;
+      break;
+    case TestBackend::Saver:
+      serializer_path_key = "qnn_saver_path";
+      break;
+    default:
+      assert(false && "Invalid serializer backend.");
+      return;
+  }
+
+#if defined(_WIN32)
+  options[serializer_path_key] = "Qnn" + serializer_lib + ".dll";
+#else
+  options[serializer_path_key] = "libQnn" + serializer_lib + ".so";
+#endif
+}
+
+static Ort::Session InitNHWCResizeModel(const ORTCHAR_T* ort_model_path, TestBackend backend,
+                                        std::optional<TestBackend> serializer_backend = std::nullopt,
+                                        std::string htp_graph_finalization_opt_mode = "",
+                                        std::string qnn_context_priority = "",
+                                        std::string soc_model = "",
+                                        std::string htp_arch = "",
+                                        std::string device_id = "") {
   Ort::SessionOptions so;
 
   // Ensure all type/shape inference warnings result in errors!
@@ -356,17 +400,17 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   onnxruntime::ProviderOptions options;
   options["offload_graph_io_quantization"] = "0";
 
+  std::string backend_lib = ToBackendLibName(backend);
+
 #if defined(_WIN32)
-  options["backend_path"] = use_htp ? "QnnHtp.dll" : "QnnCpu.dll";
-  if (enable_qnn_saver) {
-    options["qnn_saver_path"] = "QnnSaver.dll";
-  }
+  options["backend_path"] = "Qnn" + backend_lib + ".dll";
 #else
-  options["backend_path"] = use_htp ? "libQnnHtp.so" : "libQnnCpu.so";
-  if (enable_qnn_saver) {
-    options["qnn_saver_path"] = "libQnnSaver.so";
-  }
+  options["backend_path"] = "libQnn" + backend_lib + ".so";
 #endif
+
+  if (serializer_backend) {
+    AddSerializerConfigs(*serializer_backend, options);
+  }
 
   if (!htp_graph_finalization_opt_mode.empty()) {
     options["htp_graph_finalization_optimization_mode"] = std::move(htp_graph_finalization_opt_mode);
@@ -391,6 +435,25 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
   so.AppendExecutionProvider("QNN", options);
 
   Ort::Session session(*ort_env, ort_model_path, so);
+
+  return session;
+}
+
+// Helper function that runs an ONNX model with a NHWC Resize operator to test that
+// type/shape inference succeeds during layout transformation.
+// Refer to onnxruntime/core/graph/contrib_ops/nhwc_inference_context.h.
+//
+// The models passed to this function are subgraphs extracted from a larger model that exhibited
+// shape inferencing issues on QNN. Thus, the models are expected to have a specific input/output
+// types and shapes.
+static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, TestBackend backend,
+                               std::optional<TestBackend> serializer_backend = std::nullopt,
+                               std::string htp_graph_finalization_opt_mode = "",
+                               std::string qnn_context_priority = "",
+                               std::string soc_model = "",
+                               std::string htp_arch = "",
+                               std::string device_id = "") {
+  Ort::Session session = InitNHWCResizeModel(ort_model_path, backend, serializer_backend, htp_graph_finalization_opt_mode, qnn_context_priority, soc_model, htp_arch, device_id);
 
   // Input can be all zeros since we're testing for correct shape inference.
   std::array<float, 1 * 3 * 4 * 5> input0_data = {};
@@ -433,25 +496,25 @@ static void RunNHWCResizeModel(const ORTCHAR_T* ort_model_path, bool use_htp, bo
 // Test shape inference of NHWC Resize operator (opset 11) that uses
 // the scales input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset11) {
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset11.onnx", false);
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset11.onnx", TestBackend::Cpu);
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the scales input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_scales_opset18) {
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset18.onnx", false);
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_scales_opset18.onnx", TestBackend::Cpu);
 }
 
 // Test shape inference of NHWC Resize operator (opset 11) that uses
 // the sizes input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset11) {
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset11.onnx", false);
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset11.onnx", TestBackend::Cpu);
 }
 
 // Test shape inference of NHWC Resize operator (opset 18) that uses
 // the sizes input. Use the QNN CPU backend.
 TEST_F(QnnCPUBackendTests, TestNHWCResizeShapeInference_sizes_opset18) {
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", false);
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx", TestBackend::Cpu);
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN CPU backend.
@@ -463,8 +526,8 @@ TEST_F(QnnCPUBackendTests, QnnSaver_OutputFiles) {
   ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
 
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     false,  // use_htp
-                     true);  // enable_qnn_saver
+                     TestBackend::Cpu,     // backend
+                     TestBackend::Saver);  // serializer_backend
 
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
@@ -856,7 +919,42 @@ TEST_F(QnnHTPBackendTests, MultithreadHtpPowerCfgDefaultAndRunOption) {
 // the sizes input. Use the QNN HTP backend.
 // Maps to QNN's ResizeBilinear operator.
 TEST_F(QnnHTPBackendTests, TestNHWCResizeShapeInference_qdq_sizes_opset18) {
-  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", true);
+  RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx", TestBackend::Htp);
+}
+
+// Test that QNN Ir generates the expected file for a model meant to run on the QNN HTP backend.
+
+TEST_F(QnnHTPBackendTests, QnnIr_OutputFiles) {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+  if (IsIRBackendSupported() == BackendSupport::UNSUPPORTED) {
+    LOGS(logger, WARNING) << "QNN IR backend is not available! Skipping test.";
+    GTEST_SKIP();
+  } else if (IsIRBackendSupported() == BackendSupport::SUPPORT_ERROR) {
+    LOGS(logger, ERROR) << "Failed to check if QNN IR backend is available.";
+    FAIL();
+  }
+
+  const std::filesystem::path qnn_dlc_dir = kDlcOutputDir;
+
+  // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(qnn_dlc_dir);
+  ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
+
+  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
+                      TestBackend::Htp,  // backend
+                      TestBackend::Ir);  // serializer backend
+
+  // File names are taken from graph node names. Just make sure that we got one .dlc
+  // in the expected directory.
+  ASSERT_TRUE(std::filesystem::exists(qnn_dlc_dir));
+
+  int file_count = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(qnn_dlc_dir)) {
+    EXPECT_TRUE(entry.is_regular_file());
+    EXPECT_EQ(entry.path().extension(), ".dlc");
+    ++file_count;
+  }
+  EXPECT_EQ(file_count, 1);
 }
 
 // Test that QNN Saver generates the expected files for a model meant to run on the QNN HTP backend.
@@ -868,8 +966,8 @@ TEST_F(QnnHTPBackendTests, QnnSaver_OutputFiles) {
   ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
 
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
-                     true,   // use_htp
-                     true);  // enable_qnn_saver
+                     TestBackend::Htp,     // backend
+                     TestBackend::Saver);  // serializer_backend
 
   // Check that QNN Saver output files exist.
   EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
@@ -885,9 +983,9 @@ TEST_F(QnnHTPBackendTests, HTPGraphFinalizationOptimizationModes) {
                                                           "3"};  // Mode 3
   for (auto mode : graph_opt_modes) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       true,   // use_htp
-                       false,  // enable_qnn_saver
-                       mode);  // htp_graph_finalization_opt_mode
+                       TestBackend::Htp,  // backend
+                       std::nullopt,      // serializer_backend
+                       mode);             // htp_graph_finalization_opt_mode
   }
 }
 
@@ -905,10 +1003,10 @@ TEST_F(QnnHTPBackendTests, HTPSocModels) {
 
   for (auto soc_model : soc_models) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       true,   // use_htp
-                       false,  // enable_qnn_saver
-                       "",     // htp_graph_finalization_opt_mode
-                       "",     // qnn_context_priority
+                       TestBackend::Htp,  // backend
+                       std::nullopt,      // serializer_backend
+                       "",                // htp_graph_finalization_opt_mode
+                       "",                // qnn_context_priority
                        soc_model);
   }
 }
@@ -920,23 +1018,23 @@ TEST_F(QnnHTPBackendTests, HTPArchValues) {
                                                     "68"};  // v68
   for (auto htp_arch : htp_archs) {
     RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                       true,      // use_htp
-                       false,     // enable_qnn_saver
-                       "",        // htp_graph_finalization_opt_mode
-                       "",        // qnn_context_priority
-                       "",        // soc_model
-                       htp_arch,  // htp_arch
-                       "0");      // device_id
+                       TestBackend::Htp,  // backend
+                       std::nullopt,      // enable_qnn_saver
+                       "",                // htp_graph_finalization_opt_mode
+                       "",                // qnn_context_priority
+                       "",                // soc_model
+                       htp_arch,          // htp_arch
+                       "0");              // device_id
   }
 }
 
 // Test that models run with high QNN context priority.
 TEST_F(QnnHTPBackendTests, QnnContextPriorityHigh) {
   RunNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.quant.onnx",
-                     true,     // use_htp
-                     false,    // enable_qnn_saver
-                     "",       // htp_graph_finalization_opt_mode
-                     "high");  // qnn_context_priority
+                     TestBackend::Htp,  // use_htp
+                     std::nullopt,      // enable_qnn_saver
+                     "",                // htp_graph_finalization_opt_mode
+                     "high");           // qnn_context_priority
 }
 
 // Create a model with Cast + Add (quantized)
@@ -1287,6 +1385,49 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+// Test that QNN Ir generates the expected files for a model meant to run on any QNN backend.
+TEST_F(QnnIRBackendTests, QnnIr_OutputFiles) {
+  const std::filesystem::path qnn_dlc_dir = kDlcOutputDir;
+
+  // Remove pre-existing QNN Ir output files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(qnn_dlc_dir);
+  ASSERT_FALSE(std::filesystem::exists(qnn_dlc_dir));
+
+  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
+                      TestBackend::Ir,   // backend
+                      TestBackend::Ir);  // serializer backend
+
+  // File names are taken from graph node names. Just make sure that we got one .dlc
+  // in the expected directory.
+  ASSERT_TRUE(std::filesystem::exists(qnn_dlc_dir));
+
+  int file_count = 0;
+  for (const auto& entry : std::filesystem::directory_iterator(qnn_dlc_dir)) {
+    EXPECT_TRUE(entry.is_regular_file());
+    EXPECT_EQ(entry.path().extension(), ".dlc");
+    ++file_count;
+  }
+  EXPECT_EQ(file_count, 1);
+}
+
+// Test that QNN Saver generates the expected files for a model meant to run on any QNN backend.
+TEST(QnnSaverBackendTests, QnnSaver_OutputFiles) {
+  const std::filesystem::path qnn_saver_output_dir = "saver_output";
+
+  // Remove pre-existing QNN Saver output files. Note that fs::remove_all() can handle non-existing paths.
+  std::filesystem::remove_all(qnn_saver_output_dir);
+  ASSERT_FALSE(std::filesystem::exists(qnn_saver_output_dir));
+
+  InitNHWCResizeModel(ORT_MODEL_FOLDER "nhwc_resize_sizes_opset18.onnx",
+                      TestBackend::Saver,   // backend
+                      TestBackend::Saver);  // serializer_backend
+
+  // Check that QNN Saver output files exist.
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "saver_output.c"));
+  EXPECT_TRUE(std::filesystem::exists(qnn_saver_output_dir / "params.bin"));
+}
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
 }  // namespace test
