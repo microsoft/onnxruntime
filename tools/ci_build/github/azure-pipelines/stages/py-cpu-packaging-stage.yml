@@ -135,16 +135,15 @@ stages:
           parameters:
             ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
               symbolExpiryTime: 60
-            includePublicSymbolServer: true
-            symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
+            includePublicSymbolServer: true            
             symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
             symbolsVersion: $(Build.BuildId)
             symbolProject: 'ONNX Runtime'
             subscription: 'OnnxrunTimeCodeSign_20240611'
             searchPattern: |
-              **/onnxruntime.pdb
-              **/onnxruntime_providers_shared.pdb
-              **/onnxruntime_pybind11_state.pdb
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml

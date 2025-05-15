@@ -37,11 +37,14 @@ steps:
           ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
             symbolExpiryTime: 60
           includePublicSymbolServer: true
-          symbolsFolder: '$(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\'
           symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
           symbolsVersion: $(Build.BuildId)
           symbolProject: 'ONNX Runtime'
-          subscription: 'OnnxrunTimeCodeSign_20240611'          
+          subscription: 'OnnxrunTimeCodeSign_20240611'
+          searchPattern: |
+            $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime.pdb
+            $(Build.BinariesDirectory)\${{parameters.buildConfig}}\${{parameters.buildConfig}}\onnxruntime_providers_*.pdb
+
 
     - task: CmdLine@2
       displayName: 'Copy build artifacts for zipping'
