@@ -116,12 +116,13 @@ endif()
 
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
-    REPO fs-eire/dawn
+    REPO google/dawn
     REF "${VERSION}"
-    SHA512 246720afced99f7f50e8d29323d9b5749291f711225c626b42963a81bf9b01512b94f12584cc972fa488f2ee27f6e0167fb370e9421c720e4423be341e236eb4
+    SHA512 9771e0be45ad2b85e4d85e12cbf03b9c9b4cc297e8f819e6277d8f02821adb671bf420fd13e241be4f6d7795a3acf0d0a38649c6e0e38a523a6ec0f042591efe
 
-    # PATCHES
-    # dawn.patch
+    PATCHES
+      dawn.patch
+      dawn_vcpkg_integration.patch
 )
 
 vcpkg_cmake_configure(
