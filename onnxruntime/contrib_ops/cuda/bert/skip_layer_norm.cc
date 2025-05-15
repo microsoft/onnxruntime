@@ -121,21 +121,20 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
           hidden_size,
           row_count,
           skip_size);
-    }
-    else {
+    } else {
       LaunchSkipLayerNormKernel<CudaT, Simplified>(
-        Stream(ctx),
-        reinterpret_cast<CudaT*>(output->MutableData<T>()),
-        sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
-        reinterpret_cast<const CudaT*>(input->Data<T>()),
-        reinterpret_cast<const CudaT*>(skip->Data<T>()),
-        (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
-        reinterpret_cast<const CudaT*>(gamma->Data<T>()),
-        (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
-        epsilon_,
-        hidden_size,
-        row_count,
-        skip_size);
+          Stream(ctx),
+          reinterpret_cast<CudaT*>(output->MutableData<T>()),
+          sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr,
+          reinterpret_cast<const CudaT*>(input->Data<T>()),
+          reinterpret_cast<const CudaT*>(skip->Data<T>()),
+          (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,
+          reinterpret_cast<const CudaT*>(gamma->Data<T>()),
+          (beta != nullptr) ? reinterpret_cast<const CudaT*>(beta->Data<T>()) : nullptr,
+          epsilon_,
+          hidden_size,
+          row_count,
+          skip_size);
     }
   }
 
