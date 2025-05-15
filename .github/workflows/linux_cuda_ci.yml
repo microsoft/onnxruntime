@@ -2,13 +2,13 @@ name: Linux CUDA CI
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
   pull_request:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
