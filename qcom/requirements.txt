@@ -1,5 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
+certifi >= 2025.4.26
 pyyaml >= 6.0.2, == 6.*
 tqdm >= 4.67.1, == 4.*
 types-pyyaml >= 6.0.2, == 6.*
+types-tqdm >= 4.67, == 4.*

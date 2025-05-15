@@ -30,14 +30,26 @@ class CreateVenvTask(CompositeTask):
                             RunExecutablesTask(
                                 group_name=None,
                                 executables_and_args=[
-                                    [str(python_executable), "-m", "venv", str(venv_path)],
+                                    [
+                                        str(python_executable),
+                                        "-m",
+                                        "venv",
+                                        str(venv_path),
+                                    ],
                                 ],
                             ),
                             RunExecutablesWithVenvTask(
                                 group_name=None,
                                 venv=venv_path,
                                 executables_and_args=[
-                                    ["python", "-m", "pip", "install", "pip", "--upgrade"],
+                                    [
+                                        "python",
+                                        "-m",
+                                        "pip",
+                                        "install",
+                                        "pip",
+                                        "--upgrade",
+                                    ],
                                 ],
                             ),
                         ],
@@ -47,9 +59,26 @@ class CreateVenvTask(CompositeTask):
                     group_name=None,
                     venv=venv_path,
                     executables_and_args=[
-                        ["pip", "install", "-r", f"{REPO_ROOT}/requirements-dev.txt"],
+                        [
+                            "pip",
+                            "install",
+                            "uv",
+                        ],
+                        [
+                            "uv",
+                            "pip",
+                            "install",
+                            "-r",
+                            f"{REPO_ROOT}/requirements-dev.txt",
+                        ],
                         ["lintrunner", "init"],
-                        ["pip", "install", "-r", f"{REPO_ROOT}/qcom/requirements.txt"],
+                        [
+                            "uv",
+                            "pip",
+                            "install",
+                            "-r",
+                            f"{REPO_ROOT}/qcom/requirements.txt",
+                        ],
                     ],
                 ),
             ],

@@ -19,12 +19,12 @@ jobs:
       - name: Build Windows x86_64
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py build_ort_windows_x86_64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
+          python .\qcom\build_and_test.py build_ort_windows_x86_64
 
       - name: Test Windows x86_64
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py test_ort_windows_x86_64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
+          python .\qcom\build_and_test.py test_ort_windows_x86_64
 
       - uses: actions/upload-artifact@v3
         with:
@@ -43,7 +43,7 @@ jobs:
       - name: Build Windows ARM64
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py build_ort_windows_arm64 --qairt-sdk ${{ vars.QNN_SDK_ROOT }}
+          python .\qcom\build_and_test.py build_ort_windows_arm64
 
       - uses: actions/upload-artifact@v3
         with:

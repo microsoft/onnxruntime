@@ -7,6 +7,7 @@ import hashlib
 import logging
 import os
 import shutil
+import ssl
 import tarfile
 import tempfile
 import urllib.parse
@@ -15,6 +16,7 @@ import zipfile
 from pathlib import Path, PurePosixPath
 from typing import Any
 
+import certifi
 import tqdm
 import yaml
 
@@ -56,7 +58,9 @@ class FileCache:
 
             # Defer writing the final file so we don't leave partial downloads if we get killed.
             with tempfile.SpooledTemporaryFile(mode="wr+b") as tmp_file:
-                with urllib.request.urlopen(url) as response:
+                with urllib.request.urlopen(
+                    url, context=ssl.create_default_context(cafile=certifi.where())
+                ) as response:
                     length = int(response.getheader("content-length")) / 1024 / 1024
                     with tqdm.tqdm(
                         total=length,
@@ -214,7 +218,11 @@ class PackageManager:
 
             # Move fully extracted package to final location
             logging.info(f"Moving {tmp_rootdir} to {self.__package_root}")
-            Path(tmp_rootdir).rename(self.get_root_dir())
+            try:
+                Path(tmp_rootdir).rename(self.get_root_dir())
+            except OSError:
+                # The fast path didn't work, perhaps we crossed mount boundaries.
+                shutil.move(tmp_rootdir, self.get_root_dir())
         self.__cache.prune()
 
     def __format(self, fmt_str: str) -> str:
