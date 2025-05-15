@@ -96,11 +96,6 @@ struct KeyValuePairSum {
     const nv_bfloat162 res = AddHalf2(a2, b2);
     return cub::KeyValuePair<nv_bfloat16, nv_bfloat16>(__low2bfloat16(res), __high2bfloat16(res));
   }
-
-   __device__ inline cub::KeyValuePair<nv_bfloat162, nv_bfloat162> operator()(const cub::KeyValuePair<nv_bfloat162, nv_bfloat162>& a,
-                                                               const cub::KeyValuePair<nv_bfloat162, nv_bfloat162>& b) {
-    return cub::KeyValuePair<nv_bfloat162, nv_bfloat162>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
-  }
 };
 
 template <typename T, int TPB>
