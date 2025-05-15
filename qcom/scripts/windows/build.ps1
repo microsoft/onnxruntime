@@ -143,4 +143,11 @@ Push-Location $RepoRoot
     $QnnArgs `
     --build_dir "$BuildDir" `
     --path_to_protoc "$ProtocPath"
+
+$BuildStatus = $?
+
 Pop-Location
+
+if (-not $BuildStatus) {
+    throw "Build failure"
+}
