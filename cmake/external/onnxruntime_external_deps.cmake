@@ -179,7 +179,8 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -287,15 +288,16 @@ if(NOT TARGET Boost::mp11)
      EXCLUDE_FROM_ALL
      FIND_PACKAGE_ARGS NAMES Boost
     )
-    onnxruntime_fetchcontent_makeavailable(mp11)
+    FetchContent_Populate(mp11)
     if(NOT TARGET Boost::mp11)
-      add_library(Boost::mp11 ALIAS Boost::headers)
+      add_library(Boost::mp11 IMPORTED INTERFACE)
+      target_include_directories(Boost::mp11 INTERFACE $<BUILD_INTERFACE:${mp11_SOURCE_DIR}/include>)
     endif()
   endif()
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
+set(JSON_Install ON CACHE INTERNAL "")
 
 onnxruntime_fetchcontent_declare(
     nlohmann_json
@@ -407,6 +409,13 @@ set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 onnxruntime_fetchcontent_makeavailable(GSL)
 
+if (NOT GSL_FOUND AND NOT onnxruntime_BUILD_SHARED_LIB)
+  install(TARGETS GSL EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 find_path(safeint_SOURCE_DIR NAMES "SafeInt.hpp")
 if(NOT safeint_SOURCE_DIR)
   unset(safeint_SOURCE_DIR)
@@ -420,7 +429,7 @@ if(NOT safeint_SOURCE_DIR)
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
   FetchContent_Populate(safeint)
 endif()
-add_library(safeint_interface INTERFACE)
+add_library(safeint_interface IMPORTED INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
@@ -433,7 +442,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR 
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
-set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
+set(FLATBUFFERS_INSTALL ON CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
