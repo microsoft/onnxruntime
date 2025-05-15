@@ -3,9 +3,6 @@ parameters:
   - name: includePublicSymbolServer
     type: boolean
     default: false
-  - name: symbolsFolder
-    type: string
-    default: '$(Build.SourcesDirectory)/bin'
   - name: searchPattern
     type: string
     default: '**/*.pdb'
