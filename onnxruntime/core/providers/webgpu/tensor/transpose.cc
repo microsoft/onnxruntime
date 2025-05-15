@@ -104,10 +104,6 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
                               gsl::span<const size_t> permutations,
                               const Tensor& input, Tensor& output) {
   const auto& input_shape = input.Shape();
-  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
-  if (output_size == 0) {
-    return Status::OK();
-  }
   const auto& input_dims = input_shape.GetDims();
   int32_t rank = static_cast<int32_t>(input_shape.NumDimensions());
 
@@ -134,6 +130,8 @@ Status Transpose::DoTranspose(onnxruntime::webgpu::ComputeContext& context,
                           : new_shape;
     new_output_shape = TensorShape({new_input_shape[1], new_input_shape[0]});
   }
+
+  uint32_t output_size = onnxruntime::narrow<int32_t>(input_shape.Size());
   TransposeProgram program{permutations, use_shared};
 
   if (use_shared) {
@@ -166,6 +164,11 @@ Status Transpose::ComputeInternal(ComputeContext& context) const {
   ORT_RETURN_IF_ERROR(ComputeOutputShape(*input_tensor, output_dims, default_perm, p_perm));
   TensorShape output_shape(output_dims);
   auto* output_tensor = context.Output(0, output_shape);
+
+  int64_t output_size = output_shape.Size();
+  if (output_size == 0) {
+    return Status::OK();
+  }
 
   return DoTranspose(context, *p_perm, *input_tensor, *output_tensor);
 }
