@@ -322,4 +322,20 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
   return std::string{s.data(), ptr};
 }
 
+inline void TrimLeft(std::string& s, int (*fn)(int) = std::isspace) {
+  s.erase(s.begin(), std::find_if(s.begin(), s.end(), [fn](int ch) {
+    return fn(ch);
+  }));
+}
+
+inline void TrimRight(std::string& s, int (*fn)(int) = std::isspace) {
+  s.erase(std::find_if(s.rbegin(), s.rend(), [fn](int ch) {
+    return fn(ch);
+  }).base(), s.end());
+}
+
+inline void Trim(std::string& s, int (*fn)(int) = std::isspace) {
+  TrimLeft(s, fn); TrimRight(s, fn);
+}
+
 }  // namespace onnxruntime

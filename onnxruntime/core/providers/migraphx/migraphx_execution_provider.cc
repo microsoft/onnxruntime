@@ -1543,6 +1543,7 @@ Status MIGraphXExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& 
               }
 
               std::string index_str = name.substr(pos + out_name_prefix.length());
+              Trim(index_str, std::isdigit);
               return std::stoi(index_str);
             };
 
