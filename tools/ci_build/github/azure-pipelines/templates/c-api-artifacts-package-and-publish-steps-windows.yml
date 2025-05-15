@@ -31,10 +31,10 @@ parameters:
   default: true
 
 steps:
-    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+    - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
       - template: publish-symbolrequestprod-api.yml
         parameters:
-          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+          ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
             symbolExpiryTime: 60
           includePublicSymbolServer: true
           symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
@@ -118,6 +118,12 @@ steps:
           DisplayName: 'ESRP - Sign Native dlls'
           DoEsrp: ${{parameters.DoEsrp}}
           Pattern: '*.dll,*.exe'
+
+    - task: DeleteFiles@1
+      displayName: 'Delete CodeSignSummary*.md'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+        Contents: 'CodeSignSummary*.md'
 
     - task: ArchiveFiles@2
       inputs:
