@@ -68,7 +68,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Ctor
         /// </summary>
         /// <param name="elementType">TensorElementType value</param>
-        /// <param name="typeSize">size fo the type in bytes</param>
+        /// <param name="typeSize">size of the type in bytes</param>
         public TensorTypeInfo(TensorElementType elementType, int typeSize)
         {
             ElementType = elementType;
