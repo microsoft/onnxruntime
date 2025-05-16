@@ -1993,8 +1993,10 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
   auto stats = cpu_allocator.GetStats();
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
+#endif
 }
 
 #ifdef USE_CUDA

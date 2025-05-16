@@ -6,6 +6,8 @@
 #include "core/framework/allocator.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include <string>
+
 namespace onnxruntime {
 
 // Since all allocators are of type 'OrtAllocator' and there is a single
