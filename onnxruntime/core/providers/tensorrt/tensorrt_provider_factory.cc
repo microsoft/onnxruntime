@@ -82,6 +82,7 @@ struct Tensorrt_Provider : Provider {
     info.min_subgraph_size = options.trt_min_subgraph_size;
     info.max_workspace_size = options.trt_max_workspace_size;
     info.fp16_enable = options.trt_fp16_enable != 0;
+    info.bf16_enable = options.trt_bf16_enable != 0;
     info.int8_enable = options.trt_int8_enable != 0;
     info.int8_calibration_table_name = options.trt_int8_calibration_table_name == nullptr ? "" : options.trt_int8_calibration_table_name;
     info.int8_use_native_calibration_table = options.trt_int8_use_native_calibration_table != 0;
