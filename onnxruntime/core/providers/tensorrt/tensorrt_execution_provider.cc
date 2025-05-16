@@ -1339,6 +1339,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     min_subgraph_size_ = info.min_subgraph_size;
     max_workspace_size_ = info.max_workspace_size;
     fp16_enable_ = info.fp16_enable;
+    bf16_enable_ = info.bf16_enable;
     int8_enable_ = info.int8_enable;
     if (int8_enable_) {
       int8_calibration_cache_name_ = info.int8_calibration_table_name;
@@ -1385,7 +1386,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     }
     force_sequential_engine_build_ = info.force_sequential_engine_build;
     context_memory_sharing_enable_ = info.context_memory_sharing_enable;
-    if (fp16_enable_) {
+    if (fp16_enable_ || bf16_enable_) {
       layer_norm_fp32_fallback_ = info.layer_norm_fp32_fallback;
     }
     build_heuristics_enable_ = info.build_heuristics_enable;
@@ -1420,6 +1421,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kFP16Enable);
       if (!fp16_enable_env.empty()) {
         fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
+      }
+
+      const std::string bf16_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kBF16Enable);
+      if (!bf16_enable_env.empty()) {
+        bf16_enable_ = (std::stoi(bf16_enable_env) == 0 ? false : true);
       }
 
       const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kINT8Enable);
@@ -1763,6 +1769,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_min_subgraph_size: " << min_subgraph_size_
                         << ", trt_max_workspace_size: " << max_workspace_size_
                         << ", trt_fp16_enable: " << fp16_enable_
+                        << ", trt_bf16_enable: " << bf16_enable_
                         << ", trt_int8_enable: " << int8_enable_
                         << ", trt_int8_calibration_cache_name: " << int8_calibration_cache_name_
                         << ", int8_calibration_cache_available: " << int8_calibration_cache_available_
@@ -2302,7 +2309,7 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         auto trt_builder = GetBuilder(trt_logger);
         auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
-        network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+        network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
 #else
         network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
 #endif
@@ -2915,7 +2922,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
 #if NV_TENSORRT_MAJOR > 8
-  network_flags |= fp16_enable_ || int8_enable_ ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
+  network_flags |= (fp16_enable_ || int8_enable_ || bf16_enable_) ? 0 : 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kSTRONGLY_TYPED);
 #else
   network_flags |= 1U << static_cast<uint32_t>(nvinfer1::NetworkDefinitionCreationFlag::kEXPLICIT_BATCH);
 #endif
@@ -2928,7 +2935,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
-  if (fp16_enable_ && layer_norm_fp32_fallback_) {
+  if ((fp16_enable_ || bf16_enable_) && layer_norm_fp32_fallback_) {
     for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
       auto layer = trt_network->getLayer(idx);
       auto next_layer = trt_network->getLayer(idx + 1);
@@ -3077,7 +3084,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Check platform availability for low precision
-  if (fp16_enable_) {
+  if (fp16_enable_ || bf16_enable_) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)
@@ -3087,7 +3094,8 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #pragma warning(pop)
 #endif
       fp16_enable_ = false;
-      LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE is set, but platform doesn't support fast native fp16";
+      bf16_enable_ = false;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] ORT_TENSORRT_FP16_ENABLE or ORT_TENSORRT_BF16_ENABLE is set, but platform doesn't support fast native fp16/bf16";
     }
   }
 
@@ -3116,15 +3124,17 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 
   // Set precision flags
   std::string trt_node_name_with_precision = fused_node.Name();
-  if (fp16_enable_ && int8_enable_) {
-    trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-    trt_node_name_with_precision += "_fp16_int8";
-    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 and INT8 mode is enabled";
-  } else if (fp16_enable_) {
+  if (fp16_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
     trt_node_name_with_precision += "_fp16";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
-  } else if (int8_enable_) {
+  }
+  if (bf16_enable_) {
+    trt_config->setFlag(nvinfer1::BuilderFlag::kBF16);
+    trt_node_name_with_precision += "_bf16";
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] BF16 mode is enabled";
+  }
+  if (int8_enable_) {
     trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
     trt_node_name_with_precision += "_int8";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
@@ -3544,7 +3554,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     *p = {context->allocate_func, context->release_func, context->allocator_handle, context->node_name, builder_.get(),
           &parsers_[context->node_name], &engines_[context->node_name], &contexts_[context->node_name],
           &networks_[context->node_name], input_info_[context->node_name], output_info_[context->node_name],
-          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
+          input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, bf16_enable_, int8_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
           context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_, dynamic_range_map, engine_decryption_enable_,
@@ -3746,12 +3756,17 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
 
       // Set precision
-      if (trt_state->fp16_enable && trt_state->int8_enable) {
-        trt_config->setFlags(1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kFP16) | 1U << static_cast<uint32_t>(nvinfer1::BuilderFlag::kINT8));
-      } else if (trt_state->fp16_enable) {
-        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
-      } else if (trt_state->int8_enable) {
+      if (trt_state->int8_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
+      }
+      if (trt_state->fp16_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kFP16);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] FP16 mode is enabled";
+      }
+      if (trt_state->bf16_enable) {
+        trt_config->setFlag(nvinfer1::BuilderFlag::kBF16);
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] BF16 mode is enabled";
       }
 
       // Set DLA (DLA can only run with FP16 or INT8)
