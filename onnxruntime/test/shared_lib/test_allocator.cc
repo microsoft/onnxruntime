@@ -5,7 +5,6 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <gtest/gtest.h>
 
-
 TEST(CApiTest, allocation_info) {
   auto cpu_mem_info_1 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   auto cpu_mem_info_2 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
