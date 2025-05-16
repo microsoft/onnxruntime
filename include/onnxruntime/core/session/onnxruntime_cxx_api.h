@@ -195,7 +195,7 @@ inline const OrtEpApi& GetEpApi() {
  * uint16_t buffers to/from Ort::Float16_t to feed and retrieve data.
  *
  * \code{.unparsed}
- * // This example demonstrates converion from float to float16
+ * // This example demonstrates conversion from float to float16
  * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
  * std::vector<Ort::Float16_t> fp16_values;
  * fp16_values.reserve(std::size(values));
@@ -337,7 +337,7 @@ static_assert(sizeof(Float16_t) == sizeof(uint16_t), "Sizes must match");
  * uint16_t buffers to/from Ort::BFloat16_t to feed and retrieve data.
  *
  * \code{.unparsed}
- * // This example demonstrates converion from float to float16
+ * // This example demonstrates conversion from float to float16
  * constexpr float values[] = {1.f, 2.f, 3.f, 4.f, 5.f};
  * std::vector<Ort::BFloat16_t> bfp16_values;
  * bfp16_values.reserve(std::size(values));
@@ -1738,6 +1738,18 @@ struct ConstValueImpl : Base<T> {
   /// <returns>byte length for the specified string element</returns>
   size_t GetStringTensorElementLength(size_t element_index) const;
 
+  /// <summary>
+  /// Returns the total size of the tensor data in bytes.
+  /// </summary>
+  /// <returns>The total size of the tensor data in bytes</returns>
+  /// <exception>Throws an exception if the OrtValue does not contain a tensor or
+  /// if it contains a tensor that contains strings</exception>
+  /// <remarks>
+  /// For numeric tensors, this is sizeof(element_type) * total_element_count.
+  ///
+  /// </remarks>
+  size_t GetTensorSizeInBytes() const;  ///< Wraps OrtApi::GetTensorSizeInBytes
+
 #if !defined(DISABLE_SPARSE_TENSORS)
   /// <summary>
   /// The API returns the sparse data format this OrtValue holds in a sparse tensor.
@@ -1819,7 +1831,7 @@ struct ValueImpl : ConstValueImpl<T> {
   /// by the vector of dims.
   /// </summary>
   /// <typeparam name="R"></typeparam>
-  /// <param name="location">[in] expressed by a vecotr of dimensions offsets</param>
+  /// <param name="location">[in] expressed by a vector of dimensions offsets</param>
   /// <returns></returns>
   template <typename R>
   R& At(const std::vector<int64_t>& location);
@@ -2676,7 +2688,7 @@ struct CustomOpBase : OrtCustomOp {
     return OrtCustomOpInputOutputCharacteristic::INPUT_OUTPUT_REQUIRED;
   }
 
-  // Default implemention of GetInputMemoryType() that returns OrtMemTypeDefault
+  // Default implementation of GetInputMemoryType() that returns OrtMemTypeDefault
   OrtMemType GetInputMemoryType(size_t /*index*/) const {
     return OrtMemTypeDefault;
   }
