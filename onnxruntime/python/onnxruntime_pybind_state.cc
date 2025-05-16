@@ -938,6 +938,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           0,
           0,
           0,
+          0,
           nullptr,
           1,
           "./compiled_model.mxr",
@@ -958,7 +959,17 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_fp8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
@@ -968,7 +979,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_int8_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_calibration_table_name") {
@@ -977,7 +988,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_int8_calibration_table_name = calibration_table.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_calibration_table_name' should be a "
                 "file name i.e. 'cal_table'.\n");
           }
         } else if (option.first == "migraphx_use_native_calibration_table") {
@@ -987,7 +998,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_use_native_calibration_table = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_use_native_calibration_table' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_save_compiled_model") {
@@ -997,7 +1008,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_compiled_model' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_save_model_path") {
@@ -1006,7 +1017,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_save_model_path = save_model_path.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_model_name' should be a "
                 "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else if (option.first == "migraphx_load_compiled_model") {
@@ -1016,7 +1027,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_compiled_model' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_load_model_path") {
@@ -1025,7 +1036,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_load_model_path = load_model_path.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_model_name' should be a "
                 "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else if (option.first == "migraphx_exhaustive_tune") {
