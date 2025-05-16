@@ -155,7 +155,7 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-x64'
         StageName: 'Windows_Nodejs_Packaging_x64'
-        BuildCommand: --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022"
+        BuildCommand: --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'x64'
@@ -167,7 +167,7 @@ extends:
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         ArtifactName: 'drop-onnxruntime-nodejs-win-arm64'
         StageName: 'Windows_Nodejs_Packaging_arm64'
-        BuildCommand: --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022"
+        BuildCommand: --arm64 --skip_submodule_sync --build_shared_lib --enable_onnx_tests --enable_wcos --use_telemetry --use_dml --use_webgpu --build_nodejs --cmake_generator "Visual Studio 17 2022" --enable_generic_interface
         BuildArch: 'x64'
         EnvSetupScript: 'setup_env.bat'
         sln_platform: 'arm64'
