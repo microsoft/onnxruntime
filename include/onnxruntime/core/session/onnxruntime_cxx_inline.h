@@ -255,13 +255,13 @@ inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats()
   }
   std::istringstream iss(raw_stats);
   std::string line;
-  while (std::getline(iss, line)) {
+  while (std::getline(iss, line, ',')) {
     auto pos = line.find(':');
     if (pos == std::string::npos) {
       continue;  // Skip lines without a colon
     }
     std::string key = line.substr(0, pos);
-    std::string value = line.substr(line.find_first_not_of(" ", pos + 1));
+    std::string value = line.substr(pos + 1);
     stats[key] = value;
   }
   allocator.Free(raw_stats);

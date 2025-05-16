@@ -5,6 +5,14 @@
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <gtest/gtest.h>
 
+#include "test/shared_lib/test_fixture.h"
+
+extern std::unique_ptr<Ort::Env> ort_env;
+
+namespace {
+  static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+}
+
 TEST(CApiTest, allocation_info) {
   auto cpu_mem_info_1 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
   auto cpu_mem_info_2 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -35,4 +43,29 @@ TEST(CApiTest, DefaultAllocator) {
   // Default Allocator has no stats to report
   auto stats = default_allocator.GetStats();
   ASSERT_EQ(stats.size(), 0U);
+}
+
+TEST(CApiTest, SessionAllocator) {
+  Ort::SessionOptions session_options;
+  Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+  Ort::MemoryInfo infoCpu("Cpu", OrtAllocatorType::OrtArenaAllocator, 0, OrtMemTypeDefault);
+  Ort::Allocator allocator(session, infoCpu);
+
+  std::vector<std::string> expected_keys = {
+    "bytes_in_use",
+    "bytes_limit",
+    "num_allocs",
+    "num_reserves",
+    "num_arena_extensions",
+    "num_arena_shrinkages",
+    "total_allocated_bytes",
+    "max_bytes_in_use",
+    "max_alloc_size",
+  };
+
+  auto stats = allocator.GetStats();
+  for (const auto& key : expected_keys) {
+    ASSERT_TRUE(stats.find(key) != stats.end()) << "Missing key: " << key;
+  }
 }

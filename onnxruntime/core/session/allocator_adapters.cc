@@ -58,7 +58,7 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
 std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
   AllocatorStats stats;
   i_allocator_->GetStats(&stats);
-  return stats.DebugString();
+  return stats.ToString();
 }
 
 onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {
