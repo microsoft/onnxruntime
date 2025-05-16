@@ -122,6 +122,7 @@ vcpkg_from_github(
 
     PATCHES
       dawn.patch
+      dawn_force_enable_f16_nvidia_vulkan.patch
       dawn_vcpkg_integration.patch
 )
 
