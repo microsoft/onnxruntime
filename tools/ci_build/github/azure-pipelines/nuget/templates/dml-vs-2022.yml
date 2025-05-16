@@ -151,7 +151,7 @@ stages:
 
 
         - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
-          - template: publish-symbolrequestprod-api.yml
+          - template: ../../templates/publish-symbolrequestprod-api.yml
             parameters:
               ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
                 symbolExpiryTime: 60
