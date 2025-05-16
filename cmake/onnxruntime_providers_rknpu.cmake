@@ -36,7 +36,7 @@
   set_target_properties(onnxruntime_providers_rknpu PROPERTIES LINKER_LANGUAGE CXX)
 
   if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_providers_rknpu
+    install(TARGETS onnxruntime_providers_rknpu EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

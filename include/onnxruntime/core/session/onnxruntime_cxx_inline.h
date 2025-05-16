@@ -1150,6 +1150,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
 }
 
 template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicy(this->p_, policy));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicyDelegate(this->p_, delegate, state));
+  return *this;
+}
+
+template <typename T>
 inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetCustomCreateThreadFn(OrtCustomCreateThreadFn ort_custom_create_thread_fn) {
   ThrowOnError(GetApi().SessionOptionsSetCustomCreateThreadFn(this->p_, ort_custom_create_thread_fn));
   return *this;
@@ -1808,6 +1820,13 @@ template <typename T>
 inline size_t ConstValueImpl<T>::GetStringTensorElementLength(size_t element_index) const {
   size_t out;
   ThrowOnError(GetApi().GetStringTensorElementLength(this->p_, element_index, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t ConstValueImpl<T>::GetTensorSizeInBytes() const {
+  size_t out;
+  ThrowOnError(GetApi().GetTensorSizeInBytes(this->p_, &out));
   return out;
 }
 
