@@ -71,7 +71,7 @@ __global__ void splitkReduction(T_OUT** out_tensor, const T_IN* in_tensor, GemmC
         float sum = 0.0f;
         for (int k_idx = 0; k_idx < splitk; k_idx++)
         {
-            sum += (float) in_tensor_[k_idx * hidden_size + i];
+            sum += static_cast<float>(in_tensor_[k_idx * hidden_size + i]);
         }
         out_tensor_[i] = (T_OUT) (sum);
     }

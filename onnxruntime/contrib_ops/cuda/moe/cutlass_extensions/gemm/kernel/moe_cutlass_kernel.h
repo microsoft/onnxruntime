@@ -33,7 +33,7 @@
 #include "cutlass/trace.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/gemm_moe_problem_visitor.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/tile_interleaved_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/tile_interleaved_layout.h"
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 

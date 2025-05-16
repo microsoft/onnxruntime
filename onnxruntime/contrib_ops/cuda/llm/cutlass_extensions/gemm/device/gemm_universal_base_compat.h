@@ -370,7 +370,7 @@ public:
         dim3 grid = threadblock_swizzle.get_grid_shape(params_.grid_tiled_shape);
         dim3 block(GemmKernel::kThreadCount, 1, 1);
 
-        int smem_size = int(sizeof(typename GemmKernel::SharedStorage));
+        int smem_size = static_cast<int>(sizeof(typename GemmKernel::SharedStorage));
 
         //
         // Launch kernel

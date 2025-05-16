@@ -33,7 +33,7 @@
 #include "cutlass/platform/platform.h"
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/tile_interleaved_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/tile_interleaved_layout.h"
 
 namespace cutlass {
 namespace gemm {
