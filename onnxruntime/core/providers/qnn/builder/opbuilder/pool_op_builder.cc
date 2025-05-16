@@ -96,7 +96,7 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
   if (op_type == "MaxPool" || op_type == "AveragePool") {
     auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+    ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                   "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
   }
 
@@ -141,7 +141,7 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
   }
 
   auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER",
+  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
                 "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
 
   if (auto_pad.compare("NOTSET") != 0) {
