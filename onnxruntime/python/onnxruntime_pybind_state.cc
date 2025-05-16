@@ -2072,7 +2072,7 @@ for model inference.)pbdoc");
             ORT_THROW("OrtEpDevices are not supported in this build");
 #endif
           },
-          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances 
+          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances
 must refer to the same execution provider.)pbdoc")
       .def(
           // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
@@ -2923,12 +2923,12 @@ namespace {
 //    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
 class EnvInitializer {
  public:
-  static void SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options) {
+  static void SetGlobalThreadingOptions(const OrtThreadingOptions& new_tp_options) {
     if (EnvInitializer::initialized) {
       ORT_THROW("Cannot set global threading options after the environment has been initialized.");
     }
 
-    EnvInitializer::tp_options = tp_options;
+    EnvInitializer::tp_options = new_tp_options;
     EnvInitializer::use_per_session_threads = false;
   }
 
