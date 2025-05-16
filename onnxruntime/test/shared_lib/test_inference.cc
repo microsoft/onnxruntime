@@ -1999,15 +1999,15 @@ TEST(CApiTest, get_allocator_cpu) {
 #endif
 
   std::vector<std::string> expected_stats_keys = {
-    "bytes_in_use",
-    "bytes_limit",
-    "num_allocs",
-    "num_reserves",
-    "num_arena_extensions",
-    "num_arena_shrinkages",
-    "total_allocated_bytes",
-    "max_bytes_in_use",
-    "max_alloc_size",
+      "bytes_in_use",
+      "bytes_limit",
+      "num_allocs",
+      "num_reserves",
+      "num_arena_extensions",
+      "num_arena_shrinkages",
+      "total_allocated_bytes",
+      "max_bytes_in_use",
+      "max_alloc_size",
   };
 
   for (const auto& key : expected_stats_keys) {
@@ -2040,15 +2040,15 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
 
   std::vector<std::string> expected_stats_keys = {
-    "bytes_in_use",
-    "bytes_limit",
-    "num_allocs",
-    "num_reserves",
-    "num_arena_extensions",
-    "num_arena_shrinkages",
-    "total_allocated_bytes",
-    "max_bytes_in_use",
-    "max_alloc_size",
+      "bytes_in_use",
+      "bytes_limit",
+      "num_allocs",
+      "num_reserves",
+      "num_arena_extensions",
+      "num_arena_shrinkages",
+      "total_allocated_bytes",
+      "max_bytes_in_use",
+      "max_alloc_size",
   };
 
   for (const auto& key : expected_stats_keys) {
