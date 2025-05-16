@@ -24,7 +24,10 @@ namespace concurrency {
 
 // Intrinsic to use in spin-loops
 void SpinPause() {
-#if (defined(_M_AMD64) || defined(__x86_64__)) && !defined(__ANDROID__)
+#if (defined(_M_AMD64) || defined(__x86_64__)) && \
+    !defined(__ANDROID__) &&                      \
+    !defined(__APPLE__)
+
   static const bool has_tpause = CPUIDInfo::GetCPUIDInfo().HasTPAUSE();
   static constexpr uint64_t tpause_spin_delay_cycles = 1000;
   if (has_tpause) {

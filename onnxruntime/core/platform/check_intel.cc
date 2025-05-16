@@ -3,10 +3,12 @@
 
 #include "check_intel.h"
 
+#if (defined(_M_AMD64) || defined(__x86_64__))
 #if defined(__linux__)
 #include <cpuid.h>
 #elif defined(_WIN32)
 #include <intrin.h>
+#endif
 #endif
 
 namespace onnxruntime {
@@ -40,7 +42,7 @@ CheckIntelResult CheckIntel() {
   }
 
   for (auto intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
-    if ((regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
+    if (static_cast<unsigned int>(regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
       is_intel_specified_platform = true;
     }
   }
