@@ -11,10 +11,13 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+import onnxscript.rewriter.ort_fusions as ort_fusions
 import torch
 from float16 import convert_float_to_float16
+from models.torch_export_patches import bypass_export_some_errors
 from onnx import ModelProto
 from onnx_model import OnnxModel
+from onnxscript import ir
 from transformers import WhisperConfig
 from whisper_inputs import get_model_dynamic_axes, get_sample_encoder_inputs
 
@@ -50,6 +53,15 @@ class WhisperEncoder(torch.nn.Module):
         dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
         return dynamic_axes
 
+    def dynamic_shapes(self, input_names, dynamic_axes):
+        if len(input_names) == 1:
+            dynamic_shapes = [{0: "batch_size"}]
+        elif len(input_names) == 2:
+            dynamic_shapes = [{0: "batch_size"}, {0: "batch_size"}]
+        else:
+            raise NotImplementedError(f"inputs={input_names}, dynamic_axes={dynamic_axes}")
+        return dynamic_shapes
+
     def fix_layernorm_weights(self, model: ModelProto, use_fp16_inputs: bool):
         if self.model_impl == "openai" and use_fp16_inputs:
             # Cast ONNX model to float16 to ensure LayerNorm weights are converted from
@@ -69,6 +81,8 @@ class WhisperEncoder(torch.nn.Module):
         verbose: bool = True,
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
+        use_dynamo_export: bool = False,
+        use_onnxscript_fusion_optimizations: bool = False,
     ):
         """Export encoder to ONNX
 
@@ -78,6 +92,8 @@ class WhisperEncoder(torch.nn.Module):
             verbose (bool, optional): print verbose information. Defaults to True.
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
+            use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations. Defaults to False.
         """
         # Shape of encoder's tensors:
         # Inputs:
@@ -94,7 +110,7 @@ class WhisperEncoder(torch.nn.Module):
 
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = self.dynamic_axes(input_names, output_names)
+        dynamic_axes = tuple(self.dynamic_axes(input_names, output_names))
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -102,20 +118,44 @@ class WhisperEncoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=(inputs["audio_features"]),
-                f=out_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=17,
-                do_constant_folding=True,
-                verbose=verbose,
-            )
+            if not use_dynamo_export:
+                torch.onnx.export(
+                    self,
+                    args=(inputs["audio_features"]),
+                    f=out_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    verbose=verbose,
+                )
+            else:
+                dynamic_shapes = self.dynamic_shapes(input_names, dynamic_axes)
+                with bypass_export_some_errors(patch_transformers=True):
+                    torch.onnx.export(
+                        self,
+                        (inputs["audio_features"],),
+                        out_path,
+                        input_names=input_names,
+                        output_names=output_names,
+                        dynamic_shapes=dynamic_shapes,
+                        dynamo=True,
+                        verbose=verbose,
+                        optimize=True,
+                    )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+
+            # Apply ort_fusions optimizations
+            if use_onnxscript_fusion_optimizations:
+                logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
+                model_ir = ir.serde.deserialize_model(model)
+                opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
+                logger.info(f"The following fusions were successfully appiled {fusion_count}")
+                model = ir.serde.serialize_model(opt_model_ir)
+
             model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
                 model,

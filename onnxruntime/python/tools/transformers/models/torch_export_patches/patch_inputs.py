@@ -1,3 +1,9 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
 import inspect
 from typing import Any
 
@@ -5,7 +11,7 @@ import torch
 from transformers.cache_utils import DynamicCache
 
 from . import string_type
-from .cache_helper import make_dynamic_cache
+from .cache_helper import make_dynamic_cache, make_encoder_decoder_cache
 
 
 def _process_cache(k: str, v):
@@ -13,12 +19,22 @@ def _process_cache(k: str, v):
         f"Unexpected type for parameter {k!r} {string_type(v, with_shape=True)}"
     )
     if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {2}:
-        # A dynamicCache
+        # A DynamicCache
         cache = make_dynamic_cache(v)
+        return cache
+    if isinstance(v, list) and all(isinstance(i, tuple) for i in v) and {len(t) for t in v} == {4}:
+        # A EncoderDecoderCache
+        cache = make_encoder_decoder_cache(
+            make_dynamic_cache([_[:2] for _ in v]),
+            make_dynamic_cache([_[2:] for _ in v]),
+        )
         return cache
     if isinstance(v, torch.Tensor):
         return v
-    raise NotImplementedError(f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}")
+    raise NotImplementedError(
+        f"Unable to process parameter {k!r} with v={string_type(v, with_shape=True)}, "
+        f"[len(t) for t in v]={[len(t) for t in v]}"
+    )
 
 
 def _make_shape(subset: dict, cls: type, value: Any) -> Any:
@@ -44,6 +60,7 @@ def convert_dynamic_axes_into_dynamic_shapes(
     dynamic_axes: dict[str, dict[int, str]] | None = None,
     prefix_mapping: dict[str, str] | None = None,
     verbose: int = 0,
+    input_names: list[str] | None = None,
 ) -> tuple[tuple[Any, ...], dict[str, Any], dict[str, Any]]:
     """
     Converts the input from an export to something :func:`torch.export.export` can handle.
@@ -57,28 +74,31 @@ def convert_dynamic_axes_into_dynamic_shapes(
     :return: (args, kwargs, dynamic shapes)
     """
     new_kwargs = {}
+    rename_inputs = {}
     if args:
         assert hasattr(model, "forward"), f"Missing method 'forward' for {model!r}"
         plus = 0 if isinstance(model, torch.nn.Module) else 1
         print(
             f"[convert_dynamic_axes_into_dynamic_shapes] "
             f"mapping args to kwargs for model="
-            f"{model if plus else model.__class__.__name__}"
+            f"{model if plus else model.__class__.__name__} ({model.__module__})"
         )
         pars = inspect.signature(model.forward).parameters
         assert len(pars) >= len(args), f"Length mismatch, len(args)={len(args)}, pars={list(pars)}"
+        print(list(pars))
 
         for i, p in enumerate(pars):
             if i < plus:
                 continue
             if i - plus >= len(args):
                 break
-            if verbose:
-                print(
-                    f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i - plus}] "
-                    f"to {p!r} ({string_type(args[i - plus])})"
-                )
+            print(
+                f"[convert_dynamic_axes_into_dynamic_shapes] mapping args[{i - plus}] "
+                f"to {p!r} ({string_type(args[i - plus])})"
+            )
             new_kwargs[p] = args[i - plus]
+            if input_names and i - plus < len(input_names) and p != input_names[i - plus]:
+                rename_inputs[input_names[i - plus]] = p
 
     if kwargs:
         for k, v in kwargs.items():
@@ -111,9 +131,13 @@ def convert_dynamic_axes_into_dynamic_shapes(
         dynamic_shapes = {}
         done = set()
         for k, v in dynamic_axes.items():
-            if k not in changes and k in updated_kwargs and isinstance(v, dict):
-                dynamic_shapes[k] = v
-                continue
+            if k not in changes and isinstance(v, dict):
+                if k in updated_kwargs:
+                    dynamic_shapes[k] = v
+                    continue
+                if rename_inputs and rename_inputs.get(k, k) in updated_kwargs:
+                    dynamic_shapes[rename_inputs[k]] = v
+                    continue
             if "." in k:
                 # something like present.0.key
                 prefix = k.split(".")[0]

@@ -1,3 +1,9 @@
+# -------------------------------------------------------------------------
+# Copyright (c) Microsoft Corporation.  All rights reserved.
+# Licensed under the MIT License.  See License.txt in the project root for
+# license information.
+# --------------------------------------------------------------------------
+
 import packaging.version as pv
 import torch
 from transformers import __version__ as transformers_version
@@ -28,6 +34,25 @@ def is_cache_dynamic_registered(fast: bool = False) -> bool:
     values, spec = torch.utils._pytree.tree_flatten(cache)
     cache2 = torch.utils._pytree.tree_unflatten(values, spec)
     return len(cache2.key_cache) == len(cache.value_cache)
+
+
+def flatten_unflatten_for_dynamic_shapes(obj):
+    """
+    Returns the object in a different structure similar to what
+    the definition of the dynamic shapes should use.
+
+    :param obj: object from a custom class
+    :return: the serialized object
+    """
+    flat, spec = torch.utils._pytree.tree_flatten(obj)
+    start = 0
+    end = 0
+    subtrees = []
+    for subspec in spec.children_specs:
+        end += subspec.num_leaves
+        subtrees.append(subspec.unflatten(flat[start:end]))
+        start = end
+    return subtrees
 
 
 if pv.Version(transformers_version) > pv.Version("4.49.99999"):

@@ -140,6 +140,8 @@ class WhisperHelper:
         use_int32_inputs: bool,
         use_encoder_hidden_states: bool,
         use_kv_cache_inputs: bool,
+        use_dynamo_export: bool,
+        use_onnxscript_fusion_optimizations: bool,
     ):
         """Export model component to ONNX
 
@@ -153,6 +155,8 @@ class WhisperHelper:
             use_int32_inputs (bool): use int32 inputs for the decoder_input_ids.
             use_encoder_hidden_states (bool): use encoder_hidden_states as model input for decoder-init/decoder-without-past models.
             use_kv_cache_inputs (bool): use KV caches as model inputs for decoder-with-past models.
+            use_dynamo_export (bool): use dynamo exporter
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations
         """
         if isinstance(model, WhisperEncoder):
             model.export_onnx(
@@ -161,6 +165,8 @@ class WhisperHelper:
                 verbose,
                 use_external_data_format,
                 use_fp16_inputs,
+                use_dynamo_export,
+                use_onnxscript_fusion_optimizations,
             )
         elif isinstance(model, WhisperEncoderDecoderInit):
             model.export_onnx(
@@ -170,6 +176,8 @@ class WhisperHelper:
                 use_external_data_format,
                 use_fp16_inputs,
                 use_int32_inputs,
+                use_dynamo_export,
+                use_onnxscript_fusion_optimizations,
             )
         elif isinstance(model, WhisperDecoder):
             model.export_onnx(
@@ -181,8 +189,11 @@ class WhisperHelper:
                 use_int32_inputs,
                 use_encoder_hidden_states,
                 use_kv_cache_inputs,
+                use_dynamo_export,
+                use_onnxscript_fusion_optimizations,
             )
         elif isinstance(model, WhisperJumpTimes):
+            # Dynamo-exporter cannot be used for jump times as it contains control flows
             model.export_onnx(
                 onnx_model_path,
                 provider,
@@ -238,7 +249,11 @@ class WhisperHelper:
                 m = add_cache_indirection_to_mha(m, past_seq_len_name)
 
             if output_qk:
-                m = add_output_qk_to_mha(m, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
+                if is_float16:
+                    output_qk_dtype = 10
+                else:
+                    output_qk_dtype = 1
+                m = add_output_qk_to_mha(m, dtype=output_qk_dtype, skip_node_idxs=list(range(0, 2 * num_layers, 2)))
 
         m.save_model_to_file(optimized_model_path, use_external_data_format, all_tensors_to_one_file=True)
 

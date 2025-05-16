@@ -12,10 +12,13 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+import onnxscript.rewriter.ort_fusions as ort_fusions
 import torch
 from float16 import convert_float_to_float16
+from models.torch_export_patches import bypass_export_some_errors, string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
+from onnxscript import ir
 from transformers import WhisperConfig
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
@@ -153,6 +156,15 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         dynamic_axes = get_model_dynamic_axes(self.config, input_names, output_names)
         return dynamic_axes
 
+    def dynamic_shapes(self, inputs, dynamic_axes):
+        if len(inputs) == 1:
+            dynamic_shapes = [{0: "batch_size"}]
+        elif len(inputs) == 2:
+            dynamic_shapes = [{0: "batch_size"}, {0: "batch_size", 1: "sequence_length"}]
+        else:
+            raise NotImplementedError(f"inputs={string_type(inputs, with_shape=True)}, dynamic_axes={dynamic_axes}")
+        return dynamic_shapes
+
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_encoder_decoder_init_inputs(
             self.config,
@@ -248,6 +260,8 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
         use_external_data_format: bool = False,
         use_fp16_inputs: bool = False,
         use_int32_inputs: bool = True,
+        use_dynamo_export: bool = False,
+        use_onnxscript_fusion_optimizations: bool = False,
     ):
         """Export encoder-decoder-init to ONNX
 
@@ -258,6 +272,8 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             use_external_data_format (bool, optional): use external data format or not. Defaults to False.
             use_fp16_inputs (bool, optional): use float16 inputs for the audio_features. Defaults to False.
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
+            use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations. Defaults to False.
         """
         # Shape of encoder's tensors:
         # Inputs:
@@ -285,20 +301,44 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=inputs,
-                f=out_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=17,
-                do_constant_folding=True,
-                verbose=verbose,
-            )
+            if not use_dynamo_export:
+                torch.onnx.export(
+                    self,
+                    args=inputs,
+                    f=out_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    verbose=verbose,
+                )
+            else:
+                dynamic_shapes = tuple(self.dynamic_shapes(inputs, dynamic_axes))
+                with bypass_export_some_errors(patch_transformers=True):
+                    torch.onnx.export(
+                        self,
+                        inputs,
+                        out_path,
+                        input_names=input_names,
+                        output_names=output_names,
+                        dynamic_shapes=dynamic_shapes,
+                        dynamo=True,
+                        verbose=verbose,
+                        optimize=True,
+                    )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+
+            # Apply ort_fusions optimizations
+            if use_onnxscript_fusion_optimizations:
+                logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
+                model_ir = ir.serde.deserialize_model(model)
+                opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
+                logger.info(f"The following fusions were successfully appiled {fusion_count}")
+                model = ir.serde.serialize_model(opt_model_ir)
+
             model = self.fix_outputs(model)
             model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
@@ -366,6 +406,12 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
 
         # Calculate output difference
         for i, output_name in enumerate(self.output_names()):
+            if pt_outputs[i].shape != ort_outputs[i].shape:
+                raise AssertionError(
+                    f"Incompatible shapes, expecting {pt_outputs[i].shape} got {ort_outputs[i].shape}, "
+                    f"for output_name={output_name!r}\n--expect={string_type(pt_outputs, with_shape=True)}"
+                    f"\n--   got={string_type(ort_outputs, with_shape=True)}"
+                )
             diff = np.abs(pt_outputs[i] - ort_outputs[i])
             logger.warning(f"Comparing {output_name}...")
             logger.warning(f"Max diff: {np.max(diff)}")

@@ -12,11 +12,14 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+import onnxscript.rewriter.ort_fusions as ort_fusions
 import torch
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
+from models.torch_export_patches import bypass_export_some_errors, string_type
 from onnx import ModelProto, ValueInfoProto
 from onnx_model import OnnxModel
+from onnxscript import ir
 from past_helper import PastKeyValuesHelper
 from transformers import WhisperConfig
 from whisper_inputs import (
@@ -133,15 +136,33 @@ class WhisperDecoder(torch.nn.Module):
                     [past_kv_cache[block.attn.value], kv_cache[block.attn.value]], dim=1
                 ).detach()
 
+        # Workaround for dynamo-exporter, which creates a copy of the decoder blocks
+        # when decoder is called twice, (in the case of encoder-decoder-init models).
+        # so, we cannot directly use the block.attn.key/value names as keys.
+        # Store them as str keys in a format "name+block_idx"
+        temp_kv_cache = {}
+        if past_key_values is None:
+            for idx in range(0, len(kv_cache.keys()), 4):
+                temp_kv_cache["block.attn.key" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx]]
+                temp_kv_cache["block.attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 1]]
+                temp_kv_cache["block.cross_attn.key" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 2]]
+                temp_kv_cache["block.cross_attn.value" + "." + str(idx // 4)] = kv_cache[list(kv_cache.keys())[idx + 3]]
+
         present_self, present_cross = [], []
-        for block in self.model.decoder.blocks:
+        for idx, block in enumerate(self.model.decoder.blocks):
             # Group self and cross values
-            present_self.append(kv_cache[block.attn.key])
-            present_self.append(kv_cache[block.attn.value])
+            if past_key_values is None:
+                present_self.append(temp_kv_cache["block.attn.key" + "." + str(idx)])
+                present_self.append(temp_kv_cache["block.attn.value" + "." + str(idx)])
+            else:
+                present_self.append(kv_cache[block.attn.key])
+                present_self.append(kv_cache[block.attn.value])
             if past_key_values is None:
                 # Return present_self_* and present_cross_* for decoder-init
-                present_cross.append(kv_cache[block.cross_attn.key])
-                present_cross.append(kv_cache[block.cross_attn.value])
+                # present_cross.append(kv_cache[block.cross_attn.key])
+                # present_cross.append(kv_cache[block.cross_attn.value])
+                present_cross.append(temp_kv_cache["block.cross_attn.key" + "." + str(idx)])
+                present_cross.append(temp_kv_cache["block.cross_attn.value" + "." + str(idx)])
 
         # Convert present KV caches (BxSxD --> BxSxNxH --> BxNxSxH) after OpenAI's forward pass
         present_self = [
@@ -227,6 +248,26 @@ class WhisperDecoder(torch.nn.Module):
             # Set dynamic axes for `input_ids` when using beam search op to {0: "batch_size"} only
             del dynamic_axes["input_ids"][1]
         return dynamic_axes
+
+    def dynamic_shapes(self, inputs):
+        if len(inputs) == 3:
+            n_layers = len(inputs[-1])
+            dynamic_shapes = [
+                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
+                [
+                    (
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                        {0: "batch_size", 2: "past_sequence_length"},
+                    )
+                ]
+                * n_layers,
+            ]
+        else:
+            dynamic_shapes = [{0: "batch_size", 1: "sequence_length"}, {0: "batch_size"}]
+        return dynamic_shapes
 
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
         inputs = get_sample_decoder_inputs(
@@ -338,6 +379,8 @@ class WhisperDecoder(torch.nn.Module):
         use_int32_inputs: bool = True,
         use_encoder_hidden_states: bool = False,
         use_kv_cache_inputs: bool = True,
+        use_dynamo_export: bool = False,
+        use_onnxscript_fusion_optimizations: bool = False,
     ):
         """Export decoder to ONNX
 
@@ -350,6 +393,8 @@ class WhisperDecoder(torch.nn.Module):
             use_int32_inputs (bool, optional): use int32 inputs for the decoder_input_ids. Defaults to True.
             use_encoder_hidden_states (bool, optional): use encoder_hidden_states as model input for decoder-init/decoder-without-past models. Defaults to False.
             use_kv_cache_inputs (bool, optional): use KV caches as model inputs for decoder-with-past models. Defaults to True.
+            use_dynamo_export (bool, optional): use dynamo exporter. Defaults to False.
+            use_onnxscript_fusion_optimizations (bool): use onnxscript fusion optimizations. Defaults to False.
         """
         # Shape of decoder's tensors:
         # Required Inputs:
@@ -376,7 +421,7 @@ class WhisperDecoder(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = self.dynamic_axes(input_names, output_names)
+        dynamic_axes = tuple(self.dynamic_axes(input_names, output_names))
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -384,20 +429,44 @@ class WhisperDecoder(torch.nn.Module):
             Path(temp_onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
             out_path = temp_onnx_model_path if use_external_data_format else onnx_model_path
 
-            torch.onnx.export(
-                self,
-                args=inputs,
-                f=out_path,
-                export_params=True,
-                input_names=input_names,
-                output_names=output_names,
-                dynamic_axes=dynamic_axes,
-                opset_version=17,
-                do_constant_folding=True,
-                verbose=verbose,
-            )
+            if not use_dynamo_export:
+                torch.onnx.export(
+                    self,
+                    args=inputs,
+                    f=out_path,
+                    export_params=True,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_axes=dynamic_axes,
+                    opset_version=17,
+                    do_constant_folding=True,
+                    verbose=verbose,
+                )
+            else:
+                dynamic_shapes = self.dynamic_shapes(inputs)
+                with bypass_export_some_errors(patch_transformers=True):
+                    torch.onnx.export(
+                        self,
+                        inputs,
+                        out_path,
+                        input_names=input_names,
+                        output_names=output_names,
+                        dynamic_shapes=dynamic_shapes,
+                        dynamo=True,
+                        verbose=verbose,
+                        optimize=True,
+                    )
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+
+            # Apply ort_fusions optimizations
+            if use_onnxscript_fusion_optimizations:
+                logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
+                model_ir = ir.serde.deserialize_model(model)
+                opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
+                logger.info(f"The following fusions were successfully appiled {fusion_count}")
+                model = ir.serde.serialize_model(opt_model_ir)
+
             model = self.fix_inputs_and_outputs(model)
             model = self.fix_layernorm_weights(model, use_fp16_inputs)
             OnnxModel.save(
@@ -438,6 +507,7 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run PyTorch model
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+        print(f"[verify_onnx] inputs={string_type(inputs, with_shape=True)}")
         pt_outputs = []
         if self.first_pass:
             out = self.forward(**inputs)
@@ -453,7 +523,10 @@ class WhisperDecoder(torch.nn.Module):
 
         # Run ONNX model
         sess = InferenceSession(onnx_model_path, providers=[provider])
-        ort_outputs = sess.run(None, convert_inputs_for_ort(inputs, sess))
+        print(f"[verify_onnx] onnx_inputs {[i.name for i in sess.get_inputs()]}")
+        ort_inputs = convert_inputs_for_ort(inputs, sess)
+        print(f"[verify_onnx] ort_inputs={string_type(ort_inputs, with_shape=True)}")
+        ort_outputs = sess.run(None, ort_inputs)
 
         # Calculate output difference
         try:
