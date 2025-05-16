@@ -3509,7 +3509,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   // For dynamic shape input model, firstly TRT EP creates a model proto which includes inputs, outputs and empty engine.
   // TRT EP will serialize the model at inference time due to engine can be updated and the updated engine should be included in the model.
   // However, if the embed_mode is 0 (only includes engine path), TRT EP will serialize it here.
-  if (dump_ep_context_model_ && has_dynamic_shape) {
+  if (dump_ep_context_model_ && !has_dynamic_shape) {
     // "ep_cache_context" node attribute should be a relative path to context model directory
     if (ep_cache_context_attr_.empty()) {
       auto cache_file_name = std::filesystem::path(engine_cache_path).filename();
