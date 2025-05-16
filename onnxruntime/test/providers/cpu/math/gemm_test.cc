@@ -956,7 +956,7 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 }
 #endif
 
-TEST(GemmOpTest, GemmOptimizeVec4) {
+TEST(GemmOpTest, GemmOptimizePacked) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1003,6 +1003,8 @@ TEST(GemmOpTest, GemmOptimizeVec4) {
         .RunWithConfig();
   };
 
+  run_test(32, 32, 32);
+  run_test(64, 64, 64);
   run_test(60, 16, 92);
 
   run_test(8, 8, 8);
@@ -1013,9 +1015,16 @@ TEST(GemmOpTest, GemmOptimizeVec4) {
   run_test(96, 24, 48);
   run_test(48, 48, 120);
   run_test(72, 80, 84);
+
+  run_test(63, 64, 65);
+
+  run_test(33, 67, 99);
+  run_test(1, 1, 1);
+  run_test(31, 31, 31);
+  run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransA) {
+TEST(GemmOpTest, GemmOptimizePackedTransA) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1062,6 +1071,8 @@ TEST(GemmOpTest, GemmOptimizeVec4TransA) {
         .RunWithConfig();
   };
 
+  run_test(32, 32, 32);
+  run_test(64, 64, 64);
   run_test(60, 16, 92);
   run_test(8, 8, 8);
   run_test(128, 128, 128);
@@ -1070,9 +1081,17 @@ TEST(GemmOpTest, GemmOptimizeVec4TransA) {
   run_test(96, 24, 48);
   run_test(48, 48, 120);
   run_test(72, 80, 84);
+
+  run_test(2, 3, 4);
+  run_test(1, 1, 1);
+  run_test(63, 64, 65);
+  run_test(33, 33, 33);
+  run_test(33, 67, 99);
+  run_test(31, 31, 31);
+  run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransB) {
+TEST(GemmOpTest, GemmOptimizePackedTransB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1129,9 +1148,17 @@ TEST(GemmOpTest, GemmOptimizeVec4TransB) {
   run_test(96, 24, 48);
   run_test(48, 48, 120);
   run_test(72, 80, 84);
+
+  run_test(2, 3, 4);
+  run_test(33, 33, 33);
+  run_test(33, 67, 99);
+  run_test(1, 1, 1);
+  run_test(63, 64, 65);
+  run_test(31, 31, 31);
+  run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransAB) {
+TEST(GemmOpTest, GemmOptimizePackedTransAB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1186,6 +1213,13 @@ TEST(GemmOpTest, GemmOptimizeVec4TransAB) {
   run_test(96, 24, 48);
   run_test(48, 48, 120);
   run_test(72, 80, 84);
+
+  run_test(33, 67, 99);
+  run_test(1, 1, 1);
+  run_test(63, 64, 65);
+  run_test(31, 31, 31);
+  run_test(129, 129, 129);
+  run_test(64, 64, 65);
 }
 
 }  // namespace test
