@@ -8,13 +8,13 @@
 #include <string_view>
 #include <unordered_set>
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/rpcmem_library.h"
@@ -431,6 +431,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     // Initialize rpcmem_library_.
     // This is necessary for HtpSharedMemoryAllocator to function and also indicates that the allocator is available.
     rpcmem_library_ = std::make_shared<qnn::RpcMemLibrary>();
+    model_settings_.htp_shared_memory = true;
   }
 
   dump_json_qnn_graph_ = ParseBoolOption("dump_json_qnn_graph", false, provider_options_map);
@@ -1318,6 +1319,16 @@ std::vector<AllocatorPtr> QNNExecutionProvider::CreatePreferredAllocators() {
   }
 
   return allocators;
+}
+
+OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) const {
+  // We are disabling the HTP shared memory allocator for intermediate values
+  // until we learn how to deal with memhandle costs.
+  // if (IsHtpSharedMemoryAllocatorAvailable()) {
+  //  return qnn::HtpSharedMemoryAllocator::AssociatedMemoryInfo().device;
+  //}
+  // Default CPU allocator
+  return default_device_;
 }
 
 }  // namespace onnxruntime

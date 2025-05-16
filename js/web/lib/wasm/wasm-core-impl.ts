@@ -6,7 +6,7 @@
 // https://github.com/webmachinelearning/webnn/issues/677
 /// <reference path="jsep/webnn/webnn.d.ts" />
 
-import { Env, InferenceSession, Tensor } from 'onnxruntime-common';
+import { Env, InferenceSession, Tensor, TRACE_EVENT_BEGIN, TRACE_EVENT_END } from 'onnxruntime-common';
 
 import {
   SerializableInternalBuffer,
@@ -711,6 +711,7 @@ export const run = async (
   try {
     [runOptionsHandle, runOptionsAllocs] = setRunOptions(options);
 
+    TRACE_EVENT_BEGIN('wasm prepareInputOutputTensor');
     // create input tensors
     for (let i = 0; i < inputCount; i++) {
       await prepareInputOutputTensor(
@@ -736,6 +737,7 @@ export const run = async (
         enableGraphCapture,
       );
     }
+    TRACE_EVENT_END('wasm prepareInputOutputTensor');
 
     for (let i = 0; i < inputCount; i++) {
       wasm.setValue(inputValuesOffset + i * ptrSize, inputTensorHandles[i], '*');
@@ -755,6 +757,7 @@ export const run = async (
         );
       }
 
+      TRACE_EVENT_BEGIN('wasm bindInputsOutputs');
       // process inputs
       for (let i = 0; i < inputCount; i++) {
         const index = inputIndices[i];
@@ -788,6 +791,7 @@ export const run = async (
           }
         }
       }
+      TRACE_EVENT_END('wasm bindInputsOutputs');
       activeSessions.set(sessionId, [
         sessionHandle,
         inputNamesUTF8Encoded,
@@ -830,6 +834,7 @@ export const run = async (
     const output: TensorMetadata[] = [];
     const outputPromises: Array<Promise<[number, Tensor.DataType]>> = [];
 
+    TRACE_EVENT_BEGIN('wasm ProcessOutputTensor');
     for (let i = 0; i < outputCount; i++) {
       const tensor = Number(wasm.getValue(outputValuesOffset + i * ptrSize, '*'));
       if (tensor === outputTensorHandles[i]) {
@@ -942,17 +947,17 @@ export const run = async (
             }
           } else if (preferredLocation === 'ml-tensor' && size > 0) {
             const ensureTensor = wasm.webnnEnsureTensor;
-            const isInt64Supported = wasm.webnnIsInt64Supported;
-            if (!ensureTensor || !isInt64Supported) {
+            const isGraphInputOutputTypeSupported = wasm.webnnIsGraphInputOutputTypeSupported;
+            if (!ensureTensor || !isGraphInputOutputTypeSupported) {
               throw new Error('preferredLocation "ml-tensor" is not supported without using WebNN.');
             }
             const tensorSize = calculateTensorSizeInBytes(dataType, size);
             if (tensorSize === undefined || !isMLTensorSupportedType(type)) {
               throw new Error(`Unsupported data type: ${type}`);
             }
-            if (type === 'int64' && !isInt64Supported(sessionId)) {
+            if (!isGraphInputOutputTypeSupported(sessionId, type, false)) {
               throw new Error(
-                `preferredLocation "ml-tensor" for int64 output is not supported by current WebNN Context.`,
+                `preferredLocation "ml-tensor" for ${type} output is not supported by current WebNN Context.`,
               );
             }
 
@@ -1028,6 +1033,7 @@ export const run = async (
     for (const [index, data] of await Promise.all(outputPromises)) {
       output[index][2] = data;
     }
+    TRACE_EVENT_END('wasm ProcessOutputTensor');
     return output;
   } finally {
     wasm.webnnOnRunEnd?.(sessionHandle);

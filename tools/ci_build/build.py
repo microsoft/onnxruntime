@@ -293,13 +293,17 @@ def generate_vcpkg_install_options(build_dir, args):
     folder_name_parts = []
     if args.enable_address_sanitizer:
         folder_name_parts.append("asan")
-    if args.use_binskim_compliant_compile_flags and not args.android:
+    if args.use_binskim_compliant_compile_flags and not args.android and not args.build_wasm:
         folder_name_parts.append("binskim")
     if args.disable_rtti:
         folder_name_parts.append("nortti")
+    if args.build_wasm and not args.disable_wasm_exception_catching and not args.disable_exceptions:
+        folder_name_parts.append("exception_catching")
     if args.disable_exceptions:
         folder_name_parts.append("noexception")
-    if len(folder_name_parts) == 0:
+    if args.minimal_build is not None:
+        folder_name_parts.append("minimal")
+    if args.build_wasm or len(folder_name_parts) == 0:
         # It's hard to tell whether we must use a custom triplet or not. The official triplets work fine for most common situations. However, if a Windows build has set msvc toolset version via args.msvc_toolset then we need to, because we need to ensure all the source code are compiled by the same MSVC toolset version otherwise we will hit link errors like "error LNK2019: unresolved external symbol __std_mismatch_4 referenced in function ..."
         # So, to be safe we always use a custom triplet.
         folder_name = "default"
@@ -434,11 +438,13 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_MICROSOFT_INTERNAL=" + ("ON" if args.enable_msinternal else "OFF"),
         "-Donnxruntime_USE_VITISAI=" + ("ON" if args.use_vitisai else "OFF"),
         "-Donnxruntime_USE_TENSORRT=" + ("ON" if args.use_tensorrt else "OFF"),
+        "-Donnxruntime_USE_NV=" + ("ON" if args.use_nv_tensorrt_rtx else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_NV_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -507,7 +513,8 @@ def generate_build_tree(
         "-Donnxruntime_DISABLE_OPTIONAL_TYPE=" + ("ON" if disable_optional_type else "OFF"),
         "-Donnxruntime_CUDA_MINIMAL=" + ("ON" if args.enable_cuda_minimal_build else "OFF"),
     ]
-
+    if args.minimal_build is not None:
+        add_default_definition(cmake_extra_defines, "ONNX_MINIMAL_BUILD", "ON")
     if args.rv64:
         add_default_definition(cmake_extra_defines, "onnxruntime_CROSS_COMPILING", "ON")
         if not args.riscv_toolchain_root:
@@ -607,7 +614,14 @@ def generate_build_tree(
             add_default_definition(
                 cmake_extra_defines, "VCPKG_CHAINLOAD_TOOLCHAIN_FILE", str(empty_toolchain_file.absolute())
             )
-            generate_vcpkg_triplets_for_emscripten(build_dir, emscripten_root_path)
+            generate_vcpkg_triplets_for_emscripten(
+                build_dir,
+                emscripten_root_path,
+                not args.disable_rtti,
+                not args.disable_wasm_exception_catching,
+                args.minimal_build is not None,
+                args.enable_address_sanitizer,
+            )
         elif args.android:
             generate_android_triplets(build_dir, args.android_cpp_shared, args.android_api)
         elif is_windows():
@@ -715,7 +729,7 @@ def generate_build_tree(
     if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
-    if args.use_tensorrt:
+    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
 
     if args.use_cuda:
@@ -1214,9 +1228,62 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
-            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN;EMSDK;EMSDK_NODE;EMSDK_PYTHON"
+            vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
+
             if args.build_wasm:
-                env["EMSDK"] = emsdk_dir
+                emsdk_vars = ["EMSDK", "EMSDK_NODE", "EMSDK_PYTHON"]
+
+                # If environment variables 'EMSDK' is not set, run emsdk_env to set them
+                if "EMSDK" not in os.environ:
+                    if is_windows():
+                        # Run `cmd /s /c call .\\emsdk_env && set` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["cmd", "/s", "/c", "call .\\emsdk_env && set"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+                    else:
+                        # Run `sh -c ". ./emsdk_env.sh && printenv"` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["sh", "-c", ". ./emsdk_env.sh && printenv"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+
+                    # check for EMSDK environment variables and set them in the environment
+                    for line in emsdk_env.stdout.decode().splitlines():
+                        if "=" in line:
+                            key, value = line.rstrip().split("=", 1)
+                            if key in emsdk_vars:
+                                os.environ[key] = value
+
+                for var in emsdk_vars:
+                    if var in os.environ:
+                        env[var] = os.environ[var]
+                    elif var == "EMSDK":
+                        # EMSDK must be set, but EMSDK_NODE and EMSDK_PYTHON are optional
+                        raise BuildError(
+                            "EMSDK environment variable is not set correctly. Please run `emsdk_env` to set them."
+                        )
+
+                vcpkg_keep_env_vars += emsdk_vars
+
+            #
+            # Workaround for vcpkg failed to find the correct path of Python
+            #
+            # Since vcpkg does not inherit the environment variables `PATH` from the parent process, CMake will fail to
+            # find the Python executable if the Python executable is not in the default location. This usually happens
+            # to the Python installed by Anaconda.
+            #
+            # To minimize the impact of this problem, we set the `Python3_ROOT_DIR` environment variable to the
+            # directory of current Python executable.
+            #
+            # see https://cmake.org/cmake/help/latest/module/FindPython3.html
+            #
+            env["Python3_ROOT_DIR"] = str(Path(os.path.dirname(sys.executable)).resolve())
+            vcpkg_keep_env_vars += ["Python3_ROOT_DIR"]
+
+            env["VCPKG_KEEP_ENV_VARS"] = ";".join(vcpkg_keep_env_vars)
 
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
@@ -1323,7 +1390,7 @@ def setup_cann_vars(args):
 
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
-    if args.use_tensorrt:
+    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
@@ -1607,7 +1674,7 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_ios_tests(args, source_dir, config, cwd)
             continue
         dll_path_list = []
-        if args.use_tensorrt:
+        if args.use_tensorrt or args.use_nv_tensorrt_rtx:
             dll_path_list.append(os.path.join(args.tensorrt_home, "lib"))
 
         dll_path = None
@@ -1652,6 +1719,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
+
+            log.info("Testing AutoEP feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
 
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
@@ -1746,6 +1816,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     ],
                     cwd=cwd,
                 )
+
+                if not args.disable_contrib_ops:
+                    log.info("Testing Python Compile API")
+                    run_subprocess(
+                        [sys.executable, "onnxruntime_test_python_compile_api.py"], cwd=cwd, dll_path=dll_path
+                    )
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
@@ -2175,14 +2251,6 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
 
-    # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
-    # shared lib being build in a separate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
-    # shared lib
-    if args.enable_generic_interface and not (
-        args.use_tensorrt or args.use_openvino or args.use_vitisai or (args.use_qnn and args.use_qnn != "static_lib")
-    ):
-        args.test = False
-
     if args.use_tensorrt:
         args.use_cuda = True
 
@@ -2287,7 +2355,7 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    if args.use_tensorrt:
+    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
         tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths

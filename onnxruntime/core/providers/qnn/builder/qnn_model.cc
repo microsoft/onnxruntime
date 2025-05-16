@@ -8,10 +8,10 @@
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/shared_context.h"
 
@@ -180,14 +180,16 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   return Status::OK();
@@ -200,7 +202,9 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
                                                   Qnn_ContextHandle_t qnn_context,
                                                   Qnn_Tensor_t& qnn_tensor) {
   // either set qnn_tensor memHandle or clientBuf
-  const bool uses_shared_memory = ort_value_memory_info == HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const static auto htp_shared_mem_info = HtpSharedMemoryAllocator::AssociatedMemoryInfo();
+  const bool uses_shared_memory = (ort_value_memory_info.device.Type() == htp_shared_mem_info.device.Type() &&
+                                   ort_value_memory_info.device.MemType() == htp_shared_mem_info.device.MemType());
 
   if (!uses_shared_memory) {
     LOGS(logger, VERBOSE) << "Setting Qnn_Tensor_t clientBuf to ORT tensor memory.";

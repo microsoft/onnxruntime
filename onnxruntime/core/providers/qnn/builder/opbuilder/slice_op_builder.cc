@@ -46,7 +46,7 @@ Status SliceOpBuilder::ExplictOpCheck(QnnModelWrapper& qnn_model_wrapper, const 
     for (size_t i = 1; i < input_count; i++) {
       const auto& next_input = node_unit.Inputs()[i].node_arg.Name();
       if (!qnn_model_wrapper.IsConstantInput(next_input)) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN desn't support dynamic slice.");
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN doesn't support dynamic slice.");
       }
     }
   }

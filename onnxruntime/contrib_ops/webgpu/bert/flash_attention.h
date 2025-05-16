@@ -78,7 +78,8 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -97,7 +98,8 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
                                           {"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
@@ -114,7 +116,8 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;

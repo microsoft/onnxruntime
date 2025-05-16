@@ -6,6 +6,13 @@
 #include "qnbitgemm.h"
 #include "sqnbitgemm_kernel_avx_common.h"
 
+MLAS_DECLSPEC_ALIGN(static const uint32_t MasksAvx2BlkLen16[40], 32) = {
+    0x00000000, 0x00000000, 0x00000002, 0x00000002, 0x00000001, 0x00000001, 0x00000003, 0x00000003,
+    0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff, 0x00ff00ff,
+    0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00, 0xff00ff00,
+    0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001, 0x00010001,
+    0x00000000, 0x00000000, 0x00000000, 0x00000000, 0x00000001, 0x00000001, 0x00000001, 0x00000001
+};
 
 MLAS_FORCEINLINE __m256
 load_and_broadcast_4_scale_2(const float* scale)
@@ -150,6 +157,208 @@ accumulate_blklen16_r2c1blk4_avx2(
     load_4b_packed_4blk_blklen16(QuantBDataPtr, bv0_32_epi8, bv1_32_epi8);
     accumulate_r2_4blk_dot(av00_32_epi8, av01_32_epi8, av10_32_epi8, av11_32_epi8, bv0_32_epi8, bv1_32_epi8,
       scale_a0, scale_a1, scale_b, acc0, acc1);
+}
+
+template <bool vnni>
+static MLAS_FORCEINLINE void
+accumulate_q8_blklen16_r1c1blk4_avx2(
+    const __m256i& av00_32_epi8,
+    const __m256i& av01_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float* scale_a0,
+    const float* scale_b,
+    __m256& acc0
+)
+{
+    // 00000000 00000000, 11111111 11111111
+    const __m256i bv0_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+    // 22222222 22222222, 33333333 33333333
+    const __m256i bv1_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
+    // 00 22, 11 33
+    const __m256i scale_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16));
+    // 0123, 0123
+    __m256 scale_b_4_ps = _mm256_broadcast_ps((const __m128*)scale_b);
+    __m256 scale_a0_4_ps = _mm256_broadcast_ps((const __m128*)scale_a0);
+    __m256 scale_a0b_4_ps = _mm256_mul_ps(scale_b_4_ps, scale_a0_4_ps);
+    __m256 scale_a0b_4_shuffle_ps = _mm256_permutevar_ps(scale_a0b_4_ps, scale_mask);
+
+#if !defined(__GNUC__) || (__GNUC__ > 10)
+    if constexpr (vnni)
+    {
+        // 0000, 1111
+        const __m256i dot00_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av00_32_epi8);
+        // 2222, 3333
+        const __m256i dot01_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv1_32_epi8, av01_32_epi8);
+        // 0022, 1133
+        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_4_shuffle_ps, acc0);
+    }
+    else
+#endif
+    {
+        // 2 x i8 x i8 may be larger than i16
+        const __m256i low_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 8));
+        const __m256i high_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 16));
+        const __m256i one_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 24));
+
+        // 00000000 00000000, 11111111 11111111
+        const __m256i bv0_low_32_epi8 = _mm256_and_si256(bv0_32_epi8, low_mask);
+        const __m256i bv0_high_32_epi8 = _mm256_and_si256(bv0_32_epi8, high_mask);
+        const __m256i bv1_low_32_epi8 = _mm256_and_si256(bv1_32_epi8, low_mask);
+        const __m256i bv1_high_32_epi8 = _mm256_and_si256(bv1_32_epi8, high_mask);
+        // 0000 0000, 1111 1111
+        const __m256i dot00_low_16_epi16 = _mm256_maddubs_epi16(bv0_low_32_epi8, av00_32_epi8);
+        const __m256i dot00_high_16_epi16 = _mm256_maddubs_epi16(bv0_high_32_epi8, av00_32_epi8);
+        const __m256i dot01_low_16_epi16 = _mm256_maddubs_epi16(bv1_low_32_epi8, av01_32_epi8);
+        const __m256i dot01_high_16_epi16 = _mm256_maddubs_epi16(bv1_high_32_epi8, av01_32_epi8);
+        // 00 00, 11 11
+        const __m256i dot00_low_8_epi32 = _mm256_madd_epi16(one_mask, dot00_low_16_epi16);
+        const __m256i dot00_high_8_epi32 = _mm256_madd_epi16(one_mask, dot00_high_16_epi16);
+        const __m256i dot00_8_epi32 = _mm256_add_epi32(dot00_low_8_epi32, dot00_high_8_epi32);
+        // 22 22, 33 33
+        const __m256i dot01_low_8_epi32 = _mm256_madd_epi16(one_mask, dot01_low_16_epi16);
+        const __m256i dot01_high_8_epi32 = _mm256_madd_epi16(one_mask, dot01_high_16_epi16);
+        const __m256i dot01_8_epi32 = _mm256_add_epi32(dot01_low_8_epi32, dot01_high_8_epi32);
+        // 00 22, 11 33
+        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_4_shuffle_ps, acc0);
+    }
+}
+
+template <bool vnni>
+static MLAS_FORCEINLINE void
+accumulate_q8_blklen16_r2c1blk4_avx2(
+    const __m256i& av00_32_epi8,
+    const __m256i& av01_32_epi8,
+    const __m256i& av10_32_epi8,
+    const __m256i& av11_32_epi8,
+    const std::byte* QuantBDataPtr,
+    const float* scale_a0,
+    const float* scale_a1,
+    const float* scale_b,
+    __m256& acc0,
+    __m256& acc1
+)
+{
+    // 00000000 00000000, 11111111 11111111
+    const __m256i bv0_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr));
+    // 22222222 22222222, 33333333 33333333
+    const __m256i bv1_32_epi8 = _mm256_loadu_si256(reinterpret_cast<const __m256i*>(QuantBDataPtr + 32));
+    // 00 22, 11 33
+    const __m256i scale_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16));
+    // 0123, 0123
+    __m256 scale_b_4_ps = _mm256_broadcast_ps((const __m128*)scale_b);
+    __m256 scale_a0_4_ps = _mm256_broadcast_ps((const __m128*)scale_a0);
+    __m256 scale_a0b_4_ps = _mm256_mul_ps(scale_b_4_ps, scale_a0_4_ps);
+    __m256 scale_a0b_4_shuffle_ps = _mm256_permutevar_ps(scale_a0b_4_ps, scale_mask);
+    __m256 scale_a1_4_ps = _mm256_broadcast_ps((const __m128*)scale_a1);
+    __m256 scale_a1b_4_ps = _mm256_mul_ps(scale_b_4_ps, scale_a1_4_ps);
+    __m256 scale_a1b_4_shuffle_ps = _mm256_permutevar_ps(scale_a1b_4_ps, scale_mask);
+
+#if !defined(__GNUC__) || (__GNUC__ > 10)
+    if constexpr (vnni)
+    {
+        // 0000, 1111
+        const __m256i dot00_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av00_32_epi8);
+        // 2222, 3333
+        const __m256i dot01_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv1_32_epi8, av01_32_epi8);
+        // 0022, 1133
+        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_4_shuffle_ps, acc0);
+
+        const __m256i dot10_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv0_32_epi8, av10_32_epi8);
+        const __m256i dot11_8_epi32 = _mm256_dpbusds_avx_epi32(_mm256_setzero_si256(), bv1_32_epi8, av11_32_epi8);
+        const __m256i sum1_8_epi32 = _mm256_hadd_epi32(dot10_8_epi32, dot11_8_epi32);
+        __m256 sum1_8_ps = _mm256_cvtepi32_ps(sum1_8_epi32);
+        acc1 = _mm256_fmadd_ps(sum1_8_ps, scale_a1b_4_shuffle_ps, acc1);
+    }
+    else
+#endif
+    {
+        // 2 x i8 x i8 may be larger than i16
+        const __m256i low_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 8));
+        const __m256i high_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 16));
+        const __m256i one_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 24));
+
+        // 00000000 00000000, 11111111 11111111
+        const __m256i bv0_low_32_epi8 = _mm256_and_si256(bv0_32_epi8, low_mask);
+        const __m256i bv0_high_32_epi8 = _mm256_and_si256(bv0_32_epi8, high_mask);
+        const __m256i bv1_low_32_epi8 = _mm256_and_si256(bv1_32_epi8, low_mask);
+        const __m256i bv1_high_32_epi8 = _mm256_and_si256(bv1_32_epi8, high_mask);
+
+        // row 0
+        // 0000 0000, 1111 1111
+        const __m256i dot00_low_16_epi16 = _mm256_maddubs_epi16(bv0_low_32_epi8, av00_32_epi8);
+        const __m256i dot00_high_16_epi16 = _mm256_maddubs_epi16(bv0_high_32_epi8, av00_32_epi8);
+        const __m256i dot01_low_16_epi16 = _mm256_maddubs_epi16(bv1_low_32_epi8, av01_32_epi8);
+        const __m256i dot01_high_16_epi16 = _mm256_maddubs_epi16(bv1_high_32_epi8, av01_32_epi8);
+        // 00 00, 11 11
+        const __m256i dot00_low_8_epi32 = _mm256_madd_epi16(one_mask, dot00_low_16_epi16);
+        const __m256i dot00_high_8_epi32 = _mm256_madd_epi16(one_mask, dot00_high_16_epi16);
+        const __m256i dot00_8_epi32 = _mm256_add_epi32(dot00_low_8_epi32, dot00_high_8_epi32);
+        // 22 22, 33 33
+        const __m256i dot01_low_8_epi32 = _mm256_madd_epi16(one_mask, dot01_low_16_epi16);
+        const __m256i dot01_high_8_epi32 = _mm256_madd_epi16(one_mask, dot01_high_16_epi16);
+        const __m256i dot01_8_epi32 = _mm256_add_epi32(dot01_low_8_epi32, dot01_high_8_epi32);
+        // 00 22, 11 33
+        const __m256i sum0_8_epi32 = _mm256_hadd_epi32(dot00_8_epi32, dot01_8_epi32);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(sum0_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_4_shuffle_ps, acc0);
+
+        // row 1
+        const __m256i dot10_low_16_epi16 = _mm256_maddubs_epi16(bv0_low_32_epi8, av10_32_epi8);
+        const __m256i dot10_high_16_epi16 = _mm256_maddubs_epi16(bv0_high_32_epi8, av10_32_epi8);
+        const __m256i dot11_low_16_epi16 = _mm256_maddubs_epi16(bv1_low_32_epi8, av11_32_epi8);
+        const __m256i dot11_high_16_epi16 = _mm256_maddubs_epi16(bv1_high_32_epi8, av11_32_epi8);
+
+        const __m256i dot10_low_8_epi32 = _mm256_madd_epi16(one_mask, dot10_low_16_epi16);
+        const __m256i dot10_high_8_epi32 = _mm256_madd_epi16(one_mask, dot10_high_16_epi16);
+        const __m256i dot10_8_epi32 = _mm256_add_epi32(dot10_low_8_epi32, dot10_high_8_epi32);
+
+        const __m256i dot11_low_8_epi32 = _mm256_madd_epi16(one_mask, dot11_low_16_epi16);
+        const __m256i dot11_high_8_epi32 = _mm256_madd_epi16(one_mask, dot11_high_16_epi16);
+        const __m256i dot11_8_epi32 = _mm256_add_epi32(dot11_low_8_epi32, dot11_high_8_epi32);
+
+        const __m256i sum1_8_epi32 = _mm256_hadd_epi32(dot10_8_epi32, dot11_8_epi32);
+        __m256 sum1_8_ps = _mm256_cvtepi32_ps(sum1_8_epi32);
+        acc1 = _mm256_fmadd_ps(sum1_8_ps, scale_a1b_4_shuffle_ps, acc1);
+    }
+}
+
+template <bool vnni>
+static MLAS_FORCEINLINE void
+accumulate_q8_blklen16_r1c1blk1_avx2(
+    const __m128i& av00_16_epi8,
+    const std::byte* QuantBDataPtr,
+    float scale_a0b,
+    __m256& acc0
+)
+{
+    const __m128i bv0_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantBDataPtr));
+    __m256 scale_a0b_1_ps = _mm256_set1_ps(scale_a0b);
+
+#if !defined(__GNUC__) || (__GNUC__ > 10)
+    if constexpr (vnni)
+    {
+        const __m128i dot00_4_epi32 = _mm_dpbusds_avx_epi32(_mm_setzero_si128(), bv0_16_epi8, av00_16_epi8);
+        const __m256i dot00_8_epi32 = _mm256_cvtepu32_epi64(dot00_4_epi32);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(dot00_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_1_ps, acc0);
+    }
+    else
+#endif
+    {
+        const __m256i one_mask = _mm256_load_si256(reinterpret_cast<const __m256i*>(MasksAvx2BlkLen16 + 24));
+        const __m256i bv0_32_epi8 = _mm256_cvtepu8_epi16(bv0_16_epi8);
+        const __m256i av00_32_epi8 = _mm256_cvtepu8_epi16(av00_16_epi8);
+        const __m256i dot00_16_epi16 = _mm256_maddubs_epi16(bv0_32_epi8, av00_32_epi8);
+        const __m256i dot00_8_epi32 = _mm256_madd_epi16(one_mask, dot00_16_epi16);
+        __m256 sum0_8_ps = _mm256_cvtepi32_ps(dot00_8_epi32);
+        acc0 = _mm256_fmadd_ps(sum0_8_ps, scale_a0b_1_ps, acc0);
+    }
 }
 
 static MLAS_FORCEINLINE void
@@ -332,6 +541,118 @@ Q4Int8GemmR2xC4BlkLen16Avx2(
     }
 }
 
+template <bool vnni>
+MLAS_FORCEINLINE void
+Q8Int8GemmR2xC4BlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols4 = 4;
+    constexpr size_t NRows2 = 2;
+    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+    constexpr size_t PerAccuBlk4 = 4;
+
+    const size_t lda = BlockCountK * BlkLen16;
+    const size_t StrideQuantBDataCol = BlockCountK * BlkDataSizeInBytes;
+    const size_t StrideQuantBData4 = BlkDataSizeInBytes * PerAccuBlk4;
+
+    assert(CountM % NRows2 == 0);
+    assert(CountN % NCols4 == 0);
+    for (size_t m = 0; m < CountM; m += NRows2) {
+        const std::byte* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        auto* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n += NCols4) {
+            const std::byte* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+
+            const std::byte* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            __m256 acc[NCols4 * NRows2] = {
+                _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(),
+                _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()
+            };
+
+            size_t k_blks_remaining = BlockCountK;
+            for (; k_blks_remaining > 3; k_blks_remaining -= PerAccuBlk4) {
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda));
+                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + lda + 32));
+
+                accumulate_q8_blklen16_r2c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc[0], acc[NCols4]);
+                accumulate_q8_blklen16_r2c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + StrideQuantBData4, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + PerAccuBlk4, acc[1], acc[NCols4 + 1]);
+                accumulate_q8_blklen16_r2c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 2 * StrideQuantBData4, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 2 * PerAccuBlk4, acc[2], acc[NCols4 + 2]);
+                accumulate_q8_blklen16_r2c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr + 3 * StrideQuantBData4, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr + 3 * PerAccuBlk4, acc[3], acc[NCols4 + 3]);
+
+                QuantAPtr += BlkLen16 * PerAccuBlk4;
+                QuantAScalePtr += PerAccuBlk4;
+                QuantBDataPtr += BlkDataSizeInBytes * PerAccuBlk4 * NCols4;
+                QuantBScalePtr += PerAccuBlk4 * NCols4;
+            }
+
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
+                const __m128i av_00_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
+                const __m128i av_10_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr + lda));
+                const float scale_a00 = *QuantAScalePtr;
+                const float scale_a10 = *(QuantAScalePtr + BlockCountK);
+
+                const float scale_b0 = *QuantBScalePtr;
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr, scale_a00 * scale_b0, acc[0]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_10_epi8, QuantBDataPtr, scale_a10 * scale_b0, acc[NCols4]);
+
+                const float scale_b1 = *(QuantBScalePtr + 1);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_a00 * scale_b1, acc[1]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_10_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_a10 * scale_b1, acc[NCols4 + 1]);
+
+                const float scale_b2 = *(QuantBScalePtr + 2);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_a00 * scale_b2, acc[2]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_10_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_a10 * scale_b2, acc[NCols4 + 2]);
+
+                const float scale_b3 = *(QuantBScalePtr + 3);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_a00 * scale_b3, acc[3]);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_10_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_a10 * scale_b3, acc[NCols4 + 3]);
+
+                QuantAPtr += BlkLen16;
+                QuantAScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes * NCols4;
+                QuantBScalePtr+= NCols4;
+            }
+
+            __m128 acc_r0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+            __m128 acc_r1 = FoldAccumulators(acc[NCols4 + 0], acc[NCols4 + 1], acc[NCols4 + 2], acc[NCols4 + 3]);
+            if (BiasPtr != nullptr) {
+                const __m128 bias_4_ps = _mm_loadu_ps(BiasPtr);
+                acc_r0 = _mm_add_ps(acc_r0, bias_4_ps);
+                acc_r1 = _mm_add_ps(acc_r1, bias_4_ps);
+            }
+            _mm_storeu_ps(SumPtr, acc_r0);
+            _mm_storeu_ps(SumPtr + ldc, acc_r1);
+
+            // move to next NCols columns
+            QuantBDataColPtr += NCols4 * StrideQuantBDataCol;
+            QuantBScaleColPtr += NCols4 * BlockCountK;
+
+            BiasPtr += BiasPtr != nullptr ? NCols4 : 0;
+            SumPtr += NCols4;
+        }
+    }
+}
+
 void MLAS_FORCEINLINE Q4Int8GemmR2xC1BlkLen16Avx2(
     const std::byte* QuantA,
     const float* QuantAScale,
@@ -417,6 +738,108 @@ void MLAS_FORCEINLINE Q4Int8GemmR2xC1BlkLen16Avx2(
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;
                 QuantBDataPtr += BlkDataSizeInBytes8;
+                QuantBScalePtr++;
+            }
+
+            *SumPtr = hsum_float_8(acc0);
+            *(SumPtr + ldc) = hsum_float_8(acc1);
+            if (BiasPtr) {
+                *SumPtr += *BiasPtr;
+                *(SumPtr + ldc) += *BiasPtr;
+            }
+
+            // move to next column
+            QuantBDataColPtr += StrideQuantBData;
+            QuantBScaleColPtr += StrideQuantBScale;
+
+            BiasPtr += BiasPtr != nullptr ? 1 : 0;
+            SumPtr += 1;
+        }
+    }
+}
+
+template <bool vnni>
+void MLAS_FORCEINLINE
+Q8Int8GemmR2xC1BlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    [[maybe_unused]] constexpr size_t NCols4 = 4;
+    constexpr size_t NRows2 = 2;
+    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+
+    // process 4 blks of 64 4b weights a time
+    constexpr size_t PerAccuBlk4 = 4;
+
+    const size_t lda = BlockCountK * BlkLen16;
+    const size_t StrideQuantBData = BlockCountK * BlkDataSizeInBytes;
+    const size_t StrideQuantBScale = BlockCountK;
+
+    assert(CountM % NRows2 == 0);
+    assert(CountN < NCols4);
+
+    for (size_t m = 0; m < CountM; m += NRows2) {
+        const std::byte* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        float* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n++) {
+            const std::byte* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+
+            const std::byte* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            __m256 acc0 = _mm256_setzero_ps(), acc1 = _mm256_setzero_ps();
+
+            size_t k_blks_remaining = BlockCountK;
+            for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
+                const std::byte* QuantABlk00 = QuantAPtr;
+                const std::byte* QuantABlk01 = QuantABlk00 + 32;
+                const std::byte* QuantABlk10 = QuantAPtr + lda;
+                const std::byte* QuantABlk11 = QuantABlk10 + 32;
+
+                // load A:
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk00);
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk01);
+                const __m256i av_10_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk10);
+                const __m256i av_11_epi8 = _mm256_loadu_si256((const __m256i*)QuantABlk11);
+
+                accumulate_q8_blklen16_r2c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, av_10_epi8, av_11_epi8, QuantBDataPtr, QuantAScalePtr, QuantAScalePtr + BlockCountK, QuantBScalePtr, acc0, acc1);
+
+                // increment block pointers
+                QuantAPtr += BlkLen16 * PerAccuBlk4;
+                QuantAScalePtr += PerAccuBlk4;
+                QuantBDataPtr += BlkDataSizeInBytes * PerAccuBlk4;
+                QuantBScalePtr += PerAccuBlk4;
+            }
+
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
+                // load A
+                const std::byte* QuantABlk0 = QuantAPtr;
+                const __m128i av0_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantABlk0));
+                const __m128i av1_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantABlk0 + lda));
+                const float scale_a00 = *QuantAScalePtr;
+                const float scale_a10 = *(QuantAScalePtr + BlockCountK);
+
+                const float scale_b0 = *QuantBScalePtr;
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av0_16_epi8, QuantBDataPtr, scale_a00 * scale_b0, acc0);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av1_16_epi8, QuantBDataPtr, scale_a10 * scale_b0, acc1);
+
+                QuantAPtr += BlkLen16;
+                QuantAScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes;
                 QuantBScalePtr++;
             }
 
@@ -549,6 +972,106 @@ Q4Int8GemmR1xC4BlkLen16Avx2(
     }
 }
 
+template <bool vnni>
+MLAS_FORCEINLINE void
+Q8Int8GemmR1xC4BlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols4 = 4;
+    [[maybe_unused]] constexpr size_t NRows2 = 2;
+    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+
+    // process 2 blks of 64 4b weights a time
+    constexpr size_t PerAccuBlk4 = 4;
+
+    const size_t lda = BlockCountK * BlkLen16;
+    const size_t StrideQuantBDataCol = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+    const size_t StrideQuantBData4 = BlkDataSizeInBytes * PerAccuBlk4;
+
+    assert(CountM < NRows2);
+    assert(CountN % NCols4 == 0);
+
+    for (size_t m = 0; m < CountM; m++) {
+        const std::byte* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        auto* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n += NCols4) {
+            const std::byte* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+
+            const std::byte* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            __m256 acc[NCols4] = {_mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps(), _mm256_setzero_ps()};
+
+            size_t k_blks_remaining = BlockCountK;
+            for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc[0]);
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr + StrideQuantBData4, QuantAScalePtr, QuantBScalePtr + PerAccuBlk4, acc[1]);
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr + 2 * StrideQuantBData4, QuantAScalePtr, QuantBScalePtr + 2 * PerAccuBlk4, acc[2]);
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr + 3 * StrideQuantBData4, QuantAScalePtr, QuantBScalePtr + 3 * PerAccuBlk4, acc[3]);
+
+                QuantAPtr += BlkLen16 * PerAccuBlk4;
+                QuantAScalePtr += PerAccuBlk4;
+                QuantBDataPtr += StrideQuantBData4 * NCols4;
+                QuantBScalePtr += PerAccuBlk4 * NCols4;
+            }
+
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
+                const __m128i av_00_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
+                const float scale_a00 = *QuantAScalePtr;
+
+                const float scale_b0 = *QuantBScalePtr;
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr, scale_a00 * scale_b0, acc[0]);
+
+                const float scale_b1 = *(QuantBScalePtr + 1);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + BlkDataSizeInBytes, scale_a00 * scale_b1, acc[1]);
+
+                const float scale_b2 = *(QuantBScalePtr + 2);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + 2 * BlkDataSizeInBytes, scale_a00 * scale_b2, acc[2]);
+
+                const float scale_b3 = *(QuantBScalePtr + 3);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_00_epi8, QuantBDataPtr + 3 * BlkDataSizeInBytes, scale_a00 * scale_b3, acc[3]);
+
+                QuantAPtr += BlkLen16;
+                QuantAScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes * NCols4;
+                QuantBScalePtr += NCols4;
+            }
+
+            __m128 acc_r0 = FoldAccumulators(acc[0], acc[1], acc[2], acc[3]);
+            if (BiasPtr != nullptr) {
+                acc_r0 = _mm_add_ps(acc_r0, _mm_loadu_ps(BiasPtr));
+            }
+
+            _mm_storeu_ps(SumPtr, acc_r0);
+
+            // move to next NCols columns
+            QuantBDataColPtr += NCols4 * StrideQuantBDataCol;
+            QuantBScaleColPtr += NCols4 * BlockCountK;
+            BiasPtr += BiasPtr != nullptr ? NCols4 : 0;
+            SumPtr += NCols4;
+        }
+    }
+}
+
 MLAS_FORCEINLINE void
 Q4Int8GemmR1xC1BlkLen16Avx2(
     const std::byte* QuantA,
@@ -618,6 +1141,90 @@ Q4Int8GemmR1xC1BlkLen16Avx2(
                 QuantAPtr += BlkLen16;
                 QuantAScalePtr++;
                 QuantBDataPtr += BlkDataSizeInBytes8;
+                QuantBScalePtr++;
+            }
+
+             *SumPtr = hsum_float_8(acc0);
+            if (BiasPtr) {
+                *SumPtr += *BiasPtr;
+            }
+
+            QuantBDataColPtr += StrideQuantBData;
+            QuantBScaleColPtr += StrideQuantBScale;
+            BiasPtr += BiasPtr != nullptr ? 1 : 0;
+            SumPtr += 1;
+        }
+    }
+}
+
+template <bool vnni>
+MLAS_FORCEINLINE void
+Q8Int8GemmR1xC1BlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    [[maybe_unused]] constexpr size_t NCols4 = 4;
+    [[maybe_unused]] constexpr size_t NRows2 = 2;
+    constexpr size_t BlkDataSizeInBytes = MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+
+    // process 4 blks of 64 4b weights a time
+    constexpr size_t PerAccuBlk4 = 4;
+
+    const size_t lda = BlockCountK * BlkLen16;
+    const size_t StrideQuantBData = BlockCountK * BlkDataSizeInBytes;
+    const size_t StrideQuantBScale = BlockCountK;
+
+    [[maybe_unused]] size_t QuantBZeroPointIdx = 0;  // track half byte increments with this index instead of a pointer
+    assert(CountM < NRows2);
+    assert(CountN < NCols4);
+
+    for (size_t m = 0; m < CountM; m++) {
+        const std::byte* QuantBDataColPtr = QuantBData;
+        const float* QuantBScaleColPtr = QuantBScale;
+        const float* BiasPtr = Bias;
+        auto* SumPtr = C + m * ldc;
+
+        for (size_t n = 0; n < CountN; n++) {
+            const std::byte* QuantAPtr = QuantA + m * lda;
+            const float* QuantAScalePtr = QuantAScale + m * BlockCountK;
+            const std::byte* QuantBDataPtr = QuantBDataColPtr;
+            const float* QuantBScalePtr = QuantBScaleColPtr;
+
+            __m256 acc0 = _mm256_setzero_ps();
+            size_t k_blks_remaining = BlockCountK;
+            for (; k_blks_remaining >= PerAccuBlk4; k_blks_remaining -= PerAccuBlk4) {
+                const __m256i av_00_epi8 = _mm256_loadu_si256((const __m256i*)QuantAPtr);
+                const __m256i av_01_epi8 = _mm256_loadu_si256((const __m256i*)(QuantAPtr + 32));
+
+                accumulate_q8_blklen16_r1c1blk4_avx2<vnni>(av_00_epi8, av_01_epi8, QuantBDataPtr, QuantAScalePtr, QuantBScalePtr, acc0);
+
+                QuantAPtr += BlkLen16 * PerAccuBlk4;
+                QuantAScalePtr += PerAccuBlk4;
+                QuantBDataPtr += BlkDataSizeInBytes * PerAccuBlk4;
+                QuantBScalePtr += PerAccuBlk4;
+            }
+
+            for (; k_blks_remaining > 0; --k_blks_remaining) {
+                const __m128i av_16_epi8 = _mm_lddqu_si128(reinterpret_cast<const __m128i*>(QuantAPtr));
+                const float scale_a00 = *QuantAScalePtr;
+
+                const float scale_a0b = scale_a00 * (*QuantBScalePtr);
+                accumulate_q8_blklen16_r1c1blk1_avx2<vnni>(av_16_epi8, QuantBDataPtr, scale_a0b, acc0);
+
+                QuantAPtr += BlkLen16;
+                QuantAScalePtr++;
+                QuantBDataPtr += BlkDataSizeInBytes;
                 QuantBScalePtr++;
             }
 
@@ -711,6 +1318,98 @@ MLAS_FORCEINLINE
 
     if (remainingCols > 0 && remainingRows > 0) {
         Q4Int8GemmR1xC1BlkLen16Avx2(
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData + multipleCols * StrideQuantBData,
+            QuantBScale + multipleCols * StrideQuantBScale,
+            C + multipleRows * ldc + multipleCols,
+            remainingRows,
+            remainingCols,
+            BlockCountK,
+            Bias ? Bias + multipleCols : nullptr,
+            ldc);
+    }
+
+    return CountM;
+}
+
+template <bool vnni>
+MLAS_FORCEINLINE
+size_t
+MlasQ8Int8GemmKernelBlkLen16Avx2(
+    const std::byte* QuantA,
+    const float* QuantAScale,
+    const std::byte* QuantBData,
+    const float* QuantBScale,
+    float* C,
+    size_t CountM,
+    size_t CountN,
+    size_t /*CountK*/,
+    size_t BlockCountK,
+    const float* Bias,
+    size_t ldc
+)
+{
+    constexpr size_t BlkLen16 = 16;
+    constexpr size_t BlkBitWidth = 8;
+    constexpr size_t NCols4 = 4;
+    constexpr size_t NRows2 = 2;
+
+    const size_t lda = BlockCountK * BlkLen16 * sizeof(int8_t);
+    const size_t lda_scale = BlockCountK;
+    const size_t StrideQuantBData = BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen16);
+    const size_t StrideQuantBScale = BlockCountK;
+
+    size_t remainingRows = CountM % NRows2;
+    size_t multipleRows = CountM - remainingRows;
+    size_t remainingCols = CountN % NCols4;
+    size_t multipleCols = CountN - remainingCols;
+
+    if (multipleRows > 0 && multipleCols > 0) {
+        Q8Int8GemmR2xC4BlkLen16Avx2<vnni>(
+            QuantA,
+            QuantAScale,
+            QuantBData,
+            QuantBScale,
+            C,
+            multipleRows,
+            multipleCols,
+            BlockCountK,
+            Bias,
+            ldc
+        );
+    }
+
+    if (remainingCols > 0 && multipleRows > 0) {
+        Q8Int8GemmR2xC1BlkLen16Avx2<vnni>(
+            QuantA,
+            QuantAScale,
+            QuantBData + multipleCols * StrideQuantBData,
+            QuantBScale + multipleCols * StrideQuantBScale,
+            C + multipleCols,
+            multipleRows,
+            remainingCols,
+            BlockCountK,
+            Bias ? Bias + multipleCols : nullptr,
+            ldc);
+    }
+
+    if (remainingRows > 0 && multipleCols > 0) {
+        Q8Int8GemmR1xC4BlkLen16Avx2<vnni>(
+            QuantA + multipleRows * lda,
+            QuantAScale + multipleRows * lda_scale,
+            QuantBData,
+            QuantBScale,
+            C + multipleRows * ldc,
+            remainingRows,
+            multipleCols,
+            BlockCountK,
+            Bias,
+            ldc);
+    }
+
+    if (remainingCols > 0 && remainingRows > 0) {
+        Q8Int8GemmR1xC1BlkLen16Avx2<vnni>(
             QuantA + multipleRows * lda,
             QuantAScale + multipleRows * lda_scale,
             QuantBData + multipleCols * StrideQuantBData,

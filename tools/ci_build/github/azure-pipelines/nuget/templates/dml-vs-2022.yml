@@ -93,11 +93,11 @@ stages:
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ else }}:
         - powershell: |
-            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
+            python tools\ci_build\build.py ${{ parameters.BuildCommand }} --use_binskim_compliant_compile_flags --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_csharp --build --update --config $(BuildConfig) --build_nuget --msbuild_extra_options IncludeMobileTargets=false ${{ variables.build_py_lto_flag }}
 
       - ${{ if notIn(parameters['sln_platform'], 'Win32', 'x64') }}:
         # Use cross-compiled protoc
@@ -149,14 +149,20 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - task: PublishSymbols@2
-          displayName: 'Publish Build Symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-          inputs:
-            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-            SearchPattern: 'onnxruntime.pdb'
-            SymbolServerType: teamServices
-            SymbolExpirationInDays: 365
+
+        - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+          - template: ../../templates/publish-symbolrequestprod-api.yml
+            parameters:
+              ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+                symbolExpiryTime: 60
+              includePublicSymbolServer: true
+              symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
+              symbolsVersion: $(Build.BuildId)
+              symbolProject: 'ONNX Runtime'
+              subscription: 'OnnxrunTimeCodeSign_20240611'
+              searchPattern: |
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_*.pdb
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:

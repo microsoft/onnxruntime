@@ -4,6 +4,8 @@
 
 #pragma once
 
+#include <unordered_map>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/sinks/cerr_sink.h"
 #include "core/common/optional.h"
@@ -29,6 +31,7 @@ struct OrtStatus {
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
 #if defined(USE_CUDA) || defined(USE_ROCM)
 #define BACKEND_PROC "GPU"
@@ -48,7 +51,7 @@ struct OrtStatus {
 #define BACKEND_MIGRAPHX ""
 #endif
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #if OPENVINO_CONFIG_CPU
 #define BACKEND_OPENVINO "-OPENVINO_CPU"
 
@@ -69,11 +72,14 @@ struct OrtStatus {
 
 #elif OPENVINO_DISABLE_NPU_FALLBACK
 #define BACKEND_OPENVINO "-OPENVINO_DISABLE_NPU_FALLBACK"
-#endif
 
 #else
 #define BACKEND_OPENVINO ""
-#endif
+#endif  // OPENVINO_CONFIG_*
+
+#else
+#define BACKEND_OPENVINO ""
+#endif  // defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 
 #if USE_OPENBLAS
 #define BACKEND_OPENBLAS "-OPENBLAS"
@@ -111,7 +117,7 @@ struct OrtStatus {
 #define BACKEND_WEBGPU ""
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -119,17 +125,20 @@ struct OrtStatus {
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/rocm_execution_provider_info.h"
 #endif
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory.h"
+#endif
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #endif
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
 // TODO remove deprecated global config
 namespace onnxruntime {
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 namespace python {
 extern std::string openvino_device_type;
 }
@@ -149,7 +158,7 @@ extern std::string openvino_device_type;
 #include "core/providers/cann/cann_execution_provider_info.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_CUDA* TryGetProviderInfo_CUDA();
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
@@ -166,10 +175,17 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT();
 ProviderInfo_TensorRT& GetProviderInfo_TensorRT();
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+namespace onnxruntime {
+ProviderInfo_Nv* TryGetProviderInfo_Nv();
+ProviderInfo_Nv& GetProviderInfo_Nv();
 }  // namespace onnxruntime
 #endif
 
@@ -215,18 +231,31 @@ extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config
 extern size_t gpu_mem_limit;
 
-using PySessionOptions = OrtSessionOptions;
+#if !defined(ORT_MINIMAL_BUILD)
+using PyEpSelectionDelegate = std::function<std::vector<const OrtEpDevice*>(const std::vector<const OrtEpDevice*>& ep_devices,
+                                                                            const std::unordered_map<std::string, std::string>& model_metadata,
+                                                                            const std::unordered_map<std::string, std::string>& runtime_metadata,
+                                                                            size_t max_selections)>;
+#endif
+
+// Thin wrapper over internal C OrtSessionOptions to store additional state.
+struct PySessionOptions : public OrtSessionOptions {
+#if !defined(ORT_MINIMAL_BUILD)
+  // Callback function from Python application that allows the user to specify custom EP selection logic.
+  PyEpSelectionDelegate py_ep_selection_delegate;
+#endif  // !defined(ORT_MINIMAL_BUILD)
+};
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
-      : env_(std::move(env)) {
+      : env_(std::move(env)), session_options_(so) {
     sess_ = std::make_unique<InferenceSession>(so.value, *env_);
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
   PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : env_(std::move(env)) {
+      : env_(std::move(env)), session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
       sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
@@ -237,6 +266,24 @@ struct PyInferenceSession {
     }
   }
 #endif
+
+  // Returns true if the session options have provider information from either
+  // setting explicit providers, setting a provider that supports a OrtEpDevice(s), or
+  // setting a selection policy (e.g., prefer gpu).
+  bool HasProvidersInSessionOptions() const {
+    return !session_options_.provider_factories.empty() ||
+           session_options_.value.ep_selection_policy.enable;
+  }
+
+  // Returns (and updates) a reference to the OrtSessionOptions for this inference session.
+  OrtSessionOptions& GetOrtSessionOptions() {
+    if (sess_) {
+      // Copy internal value from InferenceSession as it is the source of truth
+      // and the option configurations may have changed.
+      session_options_.value = sess_->GetSessionOptions();
+    }
+    return session_options_;
+  }
 
   InferenceSession* GetSessionHandle() const { return sess_.get(); }
 
@@ -250,6 +297,7 @@ struct PyInferenceSession {
  private:
   std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
+  OrtSessionOptions session_options_;
 };
 
 inline const PySessionOptions& GetDefaultCPUSessionOptions() {

@@ -52,7 +52,7 @@ class BaseOpBuilder : public IOpBuilder {
   // We still set the mininal supported opset to 1 as we couldn't
   // get the model opset version at this stage.
   virtual int GetMinSupportedOpSet(const Node& /* node */) const { return 1; }
-  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 21; }
+  virtual int GetMaxSupportedOpSet(const Node& /* node */) const { return 23; }
 
  private:
   bool HasSupportedOpSet(const Node& node, const logging::Logger& logger) const;

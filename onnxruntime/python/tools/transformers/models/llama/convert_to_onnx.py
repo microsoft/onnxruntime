@@ -25,14 +25,19 @@ from llama_torch import setup_torch_model
 
 # to patch transformers before exporting for transformers >= 4.45
 from models.torch_export_patches import bypass_export_some_errors
-from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes, replace_dynamic_shapes
+from models.torch_export_patches.patch_inputs import convert_dynamic_axes_into_dynamic_shapes
 from onnx_model import OnnxModel
 from optimizer import optimize_model
 from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
+from onnxruntime import __version__ as ort_version
 from onnxruntime import quantization as ort_quantization
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+
+if version.parse(ort_version) < version.parse("1.22.0"):
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
+else:
+    from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
 torch_export_onnx_opset_version = 14
 logger = logging.getLogger("")
@@ -160,61 +165,17 @@ def run_dynamo_export(
         llama, args=model_args, dynamic_axes=dynamic_axes, prefix_mapping={"present": "past_key_values"}
     )
 
-    if version.Version(torch.__version__) < version.Version("2.7"):
-        # This section is only needed for torch==2.6. The workaround implemented here
-        # to fix bugs is not necessary with torch>=2.7.
-        # - strings are not allowed with torch 2.6, so we replace them by DYNAMIC
-        # - TypePromotion was fixed in torch==2.7
-        from onnxscript import opset18 as op
-
-        dynamic_shapes = replace_dynamic_shapes(
-            dynamic_shapes,
-            dict(batch_size=torch.export.Dim("batch_size")),
-            default_value=torch.export.Dim.DYNAMIC,
+    with bypass_export_some_errors(patch_transformers=True):
+        torch.onnx.export(
+            llama,
+            (),
+            temp_path,
+            kwargs=model_kwargs,
+            dynamic_shapes=dynamic_shapes,
+            dynamo=True,
+            verbose=args.verbose,
+            optimize=True,
         )
-
-        # TypePromotion cannot fix a type issue after the conversion.
-        # We insert an additional CastLike when the exporter
-        def custom_aten_ge(self, other):
-            if isinstance(other, (int, float)):
-                return op.GreaterOrEqual(self, op.CastLike(other, self))
-            return op.GreaterOrEqual(self, other)
-
-        with bypass_export_some_errors(patch_transformers=True):
-            # ONNX pass TypePromotion crashes for torch 2.6.
-            # It can be bypassed by exporting first into an exported program.
-            # We then need to apply run_decompositions() before onnx conversion starts.
-            ep = torch.export.export(
-                llama,
-                (),
-                kwargs=model_kwargs,
-                dynamic_shapes=dynamic_shapes,
-                strict=False,
-            )
-            ep = ep.run_decompositions()
-            torch.onnx.export(
-                ep,
-                (),
-                temp_path,
-                kwargs=model_kwargs,
-                dynamic_shapes=dynamic_shapes,
-                dynamo=True,
-                verbose=args.verbose,
-                optimize=True,
-                custom_translation_table={torch.ops.aten.ge.Scalar: custom_aten_ge},
-            )
-    else:
-        with bypass_export_some_errors(patch_transformers=True):
-            torch.onnx.export(
-                llama,
-                (),
-                temp_path,
-                kwargs=model_kwargs,
-                dynamic_shapes=dynamic_shapes,
-                dynamo=True,
-                verbose=args.verbose,
-                optimize=True,
-            )
 
     # Check decoder_with_past_model.onnx and save all external data to one file
     onnx.checker.check_model(temp_path)
@@ -714,7 +675,7 @@ def get_args():
         required=False,
         default=32,
         type=int,
-        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py for details.",
     )
 
     blockwise_group.add_argument(
@@ -1025,7 +986,7 @@ def main():
                 for fp_path, int4_path in zip(old_paths, new_paths, strict=False):
                     if os.path.exists(fp_path):
                         model = onnx.load_model(fp_path, load_external_data=True)
-                        quant = MatMul4BitsQuantizer(
+                        quant = MatMulNBitsQuantizer(
                             model=model,
                             block_size=args.block_size,
                             is_symmetric=True,

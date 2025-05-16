@@ -164,7 +164,7 @@ inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::va
       scalar = emscripten::val{*reinterpret_cast<uint64_t*>(unpacked_tensor.data())};
       break;
     default:
-      LOGS(logger, ERROR) << "Unsupported data type : " << tensor.data_type();
+      LOGS(logger, ERROR) << "WebNN backend does not support data type: " << tensor.data_type();
       return false;
       break;
   }
@@ -181,6 +181,10 @@ inline bool IsEmptyTensor(const GraphViewer& graph_viewer, const std::string& na
   const auto dims = tensor.dims();
   // An empty tensor contains a 0 in the dimensions list.
   return std::any_of(dims.begin(), dims.end(), [](auto d) { return d == 0; });
+}
+
+inline bool IsOnnxDomain(std::string_view domain) {
+  return (domain == onnxruntime::kOnnxDomain) || (domain == onnxruntime::kOnnxDomainAlias);
 }
 
 inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& defs, size_t tensor_index) noexcept {
@@ -203,8 +207,10 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
      {"add", "cast", "concat", "constant", "cumulativeSum", "div", "expand", "lesser", "matmul", "reshape", "scatterND",
       "softmax", "transpose", "where"}},
     {"LRN", {"add", "averagePool2d", "div", "mul", "pad", "pow", "transpose"}},
+    {"MatMulInteger", {"cast", "dequantizeLinear", "matmul"}},
     {"MatMulNBits", {"add", "dequantizeLinear", "matmul", "reshape", "transpose"}},
-    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "split"}},
+    {"MultiHeadAttention", {"add", "cast", "concat", "constant", "div", "matmul", "reshape", "softmax", "transpose"}},
+    {"RotaryEmbedding", {"add", "concat", "gather", "mul", "reshape", "slice", "split"}},
     {"SimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
     {"SkipSimplifiedLayerNormalization", {"add", "div", "mul", "pow", "reduceMean", "sqrt"}},
 };
@@ -261,7 +267,6 @@ const std::map<std::string_view, std::string_view> op_map = {
     {"LpPool", "l2Pool2d"},
     {"LSTM", "lstm"},
     {"MatMul", "matmul"},
-    {"MatMulInteger", "matmulInteger"},
     {"Max", "max"},
     {"MaxPool", "maxPool2d"},
     {"Min", "min"},
@@ -362,6 +367,15 @@ const std::map<ONNX_NAMESPACE::TensorProto_DataType, std::string_view> onnx_to_w
     {ONNX_NAMESPACE::TensorProto_DataType_INT64, "int64"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT32, "uint32"},
     {ONNX_NAMESPACE::TensorProto_DataType_UINT64, "uint64"},
+};
+
+// This array contains the input/output data types of a WebNN graph that are allowed to be fallback to int32.
+constexpr std::array<ONNX_NAMESPACE::TensorProto_DataType, 5> supported_fallback_integer_data_types = {
+    ONNX_NAMESPACE::TensorProto_DataType_BOOL,
+    ONNX_NAMESPACE::TensorProto_DataType_INT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT8,
+    ONNX_NAMESPACE::TensorProto_DataType_UINT32,
+    ONNX_NAMESPACE::TensorProto_DataType_INT64,
 };
 
 bool AreDataTypesSame(const std::string_view op_type,

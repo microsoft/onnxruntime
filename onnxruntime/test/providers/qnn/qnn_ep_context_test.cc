@@ -436,6 +436,75 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer) {
 
   // Check that the compiled model has the expected number of EPContext nodes.
   CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  allocator.Free(output_model_buffer);
+}
+
+// Test using the CompileModel() API with settings:
+//   - input model from buffer
+//   - save output model to buffer
+//   - test enabling AND disabling embed mode for context binary in EPContext node attributes
+TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInBuffers) {
+  // Create a test model and serialize it to a buffer.
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  std::string model_data = test_model.Serialize();
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions session_options;
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  session_options.AppendExecutionProvider("QNN", provider_options);
+
+  Ort::AllocatorWithDefaultOptions allocator;
+
+  // Test embed mode enabled.
+  {
+    void* output_model_buffer = nullptr;
+    size_t output_model_buffer_size = 0;
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+    compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    compile_options.SetEpContextEmbedMode(true);
+
+    // Compile the model.
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+    // Make sure the compiled model was saved to the buffer.
+    ASSERT_TRUE(output_model_buffer != nullptr);
+    ASSERT_TRUE(output_model_buffer_size > 0);
+
+    // Check that the compiled model has the expected number of EPContext nodes.
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+    allocator.Free(output_model_buffer);
+  }
+
+  // Test embed mode disabled.
+  {
+    void* output_model_buffer = nullptr;
+    size_t output_model_buffer_size = 0;
+
+    // Create model compilation options from the session options.
+    Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
+    compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+    compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    compile_options.SetEpContextEmbedMode(false);
+
+    // Compile the model.
+    Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+    ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+
+    // Make sure the compiled model was saved to the buffer.
+    ASSERT_TRUE(output_model_buffer != nullptr);
+    ASSERT_TRUE(output_model_buffer_size > 0);
+
+    // Check that the compiled model has the expected number of EPContext nodes.
+    CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+    allocator.Free(output_model_buffer);
+  }
 }
 
 // Test using the CompileModel() API with settings:
@@ -485,6 +554,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
 
   // Check that the compiled model has the expected number of EPContext nodes.
   CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
+  allocator.Free(output_model_buffer);
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary
@@ -1566,7 +1636,7 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   ORT_CATCH(const std::exception& e) {
     ORT_HANDLE_EXCEPTION([&e]() {
       std::string e_message1(std::string(e.what()));
-      ASSERT_TRUE(e_message1.find("Please specify a valid ep.context_file_path.") != std::string::npos);
+      ASSERT_TRUE(e_message1.find("Please specify a valid ep.context_file_path") != std::string::npos);
     });
   }
 
@@ -1577,7 +1647,7 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&ex]() {
       std::string e_message2(std::string(ex.what()));
-      ASSERT_TRUE(e_message2.find("Please specify a valid ep.context_file_path.") != std::string::npos);
+      ASSERT_TRUE(e_message2.find("Please specify a valid ep.context_file_path") != std::string::npos);
     });
   }
 }
