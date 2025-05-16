@@ -3719,6 +3719,7 @@ struct OrtApi {
    *      -# "gpu"
    *      -# "htp": Default.
    *      -# "saver"
+   *      -# "ir"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
@@ -3740,6 +3741,14 @@ struct OrtApi {
    *      -# "low_power_saver"
    *      -# "power_saver"
    *      -# "sustained_high_performance"
+   *   "dump_qnn_ir_dlc": Use the QnnIr backend library to write .dlc files for each subgraph dispatched to QNN. When
+   *       enabled, inference results will be incorrect. Use only for debugging.
+   *      -# "0": Default: disabled
+   *      -# "1": enabled
+   *   "dump_qnn_ir_dlc_dir": Set the directory into which QnnIr will be configured to write QNN graphs as .dlc files.
+   *      Default is current working directory.
+   *   "qnn_ir_backend_path": File path to the QnnIr backend library. If "dump_qnn_ir_dlc" is enabled, use this path
+   *      instead of looking for the Ir backend in the standard location.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *      may alter model/EP partitioning. Use only for debugging.
