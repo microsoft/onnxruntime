@@ -400,6 +400,9 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
     int device{-1};
     tk::check_cuda_error(cudaGetDevice(&device));
     sm_ = tk::getSMVersion();
+    if (sm_ == 90) { // sm90 need upgrade cutlass then enable COMPILE_HOPPER_TMA_GEMMS
+        sm_ = 80;
+    }
     tk::check_cuda_error(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
 }
 
@@ -421,6 +424,10 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     char* workspace_ptr, const size_t workspace_bytes, cudaStream_t stream, int* occupancy)
 {
     TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+
+    std::string config_str = gemm_config.toString();
+    printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
+
     if (sm_ >= 75 && sm_ < 80)
     {
         dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm75,
