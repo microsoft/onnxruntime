@@ -217,6 +217,7 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::mutex* tensorrt_mu_ptr = nullptr;
 };
 

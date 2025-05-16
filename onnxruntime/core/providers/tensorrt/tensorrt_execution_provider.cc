@@ -4225,6 +4225,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
           output_info_[context->node_name],
           context_memory_sharing_enable_,
           &max_ctx_mem_size_,
+          &context_memory_,
           &tensorrt_mu_};
     *state = p.release();
     return 0;
@@ -4253,6 +4254,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
+    auto context_memory = trt_state->context_memory;
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
