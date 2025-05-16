@@ -3448,17 +3448,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     // Note: Creating an execution context from an engine is thread safe per TRT doc
     // https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#threading
     if (context_memory_sharing_enable_) {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)
-#endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
-      if (mem_size > max_ctx_mem_size_) {
-        max_ctx_mem_size_ = mem_size;
-      }
+      // Reset the max_ctx_mem_size_ and context_memory_ since we don't have access to the allocator here.
+      max_ctx_mem_size_ = 0;
+      context_memory_ = nullptr;
 #if NV_TENSORRT_MAJOR < 10
       trt_context = std::unique_ptr<nvinfer1::IExecutionContext>(trt_engine->createExecutionContextWithoutDeviceMemory());
 #else
@@ -3548,7 +3540,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           input_shape_ranges_[context->node_name], &tensorrt_mu_, fp16_enable_, int8_enable_, int8_calibration_cache_available_,
           dla_enable_, dla_core_, trt_node_name_with_precision,
           engine_cache_enable_, cache_path_, runtime_.get(), profiles_[context->node_name],
-          context_memory_sharing_enable_, &max_ctx_mem_size_, dynamic_range_map, engine_decryption_enable_,
+          context_memory_sharing_enable_, &max_ctx_mem_size_, &context_memory_, dynamic_range_map, engine_decryption_enable_,
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
           auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
@@ -3587,6 +3579,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     auto trt_engine = trt_state->engine->get();
     auto trt_context = trt_state->context->get();
     auto trt_profiles = trt_state->profiles;
+    auto context_memory = trt_state->context_memory;
     auto max_context_mem_size_ptr = trt_state->max_context_mem_size_ptr;
     int num_inputs = static_cast<int>(input_indexes.size());
     int num_outputs = static_cast<int>(output_indexes.size());
@@ -4031,8 +4024,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
+        *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true/*use_reserve*/);
       }
-      trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
+      trt_context->setDeviceMemory((*context_memory).get());
     }
 
     // Start CUDA graph capture.
