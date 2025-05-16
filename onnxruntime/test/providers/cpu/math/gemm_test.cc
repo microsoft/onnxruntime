@@ -956,7 +956,7 @@ TEST(GemmOpTest, SharedPrepackedWeights) {
 }
 #endif
 
-TEST(GemmOpTest, GemmOptimizeVec4) {
+TEST(GemmOpTest, GemmOptimizePacked) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1024,7 +1024,7 @@ TEST(GemmOpTest, GemmOptimizeVec4) {
   run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransA) {
+TEST(GemmOpTest, GemmOptimizePackedTransA) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1091,7 +1091,7 @@ TEST(GemmOpTest, GemmOptimizeVec4TransA) {
   run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransB) {
+TEST(GemmOpTest, GemmOptimizePackedTransB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
@@ -1158,7 +1158,7 @@ TEST(GemmOpTest, GemmOptimizeVec4TransB) {
   run_test(129, 129, 129);
 }
 
-TEST(GemmOpTest, GemmOptimizeVec4TransAB) {
+TEST(GemmOpTest, GemmOptimizePackedTransAB) {
   auto run_test = [](int64_t M, int64_t K, int64_t N) {
     OpTester test("Gemm");
 
