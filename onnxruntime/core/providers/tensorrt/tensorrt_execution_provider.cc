@@ -4024,7 +4024,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
 #endif
       if (mem_size > *max_context_mem_size_ptr) {
         *max_context_mem_size_ptr = mem_size;
-        *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true/*use_reserve*/);
+        *context_memory = IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr, true /*use_reserve*/);
       }
       trt_context->setDeviceMemory((*context_memory).get());
     }
