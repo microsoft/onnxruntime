@@ -17,7 +17,7 @@
 #pragma once
 
 #include "cutlass/gemm/threadblock/default_mma.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_pipelined.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/default_mma_tensor_op.h"

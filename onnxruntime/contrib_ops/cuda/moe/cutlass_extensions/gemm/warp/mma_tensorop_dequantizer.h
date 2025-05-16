@@ -54,7 +54,7 @@
 #include "cutlass/functional.h"
 #include "cutlass/platform/platform.h"
 
-#include "contrib_ops/cuda/moe/cutlass_extensions/weight_only_quant_op.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 

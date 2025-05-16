@@ -19,7 +19,7 @@
 #include <algorithm>
 
 #include "cutlass/gemm/threadblock/default_mma.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_multistage.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/default_mma_tensor_op.h"
