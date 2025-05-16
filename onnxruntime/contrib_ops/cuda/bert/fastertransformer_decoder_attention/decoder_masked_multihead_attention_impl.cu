@@ -212,13 +212,13 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
       }
     }
 
-    if (params.rotary_embedding_dim > 0) {
-      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_embedding_dim;
+    if (params.rotary_dim > 0) {
+      const bool do_rotary = !is_masked && QK_VEC_SIZE * tidx < params.rotary_dim;
 
       T* q_smem = reinterpret_cast<T*>(smem_);
-      T* k_smem = q_smem + params.rotary_embedding_dim;
+      T* k_smem = q_smem + params.rotary_dim;
 
-      const int half_rotary_dim = params.rotary_embedding_dim / 2;
+      const int half_rotary_dim = params.rotary_dim / 2;
       const int half_idx = (tidx * QK_VEC_SIZE) / half_rotary_dim;
       const int intra_half_idx = (tidx * QK_VEC_SIZE) % half_rotary_dim;
       const int smem_pitch = half_rotary_dim;
@@ -240,7 +240,7 @@ __global__ void masked_multihead_attention_kernel(DecoderMaskedMultiHeadAttentio
         vec_from_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
 
         apply_rotary_embedding(
-            q, k, transpose_idx / tidx_factor, params.rotary_embedding_dim, params.t_step);
+            q, k, transpose_idx / tidx_factor, params.rotary_dim, params.t_step);
 
         write_smem_transpose(k, k_smem, transpose_idx, smem_pitch);
         write_smem_transpose(q, q_smem, transpose_idx, smem_pitch);
