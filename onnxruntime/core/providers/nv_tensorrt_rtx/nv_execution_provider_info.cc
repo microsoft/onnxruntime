@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_info.h"
