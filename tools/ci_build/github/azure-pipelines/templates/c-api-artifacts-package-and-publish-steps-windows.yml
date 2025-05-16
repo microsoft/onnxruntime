@@ -119,6 +119,12 @@ steps:
           DoEsrp: ${{parameters.DoEsrp}}
           Pattern: '*.dll,*.exe'
 
+    - task: DeleteFiles@1
+      displayName: 'Delete CodeSignSummary*.md'
+      inputs:
+        SourceFolder: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
+        Contents: 'CodeSignSummary*.md'
+
     - task: ArchiveFiles@2
       inputs:
         rootFolderOrFile: '$(Build.BinariesDirectory)\${{parameters.artifactName}}'
