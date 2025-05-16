@@ -17,19 +17,18 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Each thread compute 4*4 elements
   InlinedVector<int64_t> elements_per_thread = InlinedVector<int64_t>({4, 4, 1});
 
-  const auto& batch_dims = shader.AddIndices("batch_dims", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
   const std::string data_type = "output_element_t";
 
   if (need_handle_matmul_) {
     const auto& a = shader.AddInput("a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
     const auto& b = shader.AddInput("b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
 
-    MatMulReadFnSource(shader, a, b, batch_dims, transA_, transB_, is_vec4_);
+    MatMulReadFnSource(shader, a, b, nullptr, transA_, transB_, is_vec4_);
   }
   if (is_vec4_) {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims, transA_, transB_, alpha_, need_handle_matmul_, output_components_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedVec4Source(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_, output_components_));
   } else {
-    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, &batch_dims, transA_, transB_, alpha_, need_handle_matmul_));
+    ORT_RETURN_IF_ERROR(MakeMatMulPackedSource(shader, elements_per_thread, WorkgroupSizeX(), WorkgroupSizeY(), data_type, nullptr, transA_, transB_, alpha_, need_handle_matmul_));
   }
   MatMulWriteFnSource(shader, output, need_handle_bias_, true, c_components_, output_components_, c_is_scalar_);
 
@@ -69,15 +68,15 @@ Status ApplyGemmPacked(const Tensor* a,
   int components = is_vec4 ? 4 : 1;
   // Components for Y
   int output_components = (is_vec4 && N % 4 == 0) ? 4 : 1;
+  // Components for C.
+  int c_components = 1;
 
-  // Components for C. The computation of components for C below is more complex because C in GEMM
-  // might be broadcast to the output, and broadcasting requires the components to be consistent.
-  int c_components = is_vec4 ? 4 : 1;
   bool c_is_scalar = false;
-  // We use vec4 for C when its last dimension equals N and output used vec4.
   if (need_handle_bias) {
     const auto& c_shape = c->Shape();
     int64_t c_last_dim = c_shape[c_shape.NumDimensions() - 1];
+    // `C` in GEMM might be broadcast to the output, and broadcasting requires the components to be consistent.
+    // So we use vec4 for C when its last dimension is N, and the output is also a vec4.
     c_components = (c_last_dim == N && output_components == 4) ? 4 : 1;
     c_is_scalar = c_shape.Size() == 1;
   }
@@ -97,26 +96,17 @@ Status ApplyGemmPacked(const Tensor* a,
   const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
   const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
 
-  TensorShape outer_dims = TensorShape({});
-
-  program.CacheHint(alpha, transA, transB, c_is_scalar, is_vec4)
+  program.CacheHint(alpha, transA, transB, c_is_scalar)
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(num_tile_n, num_tile_m, 1)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
       .AddUniformVariables({{num_tile_n},
-                            {M},
-                            {N},
-                            {K},
-                            {M / 4},
-                            {N / 4},
-                            {K / 4},
                             {alpha},
                             {beta},
                             {M}, /* dim_a_outer */
                             {N}, /* dim_b_outer */
                             {K}} /*dim_inner */
-                           )
-      .AddIndices(outer_dims);
+      );
 
   return context.RunProgram(program);
 }

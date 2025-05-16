@@ -29,12 +29,6 @@ class GemmProgram final : public Program<GemmProgram> {
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"num_tile_n", ProgramUniformVariableDataType::Uint32},
-      {"M", ProgramUniformVariableDataType::Uint32},
-      {"N", ProgramUniformVariableDataType::Uint32},
-      {"K", ProgramUniformVariableDataType::Uint32},
-      {"M4", ProgramUniformVariableDataType::Uint32},
-      {"N4", ProgramUniformVariableDataType::Uint32},
-      {"K4", ProgramUniformVariableDataType::Uint32},
       {"alpha", ProgramUniformVariableDataType::Float32},
       {"beta", ProgramUniformVariableDataType::Float32},
       {"dim_a_outer", ProgramUniformVariableDataType::Uint32},

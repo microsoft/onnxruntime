@@ -19,7 +19,7 @@ void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
                                 int c_components,
                                 int output_components,
                                 bool c_is_scalar) {
-  shader.AdditionalImplementation() << "    let coords = vec2<i32>(row, colIn);\n";
+  shader.AdditionalImplementation() << "    let coords = vec2(u32(row), u32(colIn));\n";
 
   if (has_bias) {
     const ShaderVariableHelper& C = shader.AddInput("C", ShaderUsage::UseUniform);
@@ -37,7 +37,7 @@ void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
       shader.AdditionalImplementation() << "output_value_t(C[row]);\n";
     }
   }
-  shader.AdditionalImplementation() << output.SetByIndices("vec2<u32>(coords)", "value") << "\n";
+  shader.AdditionalImplementation() << output.SetByIndices("coords", "value") << "\n";
 }
 
 void HandleMaybeBiasForMatMul(ShaderHelper& shader,
@@ -45,12 +45,12 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               bool has_bias,
                               std::string activation_snippet,
                               bool is_channels_last) {
-  shader.AdditionalImplementation() << "    let coords = vec3<i32>(batch, row, colIn);\n";
+  shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (has_bias) {
     shader.AdditionalImplementation() << "    value = value + output_element_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
-                                    << output.SetByIndices("vec3<u32>(coords)", "value") << "\n";
+                                    << output.SetByIndices("coords", "value") << "\n";
 }
 
 }  // namespace
@@ -58,7 +58,7 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
 void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
-                        const ShaderIndicesHelper& batch_dims,
+                        const ShaderIndicesHelper* batch_dims,
                         bool transA,
                         bool transB,
                         bool is_vec4) {
@@ -67,7 +67,11 @@ void MatMulReadFnSource(ShaderHelper& shader,
   const std::string type_string = MakeScalarOrVectorType(components, data_type);
 
   shader.AdditionalImplementation()
-      << "fn mm_readA(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
+      << "fn mm_readA(batch: i32, row: i32, colIn: i32 "
+      << (batch_dims
+              ? ", batch_indices: batch_dims_indices_t"
+              : "")
+      << ") -> " << type_string << " {\n "
       << "    var value = " << type_string << "(0.0);\n"
       << "    let col = colIn * " << components << ";\n";
   if (transA) {
@@ -75,9 +79,12 @@ void MatMulReadFnSource(ShaderHelper& shader,
   } else {
     shader.AdditionalImplementation() << "    if(row < i32(uniforms.dim_a_outer) && col < i32(uniforms.dim_inner)) {\n";
   }
-  shader.AdditionalImplementation() << "        var a_indices: a_indices_t;\n"
-                                    << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims.Rank(), "batch_indices")
-                                    << a.IndicesSet("a_indices", a.Rank() - 2, "u32(row)") << "\n"
+  shader.AdditionalImplementation() << "        var a_indices: a_indices_t;\n";
+
+  if (batch_dims) {
+    shader.AdditionalImplementation() << ConvertOutputBatchIndicesToInputBatchIndices("a", a, a.Rank() - 2, batch_dims ? batch_dims->Rank() : 0, " batch_indices ") << "\n";
+  }
+  shader.AdditionalImplementation() << a.IndicesSet("a_indices", a.Rank() - 2, "u32(row)") << "\n"
                                     << a.IndicesSet("a_indices", a.Rank() - 1, "u32(colIn)") << "\n"
                                     << "        value = " << a.GetByIndices("a_indices") << ";\n"
                                     << "    }\n"
@@ -86,7 +93,11 @@ void MatMulReadFnSource(ShaderHelper& shader,
 
   // Add the mm_readB function
   shader.AdditionalImplementation()
-      << "fn mm_readB(batch: i32, row: i32, colIn: i32, batch_indices: batch_dims_indices_t) -> " << type_string << " {\n"
+      << "fn mm_readB(batch: i32, row: i32, colIn: i32 "
+      << (batch_dims
+              ? ", batch_indices: batch_dims_indices_t"
+              : "")
+      << ") -> " << type_string << " {\n "
       << "    var value = " << type_string << "(0.0);\n"
       << "    let col = colIn * " << components << ";\n";
 
@@ -97,7 +108,7 @@ void MatMulReadFnSource(ShaderHelper& shader,
   }
 
   shader.AdditionalImplementation() << "        var b_indices: b_indices_t;\n"
-                                    << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims.Rank(), "batch_indices")
+                                    << ConvertOutputBatchIndicesToInputBatchIndices("b", b, b.Rank() - 2, batch_dims ? batch_dims->Rank() : 0, "batch_indices")
                                     << b.IndicesSet("b_indices", b.Rank() - 2, "u32(row)") << "\n"
                                     << b.IndicesSet("b_indices", b.Rank() - 1, "u32(colIn)") << "\n"
                                     << "        value = " << b.GetByIndices("b_indices") << ";\n"

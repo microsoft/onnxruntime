@@ -11,7 +11,7 @@ namespace webgpu {
 void MatMulReadFnSource(ShaderHelper& shader,
                         const ShaderVariableHelper& a,
                         const ShaderVariableHelper& b,
-                        const ShaderIndicesHelper& batch_dims,
+                        const ShaderIndicesHelper* batch_dims,
                         bool transA,
                         bool transB,
                         bool is_vec4);
