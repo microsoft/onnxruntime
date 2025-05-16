@@ -1993,10 +1993,26 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-#ifndef ABSL_HAVE_ADDRESS_SANITIZER
   auto stats = cpu_allocator.GetStats();
+#ifndef ABSL_HAVE_ADDRESS_SANITIZER
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
 #endif
+
+  std::vector<std::string> expected_stats_keys = {
+    "bytes_in_use",
+    "bytes_limit",
+    "num_allocs",
+    "num_reserves",
+    "num_arena_extensions",
+    "num_arena_shrinkages",
+    "total_allocated_bytes",
+    "max_bytes_in_use",
+    "max_alloc_size",
+  };
+
+  for (const auto& key : expected_stats_keys) {
+    ASSERT_TRUE(stats.find(key) != stats.end()) << "Missing key: " << key;
+  }
 }
 
 #ifdef USE_CUDA
@@ -2020,8 +2036,24 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  auto stats = cuda_allocator.GetStats();
+  auto stats = cpu_allocator.GetStats();
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
+
+  std::vector<std::string> expected_stats_keys = {
+    "bytes_in_use",
+    "bytes_limit",
+    "num_allocs",
+    "num_reserves",
+    "num_arena_extensions",
+    "num_arena_shrinkages",
+    "total_allocated_bytes",
+    "max_bytes_in_use",
+    "max_alloc_size",
+  };
+
+  for (const auto& key : expected_stats_keys) {
+    ASSERT_TRUE(stats.find(key) != stats.end()) << "Missing key: " << key;
+  }
 }
 #endif
 
