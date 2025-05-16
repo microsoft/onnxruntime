@@ -69,6 +69,8 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 {
     TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
+#define COMPILE_HOPPER_TMA_GEMMS 1 // TODO: set it in build script instead
+
 #ifdef COMPILE_HOPPER_TMA_GEMMS
     using CutlassActivationType = typename TllmToCutlassTypeAdapter<ActivationType>::type;
 

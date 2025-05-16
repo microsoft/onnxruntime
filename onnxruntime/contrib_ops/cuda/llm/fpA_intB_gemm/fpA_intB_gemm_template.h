@@ -400,9 +400,6 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
     int device{-1};
     tk::check_cuda_error(cudaGetDevice(&device));
     sm_ = tk::getSMVersion();
-    if (sm_ == 90) { // sm90 need upgrade cutlass then enable COMPILE_HOPPER_TMA_GEMMS
-        sm_ = 80;
-    }
     tk::check_cuda_error(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
 }
 

@@ -205,7 +205,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     std::string config_str = bestTactic->toString();
     printf("Best tactic: m=%d, n=%d, k=%d, group_size=%d: %s\n", m, n, k, int(block_size_), config_str.c_str());
 
-    if (m < 16 && has_fpA_intB_gemv_ /*&& bestTactic->enableCudaKernel*/) {
+    if (bestTactic->enableCudaKernel) {
       printf("Using CUDA kernel for m=%d, n=%d, k=%d\n", m, n, k);
       // ort_llm::kernels::weight_only::Params params(a_data, nullptr, blob_data,
       //                                              scales_data, zero_points_data, bias_data, out_data, 1.f, m, n, k, block_size_, cuda_kernel_type);
