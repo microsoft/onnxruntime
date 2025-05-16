@@ -134,10 +134,10 @@ stages:
               workingDirectory: '$(Build.BinariesDirectory)'
 
 
-          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
             - template: ../templates/publish-symbolrequestprod-api.yml
               parameters:
-                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/snnn/symbol')}}:
                   symbolExpiryTime: 60
                 includePublicSymbolServer: true
                 symbolsArtifactName: onnxruntime_gpu_win_x64_${{ parameters.PYTHON_VERSION }}
