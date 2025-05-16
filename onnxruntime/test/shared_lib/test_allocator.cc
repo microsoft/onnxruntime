@@ -10,7 +10,7 @@
 extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace {
-  static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
 }
 
 TEST(CApiTest, allocation_info) {
@@ -53,15 +53,15 @@ TEST(CApiTest, SessionAllocator) {
   Ort::Allocator allocator(session, infoCpu);
 
   std::vector<std::string> expected_keys = {
-    "bytes_in_use",
-    "bytes_limit",
-    "num_allocs",
-    "num_reserves",
-    "num_arena_extensions",
-    "num_arena_shrinkages",
-    "total_allocated_bytes",
-    "max_bytes_in_use",
-    "max_alloc_size",
+      "bytes_in_use",
+      "bytes_limit",
+      "num_allocs",
+      "num_reserves",
+      "num_arena_extensions",
+      "num_arena_shrinkages",
+      "total_allocated_bytes",
+      "max_bytes_in_use",
+      "max_alloc_size",
   };
 
   auto stats = allocator.GetStats();
