@@ -65,7 +65,13 @@ __launch_bounds__(TPB) __global__
 
     const int thread_row_offset = blockIdx.x * num_cols;
 
+#if CUDA_VERSION >= 12090
+    ::cuda::std::plus sum;
+#else
+    // Deprecated on CUDA 12.9
     cub::Sum sum;
+#endif
+
     float threadData(-FLT_MAX);
 
     // Don't touch finished rows.
