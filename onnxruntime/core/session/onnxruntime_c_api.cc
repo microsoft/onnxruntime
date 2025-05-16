@@ -1567,6 +1567,17 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::AllocatorGetStats, _In_ const OrtAllocator* ptr, _Inout_ OrtAllocator* allocator, _Outptr_ char** out) {
+  API_IMPL_BEGIN
+  if (ptr->GetStats != nullptr) {
+    ptr->GetStats(ptr, allocator, out);
+  } else {
+    out = nullptr;
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 template <typename T>
 ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -3024,6 +3035,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
     &OrtApis::GetTensorSizeInBytes,
+    &OrtApis::AllocatorGetStats,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
