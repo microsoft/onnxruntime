@@ -1,0 +1,6 @@
+<!-- This is a placeholder SVG for the performance chart -->
+<svg width="800" height="400" xmlns="http://www.w3.org/2000/svg">
+  <rect width="100%" height="100%" fill="#f0f0f0"/>
+  <text x="400" y="200" font-family="Arial" font-size="20" text-anchor="middle">Performance Chart Placeholder</text>
+  <text x="400" y="230" font-family="Arial" font-size="14" text-anchor="middle">Replace with actual performance data visualization</text>
+</svg>

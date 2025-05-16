@@ -27,7 +27,7 @@
 	on:mouseleave={handleLeave}
 	class="mb-4 bg-base-300 border rounded-md border-primary"
 >
-	<a href={link}>
+	<a href={link} class="underline">
 		<div class="card h-full">
 			<div class="card-body">
 				<h2 class="card-title">{title}</h2>

@@ -1,0 +1,42 @@
+---
+title: 'Arm and Microsoft Collaboration Supercharges AI Experiences for Applications on Arm-based PC and Mobile Devices'
+date: '16th May, 2025'
+description: 'Arm KleidiAI integration in ONNX Runtime expands AI performance optimizations across Windows and Android operating systems, leading to up to 2.6x faster AI inference for accelerated application experiences.'
+keywords: 'Arm, KleidiAI, ONNX Runtime, AI inference, Windows on Arm, Android, Phi-3, edge AI, CPU optimization, Microsoft Copilot, Copilot+ PCs, Armv9, SVE2, SME, AI acceleration, mobile AI'
+authors:
+  ['George Wu - AI Frameworks (Microsoft)', 'Ronan Naughton - Product Management AI (ARM)'
+   ]
+authorsLink:
+  ['https://www.linkedin.com/in/george-wu-73a28b/', 'https://www.linkedin.com/in/ronan-naughton-93839910/']
+image: 'https://iili.io/343XyEG.png'
+imageSquare: 'https://iili.io/343XyEG.png'
+url: 'https://onnxruntime.ai/blogs/arm-microsoft-kleidiai'
+---
+
+With artificial intelligence (AI) integral to today's PC and mobile experiences, from chatbots to productivity enhancements, the need for efficient, scalable inference on the CPU in these devices continues to grow. Arm and Microsoft are collaborating to meet this need, bringing accelerated AI experiences across a broad spectrum of devices, from high-end PCs and laptops to flagship and entry-level smartphones. 
+
+Arm and Microsoft have worked together to further expand [Arm KleidiAI](https://www.arm.com/products/development-tools/embedded-and-software/kleidi-libraries) through its integration in [ONNX Runtime](https://onnxruntime.ai/), one of the industry's most widely used open source AI runtimes. KleidiAI, a lightweight kernel library for AI frameworks, unlocks seamless performance optimizations for AI models and workloads across a wide range of technology markets and Arm-based devices at an unmatched scale. This latest collaborative effort follows successful previous KleidiAI integrations in other leading AI frameworks.
+
+## Accelerated AI experiences at the edge
+
+Over the past few years, there has been considerable growth in the Windows on Arm ecosystem, with the most widely used applications, like Adobe Photoshop, Google Chrome, Spotify and Zoom, all releasing Arm-native builds to deliver performance and power-efficiency benefits. By integrating KleidiAI in ONNX Runtime, Arm and Microsoft are making AI performance improvements for PC and mobile devices accessible to a broad developer community, with no additional engineering effort required from application developers. ONNX Runtime enables AI workloads across many Microsoft products, including the Microsoft 365 suite and Microsoft Copilot, and powers AI experiences on Copilot+ PCs.
+
+The KleidiAI integration in ONNX Runtime optimizes AI workloads across a range of models, including Phi-3 Mini, a 3.8B parameter small language model designed to enable advanced AI experiences at the edge. These include real-time chatbots, virtual assistants, intelligent text completions, and productivity tool enhancements that are all delivered locally on the device. By pairing Phi-3 Mini's compact architecture with KleidiAI's efficient CPU Execution Provider integration, developers can deliver fast, intelligent features without the need for cloud connectivity.
+
+## Real-world AI performance uplifts on PC and mobile
+
+On both PC and mobile platforms, the integration is already delivering real-world benefits for end-users, accelerating AI response times to enable smarter, faster interactions directly on the device without needing architectural changes or backend rewrites from developers. 
+
+Arm benchmark tests show significant performance uplifts following the KleidiAI integration in ONNX Runtime. This includes 2.4x faster prompt processing throughput and 12 percent uplift in token generation on the Phi-3 model when running on Windows on an Armv9-based platform. These improvements lead to more natural and fluid responses in AI applications like chatbots. Similarly, in a reference Android application running the same Phi-3 model on a [vivo X200 Pro flagship smartphone](https://newsroom.arm.com/news/powering-next-generation-ai-smartphones-mediatek-vivo), which is built on the [latest Armv9 CPUs](https://newsroom.arm.com/blog/armv9-cpus-consumer-devices), our benchmark tests show a 2.6x speed-up for prompt processing.
+
+As the KleidiAI integration runs on the pervasive Arm CPU architecture, AI applications and workloads can be ported across ecosystems and chipsets. KleidiAI is engineered to work with current Arm architecture features like [Neon](https://developer.arm.com/Architectures/Neon), SVE2 ([Scalable Vector Extension](https://developer.arm.com/documentation/102340/0100/Introducing-SVE2)), and SME ([Scalable Matrix Extension](https://newsroom.arm.com/blog/scalable-matrix-extension)). These future-ready capabilities ensure that developers can build AI-enhanced experiences today that scale with tomorrow's hardware innovations. The KleidiAI integration in ONNX Runtime has been released in ONNX RT V1.22.
+
+## Enabling AI at scale
+
+The Arm and Microsoft collaboration is a transformative step towards democratizing access to optimized AI for developers. It simplifies the rollout of intelligent features across diverse PC and mobile devices without increasing costs or engineering effort, while enabling accelerated AI experiences for the end-user. As AI continues to evolve, these optimization efforts will ensure that developers, OEMs, and platform teams have the performance, flexibility, and reach to bring better, smarter experiences to more users.
+
+## Learn more
+
+Visit the following Learning Paths to learn more about how to utilize the KleidiAI ONNX Runtime integration:
+- [Run Phi-3 on Windows on Arm using ONNX Runtime](https://learn.arm.com/learning-paths/laptops-and-desktops/win_on_arm_build_onnxruntime/)
+- [Build an Android chat application with ONNX Runtime API](https://learn.arm.com/learning-paths/mobile-graphics-and-gaming/build-android-chat-app-using-onnxruntime/)

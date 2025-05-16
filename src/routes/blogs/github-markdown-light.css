@@ -62,7 +62,7 @@ ul {
 .markdown-body a {
 	background-color: transparent;
 	color: #0969da;
-	text-decoration: none;
+	text-decoration: underline;
 }
 
 .markdown-body abbr[title] {
