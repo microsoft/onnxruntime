@@ -2036,7 +2036,7 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  auto stats = cpu_allocator.GetStats();
+  auto stats = cuda_allocator.GetStats();
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
 
   std::vector<std::string> expected_stats_keys = {
