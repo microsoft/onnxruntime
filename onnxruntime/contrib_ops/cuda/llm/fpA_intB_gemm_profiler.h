@@ -16,7 +16,7 @@
  */
 #pragma once
 
-//#include "contrib_ops/cuda/llm/common/quantization.h"
+// #include "contrib_ops/cuda/llm/common/quantization.h"
 #include "contrib_ops/cuda/llm//fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/weightOnlyBatchedGemv/kernelLauncher.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
@@ -37,14 +37,12 @@
 using WeightOnlyGemmRunner = ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
 using KernelType = ort_llm::kernels::weight_only::KernelType;
-//using WeightTypeId=ort_llm::kernels::weight_only::WeightTypeId;
+// using WeightTypeId=ort_llm::kernels::weight_only::WeightTypeId;
 
-namespace ort_llm::kernels::weight_only
-{
-enum class WeightTypeId
-{
-    INT8 = 1,
-    INT4 = 2,
+namespace ort_llm::kernels::weight_only {
+enum class WeightTypeId {
+  INT8 = 1,
+  INT4 = 2,
 };
 
 constexpr int32_t FP16_BITS = 16;
@@ -54,22 +52,24 @@ constexpr int32_t INT8_INT4_RATIO = INT8_BITS / INT4_BITS;
 constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
 constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
 
-inline int32_t getWeightTypeMultiplier(WeightTypeId weightTypeId)
-{
-    return weightTypeId == WeightTypeId::INT8 ? 1 : INT8_INT4_RATIO;
+inline int32_t getWeightTypeMultiplier(WeightTypeId weightTypeId) {
+  return weightTypeId == WeightTypeId::INT8 ? 1 : INT8_INT4_RATIO;
 }
 
-class WeightOnlyQuantGemmPluginProfiler
-    : public GemmPluginProfiler<
-          ort_llm::cutlass_extensions::CutlassGemmConfig,
-          WeightOnlyGemmRunnerPtr,
-          GemmIdCore,
-          GemmIdCoreHash> {
+class WeightOnlyGroupwiseQuantGemmPluginProfiler
+    : public GemmPluginProfiler<ort_llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
+                                GemmIdCore, GemmIdCoreHash> {
  public:
   using Config = ort_llm::cutlass_extensions::CutlassGemmConfig;
 
-  void setWeightTypeId(WeightTypeId weightId) {
-    mWeightTypeId = weightId;
+  void setQuant(int bits, bool has_bias, bool has_zeros) {
+    mQuantBits = bits;
+    mHasBiases = has_bias;
+    mHasZeros = has_zeros;
+  }
+
+  void setGroupSize(int groupSize) {
+    mGroupSize = groupSize;
   }
 
   void setCudaKernelType(KernelType cudaKernelType, int arch) {
@@ -78,7 +78,8 @@ class WeightOnlyQuantGemmPluginProfiler
   }
 
  protected:
-  void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) override;
+  void runTactic(int m, int n, int k, Config const& tactic,
+                 char* workspace, cudaStream_t const& stream) override;
 
   void computeTmpSize(size_t maxM, size_t n, size_t k) override;
 
@@ -87,9 +88,12 @@ class WeightOnlyQuantGemmPluginProfiler
   bool checkTactic(int m, int n, int k, Config const& tactic) const override;
 
  private:
-  WeightTypeId mWeightTypeId;
+  bool mHasBiases;
+  bool mHasZeros;
+  int mQuantBits;
+  int mGroupSize;
   KernelType mCudaKernelType;
   int mArch;
 };
 
-} // namespace ort_llm::kernels::weight_only
+}  // namespace ort_llm::kernels::weight_only

@@ -11,7 +11,7 @@
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
-#include "contrib_ops/cuda/llm/weightOnlyGemmProfiler.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 
@@ -21,10 +21,10 @@ namespace cuda {
 using namespace onnxruntime::cuda;
 using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
 using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
-using ort_llm::kernels::weight_only::WeightOnlyQuantGemmPluginProfiler;
+using ort_llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using ort_llm::kernels::weight_only::GemmIdCore;
 using ort_llm::kernels::weight_only::GemmDims;
-using GemmProfilerPtr = std::shared_ptr<WeightOnlyQuantGemmPluginProfiler>;
+using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
 using WeightOnlyGemmRunnerPtr=std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
 template <typename T>
@@ -39,11 +39,11 @@ class MatMulNBits final : public CudaKernel {
     constexpr size_t kInputIndexScale = 2;
     constexpr size_t kInputIndexZeroPoints = 3;
     constexpr size_t kInputIndexGroupIndex = 4;
-    // constexpr size_t kInputIndexBias = 5;
+    constexpr size_t kInputIndexBias = 5;
 
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
-    // has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
+    has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
 
     if (has_zero_points_) {
       int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
@@ -52,16 +52,19 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_ && N_ % (nbits_ == 8 ? 32 : 64) == 0 && K_ % 64 == 0) {
+      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_ && !has_bias_ && N_ % (nbits_ == 8 ? 32 : 64) == 0 && K_ % block_size_ == 0) {
         fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
                                                          ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
                                                          : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
         int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
         if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
-          use_fpA_intB_gemm_ = true;
+          has_fpA_intB_gemv_ = true;
         }
 
-        RunGemmProfile(use_fpA_intB_gemm_, sm);
+        if (sm >= 75) {
+          RunGemmProfile(has_fpA_intB_gemv_, sm, 2048);
+          has_fpA_intB_gemm_ = true;
+        }
       }
     }
   }
@@ -69,7 +72,7 @@ class MatMulNBits final : public CudaKernel {
   Status ComputeInternal(OpKernelContext* context) const override;
 
  private:
-  void RunGemmProfile(bool hasCudaKernel, int sm);
+  void RunGemmProfile(bool hasCudaKernel, int sm, int max_m);
 
   int64_t K_;
   int64_t N_;
@@ -78,10 +81,11 @@ class MatMulNBits final : public CudaKernel {
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
-  // bool has_bias_{false};
+  bool has_bias_{false};
   bool has_zero_points_{false};
   bool is_zero_points_scale_same_type_{false};
-  bool use_fpA_intB_gemm_{false};
+  bool has_fpA_intB_gemv_{false};
+  bool has_fpA_intB_gemm_{false};
 
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};

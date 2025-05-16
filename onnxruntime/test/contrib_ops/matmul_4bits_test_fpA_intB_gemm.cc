@@ -11,6 +11,7 @@
 #include <vector>
 #include <string>
 #include <stdexcept>
+#include <filesystem>
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
@@ -41,7 +42,7 @@ namespace {
 
 constexpr int QBits = 4;
 
-struct TestOptions8Bits {
+struct TestOptions4Bits {
   int64_t M{1};
   int64_t N{1};
   int64_t K{1};
@@ -132,7 +133,7 @@ std::vector<T2> parse_tensor_data(const std::string& filename, TensorInfo& info_
   }
 }
 
-[[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions8Bits& opts) {
+[[maybe_unused]] std::ostream& operator<<(std::ostream& os, const TestOptions4Bits& opts) {
   return os << "M:" << opts.M << ", N:" << opts.N << ", K:" << opts.K
             << ", block_size:" << opts.block_size
             << ", accuracy_level:" << opts.accuracy_level
@@ -141,43 +142,42 @@ std::vector<T2> parse_tensor_data(const std::string& filename, TensorInfo& info_
             << ", has_bias:" << opts.has_bias;
 }
 
+std::string combine_path(const std::string& dir, const std::string& file) {
+  return std::filesystem::path(dir) / file;
+}
+
 template <typename T1>
-void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
+void RunTest4BitsFromFile(const TestOptions4Bits& opts, const std::string& test_data_dir) {
   const int64_t M = opts.M,
                 K = opts.K,
                 N = opts.N;
 
   TensorInfo tensor_info_activation;
-  std::vector<float> activation = parse_tensor_data<float, float>("woq_2_64_128_64_activation.txt", tensor_info_activation);
+  std::string filename = combine_path(test_data_dir, "activation.txt");
+  std::vector<float> activation = parse_tensor_data<float, float>(filename, tensor_info_activation);
 
   TensorInfo tensor_info_ref_weight;
-  std::vector<float> ref_weight = parse_tensor_data<float, float>("woq_2_64_128_64_ref_weight.txt", tensor_info_ref_weight);
+  filename = combine_path(test_data_dir, "ref_weight.txt");
+  std::vector<float> ref_weight = parse_tensor_data<float, float>(filename, tensor_info_ref_weight);
 
   TensorInfo tensor_info_matmulnbits_weight;
-  std::vector<uint8_t> matmulnbits_weight = parse_tensor_data<int, uint8_t>("woq_2_64_128_64_matmulnbits_weight.txt", tensor_info_matmulnbits_weight);
+  filename = combine_path(test_data_dir, "matmulnbits_weight.txt");
+  std::vector<uint8_t> matmulnbits_weight = parse_tensor_data<int, uint8_t>(filename, tensor_info_matmulnbits_weight);
 
   TensorInfo tensor_info_matmulnbits_scale;
-  std::vector<float> matmulnbits_scale = parse_tensor_data<float, float>("woq_2_64_128_64_matmulnbits_scale.txt", tensor_info_matmulnbits_scale);
+  filename = combine_path(test_data_dir, "matmulnbits_scale.txt");
+  std::vector<float> matmulnbits_scale = parse_tensor_data<float, float>(filename, tensor_info_matmulnbits_scale);
   std::vector<MLFloat16> matmulnbits_scale_fp16 = FloatsToMLFloat16s(matmulnbits_scale);
 
   TensorInfo tensor_info_matmulnbits_zp;
-  std::vector<float> matmulnbits_zp = parse_tensor_data<float, float>("woq_2_64_128_64_matmulnbits_zp.txt", tensor_info_matmulnbits_zp);
+  filename = combine_path(test_data_dir, "matmulnbits_zp.txt");
+  std::vector<float> matmulnbits_zp = parse_tensor_data<float, float>(filename, tensor_info_matmulnbits_zp);
 
   std::vector<MLFloat16> matmulnbits_zp_fp16 = FloatsToMLFloat16s(matmulnbits_zp);
 
-  int q_rows, q_cols;
-  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
-                                            static_cast<int>(K), static_cast<int>(N),
-                                            q_rows, q_cols);
-
-  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
-                                           static_cast<int>(K), static_cast<int>(N),
-                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
-
-  assert(q_data_size_in_bytes == tensor_info_matmulnbits_weight.size());
-  assert(tensor_info_matmulnbits_scale.size() == tensor_info_matmulnbits_zp.size());
-  assert(q_scale_size == tensor_info_matmulnbits_scale.size());
+  assert(static_cast<size_t>(N * K / (8 / QBits)) == tensor_info_matmulnbits_weight.size());
+  assert(static_cast<size_t>(N * K / opts.block_size) == tensor_info_matmulnbits_zp.size());
+  assert(static_cast<size_t>(N * K / opts.block_size) == tensor_info_matmulnbits_scale.size());
 
   RandomValueGenerator random{1234};
 
@@ -200,13 +200,13 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
     }
   }
 
-  printf("Expected:\n");
-  for (int64_t m = 0; m < M; m++) {
-    for (int64_t n = 0; n < N; n++) {
-      printf("%f\t", expected_vals[m * N + n]);
-    }
-    printf("\n");
-  }
+  // printf("Expected:\n");
+  // for (int64_t m = 0; m < M; m++) {
+  //   for (int64_t n = 0; n < N; n++) {
+  //     printf("%f\t", expected_vals[m * N + n]);
+  //   }
+  //   printf("\n");
+  // }
 
   OpTester test("MatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
@@ -281,8 +281,8 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts) {
 }
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
-void TestMatMul8BitsTyped() {
-  TestOptions8Bits base_opts{};
+void TestMatMul4BitsTyped(const std::string& test_data_dir) {
+  TestOptions4Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
   base_opts.accuracy_level = accuracy_level;
@@ -295,21 +295,22 @@ void TestMatMul8BitsTyped() {
     base_opts.output_rel_error = 0.02f;
   }
 
-  TestOptions8Bits opts = base_opts;
+  TestOptions4Bits opts = base_opts;
   opts.has_zero_point = true;
   opts.is_zero_point_scale_same_type = true;
   opts.load_from_file = true;
-  RunTest8BitsFromFile<AType>(opts);
+  RunTest4BitsFromFile<AType>(opts, test_data_dir);
 }
 }  // namespace
 
+TEST(MatMulNBits, Fp16_int4_gemv) {
+  std::string test_data_dir = "testdata/fpA_intB_gemm/2_64_128_4b_64/";
+  TestMatMul4BitsTyped<MLFloat16, 2, 64, 128, 64, 4>(test_data_dir);
+}
+
 TEST(MatMulNBits, Fp16_int4_gemm) {
-  // TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
-  // TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();
-
-  TestMatMul8BitsTyped<MLFloat16, 2, 64, 128, 64, 4>();
-
-  // TestMatMul8BitsTyped<MLFloat16, 2, 64, 64, 64, 4>();
+  std::string test_data_dir = "testdata/fpA_intB_gemm/16_64_128_4b_64/";
+  TestMatMul4BitsTyped<MLFloat16, 16, 64, 128, 64, 4>(test_data_dir);
 }
 
 }  // namespace test
