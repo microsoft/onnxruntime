@@ -11,6 +11,7 @@
 #include <functional>
 #include <iterator>
 #include <string>
+#include <sstream>
 #include <type_traits>
 #include <vector>
 
@@ -243,6 +244,29 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
   return ConstMemoryInfo{out};
 }
 
+template <typename T>
+inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats() const {
+  AllocatorWithDefaultOptions allocator;
+  char* raw_stats = nullptr;
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, allocator, &raw_stats));
+  std::unordered_map<std::string, std::string> stats;
+  if (raw_stats == nullptr) {
+    return stats;
+  }
+  std::istringstream iss(raw_stats);
+  std::string line;
+  while (std::getline(iss, line, ',')) {
+    auto pos = line.find(':');
+    if (pos == std::string::npos) {
+      continue;  // Skip lines without a colon
+    }
+    std::string key = line.substr(0, pos);
+    std::string value = line.substr(pos + 1);
+    stats[key] = value;
+  }
+  allocator.Free(raw_stats);
+  return stats;
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {

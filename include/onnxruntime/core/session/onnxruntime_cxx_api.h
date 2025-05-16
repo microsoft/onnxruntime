@@ -2154,6 +2154,7 @@ struct AllocatorImpl : Base<T> {
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
+  std::unordered_map<std::string, std::string> GetStats() const;
 };
 
 }  // namespace detail
