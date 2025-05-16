@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
@@ -98,6 +100,13 @@ if(WIN32)
   if("cxx_std_23" IN_LIST CMAKE_CXX_COMPILE_FEATURES)
     set_property(TARGET onnxruntime_common PROPERTY CXX_STANDARD 23)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
+  endif()
+elseif(NOT APPLE)
+  if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64" AND NOT ANDROID)
+    set_source_files_properties(
+      ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+      PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+    )
   endif()
 endif()
 if (onnxruntime_USE_TELEMETRY)
