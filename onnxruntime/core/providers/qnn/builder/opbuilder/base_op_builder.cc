@@ -138,6 +138,10 @@ Status BaseOpBuilder::ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
     return Status::OK();
   }
   for (size_t i = 0; i < input_names.size(); i++) {
+    if (input_names[i].size() == 0) {
+      // For optional inputs, the input_name is empty
+      continue;
+    }
     auto& input_tensorwrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[i]);
     // Insert cast to int32 if input dtype is int64
     if (input_tensorwrapper.GetTensorDataType() == QNN_DATATYPE_INT_64) {
