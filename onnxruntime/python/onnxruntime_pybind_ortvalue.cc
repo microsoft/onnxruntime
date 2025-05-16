@@ -327,6 +327,9 @@ void addOrtValueMethods(pybind11::module& m) {
            "This integer is one type defined by ONNX TensorProto_DataType "
            "(such as onnx.TensorProto.FLOAT)."
            "Raises an exception in any other case.")
+      .def("tensor_size_in_bytes", [](const OrtValue* ort_value) -> size_t {
+        ORT_ENFORCE(ort_value->IsTensor(), "Only OrtValues that are Tensors are currently supported");
+        return ort_value->Get<Tensor>().SizeInBytes(); }, "Returns tensor size in bytes.")
       .def("has_value", [](const OrtValue* ort_value) -> bool { return ort_value->IsAllocated(); })
       .def("is_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsTensor(); })
       .def("is_sparse_tensor", [](const OrtValue* ort_value) -> bool { return ort_value->IsSparseTensor(); })

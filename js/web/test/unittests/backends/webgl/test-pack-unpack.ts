@@ -257,7 +257,7 @@ describe('#UnitTest# - pack - Tensor pack', () => {
     for (let k = 0; k < testDataSet.length; ++k) {
       const testData = testDataSet[k];
       describe('Test pack', () => {});
-      it(`Test pack kernal ${textureLayout[w]} ${JSON.stringify(testData)}`, () => {
+      it(`Test pack kernel ${textureLayout[w]} ${JSON.stringify(testData)}`, () => {
         const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
         const elementCount = testData.elementCount;
@@ -291,7 +291,7 @@ describe('#UnitTest# - pack - Tensor pack', () => {
         // compile shader code
         const programInfo = createPackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
-        // run kernal and get output
+        // run kernel and get output
         const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
         const gl = webglInferenceHandler.session.textureManager.glContext.gl;
         const resultDataBuffer = createArrayFromTexture(
@@ -324,7 +324,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
   for (let k = 0; k < testDataSet.length; ++k) {
     const testData = testDataSet[k];
     describe(`Test unpack ${JSON.stringify(testData)}`, () => {});
-    it(`Test unpack kernal ${testData.inputShape}`, () => {
+    it(`Test unpack kernel ${testData.inputShape}`, () => {
       const webglInferenceHandler = inferenceHandler as WebGLInferenceHandler;
 
       const elementCount = testData.elementCount;
@@ -365,7 +365,7 @@ describe('#UnitTest# - unpack - Tensor unpack', () => {
       // compile shader code
       const programInfo = createUnpackProgramInfoLoader(inferenceHandler! as WebGLInferenceHandler, inputTensor);
 
-      // run kernal and get output
+      // run kernel and get output
       const resultTextureData = webglInferenceHandler.executeProgram(programInfo, [inputTensor]);
       const result = resultTextureData.tensor.data;
 
@@ -419,7 +419,7 @@ describe('#UnitTest# - pack-unpack round trip', () => {
         packResultData.tensor,
       );
 
-      // run unpack kernal and get output
+      // run unpack kernel and get output
       const unpackResultData = webglInferenceHandler.executeProgram(unpackProgramInfo, [inputTensor]);
 
       const resultData = unpackResultData.tensor.data;

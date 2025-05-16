@@ -12,7 +12,7 @@ import { WebGLContext } from './webgl/webgl-context';
 import { createWebGLContext } from './webgl/webgl-context-factory';
 
 /**
- * WebGLBackend is the entry point for all WebGL opeartions
+ * WebGLBackend is the entry point for all WebGL operations
  * When it starts it created the WebGLRenderingContext
  * and other main framework components such as Program and Texture Managers
  */

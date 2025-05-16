@@ -106,6 +106,7 @@ void CPUIDInfo::X86Init() {
   GetCPUID(0, data);
 
   vendor_ = GetX86Vendor(data);
+  vendor_id_ = GetVendorId(vendor_);
 
   int num_IDs = data[0];
   if (num_IDs >= 1) {
@@ -150,6 +151,14 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 }
 
 #endif  // defined(CPUIDINFO_ARCH_X86)
+
+uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
+  if (vendor == "GenuineIntel") return 0x8086;
+  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
+  if (vendor.find("NV") == 0) return 0x10DE;
+  return 0;
+}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
@@ -204,6 +213,7 @@ void CPUIDInfo::ArmLinuxInit() {
 void CPUIDInfo::ArmWindowsInit() {
   // Get the ARM vendor string from the registry
   vendor_ = GetArmWindowsVendor();
+  vendor_id_ = GetVendorId(vendor_);
 
   // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
   // There should be one per CPU
