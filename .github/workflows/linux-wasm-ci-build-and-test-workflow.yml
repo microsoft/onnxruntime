@@ -66,6 +66,8 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Test (Node.js) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
         run: |
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
@@ -74,6 +76,8 @@ jobs:
         working-directory: ${{ github.workspace }}
 
       - name: Test (browser) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
         run: |
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
