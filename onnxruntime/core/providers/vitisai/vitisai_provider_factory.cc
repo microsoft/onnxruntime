@@ -52,6 +52,8 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const
   for (const auto& [key, value] : config_options_map) {
     if (key.rfind(key_prefix, 0) == 0) {
       provider_options[key.substr(key_prefix.size())] = value;
+    } else {
+      provider_options["ort_session_config." + key] = value;
     }
   }
 
@@ -82,7 +84,7 @@ struct VitisAI_Provider : Provider {
     }
   };
   // Get provider specific custom op domain list. Provider has the resposibility to release OrtCustomOpDomain instances it creates.
-  void GetCustomOpDomainList(IExecutionProviderFactory*, std::vector<OrtCustomOpDomain*>&) override {};
+  void GetCustomOpDomainList(IExecutionProviderFactory*, std::vector<OrtCustomOpDomain*>&) override{};
   // Called right after loading the shared library, if this throws any errors Shutdown() will be called and the library unloaded
   void Initialize() override { initialize_vitisai_ep(); }
   // Called right before unloading the shared library
