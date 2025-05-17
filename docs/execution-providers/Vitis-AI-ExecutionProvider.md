@@ -87,22 +87,14 @@ The tables below provide an overview of the provider options and environment var
 
 For detailed instructions on how to configure the inference session for BF16 and INT8 model on AMD Ryzen AI processors, refer to the [Ryzen AI Software documentation](https://ryzenai.docs.amd.com/en/latest/modelrun.html#)
 
-| **Runtime Variable**       | **Details**                                        |
-|----------------------------|----------------------------------------------------|
-| config_file                | Configuration file to pass certain compile-specific options. Required for BF16 models.       | 
-| xclbin                     | NPU binary file to specify NPU configuration. Required for INT8 models.                      | 
-| cache_dir                  | The path and name of the cache directory. Optional.                                          |
-| cache_key                  | The subfolder in the cache directory where the compiled model is stored. Optional.           |
-| encryptionKey              | 256-bit key used for generating an encrypted compiled model in the cache folder. Optional.   |
+| **Provider Option**        | **Default Value**              | **Details**                              |
+|----------------------------|--------------------------------|------------------------------------------|
+| cache_dir                  | Linux: "/tmp/{user}/vaip/.cache/" <br/>   Windows: "C:\\temp\\{user}\\vaip\\.cache"        | optional, cache directory                |
+| cache_key                  | {onnx_model_md5}               | optional, cache key, used to distinguish between different models.                      |
+| log_level                  | "error"                        | Valid values are `info`, `warning`, `error` and `fatal` |
 
-
-| **Environment Variable**   | **Details**                                        |
-|----------------------------|----------------------------------------------------|
-| XLNX_ENABLE_CACHE          | Whether to use cache, if it is 0, it will ignore the cached executable and the model will be recompiled.|
-| XLNX_VART_FIRMWARE         | Legacy method for specifying the NPU binary file. Replaced by the xclbin provider option. Required for INT8 models. |
-| XLNX_TARGET_NAME           | DPU target name. On Adaptable SoCs, if not set, the DPU target name will be read automatically; On Windows, default value is "AMD_AIE2_Nx4_Overlay" which is the DPU target name of the IPU.                                |
-
-
+The final cache directory is `{cache_dir}/{cache_key}`.
+Please refer to the following C++ example for usage.
 
 ## Ryzen AI API Examples
 
@@ -110,35 +102,45 @@ To leverage the C++ APIs, use the following example as a reference:
 
 ```c++
 // ...
-#include <experimental_onnxruntime_cxx_api.h>
+#include <onnxruntime_cxx_api.h>
 // include user header files
 // ...
 
-auto onnx_model_path = "resnet50.onnx" // Replace resnet50.onnx with your model name
+std::basic_string<ORTCHAR_T> model_file = "resnet50.onnx" // Replace resnet50.onnx with your model name
 Ort::Env env(ORT_LOGGING_LEVEL_WARNING, "resnet50_pt");
 auto session_options = Ort::SessionOptions();
 
 auto options = std::unorderd_map<std::string,std::string>({});
-options["xclbin"]   = "/path/to/AMD_AIE2P_Nx4_Overlay.xclbin"; // Required. Specify full path to the appropriate NPU binary file.
-options["cache_dir"] = "/tmp/my_cache"; // Optional
-options["cache_key"] = "my_model_subfolder"; // Optional
+// optional, eg: cache path : /tmp/my_cache/abcdefg // Replace abcdefg with your model name, eg. onnx_model_md5
+options["cache_dir"] = "/tmp/my_cache";
+options["cache_key"] = "abcdefg"; // Replace abcdefg with your model name, eg. onnx_model_md5
+options["log_level"] = "info";
 
 // Create an inference session using the Vitis AI execution provider
-session_options.AppendExecutionProvider("VitisAI", options);
+session_options.AppendExecutionProvider_VitisAI(options);
 
-auto session = Ort::Experimental::Session(env, model_name, session_options);
+auto session = Ort::Session(env, model_file.c_str(), session_options);
 
-auto input_shapes = session.GetInputShapes();
-// preprocess input data
-// ...
-
+// get inputs and outputs
+Ort::AllocatorWithDefaultOptions allocator;
+std::vector<std::string> input_names;
+std::vector<std::int64_t> input_shapes;
+auto input_count = session.GetInputCount();
+for (std::size_t i = 0; i < input_count; i++) {
+    input_names.emplace_back(session.GetInputNameAllocated(i, allocator).get());
+    input_shapes = session.GetInputTypeInfo(i).GetTensorTypeAndShapeInfo().GetShape();
+}
+std::vector<std::string> output_names;
+auto output_count = session.GetOutputCount();
+for (std::size_t i = 0; i < output_count; i++) {
+   output_names.emplace_back(session.GetOutputNameAllocated(i, allocator).get());
+}
 // Create input tensors and populate input data
 std::vector<Ort::Value> input_tensors;
-input_tensors.push_back(Ort::Experimental::Value::CreateTensor<float>(
-      input_data.data(), input_data.size(), input_shapes[0]));
+...
 
-auto output_tensors = session.Run(session.GetInputNames(), input_tensors,
-                                      session.GetOutputNames());
+auto output_tensors = session.Run(Ort::RunOptions(), input_names.data(), input_tensors.data(),
+                    input_count, output_names.data(), output_count);
 // postprocess output data
 // ...
 
@@ -156,17 +158,10 @@ import onnxruntime
 # ...
 
 # Create an inference session using the Vitis AI execution provider
-providers = ['VitisAIExecutionProvider']
-provider_options = [{
-    'xclbin': '/path/to/AMD_AIE2P_Nx4_Overlay.xclbin', # Required. Specify full path to the appropriate NPU binary file.
-    'cache_dir': '/tmp/my_cache', # Optional
-    'cache_key': 'my_model_subfolder', # Optional
-}]
-session = ort.InferenceSession(
-    "resnet50.onnx",  # Replace resnet50.onnx with your model name
-    providers=providers,
-    provider_options=provider_options
-)
+session = onnxruntime.InferenceSession(
+    '[model_file].onnx',
+    providers=["VitisAIExecutionProvider"],
+    provider_options=[{"log_level": "info"}])
 
 input_shape = session.get_inputs()[0].shape
 input_name = session.get_inputs()[0].name
