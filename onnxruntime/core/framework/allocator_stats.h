@@ -37,6 +37,20 @@ struct AllocatorStats {
     this->total_allocated_bytes = 0;
   }
 
+  std::string ToString() const {
+    std::ostringstream ss;
+    ss << "bytes_limit:" << this->bytes_limit << ","
+       << "bytes_in_use:" << this->bytes_in_use << ","
+       << "total_allocated_bytes:" << this->total_allocated_bytes << ","
+       << "max_bytes_in_use:" << this->max_bytes_in_use << ","
+       << "num_allocs:" << this->num_allocs << ","
+       << "num_reserves:" << this->num_reserves << ","
+       << "num_arena_extensions:" << this->num_arena_extensions << ","
+       << "num_arena_shrinkages:" << this->num_arena_shrinkages << ","
+       << "max_alloc_size:" << this->max_alloc_size;
+    return ss.str();
+  }
+
   std::string DebugString() const {
     std::ostringstream ss;
     ss << "Limit:                    " << this->bytes_limit << "\n"

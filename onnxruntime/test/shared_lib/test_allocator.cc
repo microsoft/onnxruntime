@@ -31,4 +31,8 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_EQ(allocation.size(), 100U);
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
+
+  // Default Allocator has no stats to report
+  auto stats = default_allocator.GetStats();
+  ASSERT_EQ(stats.size(), 0U);
 }

@@ -11,6 +11,7 @@ namespace onnxruntime {
 
 namespace {
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
+constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -25,6 +26,16 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
   if (OrtAllocator::version >= kOrtAllocatorReserveMinVersion) {
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
+  }
+  if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
+    OrtAllocator::GetStats =
+        [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) {
+          auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+          char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+          memcpy(stats_string, str.c_str(), str.size());
+          stats_string[str.size()] = '\0';
+          *stats = stats_string;
+        };
   }
 }
 
@@ -42,6 +53,12 @@ void OrtAllocatorImplWrappingIAllocator::Free(void* p) {
 
 const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
   return &i_allocator_->Info();
+}
+
+std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
+  AllocatorStats stats;
+  i_allocator_->GetStats(&stats);
+  return stats.ToString();
 }
 
 onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {
