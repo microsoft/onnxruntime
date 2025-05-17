@@ -4,11 +4,14 @@
 #if !defined(ORT_MINIMAL_BUILD)
 #pragma once
 
+#include <gsl/gsl>
 #include <memory>
 #include <string>
+#include <variant>
 #include "core/common/status.h"
 #include "core/common/path_string.h"
 #include "core/framework/allocator.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -45,6 +48,13 @@ class ModelCompilationOptions {
   void SetInputModelFromBuffer(const void* input_model_data, size_t input_model_data_size);
 
   /// <summary>
+  /// Sets the input OrtModel instance.
+  /// Overrides any previous call to SetInput*()
+  /// </summary>
+  /// <param name="ort_model">OrtModel instance</param>
+  void SetInputOrtModel(const OrtModel& ort_model);
+
+  /// <summary>
   /// Sets the file path to store the output/compiled ONNX model.
   /// Overrides any previous call to SetOutputModelPath() or SetOutputModelBuffer().
   /// </summary>
@@ -73,6 +83,13 @@ class ModelCompilationOptions {
                               size_t* output_model_buffer_size_ptr);
 
   /// <summary>
+  /// Sets an output stream (write function + state) used to write out the compiled model.
+  /// </summary>
+  /// <param name="write_stream_func">Write function</param>
+  /// <param name="stream_state">The stream state</param>
+  void SetOutputModelOutStream(OrtOutStreamWriteFunc write_stream_func, void* stream_state);
+
+  /// <summary>
   /// Enables or disables the embedding of EPContext binary data into the `ep_cache_context` attribute of EPContext
   /// nodes. Defaults to false (dumped to file).
   /// </summary>
@@ -87,30 +104,25 @@ class ModelCompilationOptions {
   const OrtSessionOptions& GetSessionOptions() const;
 
   /// <summary>
-  /// Returns the file path to the input ONNX model.
+  /// Returns a pointer to the input model's path or nullptr if the input model
+  /// is not read from file.
   /// </summary>
-  /// <returns>input model's path</returns>
-  const std::string& GetInputModelPath() const;
+  /// <returns>input model's path or nullptr</returns>
+  const std::string* TryGetInputModelPath() const;
 
   /// <summary>
-  /// Returns true if the input model is read from a file.
+  /// Returns a pointer to the input model's bytes buffer or nullptr if the input model
+  /// is not read from a buffer.
   /// </summary>
-  /// <returns>true if input model comes from a file</returns>
-  bool InputModelComesFromFile() const;
+  /// <returns>input model's bytes buffer or nullptr</returns>
+  const gsl::span<const std::byte>* TryGetInputModelBuffer() const;
 
   /// <summary>
-  /// Returns the buffer that contains the bytes for the input ONNX model.
-  /// Returns nullptr if the input model is not stored in a buffer.
+  /// Returns a pointer to the OrtModel instance for the input model or nullptr if
+  /// the input model is not stored as an OrtModel.
   /// </summary>
-  /// <returns>pointer to input model's buffer</returns>
-  const void* GetInputModelData() const;
-
-  /// <summary>
-  /// Returns the size in bytes of the buffer that contains the input ONNX model.
-  /// Returns 0 if the input model is not stored in a buffer.
-  /// </summary>
-  /// <returns>input model buffer's size in bytes</returns>
-  size_t GetInputModelDataSize() const;
+  /// <returns>The OrtModel or nullptr</returns>
+  const OrtModel* TryGetInputOrtModel() const;
 
   /// <summary>
   /// Checks if the compilation options described by this object are valid.
@@ -119,16 +131,16 @@ class ModelCompilationOptions {
   Status Check() const;
 
  private:
-  void ResetInputModelSettings();
   Status ResetOutputModelSettings();
-  Status CheckInputModelSettings() const;
-  Status CheckOutputModelSettings() const;
 
   const onnxruntime::Environment& env_;
   OrtSessionOptions session_options_;
-  std::string input_model_path_;
-  const void* input_model_data_ = nullptr;
-  size_t input_model_data_size_ = 0;
+
+  std::variant<std::monostate,                  // Initial state (no input model)
+               std::string,                     // input model path
+               gsl::span<const std::byte>,      // input model in buffer
+               gsl::not_null<const OrtModel*>>  // input model created via OrtModelEditor
+      input_model_variant_{};
 };
 }  // namespace onnxruntime
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -801,6 +801,12 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetInputModelFromBuffer
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetInputModel(
+    ConstModel input_model) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetInputModel(this->p_, input_model));
+  return *this;
+}
+
 inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelPath(
     const ORTCHAR_T* output_model_path) {
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelPath(this->p_, output_model_path));
@@ -821,6 +827,14 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelBuffer(
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelBuffer(this->p_, allocator,
                                                                                  output_model_buffer_ptr,
                                                                                  output_model_buffer_size_ptr));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetOutputModelOutStream(
+    OrtOutStreamWriteFunc write_stream_func, void* stream_state) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetOutputModelOutStream(this->p_,
+                                                                                    write_stream_func,
+                                                                                    stream_state));
   return *this;
 }
 
