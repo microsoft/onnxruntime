@@ -1073,6 +1073,36 @@ if (onnxruntime_USE_QNN)
   endif()
 endif()
 
+if (onnxruntime_USE_WEBGPU)
+  if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    if (onnxruntime_USE_VCPKG)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:Microsoft::DXIL>
+            $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    else()
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+            $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+  endif()
+  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:dawn::webgpu_dawn>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+  endif()
+endif()
+
 if (onnxruntime_USE_VSINPU)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
