@@ -158,8 +158,8 @@ if(onnxruntime_BUILD_SHARED_LIB)
     target_link_options(onnxruntime PRIVATE  "LINKER:-exported_symbols_list,${SYMBOL_FILE}")
     set_target_properties(onnxruntime PROPERTIES
       MACOSX_RPATH TRUE
-      SKIP_BUILD_RPATH TRUE
-      INSTALL_RPATH_USE_LINK_PATH FALSE
+      BUILD_WITH_INSTALL_RPATH TRUE
+      INSTALL_RPATH "@loader_path"
       BUILD_WITH_INSTALL_NAME_DIR TRUE
       INSTALL_NAME_DIR @rpath)
   endif()

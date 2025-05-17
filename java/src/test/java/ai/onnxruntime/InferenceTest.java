@@ -2133,6 +2133,9 @@ public class InferenceTest {
         case QNN:
           options.addQnn(Collections.singletonMap("backend_type", "cpu"));
           break;
+        case WEBGPU:
+          options.addWebGPU(Collections.emptyMap());
+          break;
         case VITIS_AI:
         case RK_NPU:
         case MI_GRAPH_X:
