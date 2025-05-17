@@ -2812,6 +2812,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(embed_compiled_data_into_model);
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
+        ORT_UNUSED_PARAMETER(additional_compile_flags);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))
