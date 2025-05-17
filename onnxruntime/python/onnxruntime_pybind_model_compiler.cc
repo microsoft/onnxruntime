@@ -19,7 +19,8 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
                                             std::string&& input_model_path_or_bytes, bool input_model_is_path,
                                             bool embed_compiled_data_into_model,
                                             const std::string& external_initializers_file_path,
-                                            size_t external_initializers_size_threshold) {
+                                            size_t external_initializers_size_threshold,
+                                            size_t additional_compile_flags) {
   auto model_compiler = std::make_unique<PyModelCompiler>(env, sess_options, PrivateConstructorTag{});
   ModelCompilationOptions& compile_options = model_compiler->model_compile_options_;
 
@@ -36,6 +37,10 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
   if (!external_initializers_file_path.empty()) {
     compile_options.SetOutputModelExternalInitializersFile(external_initializers_file_path,
                                                            external_initializers_size_threshold);
+  }
+
+  if (additional_compile_flags != 0) {
+    ORT_RETURN_IF_ERROR(compile_options.SetBoolOptions(additional_compile_flags));
   }
 
   out = std::move(model_compiler);
