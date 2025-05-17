@@ -121,6 +121,7 @@ jobs:
             --build_shared_lib `
             --enable_onnx_tests `
             --build_nodejs `
+            --build_java `
             --use_webgpu `
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
             --cmake_extra_defines `

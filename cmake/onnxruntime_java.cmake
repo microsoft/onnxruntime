@@ -175,8 +175,27 @@ if (WIN32)
     if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
       add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_qnn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime_providers_qnn>)
     endif()
-    if (onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-      add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:dawn::webgpu_dawn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:dawn::webgpu_dawn>)
+    if (onnxruntime_USE_WEBGPU)
+      if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        if (onnxruntime_USE_VCPKG)
+          add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:Microsoft::DXIL>
+                $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+                ${JAVA_PACKAGE_LIB_DIR}/
+          )
+        else()
+          add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+                $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+                ${JAVA_PACKAGE_LIB_DIR}/
+          )
+        endif()
+      endif()
+      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+        add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:dawn::webgpu_dawn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:dawn::webgpu_dawn>)
+      endif()
     endif()
   endif()
 else()
