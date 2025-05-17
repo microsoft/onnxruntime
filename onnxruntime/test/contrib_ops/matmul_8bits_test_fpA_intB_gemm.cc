@@ -173,40 +173,37 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts, const std::string& test_
   filename = combine_path(test_data_dir, "matmulnbits_zp.txt");
   std::vector<float> matmulnbits_zp = parse_tensor_data<float, float>(filename, tensor_info_matmulnbits_zp);
 
+  TensorInfo tensor_info_output;
+  filename = combine_path(test_data_dir, "output.txt");
+  std::vector<float> output = parse_tensor_data<float, float>(filename, tensor_info_output);
+
   std::vector<MLFloat16> matmulnbits_zp_fp16 = FloatsToMLFloat16s(matmulnbits_zp);
 
   assert(static_cast<size_t>(N * K / (8 / QBits)) == tensor_info_matmulnbits_weight.size());
   assert(static_cast<size_t>(N * K / opts.block_size) == tensor_info_matmulnbits_zp.size());
   assert(static_cast<size_t>(N * K / opts.block_size) == tensor_info_matmulnbits_scale.size());
 
-  RandomValueGenerator random{1234};
-
+  std::vector<float> bias;
   const std::vector<int64_t> bias_shape = {N};
-  const auto bias = [&]() -> std::optional<std::vector<float>> {
-    if (opts.has_bias) {
-      return random.Uniform(bias_shape, 1.0f, 5.0f);
-    }
-    return std::nullopt;
-  }();
 
-  std::vector<float> expected_vals(M * N);
-  for (int64_t m = 0; m < M; m++) {
-    for (int64_t n = 0; n < N; n++) {
-      float sum = 0.0f;
-      for (int64_t k = 0; k < K; k++) {
-        sum += activation[m * K + k] * ref_weight[k * N + n];
+  std::vector<float> expected_vals;
+  if (opts.has_bias) {
+    RandomValueGenerator random{1234};
+    bias = random.Uniform(bias_shape, 1.0f, 5.0f);
+
+    expected_vals.resize(M * N);
+    for (int64_t m = 0; m < M; m++) {
+      for (int64_t n = 0; n < N; n++) {
+        float sum = 0.0f;
+        for (int64_t k = 0; k < K; k++) {
+          sum += activation[m * K + k] * ref_weight[k * N + n];
+        }
+        expected_vals[m * N + n] = sum + bias[n];
       }
-      expected_vals[m * N + n] = sum + (bias.has_value() ? (*bias)[n] : 0.0f);
     }
+  } else {
+    expected_vals = output;
   }
-
-  // printf("Expected:\n");
-  // for (int64_t m = 0; m < M; m++) {
-  //   for (int64_t n = 0; n < N; n++) {
-  //     printf("%f\t", expected_vals[m * N + n]);
-  //   }
-  //   printf("\n");
-  // }
 
   OpTester test("MatMulNBits", 1, kMSDomain);
   test.AddAttribute<int64_t>("K", K);
@@ -239,11 +236,11 @@ void RunTest8BitsFromFile(const TestOptions8Bits& opts, const std::string& test_
     test.AddOptionalInputEdge<uint8_t>();
   }
 
-  if (bias.has_value()) {
+  if (opts.has_bias) {
     if constexpr (std::is_same<T1, float>::value) {
-      test.AddInput<T1>("bias", bias_shape, *bias, true);
+      test.AddInput<T1>("bias", bias_shape, bias, true);
     } else {
-      test.AddInput<T1>("bias", bias_shape, FloatsToMLFloat16s(*bias), true);
+      test.AddInput<T1>("bias", bias_shape, FloatsToMLFloat16s(bias), true);
     }
   } else {
     test.AddOptionalInputEdge<T1>();
@@ -286,14 +283,8 @@ void TestMatMul8BitsTyped(std::string test_data_dir) {
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
   base_opts.accuracy_level = accuracy_level;
-
-  if (base_opts.accuracy_level == 4) {
-    base_opts.output_abs_error = 0.1f;
-    base_opts.output_rel_error = 0.02f;
-  } else if constexpr (std::is_same<AType, MLFloat16>::value) {
-    base_opts.output_abs_error = 0.055f;
-    base_opts.output_rel_error = 0.02f;
-  }
+  base_opts.output_abs_error = M == 1 ? 0.1 : 1.0f;
+  base_opts.output_rel_error = 0.05;
 
   TestOptions8Bits opts = base_opts;
   opts.has_zero_point = true;

@@ -14,6 +14,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,6 +27,8 @@ using ort_llm::kernels::weight_only::GemmIdCore;
 using ort_llm::kernels::weight_only::GemmDims;
 using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
 using WeightOnlyGemmRunnerPtr=std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
+
+constexpr const char* kDisableFpAIntBGemm = "ORT_DISABLE_FPA_INTB_GEMM";
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -52,7 +55,12 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) && (nbits_ == 4 || nbits_ == 8) && !has_g_idx_ && has_zero_points_ && !has_bias_ && N_ % (nbits_ == 8 ? 32 : 64) == 0 && K_ % block_size_ == 0) {
+      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) &&
+          (nbits_ == 4 || nbits_ == 8) &&
+          !has_g_idx_ && has_zero_points_ && !has_bias_ &&
+          N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
+          K_ % block_size_ == 0 &&
+          !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false)) {
         fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
                                                          ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
                                                          : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
@@ -62,7 +70,8 @@ class MatMulNBits final : public CudaKernel {
         }
 
         if (sm >= 75) {
-          RunGemmProfile(has_fpA_intB_gemv_, sm, 2048);
+          constexpr int max_m = 32; // TODO: change it to 8192.
+          RunGemmProfile(has_fpA_intB_gemv_, sm, max_m);
           has_fpA_intB_gemm_ = true;
         }
       }

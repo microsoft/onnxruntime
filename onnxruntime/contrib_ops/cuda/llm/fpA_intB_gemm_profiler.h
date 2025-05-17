@@ -16,10 +16,10 @@
  */
 #pragma once
 
-// #include "contrib_ops/cuda/llm/common/quantization.h"
-#include "contrib_ops/cuda/llm//fpA_intB_gemm/fpA_intB_gemm.h"
-#include "contrib_ops/cuda/llm/weightOnlyBatchedGemv/kernelLauncher.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
+#include "contrib_ops/cuda/llm/weightOnlyBatchedGemv/kernelLauncher.h"
+// #include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
 
 #include <cassert>
 #include <cutlass/numeric_types.h>
@@ -37,7 +37,8 @@
 using WeightOnlyGemmRunner = ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
 using KernelType = ort_llm::kernels::weight_only::KernelType;
-// using WeightTypeId=ort_llm::kernels::weight_only::WeightTypeId;
+//using KernelType = onnxruntime::contrib::cuda::fpA_intB_gemm::KernelType;
+
 
 namespace ort_llm::kernels::weight_only {
 enum class WeightTypeId {
@@ -52,9 +53,9 @@ constexpr int32_t INT8_INT4_RATIO = INT8_BITS / INT4_BITS;
 constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
 constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
 
-inline int32_t getWeightTypeMultiplier(WeightTypeId weightTypeId) {
-  return weightTypeId == WeightTypeId::INT8 ? 1 : INT8_INT4_RATIO;
-}
+// inline int32_t getWeightTypeMultiplier(WeightTypeId weightTypeId) {
+//   return weightTypeId == WeightTypeId::INT8 ? 1 : INT8_INT4_RATIO;
+// }
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
     : public GemmPluginProfiler<ort_llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,

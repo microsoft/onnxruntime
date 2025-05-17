@@ -24,7 +24,7 @@ using ort_llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using ort_llm::kernels::weight_only::WeightTypeId;
 
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
-//static std::once_flag s_gemm_profiler_once_flag;
+// static std::once_flag s_gemm_profiler_once_flag;
 
 template <typename T>
 void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int max_m) {
@@ -103,10 +103,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   DUMP_TENSOR_INIT();
 
   if (has_fpA_intB_gemm_) {
-    fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
-                                                     ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
-                                                     : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
-
     std::call_once(fpA_intB_init_once_flag_, [&]() {
       size_t k_blocks = (k + block_size_ - 1) / block_size_;
       size_t scale_bytes = n * k_blocks * sizeof(T);
@@ -202,27 +198,30 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     });
 
     auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
-    std::string config_str = bestTactic->toString();
-    printf("Best tactic: m=%d, n=%d, k=%d, group_size=%d: %s\n", m, n, k, int(block_size_), config_str.c_str());
 
-    if (bestTactic->enableCudaKernel) {
-      printf("Using CUDA kernel for m=%d, n=%d, k=%d\n", m, n, k);
-      // ort_llm::kernels::weight_only::Params params(a_data, nullptr, blob_data,
-      //                                              scales_data, zero_points_data, bias_data, out_data, 1.f, m, n, k, block_size_, cuda_kernel_type);
-      // ort_llm::kernels::weight_only::kernel_launcher(sm, params, stream);
+    DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
 
-      fpA_intB_gemm::Params params(a_data, /*pre_quant_scale*/ nullptr, fpA_intB_weight_buffer_.get(),
-                                    fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
-                                    bias_data, out_data,
-                                    1.f, m, n, k,
-                                    block_size_, cuda_kernel_type);
+    if (/*bestTactic->enableCudaKernel*/ m < 16 && has_fpA_intB_gemv_) {
+      using ort_llm::kernels::weight_only::KernelType;
+      KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+      // fpA_intB_gemm::Params
 
-      fpA_intB_gemm::kernel_launcher(sm, params, stream);
+      void const* pre_quant_scale_ptr = nullptr;
+      bool apply_alpha_in_advance = false;
+      float alpha = 1.0f;
+      // onnxruntime::contrib::cuda::fpA_intB_gemm::Params params(
+      ort_llm::kernels::weight_only::Params params(
+          a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
+          fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
+          bias_data, out_data,
+          alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
+
+      ort_llm::kernels::weight_only::kernel_launcher(sm, params, stream);
+      // fpA_intB_gemm::kernel_launcher(sm, params, stream);
     } else {
       const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
       auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
 
-      printf("Using CUTLASS kernel for m=%d, n=%d, k=%d workspace_size=%zu\n", m, n, k, workspace_size);
       weightOnlyGemmRunner_->gemm(
           a_data,
           fpA_intB_weight_buffer_.get(),
