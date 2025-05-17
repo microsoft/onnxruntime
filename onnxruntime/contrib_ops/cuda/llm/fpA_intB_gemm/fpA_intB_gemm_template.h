@@ -422,8 +422,8 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
 {
     TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
-    std::string config_str = gemm_config.toString();
-    printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
+    // std::string config_str = gemm_config.toString();
+    // printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
 
     if (sm_ >= 75 && sm_ < 80)
     {

@@ -242,10 +242,6 @@ template <typename Config, typename RunnerPtr, typename GemmIdType, typename Gem
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData()
 {
     auto const status = cudaFree(mWorkspaceTmp);
-    if (status != cudaSuccess) {
-        std::cerr << "########### cudaFree failed: " << cudaGetErrorString(status) << std::endl;
-    }
-
     TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
 }
 

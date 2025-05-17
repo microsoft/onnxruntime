@@ -151,10 +151,6 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
             zero_point_val = default_zero_point;
         }
 
-        // if (out_row == 0 && out_col == 0) {
-        //     printf("computeScaledZeroPointAndTransposeKernel: scale_val = %f, zero_point_val = %f, default_zp=%f\n", static_cast<float>(scale_val), zero_point_val, default_zero_point);
-        // }
-
         float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
         scaled_zero_point[output_offset] = static_cast<T>(result);
         transposed_scale[output_offset] = scale_val;
@@ -284,13 +280,6 @@ __global__ void unpack_uint4_transposed_to_int8_kernel(
     int out_idx_0 = flat_out_idx_0 / 2;
     int out_idx_1 = flat_out_idx_1 / 2;
 
-    // if ( flat_out_idx_0 >=2 && flat_out_idx_0 < 4) {
-    //     printf("out_row_0=%d, out_col=%d, flat_out_idx_0=%d, flat_out_idx_1=%d, packed_data=%d, elt_0=%d, elt_1=%d out_idx_0=%d out_idx_1=%d add_0=%d add_1=%d\n",
-    //            out_row_0, out_col, flat_out_idx_0, flat_out_idx_1, int(packed_data), int(elt_0), int(elt_1),
-    //            out_idx_0, out_idx_1,
-    //            int(flat_out_idx_0 % 2 == 0 ? elt_0 : elt_0 * 16),
-    //            int(flat_out_idx_1 % 2 == 0 ? elt_1 : elt_1 * 16));
-    // }
 
     if (flat_out_idx_0 % 2 == 0) {
       packed_transposed_weight[out_idx_0] += elt_0;
