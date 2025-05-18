@@ -99,7 +99,7 @@ public class CompileApiTests
             compileOptions.CompileModel();
             Assert.True(File.Exists(output_model_file));
 
-            // Try to generate compile again with flag that prevents overwritting an existing file.
+            // Try to compile again with flag that prevents replacing an existing file.
             // Expect failure.
             compileOptions.SetFlags(OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS);
 
