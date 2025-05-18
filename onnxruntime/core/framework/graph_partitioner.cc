@@ -770,7 +770,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
                                         bool allow_overwrite_output_model = false) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
-    if (!context_cache_path.has_filename()) {
+    if (!(context_cache_path.has_filename() && context_cache_path.extension() != "")) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
