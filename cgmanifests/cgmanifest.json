@@ -36,7 +36,7 @@
       "component": {
         "type": "git",
         "git": {
-          "commitHash": "bee4d1dd8dc1ee4a1fd8fa6a96476c2f8b7492a3",
+          "commitHash": "5c210da409e7f1e51ddf445134a4376fdbd70d7d",
           "repositoryUrl": "https://github.com/dmlc/dlpack.git"
         }
       }
@@ -314,16 +314,6 @@
           "repositoryUrl": "https://github.com/mestevens/gtest-ios-framework"
         },
         "comments": "gtest-ios-framework"
-      }
-    },
-    {
-      "component": {
-        "type": "git",
-        "git": {
-          "commitHash": "277508879878e0a5b5b43599b1bea11f66eb3c6c",
-          "repositoryUrl": "https://github.com/dmlc/dlpack.git"
-        },
-        "comments": "dlpack"
       }
     },
     {
