@@ -1609,9 +1609,9 @@ static void LogDeprecationWarning(
 
 void addGlobalMethods(py::module& m) {
   m.def("set_global_thread_pool_sizes", [](int intra_op_num_threads, int inter_op_num_threads) {
-          OrtThreadPoolParams intra_op_param = {intra_op_num_threads};
-          OrtThreadPoolParams inter_op_param = {inter_op_num_threads};
-          OrtThreadingOptions to = {intra_op_param, inter_op_param};
+          OrtThreadingOptions to;
+          to.intra_op_thread_pool_params.thread_pool_size = intra_op_num_threads;
+          to.inter_op_thread_pool_params.thread_pool_size = inter_op_num_threads;
           SetGlobalThreadingOptions(to); },
         py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
         py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
