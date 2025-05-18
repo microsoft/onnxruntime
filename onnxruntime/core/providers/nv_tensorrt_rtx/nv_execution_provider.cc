@@ -2697,7 +2697,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 
     if (multi_profile_enable_ == true)
     {
-      trt_context->setOptimizationProfileAsync(nv_profile_index_, stream);
+      if(!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
     }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
