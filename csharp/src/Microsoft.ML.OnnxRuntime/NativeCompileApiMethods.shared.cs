@@ -20,6 +20,7 @@ public struct OrtCompileApi
     public IntPtr ModelCompilationOptions_SetOutputModelBuffer;
     public IntPtr ModelCompilationOptions_SetEpContextEmbedMode;
     public IntPtr CompileModel;
+    public IntPtr ModelCompilationOptions_SetFlags;
 }
 
 internal class NativeMethods
@@ -43,7 +44,7 @@ internal class NativeMethods
         IntPtr /* const OrtEnv* */ env,
         IntPtr /* const OrtSessionOptions* */ sessionOptions,
         out IntPtr /* OrtModelCompilationOptions** */ outOptions);
-    public DOrtCreateModelCompilationOptionsFromSessionOptions 
+    public DOrtCreateModelCompilationOptionsFromSessionOptions
                     OrtCreateModelCompilationOptionsFromSessionOptions;
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -57,7 +58,7 @@ internal class NativeMethods
         IntPtr /* OrtModelCompilationOptions* */ options,
         byte[] /* const void* */ inputModelData,
         UIntPtr /* size_t */ inputModelDataSize);
-    public DOrtModelCompilationOptions_SetInputModelFromBuffer 
+    public DOrtModelCompilationOptions_SetInputModelFromBuffer
                     OrtModelCompilationOptions_SetInputModelFromBuffer;
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -71,7 +72,7 @@ internal class NativeMethods
         IntPtr /* OrtModelCompilationOptions* */ options,
         byte[] /* const ORTCHAR_T* */ externalInitializersFilePath,
         UIntPtr /* size_t */ externalInitializerSizeThreshold);
-    public DOrtModelCompilationOptions_SetOutputModelExternalInitializersFile 
+    public DOrtModelCompilationOptions_SetOutputModelExternalInitializersFile
                     OrtModelCompilationOptions_SetOutputModelExternalInitializersFile;
 
     [UnmanagedFunctionPointer(CallingConvention.Winapi)]
@@ -94,6 +95,12 @@ internal class NativeMethods
         IntPtr /* const OrtModelCompilationOptions* */ modelOptions);
     public DOrtCompileModel OrtCompileModel;
 
+    [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+    public delegate IntPtr /* OrtStatus* */ DOrtModelCompilationOptions_SetFlags(
+        IntPtr /* OrtModelCompilationOptions* */ options,
+        uint flags);
+    public DOrtModelCompilationOptions_SetFlags OrtModelCompilationOptions_SetFlags;
+
     internal NativeMethods(OnnxRuntime.NativeMethods.DOrtGetCompileApi getCompileApi)
     {
 
@@ -104,49 +111,55 @@ internal class NativeMethods
         _compileApi = (OrtCompileApi)getCompileApi();
 #endif
 
-        OrtReleaseModelCompilationOptions = 
+        OrtReleaseModelCompilationOptions =
             (DOrtReleaseModelCompilationOptions)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ReleaseModelCompilationOptions, 
+                _compileApi.ReleaseModelCompilationOptions,
                 typeof(DOrtReleaseModelCompilationOptions));
 
-        OrtCreateModelCompilationOptionsFromSessionOptions = 
+        OrtCreateModelCompilationOptionsFromSessionOptions =
             (DOrtCreateModelCompilationOptionsFromSessionOptions)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.CreateModelCompilationOptionsFromSessionOptions, 
+                _compileApi.CreateModelCompilationOptionsFromSessionOptions,
                 typeof(DOrtCreateModelCompilationOptionsFromSessionOptions));
 
-        OrtModelCompilationOptions_SetInputModelPath = 
+        OrtModelCompilationOptions_SetInputModelPath =
             (DOrtModelCompilationOptions_SetInputModelPath)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetInputModelPath, 
+                _compileApi.ModelCompilationOptions_SetInputModelPath,
                 typeof(DOrtModelCompilationOptions_SetInputModelPath));
 
-        OrtModelCompilationOptions_SetInputModelFromBuffer = 
+        OrtModelCompilationOptions_SetInputModelFromBuffer =
             (DOrtModelCompilationOptions_SetInputModelFromBuffer)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetInputModelFromBuffer, 
+                _compileApi.ModelCompilationOptions_SetInputModelFromBuffer,
                 typeof(DOrtModelCompilationOptions_SetInputModelFromBuffer));
 
-        OrtModelCompilationOptions_SetOutputModelPath = 
+        OrtModelCompilationOptions_SetOutputModelPath =
             (DOrtModelCompilationOptions_SetOutputModelPath)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetOutputModelPath, 
+                _compileApi.ModelCompilationOptions_SetOutputModelPath,
                 typeof(DOrtModelCompilationOptions_SetOutputModelPath));
 
-        OrtModelCompilationOptions_SetOutputModelExternalInitializersFile = 
+        OrtModelCompilationOptions_SetOutputModelExternalInitializersFile =
             (DOrtModelCompilationOptions_SetOutputModelExternalInitializersFile)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetOutputModelExternalInitializersFile, 
+                _compileApi.ModelCompilationOptions_SetOutputModelExternalInitializersFile,
                 typeof(DOrtModelCompilationOptions_SetOutputModelExternalInitializersFile));
 
-        OrtModelCompilationOptions_SetOutputModelBuffer = 
+        OrtModelCompilationOptions_SetOutputModelBuffer =
             (DOrtModelCompilationOptions_SetOutputModelBuffer)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetOutputModelBuffer, 
+                _compileApi.ModelCompilationOptions_SetOutputModelBuffer,
                 typeof(DOrtModelCompilationOptions_SetOutputModelBuffer));
 
-        OrtModelCompilationOptions_SetEpContextEmbedMode = 
+        OrtModelCompilationOptions_SetEpContextEmbedMode =
             (DOrtModelCompilationOptions_SetEpContextEmbedMode)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.ModelCompilationOptions_SetEpContextEmbedMode, 
+                _compileApi.ModelCompilationOptions_SetEpContextEmbedMode,
                 typeof(DOrtModelCompilationOptions_SetEpContextEmbedMode));
 
-        OrtCompileModel = 
+        OrtCompileModel =
             (DOrtCompileModel)Marshal.GetDelegateForFunctionPointer(
-                _compileApi.CompileModel, 
+                _compileApi.CompileModel,
                 typeof(DOrtCompileModel));
+
+        OrtModelCompilationOptions_SetFlags =
+            (DOrtModelCompilationOptions_SetFlags)Marshal.GetDelegateForFunctionPointer(
+                _compileApi.ModelCompilationOptions_SetFlags,
+                typeof(DOrtModelCompilationOptions_SetFlags));
+
     }
 }
