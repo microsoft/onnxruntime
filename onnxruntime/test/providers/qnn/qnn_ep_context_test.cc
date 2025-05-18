@@ -585,7 +585,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
 
 // Test that the explicit compile API can be configured to return an error if the output model does not
 // have EPContext nodes.
-TEST_F(QnnHTPBackendTests, CompileApi_SetBoolOptions_ErrorIfNoCompiledNodes) {
+TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfNoCompiledNodes) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const ORTCHAR_T* output_model_file = ORT_TSTR("should_not_be_generated.onnx");
   std::filesystem::remove(output_model_file);
@@ -595,7 +595,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_SetBoolOptions_ErrorIfNoCompiledNodes) {
   Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
   compile_options.SetInputModelPath(input_model_file);
   compile_options.SetOutputModelPath(output_model_file);
-  compile_options.SetBoolOptions(OrtCompileApiFlags_ERROR_IF_NO_COMPILED_NODES);
+  compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED);
 
   // Call CompileModel() but expect an error status.
   Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
@@ -608,7 +608,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_SetBoolOptions_ErrorIfNoCompiledNodes) {
 
 // Test that the explicit compile API can be configured to return an error if the output model already exists and
 // would have been overwritten.
-TEST_F(QnnHTPBackendTests, CompileApi_SetBoolOptions_ErrorIfOutputFileAlreadyExists) {
+TEST_F(QnnHTPBackendTests, CompileApi_SetFlags_ErrorIfOutputFileAlreadyExists) {
   const ORTCHAR_T* input_model_file = ORT_MODEL_FOLDER "mul_1.onnx";
   const ORTCHAR_T* output_model_file = ORT_TSTR("mul_1_ctx_.onnx");
   std::filesystem::remove(output_model_file);
@@ -632,7 +632,7 @@ TEST_F(QnnHTPBackendTests, CompileApi_SetBoolOptions_ErrorIfOutputFileAlreadyExi
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetInputModelPath(input_model_file);
     compile_options.SetOutputModelPath(output_model_file);
-    compile_options.SetBoolOptions(OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
+    compile_options.SetFlags(OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
 
     Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
     ASSERT_EQ(status.GetErrorCode(), ORT_FAIL);

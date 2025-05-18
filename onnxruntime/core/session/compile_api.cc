@@ -201,12 +201,12 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetBoolOptions,
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
                     _In_ OrtModelCompilationOptions* ort_model_compile_options, size_t flags) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD)
   auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetBoolOptions(flags));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetFlags(flags));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(ort_model_compile_options);
@@ -247,7 +247,7 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::CompileModel,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
-    &OrtCompileAPI::ModelCompilationOptions_SetBoolOptions,
+    &OrtCompileAPI::ModelCompilationOptions_SetFlags,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

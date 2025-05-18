@@ -2784,7 +2784,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
 
   py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
       .value("NONE", OrtCompileApiFlags_NONE)
-      .value("ERROR_IF_NO_COMPILED_NODES", OrtCompileApiFlags_ERROR_IF_NO_COMPILED_NODES)
+      .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
       .value("ERROR_IF_OUTPUT_FILE_EXISTS", OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
 
   py::class_<PyModelCompiler>(m, "ModelCompiler",
@@ -2795,7 +2795,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        bool embed_compiled_data_into_model = false,
                        std::string external_initializers_file_path = {},
                        size_t external_initializers_size_threshold = 1024,
-                       size_t additional_compile_flags = OrtCompileApiFlags_NONE) {
+                       size_t flags = OrtCompileApiFlags_NONE) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
@@ -2803,7 +2803,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                                       embed_compiled_data_into_model,
                                                       external_initializers_file_path,
                                                       external_initializers_size_threshold,
-                                                      additional_compile_flags));
+                                                      flags));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2812,7 +2812,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(embed_compiled_data_into_model);
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
-        ORT_UNUSED_PARAMETER(additional_compile_flags);
+        ORT_UNUSED_PARAMETER(flags);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))

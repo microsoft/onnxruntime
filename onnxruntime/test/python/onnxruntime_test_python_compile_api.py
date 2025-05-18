@@ -122,7 +122,7 @@ class TestCompileApi(AutoEpTestCase):
 
     def test_compile_flags_error_if_no_compiled_nodes(self):
         """
-        Tests specifying an additional flag (OrtCompileApiFlags.ERROR_IF_NO_COMPILED_NODES) that
+        Tests specifying an additional flag (OrtCompileApiFlags.ERROR_IF_NO_NODES_COMPILED) that
         makes compiling return an error if no compiled nodes are generated (e.g., by using CPU EP).
         """
         input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
@@ -134,7 +134,7 @@ class TestCompileApi(AutoEpTestCase):
             input_model_path,
             embed_compiled_data_into_model=True,
             external_initializers_file_path=None,
-            additional_compile_flags=onnxrt.OrtCompileApiFlags.ERROR_IF_NO_COMPILED_NODES,
+            flags=onnxrt.OrtCompileApiFlags.ERROR_IF_NO_NODES_COMPILED,
         )
 
         # Compiling should raise a Fail exception and the output model should not be generated
@@ -158,7 +158,7 @@ class TestCompileApi(AutoEpTestCase):
             input_model_path,
             embed_compiled_data_into_model=True,
             external_initializers_file_path=None,
-            additional_compile_flags=onnxrt.OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS,
+            flags=onnxrt.OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS,
         )
 
         model_compiler.compile_to_file(output_model_path)

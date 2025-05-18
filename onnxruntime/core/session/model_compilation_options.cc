@@ -105,11 +105,11 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
   return Status::OK();
 }
 
-Status ModelCompilationOptions::SetBoolOptions(size_t flags) {
+Status ModelCompilationOptions::SetFlags(size_t flags) {
   EpContextModelGenerationOptions& options = session_options_.value.ep_context_gen_options;
   options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
   options.action_if_no_compiled_nodes =
-      (flags & OrtCompileApiFlags_ERROR_IF_NO_COMPILED_NODES) ? EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError
+      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError
                                                               : EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
   return Status::OK();
 }
