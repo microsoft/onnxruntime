@@ -1145,7 +1145,7 @@ public class InferenceTest {
       try (OrtSession session = env.createSession(onnxModelFileName)) {
         String testDataDirNamePattern;
         if (opset.equals("opset9") && modelName.equals("LSTM_Seq_lens_unpacked")) {
-          testDataDirNamePattern = "seq_lens"; // discrepency in data directory
+          testDataDirNamePattern = "seq_lens"; // discrepancy in data directory
         } else {
           testDataDirNamePattern = "test_data";
         }

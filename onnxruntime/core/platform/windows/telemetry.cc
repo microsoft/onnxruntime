@@ -183,6 +183,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"));
 
   process_info_logged = true;
@@ -383,6 +384,23 @@ void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
                     // Telemetry info
                     TraceLoggingUInt32(adapterLuid->LowPart, "adapterLuidLowPart"),
                     TraceLoggingUInt32(adapterLuid->HighPart, "adapterLuidHighPart"));
+}
+
+void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, const std::wstring_view& driver_names, const std::wstring_view& driver_versions) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "DriverInfo",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingString(device_class.data(), "deviceClass"),
+                    TraceLoggingWideString(driver_names.data(), "driverNames"),
+                    TraceLoggingWideString(driver_versions.data(), "driverVersions"));
 }
 
 }  // namespace onnxruntime

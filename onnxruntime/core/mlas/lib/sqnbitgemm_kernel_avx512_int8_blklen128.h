@@ -156,8 +156,8 @@ accumulate_q8_blklen128_r1c1blk1_avx512(
     __m512& acc0
 )
 {
-    __m512i bv0_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr));
-    __m512i bv1_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
+    __m512i bv0_64_epi8 = _mm512_load_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr));
+    __m512i bv1_64_epi8 = _mm512_load_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
 
     if constexpr (vnni) {
         dot_accumulate_1blkvnni(bv0_64_epi8, bv1_64_epi8, av00_64_epi8, av01_64_epi8, scale_a0b, acc0);
@@ -204,8 +204,8 @@ accumulate_q8_blklen128_r2c1blk1_avx512(
     __m512& acc1
 )
 {
-    __m512i bv0_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr));
-    __m512i bv1_64_epi8 = _mm512_loadu_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
+    __m512i bv0_64_epi8 = _mm512_load_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr));
+    __m512i bv1_64_epi8 = _mm512_load_si512(reinterpret_cast<const __m512i*>(QuantBDataPtr + 64));
 
     if constexpr (vnni) {
         dot_accumulate_1blkvnni(bv0_64_epi8, bv1_64_epi8, av00_64_epi8, av01_64_epi8, scale_a0b, acc0);
@@ -428,10 +428,10 @@ Q8Int8GemmR2xC4BlkLen128Avx512(
                 const float scale_a1b3 = (*(QuantAScalePtr + BlockCountK)) * (*(QuantBScalePtr + 3));
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m512i av00_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
-                    const __m512i av01_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
-                    const __m512i av10_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda));
-                    const __m512i av11_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda + SubblkLen / 2));
+                    const __m512i av00_64_epi8 = _mm512_load_si512((const __m512i*)QuantAPtr);
+                    const __m512i av01_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
+                    const __m512i av10_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + lda));
+                    const __m512i av11_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + lda + SubblkLen / 2));
 
                     accumulate_q8_blklen128_r2c1blk1_avx512<vnni>(av00_64_epi8, av01_64_epi8, av10_64_epi8, av11_64_epi8, QuantBDataPtr, scale_a0b0, scale_a1b0, acc[0], acc[NCols4]);
                     accumulate_q8_blklen128_r2c1blk1_avx512<vnni>(av00_64_epi8, av01_64_epi8, av10_64_epi8, av11_64_epi8, QuantBDataPtr + SubblkDataSizeInBytes, scale_a0b1, scale_a1b1, acc[1], acc[NCols4 + 1]);
@@ -606,10 +606,10 @@ Q8Int8GemmR2xC1BlkLen128Avx512(
                 const float scale_a1b0 = (*(QuantAScalePtr + BlockCountK)) * (*QuantBScalePtr);
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m512i av00_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
-                    const __m512i av01_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
-                    const __m512i av10_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda));
-                    const __m512i av11_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + lda + SubblkLen / 2));
+                    const __m512i av00_64_epi8 = _mm512_load_si512((const __m512i*)QuantAPtr);
+                    const __m512i av01_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
+                    const __m512i av10_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + lda));
+                    const __m512i av11_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + lda + SubblkLen / 2));
 
                     accumulate_q8_blklen128_r2c1blk1_avx512<vnni>(av00_64_epi8, av01_64_epi8, av10_64_epi8, av11_64_epi8, QuantBDataPtr, scale_a0b0, scale_a1b0, acc0, acc1);
 
@@ -768,8 +768,8 @@ Q8Int8GemmR1xC4BlkLen128Avx512(
                 const float scale_a0b3 = (*QuantAScalePtr) * (*(QuantBScalePtr + 3));
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m512i av0_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
-                    const __m512i av1_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
+                    const __m512i av0_64_epi8 = _mm512_load_si512((const __m512i*)QuantAPtr);
+                    const __m512i av1_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
 
                     accumulate_q8_blklen128_r1c1blk1_avx512<vnni>(av0_64_epi8, av1_64_epi8, QuantBDataPtr, scale_a0b0, acc[0]);
                     accumulate_q8_blklen128_r1c1blk1_avx512<vnni>(av0_64_epi8, av1_64_epi8, QuantBDataPtr + SubblkDataSizeInBytes, scale_a0b1, acc[1]);
@@ -925,8 +925,8 @@ Q8Int8GemmR1xC1BlkLen128Avx512(
                 const float scale_a0b0 = (*QuantAScalePtr) * (*QuantBScalePtr);
 
                 for (size_t kk = 0; kk < PerBlkSubblkCount; kk++) {
-                    const __m512i av0_64_epi8 = _mm512_loadu_si512((const __m512i*)QuantAPtr);
-                    const __m512i av1_64_epi8 = _mm512_loadu_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
+                    const __m512i av0_64_epi8 = _mm512_load_si512((const __m512i*)QuantAPtr);
+                    const __m512i av1_64_epi8 = _mm512_load_si512((const __m512i*)(QuantAPtr + SubblkLen / 2));
 
                     accumulate_q8_blklen128_r1c1blk1_avx512<vnni>(av0_64_epi8, av1_64_epi8, QuantBDataPtr, scale_a0b0, acc0);
 

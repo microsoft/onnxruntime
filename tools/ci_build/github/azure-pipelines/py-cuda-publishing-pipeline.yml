@@ -1,7 +1,7 @@
 resources:
   pipelines:
   - pipeline: build
-    source: 'Python CUDA12 Package Test Pipeline'
+    source: 'Python CUDA Package Test Pipeline'
     trigger:
       branches:
         include:

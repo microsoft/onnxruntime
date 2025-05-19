@@ -4,13 +4,15 @@
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_info.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
+#include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/common/make_string.h"
 #include "core/common/parse_string.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime {
-NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options) {
+NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const ProviderOptions& options,
+                                                                     const ConfigOptions& session_options) {
   NvExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
   void* onnx_bytestream = nullptr;
@@ -58,6 +60,25 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
   info.onnx_bytestream = onnx_bytestream;
+
+  // EP context settings
+  const auto embed_enable = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
+  if (embed_enable == "0") {
+    info.dump_ep_context_model = false;
+  } else if (embed_enable == "1") {
+    info.dump_ep_context_model = true;
+  } else {
+    ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
+  }
+  info.ep_context_file_path = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+
+  const auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1"));
+  if (0 <= embed_mode || embed_mode < 2) {
+    info.ep_context_embed_mode = embed_mode;
+  } else {
+    ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
+  }
+
   return info;
 }
 
