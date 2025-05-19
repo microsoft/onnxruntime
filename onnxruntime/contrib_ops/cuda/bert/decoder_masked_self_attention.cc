@@ -195,7 +195,7 @@ Status DecoderMaskedSelfAttention<T1, T2>::ComputeInternal(OpKernelContext* cont
   if (do_rotary_) {
     ORT_ENFORCE(parameters.head_size == 64 || parameters.head_size == 128,
                 "Current implementation of rotary embedding only supports head size of 64 or 128");
-    parameters.rotary_embedding_dim = parameters.head_size;
+    parameters.rotary_dim = parameters.head_size;
     parameters.t_step = parameters.past_sequence_length;
   }
 
