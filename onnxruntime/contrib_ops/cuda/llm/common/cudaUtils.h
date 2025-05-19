@@ -17,7 +17,6 @@
 #pragma once
 
 #include "contrib_ops/cuda/llm/common/cudaBf16Wrapper.h"
-#include "contrib_ops/cuda/llm/common/cudaDriverWrapper.h"
 #include "contrib_ops/cuda/llm/common/cudaFp8Utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/tllmException.h"
@@ -133,7 +132,7 @@ void check(T ptr, char const* const func, char const* const file, int const line
     if (ptr)
     {
         throw TllmException(
-            file, line, fmtstr("[TensorRT-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
+            file, line, fmtstr("[OnnxRuntime-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
     }
 }
 
@@ -144,7 +143,7 @@ void checkEx(
     if (std::all_of(std::begin(validReturns), std::end(validReturns), [&ptr](T const& t) { return t != ptr; }))
     {
         throw TllmException(
-            file, line, fmtstr("[TensorRT-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
+            file, line, fmtstr("[OnnxRuntime-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
     }
 }
 
@@ -211,7 +210,7 @@ inline void syncAndCheck(cudaStream_t stream, char const* const file, int const 
 #define PRINT_FUNC_NAME_()                                                                                             \
     do                                                                                                                 \
     {                                                                                                                  \
-        std::cout << "[TensorRT-LLM][CALL] " << __FUNCTION__ << " " << std::endl;                                      \
+        std::cout << "[OnnxRuntime-LLM][CALL] " << __FUNCTION__ << " " << std::endl;                                      \
     } while (0)
 
 // clang-format off
@@ -376,21 +375,21 @@ inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm)
 /// @brief Gets the memory allocation granularity for the current device.
 ///
 /// @return size_t The size of the smallest difference in memory size supported by the current device.
-inline size_t getAllocationGranularity()
-{
-    auto const currentDevice = getDevice();
-    ::CUmemAllocationProp prop = {};
+// inline size_t getAllocationGranularity()
+// {
+//     auto const currentDevice = getDevice();
+//     ::CUmemAllocationProp prop = {};
 
-    prop.type = ::CU_MEM_ALLOCATION_TYPE_PINNED;
-    prop.location.type = ::CU_MEM_LOCATION_TYPE_DEVICE;
-    prop.location.id = currentDevice;
-    prop.requestedHandleTypes = ::CU_MEM_HANDLE_TYPE_NONE;
+//     prop.type = ::CU_MEM_ALLOCATION_TYPE_PINNED;
+//     prop.location.type = ::CU_MEM_LOCATION_TYPE_DEVICE;
+//     prop.location.id = currentDevice;
+//     prop.requestedHandleTypes = ::CU_MEM_HANDLE_TYPE_NONE;
 
-    // Get the minimum granularity supported for allocation with cuMemCreate()
-    size_t granularity = 0;
-    TLLM_CU_CHECK(cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
-    return granularity;
-}
+//     // Get the minimum granularity supported for allocation with cuMemCreate()
+//     size_t granularity = 0;
+//     TLLM_CU_CHECK(cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
+//     return granularity;
+// }
 
 inline int getMultiProcessorCount()
 {
@@ -1384,25 +1383,19 @@ DEFINE_MEMBER_CHECKER(high_preciecion_normed_output)
 
 } // namespace ort_llm::common
 
-/*
- * Macros compliant with TensorRT coding conventions
- */
-#define TLLM_CUDA_CHECK(stat)                                                                                          \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        ort_llm::common::check((stat), #stat, __FILE__, __LINE__);                                                \
-    } while (0)
+#define TLLM_CUDA_CHECK(stat)                                  \
+  do {                                                         \
+    ort_llm::common::check((stat), #stat, __FILE__, __LINE__); \
+  } while (0)
 
 // We use singleton memory pool and the order of destructors depends on the compiler implementation. We find that the
 // cudaFree/cudaFreeHost is called after cudaruntime destruction on Windows. There will be an cudaErrorCudartUnloading
 // error.  However, it is safe to ignore this error because the cuda runtime is already exited, we are no more worried
 // about the memory leaks.
-#define TLLM_CUDA_CHECK_FREE_RESOURCE(stat)                                                                            \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        ort_llm::common::checkEx((stat), {cudaSuccess, cudaErrorCudartUnloading}, #stat, __FILE__, __LINE__);     \
-    } while (0)
-
+#define TLLM_CUDA_CHECK_FREE_RESOURCE(stat)                                                               \
+  do {                                                                                                    \
+    ort_llm::common::checkEx((stat), {cudaSuccess, cudaErrorCudartUnloading}, #stat, __FILE__, __LINE__); \
+  } while (0)
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

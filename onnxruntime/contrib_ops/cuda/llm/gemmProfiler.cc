@@ -21,7 +21,7 @@
  #endif
 
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
-#include "contrib_ops/cuda/llm/common/cublasMMWrapper.h"
+#include "contrib_ops/cuda/llm/common/cudaUtils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 
 #include <cstddef>
@@ -351,8 +351,6 @@ template class GemmPluginProfiler<ort_llm::cutlass_extensions::CutlassGemmConfig
     std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>, GemmIdCore,
     GemmIdCoreHash>;
 
-template class GemmPluginProfiler<cublasLtMatmulHeuristicResult_t,
-    std::shared_ptr<ort_llm::common::CublasMMWrapper>, GemmIdCublas, GemmIdCublasHash>;
 } // namespace ort_llm::kernels::weight_only
 
 #if defined(__GNUC__)
