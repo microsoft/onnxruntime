@@ -74,16 +74,16 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 //#endif
 
 #ifdef COMPILE_HOPPER_TMA_GEMMS
-    using CutlassActivationType = typename TllmToCutlassTypeAdapter<ActivationType>::type;
+    using CutlassActivationType = typename CudaToCutlassTypeAdapter<ActivationType>::type;
 
     if constexpr (!should_filter_tma_warp_specialized_gemm_problem_shape_v<cutlass::arch::Sm90, CTAShape, ClusterShape,
                       ActivationType>)
     {
-        using CutlassWeightType = typename TllmToCutlassTypeAdapter<WeightType>::type;
+        using CutlassWeightType = typename CudaToCutlassTypeAdapter<WeightType>::type;
 
-        using CutlassScaleZeroType = typename TllmToCutlassTypeAdapter<ScaleZeroType>::type;
-        using CutlassBiasType = typename TllmToCutlassTypeAdapter<BiasType>::type;
-        using CutlassOutputType = typename TllmToCutlassTypeAdapter<OutputType>::type;
+        using CutlassScaleZeroType = typename CudaToCutlassTypeAdapter<ScaleZeroType>::type;
+        using CutlassBiasType = typename CudaToCutlassTypeAdapter<BiasType>::type;
+        using CutlassOutputType = typename CudaToCutlassTypeAdapter<OutputType>::type;
 
         static_assert(std::is_same_v<CutlassActivationType, cutlass::half_t>
                 || std::is_same_v<CutlassActivationType, cutlass::bfloat16_t>

@@ -1,10 +1,9 @@
 #pragma once
 
-// #include <cstddef>
 #include <cstdint>
-// #include <cuda_runtime_api.h>
 
-namespace ort_llm::nvinfer1 {
+// This is corresponding to nvinfer1 namespace used by TensorRT. Add it to avoid dependency on TensorRT.
+namespace ort_llm::nvinfer {
 
 enum class DataType : int32_t {
   //! 32-bit floating point format.
@@ -24,16 +23,6 @@ enum class DataType : int32_t {
 
   //! Unsigned 8-bit integer format.
   //! Cannot be used to represent quantized floating-point values.
-  //! Use the IdentityLayer to convert kUINT8 network-level inputs to {kFLOAT, kHALF} prior
-  //! to use with other TensorRT layers, or to convert intermediate output
-  //! before kUINT8 network-level outputs from {kFLOAT, kHALF} to kUINT8.
-  //! kUINT8 conversions are only supported for {kFLOAT, kHALF}.
-  //! kUINT8 to {kFLOAT, kHALF} conversion will convert the integer values
-  //! to equivalent floating point values.
-  //! {kFLOAT, kHALF} to kUINT8 conversion will convert the floating point values
-  //! to integer values by truncating towards zero. This conversion has undefined behavior for
-  //! floating point values outside the range [0.0F, 256.0F) after truncation.
-  //! kUINT8 conversions are not supported for {kINT8, kINT32, kBOOL}.
   kUINT8 = 5,
 
   //! Signed 8-bit floating point with
@@ -65,4 +54,4 @@ class Dims64 {
 };
 
 using Dims = Dims64;
-}  // namespace onnxruntime::llm::nvinfer1
+}  // namespace ort_llm::nvinfer

@@ -78,9 +78,9 @@ class GemmIdCore
 public:
     int n;
     int k;
-    nvinfer1::DataType dtype;
+    nvinfer::DataType dtype;
 
-    GemmIdCore(int n_, int k_, nvinfer1::DataType const& dtype_)
+    GemmIdCore(int n_, int k_, nvinfer::DataType const& dtype_)
         : n(n_)
         , k(k_)
         , dtype(dtype_)
@@ -90,7 +90,7 @@ public:
     GemmIdCore()
         : n(-1)
         , k(-1)
-        , dtype(nvinfer1::DataType::kFLOAT) // dtype does not matter here
+        , dtype(nvinfer::DataType::kFLOAT) // dtype does not matter here
     {
     }
 
@@ -130,10 +130,10 @@ class GemmIdCublas : public GemmIdCore
 public:
     bool transA{};
     bool transB{};
-    nvinfer1::DataType outputDtype;
+    nvinfer::DataType outputDtype;
 
-    GemmIdCublas(int n_, int k_, nvinfer1::DataType const& dtype_, bool transA_, bool transB_,
-        nvinfer1::DataType const& output_dtype_)
+    GemmIdCublas(int n_, int k_, nvinfer::DataType const& dtype_, bool transA_, bool transB_,
+        nvinfer::DataType const& output_dtype_)
         : GemmIdCore(n_, k_, dtype_)
         , transA(transA_)
         , transB(transB_)
@@ -228,7 +228,7 @@ public:
     // void deserialize(char const*& data, GemmDims& dims, GemmIdType const& gemmId);
     // size_t getSerializationSize(GemmIdType const& gemmId) const;
 
-    void profileTactics(RunnerPtr const& runner, nvinfer1::DataType const& type, GemmDims const& dims,
+    void profileTactics(RunnerPtr const& runner, nvinfer::DataType const& type, GemmDims const& dims,
         GemmIdType const& gemmId, bool hasWeightOnlyCudaKernel = false);
 
     void setSelectionTactics(MNKProfileMapPtr const& map)
@@ -287,7 +287,7 @@ private:
 protected:
     RunnerPtr mRunner{nullptr};
 
-    nvinfer1::DataType mType{};
+    nvinfer::DataType mType{};
 
 private:
     MNKProfileMapPtr mMNKProfileMap{};

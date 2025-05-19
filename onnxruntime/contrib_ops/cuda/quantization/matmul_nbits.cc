@@ -33,7 +33,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
 
-  gemmId_ = GemmIdCore(n_16b, K_, ort_llm::nvinfer1::DataType::kHALF);
+  gemmId_ = GemmIdCore(n_16b, K_, ort_llm::nvinfer::DataType::kHALF);
 
   if (nbits_ == 8) {
     weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();

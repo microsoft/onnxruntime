@@ -39,58 +39,58 @@ namespace kernels
 namespace cutlass_kernels
 {
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// nvinfer1::DataType to Cutlass
+// nvinfer::DataType to Cutlass
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-template <nvinfer1::DataType>
+template <nvinfer::DataType>
 struct CutlassType
 {
     using type = void;
 };
 
 template <>
-struct CutlassType<nvinfer1::DataType::kHALF>
+struct CutlassType<nvinfer::DataType::kHALF>
 {
     using type = cutlass::half_t;
 };
 
 template <>
-struct CutlassType<nvinfer1::DataType::kBF16>
+struct CutlassType<nvinfer::DataType::kBF16>
 {
     using type = cutlass::bfloat16_t;
 };
 
 template <>
-struct CutlassType<nvinfer1::DataType::kFP8>
+struct CutlassType<nvinfer::DataType::kFP8>
 {
     using type = cutlass::float_e4m3_t;
 };
 
 #if defined(ENABLE_FP4)
 template <>
-struct CutlassType<nvinfer1::DataType::kFP4>
+struct CutlassType<nvinfer::DataType::kFP4>
 {
     using type = cutlass::float_e2m1_t;
 };
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// Tllm to Cutlass
+// CUDA to Cutlass
 
 template <typename T>
-struct TllmToCutlassTypeAdapter
+struct CudaToCutlassTypeAdapter
 {
     using type = T;
 };
 
 template <>
-struct TllmToCutlassTypeAdapter<half>
+struct CudaToCutlassTypeAdapter<half>
 {
     using type = cutlass::half_t;
 };
 
 #if defined(ENABLE_BF16)
 template <>
-struct TllmToCutlassTypeAdapter<__nv_bfloat16>
+struct CudaToCutlassTypeAdapter<__nv_bfloat16>
 {
     using type = cutlass::bfloat16_t;
 };
@@ -98,13 +98,13 @@ struct TllmToCutlassTypeAdapter<__nv_bfloat16>
 
 #if defined(ENABLE_FP8)
 template <>
-struct TllmToCutlassTypeAdapter<__nv_fp8_e4m3>
+struct CudaToCutlassTypeAdapter<__nv_fp8_e4m3>
 {
     using type = cutlass::float_e4m3_t;
 };
 
 template <>
-struct TllmToCutlassTypeAdapter<__nv_fp8_e5m2>
+struct CudaToCutlassTypeAdapter<__nv_fp8_e5m2>
 {
     using type = cutlass::float_e5m2_t;
 };
@@ -112,30 +112,30 @@ struct TllmToCutlassTypeAdapter<__nv_fp8_e5m2>
 
 #if defined(ENABLE_FP4)
 template <>
-struct TllmToCutlassTypeAdapter<__nv_fp4_e2m1>
+struct CudaToCutlassTypeAdapter<__nv_fp4_e2m1>
 {
     using type = cutlass::float_e2m1_t;
 };
 #endif
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////
-// Cutlass to Tllm
+// Cutlass to CUDA
 
 template <typename T>
-struct CutlassToTllmTypeAdapter
+struct CudaToCudaTypeAdapter
 {
     using type = T;
 };
 
 template <>
-struct CutlassToTllmTypeAdapter<cutlass::half_t>
+struct CudaToCudaTypeAdapter<cutlass::half_t>
 {
     using type = half;
 };
 
 #if defined(ENABLE_BF16)
 template <>
-struct CutlassToTllmTypeAdapter<cutlass::bfloat16_t>
+struct CudaToCudaTypeAdapter<cutlass::bfloat16_t>
 {
     using type = __nv_bfloat16;
 };
@@ -143,13 +143,13 @@ struct CutlassToTllmTypeAdapter<cutlass::bfloat16_t>
 
 #if defined(ENABLE_FP8)
 template <>
-struct CutlassToTllmTypeAdapter<cutlass::float_e4m3_t>
+struct CudaToCudaTypeAdapter<cutlass::float_e4m3_t>
 {
     using type = __nv_fp8_e4m3;
 };
 
 template <>
-struct CutlassToTllmTypeAdapter<cutlass::float_e5m2_t>
+struct CudaToCudaTypeAdapter<cutlass::float_e5m2_t>
 {
     using type = __nv_fp8_e5m2;
 };
@@ -157,7 +157,7 @@ struct CutlassToTllmTypeAdapter<cutlass::float_e5m2_t>
 
 #if defined(ENABLE_FP4)
 template <>
-struct CutlassToTllmTypeAdapter<cutlass::float_e2m1_t>
+struct CudaToCudaTypeAdapter<cutlass::float_e2m1_t>
 {
     using type = __nv_fp4_e2m1;
 };

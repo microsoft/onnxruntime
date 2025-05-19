@@ -84,11 +84,11 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
         "");
 
     // The cutlass type for the input elements. This is needed to convert to cutlass::half_t if necessary.
-    using CutlassActivationType = typename TllmToCutlassTypeAdapter<ActivationType>::type;
-    using CutlassWeightType = typename TllmToCutlassTypeAdapter<WeightType>::type;
-    using CutlassScaleZeroType = typename TllmToCutlassTypeAdapter<ScaleZeroType>::type;
-    using CutlassBiasType = typename TllmToCutlassTypeAdapter<BiasType>::type;
-    using CutlassOutputType = typename TllmToCutlassTypeAdapter<OutputType>::type;
+    using CutlassActivationType = typename CudaToCutlassTypeAdapter<ActivationType>::type;
+    using CutlassWeightType = typename CudaToCutlassTypeAdapter<WeightType>::type;
+    using CutlassScaleZeroType = typename CudaToCutlassTypeAdapter<ScaleZeroType>::type;
+    using CutlassBiasType = typename CudaToCutlassTypeAdapter<BiasType>::type;
+    using CutlassOutputType = typename CudaToCutlassTypeAdapter<OutputType>::type;
 
     // We need separate config for each architecture since we will target different tensorcore instructions. For float,
     // we do not target TCs.
