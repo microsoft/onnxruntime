@@ -1,23 +1,22 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <cassert>
-#include <cmath>
-#include <cstdint>
-// #include <cuda_bf16.h>
+// #include <cassert>
+// #include <cmath>
+// #include <cstdint>
+#include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cuda_runtime.h>
-#include <cuda_runtime_api.h>
-#include <iostream>
+// #include <cuda_runtime.h>
+// #include <cuda_runtime_api.h>
+// #include <iostream>
 #include <cutlass/cutlass.h>
 #include <cutlass/numeric_conversion.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace ort_llm {
+namespace kernels {
 namespace fpA_intB_gemv {
 
 template <KernelType KT>
@@ -229,6 +228,5 @@ template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s);
 
 }  // namespace fpA_intB_gemv
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace kernels
+}  // namespace ort_llm

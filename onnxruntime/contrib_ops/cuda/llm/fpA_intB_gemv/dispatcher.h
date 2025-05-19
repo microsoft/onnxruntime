@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv_details.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace ort_llm {
+namespace kernels {
 namespace fpA_intB_gemv {
 
 template <typename DetailsA>
@@ -432,6 +431,5 @@ void select_gs(Params& params, cudaStream_t s) {
                           KernelDetails<A, B, Layout, ConverterInterleave, KTile>>(Params & params, cudaStream_t s);
 
 }  // namespace fpA_intB_gemv
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace kernels
+}  // namespace ort_llm

@@ -2,21 +2,21 @@
 // Licensed under the MIT License.
 
 #pragma once
+#include <cuda_runtime.h>
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace ort_llm {
+namespace kernels {
 namespace fpA_intB_gemv {
 
 enum class KernelType {
   FP16Int8Groupwise,
   FP16Int4Groupwise,
   FP16Int8PerChannel,
-  FP16Int4PerChannel
-  // BF16Int8Groupwise,
-  // BF16Int4Groupwise,
-  // BF16Int8PerChannel,
-  // BF16Int4PerChannel
+  FP16Int4PerChannel,
+  BF16Int8Groupwise,
+  BF16Int4Groupwise,
+  BF16Int8PerChannel,
+  BF16Int4PerChannel
 };
 
 struct Params {
@@ -61,6 +61,5 @@ void launch_scaled_zero_point_kernel(
 void unpack_uint4_transposed_to_int8_cuda(cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight, const void* weight, int n, int k);
 
 }  // namespace fpA_intB_gemv
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace kernels
+}  // namespace ort_llm

@@ -12,7 +12,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "core/platform/env_var_utils.h"
 
@@ -21,12 +21,12 @@ namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
 using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+using ort_llm::kernels::weight_only::GemmDims;
+using ort_llm::kernels::weight_only::GemmIdCore;
 using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
 using ort_llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
-using ort_llm::kernels::weight_only::GemmIdCore;
-using ort_llm::kernels::weight_only::GemmDims;
 using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
-using WeightOnlyGemmRunnerPtr=std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
+using WeightOnlyGemmRunnerPtr = std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
 constexpr const char* kDisableFpAIntBGemm = "ORT_DISABLE_FPA_INTB_GEMM";
 
@@ -61,16 +61,15 @@ class MatMulNBits final : public CudaKernel {
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false)) {
-        fpA_intB_gemv::KernelType cuda_kernel_type = (nbits_ == 8)
-                                                         ? fpA_intB_gemv::KernelType::FP16Int8Groupwise
-                                                         : fpA_intB_gemv::KernelType::FP16Int4Groupwise;
+        using ort_llm::kernels::fpA_intB_gemv::KernelType;
+        KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
         int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
-        if (fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
+        if (ort_llm::kernels::fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 
         if (sm >= 75) {
-          constexpr int max_m = 32; // TODO: change it to 8192.
+          constexpr int max_m = 32;  // TODO: change it to 8192.
           RunGemmProfile(has_fpA_intB_gemv_, sm, max_m);
           has_fpA_intB_gemm_ = true;
         }
@@ -99,7 +98,6 @@ class MatMulNBits final : public CudaKernel {
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};
   GemmIdCore gemmId_{};
-
 
   mutable std::once_flag fpA_intB_init_once_flag_;
   mutable IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;

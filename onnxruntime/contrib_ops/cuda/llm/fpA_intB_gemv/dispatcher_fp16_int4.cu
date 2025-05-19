@@ -1,12 +1,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv_dispatcher.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
 
 
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace ort_llm {
+namespace kernels {
 namespace fpA_intB_gemv {
 
 INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
@@ -17,6 +16,5 @@ INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
     KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true, 128);
 
 }  // namespace fpA_intB_gemv
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace kernels
+}  // namespace ort_llm

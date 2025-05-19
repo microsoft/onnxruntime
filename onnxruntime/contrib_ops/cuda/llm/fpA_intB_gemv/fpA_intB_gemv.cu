@@ -6,20 +6,14 @@
 #include <cstdint>
 #include <cuda_bf16.h>
 #include <cuda_fp16.h>
-#include <cuda_runtime.h>
-#include <cuda_runtime_api.h>
-#include <iostream>
-// #include <cutlass/cutlass.h>
-// #include <cutlass/numeric_conversion.h>
-// #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
+// #include <cuda_runtime_api.h>
+// #include <iostream>
 #include "core/providers/cuda/cuda_common.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv_details.h"
-
-namespace onnxruntime {
-namespace contrib {
-namespace cuda {
+namespace ort_llm {
+namespace kernels {
 namespace fpA_intB_gemv {
 
 void kernel_launcher(int arch, Params& params, cudaStream_t s)
@@ -357,6 +351,5 @@ void unpack_uint4_transposed_to_int8_cuda(
 
 
 }  // namespace fpA_intB_gemv
-}  // namespace cuda
-}  // namespace contrib
-}  // namespace onnxruntime
+}  // namespace kernels
+}  // namespace ort_llm

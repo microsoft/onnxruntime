@@ -1,0 +1,138 @@
+#include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.inl"
+namespace ort_llm
+{
+namespace kernels
+{
+namespace cutlass_kernels
+{
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<16>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<32>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<64>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const cutlass::uint4b_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<16>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<32>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<64>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<128>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<1>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+template void sm90_generic_mixed_gemm_kernelLauncher<half, uint8_t, half, half, half,
+cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS, ort_llm::cutlass_extensions::EpilogueOpBias,
+cute::Shape<cute::Int<64>, cute::Int<256>, cute::Int<64>>, cute::Shape<cute::Int<1>, cute::Int<2>, cute::Int<1>>,
+cutlass::gemm::KernelTmaWarpSpecializedPingpong, cutlass::epilogue::TmaWarpSpecialized> (
+const half*, const uint8_t*, const half*, const half*, const half*, const float,
+half*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+);
+
+
+} // namespace cutlass_kernels
+} // namespace kernels
+} // namespace ort_llm

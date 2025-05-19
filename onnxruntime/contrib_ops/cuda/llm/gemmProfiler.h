@@ -16,8 +16,6 @@
  */
 #pragma once
 
-#include "contrib_ops/cuda/llm/pluginUtils.h"
-
 #include <cuda_runtime.h>
 
 #include <cstdlib>
@@ -30,6 +28,8 @@
 #include <unordered_map>
 #include <vector>
 
+#include "contrib_ops/cuda/llm/common/dataType.h"
+
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
@@ -40,12 +40,10 @@ namespace ort_llm::kernels::weight_only
 
 struct GemmDims
 {
-    using DimType64 = ort_llm::plugins::utils::DimType64;
-
-    DimType64 minM;
-    DimType64 maxM;
-    DimType64 n;
-    DimType64 k;
+    int64_t minM;
+    int64_t maxM;
+    int64_t n;
+    int64_t k;
 
     GemmDims()
         : minM(-1)
@@ -55,7 +53,7 @@ struct GemmDims
     {
     }
 
-    GemmDims(DimType64 minM_, DimType64 maxM_, DimType64 n_, DimType64 k_)
+    GemmDims(int64_t minM_, int64_t maxM_, int64_t n_, int64_t k_)
         : minM(minM_)
         , maxM(maxM_)
         , n(n_)

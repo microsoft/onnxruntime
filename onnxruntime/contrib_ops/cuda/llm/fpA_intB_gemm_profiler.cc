@@ -54,12 +54,12 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     void const* pre_quant_scale_ptr = nullptr;
     bool apply_alpha_in_advance = false;
     float alpha = 1.0f;
-    onnxruntime::contrib::cuda::fpA_intB_gemv::Params params(
+    ort_llm::kernels::fpA_intB_gemv::Params params(
         actPtr, pre_quant_scale_ptr, weightPtr,
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
-    onnxruntime::contrib::cuda::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
+    ort_llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
     int const wsSize = mRunner->getWorkspaceSize(m, originalN, k);

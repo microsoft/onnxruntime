@@ -18,7 +18,7 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 
 #include <cassert>
 #include <cutlass/numeric_types.h>
@@ -35,8 +35,7 @@
 
 using WeightOnlyGemmRunner = ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
-using KernelType = onnxruntime::contrib::cuda::fpA_intB_gemv::KernelType;
-
+using KernelType = ort_llm::kernels::fpA_intB_gemv::KernelType;
 
 namespace ort_llm::kernels::weight_only {
 enum class WeightTypeId {
