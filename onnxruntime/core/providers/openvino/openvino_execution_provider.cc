@@ -55,7 +55,7 @@ static std::vector<std::string> parseDevices(const std::string& device_string,
 OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, std::shared_ptr<SharedContext> shared_context)
     : IExecutionProvider{onnxruntime::kOpenVINOExecutionProvider},
       session_context_(info),
-      shared_context_{shared_context},
+      shared_context_{std::move(shared_context)},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
 }
