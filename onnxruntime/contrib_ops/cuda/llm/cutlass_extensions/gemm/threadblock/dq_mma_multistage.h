@@ -94,4 +94,3 @@ class DqMmaMultistage;
 } // namespace cutlass
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm/threadblock/dq_mma_multistage_finegrained.h"
-#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/threadblock/dq_mma_multistage_percol.h"

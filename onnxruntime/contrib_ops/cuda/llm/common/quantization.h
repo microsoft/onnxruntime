@@ -282,136 +282,125 @@ public:
         return fromDescription(true, false, false, false, perGroup, useInt4Weights);
     }
 
-    static QuantMode const fromQuantAlgo(
-        std::optional<std::string> quantAlgo = std::nullopt, std::optional<std::string> kvCacheQuantAlgo = std::nullopt)
-    {
-        QuantMode quantMode{};
-        if (quantAlgo == "W8A16")
-        {
-            quantMode = useWeightOnly(false, false);
-        }
-        else if (quantAlgo == "W4A16")
-        {
-            quantMode = useWeightOnly(true, false);
-        }
-        else if (quantAlgo == "W4A16_AWQ")
-        {
-            quantMode = useWeightOnly(true, true);
-        }
-        else if (quantAlgo == "W4A8_AWQ")
-        {
-            quantMode = useWeightOnly(true, true);
-        }
-        else if (quantAlgo == "W4A8_QSERVE_PER_GROUP")
-        {
-            quantMode = useQServe(false);
-        }
-        else if (quantAlgo == "W4A8_QSERVE_PER_CHANNEL")
-        {
-            quantMode = useQServe(true);
-        }
-        else if (quantAlgo == "W4A16_GPTQ")
-        {
-            quantMode = useWeightOnly(true, true);
-        }
-        else if (quantAlgo == "W8A8_SQ_PER_CHANNEL")
-        {
-            quantMode = useSmoothQuant(false, true);
-        }
-        else if (quantAlgo == "W8A8_SQ_PER_TENSOR_PLUGIN")
-        {
-            quantMode = useSmoothQuant(false, false);
-        }
-        else if (quantAlgo == "W8A8_SQ_PER_CHANNEL_PER_TOKEN_PLUGIN")
-        {
-            quantMode = useSmoothQuant(true, true);
-        }
-        else if (quantAlgo == "W8A8_SQ_PER_CHANNEL_PER_TENSOR_PLUGIN")
-        {
-            quantMode = useSmoothQuant(false, true);
-        }
-        else if (quantAlgo == "W8A8_SQ_PER_TENSOR_PER_TOKEN_PLUGIN")
-        {
-            quantMode = useSmoothQuant(true, false);
-        }
-        else if (quantAlgo == "FP8")
-        {
-            quantMode = fromDescription(false, false, false, false, false, false, false, false, true);
-        }
-        else if (quantAlgo == "FP8_ROWWISE")
-        {
-            quantMode = fromDescription(false, false, true, true, false, false, false, false, false, true);
-        }
-        else if (quantAlgo == "FP4")
-        {
-            quantMode
-                = fromDescription(false, false, false, false, false, false, false, false, false, false, false, true);
-        }
-        else if (quantAlgo == "FP8_BLOCK_SCALES")
-        {
-            quantMode = fromDescription(
-                false, false, false, false, false, false, false, false, false, false, false, false, true);
-        }
+    // static QuantMode const fromQuantAlgo(
+    //     std::optional<std::string> quantAlgo = std::nullopt, std::optional<std::string> kvCacheQuantAlgo = std::nullopt)
+    // {
+    //     QuantMode quantMode{};
+    //     if (quantAlgo == "W8A16")
+    //     {
+    //         quantMode = useWeightOnly(false, false);
+    //     }
+    //     else if (quantAlgo == "W4A16")
+    //     {
+    //         quantMode = useWeightOnly(true, false);
+    //     }
+    //     else if (quantAlgo == "W4A16_AWQ")
+    //     {
+    //         quantMode = useWeightOnly(true, true);
+    //     }
+    //     else if (quantAlgo == "W4A8_AWQ")
+    //     {
+    //         quantMode = useWeightOnly(true, true);
+    //     }
+    //     else if (quantAlgo == "W4A8_QSERVE_PER_GROUP")
+    //     {
+    //         quantMode = useQServe(false);
+    //     }
+    //     else if (quantAlgo == "W4A8_QSERVE_PER_CHANNEL")
+    //     {
+    //         quantMode = useQServe(true);
+    //     }
+    //     else if (quantAlgo == "W4A16_GPTQ")
+    //     {
+    //         quantMode = useWeightOnly(true, true);
+    //     }
+    //     else if (quantAlgo == "W8A8_SQ_PER_CHANNEL")
+    //     {
+    //         quantMode = useSmoothQuant(false, true);
+    //     }
+    //     else if (quantAlgo == "W8A8_SQ_PER_TENSOR_PLUGIN")
+    //     {
+    //         quantMode = useSmoothQuant(false, false);
+    //     }
+    //     else if (quantAlgo == "W8A8_SQ_PER_CHANNEL_PER_TOKEN_PLUGIN")
+    //     {
+    //         quantMode = useSmoothQuant(true, true);
+    //     }
+    //     else if (quantAlgo == "W8A8_SQ_PER_CHANNEL_PER_TENSOR_PLUGIN")
+    //     {
+    //         quantMode = useSmoothQuant(false, true);
+    //     }
+    //     else if (quantAlgo == "W8A8_SQ_PER_TENSOR_PER_TOKEN_PLUGIN")
+    //     {
+    //         quantMode = useSmoothQuant(true, false);
+    //     }
+    //     else if (quantAlgo == "FP8")
+    //     {
+    //         quantMode = fromDescription(false, false, false, false, false, false, false, false, true);
+    //     }
+    //     else if (quantAlgo == "FP8_ROWWISE")
+    //     {
+    //         quantMode = fromDescription(false, false, true, true, false, false, false, false, false, true);
+    //     }
+    //     else if (quantAlgo == "FP4")
+    //     {
+    //         quantMode
+    //             = fromDescription(false, false, false, false, false, false, false, false, false, false, false, true);
+    //     }
+    //     else if (quantAlgo == "FP8_BLOCK_SCALES")
+    //     {
+    //         quantMode = fromDescription(
+    //             false, false, false, false, false, false, false, false, false, false, false, false, true);
+    //     }
 
-        if (kvCacheQuantAlgo == "INT8")
-        {
-            quantMode += int8KvCache();
-        }
-        else if (kvCacheQuantAlgo == "FP8")
-        {
-            quantMode += fp8KvCache();
-        }
-        else if (kvCacheQuantAlgo == "NVFP4")
-        {
-            quantMode += fp4KvCache();
-        }
+    //     if (kvCacheQuantAlgo == "INT8")
+    //     {
+    //         quantMode += int8KvCache();
+    //     }
+    //     else if (kvCacheQuantAlgo == "FP8")
+    //     {
+    //         quantMode += fp8KvCache();
+    //     }
+    //     else if (kvCacheQuantAlgo == "NVFP4")
+    //     {
+    //         quantMode += fp4KvCache();
+    //     }
 
-        return quantMode;
-    }
+    //     return quantMode;
+    // }
 
-    constexpr QuantMode operator+(QuantMode const& other) const noexcept
-    {
-        return QuantMode(mValue | other.mValue);
-    }
+    // constexpr QuantMode operator+(QuantMode const& other) const noexcept
+    // {
+    //     return QuantMode(mValue | other.mValue);
+    // }
 
-    constexpr QuantMode& operator+=(QuantMode const& other) noexcept
-    {
-        return *this = *this + other;
-    }
+    // constexpr QuantMode& operator+=(QuantMode const& other) noexcept
+    // {
+    //     return *this = *this + other;
+    // }
 
-    constexpr QuantMode operator-(QuantMode const& other) const noexcept
-    {
-        return QuantMode(mValue & ~other.mValue);
-    }
+    // constexpr QuantMode operator-(QuantMode const& other) const noexcept
+    // {
+    //     return QuantMode(mValue & ~other.mValue);
+    // }
 
-    constexpr QuantMode& operator-=(QuantMode const& other) noexcept
-    {
-        return *this = *this - other;
-    }
+    // constexpr QuantMode& operator-=(QuantMode const& other) noexcept
+    // {
+    //     return *this = *this - other;
+    // }
 
-    constexpr bool operator==(QuantMode const& other) const noexcept
-    {
-        return mValue == other.mValue;
-    }
+    // constexpr bool operator==(QuantMode const& other) const noexcept
+    // {
+    //     return mValue == other.mValue;
+    // }
 
-    constexpr bool operator!=(QuantMode const& other) const noexcept
-    {
-        return !(*this == other);
-    }
+    // constexpr bool operator!=(QuantMode const& other) const noexcept
+    // {
+    //     return !(*this == other);
+    // }
 
 private:
     BaseType mValue{0};
-};
-
-class GroupwiseQuantAlgo
-{
-    // Keep align with ort_llm/quantization/mode.py
-public:
-    static constexpr int BIAS = int(1) << 0;
-    static constexpr int ZERO = int(1) << 1;
-    static constexpr int PRE_QUANT_SCALE = int(1) << 2;
-    static constexpr int FP8_ALPHA = int(1) << 3;
-    static constexpr int INT8_WEIGHT = int(1) << 4;
 };
 
 } // namespace common
