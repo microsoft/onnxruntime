@@ -21,6 +21,9 @@
 #include <vector>
 
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
+#include "core/common/common.h"
+
+
 
 namespace ort_llm
 {
@@ -38,13 +41,17 @@ enum class QuantType
 
 constexpr int get_weight_quant_bits(QuantType quant_type)
 {
-    switch (quant_type)
-    {
-    case QuantType::W8_A16: return 8;
-    case QuantType::W4_A16: return 4;
-    case QuantType::W4_AFP8: return 4;
-    default: TLLM_CHECK_WITH_INFO(false, "Invalid quant_type"); return -1;
-    }
+  switch (quant_type) {
+    case QuantType::W8_A16:
+      return 8;
+    case QuantType::W4_A16:
+      return 4;
+    case QuantType::W4_AFP8:
+      return 4;
+    default:
+      ORT_THROW("Invalid quant_type");
+      return -1;
+  }
 }
 
 // Shapes here can be 2 or 3D. 2-D shapes are [num_rows, num_cols]

@@ -40,7 +40,7 @@
 #pragma GCC diagnostic pop
 #endif          // __GNUC__
 
-#include "contrib_ops/cuda/llm/common/assert.h"
+#include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"

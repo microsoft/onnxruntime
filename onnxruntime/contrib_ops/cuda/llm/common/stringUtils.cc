@@ -15,13 +15,14 @@
  */
 
 #include "contrib_ops/cuda/llm/common/stringUtils.h"
-#include "contrib_ops/cuda/llm/common/assert.h"
+#include "core/common/common.h"
 
 #include <cerrno>
 #include <cstdarg>
 #include <cstring>
 #include <iostream>
 #include <string>
+
 
 namespace ort_llm::common
 {
@@ -39,7 +40,7 @@ std::string vformat(char const* fmt, va_list args)
     std::string stringBuf(size, char{});
     auto const size2 = std::vsnprintf(&stringBuf[0], size + 1, fmt, args);
 
-    TLLM_CHECK_WITH_INFO(size2 == size, std::string(std::strerror(errno)));
+    ORT_ENFORCE(size2 == size, std::string(std::strerror(errno)));
 
     return stringBuf;
 }

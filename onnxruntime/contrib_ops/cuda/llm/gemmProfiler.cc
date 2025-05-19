@@ -23,8 +23,10 @@
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 #include <cstddef>
+
 
 namespace ort_llm::kernels::weight_only
 {
@@ -160,7 +162,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
         }
     };
 
-    common::check_cuda_error(cudaStreamCreate(&mStream));
+    CUDA_CALL_THROW(cudaStreamCreate(&mStream));
 
     int const startMinMRounded = nextPowerOfTwo(dims.minM);
 
@@ -195,7 +197,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
         // Free tmp data
         freeTmpData();
     }
-    common::check_cuda_error(cudaStreamDestroy(mStream));
+    CUDA_CALL_THROW(cudaStreamDestroy(mStream));
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -233,16 +235,16 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocateTmpData()
 {
-    TLLM_CHECK_WITH_INFO(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
+    ORT_ENFORCE(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
     auto const status = cudaMalloc(&mWorkspaceTmp, mTmpWorkspaceSizeInBytes);
-    TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't allocate tmp workspace for GEMM tactics profiling.");
+    ORT_ENFORCE(status == cudaSuccess, "Can't allocate tmp workspace for GEMM tactics profiling.");
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData()
 {
     auto const status = cudaFree(mWorkspaceTmp);
-    TLLM_CHECK_WITH_INFO(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
+    ORT_ENFORCE(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -323,10 +325,10 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
 
     cudaEvent_t start;
     cudaEvent_t stop;
-    common::check_cuda_error(cudaEventCreate(&start));
-    common::check_cuda_error(cudaEventCreate(&stop));
-    common::check_cuda_error(cudaStreamSynchronize(stream));
-    common::check_cuda_error(cudaEventRecord(start, stream));
+    CUDA_CALL_THROW(cudaEventCreate(&start));
+    CUDA_CALL_THROW(cudaEventCreate(&stop));
+    CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+    CUDA_CALL_THROW(cudaEventRecord(start, stream));
 
     // Profile GEMM
     for (int i = 0; i < runs; ++i)
@@ -334,15 +336,15 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
         runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
     }
 
-    common::check_cuda_error(cudaEventRecord(stop, stream));
+    CUDA_CALL_THROW(cudaEventRecord(stop, stream));
 
-    common::check_cuda_error(cudaEventSynchronize(stop));
+    CUDA_CALL_THROW(cudaEventSynchronize(stop));
 
     float elapsed;
-    common::check_cuda_error(cudaEventElapsedTime(&elapsed, start, stop));
+    CUDA_CALL_THROW(cudaEventElapsedTime(&elapsed, start, stop));
 
-    common::check_cuda_error(cudaEventDestroy(start));
-    common::check_cuda_error(cudaEventDestroy(stop));
+    CUDA_CALL_THROW(cudaEventDestroy(start));
+    CUDA_CALL_THROW(cudaEventDestroy(stop));
 
     return elapsed / runs;
 }

@@ -28,7 +28,11 @@
 #include <unordered_map>
 #include <vector>
 
-#include "contrib_ops/cuda/llm/common/dataType.h"
+//#include "contrib_ops/cuda/llm/common/dataType.h"
+#include "contrib_ops/cuda/llm/nv_infer_runtime.h"
+#include "core/common/common.h"
+
+
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
@@ -207,9 +211,7 @@ public:
             auto const iter = profileMap.find(id);
             if (iter == profileMap.end())
             {
-                std::ostringstream msg;
-                msg << "Cannot find ID (" << id << ") in the profile map. Abort.";
-                TLLM_THROW(msg.str());
+                ORT_THROW("Cannot find ID (", id, ") in the profile map. Abort.");
             }
             return iter->second;
         }

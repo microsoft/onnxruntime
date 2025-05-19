@@ -14,16 +14,15 @@
  * limitations under the License.
  */
 
-#ifndef CUDA_DRIVER_WRAPPER_H
-#define CUDA_DRIVER_WRAPPER_H
+#pragma once
 
 #include "contrib_ops/cuda/llm/common/stringUtils.h"
-#include "contrib_ops/cuda/llm/common/tllmException.h"
 
 #include <cuda.h>
 
 #include <cstdio>
 #include <memory>
+#include "core/common/common.h"
 
 namespace ort_llm::common
 {
@@ -126,21 +125,10 @@ void checkDriver(
         char const* errorString = nullptr;
         wrap.cuGetErrorName(result, &errorName);
         wrap.cuGetErrorString(result, &errorString);
-        throw TllmException(
-            file, line, fmtstr("[TensorRT-LLM][ERROR] CUDA driver error in %s: %s: %s.", func, errorName, errorString));
+
+
+        ORT_THROW("CUDA driver error in ", func, ": ", errorName, ": ", errorString);
     }
 }
 
 } // namespace ort_llm::common
-
-/*
- * Macros compliant with TensorRT coding conventions
- */
-#define TLLM_CU_CHECK(stat)                                                                                            \
-    do                                                                                                                 \
-    {                                                                                                                  \
-        ort_llm::common::checkDriver(                                                                             \
-            (stat), *ort_llm::common::CUDADriverWrapper::getInstance(), #stat, __FILE__, __LINE__);               \
-    } while (0)
-
-#endif // CUDA_DRIVER_WRAPPER_H

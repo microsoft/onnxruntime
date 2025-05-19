@@ -33,13 +33,15 @@
 #pragma GCC diagnostic pop
 #endif          // __GNUC__
 
-#include "contrib_ops/cuda/llm/common/assert.h"
+#include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template_sm90.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+
 
 namespace tk = ort_llm::common;
 namespace tkc = ort_llm::cutlass_extensions;
@@ -398,9 +400,9 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
 {
     TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
     int device{-1};
-    tk::check_cuda_error(cudaGetDevice(&device));
+    CUDA_CALL_THROW(cudaGetDevice(&device));
     sm_ = tk::getSMVersion();
-    tk::check_cuda_error(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,

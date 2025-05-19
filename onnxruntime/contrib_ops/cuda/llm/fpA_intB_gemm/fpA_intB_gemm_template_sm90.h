@@ -19,7 +19,7 @@
 #include "cute/numeric/integral_constant.hpp"
 #include "cutlass/gemm/dispatch_policy.hpp"
 
-#include "contrib_ops/cuda/llm/common/assert.h"
+#include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"

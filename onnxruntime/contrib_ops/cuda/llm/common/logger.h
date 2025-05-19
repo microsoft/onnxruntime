@@ -21,8 +21,10 @@
 #include <stdexcept>
 #include <string>
 
-#include "contrib_ops/cuda/llm/common/assert.h"
+#include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/stringUtils.h"
+
+
 
 namespace ort_llm::common
 {
@@ -78,8 +80,6 @@ public:
         return log(level, rank, format.c_str(), args...);
     }
 
-    void log(std::exception const& ex, Level level = Level::ERROR);
-
     Level getLevel() const
     {
         return level_;
@@ -119,7 +119,7 @@ private:
         case ERROR: return "ERROR";
         }
 
-        TLLM_THROW("Unknown log level: %d", level);
+        ORT_THROW("Unknown log level:", level);
     }
 
     static inline std::string getPrefix(Level const level)
@@ -186,5 +186,4 @@ void Logger::log(Logger::Level const level, int const rank, char const* format, 
 #define TLLM_LOG_INFO(...) TLLM_LOG(ort_llm::common::Logger::INFO, __VA_ARGS__)
 #define TLLM_LOG_WARNING(...) TLLM_LOG(ort_llm::common::Logger::WARNING, __VA_ARGS__)
 #define TLLM_LOG_ERROR(...) TLLM_LOG(ort_llm::common::Logger::ERROR, __VA_ARGS__)
-#define TLLM_LOG_EXCEPTION(ex, ...) ort_llm::common::Logger::getLogger()->log(ex, ##__VA_ARGS__)
 } // namespace ort_llm::common

@@ -3,6 +3,9 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
+#include "core/common/common.h"
+
+
 
 namespace ort_llm {
 namespace kernels {

@@ -16,8 +16,10 @@
 
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
-#include "contrib_ops/cuda/llm/common/tllmException.h"
 #include <cuda_runtime.h>
+
+#include "core/common/common.h"
+
 
 namespace ort_llm::common
 {
@@ -42,7 +44,7 @@ Logger::Logger()
                 return WARNING;
             if (levelName == "ERROR")
                 return ERROR;
-            TLLM_THROW("Invalid log level: %s", levelName.c_str());
+            ORT_THROW("Invalid log level:", levelName);
         }();
         // If TLLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
         if (isFirstRankOnly)
@@ -55,11 +57,6 @@ Logger::Logger()
         }
         setLevel(level);
     }
-}
-
-void Logger::log(std::exception const& ex, Logger::Level level)
-{
-    log(level, "%s: %s", TllmException::demangle(typeid(ex).name()).c_str(), ex.what());
 }
 
 Logger* Logger::getLogger()

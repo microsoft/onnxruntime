@@ -28,8 +28,8 @@
 #define dllGetSym(handle, name) dlsym(handle, name)
 #endif // defined(_WIN32)
 
-#include "contrib_ops/cuda/llm/common/assert.h"
 #include "contrib_ops/cuda/llm/common/cudaDriverWrapper.h"
+#include "core/common/common.h"
 
 #include <cuda.h>
 
@@ -63,7 +63,7 @@ CUDADriverWrapper::CUDADriverWrapper()
     : handle(dllOpen(CUDA_LIB_NAME))
 {
 
-    TLLM_CHECK_WITH_INFO(handle != nullptr, "CUDA driver library is not open correctly.");
+    ORT_ENFORCE(handle != nullptr, "CUDA driver library is not open correctly.");
 
     auto load_sym = [](void* handle, char const* name)
     {

@@ -19,7 +19,9 @@
 #include "contrib_ops/cuda/llm/common/cudaBf16Wrapper.h"
 #include "contrib_ops/cuda/llm/common/cudaFp8Utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
-#include "contrib_ops/cuda/llm/common/tllmException.h"
+#include "core/providers/cuda/cuda_common.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
+
 #include <algorithm>
 #include <cassert>
 #include <cinttypes>
@@ -50,6 +52,8 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #pragma GCC diagnostic ignored "-Wunused-function"
 #endif
+
+
 
 namespace ort_llm::common
 {
@@ -126,29 +130,6 @@ static char const* _cudaGetErrorEnum(cublasStatus_t error)
     return "<unknown>";
 }
 
-template <typename T>
-void check(T ptr, char const* const func, char const* const file, int const line)
-{
-    if (ptr)
-    {
-        throw TllmException(
-            file, line, fmtstr("[OnnxRuntime-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
-    }
-}
-
-template <typename T>
-void checkEx(
-    T ptr, std::initializer_list<T> const& validReturns, char const* const func, char const* const file, int const line)
-{
-    if (std::all_of(std::begin(validReturns), std::end(validReturns), [&ptr](T const& t) { return t != ptr; }))
-    {
-        throw TllmException(
-            file, line, fmtstr("[OnnxRuntime-LLM][ERROR] CUDA runtime error in %s: %s", func, _cudaGetErrorEnum(ptr)));
-    }
-}
-
-#define check_cuda_error(val) check((val), #val, __FILE__, __LINE__)
-#define check_cuda_error_2(val, file, line) check((val), #val, file, line)
 
 inline std::optional<bool> isCudaLaunchBlocking()
 {
@@ -173,7 +154,7 @@ inline std::optional<bool> isCudaLaunchBlocking()
 inline bool isCapturing(cudaStream_t stream)
 {
     cudaStreamCaptureStatus status;
-    check_cuda_error(cudaStreamIsCapturing(stream, &status));
+    CUDA_CALL_THROW(cudaStreamIsCapturing(stream, &status));
     return status == cudaStreamCaptureStatus::cudaStreamCaptureStatusActive;
 }
 
@@ -201,11 +182,9 @@ inline void syncAndCheck(cudaStream_t stream, char const* const file, int const 
     if (doCheckError(stream))
     {
         cudaStreamSynchronize(stream);
-        check(cudaGetLastError(), "cudaGetLastError", file, line);
+        CUDA_CALL_THROW(cudaGetLastError());
     }
 }
-
-#define sync_check_cuda_error(stream) ort_llm::common::syncAndCheck(stream, __FILE__, __LINE__)
 
 #define PRINT_FUNC_NAME_()                                                                                             \
     do                                                                                                                 \
@@ -304,25 +283,25 @@ struct CudaDataType<__nv_bfloat16>
 inline int getSMVersion()
 {
     int device{-1};
-    check_cuda_error(cudaGetDevice(&device));
+    CUDA_CALL_THROW(cudaGetDevice(&device));
     int sm_major = 0;
     int sm_minor = 0;
-    check_cuda_error(cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device));
-    check_cuda_error(cudaDeviceGetAttribute(&sm_minor, cudaDevAttrComputeCapabilityMinor, device));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&sm_major, cudaDevAttrComputeCapabilityMajor, device));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&sm_minor, cudaDevAttrComputeCapabilityMinor, device));
     return sm_major * 10 + sm_minor;
 }
 
 inline int getDevice()
 {
     int deviceID{0};
-    check_cuda_error(cudaGetDevice(&deviceID));
+    CUDA_CALL_THROW(cudaGetDevice(&deviceID));
     return deviceID;
 }
 
 inline int getDeviceCount()
 {
     int count{0};
-    check_cuda_error(cudaGetDeviceCount(&count));
+    CUDA_CALL_THROW(cudaGetDeviceCount(&count));
     return count;
 }
 
@@ -331,7 +310,7 @@ template <typename T>
 cudaMemoryType getPtrCudaMemoryType(T* ptr)
 {
     cudaPointerAttributes attributes{};
-    check_cuda_error(cudaPointerGetAttributes(&attributes, ptr));
+    CUDA_CALL_THROW(cudaPointerGetAttributes(&attributes, ptr));
     return attributes.type;
 }
 
@@ -366,37 +345,18 @@ inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm)
 
     size_t free = 0;
     size_t total = 0;
-    check_cuda_error(cudaMemGetInfo(&free, &total));
+    CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
     TLLM_LOG_DEBUG("Using GPU memory for KV cache, total memory %0.2f GB, available memory %0.2f GB",
         ((double) total / 1e9), ((double) free / 1e9));
     return {free, total};
 }
 
-/// @brief Gets the memory allocation granularity for the current device.
-///
-/// @return size_t The size of the smallest difference in memory size supported by the current device.
-// inline size_t getAllocationGranularity()
-// {
-//     auto const currentDevice = getDevice();
-//     ::CUmemAllocationProp prop = {};
-
-//     prop.type = ::CU_MEM_ALLOCATION_TYPE_PINNED;
-//     prop.location.type = ::CU_MEM_LOCATION_TYPE_DEVICE;
-//     prop.location.id = currentDevice;
-//     prop.requestedHandleTypes = ::CU_MEM_HANDLE_TYPE_NONE;
-
-//     // Get the minimum granularity supported for allocation with cuMemCreate()
-//     size_t granularity = 0;
-//     TLLM_CU_CHECK(cuMemGetAllocationGranularity(&granularity, &prop, CU_MEM_ALLOC_GRANULARITY_MINIMUM));
-//     return granularity;
-// }
-
 inline int getMultiProcessorCount()
 {
     int nSM{0};
     int deviceID{0};
-    check_cuda_error(cudaGetDevice(&deviceID));
-    check_cuda_error(cudaDeviceGetAttribute(&nSM, cudaDevAttrMultiProcessorCount, deviceID));
+    CUDA_CALL_THROW(cudaGetDevice(&deviceID));
+    CUDA_CALL_THROW(cudaDeviceGetAttribute(&nSM, cudaDevAttrMultiProcessorCount, deviceID));
     return nSM;
 }
 
@@ -404,8 +364,8 @@ inline int getMaxSharedMemoryPerSM()
 {
     int nByteMaxSharedMemoryPerSM{0};
     int deviceID{0};
-    check_cuda_error(cudaGetDevice(&deviceID));
-    check_cuda_error(
+    CUDA_CALL_THROW(cudaGetDevice(&deviceID));
+    CUDA_CALL_THROW(
         cudaDeviceGetAttribute(&nByteMaxSharedMemoryPerSM, cudaDevAttrMaxSharedMemoryPerMultiprocessor, deviceID));
     return nByteMaxSharedMemoryPerSM;
 }
@@ -414,8 +374,8 @@ inline int getMaxSharedMemoryPerBlockOptin()
 {
     int nByteMaxSharedMemoryPerBlockOptin{0};
     int deviceID{0};
-    check_cuda_error(cudaGetDevice(&deviceID));
-    check_cuda_error(
+    CUDA_CALL_THROW(cudaGetDevice(&deviceID));
+    CUDA_CALL_THROW(
         cudaDeviceGetAttribute(&nByteMaxSharedMemoryPerBlockOptin, cudaDevAttrMaxSharedMemoryPerBlockOptin, deviceID));
     return nByteMaxSharedMemoryPerBlockOptin;
 }
@@ -449,7 +409,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
         return;
     }
     cudaDeviceSynchronize();
-    check_cuda_error(cudaGetLastError());
+    CUDA_CALL_THROW(cudaGetLastError());
 
     bool const isDevicePtr = (getPtrCudaMemoryType(ptr) == cudaMemoryTypeDevice);
     size_t sizeInByte = sizeof(T) * nElement;
@@ -461,7 +421,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
     {
         tmpVec.resize(nElement);
         tmp = tmpVec.data();
-        check_cuda_error(cudaMemcpy(tmp, ptr, sizeInByte, cudaMemcpyDeviceToHost));
+        CUDA_CALL_THROW(cudaMemcpy(tmp, ptr, sizeInByte, cudaMemcpyDeviceToHost));
         cudaDeviceSynchronize();
     }
 
@@ -525,7 +485,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
         TLLM_LOG_INFO("%s", ss.str().c_str());
     }
     cudaDeviceSynchronize();
-    check_cuda_error(cudaGetLastError());
+    CUDA_CALL_THROW(cudaGetLastError());
 }
 
 template void printArrayInfo(float const* ptr, uint64_t nElement, std::string name, bool const bPrintElement);
@@ -551,7 +511,7 @@ void printToStream(T const* ptr, int const nElement, FILE* strm)
         return;
     }
     std::vector<T> tmp(nElement, 0);
-    check_cuda_error(cudaMemcpy(tmp.data(), ptr, sizeof(T) * nElement, cudaMemcpyDeviceToHost));
+    CUDA_CALL_THROW(cudaMemcpy(tmp.data(), ptr, sizeof(T) * nElement, cudaMemcpyDeviceToHost));
     for (int i = 0; i < nElement; ++i)
     {
         fprintf(strm, "%f, ", static_cast<float>(tmp[i]));
@@ -698,7 +658,7 @@ inline void printMatrix(T const* ptr, int nRow, int nCol, int nStride)
         return;
     }
     cudaDeviceSynchronize();
-    check_cuda_error(cudaGetLastError());
+    CUDA_CALL_THROW(cudaGetLastError());
 
     bool const isDevicePtr = (getPtrCudaMemoryType(ptr) == cudaMemoryTypeDevice);
     size_t sizeInByte = sizeof(T) * nRow * nStride;
@@ -709,9 +669,9 @@ inline void printMatrix(T const* ptr, int nRow, int nCol, int nStride)
         std::vector<T> tmpVec;
         tmpVec.resize(nRow * nStride);
         T* tmp = tmpVec.data();
-        check_cuda_error(cudaMemcpy(tmp, ptr, sizeInByte, cudaMemcpyDeviceToHost));
+        CUDA_CALL_THROW(cudaMemcpy(tmp, ptr, sizeInByte, cudaMemcpyDeviceToHost));
         cudaDeviceSynchronize();
-        check_cuda_error(cudaGetLastError());
+        CUDA_CALL_THROW(cudaGetLastError());
         print_elements(tmp, nRow, nCol, nStride);
     }
     else
