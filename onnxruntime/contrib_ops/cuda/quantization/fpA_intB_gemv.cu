@@ -14,13 +14,13 @@
 // #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
 #include "core/providers/cuda/cuda_common.h"
 
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm_details.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv_details.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace fpA_intB_gemm {
+namespace fpA_intB_gemv {
 
 void kernel_launcher(int arch, Params& params, cudaStream_t s)
 {
@@ -32,6 +32,7 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s)
         return;                                                                                                        \
     }
 
+// This is not used since there is no alpha for MatMulNBits currently.
 #define EXEC_W4A8(KType, A, B, Layout, ConverterInterleave)                                                            \
     if (params.type == KType && params.apply_alpha_in_advance)                                                         \
     {                                                                                                                  \
@@ -44,42 +45,33 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s)
     {
         EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
         EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
     }
-    else if (arch >= 80 && arch < 90)
+    else if (arch >= 80 && arch < 90 || arch >= 100)
     {
-        if (arch == 89)
-        {
-            EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
-            // EXEC_W4A8(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
-        }
+        // if (arch == 89 || arch >= 120)
+        // {
+        //     EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        //     EXEC_W4A8(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        // }
         EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
         EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
 
         // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
         // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::BF16Int8PerChannel, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::BF16Int4PerChannel, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
     }
     else if (arch >= 90)
     {
         // Dispatchers for W4A8 groupwise
-        EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+        // EXEC_W4A8(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
         // EXEC_W4A8(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
 
         EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
         EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
-        // EXEC(KernelType::FP16Int8PerChannel, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
-        // EXEC(KernelType::FP16Int4PerChannel, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
 
         // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
         // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
-        // EXEC(KernelType::BF16Int8PerChannel, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
-        // EXEC(KernelType::BF16Int4PerChannel, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
     }
+#undef EXEC_W4A8
 #undef EXEC
 }
 
@@ -93,19 +85,13 @@ bool is_supported(int arch, KernelType kernel_type)
     {
         SUPPORT(KernelType::FP16Int8Groupwise);
         SUPPORT(KernelType::FP16Int4Groupwise);
-        // SUPPORT(KernelType::FP16Int8PerChannel);
-        // SUPPORT(KernelType::FP16Int4PerChannel);
     }
     else if (arch >= 80)
     {
         SUPPORT(KernelType::FP16Int8Groupwise);
         SUPPORT(KernelType::FP16Int4Groupwise);
-        // SUPPORT(KernelType::FP16Int8PerChannel);
-        // SUPPORT(KernelType::FP16Int4PerChannel);
         // SUPPORT(KernelType::BF16Int8Groupwise);
         // SUPPORT(KernelType::BF16Int4Groupwise);
-        // SUPPORT(KernelType::BF16Int8PerChannel);
-        // SUPPORT(KernelType::BF16Int4PerChannel);
     }
     return false;
 #undef SUPPORT
@@ -370,7 +356,7 @@ void unpack_uint4_transposed_to_int8_cuda(
 }
 
 
-}  // namespace fpA_intB_gemm
+}  // namespace fpA_intB_gemv
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

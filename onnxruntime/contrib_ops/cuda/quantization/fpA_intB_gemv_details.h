@@ -13,12 +13,12 @@
 #include <cutlass/numeric_conversion.h>
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace fpA_intB_gemm {
+namespace fpA_intB_gemv {
 
 template <KernelType KT>
 struct kernel_type_traits;
@@ -228,7 +228,7 @@ struct ConverterWrapper {
 template <bool isGroupwise, typename Details>
 void select_gs(Params& params, cudaStream_t s);
 
-}  // namespace fpA_intB_gemm
+}  // namespace fpA_intB_gemv
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

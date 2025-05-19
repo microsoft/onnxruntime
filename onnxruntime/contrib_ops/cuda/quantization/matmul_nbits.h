@@ -12,7 +12,7 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/gemmProfiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "core/platform/env_var_utils.h"
 
@@ -61,11 +61,11 @@ class MatMulNBits final : public CudaKernel {
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false)) {
-        fpA_intB_gemm::KernelType cuda_kernel_type = (nbits_ == 8)
-                                                         ? fpA_intB_gemm::KernelType::FP16Int8Groupwise
-                                                         : fpA_intB_gemm::KernelType::FP16Int4Groupwise;
+        fpA_intB_gemv::KernelType cuda_kernel_type = (nbits_ == 8)
+                                                         ? fpA_intB_gemv::KernelType::FP16Int8Groupwise
+                                                         : fpA_intB_gemv::KernelType::FP16Int4Groupwise;
         int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
-        if (fpA_intB_gemm::is_supported(sm, cuda_kernel_type)) {
+        if (fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 

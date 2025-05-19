@@ -6,7 +6,7 @@
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace fpA_intB_gemm {
+namespace fpA_intB_gemv {
 
 enum class KernelType {
   FP16Int8Groupwise,
@@ -60,7 +60,7 @@ void launch_scaled_zero_point_kernel(
 // unpack int4 packed transposed weight of shape (n, k/2) to int8 weight of shape (k, n)
 void unpack_uint4_transposed_to_int8_cuda(cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight, const void* weight, int n, int k);
 
-}  // namespace fpA_intB_gemm
+}  // namespace fpA_intB_gemv
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

@@ -1,13 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm.h"
-#include "contrib_ops/cuda/quantization/fpA_intB_gemm_details.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv.h"
+#include "contrib_ops/cuda/quantization/fpA_intB_gemv_details.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-namespace fpA_intB_gemm {
+namespace fpA_intB_gemv {
 
 template <typename DetailsA>
 struct MathWrapper {
@@ -431,7 +431,7 @@ void select_gs(Params& params, cudaStream_t s) {
   template void select_gs<kernel_type_traits<KType>::isGroupwise,                                 \
                           KernelDetails<A, B, Layout, ConverterInterleave, KTile>>(Params & params, cudaStream_t s);
 
-}  // namespace fpA_intB_gemm
+}  // namespace fpA_intB_gemv
 }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime
