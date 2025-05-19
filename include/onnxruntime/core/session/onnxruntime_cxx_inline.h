@@ -253,6 +253,10 @@ inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats()
   if (raw_stats == nullptr) {
     return stats;
   }
+
+  auto free_fn = detail::AllocatedFree(allocator);
+  std::unique_ptr<void, decltype(free_fn)> raw_stats_g(raw_stats, free_fn);
+
   std::istringstream iss(raw_stats);
   std::string line;
   while (std::getline(iss, line, ',')) {
@@ -262,9 +266,8 @@ inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats()
     }
     std::string key = line.substr(0, pos);
     std::string value = line.substr(pos + 1);
-    stats[key] = value;
+    stats.insert_or_assign(key, value);
   }
-  allocator.Free(raw_stats);
   return stats;
 }
 }  // namespace detail

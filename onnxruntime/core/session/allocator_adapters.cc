@@ -56,9 +56,24 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
 }
 
 std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
-  AllocatorStats stats;
+  AllocatorStats stats{};
   i_allocator_->GetStats(&stats);
-  return stats.ToString();
+  auto stats_str = stats.DebugString();
+
+  // Process the debug string to a comma-separated format and remove redundant spaces
+  std::string::size_type pos = 0;
+  while ((pos = stats_str.find('\n', pos)) != std::string::npos) {
+    stats_str.replace(pos, 1, ",");
+    pos += 1;
+  }
+
+  pos = 0;
+  while ((pos = stats_str.find(' ', pos)) != std::string::npos) {
+    stats_str.replace(pos, 1, "");
+    pos += 1;
+  }
+
+  return stats_str;
 }
 
 onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {

@@ -1994,19 +1994,16 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_EQ(1024U, mem_allocation.size());
 
   auto stats = cpu_allocator.GetStats();
-  // The following check is fail in some CI builds
-  // ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
-
   std::vector<std::string> expected_stats_keys = {
-      "bytes_in_use",
-      "bytes_limit",
-      "num_allocs",
-      "num_reserves",
-      "num_arena_extensions",
-      "num_arena_shrinkages",
-      "total_allocated_bytes",
-      "max_bytes_in_use",
-      "max_alloc_size",
+      "Limit",
+      "InUse",
+      "TotalAllocated",
+      "MaxInUse",
+      "NumAllocs",
+      "NumReserves",
+      "NumArenaExtensions",
+      "NumArenaShrinkages",
+      "MaxAllocSize",
   };
 
   for (const auto& key : expected_stats_keys) {
@@ -2039,15 +2036,15 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
 
   std::vector<std::string> expected_stats_keys = {
-      "bytes_in_use",
-      "bytes_limit",
-      "num_allocs",
-      "num_reserves",
-      "num_arena_extensions",
-      "num_arena_shrinkages",
-      "total_allocated_bytes",
-      "max_bytes_in_use",
-      "max_alloc_size",
+      "Limit",
+      "InUse",
+      "TotalAllocated",
+      "MaxInUse",
+      "NumAllocs",
+      "NumReserves",
+      "NumArenaExtensions",
+      "NumArenaShrinkages",
+      "MaxAllocSize",
   };
 
   for (const auto& key : expected_stats_keys) {

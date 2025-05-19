@@ -344,7 +344,8 @@ typedef struct OrtAllocator {
   /**
    * @brief Function used to get the statistics of the allocator.
    */
-  void(ORT_API_CALL* GetStats)(const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator, _Outptr_ char** stats);
+  void(ORT_API_CALL* GetStats)(const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
+                               _Outptr_ char** stats);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -5276,7 +5277,8 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ char** out);
 };
 
 /*
