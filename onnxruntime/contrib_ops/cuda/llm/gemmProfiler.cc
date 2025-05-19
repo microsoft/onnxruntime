@@ -28,7 +28,7 @@
 #include <cstddef>
 
 
-namespace ort_llm::kernels::weight_only
+namespace onnxruntime::llm::kernels::weight_only
 {
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -276,7 +276,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         {
             std::ostringstream msg;
             msg << "Cannot profile configuration " << ii;
-            if constexpr (std::is_same_v<Config, ort_llm::cutlass_extensions::CutlassGemmConfig>)
+            if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>)
             {
                 msg << ": " << candidateConfig.toString();
             }
@@ -349,11 +349,11 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
     return elapsed / runs;
 }
 
-template class GemmPluginProfiler<ort_llm::cutlass_extensions::CutlassGemmConfig,
-    std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>, GemmIdCore,
+template class GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig,
+    std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>, GemmIdCore,
     GemmIdCoreHash>;
 
-} // namespace ort_llm::kernels::weight_only
+} // namespace onnxruntime::llm::kernels::weight_only
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

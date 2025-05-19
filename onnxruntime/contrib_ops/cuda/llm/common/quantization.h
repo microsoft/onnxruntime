@@ -20,14 +20,14 @@
 #include <optional>
 #include <string>
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace common
 {
 
 class QuantMode
 {
-    // [WARNING] KEEP BELOW DEFINITION IN SYNC WITH ort_llm/quantization/mode.py
+    // [WARNING] KEEP BELOW DEFINITION IN SYNC WITH onnxruntime::llm/quantization/mode.py
 public:
     using BaseType = std::uint32_t;
 
@@ -404,4 +404,4 @@ private:
 };
 
 } // namespace common
-} // namespace ort_llm
+} // namespace onnxruntime::llm

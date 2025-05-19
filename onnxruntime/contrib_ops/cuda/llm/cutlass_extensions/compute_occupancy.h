@@ -23,7 +23,7 @@
 
 
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace cutlass_extensions
 {
@@ -88,4 +88,4 @@ inline int compute_occupancy_for_kernel()
 }
 
 } // namespace cutlass_extensions
-} // namespace ort_llm
+} // namespace onnxruntime::llm

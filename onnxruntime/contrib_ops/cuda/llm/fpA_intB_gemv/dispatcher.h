@@ -7,7 +7,7 @@
 
 
 
-namespace ort_llm {
+namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
@@ -435,4 +435,4 @@ void select_gs(Params& params, cudaStream_t s) {
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
-}  // namespace ort_llm
+}  // namespace onnxruntime::llm

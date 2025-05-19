@@ -43,10 +43,10 @@
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 
-namespace tk = ort_llm::common;
-namespace tkc = ort_llm::cutlass_extensions;
+namespace tk = onnxruntime::llm::common;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -118,7 +118,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
 
     if (occupancy != nullptr)
     {
-        *occupancy = ort_llm::cutlass_extensions::compute_occupancy_for_kernel<GemmKernel>();
+        *occupancy = onnxruntime::llm::cutlass_extensions::compute_occupancy_for_kernel<GemmKernel>();
         return;
     }
 
@@ -589,4 +589,4 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

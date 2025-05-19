@@ -12,7 +12,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 
-namespace ort_llm {
+namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
@@ -352,4 +352,4 @@ void unpack_uint4_transposed_to_int8_cuda(
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
-}  // namespace ort_llm
+}  // namespace onnxruntime::llm

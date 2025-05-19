@@ -26,10 +26,10 @@
 
 #include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
-using namespace ort_llm::common;
+using namespace onnxruntime::llm::common;
 
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -813,7 +813,7 @@ template void symmetric_quantize<__nv_bfloat16, float>(
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

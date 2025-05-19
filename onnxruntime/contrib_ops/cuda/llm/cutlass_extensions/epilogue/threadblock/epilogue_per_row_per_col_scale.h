@@ -33,7 +33,7 @@
 #include "cutlass/numeric_conversion.h"
 #include "contrib_ops/cuda/llm/common/quantization.h"
 
-namespace tk = ort_llm::common;
+namespace tk = onnxruntime::llm::common;
 
 namespace cutlass
 {

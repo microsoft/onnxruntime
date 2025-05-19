@@ -32,7 +32,7 @@
 #include <cuda_fp4.h>
 #endif
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -167,4 +167,4 @@ struct CudaToCudaTypeAdapter<cutlass::float_e2m1_t>
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

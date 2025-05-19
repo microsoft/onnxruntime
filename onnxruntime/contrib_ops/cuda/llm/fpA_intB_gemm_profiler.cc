@@ -17,15 +17,15 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
 
-using namespace ort_llm::common;
-using namespace ort_llm::kernels::cutlass_kernels;
+using namespace onnxruntime::llm::common;
+using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-namespace ort_llm::kernels::weight_only {
+namespace onnxruntime::llm::kernels::weight_only {
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
@@ -54,12 +54,12 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     void const* pre_quant_scale_ptr = nullptr;
     bool apply_alpha_in_advance = false;
     float alpha = 1.0f;
-    ort_llm::kernels::fpA_intB_gemv::Params params(
+    onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
         actPtr, pre_quant_scale_ptr, weightPtr,
         inputScalesPtr, zerosPtr,
         biasesPtr, outputPtr,
         alpha, m, originalN, k, mGroupSize, mCudaKernelType, apply_alpha_in_advance);
-    ort_llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
+    onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(mArch, params, stream);
   } else {
     // run CUTLASS kernel
     int const wsSize = mRunner->getWorkspaceSize(m, originalN, k);
@@ -102,7 +102,7 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k
   return true;
 }
 
-}  // namespace ort_llm::kernels::weight_only
+}  // namespace onnxruntime::llm::kernels::weight_only
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

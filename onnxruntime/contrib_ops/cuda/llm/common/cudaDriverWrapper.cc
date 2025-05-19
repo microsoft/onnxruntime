@@ -36,7 +36,7 @@
 #include <cstdio>
 #include <mutex>
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 std::shared_ptr<CUDADriverWrapper> CUDADriverWrapper::getInstance()
@@ -200,4 +200,4 @@ CUresult CUDADriverWrapper::cuDeviceGetAttribute(int* pi, CUdevice_attribute att
     return (*_cuDeviceGetAttribute)(pi, attrib, dev);
 }
 
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common

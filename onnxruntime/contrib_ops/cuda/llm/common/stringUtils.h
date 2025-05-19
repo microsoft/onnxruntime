@@ -27,7 +27,7 @@
 #include <unordered_set>
 #include <vector>
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 #if ENABLE_BF16
 static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& stream, __nv_bfloat16 const& val)
@@ -158,4 +158,4 @@ inline bool strStartsWith(std::string const& str, std::string const& prefix)
 /// @brief Split a string into a set of strings using a delimiter
 std::unordered_set<std::string> str2set(std::string const& input, char delimiter);
 
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common

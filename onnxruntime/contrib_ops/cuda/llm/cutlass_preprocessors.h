@@ -25,7 +25,7 @@
 
 
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -80,4 +80,4 @@ void symmetric_quantize(int8_t* processed_quantized_weight, int8_t* unprocessed_
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

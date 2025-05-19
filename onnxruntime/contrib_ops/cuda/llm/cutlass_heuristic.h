@@ -20,7 +20,7 @@
 #include "cutlass_extensions/gemm_configs.h"
 #include "contrib_ops/cuda/llm/common/cudaUtils.h"
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -44,14 +44,14 @@ template <class ArchTag, class TileShape, class ClusterShape, class ActivationTy
 constexpr static bool should_filter_tma_warp_specialized_gemm_problem_shape_v
     = should_filter_tma_warp_specialized_gemm_problem_shape<ArchTag, TileShape, ClusterShape, ActivationType>::value;
 
-std::vector<ort_llm::cutlass_extensions::CutlassGemmConfig> get_candidate_configs(
-    int sm, int const max_split_k, ort_llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam const);
+std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> get_candidate_configs(
+    int sm, int const max_split_k, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig::CandidateConfigTypeParam const);
 
-ort_llm::cutlass_extensions::CutlassGemmConfig estimate_best_config_from_occupancies(
-    std::vector<ort_llm::cutlass_extensions::CutlassGemmConfig> const& candidate_configs,
+onnxruntime::llm::cutlass_extensions::CutlassGemmConfig estimate_best_config_from_occupancies(
+    std::vector<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig> const& candidate_configs,
     std::vector<int> const& occupancies, int64_t const m, int64_t const n, int64_t const k, int64_t const /*num_experts*/,
     int const split_k_limit, size_t const workspace_bytes, int const multi_processor_count, int const is_weight_only);
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

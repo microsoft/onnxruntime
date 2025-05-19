@@ -21,9 +21,9 @@
 #include <cuda_runtime_api.h>
 #include <vector>
 
-namespace tkc = ort_llm::cutlass_extensions;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -142,4 +142,4 @@ private:
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

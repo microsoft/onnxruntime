@@ -47,12 +47,12 @@
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tk = ort_llm::common;
-namespace tkc = ort_llm::cutlass_extensions;
+namespace tk = onnxruntime::llm::common;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
 
 using namespace cute;
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -136,7 +136,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         using EpilogueTileType = cute::Shape<cute::Int<epi_tile_M>, cute::Int<epi_tile_N>>;
 
         static constexpr auto RoundStyle = cutlass::FloatRoundStyle::round_to_nearest;
-        static_assert(std::is_same_v<EpilogueTag, ort_llm::cutlass_extensions::EpilogueOpBias>, "");
+        static_assert(std::is_same_v<EpilogueTag, onnxruntime::llm::cutlass_extensions::EpilogueOpBias>, "");
         using EVT_bias_addition = cutlass::epilogue::fusion::Sm90EVT<
             cutlass::epilogue::fusion::Sm90Compute<cutlass::homogeneous_multiply_add, CutlassOutputType, ElementCompute,
                 RoundStyle>,                                                    // alpha * acc + bias
@@ -175,7 +175,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 
         if (occupancy != nullptr)
         {
-            *occupancy = ort_llm::cutlass_extensions::compute_occupancy_for_kernel<GemmKernel, true>();
+            *occupancy = onnxruntime::llm::cutlass_extensions::compute_occupancy_for_kernel<GemmKernel, true>();
             return;
         }
 
@@ -302,4 +302,4 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

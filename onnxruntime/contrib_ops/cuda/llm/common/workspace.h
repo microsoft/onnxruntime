@@ -17,7 +17,7 @@
 #include <cstddef>
 #include <cstdint>
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 std::uintptr_t constexpr kCudaMemAlign = 128;

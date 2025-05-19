@@ -33,11 +33,11 @@
 #include "cutlass/integer_subbyte.h"
 #endif
 
-using WeightOnlyGemmRunner = ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
+using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
-using KernelType = ort_llm::kernels::fpA_intB_gemv::KernelType;
+using KernelType = onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
 
-namespace ort_llm::kernels::weight_only {
+namespace onnxruntime::llm::kernels::weight_only {
 enum class WeightTypeId {
   INT8 = 1,
   INT4 = 2,
@@ -50,10 +50,10 @@ constexpr int32_t FP16_INT4_RATIO = FP16_BITS / INT4_BITS;
 constexpr int32_t FP16_INT8_RATIO = FP16_BITS / INT8_BITS;
 
 class WeightOnlyGroupwiseQuantGemmPluginProfiler
-    : public GemmPluginProfiler<ort_llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
+    : public GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, WeightOnlyGemmRunnerPtr,
                                 GemmIdCore, GemmIdCoreHash> {
  public:
-  using Config = ort_llm::cutlass_extensions::CutlassGemmConfig;
+  using Config = onnxruntime::llm::cutlass_extensions::CutlassGemmConfig;
 
   void setQuant(int bits, bool has_bias, bool has_zeros) {
     mQuantBits = bits;
@@ -89,4 +89,4 @@ class WeightOnlyGroupwiseQuantGemmPluginProfiler
   int mArch;
 };
 
-}  // namespace ort_llm::kernels::weight_only
+}  // namespace onnxruntime::llm::kernels::weight_only

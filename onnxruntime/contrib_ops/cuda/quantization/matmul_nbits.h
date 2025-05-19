@@ -20,13 +20,13 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
-using ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
-using ort_llm::kernels::weight_only::GemmDims;
-using ort_llm::kernels::weight_only::GemmIdCore;
-using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
-using ort_llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
+using onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunner;
+using onnxruntime::llm::kernels::weight_only::GemmDims;
+using onnxruntime::llm::kernels::weight_only::GemmIdCore;
+using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
-using WeightOnlyGemmRunnerPtr = std::shared_ptr<ort_llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
+using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
 constexpr const char* kDisableFpAIntBGemm = "ORT_DISABLE_FPA_INTB_GEMM";
 
@@ -61,10 +61,10 @@ class MatMulNBits final : public CudaKernel {
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false)) {
-        using ort_llm::kernels::fpA_intB_gemv::KernelType;
+        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
         int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
-        if (ort_llm::kernels::fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 

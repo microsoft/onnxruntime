@@ -19,9 +19,9 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 using namespace onnxruntime::cuda;
-using ort_llm::kernels::weight_only::GemmPluginProfilerManager;
-using ort_llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
-using ort_llm::kernels::weight_only::WeightTypeId;
+using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
+using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
+using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 // static std::once_flag s_gemm_profiler_once_flag;
 
@@ -33,7 +33,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
 
-  gemmId_ = GemmIdCore(n_16b, K_, ort_llm::nvinfer::DataType::kHALF);
+  gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
 
   if (nbits_ == 8) {
     weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
@@ -41,7 +41,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
     weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
   }
 
-  using ort_llm::kernels::fpA_intB_gemv::KernelType;
+  using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
   KernelType cuda_kernel_type = nbits_ == 8 ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
@@ -128,11 +128,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
 
-      using ort_llm::kernels::cutlass_kernels::QuantType;
+      using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
       QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
       if (nbits_ == 4) {
         // transpose the weight and add default zp.
-        ort_llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_cuda(
+        onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_cuda(
             stream,
             packed_transposed_weight,
             transposed_weight,
@@ -158,7 +158,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
       auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
       bool force_interleave = false;
-      ort_llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
+      onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
           reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
           reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
           {static_cast<size_t>(k), static_cast<size_t>(n)},
@@ -175,16 +175,16 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
       if (zero_points != nullptr && !zero_points->IsDataType<T>()) {  // zero point is uint8_t type
         if (nbits_ == 4) {
-          ort_llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
               stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
               transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
         } else {
-          ort_llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
               stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
               transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
         }
       } else {  // zero point is not uint8_t type
-        ort_llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
             stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
             transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
       }
@@ -201,19 +201,19 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
 
     if (bestTactic->enableCudaKernel) {
-      using ort_llm::kernels::fpA_intB_gemv::KernelType;
+      using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
       KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
 
       void const* pre_quant_scale_ptr = nullptr;
       bool apply_alpha_in_advance = false;
       float alpha = 1.0f;
-      ort_llm::kernels::fpA_intB_gemv::Params params(
+      onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
           a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
           fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
           bias_data, out_data,
           alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
 
-      ort_llm::kernels::fpA_intB_gemv::kernel_launcher(sm, params, stream);
+      onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm, params, stream);
     } else {
       const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
       auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());

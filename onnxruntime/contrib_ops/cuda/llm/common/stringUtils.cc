@@ -24,7 +24,7 @@
 #include <string>
 
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 namespace
@@ -74,4 +74,4 @@ std::unordered_set<std::string> str2set(std::string const& input, char delimiter
     return values;
 };
 
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common

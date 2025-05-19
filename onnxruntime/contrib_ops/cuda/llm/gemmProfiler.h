@@ -39,7 +39,7 @@
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-namespace ort_llm::kernels::weight_only
+namespace onnxruntime::llm::kernels::weight_only
 {
 
 struct GemmDims
@@ -334,7 +334,7 @@ private:
     MNKProfileMapPtr mMNKProfileMap{};
 };
 
-} // ort_llm::kernels::weight_only
+} // onnxruntime::llm::kernels::weight_only
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

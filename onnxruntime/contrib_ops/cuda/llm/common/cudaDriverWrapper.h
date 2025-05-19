@@ -24,7 +24,7 @@
 #include <memory>
 #include "core/common/common.h"
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 class CUDADriverWrapper
@@ -131,4 +131,4 @@ void checkDriver(
     }
 }
 
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common

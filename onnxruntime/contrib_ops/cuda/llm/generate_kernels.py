@@ -32,20 +32,20 @@ EpiTagNames = {
 
 EpiTag = {
     Llm_EpilogueTag.epilogue_op_default:
-    "ort_llm::cutlass_extensions::EpilogueOpDefault",
+    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefault",
     Llm_EpilogueTag.epilogue_op_bias:
-    "ort_llm::cutlass_extensions::EpilogueOpBias",
+    "onnxruntime::llm::cutlass_extensions::EpilogueOpBias",
     Llm_EpilogueTag.epilogue_op_silu:
-    "ort_llm::cutlass_extensions::EpilogueOpDefaultSilu",
+    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu",
     Llm_EpilogueTag.epilogue_op_gelu:
-    "ort_llm::cutlass_extensions::EpilogueOpDefaultFtGelu"
+    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu"
 }
 
 EpiFusion = {
     Llm_EpilogueFusion.epilogue_fusion_none:
-    "ort_llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE",
+    "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE",
     Llm_EpilogueFusion.epilogue_fusion_finalize:
-    "ort_llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE",
+    "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE",
 }
 
 EpiFusionSuffixes = {
@@ -204,7 +204,7 @@ template void sm90_generic_mixed_gemm_kernelLauncher<{act_tag}, {weight_tag}, {s
 {cute_cta_shape}, {cute_cga_shape},
 {kernel_sched}, {epi_sched}> (
 const {act_tag}*, const {weight_tag}*, const {scale_zero_tag}*, const {scale_zero_tag}*, const {bias_tag}*, const float,
-{out_tag}*, int, int, int, const int, ort_llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
+{out_tag}*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig, char*, size_t, cudaStream_t, int*
 );
 """
     elif operation.gemm_kind == GemmKind.Grouped:
@@ -280,7 +280,7 @@ def get_file_content(launcher_inl_files, operations):
     instantiations = "\n".join(insts_list)
 
     file_content = f"""{includes}
-namespace ort_llm
+namespace onnxruntime::llm
 {{
 namespace kernels
 {{
@@ -291,7 +291,7 @@ namespace cutlass_kernels
 
 }} // namespace cutlass_kernels
 }} // namespace kernels
-}} // namespace ort_llm
+}} // namespace onnxruntime::llm
 """
     return file_content
 

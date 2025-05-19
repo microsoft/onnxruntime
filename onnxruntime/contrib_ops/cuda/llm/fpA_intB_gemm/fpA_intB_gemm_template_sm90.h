@@ -26,12 +26,12 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tk = ort_llm::common;
-namespace tkc = ort_llm::cutlass_extensions;
+namespace tk = onnxruntime::llm::common;
+namespace tkc = onnxruntime::llm::cutlass_extensions;
 
 using namespace cute;
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -270,4 +270,4 @@ void sm90_dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B,
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm

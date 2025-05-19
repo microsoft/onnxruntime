@@ -3,7 +3,7 @@
 #include <cstdint>
 
 // This is corresponding to nvinfer1 namespace used by TensorRT. Add it to avoid dependency on TensorRT.
-namespace ort_llm::nvinfer {
+namespace onnxruntime::llm::nvinfer {
 
 enum class DataType : int32_t {
   //! 32-bit floating point format.
@@ -54,4 +54,4 @@ class Dims64 {
 };
 
 using Dims = Dims64;
-}  // namespace ort_llm::nvinfer
+}  // namespace onnxruntime::llm::nvinfer

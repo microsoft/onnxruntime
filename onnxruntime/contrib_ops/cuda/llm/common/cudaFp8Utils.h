@@ -29,7 +29,7 @@
 #define USE_QGMMA
 #endif
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace common
 {
@@ -320,5 +320,5 @@ void invokeComputeScalesAndQuantizeMatrix(T_OUT* output, T_S* quant_ptr, const T
     const int64_t lda, QuantizeMode quantize_mode, cudaStream_t stream);
 
 } // namespace common
-} // namespace ort_llm
+} // namespace onnxruntime::llm
 #endif // ENABLE_FP8

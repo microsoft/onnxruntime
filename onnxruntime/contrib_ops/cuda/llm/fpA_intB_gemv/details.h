@@ -15,7 +15,7 @@
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 
-namespace ort_llm {
+namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
@@ -229,4 +229,4 @@ void select_gs(Params& params, cudaStream_t s);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
-}  // namespace ort_llm
+}  // namespace onnxruntime::llm

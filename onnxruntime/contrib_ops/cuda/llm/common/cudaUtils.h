@@ -55,7 +55,7 @@
 
 
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 // workspace for cublas gemm : 32MB
@@ -1279,11 +1279,11 @@ DEFINE_MEMBER_CHECKER(deq)
 DEFINE_MEMBER_CHECKER(qua)
 DEFINE_MEMBER_CHECKER(high_preciecion_normed_output)
 
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common
 
 #define TLLM_CUDA_CHECK(stat)                                  \
   do {                                                         \
-    ort_llm::common::check((stat), #stat, __FILE__, __LINE__); \
+    onnxruntime::llm::common::check((stat), #stat, __FILE__, __LINE__); \
   } while (0)
 
 // We use singleton memory pool and the order of destructors depends on the compiler implementation. We find that the
@@ -1292,7 +1292,7 @@ DEFINE_MEMBER_CHECKER(high_preciecion_normed_output)
 // about the memory leaks.
 #define TLLM_CUDA_CHECK_FREE_RESOURCE(stat)                                                               \
   do {                                                                                                    \
-    ort_llm::common::checkEx((stat), {cudaSuccess, cudaErrorCudartUnloading}, #stat, __FILE__, __LINE__); \
+    onnxruntime::llm::common::checkEx((stat), {cudaSuccess, cudaErrorCudartUnloading}, #stat, __FILE__, __LINE__); \
   } while (0)
 
 #if defined(__GNUC__)

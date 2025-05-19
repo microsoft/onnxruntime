@@ -32,9 +32,9 @@
 #include <set>
 #include <vector>
 
-using namespace ort_llm::cutlass_extensions;
+using namespace onnxruntime::llm::cutlass_extensions;
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace kernels
 {
@@ -547,7 +547,7 @@ CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmC
 
 } // namespace cutlass_kernels
 } // namespace kernels
-} // namespace ort_llm
+} // namespace onnxruntime::llm
 
 
 #ifdef __GNUC__ // Check if the compiler is GCC or Clang

@@ -21,7 +21,7 @@
 #include "core/common/common.h"
 
 
-namespace ort_llm::common
+namespace onnxruntime::llm::common
 {
 
 Logger::Logger()
@@ -64,4 +64,4 @@ Logger* Logger::getLogger()
     thread_local Logger instance;
     return &instance;
 }
-} // namespace ort_llm::common
+} // namespace onnxruntime::llm::common

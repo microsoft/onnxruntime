@@ -30,7 +30,7 @@
 
 #include "cute/tensor.hpp"
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace cutlass_extensions
 {
@@ -51,7 +51,7 @@ enum class CutlassTileConfig
     // TensorCore configs CTA_N = 128, CTA_K = 64
     // Warp configs for M=16
     CtaShape16x128x64_WarpShape16x32x64,
-    
+
     // Warp configs for M=32
     CtaShape32x128x64_WarpShape32x32x64,
 
@@ -462,7 +462,7 @@ struct CutlassGemmConfig
                    << "\n\tmainloop sched: " << (int) mainloop_schedule << "\n\tepi sched: " << (int) epilogue_schedule
                    << "\n\tenable cuda kernel: " << (enableCudaKernel ? "true" : "false");
         }
-        else if (tile_config_sm80 != ort_llm::cutlass_extensions::CutlassTileConfig::ChooseWithHeuristic)
+        else if (tile_config_sm80 != onnxruntime::llm::cutlass_extensions::CutlassTileConfig::ChooseWithHeuristic)
         {
             assert(sm_version < 90 && "Invalid cutlass GEMM config");
             tactic << "\n\tstyle=compatible"
@@ -507,7 +507,7 @@ inline std::ostream& operator<<(std::ostream& out, CutlassGemmConfig const& conf
 }
 
 } // namespace cutlass_extensions
-} // namespace ort_llm
+} // namespace onnxruntime::llm
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop

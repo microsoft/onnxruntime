@@ -32,7 +32,7 @@
 #include "contrib_ops/cuda/llm/cutlass_extensions/epilogue/thread/fused_activations.h"
 #include <cutlass/epilogue/fusion/operations.hpp>
 
-namespace ort_llm
+namespace onnxruntime::llm
 {
 namespace cutlass_extensions
 {
@@ -138,4 +138,4 @@ struct Epilogue<ElementType, ElementsPerVectorAccess, ElementAccumulator, Epilog
 };
 
 } // namespace cutlass_extensions
-} // namespace ort_llm
+} // namespace onnxruntime::llm

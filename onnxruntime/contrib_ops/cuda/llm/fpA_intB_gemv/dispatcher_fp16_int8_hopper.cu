@@ -4,7 +4,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
 
 
-namespace ort_llm {
+namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
@@ -13,4 +13,4 @@ INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
-}  // namespace ort_llm
+}  // namespace onnxruntime::llm
