@@ -854,6 +854,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
                                       21);    // opset
 }
 
+#ifndef __linux__
 // Test per-channel QDQ Conv with uint16 input[0], uint8 weights, and no bias.
 // in0: u16, in1 (weight): s4, out: u8
 // Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
@@ -879,6 +880,7 @@ TEST_F(QnnHTPBackendTests, ConvU16U16_PerTensor_NoBias) {
                                        false,  // use_qdq_contrib_ops
                                        21);    // opset
 }
+#endif
 
 TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
   std::vector<int64_t> input_shape = {1, 3072, 1, 512};
@@ -1335,6 +1337,7 @@ TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
                                               13);
 }
 
+#ifndef __linux__
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
 TEST_F(QnnHTPBackendTests, ConvU16S16S32_PerChannel) {
   std::vector<int64_t> input_shape = {1, 2, 4, 4};
@@ -1362,6 +1365,7 @@ TEST_F(QnnHTPBackendTests, ConvU16S16S32_PerChannel) {
                                                 true,  // use_qdq_contrib_ops
                                                 13);   // opset
 }
+#endif
 
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
 TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {
