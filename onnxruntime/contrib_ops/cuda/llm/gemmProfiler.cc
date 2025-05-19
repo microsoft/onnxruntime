@@ -41,7 +41,7 @@ GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginPro
     mSkip = (skipEnv != NULL && std::stoi(skipEnv));
     if (mSkip)
     {
-        TLLM_LOG_DEBUG(
+        ORT_LLM_LOG_DEBUG(
             "SKIP_GEMM_PLUGIN_PROFILINGS is set. Skipping GEMM plugin profilings. It could result in runtime error "
             "if default tactic is not defined.");
     }
@@ -208,7 +208,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
     if (mSkip)
     {
-        TLLM_LOG_TRACE("Skip is set, no best config is set for this instance");
+        ORT_LLM_LOG_TRACE("Skip is set, no best config is set for this instance");
         return std::nullopt;
     }
 
@@ -227,7 +227,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     {
         std::ostringstream msg;
         msg << "Cannot find best tactic for m=" << m << " and GEMM ID " << gemmId;
-        TLLM_LOG_WARNING(msg.str());
+        ORT_LLM_LOG_WARNING(msg.str());
         return std::nullopt;
     }
 }
@@ -251,7 +251,7 @@ template <typename Config, typename RunnerPtr, typename GemmIdType, typename Gem
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticsForProblem(
     int m, int n, int k, std::vector<Config> const& tactics)
 {
-    TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+    ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
     float bestTime = std::numeric_limits<float>::max();
     Config bestConfig;
@@ -283,7 +283,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
             msg << "\n (for"
                 << " m=" << m << ", n=" << n << ", k=" << k << ")"
                 << ", reason: \"" << e.what() << "\". Skipped";
-            TLLM_LOG_TRACE(msg.str());
+            ORT_LLM_LOG_TRACE(msg.str());
             cudaGetLastError(); // Reset the last cudaError to cudaSuccess.
             continue;
         }
@@ -301,7 +301,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
         std::ostringstream msg;
         msg << "Have not found any valid GEMM config for shape ("
             << "m=" << m << ", n=" << n << ", k=" << k << "). Will try to use default or fail at runtime";
-        TLLM_LOG_WARNING(msg.str());
+        ORT_LLM_LOG_WARNING(msg.str());
         return std::nullopt;
     }
 

@@ -171,7 +171,7 @@ void Logger::log(Logger::Level const level, int const rank, char const* format, 
     }
 }
 
-#define TLLM_LOG(level, ...)                                                                                           \
+#define ORT_LLM_LOG(level, ...)                                                                                           \
     do                                                                                                                 \
     {                                                                                                                  \
         auto* const logger = ort_llm::common::Logger::getLogger();                                                \
@@ -181,9 +181,9 @@ void Logger::log(Logger::Level const level, int const rank, char const* format, 
         }                                                                                                              \
     } while (0)
 
-#define TLLM_LOG_TRACE(...) TLLM_LOG(ort_llm::common::Logger::TRACE, __VA_ARGS__)
-#define TLLM_LOG_DEBUG(...) TLLM_LOG(ort_llm::common::Logger::DEBUG, __VA_ARGS__)
-#define TLLM_LOG_INFO(...) TLLM_LOG(ort_llm::common::Logger::INFO, __VA_ARGS__)
-#define TLLM_LOG_WARNING(...) TLLM_LOG(ort_llm::common::Logger::WARNING, __VA_ARGS__)
-#define TLLM_LOG_ERROR(...) TLLM_LOG(ort_llm::common::Logger::ERROR, __VA_ARGS__)
+#define ORT_LLM_LOG_TRACE(...) ORT_LLM_LOG(ort_llm::common::Logger::TRACE, __VA_ARGS__)
+#define ORT_LLM_LOG_DEBUG(...) ORT_LLM_LOG(ort_llm::common::Logger::DEBUG, __VA_ARGS__)
+#define ORT_LLM_LOG_INFO(...) ORT_LLM_LOG(ort_llm::common::Logger::INFO, __VA_ARGS__)
+#define ORT_LLM_LOG_WARNING(...) ORT_LLM_LOG(ort_llm::common::Logger::WARNING, __VA_ARGS__)
+#define ORT_LLM_LOG_ERROR(...) ORT_LLM_LOG(ort_llm::common::Logger::ERROR, __VA_ARGS__)
 } // namespace ort_llm::common

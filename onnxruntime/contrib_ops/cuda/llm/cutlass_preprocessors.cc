@@ -192,7 +192,7 @@ std::vector<int> get_permutation_map(QuantType quant_type)
 void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
     std::vector<size_t> const& shape, QuantType quant_type, int64_t const arch_version)
 {
-    TLLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+    ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
     // We only want to run this step for weight only quant.
     std::vector<int> row_permutation = get_permutation_map(quant_type);
 
@@ -257,7 +257,7 @@ template <QuantType quant_type>
 void subbyte_transpose_impl(
     int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor, std::vector<size_t> const& shape)
 {
-    TLLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+    ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
     constexpr int bits_per_elt = get_weight_quant_bits(quant_type);
 
     ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
@@ -395,7 +395,7 @@ void subbyte_transpose_impl(
 void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
     std::vector<size_t> const& shape, QuantType quant_type)
 {
-    TLLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+    ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
 
     if (quant_type == QuantType::W8_A16)
     {
@@ -496,7 +496,7 @@ void add_bias_and_interleave_int4s_inplace(int8_t* packed_int4_tensor, const siz
 
 void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size_t num_elts, QuantType quant_type)
 {
-    TLLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+    ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
     if (quant_type == QuantType::W8_A16)
     {
         add_bias_and_interleave_int8s_inplace(tensor, num_elts);
@@ -518,7 +518,7 @@ void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size
 void interleave_column_major_tensor(int8_t* interleaved_quantized_tensor, int8_t const* quantized_tensor,
     std::vector<size_t> const& shape, QuantType quant_type, LayoutDetails details)
 {
-    TLLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+    ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
 
     ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
     const size_t num_experts = shape.size() == 2 ? 1 : shape[0];

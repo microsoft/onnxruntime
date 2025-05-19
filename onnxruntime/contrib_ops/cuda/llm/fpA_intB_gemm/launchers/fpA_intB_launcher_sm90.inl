@@ -67,7 +67,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
     float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig gemm_config,
     char* workspace, size_t workspace_bytes, cudaStream_t stream, int* occupancy)
 {
-    TLLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+    ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
 //#if __CUDA_ARCH__ >= 900
 #define COMPILE_HOPPER_TMA_GEMMS 1
@@ -254,7 +254,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         Gemm gemm;
         if (gemm.get_workspace_size(args) > workspace_bytes)
         {
-            TLLM_LOG_ERROR("[OnnxRuntime-LLM Error][fpA_intB Runner] given workspace size insufficient.");
+            ORT_LLM_LOG_ERROR("[OnnxRuntime-LLM Error][fpA_intB Runner] given workspace size insufficient.");
         }
 
         auto can_implement = gemm.can_implement(args);

@@ -10,54 +10,54 @@ from cutlass_library import *
 
 ################################################################################
 # Epilogue Tag enum and string utils
-class OrtLlm_EpilogueTag(enum.Enum):
+class Llm_EpilogueTag(enum.Enum):
     epilogue_op_default = enum_auto()
     epilogue_op_bias = enum_auto()
     epilogue_op_silu = enum_auto()
     epilogue_op_gelu = enum_auto()
 
 
-class OrtLlm_EpilogueFusion(enum.Enum):
+class Llm_EpilogueFusion(enum.Enum):
     epilogue_fusion_none = enum_auto()
     epilogue_fusion_finalize = enum_auto()
 
 
 EpiTagNames = {
-    OrtLlm_EpilogueTag.epilogue_op_default: "lc",  # linear combination
-    OrtLlm_EpilogueTag.epilogue_op_bias:
+    Llm_EpilogueTag.epilogue_op_default: "lc",  # linear combination
+    Llm_EpilogueTag.epilogue_op_bias:
     "lc_bias",  # linear combination with bias addition
-    OrtLlm_EpilogueTag.epilogue_op_silu: "silu",  # silu or swiglu
-    OrtLlm_EpilogueTag.epilogue_op_gelu: "gelu"  # gelu or geglu
+    Llm_EpilogueTag.epilogue_op_silu: "silu",  # silu or swiglu
+    Llm_EpilogueTag.epilogue_op_gelu: "gelu"  # gelu or geglu
 }
 
 EpiTag = {
-    OrtLlm_EpilogueTag.epilogue_op_default:
+    Llm_EpilogueTag.epilogue_op_default:
     "ort_llm::cutlass_extensions::EpilogueOpDefault",
-    OrtLlm_EpilogueTag.epilogue_op_bias:
+    Llm_EpilogueTag.epilogue_op_bias:
     "ort_llm::cutlass_extensions::EpilogueOpBias",
-    OrtLlm_EpilogueTag.epilogue_op_silu:
+    Llm_EpilogueTag.epilogue_op_silu:
     "ort_llm::cutlass_extensions::EpilogueOpDefaultSilu",
-    OrtLlm_EpilogueTag.epilogue_op_gelu:
+    Llm_EpilogueTag.epilogue_op_gelu:
     "ort_llm::cutlass_extensions::EpilogueOpDefaultFtGelu"
 }
 
 EpiFusion = {
-    OrtLlm_EpilogueFusion.epilogue_fusion_none:
+    Llm_EpilogueFusion.epilogue_fusion_none:
     "ort_llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE",
-    OrtLlm_EpilogueFusion.epilogue_fusion_finalize:
+    Llm_EpilogueFusion.epilogue_fusion_finalize:
     "ort_llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE",
 }
 
 EpiFusionSuffixes = {
     None: "",
-    OrtLlm_EpilogueFusion.epilogue_fusion_none: "EpilogueFusion_NONE",
-    OrtLlm_EpilogueFusion.epilogue_fusion_finalize: "EpilogueFusion_FINALIZE",
+    Llm_EpilogueFusion.epilogue_fusion_none: "EpilogueFusion_NONE",
+    Llm_EpilogueFusion.epilogue_fusion_finalize: "EpilogueFusion_FINALIZE",
 }
 
 
 ################################################################################
 # Quantization Operation and string utils
-class OrtLlm_QuantOp(enum.Enum):
+class Llm_QuantOp(enum.Enum):
     per_column_scale_only = enum_auto()
     finegrained_scale_only = enum_auto()
     finegrained_scale_and_zeros = enum_auto()
@@ -65,20 +65,20 @@ class OrtLlm_QuantOp(enum.Enum):
 
 
 QuantOpNames = {
-    OrtLlm_QuantOp.per_column_scale_only: "cs",
-    OrtLlm_QuantOp.finegrained_scale_only: "fgs",
-    OrtLlm_QuantOp.finegrained_scale_and_zeros: "fgsz",
-    OrtLlm_QuantOp.none: "noquant"
+    Llm_QuantOp.per_column_scale_only: "cs",
+    Llm_QuantOp.finegrained_scale_only: "fgs",
+    Llm_QuantOp.finegrained_scale_and_zeros: "fgsz",
+    Llm_QuantOp.none: "noquant"
 }
 
 QuantOpTag = {
-    OrtLlm_QuantOp.per_column_scale_only:
+    Llm_QuantOp.per_column_scale_only:
      "cutlass::WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY",
-    OrtLlm_QuantOp.finegrained_scale_only:
+    Llm_QuantOp.finegrained_scale_only:
     "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY",
-    OrtLlm_QuantOp.finegrained_scale_and_zeros:
+    Llm_QuantOp.finegrained_scale_and_zeros:
     "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS",
-    OrtLlm_QuantOp.none: "void"
+    Llm_QuantOp.none: "void"
 }
 
 ################################################################################
@@ -116,7 +116,7 @@ CudaTypeName = {
 
 ################################################################################
 # A data structure holding all info to instantiate gemm launchers in TRT LLM.
-class OrtLlm_GemmLauncher:
+class Llm_GemmLauncher:
 
     def __init__(self,
                  gemm_kind,
@@ -379,7 +379,7 @@ def is_grouped_gemm_op_valid(op):
     if not is_gemm_op_valid(op):
         return False
 
-    if op.epi_tag != OrtLlm_EpilogueTag.epilogue_op_default:
+    if op.epi_tag != Llm_EpilogueTag.epilogue_op_default:
         return False
 
     if op.epi_schedule != EpilogueScheduleType.NoSmemWarpSpecialized:
@@ -421,12 +421,12 @@ def generate_sm90_mixed_gemm_operations():
     ]
 
     quant_ops = [
-        # OrtLlm_QuantOp.per_column_scale_only,
-        # OrtLlm_QuantOp.finegrained_scale_only,
-        OrtLlm_QuantOp.finegrained_scale_and_zeros
+        # Llm_QuantOp.per_column_scale_only,
+        # Llm_QuantOp.finegrained_scale_only,
+        Llm_QuantOp.finegrained_scale_and_zeros
     ]
 
-    epi_tags = [OrtLlm_EpilogueTag.epilogue_op_bias]
+    epi_tags = [Llm_EpilogueTag.epilogue_op_bias]
 
     M_TILES = [64, 128]
     N_TILES = [16, 32, 64, 128, 256]
@@ -449,7 +449,7 @@ def generate_sm90_mixed_gemm_operations():
         mainloop_schedule = KernelScheduleType.TmaWarpSpecializedCooperative if use_coop else KernelScheduleType.TmaWarpSpecializedPingpong
         epi_schedule = EpilogueScheduleType.TmaWarpSpecializedCooperative if use_coop else EpilogueScheduleType.TmaWarpSpecialized
 
-        fpA_intB_operation = OrtLlm_GemmLauncher(GemmKind.Gemm, arch, *dtype_combo, quant_op, epi_tag, cta_shape_mnk, \
+        fpA_intB_operation = Llm_GemmLauncher(GemmKind.Gemm, arch, *dtype_combo, quant_op, epi_tag, cta_shape_mnk, \
                                                  warp_shape, stages, cga_shape, mainloop_schedule, epi_schedule)
 
         if is_op_valid(fpA_intB_operation):
@@ -463,8 +463,8 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
         return []
     arch = 90
     supported_dtypes = [DataType.f16, DataType.bf16, DataType.f32, DataType.e4m3]
-    quant_ops = [OrtLlm_QuantOp.none]
-    epi_tags = [OrtLlm_EpilogueTag.epilogue_op_default]
+    quant_ops = [Llm_QuantOp.none]
+    epi_tags = [Llm_EpilogueTag.epilogue_op_default]
     M_TILES = [128]  # Currently M tile must be 128 for Grouped GEMM
     N_TILES = [16, 32, 64, 128, 256]
     cta_shapes_mn = list(product(M_TILES, N_TILES)) + [(256, 128)]
@@ -473,8 +473,8 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
     stages = 0  # auto
 
     epi_fusions = [
-        OrtLlm_EpilogueFusion.epilogue_fusion_none,
-        OrtLlm_EpilogueFusion.epilogue_fusion_finalize
+        Llm_EpilogueFusion.epilogue_fusion_none,
+        Llm_EpilogueFusion.epilogue_fusion_finalize
     ]
 
     cga_shapes = product([1, 2], [1, 2], [1])
@@ -496,7 +496,7 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
             otypes = [DataType.f16, DataType.bf16]
 
         for otype in otypes:
-            moe_gemm_operation = OrtLlm_GemmLauncher(
+            moe_gemm_operation = Llm_GemmLauncher(
                 GemmKind.Grouped, arch, dtype, dtype, dtype, dtype, otype,
                 quant_op, epi_tag, cta_shape_mnk, warp_shape, stages, cga_shape,
                 mainloop_schedule, epi_schedule, epi_fusion)
@@ -527,8 +527,8 @@ def generate_sm100_grouped_gemm_operations(is_arch_enabled):
         return []
     arch = 100
     supported_dtypes = [DataType.f16, DataType.bf16, DataType.f32, DataType.e4m3, e2m1]
-    quant_ops = [OrtLlm_QuantOp.none]
-    epi_tags = [OrtLlm_EpilogueTag.epilogue_op_default]
+    quant_ops = [Llm_QuantOp.none]
+    epi_tags = [Llm_EpilogueTag.epilogue_op_default]
     cta_shapes_m = [64, 128]
     cta_shapes_n = [8, 16, 32, 64, 128, 256]
     cta_shapes_mn = product(cta_shapes_m, cta_shapes_n)
@@ -537,8 +537,8 @@ def generate_sm100_grouped_gemm_operations(is_arch_enabled):
     stages = 0  # auto
 
     epi_fusions = [
-        OrtLlm_EpilogueFusion.epilogue_fusion_none,
-        # OrtLlm_EpilogueFusion.epilogue_fusion_finalize
+        Llm_EpilogueFusion.epilogue_fusion_none,
+        # Llm_EpilogueFusion.epilogue_fusion_finalize
     ]
 
     cga_shapes = list(product([1, 2], [1, 2], [1]))
@@ -560,7 +560,7 @@ def generate_sm100_grouped_gemm_operations(is_arch_enabled):
             otypes = [DataType.f16, DataType.bf16]
 
         for otype in otypes:
-            moe_gemm_operation = OrtLlm_GemmLauncher(
+            moe_gemm_operation = Llm_GemmLauncher(
                 GemmKind.Grouped, arch, dtype, dtype, dtype, dtype, otype,
                 quant_op, epi_tag, cga_tile_shape_mnk, warp_shape, stages,
                 cga_shape, mainloop_schedule, epi_schedule, epi_fusion)
@@ -590,7 +590,7 @@ def generate_sm80_fused_grouped_gemm_operations():
     arch = 80
     supported_dtypes = [DataType.f16, DataType.bf16]
     epi_tags = [
-        OrtLlm_EpilogueTag.epilogue_op_silu, OrtLlm_EpilogueTag.epilogue_op_gelu
+        Llm_EpilogueTag.epilogue_op_silu, Llm_EpilogueTag.epilogue_op_gelu
     ]
     cta_shapes_mnk = [(16, 128, 64), (16, 256, 64), (32, 128, 64),
                       (64, 128, 64), (128, 128, 64)]

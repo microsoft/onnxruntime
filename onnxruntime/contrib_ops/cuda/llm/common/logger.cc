@@ -26,10 +26,10 @@ namespace ort_llm::common
 
 Logger::Logger()
 {
-    char* isFirstRankOnlyChar = std::getenv("TLLM_LOG_FIRST_RANK_ONLY");
+    char* isFirstRankOnlyChar = std::getenv("ORT_LLM_LOG_FIRST_RANK_ONLY");
     bool isFirstRankOnly = (isFirstRankOnlyChar != nullptr && std::string(isFirstRankOnlyChar) == "ON");
 
-    auto const* levelName = std::getenv("TLLM_LOG_LEVEL");
+    auto const* levelName = std::getenv("ORT_LLM_LOG_LEVEL");
     if (levelName != nullptr)
     {
         auto level = [levelName = std::string(levelName)]()
@@ -46,7 +46,7 @@ Logger::Logger()
                 return ERROR;
             ORT_THROW("Invalid log level:", levelName);
         }();
-        // If TLLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
+        // If ORT_LLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
         if (isFirstRankOnly)
         {
             auto const deviceId = getDevice();

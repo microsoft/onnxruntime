@@ -68,68 +68,6 @@ typedef struct __align__(4)
 
 half4;
 
-/* **************************** type definition ***************************** */
-
-enum CublasDataType
-{
-    FLOAT_DATATYPE = 0,
-    HALF_DATATYPE = 1,
-    BFLOAT16_DATATYPE = 2,
-    INT8_DATATYPE = 3,
-    FP8_DATATYPE = 4
-};
-
-enum TRTLLMCudaDataType
-{
-    FP32 = 0,
-    FP16 = 1,
-    BF16 = 2,
-    INT8 = 3,
-    FP8 = 4
-};
-
-enum class OperationType
-{
-    FP32,
-    FP16,
-    BF16,
-    INT8,
-    FP8
-};
-
-/* **************************** debug tools ********************************* */
-static char const* _cudaGetErrorEnum(cudaError_t error)
-{
-    return cudaGetErrorString(error);
-}
-
-static char const* _cudaGetErrorEnum(cublasStatus_t error)
-{
-    switch (error)
-    {
-    case CUBLAS_STATUS_SUCCESS: return "CUBLAS_STATUS_SUCCESS";
-
-    case CUBLAS_STATUS_NOT_INITIALIZED: return "CUBLAS_STATUS_NOT_INITIALIZED";
-
-    case CUBLAS_STATUS_ALLOC_FAILED: return "CUBLAS_STATUS_ALLOC_FAILED";
-
-    case CUBLAS_STATUS_INVALID_VALUE: return "CUBLAS_STATUS_INVALID_VALUE";
-
-    case CUBLAS_STATUS_ARCH_MISMATCH: return "CUBLAS_STATUS_ARCH_MISMATCH";
-
-    case CUBLAS_STATUS_MAPPING_ERROR: return "CUBLAS_STATUS_MAPPING_ERROR";
-
-    case CUBLAS_STATUS_EXECUTION_FAILED: return "CUBLAS_STATUS_EXECUTION_FAILED";
-
-    case CUBLAS_STATUS_INTERNAL_ERROR: return "CUBLAS_STATUS_INTERNAL_ERROR";
-
-    case CUBLAS_STATUS_NOT_SUPPORTED: return "CUBLAS_STATUS_NOT_SUPPORTED";
-
-    case CUBLAS_STATUS_LICENSE_ERROR: return "CUBLAS_STATUS_LICENSE_ERROR";
-    }
-    return "<unknown>";
-}
-
 
 inline std::optional<bool> isCudaLaunchBlocking()
 {
@@ -338,7 +276,7 @@ inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm)
         freeSysMem = memInfo.ullAvailPhys;
 #endif // WIN32
 
-        TLLM_LOG_INFO("Using UVM based system memory for KV cache, total memory %0.2f GB, available memory %0.2f GB",
+        ORT_LLM_LOG_INFO("Using UVM based system memory for KV cache, total memory %0.2f GB, available memory %0.2f GB",
             ((double) totalSysMem / 1e9), ((double) freeSysMem / 1e9));
         return {freeSysMem, totalSysMem};
     }
@@ -346,7 +284,7 @@ inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm)
     size_t free = 0;
     size_t total = 0;
     CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
-    TLLM_LOG_DEBUG("Using GPU memory for KV cache, total memory %0.2f GB, available memory %0.2f GB",
+    ORT_LLM_LOG_DEBUG("Using GPU memory for KV cache, total memory %0.2f GB, available memory %0.2f GB",
         ((double) total / 1e9), ((double) free / 1e9));
     return {free, total};
 }
@@ -405,7 +343,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
 {
     if (ptr == nullptr)
     {
-        TLLM_LOG_WARNING("%s is an nullptr, skip!", name.c_str());
+        ORT_LLM_LOG_WARNING("%s is an nullptr, skip!", name.c_str());
         return;
     }
     cudaDeviceSynchronize();
@@ -413,7 +351,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
 
     bool const isDevicePtr = (getPtrCudaMemoryType(ptr) == cudaMemoryTypeDevice);
     size_t sizeInByte = sizeof(T) * nElement;
-    TLLM_LOG_TRACE("addr=%p, location=%s, sizeof(T)=%lu, nElement=%d, sizeInByte=%lu\n", ptr,
+    ORT_LLM_LOG_TRACE("addr=%p, location=%s, sizeof(T)=%lu, nElement=%d, sizeInByte=%lu\n", ptr,
         (isDevicePtr ? "Device" : "Host"), sizeof(T), nElement, sizeInByte);
     T* tmp = const_cast<T*>(ptr);
     std::vector<T> tmpVec; // For device pointer
@@ -461,9 +399,9 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
     float avg = sum / nElement;
     float std = sqrtf(sqrSum / nElement - avg * avg);
 
-    TLLM_LOG_INFO("%s", name.c_str());
-    TLLM_LOG_INFO("size=%u, nInf=%zu, nNaN=%zu, nZero=%zu", nElement, nInf, nNaN, nZero);
-    TLLM_LOG_INFO("avg=%f, absSum: %f, std=%f, max=%f, min=%f, sad=%f", avg, absSum, std, allMax, allMin, allSad);
+    ORT_LLM_LOG_INFO("%s", name.c_str());
+    ORT_LLM_LOG_INFO("size=%u, nInf=%zu, nNaN=%zu, nZero=%zu", nElement, nInf, nNaN, nZero);
+    ORT_LLM_LOG_INFO("avg=%f, absSum: %f, std=%f, max=%f, min=%f, sad=%f", avg, absSum, std, allMax, allMin, allSad);
 
     if (bPrintElement)
     {
@@ -482,7 +420,7 @@ void printArrayInfo(T const* ptr, uint64_t nElement = 1, std::string name = "", 
                 ss << (float) tmp[i] << ", ";
             }
         }
-        TLLM_LOG_INFO("%s", ss.str().c_str());
+        ORT_LLM_LOG_INFO("%s", ss.str().c_str());
     }
     cudaDeviceSynchronize();
     CUDA_CALL_THROW(cudaGetLastError());
@@ -507,7 +445,7 @@ void printToStream(T const* ptr, int const nElement, FILE* strm)
     bool const split_rows = (strm == stdout);
     if (ptr == nullptr)
     {
-        TLLM_LOG_WARNING("Nullptr, skip!\n");
+        ORT_LLM_LOG_WARNING("Nullptr, skip!\n");
         return;
     }
     std::vector<T> tmp(nElement, 0);
@@ -535,7 +473,7 @@ void print2dToStream(T const* ptr, int const nRow, int const nCol, int const nSt
 {
     if (ptr == nullptr)
     {
-        TLLM_LOG_WARNING("Nullptr, skip!\n");
+        ORT_LLM_LOG_WARNING("Nullptr, skip!\n");
         return;
     }
     for (int ri = 0; ri < nRow; ++ri)
@@ -654,7 +592,7 @@ inline void printMatrix(T const* ptr, int nRow, int nCol, int nStride)
     // `nCol` (<= nStride) is length for print per row
     if (ptr == nullptr)
     {
-        TLLM_LOG_WARNING("Nullptr, skip!\n");
+        ORT_LLM_LOG_WARNING("Nullptr, skip!\n");
         return;
     }
     cudaDeviceSynchronize();
@@ -662,7 +600,7 @@ inline void printMatrix(T const* ptr, int nRow, int nCol, int nStride)
 
     bool const isDevicePtr = (getPtrCudaMemoryType(ptr) == cudaMemoryTypeDevice);
     size_t sizeInByte = sizeof(T) * nRow * nStride;
-    TLLM_LOG_TRACE("addr=%p, location=%s, sizeof(T)=%lu, nRow=%d, nStride=%d, sizeInByte=%lu\n", ptr,
+    ORT_LLM_LOG_TRACE("addr=%p, location=%s, sizeof(T)=%lu, nRow=%d, nStride=%d, sizeInByte=%lu\n", ptr,
         (isDevicePtr ? "Device" : "Host"), sizeof(T), nRow, nStride, sizeInByte);
     if (isDevicePtr)
     {
