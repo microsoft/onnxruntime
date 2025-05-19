@@ -107,7 +107,7 @@ Status SkipLayerNorm<T, Simplified>::ComputeInternal(OpKernelContext* ctx) const
         (bias != nullptr) ? reinterpret_cast<const CudaT*>(bias->Data<T>()) : nullptr,  // bias to add
         sum_output != nullptr ? reinterpret_cast<CudaT*>(sum_output->MutableData<T>()) : nullptr);
   } else {
-    if (std::is_same<T, BFloat16>::value) {
+    if constexpr (std::is_same_v<T, BFloat16>) {
       LaunchSkipLayerNormKernel<nv_bfloat16, Simplified>(
           Stream(ctx),
           reinterpret_cast<nv_bfloat16*>(output->MutableData<T>()),
