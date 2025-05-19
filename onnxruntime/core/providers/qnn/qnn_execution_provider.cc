@@ -221,9 +221,9 @@ static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(c
   static const std::string DUMP_QNN_IR_DLC = "dump_qnn_ir_dlc";
   auto dump_qnn_ir_dlc = ParseBoolOption(DUMP_QNN_IR_DLC, false, provider_options_map);
 
-  static const std::string DUMP_QNN_OR_DLC_DIR = "dump_qnn_ir_dlc_dir";
+  static const std::string DUMP_QNN_IR_DLC_DIR = "dump_qnn_ir_dlc_dir";
   std::string qnn_ir_dlc_dir;
-  auto qnn_ir_dlc_dir_pos = provider_options_map.find(DUMP_QNN_OR_DLC_DIR);
+  auto qnn_ir_dlc_dir_pos = provider_options_map.find(DUMP_QNN_IR_DLC_DIR);
   if (qnn_ir_dlc_dir_pos != provider_options_map.end()) {
     qnn_ir_dlc_dir = qnn_ir_dlc_dir_pos->second;
     if (dump_qnn_ir_dlc) {
