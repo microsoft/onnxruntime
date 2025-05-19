@@ -1362,31 +1362,16 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
                "S")
         .Input(7,
-               "max_query_len",
-               "Scalar tensor equivalent to the maximum length of all sequences in the query tensor (max new seqlen). "
-               "This input is allocated on CPU.",
-               "S")
-        .Input(8,
-               "max_seq_len",
-               "Scalar tensor equivalent to the maximum length of all sequences in the KV Cache after appending new "
-               "tokens (max total seqlen). This input is allocated on CPU.",
-               "S")
-        .Input(9,
                "block_table",
                "2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to its"
                "corresponding blocks in the KV cache.",
                "S")
-        .Input(10,
-               "slot_mappings",
-               "1D tensor with shape (num_tokens) that maps each token in the input kv to its corresponding slot in "
-               "the KV cache. This is used to correctly cache KV into the block-based KV cache.",
-               "S")
-        .Input(11,
+        .Input(8,
                "cos_cache",
                "2D tensor with shape (max total seqlen, head_size / 2).",
                "T",
                OpSchema::Optional)
-        .Input(12,
+        .Input(9,
                "sin_cache",
                "2D tensor with shape (max total seqlen, head_size / 2).",
                "T",

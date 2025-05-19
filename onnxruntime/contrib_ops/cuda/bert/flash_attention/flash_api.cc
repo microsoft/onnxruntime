@@ -41,7 +41,8 @@ void set_params_fprop(Flash_fwd_params& params,
                       bool use_smooth_softmax,
                       bool kv_bsnh = true,
                       int window_size_left = -1,
-                      int window_size_right = -1) {
+                      int window_size_right = -1,
+                      const bool unpadded_lse = false) {
   // Set the pointers and strides.
   params.q_ptr = q;
   params.k_ptr = k;
@@ -142,6 +143,7 @@ void set_params_fprop(Flash_fwd_params& params,
   params.window_size_right = window_size_right;
 
   params.is_seqlens_k_cumulative = true;
+  params.unpadded_lse = unpadded_lse;
 }
 
 size_t get_softmax_lse_size(size_t seqlen, size_t batch_size, size_t num_heads) {
@@ -360,6 +362,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                       int head_size,
                       int max_seqlen_q,
                       int max_seqlen_k,
+                      int total_q,
                       float softmax_scale,
                       const float softcap,
                       bool is_causal,
@@ -393,7 +396,10 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
                    false,
                    true,
                    local_window_size,
-                   is_causal ? 0 : -1);
+                   is_causal ? 0 : -1,
+                   /*unpadded_lse*/ true);
+
+  params.total_q = total_q;
   params.dprops = &dprops;
   params.num_splits = 0;
   params.softmax_lseaccum_ptr = nullptr;

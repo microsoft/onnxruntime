@@ -151,6 +151,7 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   int3 in_strides = {in_seq_stride <= 0 ? num_heads * head_size : in_seq_stride, head_size, 1};
   int3 out_strides = {num_heads * head_size, head_size, 1};
   int tpb = (head_size + 31) / 32 * 32;
+
   const dim3 grid(max_seqlen_q, batch_size, num_heads);
   const dim3 block(tpb);
   RotaryEmbeddingTNH<<<grid, block, 0, stream>>>(
@@ -192,36 +193,48 @@ Status LaunchGetCumulativeSeqlensKV(int32_t* cumulative_seqlens_kv, const int32_
 
 template <typename T>
 __global__ void ReshapeAndCache(const T* __restrict__ key, const T* __restrict__ value, T* __restrict__ key_cache,
-                                T* __restrict__ value_cache, const int* __restrict__ slot_mappings,
-                                const int token_count, const int kv_hidden_size, const int block_size,
-                                const int key_stride, const int value_stride) {
+                                T* __restrict__ value_cache, const int* __restrict__ block_table,
+                                const int* __restrict__ past_seqlens, const int* __restrict__ cumulative_seqlens_q,
+                                const int batch_size, const int max_num_blocks_per_seq, const int token_count,
+                                const int kv_hidden_size, const int block_size, const int key_stride,
+                                const int value_stride) {
   const int tid = threadIdx.x + blockIdx.x * blockDim.x;
   if (tid >= token_count * kv_hidden_size) {
     return;
   }
   const int token_id = tid / kv_hidden_size;
-  const int offset = tid % kv_hidden_size;
-  const int slot_id = slot_mappings[token_id];
-  const int block_id = slot_id / block_size;
-  const int block_offset = slot_id % block_size;
+  const int hidden_offset = tid % kv_hidden_size;
+  int batch_id = 0;
+  for (int i = 0; i < batch_size; ++i) {
+    if (token_id < cumulative_seqlens_q[i + 1]) {
+      batch_id = i;
+      break;
+    }
+  }
+  const int token_offset = token_id - cumulative_seqlens_q[batch_id];
+  const int past_length = past_seqlens[batch_id];
+  const int block_id = block_table[batch_id * max_num_blocks_per_seq +  (past_length + token_offset) / block_size];
+  const int block_offset = (past_length + token_offset) % block_size;
 
-  const int key_id = token_id * key_stride + offset;
-  const int value_id = token_id * value_stride + offset;
-  const int dst_id = block_id * block_size * kv_hidden_size + block_offset * kv_hidden_size + offset;
+  const int key_id = token_id * key_stride + hidden_offset;
+  const int value_id = token_id * value_stride + hidden_offset;
+  const int dst_id = block_id * block_size * kv_hidden_size + block_offset * kv_hidden_size + hidden_offset;
   key_cache[dst_id] = key[key_id];
   value_cache[dst_id] = value[value_id];
 }
 
 template <typename T>
-Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* slot_mappings,
-                             const int token_count, const int kv_hidden_size, const int block_size,
-                             const int key_stride, const int value_stride, cudaStream_t stream,
+Status LaunchReshapeAndCache(const T* key, const T* value, T* key_cache, T* value_cache, const int* block_table,
+                             const int* past_seqlens, const int* cumulative_seqlens_q, const int batch_size,
+                             const int max_num_blocks_per_seq, const int token_count, const int kv_hidden_size,
+                             const int block_size, const int key_stride, const int value_stride, cudaStream_t stream,
                              const int max_threads_per_block) {
   const int total_size = token_count * kv_hidden_size;
   const int threads(std::min(total_size, max_threads_per_block));
   const int blocks((total_size + threads - 1) / threads);
-  ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, slot_mappings, token_count,
-                                                     kv_hidden_size, block_size, key_stride, value_stride);
+  ReshapeAndCache<T><<<blocks, threads, 0, stream>>>(key, value, key_cache, value_cache, block_table, past_seqlens,
+                                                     cumulative_seqlens_q, batch_size, max_num_blocks_per_seq,
+                                                     token_count, kv_hidden_size, block_size, key_stride, value_stride);
   return CUDA_CALL(cudaGetLastError());
 }
 
@@ -239,8 +252,6 @@ Status FlashAttention(
   const int max_threads_per_block = device_prop.maxThreadsPerBlock;
   const int batch_size = parameters.batch_size;
   const int token_count = parameters.token_count;
-  const int max_query_len = parameters.sequence_length;
-  const int max_seq_len = parameters.total_sequence_length;
   const int q_hidden_size = parameters.hidden_size;
   const int kv_hidden_size = parameters.kv_hidden_size;
   const int num_heads = parameters.num_heads;
@@ -251,6 +262,9 @@ Status FlashAttention(
   const int local_window_size = parameters.local_window_size;
   const int max_num_blocks_per_seq = parameters.max_num_blocks_per_seq;
   const int block_size = parameters.block_size;
+  // The following are passed to flash api but not used by the kernel, so they can be determined heuristically
+  const int max_query_len = token_count - batch_size + 1;
+  const int max_seq_len = parameters.max_num_blocks_per_seq * parameters.block_size;
 
   T* query = const_cast<T*>(data.query);
   T* key;
@@ -295,11 +309,13 @@ Status FlashAttention(
   }
 
   // Insert key and value into block-based KV cache
+  int* block_table = const_cast<int*>(data.block_table);
   const int key_stride = parameters.is_packed_qkv && !parameters.do_rotary ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
   const int value_stride = parameters.is_packed_qkv ? q_hidden_size + 2 * kv_hidden_size : kv_hidden_size;
-  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, data.slot_mappings,
-                                               token_count, kv_hidden_size, block_size, key_stride, value_stride,
-                                               stream, max_threads_per_block));
+  ORT_RETURN_IF_ERROR(LaunchReshapeAndCache<T>(key, value, data.key_cache, data.value_cache, block_table, past_seqlens,
+                                               cumulative_seqlens_q, batch_size, max_num_blocks_per_seq, token_count,
+                                               kv_hidden_size, block_size, key_stride, value_stride, stream,
+                                               max_threads_per_block));
 
   // Launch kernel
   void* q = reinterpret_cast<void*>(query);
@@ -307,11 +323,11 @@ Status FlashAttention(
   void* value_cache = reinterpret_cast<void*>(data.value_cache);
   void* output = reinterpret_cast<void*>(data.output);
   void* softmax_lse = reinterpret_cast<void*>(data.softmax_lse);
-  int* block_table = const_cast<int*>(data.block_table);
   ORT_RETURN_IF_ERROR(onnxruntime::flash::mha_varlen_fwd(
       device_prop, stream, q, key_cache, value_cache, output, cumulative_seqlens_q, cumulative_seqlens_kv,
       /*seqused_k*/ nullptr, block_table, softmax_lse, batch_size, num_heads, kv_num_heads, head_size, max_query_len,
-      max_seq_len, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq, block_size));
+      max_seq_len, token_count, scale, softcap, /*is_causal*/ true, is_bf16, local_window_size, max_num_blocks_per_seq,
+      block_size));
 
   DUMP_TENSOR_INIT();
   DUMP_TENSOR("flash attention output", data.output, token_count, num_heads, head_size);

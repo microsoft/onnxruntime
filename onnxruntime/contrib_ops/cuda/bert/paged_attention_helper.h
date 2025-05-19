@@ -157,9 +157,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
 }
 
 template <typename T = Tensor>
-Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* seqlens, const T* max_query_len,
-                                  const T* max_seq_len, int& batch_size, int& max_query_length,
-                                  int& max_total_sequence_length) {
+Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* seqlens, int& batch_size) {
   const auto& cumulative_seqlen_dim = cumulative_sequence_length->Shape().GetDims();
   if (cumulative_seqlen_dim.size() != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -172,26 +170,11 @@ Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* 
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "seqlens must be shape (batch_size).");
   }
-
-  const auto& max_query_len_dim = max_query_len->Shape().GetDims();
-  if (max_query_len_dim.size() != 1 || max_query_len_dim[0] != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "max_query_len must be shape (1).");
-  }
-  max_query_length = *((*max_query_len).template Data<int32_t>());
-
-  const auto& max_seq_len_dim = max_seq_len->Shape().GetDims();
-  if (max_seq_len_dim.size() != 1 || max_seq_len_dim[0] != 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "max_seq_len must be shape (1).");
-  }
-  max_total_sequence_length = *((*max_seq_len).template Data<int32_t>());
   return Status::OK();
 }
 
 template <typename T = Tensor>
-Status CheckBlockTableAndSlotMappings(const T* block_table, const T* slot_mappings, const int batch_size,
-                                      const int token_count, int& max_num_blocks_per_seq) {
+Status CheckBlockTable(const T* block_table, const int batch_size, int& max_num_blocks_per_seq) {
   const auto& block_table_dims = block_table->Shape().GetDims();
   if (block_table_dims.size() != 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -202,13 +185,6 @@ Status CheckBlockTableAndSlotMappings(const T* block_table, const T* slot_mappin
                            block_table_dims[0]);
   }
   max_num_blocks_per_seq = static_cast<int>(block_table_dims[1]);
-
-  const auto& slot_mappings_dim = slot_mappings->Shape().GetDims();
-  if (slot_mappings_dim.size() != 1 || slot_mappings_dim[0] != token_count) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "slot_mappings must be shape (token count), got ",
-                           slot_mappings_dim[0]);
-  }
   return Status::OK();
 }
 
@@ -220,10 +196,7 @@ Status CheckInputs(const T* query,
                    const T* value_cache,
                    const T* cumulative_sequence_length,
                    const T* seqlens,
-                   const T* max_query_len,
-                   const T* max_seq_len,
                    const T* block_table,
-                   const T* slot_mappings,
                    const T* cos_cache,
                    const T* sin_cache,
                    void* parameters,
@@ -262,21 +235,18 @@ Status CheckInputs(const T* query,
 
   // Check sequence length tensors
   int batch_size = 0;
-  int max_query_length = 0;
-  int max_total_sequence_length = 0;
-  ORT_RETURN_IF_ERROR(CheckSequenceLengthTensors(cumulative_sequence_length, seqlens, max_query_len, max_seq_len,
-                                                 batch_size, max_query_length, max_total_sequence_length));
+  ORT_RETURN_IF_ERROR(CheckSequenceLengthTensors(cumulative_sequence_length, seqlens, batch_size));
 
   // Check block table and slot mappings
   int max_num_blocks_per_seq = 0;
-  ORT_RETURN_IF_ERROR(CheckBlockTableAndSlotMappings(block_table, slot_mappings, batch_size, token_count,
-                                                     max_num_blocks_per_seq));
+  ORT_RETURN_IF_ERROR(CheckBlockTable(block_table, batch_size, max_num_blocks_per_seq));
 
   // Check rotary cache
   int rotary_dim = 0;
   if (cos_cache != nullptr && sin_cache != nullptr) {
+    // 0 to bypass checking rotary cache size
     ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckRotaryCaches(cos_cache, sin_cache, head_size,
-                                                                        max_total_sequence_length, rotary_dim));
+                                                                        0, rotary_dim));
   } else if (cos_cache != nullptr || sin_cache != nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Input 'cos_cache' and 'sin_cache' shall be both present or both absent.");
@@ -286,8 +256,6 @@ Status CheckInputs(const T* query,
     PagedAttentionParameters* output_parameters = reinterpret_cast<PagedAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
     output_parameters->token_count = token_count;
-    output_parameters->sequence_length = max_query_length;                 // maximum sequence length of query tensor
-    output_parameters->total_sequence_length = max_total_sequence_length;  // maximum total sequence length in kv cache after new kv are appended
     output_parameters->hidden_size = q_hidden_size;
     output_parameters->kv_hidden_size = kv_hidden_size;
     output_parameters->num_heads = num_heads;

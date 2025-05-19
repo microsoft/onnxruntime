@@ -102,10 +102,7 @@ def create_paged_attention_graph(
                 "value_cache",
                 "cumulative_sequence_length",
                 "seqlens",
-                "max_query_len",
-                "max_seq_len",
                 "block_table",
-                "slot_mappings",
                 "cos_cache" if config.rotary else "",
                 "sin_cache" if config.rotary else "",
             ],
@@ -163,24 +160,9 @@ def create_paged_attention_graph(
             [config.batch_size],
         ),
         helper.make_tensor_value_info(
-            "max_query_len",
-            TensorProto.INT32,
-            [1],
-        ),
-        helper.make_tensor_value_info(
-            "max_seq_len",
-            TensorProto.INT32,
-            [1],
-        ),
-        helper.make_tensor_value_info(
             "block_table",
             TensorProto.INT32,
             [config.batch_size, max_blocks_per_sequence],
-        ),
-        helper.make_tensor_value_info(
-            "slot_mappings",
-            TensorProto.INT32,
-            [num_tokens],
         ),
     ]
     if not config.packed:
@@ -276,10 +258,7 @@ def paged_attention_func(
     value_cache,
     cumulative_sequence_length,
     seqlens,
-    max_query_len,
-    max_seq_len,
     block_table,
-    slot_mappings,
     cos=None,
     sin=None,
     window_size=-1,
@@ -300,10 +279,7 @@ def paged_attention_func(
         "value_cache": OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0),
         "cumulative_sequence_length": cumulative_sequence_length.detach().cpu().numpy(),
         "seqlens": seqlens.detach().cpu().numpy(),
-        "max_query_len": numpy.array([max_query_len], dtype=numpy.int32),
-        "max_seq_len": numpy.array([max_seq_len], dtype=numpy.int32),
         "block_table": block_table.detach().cpu().numpy(),
-        "slot_mappings": slot_mappings.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[config.ep])
@@ -327,10 +303,7 @@ def paged_attention_func(
     )
     io_binding.bind_cpu_input("cumulative_sequence_length", ort_inputs["cumulative_sequence_length"])
     io_binding.bind_cpu_input("seqlens", ort_inputs["seqlens"])
-    io_binding.bind_cpu_input("max_query_len", ort_inputs["max_query_len"])
-    io_binding.bind_cpu_input("max_seq_len", ort_inputs["max_seq_len"])
     io_binding.bind_cpu_input("block_table", ort_inputs["block_table"])
-    io_binding.bind_cpu_input("slot_mappings", ort_inputs["slot_mappings"])
     io_binding.bind_output("output")
     io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])
     io_binding.bind_ortvalue_output("value_cache_out", ort_inputs["value_cache"])
@@ -512,28 +485,6 @@ def generate_block_kvcache(config: Config, device, dtype):
     return k_cache, v_cache, block_table, k_cache_paged, v_cache_paged
 
 
-def get_slot_mappings(config, block_table, total_seqlens, cum_seqlens):
-    # Get slot mappings for the new sequence length
-    slot_mappings = torch.zeros(
-        cum_seqlens[-1],
-        dtype=torch.int32,
-        device="cuda",
-    )
-    slot_offsets = repeat(block_table, "b nb -> b (nb bs)", bs=config.paged_kv_block_size) * config.paged_kv_block_size
-    for i in range(config.batch_size):
-        new_seqlen = cum_seqlens[i + 1] - cum_seqlens[i]
-        past_seqlen = total_seqlens[i] - new_seqlen
-        total_seqlen = total_seqlens[i]
-        # Get the slot mappings for the new sequence length
-        slot_mappings[cum_seqlens[i] : cum_seqlens[i + 1]] = (
-            torch.fmod(
-                torch.arange(past_seqlen, total_seqlen, device="cuda", dtype=torch.int32), config.paged_kv_block_size
-            )
-            + slot_offsets[i, past_seqlen:total_seqlen]
-        )
-    return slot_mappings
-
-
 def parity_check_paged_attention(
     config: Config,
     rtol=1e-3,
@@ -592,7 +543,6 @@ def parity_check_paged_attention(
 
     # Generate kv cache and associated block-based data structures
     k_cache, v_cache, block_table, k_cache_paged, v_cache_paged = generate_block_kvcache(config, "cuda", torch.float16)
-    slot_mappings = get_slot_mappings(config, block_table, total_seqlens, cum_seqlens)
 
     # Set window size for local / causal
     window_size = (-1, -1)
@@ -652,9 +602,6 @@ def parity_check_paged_attention(
     )
     out_ref = out_ref.detach().cpu().numpy()
 
-    max_seqlen_q = torch.max(new_seqlens).item()
-    max_seqlen_k = torch.max(total_seqlens).item()
-
     if config.packed:
         q_unpad = torch.concatenate([q_unpad, k_unpad, v_unpad], dim=1)
         k_unpad = None
@@ -668,10 +615,7 @@ def parity_check_paged_attention(
         v_cache_paged,
         cum_seqlens,
         past_seqlens,
-        max_seqlen_q,
-        max_seqlen_k,
         block_table,
-        slot_mappings,
         cos,
         sin,
         left_window_size,
@@ -788,4 +732,4 @@ class TestPagedAttention(unittest.TestCase):
 
 
 if __name__ == "__main__":
-    unittest.main()
+    unittest.main(verbosity=2)

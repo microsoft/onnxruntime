@@ -589,6 +589,7 @@ Status FlashAttention(
     PackedMultiHeadAttentionData<T>& data) {
   const int batch_size = parameters.batch_size;
   const int sequence_length = parameters.sequence_length;
+  const int token_count = parameters.token_count;
   const int num_heads = parameters.num_heads;
   const int qk_head_size = parameters.head_size;
   const int v_head_size = parameters.v_head_size;
@@ -638,6 +639,7 @@ Status FlashAttention(
           qk_head_size,
           sequence_length,
           sequence_length,
+          token_count,
           scale,
           0.0,
           false,  // is causal

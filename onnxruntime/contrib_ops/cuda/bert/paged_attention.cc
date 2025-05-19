@@ -18,18 +18,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace cuda {
 
-#define REGISTER_KERNEL_TYPED(T)                                       \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                       \
-      PagedAttention,                                                  \
-      kMSDomain,                                                       \
-      1,                                                               \
-      T,                                                               \
-      kCudaExecutionProvider,                                          \
-      (*KernelDefBuilder::Create())                                    \
-          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())       \
-          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()) \
-          .InputMemoryType(OrtMemTypeCPUInput, 7)                      \
-          .InputMemoryType(OrtMemTypeCPUInput, 8),                     \
+#define REGISTER_KERNEL_TYPED(T)                                        \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+      PagedAttention,                                                   \
+      kMSDomain,                                                        \
+      1,                                                                \
+      T,                                                                \
+      kCudaExecutionProvider,                                           \
+      (*KernelDefBuilder::Create())                                     \
+          .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
+          .TypeConstraint("S", DataTypeImpl::GetTensorType<int32_t>()), \
       PagedAttention<T>);
 
 REGISTER_KERNEL_TYPED(MLFloat16)
@@ -63,12 +61,9 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* value_cache = context->Input<Tensor>(4);
   const Tensor* cumulative_seqlens_q = context->Input<Tensor>(5);
   const Tensor* past_seqlens = context->Input<Tensor>(6);
-  const Tensor* max_query_len = context->Input<Tensor>(7);
-  const Tensor* max_seq_len = context->Input<Tensor>(8);
-  const Tensor* block_table = context->Input<Tensor>(9);
-  const Tensor* slot_mappings = context->Input<Tensor>(10);
-  const Tensor* cos_cache = context->Input<Tensor>(11);
-  const Tensor* sin_cache = context->Input<Tensor>(12);
+  const Tensor* block_table = context->Input<Tensor>(7);
+  const Tensor* cos_cache = context->Input<Tensor>(8);
+  const Tensor* sin_cache = context->Input<Tensor>(9);
 
   auto& device_prop = GetDeviceProp();
   PagedAttentionParameters parameters;
@@ -83,10 +78,7 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                           value_cache,
                                                           cumulative_seqlens_q,
                                                           past_seqlens,
-                                                          max_query_len,
-                                                          max_seq_len,
                                                           block_table,
-                                                          slot_mappings,
                                                           cos_cache,
                                                           sin_cache,
                                                           &parameters,
@@ -102,8 +94,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   DUMP_STRING_INIT();
   DUMP_STRING("Batch size = ", parameters.batch_size);
   DUMP_STRING("Token count = ", parameters.token_count);
-  DUMP_STRING("Max query length = ", parameters.sequence_length);
-  DUMP_STRING("Max total sequence length = ", parameters.total_sequence_length);
   DUMP_STRING("Q hidden size = ", parameters.hidden_size);
   DUMP_STRING("KV hidden size = ", parameters.kv_hidden_size);
   DUMP_STRING("Q num heads = ", parameters.num_heads);
@@ -204,7 +194,6 @@ Status PagedAttention<T>::ComputeInternal(OpKernelContext* context) const {
   data.past_seqlens = reinterpret_cast<const int*>(past_seqlens->Data<int>());
   data.cumulative_seqlens_kv = reinterpret_cast<int*>(cumulative_seqlens_kv_buffer.get());
   data.block_table = reinterpret_cast<const int*>(block_table->Data<int>());
-  data.slot_mappings = reinterpret_cast<const int*>(slot_mappings->Data<int>());
   data.output = reinterpret_cast<CudaT*>(output->MutableData<T>());
   data.use_flash_attention = use_flash_attention;
   if (softmax_lse_buffer != nullptr) {
