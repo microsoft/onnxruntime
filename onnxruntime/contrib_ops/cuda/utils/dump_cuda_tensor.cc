@@ -266,31 +266,31 @@ void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, 
   }
 }
 
-#define CUDA_DUMPER_PRINT_TYPE(dtype) \
+#define CUDA_DUMPER_PRINT_TYPE(dtype, dtype2) \
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const { \
   if (is_enabled_) \
-    DumpGpuTensor<dtype>(name, tensor, dim0, dim1, true); \
+    DumpGpuTensor<dtype2>(name, reinterpret_cast<const dtype2*>(tensor), dim0, dim1, true); \
   } \
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const { \
   if (is_enabled_) \
-    DumpGpuTensor<dtype>(name, tensor, dim0, dim1, dim2, true); \
+    DumpGpuTensor<dtype2>(name, reinterpret_cast<const dtype2*>(tensor), dim0, dim1, dim2, true); \
   } \
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const {\
   if (is_enabled_) \
-    DumpGpuTensor<dtype>(name, tensor, dim0, dim1, dim2, dim3, true); \
+    DumpGpuTensor<dtype2>(name, reinterpret_cast<const dtype2*>(tensor), dim0, dim1, dim2, dim3, true); \
   }\
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const { \
-    PrintTensorByDims<CudaTensorConsoleDumper, dtype>(this, name, tensor, dims); \
+    PrintTensorByDims<CudaTensorConsoleDumper, dtype2>(this, name, reinterpret_cast<const dtype2*>(tensor), dims); \
   }
 
-CUDA_DUMPER_PRINT_TYPE(int8_t)
-CUDA_DUMPER_PRINT_TYPE(uint8_t)
-CUDA_DUMPER_PRINT_TYPE(int32_t)
-CUDA_DUMPER_PRINT_TYPE(int64_t)
-CUDA_DUMPER_PRINT_TYPE(float)
-CUDA_DUMPER_PRINT_TYPE(MLFloat16)
-CUDA_DUMPER_PRINT_TYPE(BFloat16)
-CUDA_DUMPER_PRINT_TYPE(half)
+CUDA_DUMPER_PRINT_TYPE(int8_t, int8_t)
+CUDA_DUMPER_PRINT_TYPE(uint8_t, uint8_t)
+CUDA_DUMPER_PRINT_TYPE(int32_t, int32_t)
+CUDA_DUMPER_PRINT_TYPE(int64_t, int64_t)
+CUDA_DUMPER_PRINT_TYPE(float, float)
+CUDA_DUMPER_PRINT_TYPE(MLFloat16, MLFloat16)
+CUDA_DUMPER_PRINT_TYPE(BFloat16, BFloat16)
+CUDA_DUMPER_PRINT_TYPE(half, MLFloat16)
 #undef DUMPER_PRINT_TYPE
 
 

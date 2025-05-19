@@ -10,8 +10,8 @@
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
 #include "contrib_ops/cpu/utils/dump_tensor.h"
-#include "matmul_nbits.cuh"
-#include "dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 // #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
 

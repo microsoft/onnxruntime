@@ -113,48 +113,47 @@ bool is_supported(int arch, KernelType kernel_type)
 
 
 // CUDA kernel to compute -scale * zero_point and transpose
-// Each thread computes one element of the OUTPUT matrix (shape [k, n])
-template<bool is_zero_point_int4_packed, typename T, typename Z>
+// Each thread computes one element of the OUTPUT matrix (shape [k_blocks, n])
+template <bool is_zero_point_int4_packed, typename T, typename Z>
 __global__ void computeScaledZeroPointAndTransposeKernel(
-    const T* scale,        // Input scale matrix [n, k]
-    const Z* zero_point,   // Input zero_point matrix [n, k]
-    T* transposed_scale,   // transposed scale [k, n]
-    T* scaled_zero_point,  // Output matrix [k, n]
+    const T* scale,        // Input scale matrix [n, k_blocks]
+    const Z* zero_point,   // Input zero_point matrix [n, k_blocks]
+    T* transposed_scale,   // transposed scale [k_blocks, n]
+    T* scaled_zero_point,  // Output matrix [k_blocks, n]
     int n,                 // Rows of input matrices
-    int k,                 // Columns of input matrices
-    float default_zero_point
-) {
-    // Calculate the output matrix coordinates [row, col] for this thread
-    // The output matrix has dimensions [k, n]
-    int out_row = blockIdx.y * blockDim.y + threadIdx.y;
-    int out_col = blockIdx.x * blockDim.x + threadIdx.x;
+    int k_blocks,          // Columns of input matrices
+    float default_zero_point) {
+  // Calculate the output matrix coordinates [row, col] for this thread
+  // The output matrix has dimensions [k_blocks, n]
+  int out_row = blockIdx.y * blockDim.y + threadIdx.y;
+  int out_col = blockIdx.x * blockDim.x + threadIdx.x;
 
-    // Check bounds to ensure we are within the output matrix dimensions [k, n]
-    if (out_row < k && out_col < n) {
-        int in_row = out_col;
-        int in_col = out_row;
-        int64_t input_offset = static_cast<int64_t>(in_row) * k + in_col;
-        int64_t output_offset = static_cast<int64_t>(out_row) * n + out_col;
+  // Check bounds to ensure we are within the output matrix dimensions [k_blocks, n]
+  if (out_row < k_blocks && out_col < n) {
+    int in_row = out_col;
+    int in_col = out_row;
+    int64_t input_offset = static_cast<int64_t>(in_row) * k_blocks + in_col;
+    int64_t output_offset = static_cast<int64_t>(out_row) * n + out_col;
 
-        // Perform the computation: scaled_zero_point[out_row, out_col] = -scale[in_row, in_col] * zero_point[in_row, in_col]
-        T scale_val = scale[input_offset];
-        float zero_point_val;
-        if (zero_point != nullptr) {
-            if constexpr(is_zero_point_int4_packed) { // zero point is 4 bit, and two elements are packed into one bye.
-                int64_t packed_zp_offset = static_cast<int64_t>(in_row) * k + in_col / 2;
-                uint8_t packed_zp = zero_point[packed_zp_offset];
-                zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_zp >> 4) : (packed_zp & 0x0f));
-            } else {
-                zero_point_val = static_cast<float>(zero_point[input_offset]);
-            }
-        } else {
-            zero_point_val = default_zero_point;
-        }
-
-        float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
-        scaled_zero_point[output_offset] = static_cast<T>(result);
-        transposed_scale[output_offset] = scale_val;
+    // Perform the computation: scaled_zero_point[out_row, out_col] = -scale[in_row, in_col] * zero_point[in_row, in_col]
+    T scale_val = scale[input_offset];
+    float zero_point_val;
+    if (zero_point != nullptr) {
+      if constexpr (is_zero_point_int4_packed) {  // zero point is 4 bit, and two elements are packed into one byte.
+        int64_t packed_zp_offset = static_cast<int64_t>(in_row) * k_blocks + in_col / 2;
+        uint8_t packed_zp = zero_point[packed_zp_offset];
+        zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_zp >> 4) : (packed_zp & 0x0f));
+      } else {
+        zero_point_val = static_cast<float>(zero_point[input_offset]);
+      }
+    } else {
+      zero_point_val = default_zero_point;
     }
+
+    float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
+    scaled_zero_point[output_offset] = static_cast<T>(result);
+    transposed_scale[output_offset] = scale_val;
+  }
 }
 
 template<bool is_zero_point_int4_packed, typename T, typename Z>
@@ -164,13 +163,13 @@ void launch_scaled_zero_point_kernel(
     const Z* zero_point,
     T* transposed_scale,
     T* scaled_zero_point,
-    int n, int k, float default_zero_point)
+    int n, int k_blocks, float default_zero_point)
 {
     constexpr int BLOCK_SIZE = 16;
     dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
     dim3 gridDim(
         (n + blockDim.x - 1) / blockDim.x, // Grid size in x covers output columns (n)
-        (k + blockDim.y - 1) / blockDim.y  // Grid size in y covers output rows (k)
+        (k_blocks + blockDim.y - 1) / blockDim.y  // Grid size in y covers output rows (k_blocks)
     );
 
     computeScaledZeroPointAndTransposeKernel<is_zero_point_int4_packed, T, Z><<<gridDim, blockDim, 0, stream>>>(
@@ -179,7 +178,7 @@ void launch_scaled_zero_point_kernel(
         transposed_scale,
         scaled_zero_point,
         n,
-        k,
+        k_blocks,
         default_zero_point
     );
 }
@@ -192,7 +191,7 @@ void launch_scaled_zero_point_kernel<false, float, float>(
     const float* zero_point,
     float* transposed_scale,
     float* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 template
 void launch_scaled_zero_point_kernel<false, float, uint8_t>(
@@ -201,7 +200,7 @@ void launch_scaled_zero_point_kernel<false, float, uint8_t>(
     const uint8_t* zero_point,
     float* transposed_scale,
     float* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 
 template
@@ -211,7 +210,7 @@ void launch_scaled_zero_point_kernel<false, half, half>(
     const half* zero_point,
     half* transposed_scale,
     half* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 template
 void launch_scaled_zero_point_kernel<false, half, uint8_t>(
@@ -220,7 +219,7 @@ void launch_scaled_zero_point_kernel<false, half, uint8_t>(
     const uint8_t* zero_point,
     half* transposed_scale,
     half* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 // zero point is 4 bits packed.
 template
@@ -230,7 +229,7 @@ void launch_scaled_zero_point_kernel<true, half, uint8_t>(
     const uint8_t* zero_point,
     half* transposed_scale,
     half* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 // zero point is 4 bits packed.
 template
@@ -240,7 +239,7 @@ void launch_scaled_zero_point_kernel<true, float, uint8_t>(
     const uint8_t* zero_point,
     float* transposed_scale,
     float* scaled_zero_point,
-    int n, int k, float default_zero_point);
+    int n, int k_blocks, float default_zero_point);
 
 // CUDA kernel to unpack int4 to int8 and transposed tensor
 __global__ void unpack_uint4_transposed_to_int8_kernel(
@@ -296,7 +295,7 @@ __global__ void unpack_uint4_transposed_to_int8_kernel(
 }
 
 
-// CUDA kernel to 4 packed transposed tensor to int8
+// CUDA kernel to unpack tensor to int8
 __global__ void unpack_uint4_transposed_to_int8_kernel(
     const unsigned char* __restrict__ packed_weight,
     signed char* __restrict__ transposed_weight,
@@ -332,7 +331,7 @@ __global__ void unpack_uint4_transposed_to_int8_kernel(
  }
 }
 
-// CUDA kernel to 4 packed transposed tensor to int8
+// CUDA kernel to unpack tensor to int8
 __global__ void pack_uint4_to_int8_kernel(
     signed char* __restrict__ transposed_weight,
     signed char* __restrict__ packed_transposed_weight,

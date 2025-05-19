@@ -62,6 +62,31 @@ void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1, int di
   }
 }
 
+template <typename T>
+void DumpCpuTensor(const char* name, const T* tensor, int dim0, int dim1, int dim2, int dim3) {
+  std::unique_lock<std::mutex> lock(s_mutex);
+
+  if (s_output_thread_id)
+    std::cout << "Thread ID:" << std::this_thread::get_id() << std::endl;
+
+  if (nullptr != name) {
+    std::cout << std::string(name) << std::endl;
+  }
+
+  if (onnxruntime::utils::kDefaultSnippetThreshold < static_cast<int64_t>(dim0 * dim1 * dim2 * dim3)) {
+    for (int i = 0; i < dim0; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      onnxruntime::utils::PrintCpuTensorSnippet<T>(tensor + i * dim1 * dim2 * dim3, dim1, dim2, dim3,
+                                                   onnxruntime::utils::kDefaultSnippetEdgeItems);
+    }
+  } else {
+    for (int i = 0; i < dim0; i++) {
+      std::cout << "[" << i << "]:" << std::endl;
+      onnxruntime::utils::PrintCpuTensorFull<T>(tensor + i * dim1 * dim2 * dim3, dim1, dim2, dim3);
+    }
+  }
+}
+
 void DumpCpuTensor(const char* name, const Tensor& tensor, int dim0, int dim1, int dim2) {
   MLDataType dataType = tensor.DataType();
   if (dataType == DataTypeImpl::GetType<float>()) {
