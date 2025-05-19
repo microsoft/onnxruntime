@@ -331,7 +331,7 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
                               bool is_input) {
   if (is_input) {
     // Reserve qnn_tensor_infos according to the number of graph inputs.
-    auto input_count = GetGraphInputNumber();
+    auto input_count = GetGraphInputCount();
     ORT_RETURN_IF(0 == input_count, "Zero input number!");
     qnn_tensor_infos.resize(input_count);
   } else {
@@ -362,13 +362,10 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
   //   a discrepancy in the input quantities.
   // If not all inputs are used, erase the empty allocations in qnn_tensor_infos.
   if (is_input) {
-    for (auto iter = qnn_tensor_infos.begin(); iter != qnn_tensor_infos.end();) {
-      if ((*iter).tensor_wrapper == nullptr) {
-        iter = qnn_tensor_infos.erase(iter);
-      } else {
-        ++iter;
-      }
-    }
+    qnn_tensor_infos.erase(std::remove_if(qnn_tensor_infos.begin(),
+                                          qnn_tensor_infos.end(),
+                                          [](QnnTensorInfo qnn_tensor_info) { return qnn_tensor_info.tensor_wrapper == nullptr; }),
+                           qnn_tensor_infos.end());
   }
   return Status::OK();
 }

@@ -78,7 +78,7 @@ class QnnModel {
   }
 
   // Return the number of graph inputs
-  size_t GetGraphInputNumber() const {
+  size_t GetGraphInputCount() const {
     return model_input_index_map_.size();
   }
 

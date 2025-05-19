@@ -1294,13 +1294,9 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
 //   to tensor wrappers.
 // - However, these remaining inputs still appear in the graph inputs,
 //   resulting in a discrepancy in the input quantities.
-TEST_F(QnnHTPBackendTests, TestMismatchedGraphInput) {
+TEST_F(QnnHTPBackendTests, TestMismatchedGraphInputAndTensorWrapperCount) {
   onnxruntime::ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
 
   auto input_defs = {TestInputDef<float>({1, 3, 10, 10}, false, -10.0f, 10.0f),
                      TestInputDef<float>({0}, false, {}),
