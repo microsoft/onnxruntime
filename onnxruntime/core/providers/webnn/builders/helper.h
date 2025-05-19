@@ -203,6 +203,7 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
 
 // Some ONNX ops are supported by decomposed WebNN ops.
 const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_map = {
+    {"ConvInteger", {"cast", "conv2d", "dequantizeLinear"}},
     {"GroupQueryAttention",
      {"add", "cast", "concat", "constant", "cumulativeSum", "div", "expand", "lesser", "matmul", "reshape", "scatterND",
       "softmax", "transpose", "where"}},
@@ -228,7 +229,6 @@ const std::map<std::string_view, std::string_view> op_map = {
     {"Clip", "clamp"},
     {"Concat", "concat"},
     {"Conv", "conv2d"},
-    {"ConvInteger", "conv2dInteger"},
     {"ConvTranspose", "convTranspose2d"},
     {"Cos", "cos"},
     {"CumSum", "cumulativeSum"},
