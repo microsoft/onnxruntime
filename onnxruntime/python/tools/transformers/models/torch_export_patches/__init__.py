@@ -502,14 +502,6 @@ else:
         return cache
 
 
-def make_encoder_decoder_cache(
-    self_attention_cache: DynamicCache,
-    cross_attention_cache: DynamicCache,
-) -> EncoderDecoderCache:
-    "Creates an EncoderDecoderCache."
-    return EncoderDecoderCache(self_attention_cache=self_attention_cache, cross_attention_cache=cross_attention_cache)
-
-
 def torch_deepcopy(value: Any) -> Any:
     """Makes a deepcopy."""
     if isinstance(value, (int, float, str)):

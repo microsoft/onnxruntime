@@ -70,7 +70,7 @@ def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbo
     for cls, methods in info.items():
         assert cls in set_patch, f"No patch registered for {cls} in {mod} (found {set_patch})"
         if verbose:
-            print(f"[unpatch_module_or_classes] {name}.{cls.__name__}: {', '.join(methods)}")
+            print(f"[unpatch_module_or_classes] {cls.__name__}: {', '.join(methods)}")
         original = cls._PATCHED_CLASS_
         for n, v in methods.items():
             if v is None:
@@ -253,12 +253,18 @@ def bypass_export_some_errors(
             f__check_input_constraints_for_graph = torch._export.utils._check_input_constraints_for_graph
             torch._export.non_strict_utils.produce_guards_and_solve_constraints = (
                 lambda *args, **kwargs: _catch_produce_guards_and_solve_constraints(
-                    f_produce_guards_and_solve_constraints, *args, verbose=verbose, **kwargs
+                    f_produce_guards_and_solve_constraints,
+                    *args,
+                    verbose=verbose,
+                    **kwargs,
                 )
             )
             torch._export.utils._check_input_constraints_for_graph = (
                 lambda *args, **kwargs: patch__check_input_constraints_for_graph(
-                    f__check_input_constraints_for_graph, *args, verbose=verbose, **kwargs
+                    f__check_input_constraints_for_graph,
+                    *args,
+                    verbose=verbose,
+                    **kwargs,
                 )
             )
 
