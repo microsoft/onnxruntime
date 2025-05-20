@@ -1758,6 +1758,106 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
   std::remove(qnn_ctx_binary_file_name1.c_str());
 }
 
+TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
+  // Create QDQ models
+  std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
+  // cleanup in case some failure test doesn't remove them
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+
+  std::vector<std::string> ctx_model_paths;
+  for (auto model_path : onnx_model_paths) {
+    CreateQdqModel(model_path, DefaultLoggingManager().DefaultLogger());
+    EXPECT_TRUE(std::filesystem::exists(model_path.c_str()));
+    auto pos = model_path.find_last_of(".");
+    if (pos != std::string::npos) {
+      model_path = model_path.substr(0, pos) + "_ctx.onnx";
+    } else {
+      model_path = model_path + "_ctx.onnx";
+    }
+    ctx_model_paths.push_back(model_path);
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+
+  DumpModelWithSharedCtx(provider_options, onnx_model_paths[0], onnx_model_paths[1]);
+
+  std::string qnn_ctx_binary_file_name1;
+  GetContextBinaryFileName(ctx_model_paths[0], qnn_ctx_binary_file_name1,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name1.empty());
+
+  std::string qnn_ctx_binary_file_name2;
+  GetContextBinaryFileName(ctx_model_paths[1], qnn_ctx_binary_file_name2,
+                           DefaultLoggingManager().DefaultLogger());
+  EXPECT_TRUE(!qnn_ctx_binary_file_name2.empty());
+  // 2 *_ctx.onn point to same .bin file
+  EXPECT_TRUE(qnn_ctx_binary_file_name1 == qnn_ctx_binary_file_name2);
+  auto file_size_1 = std::filesystem::file_size(qnn_ctx_binary_file_name1);
+  EXPECT_TRUE(file_size_1 > 0);
+
+
+  provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
+  // only load and run the session on real device
+#if defined(__aarch64__) || defined(_M_ARM64)
+  Ort::SessionOptions so1;
+  so1.SetLogId("so1");
+  so1.AppendExecutionProvider("QNN", provider_options);
+  so1.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  Ort::SessionOptions so2;
+  so2.SetLogId("so2");
+  so1.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+  so2.AppendExecutionProvider("QNN", provider_options);
+
+  EXPECT_TRUE(2 == ctx_model_paths.size());
+#ifdef _WIN32
+  std::wstring ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::wstring ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#else
+  std::string ctx_model_file1(ctx_model_paths[0].begin(), ctx_model_paths[0].end());
+  std::string ctx_model_file2(ctx_model_paths[1].begin(), ctx_model_paths[1].end());
+#endif
+  Ort::Session session1(*ort_env, ctx_model_file1.c_str(), so1);
+  Ort::Session session2(*ort_env, ctx_model_file2.c_str(), so2);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames(ctx_model_paths[1], input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{2, 3};
+  std::vector<float> input_value(2 * 3, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_outputs1 = session1.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                   output_names_c.data(), 1);
+  #endif
+
+  for (auto model_path : onnx_model_paths) {
+    std::remove(model_path.c_str());
+  }
+  for (auto ctx_model_path : ctx_model_paths) {
+    std::remove(ctx_model_path.c_str());
+  }
+  std::remove(qnn_ctx_binary_file_name1.c_str());
+}
+
 // For Ort sessions to generate the context binary, with session option ep.share_ep_contexts enabled
 // Ort sessions will share the QnnBackendManager, so that all graphs from all models compile into the same Qnn context
 TEST_F(QnnHTPBackendTests, QnnContextGenWeightSharingSessionAPI) {
