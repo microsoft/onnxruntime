@@ -42,7 +42,8 @@ TEST(DequantizeLinearOpTest, Uint8_Large) {
   test.AddInput<uint8_t>("x_zero_point", {}, {1});
   test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // scalar zero & scale with int8 (large enough input to execute MLAS vectorized loop)
@@ -54,7 +55,8 @@ TEST(DequantizeLinearOpTest, Int8_Large) {
   test.AddInput<int8_t>("x_zero_point", {}, {1});
   test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
   // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
 }
 
 // scalar zero & scale with int4
