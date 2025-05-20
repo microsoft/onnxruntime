@@ -55,18 +55,6 @@ class UpsampleOpBuilder : public BaseOpBuilder {
   const OnnxAttrInfo<std::string> onnx_mode_attr = {"mode", "nearest"};
 };
 
-static Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
-                           const NodeUnit& node_unit,
-                           std::vector<std::string>& param_tensor_names,
-                           const Qnn_Scalar_t& qnn_scalar,
-                           const std::string& qnn_scalar_param_name) {
-  QnnParamWrapper qnn_param_wrapper(node_unit.Index(), node_unit.Name(), qnn_scalar_param_name, qnn_scalar);
-  param_tensor_names.push_back(qnn_param_wrapper.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
-
-  return Status::OK();
-}
-
 Status UpsampleOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                         const NodeUnit& node_unit,
                                         const logging::Logger& logger) const {
@@ -161,72 +149,40 @@ Status UpsampleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model
     qnn_op_type = (interp_mode == "nearest") ? QNN_OP_RESIZE_NEAREST_NEIGHBOR : QNN_OP_RESIZE_BILINEAR;
 
     // Parameter 'align_corners'
-    Qnn_Scalar_t qnn_align_corners = QNN_SCALAR_INIT;
-    qnn_align_corners.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_align_corners.bool8Value = false;
     const std::string align_corners_param_name = (qnn_op_type == QNN_OP_RESIZE_BILINEAR)
                                                      ? QNN_OP_RESIZE_BILINEAR_PARAM_ALIGN_CORNERS
                                                      : QNN_OP_RESIZE_NEAREST_NEIGHBOR_PARAM_ALIGN_CORNERS;
-
-    ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                     qnn_align_corners, align_corners_param_name));
+    ORT_RETURN_IF_ERROR(AddQnnScalar<bool>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), false, align_corners_param_name, param_tensor_names));
 
     // Parameter 'half_pixel_centers'
-    Qnn_Scalar_t qnn_half_pixel_centers = QNN_SCALAR_INIT;
-    qnn_half_pixel_centers.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_half_pixel_centers.bool8Value = false;
     const std::string half_pixel_centers_param_name = (qnn_op_type == QNN_OP_RESIZE_BILINEAR)
                                                           ? QNN_OP_RESIZE_BILINEAR_PARAM_HALF_PIXEL_CENTERS
                                                           : QNN_OP_RESIZE_NEAREST_NEIGHBOR_PARAM_HALF_PIXEL_CENTERS;
-
-    ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                     qnn_half_pixel_centers, half_pixel_centers_param_name));
+    ORT_RETURN_IF_ERROR(AddQnnScalar<bool>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), false, half_pixel_centers_param_name, param_tensor_names));
 
     if (qnn_op_type == QNN_OP_RESIZE_BILINEAR) {
       // Parameter 'antialias'
-      Qnn_Scalar_t qnn_antialias = QNN_SCALAR_INIT;
-      qnn_antialias.dataType = QNN_DATATYPE_BOOL_8;
-      qnn_antialias.bool8Value = false;
-
-      ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                       qnn_antialias, QNN_OP_RESIZE_BILINEAR_PARAM_ANTIALIAS));
+      ORT_RETURN_IF_ERROR(AddQnnScalar<bool>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), false, QNN_OP_RESIZE_BILINEAR_PARAM_ANTIALIAS, param_tensor_names));
     }
   } else {
     // Remain as QNN's Resize.
     // Parameter 'exclude_outside'
-    Qnn_Scalar_t qnn_exclude_outside = QNN_SCALAR_INIT;
-    qnn_exclude_outside.dataType = QNN_DATATYPE_BOOL_8;
-    qnn_exclude_outside.bool8Value = false;
-
-    ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                     qnn_exclude_outside, QNN_OP_RESIZE_PARAM_EXCLUDE_OUTSIDE));
+    ORT_RETURN_IF_ERROR(AddQnnScalar<bool>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), false, QNN_OP_RESIZE_PARAM_EXCLUDE_OUTSIDE, param_tensor_names));
 
     // Parameter 'transformation_mode'
-    Qnn_Scalar_t qnn_transformation_mode = QNN_SCALAR_INIT;
-    qnn_transformation_mode.dataType = QNN_DATATYPE_UINT_32;
-    qnn_transformation_mode.uint32Value = (supported_modes.at(interp_mode) == QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST)
-                                              ? static_cast<uint32_t>(QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL)
-                                              : static_cast<uint32_t>(QNN_OP_RESIZE_TRANSFORMATION_MODE_ASYMMETRIC);
-
-    ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                     qnn_transformation_mode, QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE));
+    uint32_t transformation_mode = (supported_modes.at(interp_mode) == QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST)
+                                       ? static_cast<uint32_t>(QNN_OP_RESIZE_TRANSFORMATION_MODE_HALF_PIXEL)
+                                       : static_cast<uint32_t>(QNN_OP_RESIZE_TRANSFORMATION_MODE_ASYMMETRIC);
+    ORT_RETURN_IF_ERROR(AddQnnScalar<uint32_t>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), transformation_mode, QNN_OP_RESIZE_PARAM_TRANSFORMATION_MODE, param_tensor_names));
 
     // Parameter 'interpolation_mode'
-    Qnn_Scalar_t qnn_interp_mode = QNN_SCALAR_INIT;
-    qnn_interp_mode.dataType = QNN_DATATYPE_UINT_32;
-    qnn_interp_mode.uint32Value = static_cast<uint32_t>(supported_modes.at(interp_mode));
-
-    ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                     qnn_interp_mode, QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE));
+    uint32_t qnn_interp_mode = static_cast<uint32_t>(supported_modes.at(interp_mode));
+    ORT_RETURN_IF_ERROR(AddQnnScalar<uint32_t>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), qnn_interp_mode, QNN_OP_RESIZE_PARAM_INTERPOLATION_MODE, param_tensor_names));
 
     // Parameter 'nearest_mode'. Process only when 'interpolation_mode' is NEAREST.
-    if (qnn_interp_mode.uint32Value == QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST) {
-      Qnn_Scalar_t qnn_nearest_mode = QNN_SCALAR_INIT;
-      qnn_nearest_mode.dataType = QNN_DATATYPE_UINT_32;
-      qnn_nearest_mode.uint32Value = static_cast<uint32_t>(QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_FLOOR);
-
-      ORT_RETURN_IF_ERROR(AddQnnScalar(qnn_model_wrapper, node_unit, param_tensor_names,
-                                       qnn_nearest_mode, QNN_OP_RESIZE_PARAM_NEAREST_MODE));
+    if (qnn_interp_mode == QNN_OP_RESIZE_INTERPOLATION_MODE_NEAREST) {
+      uint32_t qnn_nearest_mode = static_cast<uint32_t>(QNN_OP_RESIZE_NEAREST_MODE_ROUND_PREFER_FLOOR);
+      ORT_RETURN_IF_ERROR(AddQnnScalar<uint32_t>(qnn_model_wrapper, node_unit.Index(), node_unit.Name(), qnn_nearest_mode, QNN_OP_RESIZE_PARAM_NEAREST_MODE, param_tensor_names));
     }
   }
 
