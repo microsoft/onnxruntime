@@ -27,11 +27,16 @@ See [Build instructions](../build/eps.md#tensorrt).
 
 ## Requirements
 
-Note: Starting with version 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
+Note: 
+
+Starting with version 1.19, **CUDA 12** becomes the default version when distributing ONNX Runtime GPU packages.
+
+Starting with ORT 1.22, only CUDA 12 GPU packages are released.
 
 | ONNX Runtime | TensorRT | CUDA                |
 | :----------- | :------- | :------------------ |
-| main         | 10.9     | **12.0-12.8**, 11.8 |
+| main         | 10.9     | **12.0-12.8**       |
+| 1.22         | 10.9     | **12.0-12.8**       |
 | 1.21         | 10.8     | **12.0-12.8**, 11.8 |
 | 1.20         | 10.4     | **12.0-12.6**, 11.8 |
 | 1.19         | 10.2     | **12.0-12.6**, 11.8 |

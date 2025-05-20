@@ -46,7 +46,7 @@ The onnxruntime code will look for the provider shared libraries in the same loc
 {: .no_toc }
 
 * Install [CUDA](https://developer.nvidia.com/cuda-toolkit) and [cuDNN](https://developer.nvidia.com/cudnn)
-   * The CUDA execution provider for ONNX Runtime is built and tested with CUDA 11.8, 12.2 and cuDNN 8.9. Check [here](../execution-providers/CUDA-ExecutionProvider.md#requirements) for more version information.
+   * The CUDA execution provider for ONNX Runtime is built and tested with CUDA 12.x and cuDNN 9. Check [here](../execution-providers/CUDA-ExecutionProvider.md#requirements) for more version information.
    * The path to the CUDA installation must be provided via the CUDA_HOME environment variable, or the `--cuda_home` parameter. The installation directory should contain `bin`, `include` and `lib` sub-directories.
    * The path to the CUDA `bin` directory must be added to the PATH environment variable so that `nvcc` is found.
    * The path to the cuDNN installation must be provided via the CUDNN_HOME environment variable, or `--cudnn_home` parameter. In Windows, the installation directory should contain `bin`, `include` and `lib` sub-directories.
@@ -110,7 +110,7 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and cuDNN, and setup environment variables.
  * Follow [instructions for installing TensorRT](https://docs.nvidia.com/deeplearning/tensorrt/latest/installing-tensorrt/installing.html)
-   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.8.
+   * The TensorRT execution provider for ONNX Runtime is built and tested with TensorRT 10.9.
    * The path to TensorRT installation must be provided via the `--tensorrt_home` parameter.
    * ONNX Runtime uses [TensorRT built-in parser](https://developer.nvidia.com/tensorrt/download) from `tensorrt_home` by default.
    * To use open-sourced [onnx-tensorrt](https://github.com/onnx/onnx-tensorrt/tree/main) parser instead, add `--use_tensorrt_oss_parser` parameter in build commands below.
@@ -123,14 +123,15 @@ See more information on the TensorRT Execution Provider [here](../execution-prov
          * i.e It's version-matched if assigning `tensorrt_home` with path to TensorRT-10.9 built-in binaries and onnx-tensorrt [10.9-GA branch](https://github.com/onnx/onnx-tensorrt/tree/release/10.9-GA) specified in [cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/main/cmake/deps.txt).
 
 
-### **[Note to ORT 1.21.0 open-sourced parser users]** 
+### **[Note to ORT 1.21/1.22 open-sourced parser users]** 
 
-* ORT 1.21.0 links against onnx-tensorrt 10.8-GA, which requires upcoming onnx 1.18.
-  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA (or newer) when building ORT 1.21.0: 
+* ORT 1.21/1.22 link against onnx-tensorrt 10.8-GA/10.9-GA, which requires newly released onnx 1.18.
+  * Here's a temporarily fix to preview on onnx-tensorrt 10.8-GA/10.9-GA when building ORT 1.21/1.22: 
     * Replace the [onnx line in cmake/deps.txt](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/deps.txt#L38) 
-      with `onnx;https://github.com/onnx/onnx/archive/f22a2ad78c9b8f3bd2bb402bfce2b0079570ecb6.zip;324a781c31e30306e30baff0ed7fe347b10f8e3c`  
+      with `onnx;https://github.com/onnx/onnx/archive/e709452ef2bbc1d113faf678c24e6d3467696e83.zip;c0b9f6c29029e13dea46b7419f3813f4c2ca7db8`  
     * Download [this](https://github.com/microsoft/onnxruntime/blob/7b2733a526c12b5ef4475edd47fd9997ebc2b2c6/cmake/patches/onnx/onnx.patch) as raw file and save file to [cmake/patches/onnx/onnx.patch](https://github.com/microsoft/onnxruntime/blob/rel-1.21.0/cmake/patches/onnx/onnx.patch) (do not copy/paste from browser, as it might alter line break type)
-    * Build ORT 1.21.0 with trt-related flags above (including `--use_tensorrt_oss_parser`)
+    * Build ORT with trt-related flags above (including `--use_tensorrt_oss_parser`)
+  * The [onnx 1.18](https://github.com/onnx/onnx/releases/tag/v1.18.0) is supported by latest ORT main branch. Please checkout main branch and build ORT-TRT with `--use_tensorrt_oss_parser` to enable OSS parser with full onnx 1.18 support.
 
 ### Build Instructions
 {: .no_toc }
