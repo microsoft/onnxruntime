@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <filesystem>
+#include <fstream>
 #include <string>
 
 #include "core/session/onnxruntime_cxx_api.h"
@@ -24,6 +25,14 @@ namespace onnxruntime {
 namespace test {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
+
+// Returns QNN provider options that use the HTP backend (npu) and do not offload graph I/O qdq.
+static ProviderOptions QnnHTPOptionsWithoutQDQOffloading() {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+  return provider_options;
+}
 
 static int64_t GetNodeAttr(const Node& node, const std::string& attr_name, int64_t default_val) {
   const auto& attributes = node.GetAttributes();
@@ -555,6 +564,117 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_OutputModelBuffer_Outpu
   // Check that the compiled model has the expected number of EPContext nodes.
   CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
   allocator.Free(output_model_buffer);
+}
+
+// Implementation of OrtOutStreamWriteFunc that writes the compiled model to a file.
+static OrtStatus* ORT_API_CALL TestWriteToStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  std::ofstream* outfile = reinterpret_cast<std::ofstream*>(stream_state);
+  outfile->write(reinterpret_cast<const char*>(buffer), buffer_num_bytes);
+  return nullptr;  // No error
+}
+
+// Implementation of OrtOutStreamWriteFunc that directly returns an OrtStatus indicating an error.
+static OrtStatus* ORT_API_CALL ReturnStatusFromStream(void* stream_state, const void* buffer, size_t buffer_num_bytes) {
+  ORT_UNUSED_PARAMETER(stream_state);
+  ORT_UNUSED_PARAMETER(buffer);
+  ORT_UNUSED_PARAMETER(buffer_num_bytes);
+  return Ort::GetApi().CreateStatus(ORT_FAIL, "Error from OrtOutStreamWriteFunc callback");
+}
+
+// Test using the CompileModel() API with settings:
+//   - input OrtModel created via the model editor API
+//   - write output model to custom stream
+TEST_F(QnnHTPBackendTests, CompileApi_InputOrtModel_OutputToStream) {
+  std::vector<std::unique_ptr<std::vector<float>>> weights;  // Model weights must remain valid through inference
+                                                             // if we want to avoid a copy.
+
+  // Create OrtModel with a Gemm. X input is 3x4, Y initializer is 4x8, Z output is 3x8.
+  Ort::Graph graph;
+  std::vector<Ort::ValueInfo> graph_inputs;
+  std::vector<Ort::ValueInfo> graph_outputs;
+
+  Ort::TensorTypeAndShapeInfo x_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            {3, 4}, nullptr);
+  auto x_type_info = Ort::TypeInfo::CreateTensorInfo(x_tensor_info.GetConst());
+  graph_inputs.emplace_back("X", x_type_info.GetConst());
+
+  Ort::TensorTypeAndShapeInfo z_tensor_info(ONNXTensorElementDataType::ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT,
+                                            {3, 8}, nullptr);
+  auto z_type_info = Ort::TypeInfo::CreateTensorInfo(z_tensor_info.GetConst());
+  graph_outputs.emplace_back("Z", z_type_info.GetConst());
+
+  graph.SetInputs(graph_inputs);
+  graph.SetOutputs(graph_outputs);
+
+  std::vector<Ort::OpAttr> attrs;
+  Ort::Node node("Gemm", onnxruntime::kOnnxDomain, "Gemm1", {"X", "Y"}, {"Z"}, attrs);
+  graph.AddNode(node);
+
+  std::vector<int64_t> y_dims = {4, 8};
+  weights.emplace_back(std::make_unique<std::vector<float>>(32));
+  auto& y_values = *weights.back();
+  std::iota(y_values.begin(), y_values.end(), 1.0f);
+
+  auto mem_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeDefault);
+  auto y_tensor = Ort::Value::CreateTensor(mem_info, y_values.data(), y_values.size(), y_dims.data(), y_dims.size());
+  graph.AddInitializer("Y", y_tensor, /*data is external, avoid copy*/ true);
+
+  std::vector<Ort::Model::DomainOpsetPair> opsets{{onnxruntime::kOnnxDomain, 18}, {onnxruntime::kMSDomain, 1}};
+  Ort::Model model(opsets);
+  model.AddGraph(graph);
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
+
+  const ORTCHAR_T* output_model_file = ORT_TSTR("compileapi_ortmodel_ctx.onnx");
+  std::filesystem::remove(output_model_file);
+
+  // Open an output file. Test will incrementally write the output model to file
+  // via calls to our OrtOutStreamWriteFunc callback.
+  ASSERT_FALSE(std::filesystem::exists(output_model_file));
+  std::ofstream outfile(output_model_file, std::ios::binary);
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModel(model.GetConst());
+  compile_options.SetOutputModelOutStream(TestWriteToStream, reinterpret_cast<void*>(&outfile));  // Set output stream
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  outfile.flush();
+  outfile.close();
+
+  // Make sure the compiled model was generated (via our write stream function)
+  // and has the expected number of EPContext nodes.
+  ASSERT_TRUE(std::filesystem::exists(output_model_file));
+  CheckEpContextNodeCounts(output_model_file, 1, 0);
+}
+
+// Tests using an OrtOutStreamFunc function that returns an error.
+TEST_F(QnnHTPBackendTests, CompileApi_OutputStream_ReturnStatus) {
+  // Create a test model (in memory).
+  TestModel test_model;
+  CreateTestModel(BuildGraphWithQAndNonQ(false), 21, logging::Severity::kERROR, test_model);
+  std::string model_data = test_model.Serialize();
+
+  // Initialize session options with QNN EP
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", QnnHTPOptionsWithoutQDQOffloading());
+
+  // Create model compilation options from the session options.
+  Ort::ModelCompilationOptions compile_options(*ort_env, so);
+  compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
+  compile_options.SetOutputModelOutStream(ReturnStatusFromStream, nullptr);  // Set output stream that returns error
+  compile_options.SetEpContextEmbedMode(true);
+
+  // Compile the model. Expect a specific error status.
+  Ort::Status status = Ort::CompileModel(*ort_env, compile_options);
+  ASSERT_FALSE(status.IsOK());
+  EXPECT_EQ(status.GetErrorCode(), ORT_FAIL);
+  EXPECT_EQ(status.GetErrorMessage(), "Error from OrtOutStreamWriteFunc callback");
 }
 
 // Test that models with 1 non-quantized FusedMatMul node and 1 quantized Add node can still generate the context binary

@@ -2832,7 +2832,19 @@ including arg name, arg type (contains both type and shape).)pbdoc")
             ORT_THROW("Compile API is not supported in this build.");
 #endif
           },
-          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
+          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc")
+      .def(
+          "compile_to_stream",
+          [](PyModelCompiler* model_compiler, PyOutStreamWriteFunc& py_stream_write_func) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(model_compiler->CompileToOutStream(py_stream_write_func));
+#else
+            ORT_UNUSED_PARAMETER(model_compiler);
+            ORT_UNUSED_PARAMETER(py_stream_write_func);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Compile an ONNX model into an output stream using the provided write functor.)pbdoc");
 }
 
 bool CreateInferencePybindStateModule(py::module& m) {
