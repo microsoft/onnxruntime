@@ -272,10 +272,6 @@ void CudaTensorConsoleDumper::Print(const std::string& value) const {
   std::cout << value << std::endl;
 }
 
-void CudaTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
-  if (is_enabled_)
-    DumpGpuTensor<size_t>(name, tensor, dim0, dim1, true);
-}
 
 void CudaTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
   if (is_enabled_)
@@ -287,25 +283,6 @@ void CudaTensorConsoleDumper::Print(const char* name, const OrtValue& value) con
   Print(name, tensor);
 }
 
-void CudaTensorConsoleDumper::Print(const char* name, int index, bool end_line) const {
-  if (!is_enabled_)
-    return;
-
-  std::cout << std::string(name) << "[" << index << "]";
-  if (end_line) {
-    std::cout << std::endl;
-  }
-}
-
-void CudaTensorConsoleDumper::Print(const char* name, const std::string& value, bool end_line) const {
-  if (!is_enabled_)
-    return;
-
-  std::cout << std::string(name) << "=" << value;
-  if (end_line) {
-    std::cout << std::endl;
-  }
-}
 
 #define CUDA_DUMPER_PRINT_TYPE(dtype, dtype2)                                                                                \
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const {                     \
@@ -344,8 +321,6 @@ CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
 void CudaTensorConsoleDumper::Print(const std::string&) const {
 }
 
-void CudaTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
-}
 
 void CudaTensorConsoleDumper::Print(const char*, const Tensor&) const {
 }
@@ -353,11 +328,6 @@ void CudaTensorConsoleDumper::Print(const char*, const Tensor&) const {
 void CudaTensorConsoleDumper::Print(const char*, const OrtValue&) const {
 }
 
-void CudaTensorConsoleDumper::Print(const char*, int, bool) const {
-}
-
-void CudaTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
-}
 
 #define CUDA_DUMPER_PRINT_TYPE(dtype)                                                               \
   void CudaTensorConsoleDumper::Print(const char*, const dtype*, int, int) const {                  \
