@@ -2782,6 +2782,11 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
 
+  py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
+      .value("NONE", OrtCompileApiFlags_NONE)
+      .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
+      .value("ERROR_IF_OUTPUT_FILE_EXISTS", OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
+
   py::class_<PyModelCompiler>(m, "ModelCompiler",
                               R"pbdoc(This is the class used to compile an ONNX model.)pbdoc")
       .def(py::init([](const PySessionOptions& sess_options,
@@ -2789,14 +2794,16 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        bool is_path,
                        bool embed_compiled_data_into_model = false,
                        std::string external_initializers_file_path = {},
-                       size_t external_initializers_size_threshold = 1024) {
+                       size_t external_initializers_size_threshold = 1024,
+                       size_t flags = OrtCompileApiFlags_NONE) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
                                                       std::move(path_or_bytes), is_path,
                                                       embed_compiled_data_into_model,
                                                       external_initializers_file_path,
-                                                      external_initializers_size_threshold));
+                                                      external_initializers_size_threshold,
+                                                      flags));
         return result;
 #else
         ORT_UNUSED_PARAMETER(sess_options);
@@ -2805,6 +2812,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
         ORT_UNUSED_PARAMETER(embed_compiled_data_into_model);
         ORT_UNUSED_PARAMETER(external_initializers_file_path);
         ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
+        ORT_UNUSED_PARAMETER(flags);
         ORT_THROW("Compile API is not supported in this build.");
 #endif
       }))
