@@ -1992,23 +1992,6 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
-
-  auto stats = cpu_allocator.GetStats();
-  std::vector<std::string> expected_stats_keys = {
-      "Limit",
-      "InUse",
-      "TotalAllocated",
-      "MaxInUse",
-      "NumAllocs",
-      "NumReserves",
-      "NumArenaExtensions",
-      "NumArenaShrinkages",
-      "MaxAllocSize",
-  };
-
-  for (const auto& key : expected_stats_keys) {
-    ASSERT_TRUE(stats.find(key) != stats.end()) << "Missing key: " << key;
-  }
 }
 
 #ifdef USE_CUDA

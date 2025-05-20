@@ -31,6 +31,11 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
     OrtAllocator::GetStats =
         [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) {
           auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+          if (str.empty()) {
+            *stats = nullptr;
+            return;
+          }
+
           char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
           memcpy(stats_string, str.c_str(), str.size());
           stats_string[str.size()] = '\0';
@@ -58,9 +63,10 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
 std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
   AllocatorStats stats{};
 
-  try {
+  ORT_TRY {
     i_allocator_->GetStats(&stats);
-  } catch (const std::exception& e) {
+  }
+  ORT_CATCH(const NotImplementedException& /*e*/) {
     return {};
   }
 
