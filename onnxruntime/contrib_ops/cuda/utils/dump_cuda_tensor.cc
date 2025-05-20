@@ -272,7 +272,6 @@ void CudaTensorConsoleDumper::Print(const std::string& value) const {
   std::cout << value << std::endl;
 }
 
-
 void CudaTensorConsoleDumper::Print(const char* name, const Tensor& tensor) const {
   if (is_enabled_)
     DumpGpuTensor(name, tensor);
@@ -282,7 +281,6 @@ void CudaTensorConsoleDumper::Print(const char* name, const OrtValue& value) con
   const Tensor& tensor = value.Get<Tensor>();
   Print(name, tensor);
 }
-
 
 #define CUDA_DUMPER_PRINT_TYPE(dtype, dtype2)                                                                                \
   void CudaTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const {                     \
@@ -321,13 +319,11 @@ CudaTensorConsoleDumper::CudaTensorConsoleDumper() {
 void CudaTensorConsoleDumper::Print(const std::string&) const {
 }
 
-
 void CudaTensorConsoleDumper::Print(const char*, const Tensor&) const {
 }
 
 void CudaTensorConsoleDumper::Print(const char*, const OrtValue&) const {
 }
-
 
 #define CUDA_DUMPER_PRINT_TYPE(dtype)                                                               \
   void CudaTensorConsoleDumper::Print(const char*, const dtype*, int, int) const {                  \

@@ -224,7 +224,6 @@ void CpuTensorConsoleDumper::Print(const char* name, const OrtValue& value) cons
   Print(name, tensor);
 }
 
-
 #define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                                     \
   void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const {                     \
     if (is_enabled_)                                                                                                        \
@@ -266,7 +265,6 @@ void CpuTensorConsoleDumper::Print(const char*, const Tensor&) const {
 
 void CpuTensorConsoleDumper::Print(const char*, const OrtValue&) const {
 }
-
 
 #define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                            \
   void CpuTensorConsoleDumper::Print(const char*, const dtype*, int, int) const {                  \
