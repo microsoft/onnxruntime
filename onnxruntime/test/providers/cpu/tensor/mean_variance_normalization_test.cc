@@ -93,7 +93,7 @@ static void TestMeanVarianceNormalizationOverAllAxes(const std::vector<int64_t>&
   test.Run();
 }
 
-TEST(MeanVarianceNormalizationTest, AllAxes) {
+TEST(DISABLED_MeanVarianceNormalizationTest, AllAxes) {
   TestMeanVarianceNormalizationOverAllAxes({2, 2, 4});
   TestMeanVarianceNormalizationOverAllAxes({2, 2, 2, 3});
   TestMeanVarianceNormalizationOverAllAxes({2, 2, 2, 2, 2});

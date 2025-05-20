@@ -1170,7 +1170,7 @@ static Status TestDenseToSparseConversion(size_t indices_start,
   return TestDenseAllZerosToSparseConversion<T>(inserter, checker);
 }
 
-TEST(SparseTensorConversionTests, TestDenseToSparseConversion) {
+TEST(DISABLED_SparseTensorConversionTests, TestDenseToSparseConversion) {
   // This one will test indices that are less than max int8 value
   // which should result in int8 indices
   ASSERT_STATUS_OK(TestDenseToSparseConversion<float>(

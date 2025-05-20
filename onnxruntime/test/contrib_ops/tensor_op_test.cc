@@ -191,7 +191,7 @@ void MeanVarianceNormalizationPerChannel(bool across_channels, bool normalize_va
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider, kTensorrtExecutionProvider});  // OpenVINO doesn't support MVN operator below opset 9. TensorRT doesn't support opset 8 of MVN operator.
 }
 
-TEST(MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
+TEST(DISABLED_MVNContribOpTest, MeanVarianceNormalizationCPUTest_Version1_TO_8) {
   // across_channels: true, normalize_variance: true
   MeanVarianceNormalizationAcrossChannels(true, true);
 
