@@ -40,18 +40,4 @@ enum class DataType : int32_t {
 
   kFP4 = 10,
 };
-
-class Dims64 {
- public:
-  //! The maximum rank (number of dimensions) supported for a tensor.
-  static constexpr int32_t MAX_DIMS{8};
-
-  //! The rank (number of dimensions).
-  int32_t nbDims;
-
-  //! The extent of each dimension.
-  int64_t d[MAX_DIMS];
-};
-
-using Dims = Dims64;
 }  // namespace onnxruntime::llm::nvinfer

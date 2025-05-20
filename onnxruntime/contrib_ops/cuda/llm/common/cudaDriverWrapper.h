@@ -16,8 +16,6 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/llm/common/stringUtils.h"
-
 #include <cuda.h>
 
 #include <cstdio>

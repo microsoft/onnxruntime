@@ -46,6 +46,7 @@ Logger::Logger()
                 return ERROR;
             ORT_THROW("Invalid log level:", levelName);
         }();
+        
         // If ORT_LLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
         if (isFirstRankOnly)
         {

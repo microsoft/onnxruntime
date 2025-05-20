@@ -21,7 +21,6 @@
 
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
 #include "contrib_ops/cuda/llm/common/cudaBf16Wrapper.h"
-#include "contrib_ops/cuda/llm/common/stringUtils.h"
 #include "core/common/common.h"
 
 #include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
@@ -531,13 +530,13 @@ void interleave_column_major_tensor(int8_t* interleaved_quantized_tensor, int8_t
     int const rows_per_tile = details.rows_per_column_tile;
 
     ORT_ENFORCE(!(num_rows % elts_in_int32),
-        fmtstr("The number of rows must be a multiple of %d but the number of rows is %ld.", elts_in_int32, num_rows));
+        "The number of rows must be a multiple of ", elts_in_int32, " but the number of rows is ", num_rows);
 
     uint32_t const* input_byte_ptr = reinterpret_cast<uint32_t const*>(quantized_tensor);
     uint32_t* output_byte_ptr = reinterpret_cast<uint32_t*>(interleaved_quantized_tensor);
 
     ORT_ENFORCE(!(num_rows % rows_per_tile),
-        fmtstr("The number of rows must be a multiple of %d but the number of rows is %ld.", rows_per_tile, num_rows));
+        "The number of rows must be a multiple of ", rows_per_tile, " but the number of rows is ", num_rows);
 
     int const num_vec_rows = num_rows / elts_in_int32;
     int const vec_rows_per_tile = rows_per_tile / elts_in_int32;

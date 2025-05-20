@@ -97,7 +97,7 @@ public:
     }
 
 private:
-    static auto constexpr kPREFIX = "[TensorRT-LLM]";
+    static auto constexpr kPREFIX = "[OnnxRuntime-LLM]";
 
 #ifndef NDEBUG
     Level const DEFAULT_LOG_LEVEL = DEBUG;
