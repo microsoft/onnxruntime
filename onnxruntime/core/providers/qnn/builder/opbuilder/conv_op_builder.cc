@@ -174,6 +174,52 @@ Status ConvOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Conv only supports 3D(rank 5), 2D (rank 4) or 1D (rank 3) inputs.");
 }
 
+// Inserts a QNN Convert operator to convert from one quantization type (e.g., uint16) to another (e.g., uint8).
+// (OR) Convert from Asymmetric (e.g., UINT16) to Symmetric (e.g., INT16) quantization type
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool output_symmetric,
+                       bool do_op_validation) {
+  // Assume input is already handled.
+  float qmin = 0.0f;
+  float qmax = 255.0f;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQminQmax(input_qnn_data_type, qmin, qmax));
+  double value_min = qnn::utils::Dequantize(input_offset, input_scale, qmin);
+  double value_max = qnn::utils::Dequantize(input_offset, input_scale, qmax);
+  float scale = 0.0f;
+  int32_t offset = 0;
+  ORT_RETURN_IF_ERROR(qnn::utils::GetQuantParams(static_cast<float>(value_min),
+                                                 static_cast<float>(value_max),
+                                                 output_qnn_data_type,
+                                                 scale,
+                                                 offset,
+                                                 output_symmetric));
+
+  std::vector<uint32_t> output_shape_copy = output_shape;
+  QnnTensorWrapper convert_output_tensorwrapper(convert_output_name,
+                                                QNN_TENSOR_TYPE_NATIVE,
+                                                output_qnn_data_type,
+                                                QnnQuantParamsWrapper(scale, offset),
+                                                std::move(output_shape_copy));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(convert_output_tensorwrapper)), "Failed to add tensor.");
+
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(convert_output_name,
+                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                    "Convert",
+                                                    {convert_input_name},
+                                                    {convert_output_name},
+                                                    {},
+                                                    do_op_validation),
+                    "Failed to add node.");
+  return Status::OK();
+}
+
 Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
                                             const NodeUnit& node_unit,
                                             const logging::Logger& logger,
@@ -312,16 +358,16 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
       const std::string& conv_output_name = node_unit.Outputs()[0].node_arg.Name();
       std::string convert_output_name = weight_input_name + "_convert_" + conv_output_name;
 
-      ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
-                                                 weight_input_name,
-                                                 convert_output_name,
-                                                 QNN_DATATYPE_UFIXED_POINT_16,
-                                                 QNN_DATATYPE_SFIXED_POINT_16,
-                                                 quant_param.scaleOffsetEncoding.offset,
-                                                 quant_param.scaleOffsetEncoding.scale,
-                                                 transformed_input1_shape,
-                                                 true,  // Symmetric
-                                                 do_op_validation));
+      ORT_RETURN_IF_ERROR(InsertConvertOp(qnn_model_wrapper,
+                                          weight_input_name,
+                                          convert_output_name,
+                                          QNN_DATATYPE_UFIXED_POINT_16,
+                                          QNN_DATATYPE_SFIXED_POINT_16,
+                                          quant_param.scaleOffsetEncoding.offset,
+                                          quant_param.scaleOffsetEncoding.scale,
+                                          transformed_input1_shape,
+                                          true,  // Symmetric
+                                          do_op_validation));
       input_names.push_back(convert_output_name);
     }
   }
