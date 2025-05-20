@@ -1,5 +1,11 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
+android_commandlinetools_linux:
+  version: 13114758
+  url: https://dl.google.com/android/repository/commandlinetools-linux-{version}_latest.zip
+  sha256: 7ec965280a073311c339e571cd5de778b9975026cfcbe79f2b1cdcb1e15317ee
+  content_root: cmdline-tools
+  bindir: bin
 ccache_linux:
   version: 4.11.3
   url: https://github.com/ccache/ccache/releases/download/v{version}/ccache-{version}-linux-x86_64.tar.xz

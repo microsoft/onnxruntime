@@ -49,8 +49,23 @@ if __name__ == "__main__":
 
 
 def parse_arguments():
+    help_description = """Build and test ONNX Runtime.
+
+Environment variables
+---------------------
+  QAIRT_SDK_ROOT
+  QNN_SDK_ROOT
+  SNPE_ROOT
+    If specified, any of these will be used in place of the LKG QAIRT version.
+    They are searched in the above order.
+
+  ANDROID_HOME/ANDROID_NDK_HOME
+    If both are specified, they are used instead of installing known good
+    versions into build/tools.
+"""
+
     parser = argparse.ArgumentParser(
-        description="Build and test all the things.",
+        description=help_description,
         formatter_class=argparse.RawTextHelpFormatter,
     )
 
@@ -133,11 +148,25 @@ class TaskLibrary:
 
     @task
     @depends(["create_venv"])
+    def build_ort_android(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Building ONNX Runtime for Android",
+                self.__venv_path,
+                "android",
+                self.__qairt_sdk_root,
+                "build",
+            )
+        )
+
+    @task
+    @depends(["create_venv"])
     def build_ort_linux(self, plan: Plan) -> str:
         return plan.add_step(
             BuildEpLinuxTask(
                 "Building ONNX Runtime for Linux",
                 self.__venv_path,
+                "linux",
                 self.__qairt_sdk_root,
                 "build",
             )

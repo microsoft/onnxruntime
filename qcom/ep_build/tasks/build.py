@@ -9,20 +9,24 @@ from .windows import RunPowershellScriptsTask
 
 
 class BuildEpLinuxTask(BashScriptsWithVenvTask):
+    """Build ONNX Runtime on a Linux host."""
+
     def __init__(
         self,
         group_name: str | None,
         venv: Path | None,
+        target_platform: str,
         qairt_sdk_root: Path | None,
         mode: str,
     ) -> None:
         cmd = [
             str(REPO_ROOT / "qcom" / "scripts" / "linux" / "build.sh"),
+            f"--target-platform={target_platform}",
             f"--mode={mode}",
         ]
 
         if qairt_sdk_root is not None:
-            cmd.append(f"--qairt_sdk_root={qairt_sdk_root}")
+            cmd.append(f"--qairt-sdk-root={qairt_sdk_root}")
 
         super().__init__(group_name, venv, [cmd])
 
