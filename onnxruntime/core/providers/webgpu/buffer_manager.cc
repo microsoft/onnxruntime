@@ -3,11 +3,17 @@
 
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include <chrono>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
+constexpr const char* METRICS_FILE = "webgpu_memory_metrics_session_run_op.csv";
+constexpr const char* METRICS_HEADER = "Timestamp,TotalMemory(MB),PeakMemory(MB),ActiveBuffers,TotalBuffers,TimeoutMs\n";
 
 constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
@@ -160,12 +166,21 @@ constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_
 };
 
 class BucketCacheManager : public IBufferCacheManager {
+ private:
+  // Memory metrics
+  int64_t total_memory_{0};     // Current total allocated memory
+  int64_t peak_memory_{0};      // Peak memory usage observed
+  int64_t active_buffers_{0};   // Number of buffers currently in use
+  int64_t total_buffers_{0};    // Total number of buffers (active + cached)
+  std::ofstream metrics_file_;  // File stream for logging metrics
  public:
   BucketCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
     Initialize();
+    OpenMetricsFile();
   }
   BucketCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
     Initialize();
+    OpenMetricsFile();
   }
 
   void OnRunStart() override {
@@ -207,13 +222,15 @@ class BucketCacheManager : public IBufferCacheManager {
     if (it != buckets_.end() && !it->second.empty()) {
       auto buffer = it->second.back();
       it->second.pop_back();
+      UpdateMetrics(true, 0);
       return buffer;
     }
     return nullptr;
   }
 
-  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
-    // no-op
+  void RegisterBuffer(WGPUBuffer buffer, size_t request_size) override {
+    const auto buffer_size = wgpuBufferGetSize(buffer);
+    UpdateMetrics(true, buffer_size);
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
@@ -227,7 +244,9 @@ class BucketCacheManager : public IBufferCacheManager {
       auto it = buckets_.find(buffer_size);
       if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
         it->second.emplace_back(buffer);
+        UpdateMetrics(false, 0);
       } else {
+        UpdateMetrics(false, buffer_size);
         wgpuBufferRelease(buffer);
       }
     }
@@ -285,6 +304,7 @@ class BucketCacheManager : public IBufferCacheManager {
 
           // Release any excess buffers
           for (size_t i = transfer_count; i < old_bucket_it->second.size(); ++i) {
+            UpdateMetrics(false, wgpuBufferGetSize(old_bucket_it->second[i]));
             wgpuBufferRelease(old_bucket_it->second[i]);
           }
 
@@ -303,6 +323,7 @@ class BucketCacheManager : public IBufferCacheManager {
     // Release any remaining buffers in old buckets
     for (auto& pair : old_buckets) {
       for (auto& buffer : pair.second) {
+        UpdateMetrics(false, wgpuBufferGetSize(buffer));
         wgpuBufferRelease(buffer);
       }
     }
@@ -313,12 +334,18 @@ class BucketCacheManager : public IBufferCacheManager {
 
   ~BucketCacheManager() {
     for (auto& buffer : pending_buffers_) {
+      UpdateMetrics(false, wgpuBufferGetSize(buffer), true);
       wgpuBufferRelease(buffer);
     }
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
+        UpdateMetrics(false, wgpuBufferGetSize(buffer), true);
         wgpuBufferRelease(buffer);
       }
+    }
+
+    if (metrics_file_.is_open()) {
+      metrics_file_.close();
     }
   }
 
@@ -350,6 +377,52 @@ class BucketCacheManager : public IBufferCacheManager {
   size_t run_count_{0};
   std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current run
   std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across runs
+  void OpenMetricsFile() {
+    metrics_file_.open(METRICS_FILE, std::ios::out | std::ios::trunc);
+    if (metrics_file_.is_open()) {
+      metrics_file_ << METRICS_HEADER;
+      metrics_file_.flush();
+    }
+  }
+
+  void LogMetrics() {
+    if (!metrics_file_.is_open()) return;
+
+    auto now = std::chrono::system_clock::now();
+    auto time_t_now = std::chrono::system_clock::to_time_t(now);
+    metrics_file_ << std::put_time(std::localtime(&time_t_now), "%Y-%m-%d %H:%M:%S") << ","
+                  << std::fixed << std::setprecision(2)
+                  << static_cast<double>(total_memory_) / (1024 * 1024) << ","  // Convert to MB
+                  << static_cast<double>(peak_memory_) / (1024 * 1024) << ","
+                  << active_buffers_ << ","
+                  << total_buffers_ << ","
+                  << 0 << std::endl;
+    metrics_file_.flush();
+  }
+
+  void UpdateMetrics(bool is_allocation, size_t buffer_size, bool is_from_destructor = false) {
+    if (is_allocation) {
+      total_memory_ += buffer_size;
+      active_buffers_++;
+      if (buffer_size > 0) {
+        total_buffers_++;
+      }
+      peak_memory_ = std::max(peak_memory_, total_memory_);
+    } else {
+      total_memory_ -= buffer_size;
+      if (is_from_destructor) {
+        active_buffers_ = std::max(active_buffers_ - 1, 0LL);
+      } else {
+        active_buffers_--;
+      }
+      // Only decrement total_buffers when truly releasing a buffer (buffer_size > 0)
+      // For cache operations where buffer_size = 0, we keep the total count
+      if (buffer_size > 0) {
+        total_buffers_--;
+      }
+    }
+    LogMetrics();
+  }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<WGPUBuffer> pending_buffers_;
