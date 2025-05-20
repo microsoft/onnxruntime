@@ -4,7 +4,9 @@
 #pragma once
 #ifdef _WIN32
 #include <Windows.h>
+#include <chrono>
 #include <mutex>
+
 namespace onnxruntime {
 // Q: Why OrtMutex is better than std::mutex
 // A: OrtMutex supports static initialization but std::mutex doesn't. Static initialization helps us prevent the "static

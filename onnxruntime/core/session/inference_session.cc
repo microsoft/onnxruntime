@@ -247,9 +247,10 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
-std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
-OrtMutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+const std::string InferenceSession::callback_ML_ORT_provider_key_{"InferenceSessionML_ORT_provider"};
 onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
@@ -370,51 +371,37 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   // a monotonically increasing session id for use in telemetry
   session_id_ = global_session_id_.fetch_add(1);
 
+  SetLoggingManager(session_options, session_env);
+
+  // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
+  // after the invocation of FinalizeSessionOptions.
+  InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
+
 #ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
-  active_sessions_[global_session_id_++] = this;
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.insert_or_assign(session_id_, this);
+    // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
+    // one for all sessions
+    if (active_sessions_.size() == 1) {
+      WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_key_, ML_Ort_Provider_Etw_Callback);
+    }
+  }
 
-  // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
-  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
-      [this](LPCGUID SourceId,
-             ULONG IsEnabled,
-             UCHAR Level,
-             ULONGLONG MatchAnyKeyword,
-             ULONGLONG MatchAllKeyword,
-             PEVENT_FILTER_DESCRIPTOR FilterData,
-             PVOID CallbackContext) {
-        (void)SourceId;
-        (void)Level;
-        (void)MatchAnyKeyword;
-        (void)MatchAllKeyword;
-        (void)FilterData;
-        (void)CallbackContext;
-
-        // Check if this callback is for capturing state
-        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
-            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-          LogAllSessions();
-        }
-      });
-  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
+  deregistrar_.emplace([this]() { UnregisterETWCallbacks(); });
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
+  callback_ETWSink_provider_key_ = "InferenceSession_Start_Stop_";
+  callback_ETWSink_provider_key_.append(std::to_string(session_id_));
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
-      [&etwRegistrationManager, this](LPCGUID SourceId,
+  auto etw_start_stop = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+      [&etwRegistrationManager, this](LPCGUID /*SourceId */,
                                       ULONG IsEnabled,
-                                      UCHAR Level,
+                                      UCHAR /* Level */,
                                       ULONGLONG MatchAnyKeyword,
-                                      ULONGLONG MatchAllKeyword,
-                                      PEVENT_FILTER_DESCRIPTOR FilterData,
-                                      PVOID CallbackContext) {
-        (void)SourceId;
-        (void)Level;
-        (void)MatchAnyKeyword;
-        (void)MatchAllKeyword;
-        (void)FilterData;
-        (void)CallbackContext;
-
+                                      ULONGLONG /* MatchAllKeyword */,
+                                      PEVENT_FILTER_DESCRIPTOR /* FilterData */,
+                                      PVOID /* CallbackContext */) {
         if (logging_manager_ != nullptr) {
           auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
 
@@ -440,16 +427,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
       });
 
   // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_key_, etw_start_stop);
 
 #endif
 
-  SetLoggingManager(session_options, session_env);
-
-  // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
-  // after the invocation of FinalizeSessionOptions.
-  InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
-  TraceSessionOptions(session_options, false);
+  TraceSessionOptions(session_options, false, *session_logger_);
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Update the number of steps for the graph transformer manager using the "finalized" session options
@@ -577,10 +559,11 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState,
+                                           const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(captureState);  // Otherwise Linux build error
 
-  LOGS(*session_logger_, INFO) << session_options;
+  LOGS(logger, INFO) << session_options;
 
 #ifdef _WIN32
   TraceLoggingWrite(telemetry_provider_handle,
@@ -723,14 +706,6 @@ InferenceSession::~InferenceSession() {
     }
   }
 
-  // Unregister the session and ETW callbacks
-#ifdef _WIN32
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
-  WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
-  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
-#endif
-  active_sessions_.erase(global_session_id_);
-
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
     TraceLoggingWriteStop(session_activity, "OrtInferenceSessionActivity");
@@ -745,7 +720,7 @@ common::Status InferenceSession::RegisterExecutionProvider(const std::shared_ptr
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for exec provider");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding an EP is pointless as the graph as already been partitioned so no nodes will be assigned to
@@ -876,7 +851,7 @@ common::Status InferenceSession::RegisterGraphTransformer(
     return Status(common::ONNXRUNTIME, common::FAIL, "Received nullptr for graph transformer");
   }
 
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_inited_) {
     // adding a transformer now is pointless as the graph as already been transformed
@@ -940,7 +915,7 @@ common::Status InferenceSession::LoadWithLoader(std::function<common::Status(std
     tp = session_profiler_.Start();
   }
   ORT_TRY {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (is_model_loaded_) {  // already loaded
       LOGS(*session_logger_, ERROR) << "This session already contains a loaded model.";
       return common::Status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1396,7 +1371,7 @@ Status InferenceSession::LoadOrtModel(const void* model_data, int model_data_len
 }
 
 Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort_format_model_bytes) {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
 
   if (is_model_loaded_) {  // already loaded
     Status status(common::ONNXRUNTIME, common::MODEL_LOADED, "This session already contains a loaded model.");
@@ -1520,7 +1495,7 @@ Status InferenceSession::LoadOrtModelWithLoader(std::function<Status()> load_ort
 }
 
 bool InferenceSession::IsInitialized() const {
-  std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+  std::lock_guard<std::mutex> l(session_mutex_);
   return is_inited_;
 }
 
@@ -1673,7 +1648,7 @@ common::Status InferenceSession::Initialize() {
     bool have_cpu_ep = false;
 
     {
-      std::lock_guard<onnxruntime::OrtMutex> initial_guard(session_mutex_);
+      std::lock_guard<std::mutex> initial_guard(session_mutex_);
 
       if (!is_model_loaded_) {
         LOGS(*session_logger_, ERROR) << "Model was not loaded";
@@ -1711,7 +1686,7 @@ common::Status InferenceSession::Initialize() {
     }
 
     // re-acquire mutex
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
 
 #if !defined(DISABLE_EXTERNAL_INITIALIZERS) && !defined(ORT_MINIMAL_BUILD)
     if (!session_options_.external_initializers.empty()) {
@@ -2584,7 +2559,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
       std::unique_ptr<logging::Logger> owned_run_logger;
       const auto& run_logger = CreateLoggerForRun(run_options, owned_run_logger);
 
-      std::optional<std::lock_guard<OrtMutex>> sequential_run_lock;
+      std::optional<std::lock_guard<std::mutex>> sequential_run_lock;
       if (is_concurrent_run_supported_ == false) {
         sequential_run_lock.emplace(session_mutex_);
       }
@@ -2837,7 +2812,7 @@ common::Status InferenceSession::Run(const RunOptions& run_options, const NameML
 
 std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetadata() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2849,7 +2824,7 @@ std::pair<common::Status, const ModelMetadata*> InferenceSession::GetModelMetada
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2862,7 +2837,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetModelInputs(
 
 std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableInitializers() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2875,7 +2850,7 @@ std::pair<common::Status, const InputDefList*> InferenceSession::GetOverridableI
 
 std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutputs() const {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_model_loaded_) {
       LOGS(*session_logger_, ERROR) << "Model was not loaded";
       return std::make_pair(common::Status(common::ONNXRUNTIME, common::FAIL, "Model was not loaded."), nullptr);
@@ -2887,7 +2862,7 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
-    std::lock_guard<onnxruntime::OrtMutex> l(session_mutex_);
+    std::lock_guard<std::mutex> l(session_mutex_);
     if (!is_inited_) {
       LOGS(*session_logger_, ERROR) << "Session was not initialized";
       return common::Status(common::ONNXRUNTIME, common::FAIL, "Session not initialized.");
@@ -3268,21 +3243,57 @@ IOBinding* SessionIOBinding::Get() {
 }
 
 #ifdef _WIN32
+
+void InferenceSession::UnregisterETWCallbacks() {
+  if (!callback_ETWSink_provider_key_.empty()) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_key_);
+  }
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.erase(session_id_);
+    if (active_sessions_.empty()) {
+      WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_key_);
+    }
+  }
+}
+
+void InferenceSession::ML_Ort_Provider_Etw_Callback(LPCGUID /* SourceId */,
+                                                    ULONG IsEnabled,
+                                                    UCHAR /* Level */,
+                                                    ULONGLONG MatchAnyKeyword,
+                                                    ULONGLONG /* MatchAllKeyword */,
+                                                    PEVENT_FILTER_DESCRIPTOR /* FilterData */,
+                                                    PVOID /* CallbackContext */) {
+  // Check if this callback is for capturing state
+  if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+      ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+    InferenceSession::LogAllSessions();
+  }
+}
+
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
-  std::lock_guard<OrtMutex> lock(active_sessions_mutex_);
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
   for (const auto& session_pair : active_sessions_) {
     InferenceSession* session = session_pair.second;
 
-    onnxruntime::Graph& graph = model_->MainGraph();
-    bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
-    env.GetTelemetryProvider().LogSessionCreation(
-        session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, true);
+    if (!session) {
+      continue;
+    }
 
-    TraceSessionOptions(session->session_options_, true);
+    auto model = session->model_;
+    if (nullptr != model) {
+      const onnxruntime::Graph& graph = model->MainGraph();
+      const bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      env.GetTelemetryProvider().LogSessionCreation(
+          session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
+          graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
+          session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+    }
+
+    constexpr const bool capture_state_true = true;
+    InferenceSession::TraceSessionOptions(session->session_options_, capture_state_true, *session->session_logger_);
   }
 }
 #endif

@@ -127,11 +127,33 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
-  static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
-  static OrtMutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+  // Single callback for all sessions. Registers when the first session comes up
+  // unregisters when the last session goes away.
+  static const std::string callback_ML_ORT_provider_key_;
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
-  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+  std::string callback_ETWSink_provider_key_;  // Session Start Stop
+
+  void UnregisterETWCallbacks();
+
+  struct AutoETWDegistrar {
+    std::function<void()> deregister;
+
+    explicit AutoETWDegistrar(std::function<void()> dreg)
+        : deregister(std::move(dreg)) {}
+
+    ~AutoETWDegistrar() {
+      if (deregister) {
+        deregister();
+      }
+    }
+  };
+
+  // Automatically cleans up all outstanding registrations
+  // in case session loading fails and ETW callbacks are already registered.
+  std::optional<AutoETWDegistrar> deregistrar_;
 #endif
 
  public:
@@ -663,7 +685,8 @@ class InferenceSession {
 
   void InitLogger(logging::LoggingManager* logging_manager);
 
-  void TraceSessionOptions(const SessionOptions& session_options, bool captureState);
+  static void TraceSessionOptions(const SessionOptions& session_options, bool captureState,
+                                  const logging::Logger& logger);
 
   [[nodiscard]] common::Status CheckShapes(const std::string& input_name, const TensorShape& input_shape,
                                            const TensorShape& expected_shape, const char* input_output_moniker) const;
@@ -700,7 +723,17 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #ifdef _WIN32
-  void LogAllSessions();
+  // This callback is registered globally for all sessions
+  // It is dergistered when the last session goes away.
+  static void ML_Ort_Provider_Etw_Callback(LPCGUID SourceId,
+                                           ULONG IsEnabled,
+                                           UCHAR Level,
+                                           ULONGLONG MatchAnyKeyword,
+                                           ULONGLONG MatchAllKeyword,
+                                           PEVENT_FILTER_DESCRIPTOR FilterData,
+                                           PVOID CallbackContext);
+
+  static void LogAllSessions();
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
@@ -799,10 +832,10 @@ class InferenceSession {
   // Number of concurrently running executors
   std::atomic<int> current_num_runs_ = 0;
 
-  mutable onnxruntime::OrtMutex session_mutex_;  // to ensure only one thread can invoke Load/Initialize
-  bool is_model_loaded_ = false;                 // GUARDED_BY(session_mutex_)
-  bool is_inited_ = false;                       // GUARDED_BY(session_mutex_)
-  bool is_concurrent_run_supported_ = true;      // Graph execution in Run is GUARDED_BY(session_mutex_) if false
+  mutable std::mutex session_mutex_;         // to ensure only one thread can invoke Load/Initialize
+  bool is_model_loaded_ = false;             // GUARDED_BY(session_mutex_)
+  bool is_inited_ = false;                   // GUARDED_BY(session_mutex_)
+  bool is_concurrent_run_supported_ = true;  // Graph execution in Run is GUARDED_BY(session_mutex_) if false
 
 #ifdef ENABLE_LANGUAGE_INTEROP_OPS
   InterOpDomains interop_domains_;

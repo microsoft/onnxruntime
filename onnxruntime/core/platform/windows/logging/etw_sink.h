@@ -20,6 +20,7 @@
 #include <atomic>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/logging/capture.h"
@@ -74,14 +75,13 @@ class EtwRegistrationManager {
   // Get the ETW registration status
   HRESULT Status() const;
 
-  void RegisterInternalCallback(const EtwInternalCallback& callback);
+  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback);
 
-  void UnregisterInternalCallback(const EtwInternalCallback& callback);
+  void UnregisterInternalCallback(const std::string& cb_key);
 
  private:
   EtwRegistrationManager();
   ~EtwRegistrationManager();
-  void LazyInitialize();
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
 
@@ -97,10 +97,9 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::vector<const EtwInternalCallback*> callbacks_;
-  OrtMutex callbacks_mutex_;
-  mutable OrtMutex provider_change_mutex_;
-  OrtMutex init_mutex_;
+  std::unordered_map<std::string, EtwInternalCallback> callbacks_;
+  mutable std::mutex callbacks_mutex_;
+  mutable std::mutex provider_change_mutex_;
   InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
