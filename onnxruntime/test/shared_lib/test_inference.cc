@@ -2033,7 +2033,7 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_EQ(1024U, mem_allocation.size());
 
   auto stats = cuda_allocator.GetStats();
-  ASSERT_EQ(1024, std::stoi(stats["bytes_in_use"]));
+  ASSERT_EQ(1024, std::stoi(stats["InUse"]));
 
   std::vector<std::string> expected_stats_keys = {
       "Limit",
