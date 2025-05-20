@@ -262,6 +262,51 @@ TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8) {
       ExpectedEPNodeAssignment::All);
 }
 
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='VALID'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_VALID) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "VALID")},
+      ExpectedEPNodeAssignment::All);
+}
+
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='SAME_UPPER'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_SAME_UPPER) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "SAME_UPPER")},
+      ExpectedEPNodeAssignment::All);
+}
+
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='SAME_LOWER'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_SAME_LOWER) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "SAME_LOWER")},
+      ExpectedEPNodeAssignment::All);
+}
+
 TEST_F(QnnHTPBackendTests, MaxPool_Ceil_HTP_u8) {
   RunQDQPoolOpTest<uint8_t>("MaxPool",
                             TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
