@@ -4,13 +4,13 @@
 #include "core/providers/qnn/builder/qnn_node_group/scale_softmax_fusion.h"
 
 #include <gsl/gsl>
-#include <cassert>
 #include <optional>
 #include <utility>
 #include <string>
 #include <array>
 #include <memory>
 #include <unordered_map>
+#include <vector>
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
