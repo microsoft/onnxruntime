@@ -9,3 +9,5 @@ sympy==1.12
 flatbuffers
 psutil
 onnxscript==0.2.3 ; python_version < '3.13'
+jinja2
+markupsafe
