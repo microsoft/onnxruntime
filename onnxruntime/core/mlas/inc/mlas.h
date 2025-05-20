@@ -1223,6 +1223,21 @@ MlasQuantizeLinearS4(
     int8_t ZeroPoint
     );
 
+//
+// Linear dequantization routines.
+//
+
+template<typename InputType>
+void
+MLASCALL
+MlasDequantizeLinear(
+    const InputType* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    InputType ZeroPoint
+    );
+
 /**
  * @brief Requantize a block of the intermediate buffer to the output buffer,
  *        optionally adding the supplied bias
