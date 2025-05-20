@@ -58,9 +58,18 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     IdentityOp<false>);
 
 // TODO(liqunfu): Opset 21 supported int4 and uint4 types.
-ONNX_CPU_OPERATOR_KERNEL(
+ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Identity,
     21,
+    22,
+    KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
+    IdentityOp<false>);
+
+// Opset 23 added support for float4e2m1.
+// TODO(titaiwang): Add support for float4e2m1.
+ONNX_CPU_OPERATOR_KERNEL(
+    Identity,
+    23,
     KernelDefBuilder().TypeConstraint("V", DataTypeImpl::AllTensorAndSequenceTensorAndOptionalTypesIRv9()).Alias(0, 0),
     IdentityOp<false>);
 

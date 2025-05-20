@@ -89,4 +89,12 @@ void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {
   ORT_UNUSED_PARAMETER(adapterLuid);
 }
 
+void Telemetry::LogDriverInfoEvent(const std::string_view device_class,
+                                   const std::wstring_view& driver_names,
+                                   const std::wstring_view& driver_versions) const {
+  ORT_UNUSED_PARAMETER(device_class);
+  ORT_UNUSED_PARAMETER(driver_names);
+  ORT_UNUSED_PARAMETER(driver_versions);
+}
+
 }  // namespace onnxruntime

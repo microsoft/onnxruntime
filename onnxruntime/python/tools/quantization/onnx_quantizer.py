@@ -85,7 +85,7 @@ class ONNXQuantizer(BaseQuantizer):
         self.tensor_names.update({ot.name: 1 for ot in model.graph.output})
         self.tensor_names.update({it.name: 1 for it in model.graph.input})
         for node in self.model.model.graph.node:
-            self.tensor_names.update({output_name: 1 for output_name in node.output})
+            self.tensor_names.update(dict.fromkeys(node.output, 1))
 
         if self.mode not in QuantizationMode:
             raise ValueError(f"unsupported quantization mode {self.mode}")

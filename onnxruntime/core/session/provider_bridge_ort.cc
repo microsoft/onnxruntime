@@ -10,6 +10,7 @@
 #include "core/common/inlined_containers.h"
 #include "core/common/path_string.h"
 #include "core/common/string_helper.h"
+
 #include "core/framework/allocator_utils.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/config_options.h"
@@ -122,7 +123,9 @@ using EtwRegistrationManager_EtwInternalCallback = EtwRegistrationManager::EtwIn
 #include "core/providers/nv_tensorrt_rtx/nv_provider_factory.h"
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 
-#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_NV))
+#if !defined(ORT_MINIMAL_BUILD) &&                                        \
+    (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
+     defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE))
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #endif
 
@@ -159,6 +162,7 @@ ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
 ProviderInfo_Nv* TryGetProviderInfo_Nv();
 ProviderInfo_Nv& GetProviderInfo_Nv();
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO();
 
 ONNX_NAMESPACE::OpSchema CreateSchema(const std::string& domain, const std::vector<const OrtCustomOp*>& ops);
 struct TensorShapeProto_Dimension_Iterator_Impl : TensorShapeProto_Dimension_Iterator {
@@ -1727,8 +1731,8 @@ bool InitProvidersSharedLibrary() try {
   return false;
 }
 
-ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload)
-    : filename_{filename}, unload_{unload} {
+ProviderLibrary::ProviderLibrary(const ORTCHAR_T* filename, bool unload, ProviderLibraryPathType pathType)
+    : filename_{filename}, unload_{unload}, absolute_{pathType == ProviderLibraryPathType::Absolute} {
 }
 
 ProviderLibrary::~ProviderLibrary() {
@@ -1744,8 +1748,16 @@ Status ProviderLibrary::Load() {
     std::lock_guard<std::mutex> lock{mutex_};
     s_library_shared.Ensure();
 
-    auto full_path = Env::Default().GetRuntimePath() + filename_;
-    ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+    if (absolute_) {
+      // If filename_ is not absolute it should not be loaded.
+      if (!std::filesystem::path{filename_}.is_absolute()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "An absolute path must be specified.");
+      }
+      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(filename_, false, &handle_));
+    } else {
+      auto full_path = Env::Default().GetRuntimePath() + filename_;
+      ORT_RETURN_IF_ERROR(Env::Default().LoadDynamicLibrary(full_path, false, &handle_));
+    }
 
     Provider* (*PGetProvider)();
     ORT_RETURN_IF_ERROR(Env::Default().GetSymbolFromLibrary(handle_, "GetProvider", (void**)&PGetProvider));
@@ -1917,13 +1929,23 @@ OrtCUDAProviderOptionsV2 OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(const 
   return cuda_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
+    const OrtCUDAProviderOptions* provider_options) try {
   OrtCUDAProviderOptionsV2 cuda_options_converted = onnxruntime::OrtCUDAProviderOptionsToOrtCUDAProviderOptionsV2(provider_options);
   return s_library_cuda.Get().CreateExecutionProviderFactory(&cuda_options_converted);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(const OrtCUDAProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> CudaProviderFactoryCreator::Create(
+    const OrtCUDAProviderOptionsV2* provider_options) try {
   return s_library_cuda.Get().CreateExecutionProviderFactory(provider_options);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> RocmProviderFactoryCreator::Create(const OrtROCMProviderOptions* provider_options) {
@@ -1992,25 +2014,55 @@ OrtTensorRTProviderOptionsV2 OrtTensorRTProviderOptionsToOrtTensorRTProviderOpti
   return trt_options_converted;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(int device_id) try {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(device_id);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptions* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
+    const OrtTensorRTProviderOptions* provider_options) try {
   OrtTensorRTProviderOptionsV2 trt_options_converted = onnxruntime::OrtTensorRTProviderOptionsToOrtTensorRTProviderOptionsV2(provider_options);
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(&trt_options_converted);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(const OrtTensorRTProviderOptionsV2* provider_options) {
+std::shared_ptr<IExecutionProviderFactory> TensorrtProviderFactoryCreator::Create(
+    const OrtTensorRTProviderOptionsV2* provider_options) try {
   return s_library_tensorrt.Get().CreateExecutionProviderFactory(provider_options);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(int device_id) try {
   return s_library_nv.Get().CreateExecutionProviderFactory(device_id);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
-  return s_library_nv.Get().CreateExecutionProviderFactory(&provider_options);
+std::shared_ptr<IExecutionProviderFactory> NvProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options, const SessionOptions* session_options) try {
+  const ConfigOptions* config_options = nullptr;
+  if (session_options != nullptr) {
+    config_options = &session_options->config_options;
+  }
+
+  std::array<const void*, 2> configs_array = {&provider_options, config_options};
+  const void* arg = reinterpret_cast<const void*>(&configs_array);
+  return s_library_nv.Get().CreateExecutionProviderFactory(arg);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const OrtMIGraphXProviderOptions* provider_options) {
@@ -2056,8 +2108,8 @@ ProviderOptions OrtOpenVINOProviderOptionsToOrtOpenVINOProviderOptionsV2(const O
 }
 
 #if !BUILD_QNN_EP_STATIC_LIB
-std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(const ProviderOptions& provider_options_map,
-                                                                             const SessionOptions* session_options) {
+std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options_map, const SessionOptions* session_options) try {
   const ConfigOptions* config_options = nullptr;
   if (session_options != nullptr) {
     config_options = &session_options->config_options;
@@ -2066,11 +2118,15 @@ std::shared_ptr<IExecutionProviderFactory> QNNProviderFactoryCreator::Create(con
   std::array<const void*, 2> configs_array = {&provider_options_map, config_options};
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_qnn.Get().CreateExecutionProviderFactory(arg);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
 std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Create(
-    const ProviderOptions* provider_options_map, const SessionOptions* session_options) {
+    const ProviderOptions* provider_options_map, const SessionOptions* session_options) try {
   // Append session options applicable for EP to EP Provider options.
   const ConfigOptions* config_options = nullptr;
   if (session_options != nullptr) {
@@ -2080,18 +2136,29 @@ std::shared_ptr<IExecutionProviderFactory> OpenVINOProviderFactoryCreator::Creat
   std::array<const void*, 2> configs_array = {provider_options_map, config_options};
   const void* arg = reinterpret_cast<const void*>(&configs_array);
   return s_library_openvino.Get().CreateExecutionProviderFactory(arg);
+} catch (const std::exception& exception) {
+  // Will get an exception when fail to load EP library.
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(const OrtDnnlProviderOptions* dnnl_options) {
   return s_library_dnnl.Get().CreateExecutionProviderFactory(dnnl_options);
 }
 
-std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(const ProviderOptions& provider_options) {
+std::shared_ptr<IExecutionProviderFactory> VitisAIProviderFactoryCreator::Create(
+    const ProviderOptions& provider_options) try {
   return s_library_vitisai.Get().CreateExecutionProviderFactory(&provider_options);
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
-ProviderInfo_OpenVINO* GetProviderInfo_OpenVINO() {
+ProviderInfo_OpenVINO* TryGetProviderInfo_OpenVINO() try {
   return reinterpret_cast<ProviderInfo_OpenVINO*>(s_library_openvino.Get().GetInfo());
+} catch (const std::exception& exception) {
+  LOGS_DEFAULT(ERROR) << exception.what();
+  return nullptr;
 }
 
 ProviderInfo_TensorRT* TryGetProviderInfo_TensorRT() try {
@@ -2414,7 +2481,7 @@ ORT_API_STATUS_IMPL(OrtSessionOptionsAppendExecutionProvider_CUDA, _In_ OrtSessi
 ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int device_id) {
   API_IMPL_BEGIN
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->SetCurrentGpuDeviceId(device_id);
 #endif
@@ -2431,7 +2498,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetCurrentGpuDeviceId, [[maybe_unused]] _In_ int de
 ORT_API_STATUS_IMPL(OrtApis::GetCurrentGpuDeviceId, [[maybe_unused]] _In_ int* device_id) {
   API_IMPL_BEGIN
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
     return info->GetCurrentGpuDeviceId(device_id);
 #endif
@@ -2481,7 +2548,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
   std::shared_ptr<onnxruntime::IExecutionProviderFactory> factory;
 
-#if !defined(ORT_MINIMAL_BUILD) && defined(USE_TENSORRT)
+#if !defined(ORT_MINIMAL_BUILD) && (defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE))
   auto ep_context_cache_enabled_from_provider_options = tensorrt_options->trt_dump_ep_context_model != 0;
   auto ep_context_cache_enabled_from_sess_options = (options->value).config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") != "0";
 
@@ -2543,7 +2610,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, 
 
 ORT_API_STATUS_IMPL(OrtApis::CreateTensorRTProviderOptions, _Outptr_ OrtTensorRTProviderOptionsV2** out) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   auto options = std::make_unique<OrtTensorRTProviderOptionsV2>();
   *out = options.release();
   return nullptr;
@@ -2560,7 +2627,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -2584,7 +2651,11 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptions,
   API_IMPL_END
 }
 
-#if defined(USE_TENSORRT) || defined(USE_CUDA) || defined(USE_CANN) || defined(USE_DNNL) || defined(USE_ROCM) || defined(USE_NV)
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE) || \
+    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) ||         \
+    defined(USE_CANN) ||                                                 \
+    defined(USE_DNNL) ||                                                 \
+    defined(USE_ROCM)
 static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterator& begin,
                                       const onnxruntime::ProviderOptions::iterator& end) {
   std::ostringstream options;
@@ -2603,7 +2674,7 @@ static std::string BuildOptionsString(const onnxruntime::ProviderOptions::iterat
 ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsAsString, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Tensorrt(tensorrt_options);
   std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
@@ -2622,7 +2693,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateTensorRTProviderOptionsWithValue,
                     _In_ const char* key,
                     _In_ void* value) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
     tensorrt_options->has_user_compute_stream = 1;
@@ -2647,7 +2718,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
                     _In_ const char* key,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   // current provider option that has pointer data type (excluding const char*) is 'user_compute_stream'
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = tensorrt_options->user_compute_stream;
@@ -2665,7 +2736,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorRTProviderOptionsByName,
 }
 
 ORT_API(void, OrtApis::ReleaseTensorRTProviderOptions, _Frees_ptr_opt_ OrtTensorRTProviderOptionsV2* ptr) {
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   if (ptr != nullptr) {
     delete[] ptr->trt_int8_calibration_table_name;
     delete[] ptr->trt_engine_cache_path;
@@ -2703,7 +2774,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA_V2, _In_
 
 ORT_API_STATUS_IMPL(OrtApis::CreateCUDAProviderOptions, _Outptr_ OrtCUDAProviderOptionsV2** out) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   auto options = std::make_unique<OrtCUDAProviderOptionsV2>();
   *out = options.release();
   return nullptr;
@@ -2720,7 +2791,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     size_t num_keys) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions provider_options_map;
   for (size_t i = 0; i != num_keys; ++i) {
     if (provider_options_keys[i] == nullptr || provider_options_keys[i][0] == '\0' ||
@@ -2747,7 +2818,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptions,
 ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsAsString, _In_ const OrtCUDAProviderOptionsV2* cuda_options, _Inout_ OrtAllocator* allocator,
                     _Outptr_ char** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   onnxruntime::ProviderOptions options = onnxruntime::GetProviderInfo_Cuda(cuda_options);
   std::string options_str = BuildOptionsString(options.begin(), options.end());
   *ptr = onnxruntime::StrDup(options_str, allocator);
@@ -2766,7 +2837,7 @@ ORT_API_STATUS_IMPL(OrtApis::UpdateCUDAProviderOptionsWithValue,
                     _In_ const char* key,
                     _In_ void* value) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     cuda_options->has_user_compute_stream = 1;
     cuda_options->user_compute_stream = value;
@@ -2786,7 +2857,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
                     _In_ const char* key,
                     _Outptr_ void** ptr) {
   API_IMPL_BEGIN
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (strcmp(key, "user_compute_stream") == 0) {
     *ptr = cuda_options->user_compute_stream;
   } else {
@@ -2803,7 +2874,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetCUDAProviderOptionsByName,
 }
 
 ORT_API(void, OrtApis::ReleaseCUDAProviderOptions, _Frees_ptr_opt_ OrtCUDAProviderOptionsV2* ptr) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   std::unique_ptr<OrtCUDAProviderOptionsV2> p(ptr);
 #else
   ORT_UNUSED_PARAMETER(ptr);

@@ -681,6 +681,49 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected) {
   }
 }
 
+// Set ep.context_file_path to invalid file path, check the error message
+TEST_F(QnnHTPBackendTests, QnnContextBinaryGenerationFolderPathNotExpected2) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
+
+  auto& logging_manager = DefaultLoggingManager();
+  logging_manager.SetDefaultLoggerSeverity(logging::Severity::kERROR);
+
+  onnxruntime::Model model("QNN_EP_TestModel", false, ModelMetaData(), PathString(),
+                           IOnnxRuntimeOpSchemaRegistryList(), domain_to_version, {},
+                           logging_manager.DefaultLogger());
+  Graph& graph = model.MainGraph();
+  ModelTestBuilder helper(graph);
+  bool single_ep_node = true;
+  BuildGraphWithQAndNonQ(single_ep_node)(helper);
+  helper.SetGraphOutputs();
+  ASSERT_STATUS_OK(model.MainGraph().Resolve());
+
+  // Serialize the model to a string.
+  std::string model_data;
+  model.ToProto().SerializeToString(&model_data);
+
+  const auto model_data_span = AsByteSpan(model_data.data(), model_data.size());
+
+  const std::string ep_context_onnx_file = "./ep_context_folder_not_expected/invalid_file";
+  std::remove(ep_context_onnx_file.c_str());
+  Ort::SessionOptions so;
+  so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_onnx_file.c_str());
+  so.AppendExecutionProvider("QNN", provider_options);
+
+  try {
+    Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), so);
+    FAIL();  // Should not get here!
+  } catch (const Ort::Exception& excpt) {
+    ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
+    ASSERT_THAT(excpt.what(), testing::HasSubstr("context_file_path should not point to a folder."));
+  }
+}
+
 // Create session 1 to generate context binary file
 // Create session 2 to do same thing, make sure session 2 failed because file exist already
 // Make sure no new file over write from session 2

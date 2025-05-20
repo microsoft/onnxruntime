@@ -369,7 +369,7 @@ common::Status SaveInitializedTensors(
   if (memory_profile_func)
     memory_profile_func(planner);
 
-  for (auto i : planned_initializers_memory_sizes_in_byte) {
+  for (const auto& i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
                        << i.second << " bytes for " << i.first.ToString() << std::endl;
   }

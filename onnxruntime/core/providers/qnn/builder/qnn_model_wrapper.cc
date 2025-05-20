@@ -69,7 +69,7 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
   }
 
   Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
-  if (true == model_settings_.htp_shared_memory) {
+  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
     mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
   }
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,

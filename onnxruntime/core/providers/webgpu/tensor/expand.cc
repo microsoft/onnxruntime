@@ -43,7 +43,9 @@ Status Expand::ComputeInternal(ComputeContext& context) const {
   const int components_o = output_shape.IsScalar() ? 1 : output_shape[output_shape.NumDimensions() - 1] % 4 == 0 ? 4
                                                                                                                  : 1;
   uint32_t data_size = onnxruntime::narrow<uint32_t>(output_shape.Size() / components_o);
-
+  if (data_size == 0) {
+    return Status::OK();
+  }
   ExpandProgram program{};
   program
       .AddInputs({{input_tensor, ProgramTensorMetadataDependency::TypeAndRank, components_i}})

@@ -23,6 +23,91 @@ Abstract:
 
         .intel_syntax noprefix
 
+        .extern CheckSaturationForVPMADDUBSW
+
+        .macro CheckSaturation VecReg1Num, VecReg2Num
+
+//
+// Save all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+
+        push    rax
+        push    rcx
+        push    rdx
+        push    rsi
+        push    rdi
+        push    r8
+        push    r9
+        push    r10
+        push    r11
+
+        sub     rsp, 512                        # reserve space for 16 YMM registers (32 bytes)
+
+//
+// Save YMM registers (YMM0 to YMM15)
+//
+
+        vmovdqu  [rsp], ymm0
+        vmovdqu  [rsp+32], ymm1
+        vmovdqu  [rsp+64], ymm2
+        vmovdqu  [rsp+96], ymm3
+        vmovdqu  [rsp+128], ymm4
+        vmovdqu  [rsp+160], ymm5
+        vmovdqu  [rsp+192], ymm6
+        vmovdqu  [rsp+224], ymm7
+        vmovdqu  [rsp+256], ymm8
+        vmovdqu  [rsp+288], ymm9
+        vmovdqu  [rsp+320], ymm10
+        vmovdqu  [rsp+352], ymm11
+        vmovdqu  [rsp+384], ymm12
+        vmovdqu  [rsp+416], ymm13
+        vmovdqu  [rsp+448], ymm14
+        vmovdqu  [rsp+480], ymm15
+
+        lea rdi, [rsp+32*\VecReg1Num\()]        # first operand (unsigned)
+        lea rsi, [rsp+32*\VecReg2Num\()]        # second operand (signed)
+
+        call    CheckSaturationForVPMADDUBSW
+
+//
+// Restore YMM registers
+//
+
+        vmovdqu  ymm0, [rsp]
+        vmovdqu  ymm1, [rsp+32]
+        vmovdqu  ymm2, [rsp+64]
+        vmovdqu  ymm3, [rsp+96]
+        vmovdqu  ymm4, [rsp+128]
+        vmovdqu  ymm5, [rsp+160]
+        vmovdqu  ymm6, [rsp+192]
+        vmovdqu  ymm7, [rsp+224]
+        vmovdqu  ymm8, [rsp+256]
+        vmovdqu  ymm9, [rsp+288]
+        vmovdqu  ymm10, [rsp+320]
+        vmovdqu  ymm11, [rsp+352]
+        vmovdqu  ymm12, [rsp+384]
+        vmovdqu  ymm13, [rsp+416]
+        vmovdqu  ymm14, [rsp+448]
+        vmovdqu  ymm15, [rsp+480]
+
+        add     rsp, 512                        # clean up the reserved stack space
+
+//
+// Restore all caller-saved registers (RAX, RCX, RDX, RSI, RDI, R8, R9, R10, R11)
+//
+
+        pop     r11
+        pop     r10
+        pop     r9
+        pop     r8
+        pop     rdi
+        pop     rsi
+        pop     rdx
+        pop     rcx
+        pop     rax
+
+        .endm
+
 /*++
 
 Macro Description:
@@ -52,9 +137,15 @@ Implicit Arguments:
 
         .macro MultiplyAccumulateRowAvx2 Vec1Reg, Vec2Reg
 
+#if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
+        CheckSaturation 2,0
+#endif
         vpmaddubsw ymm3,ymm2,ymm0
         vpmaddwd ymm3,ymm3,ymm12
         vpaddd \Vec1Reg\(),\Vec1Reg\(),ymm3
+#if defined(ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER)
+        CheckSaturation 2,1
+#endif
         vpmaddubsw ymm2,ymm2,ymm1
         vpmaddwd ymm2,ymm2,ymm12
         vpaddd \Vec2Reg\(),\Vec2Reg\(),ymm2

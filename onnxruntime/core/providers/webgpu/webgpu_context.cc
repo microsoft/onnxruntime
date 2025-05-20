@@ -10,7 +10,9 @@
 #endif
 
 #if !defined(__wasm__)
+#if !defined(BUILD_DAWN_MONOLITHIC_LIBRARY)
 #include "dawn/dawn_proc.h"
+#endif
 #if !defined(USE_EXTERNAL_DAWN)
 #include "dawn/native/DawnNative.h"
 #endif

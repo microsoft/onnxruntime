@@ -89,7 +89,9 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       }
 
       const auto& dq_attrs = dq_1->GetAttributes();
-      if (dq_attrs.find("block_size") != dq_attrs.end()) {
+      auto attr_it = dq_attrs.find("block_size");
+      // Default value of block_size=0 has no significance. Don't skip weight_bias_quantization.
+      if (attr_it != dq_attrs.end() && attr_it->second.i() != 0) {
         continue;
       }
 
