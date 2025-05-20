@@ -18,6 +18,7 @@ CheckIntelResult CheckIntel() {
   bool is_intel = false;
   bool is_intel_specified_platform = false;
 
+#if (defined(_M_AMD64) || defined(__x86_64__))
 #if defined(_WIN32)
   constexpr unsigned int kVendorID_Intel[] = {0x756e6547, 0x6c65746e, 0x49656e69};  // "GenuntelineI"
   constexpr unsigned int kVendorID_IntelSpecifiedPlatformIDs[] = {
@@ -84,6 +85,7 @@ CheckIntelResult CheckIntel() {
     }
   }
 #endif  //__linux__
+#endif //(_M_AMD64) || (__x86_64__)
 
   intel_check.is_intel = is_intel;
   intel_check.is_intel_specified_platform = is_intel_specified_platform;
