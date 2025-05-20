@@ -193,7 +193,135 @@ MlasDequantizeLinear<uint8_t>(
 #endif
         Input, Output, N, Scale, ZeroPoint);
 }
+#elif defined(MLAS_NEON64_INTRINSICS)
+void
+MLASCALL
+MlasDequantizeLinearS8Kernel(
+    const int8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    )
+{
+    const float32x4_t ScaleVector = MlasBroadcastFloat32x4(Scale);
+    const int16x8_t ZeroPointVector = vdupq_n_s16(ZeroPoint); // Broadcast ZeroPoint (sign-extended to 16bits)
 
+    while (N >= 16) {
+        // Vector of 16 int8s: [0 ... 15]
+        int8x16_t VectorS8 = vld1q_s8(Input);
+
+        // Sign-extend into 2 vectors of 8 int16s
+        int16x8_t VectorS16_0 = vmovl_s8(vget_low_s8(VectorS8));  // [0 ... 7]
+        int16x8_t VectorS16_1 = vmovl_s8(vget_high_s8(VectorS8)); // [8 ... 15]
+
+        // Subtract the zero-points now.
+        VectorS16_0 = vsubq_s16(VectorS16_0, ZeroPointVector);
+        VectorS16_1 = vsubq_s16(VectorS16_1, ZeroPointVector);
+
+        // Sign-extend into 4 vectors of 4 int32s
+        int32x4_t VectorS32_0 = vmovl_s16(vget_low_s16(VectorS16_0));  // [0 ... 3]
+        int32x4_t VectorS32_1 = vmovl_s16(vget_high_s16(VectorS16_0)); // [4 ... 7]
+        int32x4_t VectorS32_2 = vmovl_s16(vget_low_s16(VectorS16_1));  // [8 ... 11]
+        int32x4_t VectorS32_3 = vmovl_s16(vget_high_s16(VectorS16_1)); // [12 ... 15]
+
+        // Cast each int32x4 to float and multiply by the scale vector.
+        float32x4_t VectorF32_0 = vmulq_f32(vcvtq_f32_s32(VectorS32_0), ScaleVector);
+        float32x4_t VectorF32_1 = vmulq_f32(vcvtq_f32_s32(VectorS32_1), ScaleVector);
+        float32x4_t VectorF32_2 = vmulq_f32(vcvtq_f32_s32(VectorS32_2), ScaleVector);
+        float32x4_t VectorF32_3 = vmulq_f32(vcvtq_f32_s32(VectorS32_3), ScaleVector);
+
+        // Store each int32x4 into the output.
+        vst1q_f32(Output + 0, VectorF32_0);
+        vst1q_f32(Output + 4, VectorF32_1);
+        vst1q_f32(Output + 8, VectorF32_2);
+        vst1q_f32(Output + 12, VectorF32_3);
+
+        N -= 16;
+        Input += 16;
+        Output += 16;
+    }
+
+    // Handle leftover elements (< 16) with the scalar reference implementation.
+    MlasDequantizeLinearRefImpl(Input, Output, N, Scale, ZeroPoint);
+}
+
+void
+MLASCALL
+MlasDequantizeLinearU8Kernel(
+    const uint8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    )
+{
+    const float32x4_t ScaleVector = MlasBroadcastFloat32x4(Scale);
+    const uint8x8_t ZeroPointVector = vdup_n_u8(ZeroPoint); // Broadcast ZeroPoint to 8 uint8s
+
+    while (N >= 16) {
+        // Vector of 16 uint8s: [0 ... 15]
+        uint8x16_t VectorU8 = vld1q_u8(Input);
+
+        // Subtract zero-point. The vsubl_u8 instruction zero-extends its arguments to uint16 first.
+        // The reinterpret from uint16x8 to int16x8 is actually a NOP.
+        int16x8_t VectorS16_0 = vreinterpretq_s16_u16(vsubl_u8(vget_low_u8(VectorU8), ZeroPointVector));  // [0 ... 7]
+        int16x8_t VectorS16_1 = vreinterpretq_s16_u16(vsubl_u8(vget_high_u8(VectorU8), ZeroPointVector)); // [8 ... 15]
+
+        // Sign-extend into 4 vectors of 4 int32s
+        int32x4_t VectorS32_0 = vmovl_s16(vget_low_s16(VectorS16_0));  // [0 ... 3]
+        int32x4_t VectorS32_1 = vmovl_s16(vget_high_s16(VectorS16_0)); // [4 ... 7]
+        int32x4_t VectorS32_2 = vmovl_s16(vget_low_s16(VectorS16_1));  // [8 ... 11]
+        int32x4_t VectorS32_3 = vmovl_s16(vget_high_s16(VectorS16_1)); // [12 ... 15]
+
+        // Cast each int32x4 to float and multiply by the scale vector.
+        float32x4_t VectorF32_0 = vmulq_f32(vcvtq_f32_s32(VectorS32_0), ScaleVector);
+        float32x4_t VectorF32_1 = vmulq_f32(vcvtq_f32_s32(VectorS32_1), ScaleVector);
+        float32x4_t VectorF32_2 = vmulq_f32(vcvtq_f32_s32(VectorS32_2), ScaleVector);
+        float32x4_t VectorF32_3 = vmulq_f32(vcvtq_f32_s32(VectorS32_3), ScaleVector);
+
+        // Store each int32x4 into the output.
+        vst1q_f32(Output + 0, VectorF32_0);
+        vst1q_f32(Output + 4, VectorF32_1);
+        vst1q_f32(Output + 8, VectorF32_2);
+        vst1q_f32(Output + 12, VectorF32_3);
+
+        N -= 16;
+        Input += 16;
+        Output += 16;
+    }
+
+    // Handle leftover elements (< 16) with the scalar reference implementation.
+    MlasDequantizeLinearRefImpl(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasDequantizeLinear<int8_t>(
+    const int8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    int8_t ZeroPoint
+    )
+{
+    MlasDequantizeLinearS8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
+
+template<>
+void
+MLASCALL
+MlasDequantizeLinear<uint8_t>(
+    const uint8_t* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    uint8_t ZeroPoint
+    )
+{
+    MlasDequantizeLinearU8Kernel(Input, Output, N, Scale, ZeroPoint);
+}
 #else
 template<typename InputType>
 void
