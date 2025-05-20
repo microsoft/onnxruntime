@@ -47,7 +47,7 @@ void HandleMaybeBiasForMatMul(ShaderHelper& shader,
                               bool is_channels_last) {
   shader.AdditionalImplementation() << "    let coords = vec3(u32(batch), u32(row), u32(colIn));\n";
   if (has_bias) {
-    shader.AdditionalImplementation() << "    value = value + output_element_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
+    shader.AdditionalImplementation() << "    value = value + output_value_t(" << (is_channels_last ? "bias[colIn]" : "bias[row]") << ");\n";
   }
   shader.AdditionalImplementation() << "    " << activation_snippet << "\n"
                                     << output.SetByIndices("coords", "value") << "\n";
