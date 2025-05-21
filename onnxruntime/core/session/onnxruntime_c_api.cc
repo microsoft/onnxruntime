@@ -1573,9 +1573,7 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetStats, _In_ const OrtAllocator* ptr, _I
     out = nullptr;
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported by the allocator");
   }
-
-  ptr->GetStats(ptr, allocator, out);
-  return nullptr;
+  return ptr->GetStats(ptr, allocator, out);
   API_IMPL_END
 }
 

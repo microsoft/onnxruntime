@@ -357,10 +357,10 @@ typedef struct OrtAllocator {
    * - MaxAllocSize: The max single allocation seen.
    *
    * Note that not all allocators support this function. If the allocator does not support this function,
-   * it will throw onnxruntime::NotImplementedException exception.
+   * it returns ORT_NOT_IMPLEMENTED.
    */
-  void(ORT_API_CALL* GetStats)(const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
-                               _Outptr_ char** stats);
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
+                 _Outptr_ char** stats);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
