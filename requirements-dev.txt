@@ -2,7 +2,6 @@
 cerberus
 flatbuffers
 jinja2
-markupsafe
 numpy
 onnx
 onnxmltools

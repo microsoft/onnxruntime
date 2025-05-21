@@ -9,5 +9,3 @@ sympy==1.12
 flatbuffers
 psutil
 onnxscript==0.2.3
-jinja2
-markupsafe
