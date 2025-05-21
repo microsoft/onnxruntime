@@ -30,6 +30,7 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
+        OrtCompileApiFlags,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401
