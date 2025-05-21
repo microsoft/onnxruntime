@@ -67,6 +67,37 @@
     endif()
   endif()
 
+  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
+    foreach(file migraphx-hiprtc-driver.exe migraphx.dll migraphx_c.dll migraphx_cpu.dll migraphx_device.dll migraphx_gpu.dll migraphx_onnx.dll migraphx_tf.dll)
+      set(_source "${AMD_MIGRAPHX_HOME}/bin/${file}")
+      if(EXISTS "${_source}")
+        add_custom_command(TARGET onnxruntime_providers_migraphx
+                POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_source} $<TARGET_FILE_DIR:onnxruntime_providers_migraphx>)
+        set(_target "$<TARGET_FILE_DIR:onnxruntime_providers_migraphx>/${file}")
+        list(APPEND _migraphx_targets ${_target})
+      endif()
+    endforeach()
+    set(MIGRAPHX_LIB_FILES ${_migraphx_targets} CACHE INTERNAL "" FORCE)
+    install(FILES ${_migraphx_targets}
+            DESTINATION ${CMAKE_INSTALL_BINDIR})
+    get_property(_amdhip64_location TARGET hip::amdhip64 PROPERTY IMPORTED_LOCATION_RELEASE)
+    cmake_path(GET _amdhip64_location PARENT_PATH _hipsdk_path)
+    foreach(file amd_comgr0602.dll amd_comgr0604.dll amd_comgr0700.dll hiprtc0602.dll hiprtc0604.dll hiprtc0700.dll hiprtc-builtins0602.dll hiprtc-builtins0604.dll hiprtc-builtins0700.dll)
+      set(_source "${_hipsdk_path}/${file}")
+      if(EXISTS "${_source}")
+        add_custom_command(TARGET onnxruntime_providers_migraphx
+                POST_BUILD
+                COMMAND ${CMAKE_COMMAND} -E copy_if_different ${_source} $<TARGET_FILE_DIR:onnxruntime_providers_migraphx>)
+        set(_target "$<TARGET_FILE_DIR:onnxruntime_providers_migraphx>/${file}")
+        list(APPEND _hipsdk_targets ${_target})
+      endif()
+    endforeach()
+    set(HIPSDK_LIB_FILES ${_hipsdk_targets} CACHE INTERNAL "" FORCE)
+    install(FILES ${_hipsdk_targets}
+            DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
   install(TARGETS onnxruntime_providers_migraphx
           EXPORT onnxruntime_providers_migraphxTargets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}

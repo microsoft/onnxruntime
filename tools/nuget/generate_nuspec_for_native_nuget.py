@@ -396,6 +396,23 @@ def generate_files(line_list, args):
             "cuda_ep_shared_lib": "onnxruntime_providers_cuda.dll",
             "qnn_ep_shared_lib": "onnxruntime_providers_qnn.dll",
             "migraphx_ep_shared_lib": "onnxruntime_providers_migraphx.dll",
+            "amd_comgr0602": "amd_comgr0602.dll",
+            "amd_comgr0604": "amd_comgr0604.dll",
+            "amd_comgr0700": "amd_comgr0700.dll",
+            "hiprtc0602": "hiprtc0602.dll",
+            "hiprtc0604": "hiprtc0604.dll",
+            "hiprtc0700": "hiprtc0700.dll",
+            "hiprtc-builtins0602": "hiprtc-builtins0602.dll",
+            "hiprtc-builtins0604": "hiprtc-builtins0604.dll",
+            "hiprtc-builtins0700": "hiprtc-builtins0700.dll",
+            "migraphx-hiprtc-driver": "migraphx-hiprtc-driver.exe",
+            "migraphx": "migraphx.dll",
+            "migraphx_c": "migraphx_c.dll",
+            "migraphx_cpu": "migraphx_cpu.dll",
+            "migraphx_device": "migraphx_device.dll",
+            "migraphx_gpu": "migraphx_gpu.dll",
+            "migraphx_onnx": "migraphx_onnx.dll",
+            "migraphx_tf": "migraphx_tf",
             "onnxruntime_perf_test": "onnxruntime_perf_test.exe",
             "onnx_test_runner": "onnx_test_runner.exe",
         }
@@ -817,6 +834,34 @@ def generate_files(line_list, args):
             + args.target_architecture
             + '\\native" />'
         )
+
+        if is_windows_build:
+            native_build_path = Path(args.native_build_path)
+
+            def _files_list_append(key: str):
+                path = native_build_path / nuget_dependencies[key]
+                if path.exists():
+                    files_list.append(
+                        "<file src=" + '"' + str(path) + runtimes_target + args.target_architecture + '\\native" />'
+                    )
+
+            _files_list_append("amd_comgr0602")
+            _files_list_append("amd_comgr0604")
+            _files_list_append("amd_comgr0700")
+            _files_list_append("hiprtc0602")
+            _files_list_append("hiprtc0604")
+            _files_list_append("hiprtc0700")
+            _files_list_append("hiprtc-builtins0602")
+            _files_list_append("hiprtc-builtins0604")
+            _files_list_append("hiprtc-builtins0700")
+            _files_list_append("migraphx-hiprtc-driver")
+            _files_list_append("migraphx")
+            _files_list_append("migraphx_c")
+            _files_list_append("migraphx_cpu")
+            _files_list_append("migraphx_device")
+            _files_list_append("migraphx_gpu")
+            _files_list_append("migraphx_onnx")
+            _files_list_append("migraphx_tf")
 
     if is_dml_package:
         files_list.append(
