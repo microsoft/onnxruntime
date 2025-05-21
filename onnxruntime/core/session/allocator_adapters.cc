@@ -30,15 +30,15 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
   if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
     OrtAllocator::GetStats =
         [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) noexcept -> OrtStatusPtr {
-          API_IMPL_BEGIN
-          auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-          char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-          memcpy(stats_string, str.c_str(), str.size());
-          stats_string[str.size()] = '\0';
-          *stats = stats_string;
-          return nullptr;
-          API_IMPL_END
-        };
+      API_IMPL_BEGIN
+      auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+      memcpy(stats_string, str.c_str(), str.size());
+      stats_string[str.size()] = '\0';
+      *stats = stats_string;
+      return nullptr;
+      API_IMPL_END
+    };
   }
 }
 
