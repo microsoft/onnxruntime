@@ -102,7 +102,7 @@ class IAllocator {
 
   // Each implementation of IAllocator can override and provide their own implementation
   virtual void GetStats(AllocatorStats* /*stats*/) {
-    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not implemented");
+    ORT_NOT_IMPLEMENTED(__FUNCTION__, " is not supported by this allocator");
   }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {

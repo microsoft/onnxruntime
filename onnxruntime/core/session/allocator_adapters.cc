@@ -31,11 +31,6 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
     OrtAllocator::GetStats =
         [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) {
           auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-          if (str.empty()) {
-            *stats = nullptr;
-            return;
-          }
-
           char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
           memcpy(stats_string, str.c_str(), str.size());
           stats_string[str.size()] = '\0';
@@ -62,14 +57,7 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
 
 std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
   AllocatorStats stats{};
-
-  ORT_TRY {
-    i_allocator_->GetStats(&stats);
-  }
-  ORT_CATCH(const NotImplementedException& /*e*/) {
-    return {};
-  }
-
+  i_allocator_->GetStats(&stats);
   auto stats_str = stats.DebugString();
 
   // Process the debug string to a comma-separated format and remove redundant spaces
@@ -82,7 +70,6 @@ std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
   pos = 0;
   while ((pos = stats_str.find(' ', pos)) != std::string::npos) {
     stats_str.replace(pos, 1, "");
-    pos += 1;
   }
 
   return stats_str;

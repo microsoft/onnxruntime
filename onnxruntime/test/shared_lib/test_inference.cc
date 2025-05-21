@@ -10,6 +10,7 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <absl/base/config.h>
@@ -1992,6 +1993,12 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  std::unordered_map<std::string, std::string> stats;
+  auto status = cpu_allocator.GetStats(stats);
+
+  // TODO: Investigate why it fails in some CI builds.
+  EXPECT_TRUE(status.IsOK());
 }
 
 #ifdef USE_CUDA
@@ -2015,7 +2022,9 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  auto stats = cuda_allocator.GetStats();
+  std::unordered_map<std::string, std::string> stats;
+  auto status = cuda_allocator.GetStats(stats);
+  EXPECT_TRUE(status.IsOK());
   ASSERT_EQ(1024, std::stoi(stats["InUse"]));
 
   std::vector<std::string> expected_stats_keys = {

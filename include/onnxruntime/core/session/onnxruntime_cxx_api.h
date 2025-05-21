@@ -2154,7 +2154,13 @@ struct AllocatorImpl : Base<T> {
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
-  std::unordered_map<std::string, std::string> GetStats() const;
+
+  /** \brief Function that returns the statistics of the allocator.
+   *
+   * \param stats: A map to store the allocator statistics.
+   * \return A Status indicating success or failure.
+   */
+  Status GetStats(std::unordered_map<std::string, std::string>& stats) const;
 };
 
 }  // namespace detail

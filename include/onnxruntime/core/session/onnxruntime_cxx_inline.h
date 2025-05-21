@@ -245,14 +245,10 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
 }
 
 template <typename T>
-inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats() const {
+inline Status AllocatorImpl<T>::GetStats(std::unordered_map<std::string, std::string>& stats) const {
   AllocatorWithDefaultOptions allocator;
   char* raw_stats = nullptr;
-  ThrowOnError(GetApi().AllocatorGetStats(this->p_, allocator, &raw_stats));
-  std::unordered_map<std::string, std::string> stats;
-  if (raw_stats == nullptr) {
-    return stats;
-  }
+  ORT_CXX_RETURN_ON_API_FAIL(GetApi().AllocatorGetStats(this->p_, allocator, &raw_stats));
 
   auto free_fn = detail::AllocatedFree(allocator);
   std::unique_ptr<void, decltype(free_fn)> raw_stats_g(raw_stats, free_fn);
@@ -266,9 +262,9 @@ inline std::unordered_map<std::string, std::string> AllocatorImpl<T>::GetStats()
     }
     std::string key = line.substr(0, pos);
     std::string value = line.substr(pos + 1);
-    stats.insert_or_assign(key, value);
+    stats.insert_or_assign(std::move(key), std::move(value));
   }
-  return stats;
+  return Ort::Status();
 }
 }  // namespace detail
 
