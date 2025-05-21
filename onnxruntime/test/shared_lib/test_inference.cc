@@ -1998,7 +1998,7 @@ TEST(CApiTest, get_allocator_cpu) {
   auto status = cpu_allocator.GetStats(stats);
 
   // TODO: Investigate why it fails in some CI builds.
-  EXPECT_TRUE(status.IsOK());
+  EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
 }
 
 #ifdef USE_CUDA
