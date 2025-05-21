@@ -6,6 +6,7 @@
 #include <thread>
 
 #include "core/graph/constants.h"
+#include "core/graph/node_attr_utils.h"
 #include "core/providers/cpu/cpu_provider_factory.h"  // For OrtSessionOptionsAppendExecutionProvider_CPU
 #if BUILD_QNN_EP_STATIC_LIB
 #include "core/providers/qnn/qnn_allocator.h"  // Used by QnnHTPBackendTests.UseHtpSharedMemoryAllocatorForInputs
@@ -1383,6 +1384,34 @@ TEST_F(QnnHTPBackendTests, AutoEp_PreferNpu) {
   ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env, kQnnExecutionProvider));
 }
 #endif  // defined(WIN32) && !BUILD_QNN_EP_STATIC_LIB
+
+// Test whether QNN EP can handle the case where the number of graph inputs and
+// the number of tensor wrappers do not match.
+// Take Resize op as an example.
+// - Qnn only cares about the 1st input, so the rest of the inputs are not converted
+//   to tensor wrappers.
+// - However, these remaining inputs still appear in the graph inputs,
+//   resulting in a discrepancy in the input quantities.
+TEST_F(QnnHTPBackendTests, TestMismatchedGraphInputAndTensorWrapperCount) {
+  onnxruntime::ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+
+  auto input_defs = {TestInputDef<float>({1, 3, 10, 10}, false, -10.0f, 10.0f),
+                     TestInputDef<float>({0}, false, {}),
+                     TestInputDef<float>({4}, true, {1.0f, 1.0f, 2.0f, 2.0f})};
+  auto attrs = {utils::MakeAttribute("mode", "nearest"),
+                utils::MakeAttribute("coordinate_transformation_mode", "asymmetric"),
+                utils::MakeAttribute("nearest_mode", "floor")};
+  RunQnnModelTest(BuildOpTestCase<float>("Resize",
+                                         input_defs,
+                                         {},
+                                         attrs,
+                                         kOnnxDomain),
+                  provider_options,
+                  11,
+                  ExpectedEPNodeAssignment::All,
+                  0.008f);
+}
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
