@@ -12,8 +12,8 @@ from pathlib import Path
 
 import numpy as np
 import onnx
-import onnxscript.rewriter.ort_fusions as ort_fusions
 import torch
+from common_onnx_export import optimize_for_ort
 from float16 import convert_float_to_float16
 from models.torch_export_patches import bypass_export_some_errors, string_type
 from onnx import ModelProto, ValueInfoProto
@@ -335,7 +335,7 @@ class WhisperEncoderDecoderInit(torch.nn.Module):
             if use_onnxscript_fusion_optimizations:
                 logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
                 model_ir = ir.serde.deserialize_model(model)
-                opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
+                opt_model_ir, fusion_count = optimize_for_ort(model_ir)
                 logger.info(f"The following fusions were successfully appiled {fusion_count}")
                 model = ir.serde.serialize_model(opt_model_ir)
 

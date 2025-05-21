@@ -59,16 +59,7 @@ def patch_module_or_classes(mod, verbose: int = 0) -> dict[type, dict[type, Call
 
 def unpatch_module_or_classes(mod, info: dict[type, dict[type, Callable]], verbose: int = 0):
     """Reverts modification made by :func:`patch_module`."""
-    to_patch = []
-    for k in dir(mod):
-        if k.startswith("patched_"):
-            v = getattr(mod, k)
-            if hasattr(v, "_PATCHED_CLASS_") and hasattr(v, "_PATCHES_"):
-                to_patch.append(v)
-    set_patch = set(to_patch)
-
     for cls, methods in info.items():
-        assert cls in set_patch, f"No patch registered for {cls} in {mod} (found {set_patch})"
         if verbose:
             print(f"[unpatch_module_or_classes] {cls.__name__}: {', '.join(methods)}")
         original = cls._PATCHED_CLASS_
