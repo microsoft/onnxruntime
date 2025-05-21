@@ -31,9 +31,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
   }
 
-  constexpr bool is_b_prepacked = false;
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
-      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_, is_b_prepacked));
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   const auto* a_data = a->Data<T>();
   const uint8_t* blob_data = b->Data<uint8_t>();

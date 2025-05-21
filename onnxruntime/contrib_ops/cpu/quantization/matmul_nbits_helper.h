@@ -5,6 +5,7 @@
 
 #include "core/common/common.h"
 #include "core/providers/common.h"
+#include "core/util/shape_checker.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -20,17 +21,16 @@ Status CheckInputs(const T* /*activation*/,
                    int64_t n,
                    int64_t k,
                    int64_t block_size,
-                   int64_t bits,
-                   bool is_b_prepacked) {
+                   int64_t bits) {
   // activation (A)
-  // quantized_weight (B) : (N, k_blocks, blob_size)
+  // quantized_weight (B) : (N, k_blocks, blob_size) or null
   //                        k_blocks = (K + block_size - 1) / block_size
   //                        blob_size = (block_size * bits + 7) / 8
   // scales               : (N, k_blocks)
-  // zero_points          : (N, (k_blocks * bits + 7) / 8) for uint8
-  //                        (N, k_blocks) for float types
-  // group_index          : (K) or (k_blocks * block_size)
-  // bias                 : (N)
+  // zero_points          : (N, (k_blocks * bits + 7) / 8) for uint8, (N, k_blocks) for other types, or null
+  // group_index          : (K) or (k_blocks * block_size), or null
+  // bias                 : (N), or null
+  // Note that scales and zero_points can be 1D for backward compatibility.
   int64_t k_blocks = (k + block_size - 1) / block_size;
   int64_t blob_size = (block_size * bits + 7) / 8;
 
@@ -43,138 +43,31 @@ Status CheckInputs(const T* /*activation*/,
                            "block_size must be a power of 2, and >= 16. Got ", block_size);
   }
 
-  if (!is_b_prepacked) {
-    const auto& quantized_weight_dims = quantized_weight->Shape().GetDims();
-    if (quantized_weight_dims.size() != 3) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT, "Input 'B' is expected to have 3 dimensions, got ",
-          quantized_weight_dims.size());
-    }
-    if (quantized_weight_dims[0] != n) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'quantized_weight' dimension 0 should be N, got ",
-                             quantized_weight_dims[0], ". Expected:", n);
-    }
-    if (quantized_weight_dims[1] != k_blocks) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'quantized_weight' dimension 1 should be equal to (K + block_size - 1) / block_size, got ",
-          quantized_weight_dims[1], ". Exptected:", k_blocks);
-    }
-    if (quantized_weight_dims[2] != blob_size) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'quantized_weight' dimension 2 should be equal to (block_size * bits + 7) / 8, got ",
-          quantized_weight_dims[2], ". Expected:", blob_size);
-    }
-  } else {
-    // Do nothing. B is not available after prepacking. Assume that B tensor shape has been checked during prepacking.
-  }
+  ASSERT_TENSOR_SHAPE(quantized_weight, make_shape(n, k_blocks, blob_size));
 
-  const auto& scales_dims = scales->Shape().GetDims();
-  if (scales_dims.size() == 2) {
-    if (scales_dims[0] != n) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'scales' dimension 0 should be N, got ",
-                             scales_dims[0]);
-    }
-    if (scales_dims[1] != k_blocks) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'scales' dimension 1 should be equal to quantized_weight dimension 1, got ", scales_dims[1]);
-    }
-  } else {
-    if (scales_dims.size() == 1 && scales_dims[0] == n * k_blocks) {
-      // Backward compatibility.
-      // This format of 1D format is deprecated. We will remove the support of this format in the future.
-    } else {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'scales' shape is not compatible with quantized_weight. Expected: (",
-          n, ", ", k_blocks, ")", "Got ", scales->Shape());
-    }
-  }
+  // 1D shape is for backward compatibility for existing models.
+  ASSERT_TENSOR_SHAPE_2(scales, make_shape(n * k_blocks), make_shape(n, k_blocks));
 
   if (zero_points != nullptr) {
-    const auto& zero_points_dims = zero_points->Shape().GetDims();
-    if (zero_points_dims.size() == 2) {
-      if (zero_points_dims[0] != n) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "Input 'zero_points' dimension 0 should be N, got ",
-                               zero_points_dims[0]);
-      }
+    if (zero_points->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
+      const int64_t zero_point_blob_size = (k_blocks * bits + 7) / 8;
 
-      if (zero_points->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        const int64_t zero_point_blob_size = ((k_blocks * bits + 7) / 8);
-        if (zero_points_dims[1] != zero_point_blob_size) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, INVALID_ARGUMENT,
-              "Input 'zero_points' dimension 1 should be equal to ((k_blocks * bits + 7) / 8), got ",
-              zero_points_dims[1], ". Expected:", zero_point_blob_size);
-        }
-      } else {
-        if (zero_points->GetElementType() != scales->GetElementType()) {
-          return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                                 "Input 'zero_points' and 'scales' should have the same data type when zero_points is not uint8");
-        }
-
-        if (zero_points_dims[1] != k_blocks) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, INVALID_ARGUMENT,
-              "Input 'zero_points' dimension 1 dimension 1 should be equal to quantized_weight dimension 1, got ",
-              zero_points_dims[1]);
-        }
-      }
-    } else if (zero_points_dims.size() == 1) {
-      // Backward compatibility.
-      // This format of 1D format is deprecated. We will remove the support of this format in the future.
-      if (zero_points->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
-        const int64_t zero_point_blob_size = ((k_blocks * bits + 7) / 8);
-        if (zero_points_dims[0] != n * zero_point_blob_size) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, INVALID_ARGUMENT, "Input 'zero_points' shape is not expected: ", zero_points->Shape());
-        }
-      } else {
-        if (zero_points_dims[0] != n * k_blocks) {
-          return ORT_MAKE_STATUS(
-              ONNXRUNTIME, INVALID_ARGUMENT, "Input 'zero_points' shape is not expected: ", zero_points->Shape());
-        }
-      }
+      ASSERT_TENSOR_SHAPE_2(zero_points, make_shape(n * zero_point_blob_size), make_shape(n, zero_point_blob_size));
     } else {
-      if (zero_points_dims.size() != 2) {
+      if (zero_points->GetElementType() != scales->GetElementType()) {
         return ORT_MAKE_STATUS(
-            ONNXRUNTIME, INVALID_ARGUMENT, "Input 'zero_points' is expected to have 2 dimensions:", zero_points->Shape());
+            ONNXRUNTIME, INVALID_ARGUMENT,
+            "Input 'zero_points' and 'scales' should have the same data type when zero_points is not uint8");
       }
+
+      ASSERT_TENSOR_SHAPE_2(zero_points, make_shape(n * k_blocks), make_shape(n, k_blocks));
     }
   }
 
-  if (group_index != nullptr) {
-    // Group_index is deprecated. We will remove the support in the future.
-    const auto& group_index_dims = group_index->Shape().GetDims();
-    if (group_index_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'group_index' is expected to have 1 dimension, got ",
-                             group_index_dims.size());
-    }
-    if (group_index_dims[0] != k && group_index_dims[0] != k_blocks * block_size) {
-      return ORT_MAKE_STATUS(
-          ONNXRUNTIME, INVALID_ARGUMENT,
-          "Input 'group_index' dimension 0 should be equal to K, or K padded to multiple of block_size, got ",
-          group_index_dims[0]);
-    }
-  }
+  // Group_index shall be 1D of K, or K padded to multiple of block_size
+  ASSERT_TENSOR_SHAPE_2(group_index, make_shape(k), make_shape(k_blocks * block_size));
 
-  if (bias != nullptr) {
-    const auto& bias_dims = bias->Shape().GetDims();
-    if (bias_dims.size() != 1) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'bias' is expected to have 1 dimension, got ", bias_dims.size());
-    }
-    if (bias_dims[0] != n) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Input 'bias' dimension 0 should be N, got ", bias_dims[0]);
-    }
-  }
+  ASSERT_TENSOR_SHAPE(bias, make_shape(n));
 
   return Status::OK();
 }

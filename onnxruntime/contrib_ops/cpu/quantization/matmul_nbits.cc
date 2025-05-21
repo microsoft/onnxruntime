@@ -687,7 +687,7 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
 
   ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
-      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_, is_b_prepacked));
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
