@@ -2866,8 +2866,6 @@ bool CreateInferencePybindStateModule(py::module& m) {
 
   import_array1(false);
 
-  // auto env = GetEnv();
-
   addGlobalMethods(m);
   addObjectMethods(m, RegisterExecutionProviders);
   addOrtValueMethods(m);
@@ -2967,17 +2965,6 @@ class EnvInitializer {
     }
 
     session_env_ = std::shared_ptr<Environment>(env_ptr.release());
-
-    if (!EnvInitializer::use_per_session_threads) {
-      py::object atexit_register = py::module::import("atexit").attr("register");
-      atexit_register([weak = std::weak_ptr<Environment>(session_env_)]() mutable {
-        if (auto env = weak.lock()) {
-          env->ShutdownGlobalThreadPools();
-        }
-        weak.reset();
-      });
-    }
-
     initialized = true;
     destroyed = false;
   }
