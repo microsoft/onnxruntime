@@ -77,6 +77,11 @@ class QnnModel {
     return it->second;
   }
 
+  // Return the number of graph inputs
+  size_t GetGraphInputCount() const {
+    return model_input_index_map_.size();
+  }
+
   size_t GetOutputIndex(const std::string& name) const {
     return GetInputOutputIndex(name, outputs_info_);
   }
