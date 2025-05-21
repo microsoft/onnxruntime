@@ -49,7 +49,6 @@ fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_
     ss << "const default_zero_point = " << (nbits == 4 ? 8 : 128) << ";\n";
     ss << R"(
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  // The default zero point is 8.
   return output_element_t(default_zero_point);
 }
 )";
@@ -433,6 +432,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   }
 
   // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
+  // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
   uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
   // WideTileProgram

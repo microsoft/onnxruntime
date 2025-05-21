@@ -184,17 +184,18 @@ void RunTest(const TestOptions& opts,
     test.AddInput<T1>("A", {M, K}, input0_vals, false);
   }
 
-  test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+  int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
 
   if constexpr (use_float16) {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, ToFloat16(scales), true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, ToFloat16(scales), true);
   } else {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, true);
   }
 
   if (opts.has_zero_point) {
     if (zp_is_4bit) {
-      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
+      test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
     } else {
       std::vector<float> zp_f;
       zp_f.reserve(q_zp_size_in_bytes * 2);
@@ -209,9 +210,9 @@ void RunTest(const TestOptions& opts,
       }
 
       if constexpr (use_float16) {
-        test.AddInput<T1>("zero_points", {static_cast<int64_t>(q_scale_size)}, ToFloat16(zp_f), true);
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_scale_size) / N}, ToFloat16(zp_f), true);
       } else {
-        test.AddInput<T1>("zero_points", {static_cast<int64_t>(q_scale_size)}, zp_f, true);
+        test.AddInput<T1>("zero_points", {N, static_cast<int64_t>(q_scale_size) / N}, zp_f, true);
       }
     }
   } else {
