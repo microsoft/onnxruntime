@@ -1325,9 +1325,9 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
 }
 
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
-  if (multi_profile_enable_ == true){
+  if (multi_profile_enable_ == true) {
     auto graph_annotation_str =
-    run_options.GetConfigOptions().GetConfigEntry(nv::run_option_names::kProfileIndex);
+        run_options.GetConfigOptions().GetConfigEntry(nv::run_option_names::kProfileIndex);
     TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
   }
   return Status::OK();
@@ -2695,9 +2695,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
 
-    if (multi_profile_enable_ == true)
-    {
-      if(!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
+    if (multi_profile_enable_ == true) {
+      if (!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
     }
 
