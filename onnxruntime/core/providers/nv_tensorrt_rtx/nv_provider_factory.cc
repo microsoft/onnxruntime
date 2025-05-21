@@ -4,6 +4,8 @@
 #include "core/providers/shared_library/provider_api.h"
 #include "nv_provider_factory.h"
 #include <atomic>
+#include <memory>
+#include <string>
 #include "nv_execution_provider.h"
 #include "nv_provider_factory_creator.h"
 #include "core/framework/provider_options.h"
@@ -116,15 +118,11 @@ struct Nv_Provider : Provider {
 
   Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
                                   const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                  size_t num_devices,
+                                  size_t /*num_devices*/,
                                   ProviderOptions& provider_options,
                                   const OrtSessionOptions& session_options,
                                   const OrtLogger& logger,
                                   std::unique_ptr<IExecutionProvider>& ep) override {
-    if (num_devices != 1) {
-      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "[NvTensorRTRTX EP]  only supports one device.");
-    }
-
     const ConfigOptions* config_options = &session_options.GetConfigOptions();
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
