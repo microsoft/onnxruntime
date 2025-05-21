@@ -974,7 +974,7 @@ if (onnxruntime_USE_JSEP)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
 if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-    
+
     if(onnxruntime_USE_QNN)
         list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
     else()
@@ -1066,6 +1066,30 @@ endif()
 if (onnxruntime_USE_WEBGPU)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBGPU=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webgpu)
+
+  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if (NOT onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=OFF")
+    endif()
+    if (onnxruntime_USE_EXTERNAL_DAWN)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_USE_EXTERNAL_DAWN=ON")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with a custom dawn source path")
+    endif()
+    if (WIN32)
+      if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=ON")
+      endif()
+      if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_DAWN_BACKEND_D3D12=OFF")
+      endif()
+      if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=ON")
+      endif()
+    endif()
+  endif()
+
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_MONOLITHIC_LIBRARY=1)
   endif()
@@ -1552,7 +1576,6 @@ if (Git_FOUND)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
-string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
@@ -1790,12 +1813,10 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
-    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
-  endif()
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
+if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
+  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
 endif()
+list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
@@ -1910,18 +1931,50 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-if(TARGET onnxruntime)
-# Install
-  include(GNUInstallDirs)
+if(NOT onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_WEBGPU)
+  message(WARNING "CMake target files will not be generated for static onnxruntime builds with webgpu support")
+else()
+  # Install
   include(CMakePackageConfigHelpers)
+
   set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
   string(APPEND PROJECT_CONFIG_CONTENT
-        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
+        "include(CMakeFindDependencyMacro)\n\
+        find_dependency(absl)\n\
+        find_dependency(date)\n\
+        find_dependency(Eigen3)\n\
+        find_dependency(nlohmann_json)\n\
+        find_dependency(ONNX)\n\
+        find_dependency(re2)\n\
+        find_dependency(flatbuffers)\n\
+        find_dependency(cpuinfo)\n\
+        find_dependency(protobuf)\n\
+        find_dependency(Boost COMPONENTS mp11)\n\
+        find_dependency(Microsoft.GSL 4.0)\n\
+        if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
+        find_dependency(Iconv)\n\
+        endif()\n\
+        if(WIN32)\n\
+        find_dependency(wil)\n\
+        endif()\n\
+        find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+        add_library(safeint_interface IMPORTED INTERFACE)\n\
+        target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+        ")
+  endif()
+
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
+
+
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
   install(EXPORT ${PROJECT_NAME}Targets
     NAMESPACE ${PROJECT_NAME}::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-# Create config for find_package()
+
+  # Create config for find_package()
   configure_package_config_file(
     "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
@@ -1936,16 +1989,16 @@ if(TARGET onnxruntime)
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-endif()
 
-if(DEFINED BUILD_AS_ARM64X)
-  set(ARM64X_TARGETS onnxruntime)
+  if(DEFINED BUILD_AS_ARM64X)
+    set(ARM64X_TARGETS onnxruntime)
 
-  # Add additional ARM64X build targets
-  if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+    # Add additional ARM64X build targets
+    if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+    endif()
+
+    include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
-
-  include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
 endif()

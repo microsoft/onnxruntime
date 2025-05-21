@@ -815,7 +815,7 @@ This version of the operator has been available since version 1 of the 'com.micr
   scale = 1. / (1. - ratio).
   ```
   
-  This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+  This op functions in much the same was as Dropout-11 and Dropout-13 do, except that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 
 #### Version
 
@@ -2231,9 +2231,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>dtype</tt> : int</dt>
 <dd>Output Type. Same definition as attribute 'to' for operator Cast.</dd>
 <dt><tt>transA</tt> : int</dt>
-<dd>Whether A should be transposed. Float 8 only supprted transA=0.</dd>
+<dd>Whether A should be transposed. Float 8 only supported transA=0.</dd>
 <dt><tt>transB</tt> : int</dt>
-<dd>Whether B should be transposed. Float 8 only supprted transB=1.</dd>
+<dd>Whether B should be transposed. Float 8 only supported transB=1.</dd>
 </dl>
 
 #### Inputs (2 - 6)
@@ -2309,7 +2309,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>emb</tt> : U</dt>
-<dd>embeddding - 3D tensor with shape (batch_size, seq_len, dim)</dd>
+<dd>embedding - 3D tensor with shape (batch_size, seq_len, dim)</dd>
 <dt><tt>q</tt> : T</dt>
 <dd>q state - 4D tensor with shape (batch_size, num_heads, seq_len, dim)</dd>
 <dt><tt>q_rot</tt> : T</dt>
@@ -2816,7 +2816,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
   During quantization, the matrix is divided into blocks, where each block is a
-  continguous subset inside each column. Each block is quantized into a
+  contiguous subset inside each column. Each block is quantized into a
   sequence of 4b integers with a scaling factor and an optional offset.
   Currently 3 quantization types are supported:
   (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
@@ -5585,8 +5585,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float or half tensors.</dd>
+<dt><tt>T</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
 <dt><tt>U</tt> : tensor(float)</dt>
 <dd>Constrain mean and inv_std_var to float tensors.</dd>
 </dl>
@@ -6076,7 +6076,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.WhisperBeamSearch"></a><a name="com.microsoft.whisperbeamsearch">**com.microsoft.WhisperBeamSearch**</a>
 
-  Beam Search for whisper model, especiall with cross_qk features etc.
+  Beam Search for whisper model, especially with cross_qk features etc.
 
 #### Version
 

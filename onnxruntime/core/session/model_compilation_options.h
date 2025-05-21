@@ -81,6 +81,13 @@ class ModelCompilationOptions {
   Status SetEpContextEmbedMode(bool embed_ep_context_in_model);
 
   /// <summary>
+  /// Sets flags representing enabled boolean options defined in OrtCompileApiFlags.
+  /// </summary>
+  /// <param name="flags">unsigned integer set to the bitwise OR of enabled flags.</param>
+  /// <returns>Status indicating success or an error</returns>
+  Status SetFlags(size_t flags);
+
+  /// <summary>
   /// Returns a reference to the session options object.
   /// </summary>
   /// <returns>session options</returns>

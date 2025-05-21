@@ -100,7 +100,7 @@ export class MatMulUtil {
 
   /**
    * Fix the output shape computed for MatMul operation if it needs fixing
-   * @param outputShape The computed outputShape. Should be an array (atleast of length 2) of positive integers.
+   * @param outputShape The computed outputShape. Should be an array (at least of length 2) of positive integers.
    * This will be mutated.
    * @param aRank The rank of tensor A.
    * @param bRank The rank of tensor B.
@@ -183,7 +183,7 @@ export class BroadcastUtil {
   /**
    * Given the indices of a broadcasted tensor, calculate the original indices
    * @param broadcastedIndices The given indices of the broadcasted tensor.
-   * @param originalShape The original shape of the tensor before broadcas
+   * @param originalShape The original shape of the tensor before broadcast
    * @returns The calculated indices that maps to the original tensor.
    */
   static index(broadcastedIndices: readonly number[], originalShape: readonly number[]): number[] {
@@ -243,7 +243,7 @@ export class BroadcastUtil {
         c.set([], op(a.get([]) as number, b.get([]) as number));
       }
 
-      // atleast one input is a non-scalar
+      // at least one input is a non-scalar
       else {
         const outputIndices = new Array<number>(outputShape.length);
         const originalIndicesA = new Array(a.dims.length);
@@ -611,7 +611,7 @@ export class ShapeUtil {
   }
 
   /**
-   * normailze axis of range [-r, r) into [0, r).
+   * normalize axis of range [-r, r) into [0, r).
    */
   static normalizeAxis(axis: number, tensorRank: number): number {
     if (axis < -tensorRank && axis >= tensorRank) {
