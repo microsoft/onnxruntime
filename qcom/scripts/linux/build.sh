@@ -52,9 +52,11 @@ for i in "$@"; do
   esac
 done
 
-build_dir="${REPO_ROOT}/build/${target_platform}"
 config="Release"
 cmake_generator="Ninja"
+
+build_root="${REPO_ROOT}/build"
+build_dir="${build_root}/${target_platform}"
 
 qairt_sdk_file_path="${build_dir}/qairt-sdk-path-${config}.txt"
 
@@ -78,6 +80,7 @@ common_args=(--cmake_generator "${cmake_generator}" \
              --build_dir "${build_dir}")
 
 action_args=()
+make_test_archive=
 
 case "${target_platform}" in
   linux)
@@ -117,7 +120,8 @@ case "${target_platform}" in
     fi
 
     qnn_args=(--use_qnn static_lib --qnn_home "${qairt_sdk_root}")
-    platform_args=(--android_sdk_path "${android_sdk_path}" \
+    platform_args=(--build_shared_lib \
+                   --android_sdk_path "${android_sdk_path}" \
                    --android_ndk_path "${android_ndk_path}" \
                    --android_abi "arm64-v8a" \
                    --android_api "27")
@@ -128,6 +132,10 @@ case "${target_platform}" in
       test)
         die "--mode=test not supported with --target_platform=${target_platform}."
         ;;
+      archive)
+        make_test_archive=1
+        qairt_platform="aarch64-android"
+        ;;
       *)
         die "Invalid mode '${mode}'."
     esac
@@ -136,9 +144,53 @@ case "${target_platform}" in
     die "Unknown target platform ${target_platform}."
 esac
 
-cd "${REPO_ROOT}"
-./build.sh \
-  "${action_args[@]}" \
-  "${common_args[@]}" \
-  "${qnn_args[@]}" \
-  "${platform_args[@]}"
+if [ -n "${make_test_archive}" ]; then
+  archive_path="${build_root}/onnxruntime-tests-${target_platform}.zip"
+
+  rm -f "${archive_path}"
+
+  cd "${build_dir}"
+
+  # cmake --install and cpack omit test data so we cobble this together manually.
+  zip \
+    --recurse-paths \
+    "${archive_path}" \
+    "${config}" \
+    --exclude \
+      "*/.ninja_log" "*/build.ninja" \
+      "*/CMakeCache.txt" "*/CMakeFiles/*" \
+      "*/Testing*/" "*/_deps/*" "*/pkgconfig/*"
+
+  # Add test data from ONNX
+  zip \
+    --recurse-paths \
+    "${archive_path}" \
+    "${config}" \
+    --include \
+      "*/_deps/onnx-src/onnx/backend/test/*"
+
+  # Add the QDC test framework
+  cd "${REPO_ROOT}/qcom/scripts/linux/appium"
+  zip  \
+    --recurse-paths \
+    "${archive_path}" \
+    requirements.txt tests \
+    --exclude \
+      "*/__pycache__/*"
+
+  # Add QNN libraries
+  cd "${qairt_sdk_root}"
+  zip \
+    --recurse-paths \
+    "${archive_path}" \
+    "lib" \
+    --include "*/${qairt_platform}/*" "*/hexagon-v*/*"
+
+else
+  cd "${REPO_ROOT}"
+  ./build.sh \
+    "${action_args[@]}" \
+    "${common_args[@]}" \
+    "${qnn_args[@]}" \
+    "${platform_args[@]}"
+fi

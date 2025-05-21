@@ -38,6 +38,7 @@ from qdc_public_api_client.models.post_artifacts_uuid_continueupload_body import
 from qdc_public_api_client.models.test_framework import TestFramework
 from qdc_public_api_client.types import File, Response
 
+ORT_APPIUM_ARCHIVE = f"{os.path.dirname(os.path.abspath(__file__))}/../../../build/onnxruntime-tests-android.zip"
 ORT_TEST_WIN_ARM64 = f"{os.path.dirname(os.path.abspath(__file__))}/../../../build/onnxruntime-tests-windows-arm64.zip"
 
 
@@ -70,6 +71,10 @@ class TestConfig(NamedTuple):
 
 # fmt: off
 QDC_TESTS = [
+    TestConfig("Mobile Device", Platform.ANDROID, [
+        TestDevice("3625030", "Lanai SM8650"),
+        TestDevice("3700521", "Pakala SM8750"),
+    ]),
     TestConfig("Windows on Snapdragon", Platform.WINDOWS, [
         TestDevice("3748430", "Purwa SC8340XP"),
         TestDevice("3625029", "Hamoa SC8380XP"),
@@ -307,15 +312,20 @@ class QdcRunner:
         test_name,
         test_runs: TestRuns,
         api_url: str,
+        override_android_id: str,
         override_windows_id: str,
     ):
         print("Initializing QDC test runner for project.")
         self._client = QdcClient(api_url)
         self._test_name = test_name
 
-        have_override = override_windows_id
+        have_override = override_android_id or override_windows_id
 
         self._job_config = {}
+
+        if not have_override or override_android_id:
+            apk_test_pkg_uuid = self._upload_artifact(ORT_APPIUM_ARCHIVE, ArtifactType.TESTSCRIPT)
+            self._job_config[Platform.ANDROID] = QdcRunner.QdcJobConfig([apk_test_pkg_uuid], TestFramework.APPIUM, None)
 
         if not have_override or override_windows_id:
             windows_test_uuid = self._upload_artifact(ORT_TEST_WIN_ARM64, ArtifactType.TESTSCRIPT)
@@ -325,6 +335,17 @@ class QdcRunner:
                 "C:\\Temp\\TestContent\\run_tests.ps1",
             )
 
+        if override_android_id:
+            self._schedule_tests(
+                test_runs,
+                [
+                    TestConfig(
+                        "Override Android",
+                        Platform.ANDROID,
+                        [TestDevice(override_android_id, override_android_id)],
+                    )
+                ],
+            )
         if override_windows_id:
             self._schedule_tests(
                 test_runs,
@@ -576,6 +597,12 @@ class RunnerCli:
             required=False,
         )
         parser.add_argument(
+            "--qdc-android-id",
+            action="store",
+            help="Run a QDC test using the specified Android device device ID.",
+            required=False,
+        )
+        parser.add_argument(
             "--qdc-windows-id",
             action="store",
             help="Run a QDC test using the specified Windows device device ID.",
@@ -597,6 +624,7 @@ class RunnerCli:
         self.test_name = f"ORT-{provided_name}-{unique_name}"
 
         self.qdc_api_url = args.qdc_api_url
+        self.qdc_android_id = args.qdc_android_id
         self.qdc_windows_id = args.qdc_windows_id
 
         print(f"Initialized runner. Test name prefix={self.test_name}")
@@ -609,6 +637,7 @@ class RunnerCli:
             self.test_name,
             test_runs,
             self.qdc_api_url,
+            self.qdc_android_id,
             self.qdc_windows_id,
         )
         print()
