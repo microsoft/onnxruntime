@@ -11,8 +11,9 @@ from pathlib import Path
 
 import numpy as np
 import onnx
+import onnxscript.rewriter.ort_fusions as ort_fusions
 import torch
-from common_onnx_export import _custom_patches, optimize_for_ort
+from common_onnx_export import _custom_patches
 from float16 import convert_float_to_float16
 from models.torch_export_patches import bypass_export_some_errors
 from onnx import ModelProto
@@ -134,17 +135,16 @@ class WhisperEncoder(torch.nn.Module):
             else:
                 dynamic_shapes = self.dynamic_shapes(input_names, dynamic_axes)
                 with bypass_export_some_errors(patch_transformers=True, custom_patches=_custom_patches):
-                    torch.onnx.export(
+                    onnx_program = torch.onnx.export(
                         self,
                         (inputs["audio_features"],),
-                        out_path,
                         input_names=input_names,
                         output_names=output_names,
                         dynamic_shapes=dynamic_shapes,
                         dynamo=True,
                         verbose=verbose,
-                        optimize=True,
                     )
+                    onnx_program.save(out_path, external_data=True)
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
 
@@ -152,7 +152,7 @@ class WhisperEncoder(torch.nn.Module):
             if use_onnxscript_fusion_optimizations:
                 logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
                 model_ir = ir.serde.deserialize_model(model)
-                opt_model_ir, fusion_count = optimize_for_ort(model_ir)
+                opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
                 logger.info(f"The following fusions were successfully appiled {fusion_count}")
                 model = ir.serde.serialize_model(opt_model_ir)
 
