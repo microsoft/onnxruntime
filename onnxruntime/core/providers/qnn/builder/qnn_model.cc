@@ -329,14 +329,15 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
                               const std::vector<QnnTensorWrapper>& tensor_wrappers,
                               bool is_input) {
+  size_t tensor_count = tensor_wrappers.size();
+  ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
   if (is_input) {
-    // Reserve qnn_tensor_infos according to the number of graph inputs.
+    // Resize qnn_tensor_infos according to the number of graph inputs.
     auto input_count = GetGraphInputCount();
-    ORT_RETURN_IF(0 == input_count, "Zero input number!");
+    ORT_RETURN_IF(input_count < tensor_count,
+                  "The count of graph inputs should be at least the count of tensor_wrapper!");
     qnn_tensor_infos.resize(input_count);
   } else {
-    size_t tensor_count = tensor_wrappers.size();
-    ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
     qnn_tensor_infos.resize(tensor_count);
   }
 
