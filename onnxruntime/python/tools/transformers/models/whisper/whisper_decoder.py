@@ -37,7 +37,13 @@ logger = logging.getLogger(__name__)
 class WhisperDecoder(torch.nn.Module):
     """A Whisper decoder with optional past key values"""
 
-    def __init__(self, config: WhisperConfig, model: torch.nn.Module, model_impl: str, no_beam_search_op: bool = False):
+    def __init__(
+        self,
+        config: WhisperConfig,
+        model: torch.nn.Module,
+        model_impl: str,
+        no_beam_search_op: bool = False,
+    ):
         super().__init__()
         self.config = config
         self.device = model.device
@@ -207,7 +213,12 @@ class WhisperDecoder(torch.nn.Module):
                 "encoder_hidden_states",
                 *list(
                     chain.from_iterable(
-                        (f"past_key_self_{i}", f"past_value_self_{i}", f"past_key_cross_{i}", f"past_value_cross_{i}")
+                        (
+                            f"past_key_self_{i}",
+                            f"past_value_self_{i}",
+                            f"past_key_cross_{i}",
+                            f"past_value_cross_{i}",
+                        )
                         for i in range(self.config.num_hidden_layers)
                     )
                 ),
@@ -266,7 +277,10 @@ class WhisperDecoder(torch.nn.Module):
                 * n_layers,
             ]
         else:
-            dynamic_shapes = [{0: "batch_size", 1: "sequence_length"}, {0: "batch_size"}]
+            dynamic_shapes = [
+                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
+            ]
         return dynamic_shapes
 
     def inputs(self, use_fp16_inputs: bool, use_int32_inputs: bool, return_dict: bool = False):
@@ -275,7 +289,7 @@ class WhisperDecoder(torch.nn.Module):
             self.device,
             batch_size=2,
             past_sequence_length=(0 if self.first_pass else 6),
-            sequence_length=(6 if self.first_pass else 1),
+            sequence_length=(6 if self.first_pass else 2),  # 2 is needed to make the dim dynamic
             use_fp16=use_fp16_inputs,
             use_int32=use_int32_inputs,
         )
@@ -506,7 +520,11 @@ class WhisperDecoder(torch.nn.Module):
         #    present_{key/value}_cross_* (present cross attention KV caches): (batch_size, num_heads, num_frames // 2, head_size)
 
         # Run PyTorch model
-        inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs, return_dict=True)
+        inputs = self.inputs(
+            use_fp16_inputs=use_fp16_inputs,
+            use_int32_inputs=use_int32_inputs,
+            return_dict=True,
+        )
         print(f"[verify_onnx] inputs={string_type(inputs, with_shape=True)}")
         pt_outputs = []
         if self.first_pass:
