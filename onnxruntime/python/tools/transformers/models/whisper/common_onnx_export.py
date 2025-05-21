@@ -23,6 +23,15 @@ if whisper:
             _PATCHED_CLASS_ = whisper.model.MultiHeadAttention
             _PATCHES_: ClassVar = ["qkv_attention"]
 
+            @classmethod
+            def _qkv_attentation_causal(cls, q, k, v, mask, condition):
+                return torch.cond(
+                    condition,
+                    lambda q, k, v: torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True),
+                    lambda q, k, v: torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=False),
+                    [q, k, v],
+                )
+
             def qkv_attention(self, q, k, v, mask=None):
                 # q.shape == k.shape == v.shape == torch.Size([2, 2, 384])
                 # mask.shape == torch.Size([448, 448])
@@ -34,18 +43,16 @@ if whisper:
                 if mask is None:
                     a = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=False)
                 else:
-                    a = torch.cond(
-                        q.shape[2] > 1,
-                        lambda q, k, v: torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True),
-                        lambda q, k, v: torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=False),
-                        [q, k, v],
-                    )
+                    a = self._qkv_attentation_causal(q, k, v, mask, q.shape[2] > 1)
                 out = a.permute(0, 2, 1, 3).flatten(start_dim=2)
                 qk = None
                 # out.shape == torch.Size([2, 2, 384])
                 return out, qk
 
-        _custom_patches.append(PatchedMultiHeadAttention)
+        # The patch does this:
+        # whisper.model.MultiHeadAttention.qkv_attention = patched_MultiHeadAttention.qkv_attention
+        # whisper.model.MultiHeadAttention._qkv_attentation_causal = patched_MultiHeadAttention._qkv_attentation_causal
+        _custom_patches.append(patched_MultiHeadAttention)
 
 
 def optimize_for_ort(
