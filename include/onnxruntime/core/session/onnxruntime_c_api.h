@@ -360,7 +360,7 @@ typedef struct OrtAllocator {
    * it returns ORT_NOT_IMPLEMENTED.
    */
   ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
-                 _Outptr_ char** stats);
+                  _Outptr_ char** stats);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
