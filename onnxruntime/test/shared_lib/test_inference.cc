@@ -1997,8 +1997,18 @@ TEST(CApiTest, get_allocator_cpu) {
   std::unordered_map<std::string, std::string> stats;
   auto status = cpu_allocator.GetStats(stats);
 
-  // TODO: Investigate why it fails in some CI builds.
-  EXPECT_TRUE(status.IsOK()) << status.GetErrorMessage();
+  if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ("1024", stats["InUse"]);
+    ASSERT_EQ("1024", stats["MaxInUse"]);
+    ASSERT_EQ("1024", stats["MaxAllocSize"]);
+    ASSERT_EQ("2", stats["NumAllocs"]);
+    ASSERT_EQ("0", stats["NumReserves"]);
+  } else {
+    // Device allocator does not support GetStats API
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
+  }
 }
 
 #ifdef USE_CUDA
@@ -2024,24 +2034,12 @@ TEST(CApiTest, get_allocator_cuda) {
 
   std::unordered_map<std::string, std::string> stats;
   auto status = cuda_allocator.GetStats(stats);
-  EXPECT_TRUE(status.IsOK());
-  ASSERT_EQ(1024, std::stoi(stats["InUse"]));
-
-  std::vector<std::string> expected_stats_keys = {
-      "Limit",
-      "InUse",
-      "TotalAllocated",
-      "MaxInUse",
-      "NumAllocs",
-      "NumReserves",
-      "NumArenaExtensions",
-      "NumArenaShrinkages",
-      "MaxAllocSize",
-  };
-
-  for (const auto& key : expected_stats_keys) {
-    ASSERT_TRUE(stats.find(key) != stats.end()) << "Missing key: " << key;
-  }
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ("1024", stats["InUse"]);
+  ASSERT_EQ("1024", stats["MaxInUse"]);
+  ASSERT_EQ("1024", stats["MaxAllocSize"]);
+  ASSERT_EQ("2", stats["NumAllocs"]);
+  ASSERT_EQ("0", stats["NumReserves"]);
 }
 #endif
 

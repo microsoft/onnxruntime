@@ -34,7 +34,7 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
 
-  // Default Allocator has no stats to report
+  // Default Allocator does not support GetStats
   std::unordered_map<std::string, std::string> stats;
   auto status = default_allocator.GetStats(stats);
   ASSERT_FALSE(status.IsOK());
