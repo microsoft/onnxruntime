@@ -12,7 +12,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
-from common_onnx_export import optimize_for_ort, _custom_patches
+from common_onnx_export import _custom_patches, optimize_for_ort
 from float16 import convert_float_to_float16
 from models.torch_export_patches import bypass_export_some_errors
 from onnx import ModelProto

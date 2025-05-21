@@ -13,7 +13,7 @@ from pathlib import Path
 import numpy as np
 import onnx
 import torch
-from common_onnx_export import optimize_for_ort, _custom_patches
+from common_onnx_export import _custom_patches, optimize_for_ort
 from float16 import convert_float_to_float16
 from google.protobuf.internal.containers import RepeatedCompositeFieldContainer
 from models.torch_export_patches import bypass_export_some_errors, string_type
@@ -460,8 +460,16 @@ class WhisperDecoder(torch.nn.Module):
                 dynamic_shapes = self.dynamic_shapes(inputs)
                 with bypass_export_some_errors(patch_transformers=True, custom_patches=_custom_patches):
                     self(*inputs)
-                    from onnx_diagnostic.torch_export_patches.patch_inputs import use_dyn_not_str
-                    ep = torch.export.export(self, inputs, dynamic_shapes=use_dyn_not_str(dynamic_shapes), strict=False)
+                    from onnx_diagnostic.torch_export_patches.patch_inputs import (
+                        use_dyn_not_str,
+                    )
+
+                    _ = torch.export.export(
+                        self,
+                        inputs,
+                        dynamic_shapes=use_dyn_not_str(dynamic_shapes),
+                        strict=False,
+                    )
                     torch.onnx.export(
                         self,
                         inputs,

@@ -4,8 +4,11 @@
 # license information.
 # --------------------------------------------------------------------------
 
+from typing import ClassVar
+
 import torch
 from onnxscript import ir
+
 try:
     import whisper
 except ImportError:
@@ -14,13 +17,11 @@ except ImportError:
 _custom_patches = []
 
 if whisper:
-
     if whisper.model.SDPA_AVAILABLE and whisper.model.MultiHeadAttention.use_sdpa:
 
-        class patched_MultiHeadAttention(torch.nn.Module):
-
+        class PatchedMultiHeadAttention(torch.nn.Module):
             _PATCHED_CLASS_ = whisper.model.MultiHeadAttention
-            _PATCHES_ = ["qkv_attention"]
+            _PATCHES_: ClassVar = ["qkv_attention"]
 
             def qkv_attention(self, q, k, v, mask=None):
                 # q.shape == k.shape == v.shape == torch.Size([2, 2, 384])
@@ -44,7 +45,7 @@ if whisper:
                 # out.shape == torch.Size([2, 2, 384])
                 return out, qk
 
-        _custom_patches.append(patched_MultiHeadAttention)
+        _custom_patches.append(PatchedMultiHeadAttention)
 
 
 def optimize_for_ort(
@@ -54,13 +55,12 @@ def optimize_for_ort(
     debug: bool = False,
 ) -> tuple[ir.Model, dict[str, int]]:
     from onnxscript.rewriter import rewrite
-    from onnxscript.rewriter.ort_fusions import (
-        # fused_matmul_rule_sets,
-        # group_normalization_merge_silu,
+    from onnxscript.rewriter.ort_fusions import (  # fused_matmul_rule_sets,; group_normalization_merge_silu,
         instance_to_group_normalization,
         softmax,
     )
     from onnxscript.rewriter.ort_fusions._core import fuse_xformers
+
     model, fusion_count = fuse_xformers(model, debug=debug)
     # Apply the ORT pattern rewrite rules.
     rewrite_rules = [
