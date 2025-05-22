@@ -117,17 +117,12 @@ void RunTest(const TestOptions& opts,
   std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
   std::vector<float> input1_f_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
-#if 0  // for Debugging
-  std::vector<float> input1_f_vals_trans(N * K);
-  MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
-#endif
-
   int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
   int64_t blob_size = (opts.block_size * QBits + 7) / 8;
-  int64_t q_scale_size = N * k_blocks;
-  int64_t q_data_size_in_bytes = N * k_blocks * blob_size;  // packed as UInt4x2
+  size_t q_scale_size = static_cast<size_t>(N * k_blocks);
+  size_t q_data_size_in_bytes = static_cast<size_t>(N * k_blocks * blob_size);  // packed as UInt4x2
   const int64_t zero_point_blob_size = (k_blocks * QBits + 7) / 8;
-  int64_t q_zp_size_in_bytes = N * zero_point_blob_size;  // packed as UInt4x2
+  size_t q_zp_size_in_bytes = static_cast<size_t>(N * zero_point_blob_size);  // packed as UInt4x2
 
   std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
   std::vector<float> scales(q_scale_size);
@@ -140,16 +135,6 @@ void RunTest(const TestOptions& opts,
                      static_cast<int32_t>(N),
                      static_cast<int32_t>(K),
                      static_cast<int32_t>(opts.block_size));
-
-#if 0
-  for (int i = 0; i < input1_vals.size(); i++)
-  {
-    uint8_t byte = input1_vals[i];
-    uint8_t val_lo = byte & 0x0f;
-    uint8_t val_hi = byte >> 4;
-    std::cout << (int)val_lo << ", " << (int)val_hi << ", ";
-  }
-#endif
 
   const std::vector<int64_t> bias_shape = {N};
   const auto bias = [&]() -> std::optional<std::vector<float>> {
