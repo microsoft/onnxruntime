@@ -16,6 +16,15 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
+  // Check if we can immediateately remove a very common case (casting to the same type as input).
+  if (optimizer_utils::IsAttributeWithExpectedValue(node, "to", static_cast<int64_t>(input_type->tensor_type().elem_type()))) {
+    graph_utils::RemoveNode(graph, node);
+    rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+
+    return Status::OK();
+  }
+
+  // If not, find the longest chain that repeats the pattern.
   Node* current = &node;
   Node* final_non_cast_node = &node;
   int matching_elem_type = input_type->tensor_type().elem_type();
@@ -45,15 +54,26 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     current = const_cast<Node*>(&*it);
   }
 
-  // The existing Cast nodes are all valid.
+  // No repeating pattern was found.
   if (to_remove.empty()) {
     return Status::OK();
   }
+
+  std::cout << "to remove size " << to_remove.size() << std::endl;
+
+  for (Node* n : to_remove) {
+    std::cout << "el is" << std::endl;
+    std::cout << n->Name() << " " << n->Index() << std::endl;
+  }
+
+  std::cout << "Explicit args count" << to_remove[0]->MutableInputArgsCount() << std::endl;
+  std::cout << "Explicit args count2 " << to_remove[0]->GetInputEdgesCount() << std::endl;
 
   rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   // First remove all outbound edges.
   for (Node* n : to_remove) {
+    std::cout << n->Name() << std::endl;
     graph_utils::RemoveNodeOutputEdges(graph, *n);
   }
 
