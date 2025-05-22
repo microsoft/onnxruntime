@@ -93,7 +93,7 @@
     },
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
-      "dependencies": [{ "name": "dawn", "platform": "!emscripten" }]
+      "dependencies": []
     }
   },
   "overrides": [
