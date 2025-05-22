@@ -283,7 +283,7 @@ def bypass_export_some_errors(
         ####################
         # patch transformers
         ####################
-
+        revert_patches_info = None
         if patch_transformers:
             if verbose:
                 import transformers
@@ -291,6 +291,7 @@ def bypass_export_some_errors(
                 print(f"[bypass_export_some_errors] transformers.__version__={transformers.__version__!r}")
             revert_patches_info = patch_module_or_classes(patch_transformers_list, verbose=verbose)
 
+        revert_custom_patches_info = None
         if custom_patches:
             if verbose:
                 print("[bypass_export_some_errors] applies custom patches")
@@ -369,6 +370,7 @@ def bypass_export_some_errors(
             if custom_patches:
                 if verbose:
                     print("[bypass_export_some_errors] unpatch custom patches")
+                assert revert_custom_patches_info is not None
                 unpatch_module_or_classes(custom_patches, revert_custom_patches_info, verbose=verbose)
 
             ##############
@@ -378,6 +380,7 @@ def bypass_export_some_errors(
             if patch_transformers:
                 if verbose:
                     print("[bypass_export_some_errors] unpatch transformers")
+                assert revert_patches_info is not None
                 unpatch_module_or_classes(patch_transformers_list, revert_patches_info, verbose=verbose)
 
             ########
