@@ -1569,10 +1569,6 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
 
 ORT_API_STATUS_IMPL(OrtApis::AllocatorGetStats, _In_ const OrtAllocator* ptr, _Inout_ OrtAllocator* allocator, _Outptr_ char** out) {
   API_IMPL_BEGIN
-  if (ptr->GetStats == nullptr) {
-    out = nullptr;
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported by the allocator");
-  }
   return ptr->GetStats(ptr, allocator, out);
   API_IMPL_END
 }
