@@ -26,7 +26,6 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.h"
 
-namespace tk = onnxruntime::llm::common;
 namespace tkc = onnxruntime::llm::cutlass_extensions;
 
 using namespace cute;
@@ -62,8 +61,7 @@ void sm90_dispatch_epilogue_schedules(ActivationType const* A, WeightType const*
             occupancy);
         break;
     default:
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_epilogue_schedules] epilogue schedule config is invalid for "
+        ORT_THROW("[fpA_intB_gemm][sm90_dispatch_epilogue_schedules] epilogue schedule config is invalid for "
             "mixed type GEMM.");
         break;
     }
@@ -134,8 +132,7 @@ void sm90_dispatch_mainloop_schedules(ActivationType const* A, WeightType const*
                 biases, alpha, C, m, n, k, group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
             break;
         default:
-            throw std::runtime_error(
-                "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_mainloop_schedules] mainloop schedule config is invalid "
+            ORT_THROW("[fpA_intB_gemm][sm90_dispatch_mainloop_schedules] mainloop schedule config is invalid "
                 "for "
                 "mixed type GEMM.");
             break;
@@ -143,8 +140,7 @@ void sm90_dispatch_mainloop_schedules(ActivationType const* A, WeightType const*
     }
     else
     {
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_mainloop_schedules] Unsupported CTA and Cluster shapes for "
+        ORT_THROW("[fpA_intB_gemm][sm90_dispatch_mainloop_schedules] Unsupported CTA and Cluster shapes for "
             "mixed type GEMM.");
     }
 }
@@ -180,8 +176,7 @@ void sm90_dispatch_gemm_config(ActivationType const* A, WeightType const* B, Sca
             k, group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
         break;
     default:
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][dispatch_CGA_config] Config is invalid for mixed type GEMM.");
+        ORT_THROW("[fpA_intB_gemm][dispatch_CGA_config] Config is invalid for mixed type GEMM.");
         break;
     }
 }
@@ -253,17 +248,14 @@ void sm90_dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B,
             gemm_config, workspace, workspace_bytes, stream, occupancy);
         break;
     case tkc::CutlassTileConfigSM90::Undefined:
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_gemm_to_cutlass] gemm config undefined.");
+        ORT_THROW("[fpA_intB_gemm][sm90_dispatch_gemm_to_cutlass] gemm config undefined.");
         break;
     case tkc::CutlassTileConfigSM90::ChooseWithHeuristic:
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_gemm_to_cutlass] gemm config should have already been set by "
+        ORT_THROW("[fpA_intB_gemm][sm90_dispatch_gemm_to_cutlass] gemm config should have already been set by "
             "heuristic.");
         break;
     default:
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][fpA_intB][sm90_dispatch_gemm_to_cutlass] Config is invalid for mixed type GEMM.");
+        ORT_THROW("[fpA_intB_gemm][sm90_dispatch_gemm_to_cutlass] Config is invalid for mixed type GEMM.");
         break;
     }
 }

@@ -189,7 +189,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 
         if (weight_scales == nullptr)
         {
-            throw std::runtime_error("Weight scales must always be set to a non-null value.");
+            ORT_THROW("Weight scales must always be set to a non-null value.");
         }
 
         if constexpr (cutlass::isFinegrained(QuantOp))
@@ -198,21 +198,21 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
             if (group_size % cta_shape_k != 0)
             {
                 std::string err_msg = "The group size must a multiple of " + std::to_string(cta_shape_k);
-                throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner]" + err_msg);
+                ORT_THROW("[fpA_intB_gemm] ", err_msg);
             }
 
             if constexpr (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY)
             {
                 if (weight_zero_points != nullptr)
                 {
-                    throw std::runtime_error("Weight zero pointer must be a nullptr for scale only fine grained");
+                    ORT_THROW("Weight zero pointer must be a nullptr for scale only fine grained");
                 }
             }
             else if constexpr (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS)
             {
                 if (weight_zero_points == nullptr)
                 {
-                    throw std::runtime_error("Weight zero pointer must be valid for scale and bias fine grained");
+                    ORT_THROW("Weight zero pointer must be valid for scale and bias fine grained");
                 }
             }
         }
@@ -220,12 +220,12 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         {
             if (group_size != k)
             {
-                throw std::runtime_error("Invalid group size for per column scaling kernels.");
+                ORT_THROW("Invalid group size for per column scaling kernels.");
             }
 
             if (weight_zero_points != nullptr)
             {
-                throw std::runtime_error("Weight zero-points must be null when running per column scaling");
+                ORT_THROW("Weight zero-points must be null when running per column scaling");
             }
         }
 
@@ -254,7 +254,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         Gemm gemm;
         if (gemm.get_workspace_size(args) > workspace_bytes)
         {
-            ORT_LLM_LOG_ERROR("[OnnxRuntime-LLM Error][fpA_intB Runner] given workspace size insufficient.");
+            ORT_LLM_LOG_ERROR("[fpA_intB_gemm] given workspace size insufficient.");
         }
 
         auto can_implement = gemm.can_implement(args);
@@ -262,8 +262,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         {
             std::string err_msg = "fpA_intB cutlass kernel will fail for params. Error: "
                 + std::string(cutlassGetStatusString(can_implement));
-            std::cout << err_msg << std::endl;
-            throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+            ORT_THROW("[fpA_intB_gemm] ", err_msg);
         }
 
         auto init_status = gemm.initialize(args, workspace, stream);
@@ -271,7 +270,7 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         {
             std::string err_msg = "Failed to initialize cutlass fpA_intB gemm. Error: "
                 + std::string(cutlassGetStatusString(init_status));
-            throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+            ORT_THROW("[fpA_intB_gemm] " + err_msg);
         }
 
         auto run_status = gemm.run(stream);
@@ -279,24 +278,22 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
         {
             std::string err_msg
                 = "Failed to run cutlass fpA_intB gemm. Error: " + std::string(cutlassGetStatusString(run_status));
-            throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+            ORT_THROW("[fpA_intB_gemm] " + err_msg);
         }
     }
     else
     {
         std::stringstream ss;
-        ss << "[OnnxRuntime-LLM Error][fpA_intB Runner] Config (" << (int64_t) cute::size<0>(CTAShape{}) << ","
+        ss << "[fpA_intB_gemm] Config (" << (int64_t) cute::size<0>(CTAShape{}) << ","
            << (int64_t) cute::size<1>(CTAShape{}) << "," << (int64_t) cute::size<2>(CTAShape{}) << ") ("
            << (int64_t) cute::size<0>(ClusterShape{}) << "," << (int64_t) cute::size<1>(ClusterShape{}) << ","
            << (int64_t) cute::size<2>(ClusterShape{}) << ") not compiled with FAST_BUILD.";
 
-        throw std::runtime_error(ss.str());
+        ORT_THROW(ss.str());
     }
 
 #else  // COMPILE_HOPPER_TMA_GEMMS
-    throw std::runtime_error(
-        "[OnnxRuntime-LLM Error][fpA_intB Runner] Please recompile with support for hopper by passing 90-real as an arch "
-        "to build_wheel.py.");
+    ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90-real as an arch.");
 #endif // COMPILE_HOPPER_TMA_GEMMS
 }
 

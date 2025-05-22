@@ -130,7 +130,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
 
     if (weight_scales == nullptr)
     {
-        throw std::runtime_error("Weight scales must always be set to a non-null value.");
+        ORT_THROW("Weight scales must always be set to a non-null value.");
     }
 
     if constexpr (cutlass::isFinegrained(QuantOp))
@@ -139,26 +139,26 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
         {
             if (group_size != 128)
             {
-                throw std::runtime_error("Only group size 128 supported for fine grained W4A(fp)8 kernels.");
+                ORT_THROW("Only group size 128 supported for fine grained W4A(fp)8 kernels.");
             }
         }
         if (group_size != 64 && group_size != 128)
         {
-            throw std::runtime_error("Only group size 64 and 128 supported for fine grained kernels.");
+            ORT_THROW("Only group size 64 and 128 supported for fine grained kernels.");
         }
 
         if constexpr (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY)
         {
             if (weight_zero_points != nullptr)
             {
-                throw std::runtime_error("Weight zero pointer must be a nullptr for scale only fine grained");
+                ORT_THROW("Weight zero pointer must be a nullptr for scale only fine grained");
             }
         }
         else if constexpr (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS)
         {
             if (weight_zero_points == nullptr)
             {
-                throw std::runtime_error("Weight zero pointer must be valid for scale and bias fine grained");
+                ORT_THROW("Weight zero pointer must be valid for scale and bias fine grained");
             }
         }
     }
@@ -166,12 +166,12 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
     {
         if (group_size != k)
         {
-            throw std::runtime_error("Invalid group size for per column scaling kernels.");
+            ORT_THROW("Invalid group size for per column scaling kernels.");
         }
 
         if (weight_zero_points != nullptr)
         {
-            throw std::runtime_error("Weight zero-points must be null when running per column scaling");
+            ORT_THROW("Weight zero-points must be null when running per column scaling");
         }
     }
 
@@ -194,7 +194,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
         && ((k % MixedGemmArchTraits::ThreadblockK)
             || ((k / gemm_config.split_k_factor) % MixedGemmArchTraits::ThreadblockK)))
     {
-        throw std::runtime_error("Temp assertion: k must be multiple of threadblockK");
+        ORT_THROW("Temp assertion: k must be multiple of threadblockK");
     }
 
     Gemm gemm;
@@ -211,7 +211,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
     {
         std::string err_msg = "fpA_intB cutlass kernel will fail for params. Error: "
             + std::string(cutlassGetStatusString(can_implement));
-        throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
 
     auto init_status = gemm.initialize(args, workspace, stream);
@@ -219,7 +219,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
     {
         std::string err_msg
             = "Failed to initialize cutlass fpA_intB gemm. Error: " + std::string(cutlassGetStatusString(init_status));
-        throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
 
     auto run_status = gemm.run(stream);
@@ -227,7 +227,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
     {
         std::string err_msg
             = "Failed to run cutlass fpA_intB gemm. Error: " + std::string(cutlassGetStatusString(run_status));
-        throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB Runner] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
 }
 
@@ -249,14 +249,14 @@ void filter_and_run_mixed_gemm(ActivationType const* A, WeightType const* B, Sca
         // Multistage only supported on Ampere
         std::string err_msg = "Cutlass fpA_intB gemm not supported for arch "
             + std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
-        throw std::runtime_error("[OnnxRuntime-LLM Error][filter_and_run_mixed_gemm] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
     else if constexpr (Stages == 2 && arch::kMinComputeCapability >= 89)
     {
         // Multistage only supported on Ampere
         std::string err_msg = "Cutlass fpA_intB gemm not supported for arch "
             + std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
-        throw std::runtime_error("[OnnxRuntime-LLM Error][filter_and_run_mixed_gemm] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
     else if constexpr (cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value
         && arch::kMinComputeCapability < 89)
@@ -264,7 +264,7 @@ void filter_and_run_mixed_gemm(ActivationType const* A, WeightType const* B, Sca
         // FP8 activation type only supported on Ada+ GPUs
         std::string err_msg = "Cutlass fpA_intB gemm not supported for arch "
             + std::to_string(arch::kMinComputeCapability) + " with activation type set to FP8";
-        throw std::runtime_error("[OnnxRuntime-LLM Error][filter_and_run_mixed_gemm] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
     }
     else
     {
@@ -303,7 +303,7 @@ void dispatch_gemm_config(ActivationType const* A, WeightType const* B, ScaleZer
         break;
     default:
         std::string err_msg = "dispatch_gemm_config does not support stages " + std::to_string(gemm_config.stages);
-        throw std::runtime_error("[OnnxRuntime-LLM Error][dispatch_gemm_config] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
         break;
     }
 }
@@ -372,16 +372,16 @@ void dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B, Scal
                 C, m, n, k, group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
             break;
         case tkc::CutlassTileConfig::Undefined:
-            throw std::runtime_error("[OnnxRuntime-LLM Error][fpA_intB][dispatch_gemm_to_cutlass] gemm config undefined.");
+            ORT_THROW("[fpA_intB_gemm] Error:[dispatch_gemm_to_cutlass] gemm config undefined.");
             break;
         case tkc::CutlassTileConfig::ChooseWithHeuristic:
-            throw std::runtime_error(
-                "[OnnxRuntime-LLM Error][fpA_intB][dispatch_gemm_to_cutlass] gemm config should have already been set by "
+            ORT_THROW(
+                "[fpA_intB_gemm] Error:[dispatch_gemm_to_cutlass] gemm config should have already been set by "
                 "heuristic.");
             break;
         default:
-            throw std::runtime_error(
-                "[OnnxRuntime-LLM Error][fpA_intB][dispatch_gemm_to_cutlass] Config is invalid for mixed type GEMM.");
+            ORT_THROW(
+                "[fpA_intB_gemm] Error:[dispatch_gemm_to_cutlass] Config is invalid for mixed type GEMM.");
             break;
         }
     }
@@ -389,7 +389,7 @@ void dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B, Scal
     {
         // This is not a limitation in CUTLASS. We just do not need to support this case.
         std::string err_msg = "The activation type must equal the scale, bias and output types on Ampere and earlier.";
-        throw std::runtime_error("[OnnxRuntime-LLM Error][dispatch_gemm_to_cutlass] " + err_msg);
+        ORT_THROW("[fpA_intB_gemm] Error: [dispatch_gemm_to_cutlass] ", err_msg);
     }
 }
 
@@ -444,9 +444,8 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
 #if ENABLE_FP8 && ((__CUDACC_VER_MAJOR__ < 12) || (__CUDACC_VER_MAJOR__ == 12 && __CUDACC_VER_MINOR__ < 4))
         if constexpr (cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value)
         {
-            throw std::runtime_error(
-                "[OnnxRuntime-LLM Error][CutlassFpAIntBGemmRunner][dispatch_to_arch] INT4xFP8 GEMM for Ada needs "
-                "CUDA>=12.4");
+            ORT_THROW(
+                "[fpA_intB_gemm] Error: INT4xFP8 GEMM for Ada needs CUDA>=12.4");
         }
 #endif
         dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm89,
@@ -464,9 +463,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     }
     else
     {
-        throw std::runtime_error(
-            "[OnnxRuntime-LLM Error][CutlassFpAIntBGemmRunner][dispatch_to_arch] Arch unsupported for CUTLASS mixed type "
-            "GEMM");
+        ORT_THROW("[fpA_intB_gemm] Error:Arch unsupported for CUTLASS mixed type GEMM");
     }
 }
 
@@ -487,8 +484,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     }
     else
     {
-        throw std::runtime_error(
-            "Overload with scale, zero and group size only supported for fine grained bias template.");
+        ORT_THROW("Overload with scale, zero and group size only supported for fine grained bias template.");
     }
 }
 
@@ -520,7 +516,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     }
     else
     {
-        throw std::runtime_error("Overload with scale only (and no group size) only supported for per column scaling.");
+        ORT_THROW("Overload with scale only (and no group size) only supported for per column scaling.");
     }
 }
 
