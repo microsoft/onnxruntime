@@ -168,14 +168,38 @@ class BucketCacheManager : public IBufferCacheManager {
     Initialize();
   }
 
+  void OnRunStart() override {
+    current_run_usage_.clear();
+  }
+
+  void OnRunEnd() override {
+    // Update memory patterns based on this run
+    for (const auto& usage : current_run_usage_) {
+      auto& pattern = memory_patterns_[usage.first];
+      pattern.request_size = usage.first;
+      pattern.frequency++;
+      pattern.max_concurrent_use = std::max(pattern.max_concurrent_use, usage.second);
+    }
+
+    // After several runs, adjust bucket sizes
+    if (++run_count_ >= kRunsBeforeAdjustment) {
+      AdjustBuckets();
+      run_count_ = 0;
+    }
+  }
+
   size_t CalculateBufferSize(size_t request_size) override {
-    // binary serch size
+    request_size = NormalizeBufferSize(request_size);
+
+    // Track usage for the current run
+    current_run_usage_[request_size]++;
+
+    // Find appropriate bucket size
     auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
     if (it == buckets_keys_.end()) {
-      return NormalizeBufferSize(request_size);
-    } else {
-      return *it;
+      return request_size;
     }
+    return *it;
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
@@ -197,8 +221,6 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void OnRefresh() override {
-    // TODO: consider graph capture. currently not supported
-
     for (auto& buffer : pending_buffers_) {
       auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
 
@@ -211,6 +233,82 @@ class BucketCacheManager : public IBufferCacheManager {
     }
 
     pending_buffers_.clear();
+  }
+
+  // Analyze memory patterns and adjust bucket sizes
+  void AdjustBuckets() {
+    std::vector<MemoryUsagePattern> patterns;
+    for (const auto& pair : memory_patterns_) {
+      patterns.push_back(pair.second);
+    }
+
+    // Sort by frequency and size to identify important patterns
+    std::sort(patterns.begin(), patterns.end(),
+              [](const MemoryUsagePattern& a, const MemoryUsagePattern& b) {
+                if (a.frequency == b.frequency)
+                  return a.request_size < b.request_size;
+                return a.frequency > b.frequency;
+              });
+
+    // Store old buckets to handle transitions
+    auto old_buckets = std::move(buckets_);
+    auto old_limits = std::move(buckets_limit_);
+
+    // Clear and recreate buckets structure
+    buckets_keys_.clear();
+    buckets_.clear();
+    buckets_limit_.clear();
+
+    // Create new buckets based on patterns
+    for (const auto& pattern : patterns) {
+      if (pattern.frequency >= kMinFrequencyThreshold) {
+        size_t bucket_size = NormalizeBufferSize(pattern.request_size);
+        buckets_keys_.push_back(bucket_size);
+
+        // Calculate new limit based primarily on max concurrent use with some headroom
+        size_t new_limit = static_cast<size_t>(pattern.max_concurrent_use * kHeadroomFactor);
+        buckets_limit_[bucket_size] = new_limit;
+
+        // Initialize bucket vector
+        auto& bucket = buckets_[bucket_size];
+
+        // If this size existed before, transfer buffers up to new limit
+        auto old_bucket_it = old_buckets.find(bucket_size);
+        if (old_bucket_it != old_buckets.end()) {
+          size_t transfer_count = std::min(old_bucket_it->second.size(), new_limit);
+          bucket.reserve(transfer_count);
+
+          // Transfer buffers from old to new bucket
+          for (size_t i = 0; i < transfer_count; ++i) {
+            bucket.push_back(old_bucket_it->second[i]);
+          }
+
+          // Release any excess buffers
+          for (size_t i = transfer_count; i < old_bucket_it->second.size(); ++i) {
+            wgpuBufferRelease(old_bucket_it->second[i]);
+          }
+
+          old_bucket_it->second.clear();
+        }
+      }
+    }
+
+    // Sort bucket sizes
+    std::sort(buckets_keys_.begin(), buckets_keys_.end());
+
+    // Remove duplicates
+    buckets_keys_.erase(std::unique(buckets_keys_.begin(), buckets_keys_.end()),
+                        buckets_keys_.end());
+
+    // Release any remaining buffers in old buckets
+    for (auto& pair : old_buckets) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+
+    // Clear patterns for next adjustment period
+    memory_patterns_.clear();
   }
 
   ~BucketCacheManager() {
@@ -243,6 +341,15 @@ class BucketCacheManager : public IBufferCacheManager {
     }
 #endif
   }
+
+ private:
+  static constexpr size_t kRunsBeforeAdjustment = 5;   // Number of runs before adjusting buckets
+  static constexpr size_t kMinFrequencyThreshold = 3;  // Minimum frequency to create a bucket
+  static constexpr float kHeadroomFactor = 1.1f;       // Add 10% headroom to max concurrent use
+
+  size_t run_count_{0};
+  std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current run
+  std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across runs
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<WGPUBuffer> pending_buffers_;
