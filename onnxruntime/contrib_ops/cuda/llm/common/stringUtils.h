@@ -47,41 +47,6 @@ static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& str
 template <typename... Args>
 std::ostream& operator<<(std::ostream& os, std::tuple<Args...> const& t);
 
-namespace
-{
-
-// Print element - default case for non-tuple types
-template <typename T>
-void printElement(std::ostream& os, T const& t)
-{
-    os << t;
-}
-
-// Print tuple implementation
-template <typename Tuple, std::size_t... Is>
-void printTupleImpl(std::ostream& os, Tuple const& t, std::index_sequence<Is...>)
-{
-    os << "(";
-    ((Is == 0 ? os : (os << ", "), printElement(os, std::get<Is>(t))), ...);
-    os << ")";
-}
-
-// Print element - specialized for tuples
-template <typename... Args>
-void printElement(std::ostream& os, std::tuple<Args...> const& t)
-{
-    printTupleImpl(os, t, std::index_sequence_for<Args...>{});
-}
-
-} // namespace
-
-// Override operator<< for any tuple
-template <typename... Args>
-std::ostream& operator<<(std::ostream& os, std::tuple<Args...> const& t)
-{
-    printElement(os, t);
-    return os;
-}
 
 template <typename... Args>
 std::string to_string(std::tuple<Args...> const& t)
@@ -113,49 +78,5 @@ std::string fmtstr(char const* format, ...) __attribute__((format(printf, 1, 2))
 #define __PRETTY_FUNCTION__ __FUNCSIG__
 #endif
 
-auto constexpr kDefaultDelimiter = ", ";
-
-template <typename U, typename TStream, typename T>
-inline TStream& arr2outCasted(TStream& out, T* arr, size_t size, char const* delim = kDefaultDelimiter)
-{
-    out << "(";
-    if (size > 0)
-    {
-        for (size_t i = 0; i < size - 1; ++i)
-        {
-            out << static_cast<U>(arr[i]) << delim;
-        }
-        out << static_cast<U>(arr[size - 1]);
-    }
-    out << ")";
-    return out;
-}
-
-template <typename TStream, typename T>
-inline TStream& arr2out(TStream& out, T* arr, size_t size, char const* delim = kDefaultDelimiter)
-{
-    return arr2outCasted<T>(out, arr, size, delim);
-}
-
-template <typename T>
-inline std::string arr2str(T* arr, size_t size, char const* delim = kDefaultDelimiter)
-{
-    std::stringstream ss;
-    return arr2out(ss, arr, size, delim).str();
-}
-
-template <typename T>
-inline std::string vec2str(std::vector<T> const& vec, char const* delim = kDefaultDelimiter)
-{
-    return arr2str(vec.data(), vec.size(), delim);
-}
-
-inline bool strStartsWith(std::string const& str, std::string const& prefix)
-{
-    return str.rfind(prefix, 0) == 0;
-}
-
-/// @brief Split a string into a set of strings using a delimiter
-std::unordered_set<std::string> str2set(std::string const& input, char delimiter);
 
 } // namespace onnxruntime::llm::common

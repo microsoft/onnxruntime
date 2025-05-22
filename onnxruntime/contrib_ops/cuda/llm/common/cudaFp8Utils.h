@@ -29,6 +29,7 @@
 #define USE_QGMMA
 #endif
 
+/*
 namespace onnxruntime::llm
 {
 namespace common
@@ -300,25 +301,8 @@ __inline__ __device__ half2 fp8x2_e4m3_to_half2(__nv_fp8x2_e4m3 const* in)
     return out;
 }
 
-template <typename T_OUT, typename T_S, typename T_IN>
-void invokeQuantizeMatrix(T_OUT* output, T_S const* input_qua_amax_ptr, T_IN const* input, int64_t numel, int64_t lda,
-    QuantizeMode quantize_mode, cudaStream_t stream);
-
-template <typename T_OUT, typename T_S, typename T_IN>
-void invokeDequantizeMatrix(T_OUT* output, T_S const* input_qua_amax_ptr, T_IN const* input, int64_t numel, int64_t lda,
-    QuantizeMode quantize_mode, cudaStream_t stream);
-
-template <typename T_FAKE, typename T_OUT, typename T_IN>
-void invokeFakeQuantize(T_OUT* dst, const T_IN* src, const int64_t numel, cudaStream_t stream);
-
-template <typename T_S, typename T_W>
-void invokeComputeFP8QuantizeScale(T_S* quant_ptr, const T_W* weights, const int64_t k, const int64_t lda,
-    QuantizeMode quantize_mode, cudaStream_t stream);
-
-template <typename T_OUT, typename T_S, typename T_IN>
-void invokeComputeScalesAndQuantizeMatrix(T_OUT* output, T_S* quant_ptr, const T_IN* weights, const int64_t numel,
-    const int64_t lda, QuantizeMode quantize_mode, cudaStream_t stream);
-
 } // namespace common
 } // namespace onnxruntime::llm
+*/
+
 #endif // ENABLE_FP8

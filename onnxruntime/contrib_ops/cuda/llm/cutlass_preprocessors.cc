@@ -215,11 +215,11 @@ void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t con
     int const num_vec_cols = num_cols / elts_in_int32;
 
     ORT_ENFORCE(num_rows % B_ROWS_PER_MMA == 0,
-        fmtstr("Invalid shape for quantized tensor. Number of rows of quantized matrix must be a multiple of %d",
-            B_ROWS_PER_MMA));
+                "Invalid shape for quantized tensor. Number of rows of quantized matrix must be a multiple of ",
+                B_ROWS_PER_MMA);
     ORT_ENFORCE(num_cols % MMA_SHAPE_N == 0,
-        fmtstr("Invalid shape for quantized tensor. On turing/Ampere, the number of cols must be a multiple of %d.",
-            MMA_SHAPE_N));
+                "Invalid shape for quantized tensor. On turing/Ampere, the number of cols must be a multiple of ",
+                MMA_SHAPE_N);
 
     ORT_ENFORCE(size_t(B_ROWS_PER_MMA) == row_permutation.size(), "Unexpected number of LDSM rows permuted.");
 

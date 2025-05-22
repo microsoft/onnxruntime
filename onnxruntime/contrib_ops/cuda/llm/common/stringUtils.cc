@@ -56,22 +56,4 @@ std::string fmtstr(char const* format, ...)
     return result;
 };
 
-std::unordered_set<std::string> str2set(std::string const& input, char delimiter)
-{
-    std::unordered_set<std::string> values;
-    if (!input.empty())
-    {
-        std::stringstream valStream(input);
-        std::string val;
-        while (std::getline(valStream, val, delimiter))
-        {
-            if (!val.empty())
-            {
-                values.insert(val);
-            }
-        }
-    }
-    return values;
-};
-
 } // namespace onnxruntime::llm::common
