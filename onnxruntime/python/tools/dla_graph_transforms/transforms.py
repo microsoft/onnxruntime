@@ -42,17 +42,40 @@ def get_tensor_shape_map(graph_value_info):
     tensor_name_dim_map = {}
     for value_info in graph_value_info:
         tensor_type = value_info.type.tensor_type
-        shape = []
+        dims = 0
         if (tensor_type.HasField("shape")):
             for d in tensor_type.shape.dim:
                 # the dimension may have a definite (integer) value or a symbolic identifier or neither:
                 if d.HasField("dim_value"):
-                    shape.append(d.dim_value)
+                    dims += 1
                 else:
-                    shape.append(0)
+                    dims = -1
                     break
-        tensor_name_dim_map[value_info.name] = shape
+        tensor_name_dim_map[value_info.name] = dims
     return tensor_name_dim_map
+
+def get_tensor_shape(graph_value_info, tensor_name):
+    # print(f"Looking for tensor={tensor_name} in graph_value_info")
+    # if tensor_name == "/model/transformer/decoder/layers.1/self_attn/Div_1_output_0":
+    #     # print(graph_value_info)
+    #     for value_info in graph_value_info:
+    #         print(f"  - {value_info.name}")
+    for value_info in graph_value_info:
+        if value_info.name == tensor_name:
+            print(f"Found tensor {tensor_name} in value_info value_info={value_info}")
+            tensor_type = value_info.type.tensor_type
+            if tensor_type.HasField("shape"):
+                shape = []
+                for dim in tensor_type.shape.dim:
+                    if dim.HasField("dim_value"):
+                        shape.append(dim.dim_value)
+                    elif dim.HasField("dim_param"):
+                        # For symbolic dimensions, you could use -1 or the parameter name
+                        shape.append(-1)
+                    else:
+                        shape.append(-1)
+                return shape
+    return None  # Tensor name not found
 
 def get_initializer_by_name(model, init_name):
     for init in model.graph.initializer:
@@ -79,117 +102,135 @@ def calculate_clip_range(node, model):
 ###
 # Start of transform_* functions
 ###
-
-###
-# Replace 2D Gemm/MatMul with Transpose and 1x1 Conv​
-#
-# Modification requirement:
-# When C==1, convert it to 1x1 Conv using TRANSPOSE + CONV + TRANSPOSE sequence
-###
 def transform_matmul_to_transpose_conv_transpose(model):
     cnt = 0
     graph = model.graph
     tensor_name_dim_map = get_tensor_shape_map(graph.value_info)
+    # print(f"tensor_name_dim_map={tensor_name_dim_map}")
     initializer_dim_map =  {init.name: len(init.dims) for init in graph.initializer}
     nodes_to_remove = []
     for node in graph.node:
+        # if node.op_type == 'MatMul' or node.op_type == 'Gemm' and node.name not in ["/model/transformer/decoder/layers.1/self_attn/MatMul_3"]:
         if node.op_type == 'MatMul' or node.op_type == 'Gemm':
             need_transform = False
+            all_inputs_3d = True
             for input in node.input:
-                # Input is either in initializer or value_info 
-                if (input in initializer_dim_map and initializer_dim_map[input] != 4) or input in tensor_name_dim_map and len(tensor_name_dim_map[input]) != 4:
+                # Check if input is in initializer or value_info
+                if input in initializer_dim_map:
+                    dim = initializer_dim_map[input]
+                elif input in tensor_name_dim_map:
+                    dim = tensor_name_dim_map[input]
+                else:
+                    # If we can't determine the dimension, assume it needs transform
                     need_transform = True
+                    all_inputs_3d = False
                     break
+                    
+                # Check if input is not 4D
+                if dim != 4:
+                    need_transform = True
+                    
+                # Check if input is not 3D
+                if dim != 3:
+                    all_inputs_3d = False
+            
+            # If all inputs are 3D, don't transform
+            if all_inputs_3d:
+                need_transform = False
+
             if need_transform:
                 nodes_to_remove.append(node)
             else:
                 print(f" Skipped MatMul/Gemm node {node.name} as both inputs are 4D")
-
-    initializers_to_remove = []
-    initializers_to_add = []
-
+    # print(f"nodes_to_remove={[node.name for node in nodes_to_remove]}")
     for node in nodes_to_remove:
+        # print(f"input[0]={node.input[0]}")
+        input0_shape = get_tensor_shape(graph.value_info, node.input[0])
+        input1_shape = get_tensor_shape(graph.value_info, node.input[1])
         matmul_node_name = node.name
-        nodes_to_add = []
-            
-        # Check the first input to Gemm/MatMul.
-        # If C (channel) dimesion is 1, needs to add Transposes around Conv.
-        # Otherwise, no need to add Transposes for now.
-        def check_to_apply_transpose(conv_node):
-            input = conv_node.input[0]
-            if input in tensor_name_dim_map:
-                shape = tensor_name_dim_map[input]
-                if len(shape) == 2 and shape[0] != 1 and shape[1] != 1:  # The 2D tesnor (MxN, width and height) will later adding leading dimensions to 4D with 1x1xMxN
-                    return True
-                if len(shape) == 3 and shape[0] == 1: # C == 1
-                    return True
-                if len(shape) == 4 and shape[1] == 1: # C == 1
-                    return True
-                if len(shape) == 4 and shape[2] != 1 and shape[3] != 1: # In some cases, C != 1 but it still needs the transpose
-                    return True
-            # Otherwise, we considered the input tensor has been "transposed" to perform 1x1 Conv
-            return False
-
-        need_to_apply_transpose = check_to_apply_transpose(node)
         graph.node.remove(node)
+        skip_transpose = False
+        # if node.name == "/model/transformer/decoder/layers.1/self_attn/MatMul_3":
+        #     skip_transpose = True
+        if skip_transpose:
+            conv_inputs = [node.input[0], node.input[1]]
+            if len(node.input) == 3: # Gemm has optional third input
+                conv_inputs.append(node.input[2])
+            conv_node = helper.make_node(
+                'Conv',
+                inputs=conv_inputs,
+                outputs=node.output,
+                name=matmul_node_name + '_conv'
+            )
+            if node.name == "/model/transformer/decoder/layers.1/self_attn/MatMul_3":
+            # if input0_shape and input1_shape and input0_shape[0] != input1_shape[0]
+                # if len(input0_shape) == 3 and input0_shape[2] > 1:  # If C_in > 1
+                kernel_shape_attr = helper.make_attribute('kernel_shape', [1, 1])
+                conv_node.attribute.append(kernel_shape_attr)
 
-        # Add Transpose if needed
-        if need_to_apply_transpose:           
+                # pads_attr = helper.make_attribute('pads', [0, 0, 0, 0])
+                # conv_node.attribute.append(pads_attr)
+
+                # strides_attr = helper.make_attribute('strides', [1, 1])
+                # conv_node.attribute.append(strides_attr)
+                print("Adding group attribute to Conv node")
+                # Add group attribute to match channel count
+                group_attr = helper.make_attribute('group', 8)
+                conv_node.attribute.append(group_attr)
+            graph.node.extend([conv_node])
+        else:
             transpose_before_node = helper.make_node(
                 'Transpose',
                 inputs=[node.input[0]],
+
                 outputs=[matmul_node_name + '_transpose_before_output'],
                 name=matmul_node_name + '_transpose_before',
                 perm=[0,3,2,1]
             )
-            nodes_to_add.append(transpose_before_node)
             conv_inputs = [matmul_node_name + '_transpose_before_output', node.input[1]]
-        else:
-            conv_inputs = [node.input[0], node.input[1]]
+            if len(node.input) == 3: # Gemm has optional third input
+                conv_inputs.append(node.input[2])
+            conv_node = helper.make_node(
+                'Conv',
+                inputs=conv_inputs,
+                outputs=[matmul_node_name + '_transpose_output'],
+                name=matmul_node_name + '_conv'
+            )
+            print(f"input0_shape={input0_shape}")
+            # if input0_shape[0] != input1_shape[0]:
+            # group = input0_shape[0] / input1_shape[0]
+            # kernel = [1,1]
+            # if node.name == "/model/transformer/decoder/layers.1/self_attn/MatMul_3":
+            # # if input0_shape and input1_shape and input0_shape[0] != input1_shape[0]
+            #     # if len(input0_shape) == 3 and input0_shape[2] > 1:  # If C_in > 1
+            #     kernel_shape_attr = helper.make_attribute('kernel_shape', [1, 1])
+            #     conv_node.attribute.append(kernel_shape_attr)
 
-        if len(node.input) == 3: # Gemm has optional third input
-            conv_inputs.append(node.input[2])
+            #     # pads_attr = helper.make_attribute('pads', [0, 0, 0, 0])
+            #     # conv_node.attribute.append(pads_attr)
 
-        # Add Conv
-        conv_node = helper.make_node(
-            'Conv',
-            inputs=conv_inputs,
-            outputs=[matmul_node_name + '_transpose_output'] if need_to_apply_transpose else node.output,
-            name=matmul_node_name + '_conv'
-        )
-        nodes_to_add.append(conv_node)
+            #     # strides_attr = helper.make_attribute('strides', [1, 1])
+            #     # conv_node.attribute.append(strides_attr)
+            #     print("Adding group attribute to Conv node")
+            #     # Add group attribute to match channel count
+            #     group_attr = helper.make_attribute('group', 4)
+            #     conv_node.attribute.append(group_attr)
+            # if node.name == "/model/transformer/decoder/layers.1/self_attn/MatMul_4":
+            # # if input0_shape and input1_shape and input0_shape[0] != input1_shape[0]
+            #     # # if len(input0_shape) == 3 and input0_shape[2] > 1:  # If C_in > 1
+            #     # kernel_shape_attr = helper.make_attribute('kernel_shape', [1, 1])
+            #     # conv_node.attribute.append(kernel_shape_attr)
 
-        # Update Conv's weight to 4D if needed
-        def update_initializers(graph, name, initializers_to_remove, initializers_to_add, trans_b=False):
-            for initializer in graph.initializer:
-                if initializer.name != name:
-                    continue
-                # 2D [CxK] -> [KxCx1x1] if TransB != 1
-                # 2D [CxK] -> [CxKx1x1] if TransB == 1
-                c,k = initializer.dims[0], initializer.dims[1]
-                init_arr = numpy_helper.to_array(initializer)
-                if not trans_b:
-                    init_arr = init_arr.T
-                    shape = (k, c, 1, 1)
-                else:
-                    shape = (c, k, 1, 1)
-                reshaped_arr = np.reshape(init_arr, shape)
-                new_initializer = numpy_helper.from_array(reshaped_arr, initializer.name)
-                initializers_to_remove.append(initializer)
-                initializers_to_add.append(new_initializer)
-        
-        # Check input B of Gemm is transposed or not
-        trans_b = False
-        if node.op_type == 'Gemm':
-            for attr in node.attribute:
-                if attr.name == 'transB':
-                    if attr.i == 1:
-                        trans_b = True
-                        break
+            #     # # pads_attr = helper.make_attribute('pads', [0, 0, 0, 0])
+            #     # # conv_node.attribute.append(pads_attr)
 
-        update_initializers(graph, node.input[1], initializers_to_remove, initializers_to_add, trans_b)
-
-        if need_to_apply_transpose:
+            #     # # strides_attr = helper.make_attribute('strides', [1, 1])
+            #     # # conv_node.attribute.append(strides_attr)
+            #     # print("Adding group attribute to Conv node")
+            #     # # Add group attribute to match channel count
+            #     # group_attr = helper.make_attribute('group', 8)
+            #     # conv_node.attribute.append(group_attr)
+            #     conv_node.input[0], conv_node.input[1] = conv_node.input[1], conv_node.input[0]
             transpose_after_node = helper.make_node(
                 'Transpose',
                 inputs=[matmul_node_name + '_transpose_output'],
@@ -197,63 +238,9 @@ def transform_matmul_to_transpose_conv_transpose(model):
                 name=matmul_node_name + '_transpose_after',
                 perm=[0,3,2,1]
             )
-            nodes_to_add.append(transpose_after_node)
-
-        graph.node.extend(nodes_to_add)
+            graph.node.extend([transpose_before_node, conv_node, transpose_after_node])
         cnt += 1
-    
-    [graph.initializer.remove(init) for init in initializers_to_remove]
-    [graph.initializer.append(init) for init in initializers_to_add]
-
     print(f"Replaced {cnt} MatMul nodes with Transpose-Conv-Transpose nodes")
-
-def transform_remove_intermediary_squeeze_and_unsqueeze(model):
-    """
-    Remove all Unsqueeze and Squeeze operations that aren't directly connected to model inputs.
-    This optimization removes unnecessary dimension expansion operations in the middle of the graph.
-    """
-    graph = model.graph
-    
-    # Get all input names
-    input_names = set(input.name for input in graph.input)
-    
-    # Track nodes to remove
-    nodes_to_remove = []
-    
-    # Create a mapping of node output names to their consumers
-    output_to_consumers = {}
-    for node in graph.node:
-        for input_name in node.input:
-            if input_name not in output_to_consumers:
-                output_to_consumers[input_name] = []
-            output_to_consumers[input_name].append(node)
-    
-    # Find all Unsqueeze or Squeeze nodes not directly connected to inputs
-    for node in graph.node:
-        if (node.op_type == 'Unsqueeze' or node.op_type == 'Squeeze') and node.input[0] not in input_names:
-            # Get the input (source) of this Unsqueeze
-            unsqueeze_input = node.input[0]
-            
-            # Get the output of this Unsqueeze
-            unsqueeze_output = node.output[0]
-            
-            # Get all consumers of this Unsqueeze's output
-            consumers = output_to_consumers.get(unsqueeze_output, [])
-            
-            # Rewire the graph to bypass this Unsqueeze
-            for consumer in consumers:
-                for i, input_name in enumerate(consumer.input):
-                    if input_name == unsqueeze_output:
-                        consumer.input[i] = unsqueeze_input
-    
-            # Mark this Unsqueeze for removal
-            nodes_to_remove.append(node)
-    
-    # Remove the Unsqueeze or Squeeze nodes
-    for node in nodes_to_remove:
-        graph.node.remove(node)
-
-    print(f"Removed {len(nodes_to_remove)} intermediary Unsqueeze or Squeeze operations")
 
 def transform_qdq_to_clip(model):
     cnt = 0
@@ -569,6 +556,17 @@ def transform_standalone_reducesum(model):
 # Change Gather indices from scalar to vector, may need to update axis
 def transform_gather(model):
     cnt = 0
+    reshape_nodes_to_add = []
+    reshape_inits_to_add = []
+
+    # Create a mapping of node output names to their consumers
+    output_to_consumers = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in output_to_consumers:
+                output_to_consumers[input_name] = []
+            output_to_consumers[input_name].append(node)
+
     for node in model.graph.node:
         if node.op_type == 'Gather':
             cnt += 1
@@ -587,20 +585,64 @@ def transform_gather(model):
             else:
                 indices_array = np.array([0], dtype=np.int64)
             indices_initializer = numpy_helper.from_array(indices_array, name=indices_initializer_name)
+
+            needs_reshape = False
             for attr in node.attribute:
                 if attr.name == 'axis' and attr.i == 1:
                     attr.i = 2
+                if attr.name == 'axis' and attr.i == 2:
+                    attr.i = 3
+                    needs_reshape = False
             # Remove the old initializer if it exists
             if initializer_to_remove is not None:
                 model.graph.initializer.remove(initializer_to_remove)
             
             # Add the new initializer
             model.graph.initializer.append(indices_initializer)
+
+            # Add reshape node if the axis was 2 (now 3)
+            if needs_reshape:
+                original_output = node.output[0]
+                reshape_output = f"{original_output}_reshaped"
+                
+                # Create shape initializer for reshape
+                reshape_shape_name = f"{node.name}_reshape_shape"
+                reshape_shape = numpy_helper.from_array(
+                    np.array([1, 1, 1, 3600], dtype=np.int64),
+                    name=reshape_shape_name
+                )
+                reshape_inits_to_add.append(reshape_shape)
+                
+                # Create the reshape node
+                reshape_node = helper.make_node(
+                    'Reshape',
+                    inputs=[original_output, reshape_shape_name],
+                    outputs=[reshape_output],
+                    name=f"{node.name}_reshape"
+                )
+                reshape_nodes_to_add.append(reshape_node)
+                
+                # Update all consumers of the original output
+                for consumer in output_to_consumers.get(original_output, []):
+                    for i, input_name in enumerate(consumer.input):
+                        if input_name == original_output:
+                            consumer.input[i] = reshape_output
+                
+                # Update graph outputs if necessary
+                for output in model.graph.output:
+                    if output.name == original_output:
+                        output.name = reshape_output
+    # Add all reshape nodes and initializers
+    for node in reshape_nodes_to_add:
+        model.graph.node.append(node)
+        
+    for initializer in reshape_inits_to_add:
+        model.graph.initializer.append(initializer)
     print(f"Updated {cnt} Gather axis")
 
-# """ Change Gather indices from scalar to vector, may need to update axis
-# - 
-# """
+""" Change Gather indices from scalar to vector, may need to update axis
+- 
+"""
 def transform_gatherelements(model):
     cnt = 0
     for node in model.graph.node:
@@ -613,25 +655,128 @@ def transform_gatherelements(model):
                     existing_indices = numpy_helper.to_array(initializer)
                     initializer_to_remove = initializer
                     break
-            if existing_indices is not None:
-                if existing_indices.ndim == 0:
-                    indices_array = np.array([existing_indices.item()], dtype=existing_indices.dtype)
-                elif existing_indices.ndim == 3:
-                    # Handle 3D indices, reshape to 4D by adding dimension at front
-                    print(f"Reshaping 3D indices {initializer.name} from {existing_indices.shape} to 4D")
-                    indices_array = np.expand_dims(existing_indices, axis=0)  # Eg.[12,64,64]->[1,12,64,64]
-                else:
-                    indices_array = existing_indices
-            indices_initializer = numpy_helper.from_array(indices_array, name=indices_initializer_name)
+            # If existing_indices is None, indices comes from another op, not the initializer, need to verify what happens in this case
+            # if existing_indices is None:
+            #     # print(f"GatherElements indices {initializer.name} shape: {existing_indices.ndim}")
+            #     # if existing_indices.ndim == 2:
+            #         # print(f"Reshaping 3D indices {initializer.name} from {existing_indices.shape} to 4D")
+            #     indices_array = np.expand_dims([1, 1, 1, 200], axis=-1)
+            # indices_initializer = numpy_helper.from_array(indices_array, name=indices_initializer_name)
+            for attr in node.attribute:
+                if attr.name == 'axis' and attr.i == 1:
+                    attr.i = 3
             # Remove the old initializer if it exists
-            if initializer_to_remove is not None:
-                model.graph.initializer.remove(initializer_to_remove)
+            # if initializer_to_remove is not None:
+            #     model.graph.initializer.remove(initializer_to_remove)
             
             # Add the new initializer
-            model.graph.initializer.append(indices_initializer)
+            # model.graph.initializer.append(indices_initializer)
     print(f"Updated {cnt} GatherElements indices")
 
+def transform_remove_intermediary_unsqueeze(model):
+    """
+    Remove all Unsqueeze operations that aren't directly connected to model inputs.
+    This optimization removes unnecessary dimension expansion operations in the middle of the graph.
+    """
+    graph = model.graph
+    
+    # Get all input names
+    input_names = set(input.name for input in graph.input)
+    
+    # Track nodes to remove
+    nodes_to_remove = []
+    
+    # Create a mapping of node output names to their consumers
+    output_to_consumers = {}
+    for node in graph.node:
+        for input_name in node.input:
+            if input_name not in output_to_consumers:
+                output_to_consumers[input_name] = []
+            output_to_consumers[input_name].append(node)
+    
+    # Find all Unsqueeze nodes not directly connected to inputs
+    for node in graph.node:
+        if node.op_type == 'Unsqueeze' and node.input[0] not in input_names:
+            # Get the input (source) of this Unsqueeze
+            unsqueeze_input = node.input[0]
+            
+            # Get the output of this Unsqueeze
+            unsqueeze_output = node.output[0]
+            
+            # Get all consumers of this Unsqueeze's output
+            consumers = output_to_consumers.get(unsqueeze_output, [])
+            
+            # Rewire the graph to bypass this Unsqueeze
+            for consumer in consumers:
+                for i, input_name in enumerate(consumer.input):
+                    if input_name == unsqueeze_output:
+                        consumer.input[i] = unsqueeze_input
+            
+            # Mark this Unsqueeze for removal
+            nodes_to_remove.append(node)
+    
+    # Remove the Unsqueeze nodes
+    for node in nodes_to_remove:
+        graph.node.remove(node)
+    
+    print(f"Removed {len(nodes_to_remove)} intermediary Unsqueeze operations")
+
+def transform_remove_intermediary_squeeze(model):
+    """
+    Remove unnecessary Squeeze operations that are only used as intermediaries.
+    This happens when a Squeeze operation is immediately followed by another operation
+    and its output is not used anywhere else in the graph.
+    
+    Args:
+        model: The ONNX model to transform
+        
+    Returns:
+        The updated ONNX model
+    """
+    graph = model.graph
+    
+    # Create a mapping of tensor names to their producer nodes
+    tensor_to_producer = {}
+    for node in graph.node:
+        for output in node.output:
+            tensor_to_producer[output] = node
+    
+    # Create a mapping of tensor names to consumer nodes
+    tensor_to_consumers = {}
+    for node in graph.node:
+        for input_name in node.input:
+            if input_name not in tensor_to_consumers:
+                tensor_to_consumers[input_name] = []
+            tensor_to_consumers[input_name].append(node)
+    
+    # Find Squeeze nodes that can be removed
+    squeeze_nodes_to_remove = []
+    rewiring_map = {}  # Maps output tensor names to replacement input tensor names
+    
+    for node in graph.node:
+        if node.op_type == 'Squeeze':
+            # Check if this Squeeze is only used by one consumer
+            if node.output[0] in tensor_to_consumers and len(tensor_to_consumers[node.output[0]]) == 1:
+                # Make sure this Squeeze's output isn't a model output
+                if not any(output.name == node.output[0] for output in graph.output):
+                    squeeze_nodes_to_remove.append(node)
+                    rewiring_map[node.output[0]] = node.input[0]
+    
+    # Update connections
+    for node in graph.node:
+        if node not in squeeze_nodes_to_remove:
+            for i, input_name in enumerate(node.input):
+                if input_name in rewiring_map:
+                    node.input[i] = rewiring_map[input_name]
+    
+    # Remove the unnecessary Squeeze nodes
+    for node in squeeze_nodes_to_remove:
+        graph.node.remove(node)
+    
+    print(f"Removed {len(squeeze_nodes_to_remove)} intermediary Squeeze operations")
+
 def transform_non4d_initializers(model):
+    print(f"All initializer names = {[init.name for init in model.graph.initializer]}")
     # Purpose of need_to_expand_4D_init_names is to avoid expanding some 1D initializers such as axes, slice_begin
     need_to_expand_4D_init_names = []
     skip_init_names = []
@@ -650,7 +795,11 @@ def transform_non4d_initializers(model):
     initializers_to_add = []
     initializer_to_remove = []
     for initializer in model.graph.initializer:
-        if len(initializer.dims) == 1 and initializer.name in need_to_expand_4D_init_names:
+        if initializer.name.startswith("model.backbone.0.encoder.blocks.0.gamma_1_quantized"):
+            print("In special branch for model.backbone.0.encoder.blocks.0.gamma_1_quantized")
+            # 3D [192x1x1] -> [1x192x1x1]
+            # initializer.dims.insert(0, 1)
+        elif len(initializer.dims) == 1 and initializer.name in need_to_expand_4D_init_names:
             # 1D: [K] -> [1x1x1xK]
             initializer.dims.insert(0, 1)
             initializer.dims.insert(0, 1)
@@ -861,6 +1010,430 @@ def transform_remove_unused_initializers(model):
     
     print(f"Removed {removed_count} unused initializers")
 
+def transform_reducemax(model):
+    """
+    Transform ReduceMax operations:
+    1. Update axes to [3]
+    2. Set keepdims to 1
+    3. Add a Reshape after ReduceMax with shape [1, 1, 1, 3600]
+    """
+    cnt = 0
+    nodes_to_add = []
+    reshape_shape_initializers = []
+    
+    # Create a mapping of node output names to their consumers
+    output_to_consumers = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in output_to_consumers:
+                output_to_consumers[input_name] = []
+            output_to_consumers[input_name].append(node)
+    
+    # Process each ReduceMax node
+    for node in model.graph.node:
+        if node.op_type == 'ReduceMax':
+            cnt += 1
+            
+            # Update the axes attribute
+            axes_attribute_found = False
+            for attr in node.attribute:
+                if attr.name == 'axes':
+                    attr.ints[:] = [3]
+                    axes_attribute_found = True
+                elif attr.name == 'keepdims':
+                    attr.i = 1
+            
+            # If no axes attribute found, add one
+            if not axes_attribute_found:
+                axes_attr = helper.make_attribute('axes', [3])
+                node.attribute.append(axes_attr)
+            
+            # Create an initializer for the reshape shape
+            reshape_shape_name = f"{node.name}_reshape_shape"
+            reshape_shape = numpy_helper.from_array(
+                np.array([1, 1, 1, 3600], dtype=np.int64),
+                name=reshape_shape_name
+            )
+            reshape_shape_initializers.append(reshape_shape)
+            
+            # Create a reshape node
+            reshape_output_name = f"{node.output[0]}_reshaped"
+            original_output_name = node.output[0]
+            
+            reshape_node = helper.make_node(
+                'Reshape',
+                inputs=[original_output_name, reshape_shape_name],
+                outputs=[reshape_output_name],
+                name=f"{node.name}_reshape"
+            )
+            # nodes_to_add.append(reshape_node)
+            
+            # Update connections: all nodes that consumed the original ReduceMax output
+            # # should now use the Reshape output
+            # for consumer in output_to_consumers.get(original_output_name, []):
+            #     for i, input_name in enumerate(consumer.input):
+            #         if input_name == original_output_name:
+            #             consumer.input[i] = reshape_output_name
+            
+            # # Update graph outputs if necessary
+            # for output in model.graph.output:
+            #     if output.name == original_output_name:
+            #         output.name = reshape_output_name
+    
+    # Add all new nodes and initializers to the model
+    for node in nodes_to_add:
+        model.graph.node.append(node)
+    
+    for initializer in reshape_shape_initializers:
+        model.graph.initializer.append(initializer)
+    
+    print(f"Updated {cnt} ReduceMax operations with Reshape")
+
+def transform_slice_after_concat_axes(model):
+    """
+    Update axes of Slice nodes that follow Concat operations from [2] to [3].
+    This transformation is part of adapting models from 3D to 4D tensor formats.
+    
+    Args:
+        model: The ONNX model to transform
+        
+    Returns:
+        The updated ONNX model
+    """
+    cnt = 0
+    graph = model.graph
+    
+    # Track outputs of Concat nodes
+    concat_outputs = set()
+    for node in graph.node:
+        if node.op_type == 'Concat':
+            for output in node.output:
+                concat_outputs.add(output)
+    
+    # Find Slice nodes that follow Concat and update their axes
+    for node in graph.node:
+        if node.op_type == 'Slice':
+            # Check if this Slice takes input from a Concat and hasn't been transformed already
+            if node.input[0] in concat_outputs and not 'transformed_' in node.input[3]:
+                # Get the axes initializer (typically input[3])
+                axes_initializer_name = node.input[3]
+                initializer_to_remove = None
+                
+                # Find the axes initializer
+                for initializer in graph.initializer:
+                    if initializer.name == axes_initializer_name:
+                        initializer_to_remove = initializer
+
+                        # Check if current axes is [-1]
+                        axes = numpy_helper.to_array(initializer)
+                        if axes.size == 1 and axes[0] == -1:
+                            # Create a new initializer with axes [2]
+                            new_axes_name = node.name + '_transformed_axes'
+                            new_initializer = numpy_helper.from_array(
+                                np.array([3], dtype=axes.dtype),
+                                name=new_axes_name
+                            )
+                            
+                            # Update node to use new initializer
+                            node.input[3] = new_axes_name
+                            
+                            # Add new initializer
+                            graph.initializer.append(new_initializer)
+                            if initializer_to_remove is not None:
+                                model.graph.initializer.remove(initializer_to_remove)
+                            cnt += 1
+                            break
+    
+    print(f"Updated {cnt} Slice axes from [-1] to [2] after Concat operations")
+
+def transform_topk_axis(model):
+    """
+    Update the 'axis' attribute of TopK operations.
+    Transformations applied:
+    - For 2D tensors with shape [1x3600]: change axis=1 to axis=2
+    - For all other 2D tensors: change axis=1 to axis=-1
+    
+    Args:
+        model: The ONNX model to transform
+        
+    Returns:
+        The updated ONNX model
+    """
+    cnt_2d_3600 = 0
+    cnt_2d_other = 0
+    
+    # Get tensor dimension information
+    tensor_name_dim_map = get_tensor_shape_map(model.graph.value_info)
+    
+    for node in model.graph.node:
+        if node.op_type == 'TopK':
+            # Get the input tensor information
+            input_name = node.input[0]
+            input_shape = get_tensor_shape(model.graph.value_info, input_name)
+            
+            # Only process 2D tensors
+            if input_shape and len(input_shape) == 2:
+                # Special case for [1x3600] tensors, 2d->4D by adding leading and trailing unary dim,
+                # change axis=1 to axis=2
+                if input_shape[0] == 1 and input_shape[1] == 3600:
+                    for attr in node.attribute:
+                        if attr.name == 'axis' and attr.i == 1:
+                            attr.i = 2
+                            cnt_2d_3600 += 1
+                            break
+                # For all other 2D tensors
+                else:
+                    for attr in node.attribute:
+                        if attr.name == 'axis' and attr.i == 1:
+                            attr.i = -1
+                            cnt_2d_other += 1
+                            break
+    
+    print(f"Updated TopK operations:")
+    print(f"  - {cnt_2d_3600} 2D [1x3600] inputs: axis 1 → 2")
+    print(f"  - {cnt_2d_other} other 2D inputs: axis 1 → -1")
+
+def transform_concat(model):
+    """
+    Transform Concat operations:
+    1. Change axis from 2 to 3 (for 4D tensor operations)
+    2. Add a Reshape operation after the Concat with shape [1, 1, 200, 4]
+    3. If input tensor is 2D and axis==1, change axis to -1
+    
+    Args:
+        model: The ONNX model to transform
+        
+    Returns:
+        The updated ONNX model
+    """
+    cnt = 0
+    cnt_2d = 0
+    nodes_to_add = []
+    reshape_initializers = []
+    
+    # Create a mapping of node output names to their consumers
+    output_to_consumers = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in output_to_consumers:
+                output_to_consumers[input_name] = []
+            output_to_consumers[input_name].append(node)
+    
+    # Get tensor dimension information
+    tensor_name_dim_map = get_tensor_shape_map(model.graph.value_info)
+    
+    for node in model.graph.node:
+        if node.op_type == 'Concat':
+            # Check if this is a 2D input case
+            input_is_2d = False
+            if len(node.input) > 0:
+                input_name = node.input[0]
+                if input_name in tensor_name_dim_map and tensor_name_dim_map[input_name] == 2:
+                    input_is_2d = True
+            
+            # Case: 2D tensor axis=1 -> 4D axis=-1
+            if input_is_2d:
+                for attr in node.attribute:
+                    if attr.name == 'axis' and attr.i == 1:
+                        attr.i = -1
+                        cnt_2d += 1
+                        break
+            # Handle the specific Concat nodes case
+            elif node.name in ["/model/transformer/Concat_12","/model/transformer/decoder/Concat_8"]:
+                # Update the axis attribute
+                axis_updated = False
+                for attr in node.attribute:
+                    if attr.name == 'axis' and attr.i == 2:
+                        attr.i = 3
+                        axis_updated = True
+                        
+                # If no axis attribute is found but Concat is present, add an axis attribute
+                if not axis_updated and not any(attr.name == 'axis' for attr in node.attribute):
+                    axis_attr = helper.make_attribute('axis', 3)
+                    node.attribute.append(axis_attr)
+                    axis_updated = False
+                
+                # If we updated the axis, add a reshape operation after the concat
+                if axis_updated:
+                    # Original concat output
+                    original_output = node.output[0]
+                    reshape_output = f"{original_output}_reshaped"
+                    
+                    # Create shape initializer for reshape
+                    reshape_shape_name = f"{node.name}_reshape_shape"
+                    reshape_shape = numpy_helper.from_array(
+                        np.array([1, 1, 200, 4], dtype=np.int64),
+                        name=reshape_shape_name
+                    )
+                    reshape_initializers.append(reshape_shape)
+                    
+                    # Create the reshape node
+                    reshape_node = helper.make_node(
+                        'Reshape',
+                        inputs=[original_output, reshape_shape_name],
+                        outputs=[reshape_output],
+                        name=f"{node.name}_reshape"
+                    )
+                    nodes_to_add.append(reshape_node)
+                    
+                    # Update all consumers of the original concat output
+                    for consumer in output_to_consumers.get(original_output, []):
+                        for i, input_name in enumerate(consumer.input):
+                            if input_name == original_output:
+                                consumer.input[i] = reshape_output
+                    
+                    # Update graph outputs if necessary
+                    for output in model.graph.output:
+                        if output.name == original_output:
+                            output.name = reshape_output
+                    
+                    cnt += 1
+    
+    # Add all new nodes and initializers to the model
+    for node in nodes_to_add:
+        model.graph.node.append(node)
+    
+    for initializer in reshape_initializers:
+        model.graph.initializer.append(initializer)
+    
+    print(f"Updated {cnt} Concat operations from axis=2 to axis=3 with Reshape to [1,1,200,4]")
+    print(f"Updated {cnt_2d} 2D Concat operations from axis=1 to axis=-1")
+
+def transform_reshape_non4d_shape(model):
+    """
+    Transform Reshape operations with non-4D shapes by adding leading 1s.
+    Also handle the special case of Reshape[-1,4] followed by Unsqueeze[1].
+    This transfor needs to be runn before transform_intermediary_unsqueeze.
+    
+    Examples:
+        [-1, 4] followed by Unsqueeze[1] -> [1, -1, 1, 4]
+        
+    Args:
+        model: The ONNX model to transform
+    """
+    cnt = 0
+    
+    # Create a mapping of op outputs to their producers
+    output_to_producer = {}
+    for node in model.graph.node:
+        for output in node.output:
+            output_to_producer[output] = node
+    
+    # Create a mapping of op outputs to their consumers
+    output_to_consumers = {}
+    for node in model.graph.node:
+        for input_name in node.input:
+            if input_name not in output_to_consumers:
+                output_to_consumers[input_name] = []
+            output_to_consumers[input_name].append(node)
+    
+    # Track nodes to remove
+    nodes_to_remove = []
+    
+    for node in model.graph.node:
+        if node.op_type == 'Reshape':
+            shape_initializer_name = node.input[1]
+            shape_initializer = None
+            
+            # Find the shape initializer
+            for initializer in model.graph.initializer:
+                if initializer.name == shape_initializer_name:
+                    shape_initializer = initializer
+                    break
+                    
+            if shape_initializer:
+                # Get the shape data
+                shape_data = numpy_helper.to_array(shape_initializer)
+                shape_dims = len(shape_data)
+                
+                # Special case: Check if this is a [-1, 4] Reshape followed by Unsqueeze[1]
+                reshape_followed_by_unsqueeze = False
+                unsqueeze_node = None
+                
+                if shape_dims == 2 and shape_data[0] == -1 and shape_data[1] == 4:
+                    # Check if followed by an Unsqueeze
+                    consumers = output_to_consumers.get(node.output[0], [])
+                    for consumer in consumers:
+                        if consumer.op_type == 'Unsqueeze' and len(consumer.input) > 1:
+                            # Check the axes of the Unsqueeze
+                            for initializer in model.graph.initializer:
+                                if initializer.name == consumer.input[1]:
+                                    axes = numpy_helper.to_array(initializer)
+                                    if len(axes) == 1 and axes[0] == 1:
+                                        reshape_followed_by_unsqueeze = True
+                                        unsqueeze_node = consumer
+                                        break
+                            if reshape_followed_by_unsqueeze:
+                                break
+                
+                if reshape_followed_by_unsqueeze:
+                    # Create a new shape [1, -1, 1, 4] to replace both operations
+                    new_shape = np.array([1, -1, 1, 4], dtype=shape_data.dtype)
+                    new_initializer = numpy_helper.from_array(
+                        new_shape, 
+                        name=shape_initializer_name
+                    )
+                    
+                    # Replace the old initializer
+                    model.graph.initializer.remove(shape_initializer)
+                    model.graph.initializer.append(new_initializer)
+                    
+                    # Rewire the graph to bypass the Unsqueeze
+                    for consumer in output_to_consumers.get(unsqueeze_node.output[0], []):
+                        for i, input_name in enumerate(consumer.input):
+                            if input_name == unsqueeze_node.output[0]:
+                                consumer.input[i] = node.output[0]
+                    
+                    # Mark the Unsqueeze for removal
+                    nodes_to_remove.append(unsqueeze_node)
+                    
+                    cnt += 1       
+    
+    # Remove Unsqueeze nodes that were bypassed
+    for node in nodes_to_remove:
+        model.graph.node.remove(node)
+    
+    print(f"Transformed {cnt} Reshape[-1,4] + Unsqueeze[1] patterns to Reshape[1,-1,1,4]")
+
+def transform_split_axis(model):
+    """
+    Transform Split operations:
+    - When axis=1 and input tensor is 2D, change axis to -1
+    - This is part of adapting models from 2D to 4D tensor formats
+    
+    Args:
+        model: The ONNX model to transform
+        
+    Returns:
+        The updated ONNX model
+    """
+    cnt = 0
+    graph = model.graph
+    
+    # Create tensor dimension map
+    tensor_name_dim_map = get_tensor_shape_map(graph.value_info)
+ 
+    for node in graph.node:
+        if node.op_type == 'Split':
+            # Get input tensor dimensions
+            input_name = node.input[0]
+            input_dims = None
+            
+            if input_name in tensor_name_dim_map:
+                input_dims = tensor_name_dim_map[input_name]
+            
+            # Only transform if input is 2D
+            if input_dims == 2:
+                # Update axis attribute
+                for attr in node.attribute:
+                    if attr.name == 'axis' and attr.i == 1:
+                        attr.i = -1
+                        cnt += 1
+                        break
+    
+    print(f"Updated {cnt} Split operations from axis=1 to axis=-1 for 2D inputs")
+    return model
+
 ###
 # Onnxscript transform
 ###
@@ -962,38 +1535,55 @@ def transform_reshape_clip_reducesum(model):
 
 """
 FROM
-data   axes   keepdims
-    |   /     /
+data   
+    |  
 ReduceMax
+---------
+axes
+keepdims
     |
 reducemax_output
 TO
-data   axes   keepdims
-    |   /     /
+data   
+    |
 ReduceMax
+---------
+axes=[3]
+keepdims=1
     |    reshape_shape
     |   /
 Reshape
     |
 reducemax_output
 """
-def reducemax_pattern(op, data, axes, keepdims):
-    return op.Reducemax(data, axes, keepdims)
+def reducemax_pattern(op, data):
+    # return op.ReduceMax(data)
+    return op.ReduceMax(data, _outputs=["orig_reducemax_output"])
 
-def reducemax_reshape(op, data, axes, keepdims):
-    new_axes = op.initializer(ir.tensor([3], dtype=ir.DataType.INT64, name=data.name + "_reducemax_axes"))
-    new_keepdims = op.initializer(ir.value(1, dtype=ir.DataType.INT64, name=data.name + "_reducemax_keepdim"))
-    reducemax_output = op.Reducemax(data, new_axes, new_keepdims)
+def reducemax_reshape(op, data, orig_reducemax_output):
+    reducemax_output = op.ReduceMax(data, axes=[3], keepdims=1)
     reshape_shape = op.initializer(ir.tensor([1,1,1,3600], dtype=ir.DataType.INT64, name=data.name + "_reshape_shape"))
     return op.Reshape(reducemax_output, reshape_shape)
 
-def transform_reducemax(model):
-    reducemax_rule = pattern.RewriteRule(reducemax_pattern, reducemax_reshape, verbose=10)
-    model = onnxscript.rewriter.rewrite(
-        model,
-        pattern_rewrite_rules=[reducemax_rule],
-    )
-    return model
+def reducemax_not_transformed(
+    context, orig_reducemax_output, **_
+) -> bool:
+    reducemax_node = orig_reducemax_output.producer()
+    print(f"reducemax attributes: {reducemax_node.attributes}")
+    print(f"reducemax_node.attributes['keepdims']= {reducemax_node.attributes['keepdims']}")
+    print(f"reducemax_node.attributes['keepdims']==0 {reducemax_node.attributes['keepdims']==0}")
+    print(f"reducemax_node.attributes['keepdims'].value==0 {reducemax_node.attributes['keepdims'].value==0}")
+    return reducemax_node.attributes["keepdims"].value == 0
+
+# def transform_reducemax(model):
+#     reducemax_rule = pattern.RewriteRule(reducemax_pattern, reducemax_reshape, reducemax_not_transformed, verbose=10)
+#     model = onnxscript.rewriter.rewrite(
+#         model,
+#         pattern_rewrite_rules=[reducemax_rule],
+#     )
+#     onnx.save(model, "PSA_debug.onnx")
+#     return model
+
 ###
 # public helper functions
 ###
@@ -1011,8 +1601,7 @@ def execute_shape_inference(input_model, output_model):
     try:
         # Construct command for symbolic shape inference
         symbolic_shape_infer_cmd = (
-            #f"python ..\\onnxruntime\\onnxruntime\\python\\tools\\symbolic_shape_infer.py "
-            f"python ..\\symbolic_shape_infer.py "
+            f"python ..\\onnxruntime\\onnxruntime\\python\\tools\\symbolic_shape_infer.py "
             f"--input {input_model} "
             f"--output {output_model} "
             # f"--auto_merge"
