@@ -743,7 +743,13 @@ if (onnxruntime_USE_WEBGPU)
           # - (private) Force enable f16 support for NVIDIA Vulkan
           #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
           #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
+
+          # The dawn_fix_copy_dxil_dll.patch contains the following changes:
+          #
+          # - (private) Fix copy of dxil.dll in Dawn
+          #   The patch ensures the copy of dxil.dll to be done after the build step of `dxcompiler` target.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_fix_copy_dxil_dll.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn
