@@ -239,8 +239,16 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
 
   std::vector<int64_t> weight_shape_vec;
   std::vector<int64_t> x_shape_vec;
-  GetShape(*input_defs[1], weight_shape_vec, logger);
-  GetShape(*input_defs[0], x_shape_vec, logger);
+
+  if (!GetShape(*input_defs[1], weight_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of first input, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!GetShape(*input_defs[0], x_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of second input, which is necessary to check for valid convolutions.";
+    return false;
+  }
 
   if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) || !CheckShapeForConvMemoryLimit(x_shape_vec, logger)) {
     return false;
