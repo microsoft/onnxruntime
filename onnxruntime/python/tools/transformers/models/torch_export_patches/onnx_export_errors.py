@@ -126,7 +126,6 @@ def bypass_export_some_errors(
     * Serialization of ``DynamicCache`` (in :epkg:`transformers`)
     * reduce errors due to shape inference
     * fixes some transformers classes,
-      see :mod:`onnx_diagnostic.torch_export_patches.patches.patch_transformers`
 
     Serialization issues happen when a module takes one input or output
     has a type :func:`torch.export.export` cannot serialize.
