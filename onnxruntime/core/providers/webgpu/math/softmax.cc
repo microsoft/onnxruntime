@@ -66,7 +66,7 @@ static std::string CheckZerosOrInf() {
       << "      value = x_value_t(0.0);\n" // handle NaN case
       << "    } else {\n"
       << "      value = value / row_sum_shared;\n"
-      << "    }\n"
+      << "    }\n";
   return oss.str();
 }
 
