@@ -14,7 +14,7 @@ namespace onnxruntime {
 
 class OVRTAllocator : public IAllocator {
  public:
-  OVRTAllocator(ov::Core& core, OrtDevice::DeviceType device_type, OrtDevice::DeviceId device_id, const char* name);
+  OVRTAllocator(ov::Core& core, OrtDevice::DeviceId device_id, const char* name);
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 
