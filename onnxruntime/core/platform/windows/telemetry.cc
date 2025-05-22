@@ -64,7 +64,7 @@ bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
 UCHAR WindowsTelemetry::level_ = 0;
 UINT64 WindowsTelemetry::keyword_ = 0;
-std::vector<const WindowsTelemetry::EtwInternalCallback*> WindowsTelemetry::callbacks_;
+std::unordered_map<std::string, WindowsTelemetry::EtwInternalCallback> WindowsTelemetry::callbacks_;
 std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -79,11 +79,13 @@ WindowsTelemetry::WindowsTelemetry() {
 }
 
 WindowsTelemetry::~WindowsTelemetry() {
-  std::lock_guard<std::mutex> lock(mutex_);
-  if (global_register_count_ > 0) {
-    global_register_count_ -= 1;
-    if (global_register_count_ == 0) {
-      TraceLoggingUnregister(telemetry_provider_handle);
+  {
+    std::lock_guard<std::mutex> lock(mutex_);
+    if (global_register_count_ > 0) {
+      global_register_count_ -= 1;
+      if (global_register_count_ == 0) {
+        TraceLoggingUnregister(telemetry_provider_handle);
+      }
     }
   }
 
@@ -110,18 +112,16 @@ UINT64 WindowsTelemetry::Keyword() const {
 //     return etw_status_;
 // }
 
-void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
+void WindowsTelemetry::RegisterInternalCallback(const std::string& callback_key, EtwInternalCallback callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.push_back(&callback);
+  [[maybe_unused]] auto result = callbacks_.emplace(callback_key, std::move(callback));
+  // Error reporting is unclear here
+  assert(result.second);
 }
 
-void WindowsTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
+void WindowsTelemetry::UnregisterInternalCallback(const std::string& callback_key) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
-                                [&callback](const EtwInternalCallback* ptr) {
-                                  return ptr == &callback;
-                                });
-  callbacks_.erase(new_end, callbacks_.end());
+  callbacks_.erase(callback_key);
 }
 
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
@@ -132,10 +132,12 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
-  std::lock_guard<std::mutex> lock(provider_change_mutex_);
-  enabled_ = (IsEnabled != 0);
-  level_ = Level;
-  keyword_ = MatchAnyKeyword;
+  {
+    std::lock_guard<std::mutex> lock(provider_change_mutex_);
+    enabled_ = (IsEnabled != 0);
+    level_ = Level;
+    keyword_ = MatchAnyKeyword;
+  }
 
   InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
@@ -144,16 +146,19 @@ void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR 
                                        ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                        PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  for (const auto& callback : callbacks_) {
-    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+  for (const auto& entry : callbacks_) {
+    const auto& cb = entry.second;
+    cb(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
 void WindowsTelemetry::EnableTelemetryEvents() const {
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   enabled_ = true;
 }
 
 void WindowsTelemetry::DisableTelemetryEvents() const {
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   enabled_ = false;
 }
 

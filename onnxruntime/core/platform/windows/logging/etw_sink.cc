@@ -60,7 +60,6 @@ TRACELOGGING_DEFINE_PROVIDER(etw_provider_handle, "ONNXRuntimeTraceLoggingProvid
 
 EtwRegistrationManager& EtwRegistrationManager::Instance() {
   static EtwRegistrationManager instance;
-  instance.LazyInitialize();
   return instance;
 }
 
@@ -106,18 +105,15 @@ HRESULT EtwRegistrationManager::Status() const {
   return etw_status_;
 }
 
-void EtwRegistrationManager::RegisterInternalCallback(const EtwInternalCallback& callback) {
+void EtwRegistrationManager::RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {
   std::lock_guard<std::mutex> lock(callbacks_mutex_);
-  callbacks_.push_back(&callback);
+  [[maybe_unused]] auto result = callbacks_.emplace(cb_key, std::move(callback));
+  assert(result.second);
 }
 
-void EtwRegistrationManager::UnregisterInternalCallback(const EtwInternalCallback& callback) {
+void EtwRegistrationManager::UnregisterInternalCallback(const std::string& cb_key) {
   std::lock_guard<std::mutex> lock(callbacks_mutex_);
-  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
-                                [&callback](const EtwInternalCallback* ptr) {
-                                  return ptr == &callback;
-                                });
-  callbacks_.erase(new_end, callbacks_.end());
+  callbacks_.erase(cb_key);
 }
 
 void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
@@ -139,37 +135,24 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
 }
 
 EtwRegistrationManager::~EtwRegistrationManager() {
-  std::lock_guard<std::mutex> lock(callbacks_mutex_);
-  callbacks_.clear();
-  if (initialization_status_ == InitializationStatus::Initialized ||
-      initialization_status_ == InitializationStatus::Initializing) {
-    std::lock_guard<std::mutex> init_lock(init_mutex_);
-    assert(initialization_status_ != InitializationStatus::Initializing);
-    if (initialization_status_ == InitializationStatus::Initialized) {
-      ::TraceLoggingUnregister(etw_provider_handle);
-      initialization_status_ = InitializationStatus::NotInitialized;
-    }
+  if (initialization_status_ == InitializationStatus::Initialized) {
+    ::TraceLoggingUnregister(etw_provider_handle);
+    initialization_status_ = InitializationStatus::NotInitialized;
   }
 }
 
-EtwRegistrationManager::EtwRegistrationManager() {
-}
-
-void EtwRegistrationManager::LazyInitialize() {
-  if (initialization_status_ == InitializationStatus::NotInitialized) {
-    std::lock_guard<std::mutex> lock(init_mutex_);
-    if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
-      initialization_status_ = InitializationStatus::Initializing;
-      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-      if (FAILED(etw_status_)) {
-        // Registration can fail when running under Low Integrity process, and should be non-fatal
-        initialization_status_ = InitializationStatus::Failed;
-        // Injection of ETW logger can happen very early if ETW provider was already listening.
-        // Don't use LOGS_DEFAULT here or can get "Attempt to use DefaultLogger but none has been registered"
-        std::cerr << "Error in ETW registration: " << std::to_string(etw_status_) << std::endl;
-      }
-      initialization_status_ = InitializationStatus::Initialized;
-    }
+EtwRegistrationManager::EtwRegistrationManager()
+    : initialization_status_(InitializationStatus::NotInitialized),
+      is_enabled_(false),
+      level_(),
+      keyword_(0) {
+  etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+  if (FAILED(etw_status_)) {
+    // Registration can fail when running under Low Integrity process, and should be non-fatal
+    initialization_status_ = InitializationStatus::Failed;
+    LOGS_DEFAULT(WARNING) << "Error in ETW registration: " << std::to_string(etw_status_);
+  } else {
+    initialization_status_ = InitializationStatus::Initialized;
   }
 }
 
@@ -182,10 +165,9 @@ void EtwRegistrationManager::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, 
   }
 
   std::lock_guard<std::mutex> lock(callbacks_mutex_);
-  for (const auto& callback : callbacks_) {
-    if (callback != nullptr) {
-      (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
-    }
+  for (const auto& entry : callbacks_) {
+    const auto& cb = entry.second;
+    cb(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 

@@ -134,11 +134,31 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
-  static std::map<uint32_t, InferenceSession*> active_sessions_;
 #ifdef _WIN32
   static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+  // Single callback for all sessions. Registers when the first session comes up
+  // unregisters when the last session goes away.
+  static const std::string callback_ML_ORT_provider_key_;
   static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
-  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+  std::string callback_ETWSink_provider_key_;  // Session Start Stop
+
+  void UnregisterETWCallbacks();
+
+  struct AutoETWDegistrar {
+    std::function<void()> deregister;
+    explicit AutoETWDegistrar(std::function<void()> dreg)
+        : deregister(std::move(dreg)) {}
+    ~AutoETWDegistrar() {
+      if (deregister) {
+        deregister();
+      }
+    }
+  };
+
+  // Automatically cleans up all outstanding registrations
+  // in case session loading fails and ETW callbacks are already registered.
+  std::optional<AutoETWDegistrar> etw_deregistrar_;
 #endif
 
  public:
@@ -765,7 +785,27 @@ class InferenceSession {
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
 #ifdef _WIN32
+  // This callback is registered globally for all sessions
+  // It is dergistered when the last session goes away.
+  static void ML_Ort_Provider_Etw_Callback(LPCGUID SourceId,
+                                           ULONG IsEnabled,
+                                           UCHAR Level,
+                                           ULONGLONG MatchAnyKeyword,
+                                           ULONGLONG MatchAllKeyword,
+                                           PEVENT_FILTER_DESCRIPTOR FilterData,
+                                           PVOID CallbackContext);
+
   static void LogAllSessions();
+
+  // This callback is registered per session
+  void ETWSink_provider(logging::EtwRegistrationManager& etwRegistrationManager,
+                        LPCGUID /*SourceId */,
+                        ULONG IsEnabled,
+                        UCHAR /* Level */,
+                        ULONGLONG MatchAnyKeyword,
+                        ULONGLONG /* MatchAllKeyword */,
+                        PEVENT_FILTER_DESCRIPTOR /* FilterData */,
+                        PVOID /* CallbackContext */);
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)

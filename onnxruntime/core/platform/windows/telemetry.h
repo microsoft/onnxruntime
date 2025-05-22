@@ -2,7 +2,9 @@
 // Licensed under the MIT License.
 
 #pragma once
+
 #include <atomic>
+#include <unordered_map>
 #include <vector>
 
 #include "core/platform/telemetry.h"
@@ -68,9 +70,9 @@ class WindowsTelemetry : public Telemetry {
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
-  static void RegisterInternalCallback(const EtwInternalCallback& callback);
+  static void RegisterInternalCallback(const std::string& callback_key, EtwInternalCallback callback);
 
-  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
+  static void UnregisterInternalCallback(const std::string& callback_key);
 
  private:
   static std::mutex mutex_;
@@ -78,7 +80,7 @@ class WindowsTelemetry : public Telemetry {
   static bool enabled_;
   static uint32_t projection_;
 
-  static std::vector<const EtwInternalCallback*> callbacks_;
+  static std::unordered_map<std::string, EtwInternalCallback> callbacks_;
   static std::mutex callbacks_mutex_;
   static std::mutex provider_change_mutex_;
   static UCHAR level_;

@@ -58,11 +58,11 @@ struct EtwRegistrationManager final {
   static EtwRegistrationManager& Instance() { return g_host->logging__EtwRegistrationManager__Instance(); }
   static bool SupportsETW() { return g_host->logging__EtwRegistrationManager__SupportsETW(); }
   Severity MapLevelToSeverity() { return g_host->logging__EtwRegistrationManager__MapLevelToSeverity(this); }
-  void RegisterInternalCallback(const EtwInternalCallback& callback) {
-    g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, callback);
+  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {
+    g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, cb_key, std::move(callback));
   }
-  void UnregisterInternalCallback(const EtwInternalCallback& callback) {
-    g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, callback);
+  void UnregisterInternalCallback(const std::string& cb_key) {
+    g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, cb_key);
   }
 };
 #endif  // defined(_WIN32)
