@@ -44,16 +44,13 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     }
   }
 
-  if (current == final_non_cast_node) {
+  if (node.Index() == final_non_cast_node->Index()) {
     return Status::OK();
   }
-
-  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   std::vector<Node*> to_remove;
   current = &node;
 
-  // Collect the nodes to remove.
   while (current != final_non_cast_node && current->OpType() == "Cast") {
     to_remove.push_back(current);
     auto it = current->OutputNodesBegin();
@@ -62,10 +59,7 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     current = const_cast<Node*>(&*it);
   }
 
-  // No nodes to remove.
-  if (to_remove.empty()) {
-    return Status::OK();
-  }
+  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
 
   // First remove all outbound edges.
   for (Node* n : to_remove) {
