@@ -914,9 +914,10 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
         break;
       default: {
         // TODO: support other type
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
-                               " type: ", type_proto->tensor_type().elem_type());
+        break;
+        // return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+        //                        "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
+        //                        " type: ", type_proto->tensor_type().elem_type());
       }
     }
   }
