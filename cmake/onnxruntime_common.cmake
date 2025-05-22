@@ -159,9 +159,9 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
-if(MSVC)
-  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
-endif()
+# if(MSVC)
+#   target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
+# endif()
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
