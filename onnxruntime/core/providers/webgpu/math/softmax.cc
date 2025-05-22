@@ -141,7 +141,12 @@ Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
       // Calculate the final value for each element in the row
       << "  for (var col = lindex; col < cols; col += wg) {\n"
-      << "    let value = exp(getValue(row, col, row_stride) - row_max_shared) / row_sum_shared;\n"
+      << "    var value = exp(getValue(row, col, row_stride) - row_max_shared);\n"
+      << "    if (all(row_sum_shared == x_value_t(0.0)) && all(value == x_value_t(0.0))) {\n"
+      << "      value = x_value_t(0.0);\n" // handle NaN case
+      << "    } else {\n"
+      << "      value = value / row_sum_shared;\n"
+      << "    }\n"
       << "    setValue(row, col, row_stride, value);\n"
       << "  }\n";
 
