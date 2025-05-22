@@ -59,11 +59,11 @@ static std::string MaxVector(const std::string& name, int components) {
 
 static std::string CheckZerosOrInf() {
   std::ostringstream oss;
-  oss << "    let zero = x_element_t(0.0);\n"
-      << "    let pInf = x_element_t(1.0/0.0);\n"
-      << "    let nInf = x_element_t(-1.0/0.0);\n"
+  oss << "    let zero = x_value_t(0.0);\n"
+      << "    let pInf = x_value_t(1.0/0.0);\n"
+      << "    let nInf = x_value_t(-1.0/0.0);\n"
       << "    if (all(row_sum_shared == zero) || all(row_sum_shared == pInf) || all(row_sum_shared == nInf)) {\n"
-      << "      value = x_element_t(0.0);\n" // handle NaN case
+      << "      value = x_value_t(0.0);\n" // handle NaN case
       << "    } else {\n"
       << "      value = value / row_sum_shared;\n"
       << "    }\n"
