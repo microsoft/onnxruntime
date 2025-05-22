@@ -66,7 +66,8 @@ static std::string CheckZerosOrInf() {
       << "      value = x_element_t(0.0);\n"  // handle NaN case
       << "    } else {\n"
       << "      value = value / row_sum_shared;\n"
-      << "    }\n" return oss.str();
+      << "    }\n";
+  return oss.str();
 }
 
 Status SoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
