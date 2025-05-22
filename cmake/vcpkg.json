@@ -88,7 +88,7 @@
       "dependencies": ["fp16"]
     },
     "dml-ep": {
-      "description": "Build with CoreML EP",
+      "description": "Build with DirectML EP",
       "dependencies": ["directx-headers"]
     },
     "webgpu-ep": {
