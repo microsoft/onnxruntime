@@ -32,17 +32,17 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   while (current->OpType() == "Cast") {
     const auto& to_attr = current->GetAttributes().at("to");
 
-    auto it = current->OutputNodesBegin();
-    if (it == current->OutputNodesEnd()) {
-      break;
-    }
-    current = const_cast<Node*>(&(*it));
-
     // Special case when Cast is branching out into multiple outputs.
     // Possible to detect different chains, but much harder and out of scope for this fusion.
     if (current->GetOutputEdgesCount() > 1) {
       return Status::OK();
     }
+
+    auto it = current->OutputNodesBegin();
+    if (it == current->OutputNodesEnd()) {
+      break;
+    }
+    current = const_cast<Node*>(&(*it));
 
     // We found we are repeating the conversion.
     if (to_attr.i() == matching_elem_type) {
