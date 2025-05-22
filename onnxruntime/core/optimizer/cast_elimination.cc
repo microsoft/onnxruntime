@@ -44,7 +44,6 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     }
   }
 
-  // No repeating pattern was found.
   if (current == final_non_cast_node) {
     return Status::OK();
   }
@@ -61,6 +60,11 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     if (it == current->OutputNodesEnd())
       break;
     current = const_cast<Node*>(&*it);
+  }
+
+  // No nodes to remove.
+  if (to_remove.empty()) {
+    return Status::OK();
   }
 
   // First remove all outbound edges.
