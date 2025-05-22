@@ -242,8 +242,7 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   GetShape(*input_defs[1], weight_shape_vec, logger);
   GetShape(*input_defs[0], x_shape_vec, logger);
 
-  if (!CheckShapeForLimit(weight_shape_vec) || !CheckShapeForLimit(x_shape_vec)) {
-    LOGS(logger, VERBOSE) << "Conv [" << name << "] has a shape with dimension > 16384. CoreML does not support conv operations with dim > 16384.";
+  if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) || !CheckShapeForConvMemoryLimit(x_shape_vec, logger)) {
     return false;
   }
 

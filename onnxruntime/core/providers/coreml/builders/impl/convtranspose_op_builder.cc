@@ -137,8 +137,7 @@ bool ConvTransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     return false;
   }
 
-  if (!CheckShapeForLimit(weight_shape) || !CheckShapeForLimit(input_shape)) {
-    LOGS(logger, VERBOSE) << "ConvTranspose: weight or input shape has a dimension > 16384. CoreML does not support conv operations with dim > 16384.";
+  if (!CheckShapeForConvMemoryLimit(weight_shape, logger) || !CheckShapeForConvMemoryLimit(input_shape, logger)) {
     return false;
   }
 

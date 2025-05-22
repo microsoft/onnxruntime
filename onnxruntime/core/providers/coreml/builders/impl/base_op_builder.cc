@@ -7,6 +7,7 @@
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
 using namespace CoreML::Specification;
@@ -127,7 +128,7 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
 }
 
 /* static */
-bool BaseOpBuilder::CheckShapeForLimit(onnxruntime::VectorInt64& shape) {
+bool BaseOpBuilder::CheckShapeForConvMemoryLimit(onnxruntime::VectorInt64& shape, const logging::Logger& logger) {
   // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
   // input has dimension > 16384
   // See this issue, https://github.com/apple/coremltools/issues/1003
@@ -136,6 +137,8 @@ bool BaseOpBuilder::CheckShapeForLimit(onnxruntime::VectorInt64& shape) {
   // Only seems to apply to convolution networks -- limit comes from the size of the texture memory
   for (auto dim : shape) {
     if (dim > 16384) {
+      LOGS(logger, VERBOSE) << "Input shape: " << Shape2String(shape)
+                            << " exceeds CoreML convolution memory limit of 16384";
       return false;
     }
   }

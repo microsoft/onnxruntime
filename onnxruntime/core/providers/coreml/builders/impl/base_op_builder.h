@@ -39,7 +39,7 @@ class BaseOpBuilder : public IOpBuilder {
   // See this issue, https://github.com/apple/coremltools/issues/1003
   // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
   // root cause.
-  static bool CheckShapeForLimit(onnxruntime::VectorInt64& shape);
+  static bool CheckShapeForConvMemoryLimit(onnxruntime::VectorInt64& shape, const logging::Logger& logger);
 
  private:
   virtual bool IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& /*input_params*/,
