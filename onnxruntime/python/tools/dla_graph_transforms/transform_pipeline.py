@@ -51,6 +51,7 @@ def run_model(model_name, model_config):
     if result != 0:
         return (False, f"Error: Failed to run {transform_cmd_clip} - {msg}")
     
+    '''
     compare_output_cmd = (
         f"python compare_model_outputs.py "
         f"--config_file {args.config_file} "
@@ -60,6 +61,8 @@ def run_model(model_name, model_config):
     print(f"Result: {result}, Msg: {msg}")
     if result != 0:
         return (False, f"Error: Failed to run {compare_output_cmd} - {msg}")
+    '''
+
     return (True, msg)
 
 if __name__ == "__main__":

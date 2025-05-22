@@ -118,7 +118,7 @@ if __name__ == "__main__":
     
     # Some models needs shape inference before transforming (unknown output shape error)
     shape_inferenced_original_model = original_model_file_name.replace('.onnx', '_shape_inferenced.onnx')
-    # execute_shape_inference(original_model, shape_inferenced_original_model)
+    execute_shape_inference(original_model, shape_inferenced_original_model)
 
     if all_tensors_are_4d(shape_inferenced_original_model):
         print("All tensors are 4D")

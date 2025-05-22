@@ -119,7 +119,7 @@ def transform_matmul_to_transpose_conv_transpose(model):
             input = conv_node.input[0]
             if input in tensor_name_dim_map:
                 shape = tensor_name_dim_map[input]
-                if len(shape) == 2: # The 2D tesnor (MxN) will later adding leading dimensions to 4D where 1x1xMxN
+                if len(shape) == 2 and shape[0] != 1 and shape[1] != 1:  # The 2D tesnor (MxN, width and height) will later adding leading dimensions to 4D with 1x1xMxN
                     return True
                 if len(shape) == 3 and shape[0] == 1: # C == 1
                     return True
@@ -230,7 +230,7 @@ def transform_remove_intermediary_squeeze_and_unsqueeze(model):
     
     # Find all Unsqueeze or Squeeze nodes not directly connected to inputs
     for node in graph.node:
-        if (node.op_type == 'Unsqueeze' or node.op_type == 'SqueezeU') and node.input[0] not in input_names:
+        if (node.op_type == 'Unsqueeze' or node.op_type == 'Squeeze') and node.input[0] not in input_names:
             # Get the input (source) of this Unsqueeze
             unsqueeze_input = node.input[0]
             
@@ -1011,7 +1011,8 @@ def execute_shape_inference(input_model, output_model):
     try:
         # Construct command for symbolic shape inference
         symbolic_shape_infer_cmd = (
-            f"python ..\\onnxruntime\\onnxruntime\\python\\tools\\symbolic_shape_infer.py "
+            #f"python ..\\onnxruntime\\onnxruntime\\python\\tools\\symbolic_shape_infer.py "
+            f"python ..\\symbolic_shape_infer.py "
             f"--input {input_model} "
             f"--output {output_model} "
             # f"--auto_merge"
