@@ -16,7 +16,7 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
-  // Check if we can immediateately remove a very common case (casting to the same type as input).
+  // Check if we can immediately remove a very common case (casting to the same type as the input).
   if (optimizer_utils::IsAttributeWithExpectedValue(node, "to", static_cast<int64_t>(input_type->tensor_type().elem_type()))) {
     graph_utils::RemoveNode(graph, node);
     rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
@@ -24,7 +24,7 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
-  // If not, find the longest chain that repeats the pattern.
+  // If not, find the longest chain that casts to the input type, if it exists.
   Node* current = &node;
   Node* final_non_cast_node = &node;
   int matching_elem_type = input_type->tensor_type().elem_type();
@@ -32,8 +32,8 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   while (current->OpType() == "Cast") {
     const auto& to_attr = current->GetAttributes().at("to");
 
-    // Special case when Cast is branching out into multiple outputs.
-    // Possible to detect different chains, but much harder and out of scope for this fusion.
+    // A rare case when the Cast node output is branching out.
+    // We don't really want to deal with this complexity, hence we will skip it.
     if (current->GetOutputEdgesCount() > 1) {
       return Status::OK();
     }
@@ -44,12 +44,13 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     }
     current = const_cast<Node*>(&(*it));
 
-    // We found we are repeating the conversion.
+    // We found the repeating pattern.
     if (to_attr.i() == matching_elem_type) {
       final_non_cast_node = current;
     }
   }
 
+  // No repeating pattern was found.
   if (node.Index() == final_non_cast_node->Index()) {
     return Status::OK();
   }
@@ -57,6 +58,7 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
   std::vector<Node*> to_remove;
   current = &node;
 
+  // Collect nodes for removal.
   while (current != final_non_cast_node && current->OpType() == "Cast") {
     to_remove.push_back(current);
     auto it = current->OutputNodesBegin();
