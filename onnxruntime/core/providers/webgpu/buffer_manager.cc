@@ -3,11 +3,17 @@
 
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include <chrono>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
 
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
+constexpr const char* METRICS_FILE = "memory_result_inter_session_optimization_with_early_release_and_without_default_bucket_limits.csv";
+constexpr const char* METRICS_HEADER = "Timestamp,TotalMemory(MB),PeakMemory(MB),ActiveBuffers,TotalBuffers,TimeoutMs\n";
 
 constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
@@ -246,6 +252,132 @@ class BucketCacheManager : public IBufferCacheManager {
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<WGPUBuffer> pending_buffers_;
+  std::vector<size_t> buckets_keys_;
+};
+
+class DynamicBucketCacheManager : public IBufferCacheManager {
+ public:
+  DynamicBucketCacheManager() {}
+
+  ~DynamicBucketCacheManager() {
+    for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+  }
+
+  void OnRunStart() override {
+    current_run_usage_.clear();
+  }
+
+  void OnRunEnd() override {
+    // Update memory patterns based on this run
+    for (const auto& usage : current_run_usage_) {
+      auto& pattern = memory_patterns_[usage.first];
+      pattern.request_size = usage.first;
+      pattern.frequency = usage.second;
+    }
+
+    AdjustBuckets();
+  }
+
+  size_t CalculateBufferSize(size_t request_size) override {
+    request_size = NormalizeBufferSize(request_size);
+
+    // Track usage for the current run
+    current_run_usage_[request_size]++;
+
+    if (buckets_.find(request_size) == buckets_.end()) {
+      buckets_.emplace(request_size, std::vector<WGPUBuffer>());
+      buckets_keys_.push_back(request_size);
+      std::sort(buckets_keys_.begin(), buckets_keys_.end());
+    }
+
+    return request_size;
+  }
+
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end() && !it->second.empty()) {
+      auto buffer = it->second.back();
+      it->second.pop_back();
+      return buffer;
+    }
+    return nullptr;
+  }
+
+  void RegisterBuffer(WGPUBuffer buffer, size_t request_size) override {
+    // no-op
+  }
+
+  void ReleaseBuffer(WGPUBuffer buffer) override {
+    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end()) {
+      it->second.emplace_back(buffer);
+    } else {
+      wgpuBufferRelease(buffer);
+    }
+  }
+
+  void OnRefresh() override {
+    // no-op
+  }
+
+  // Analyze memory patterns and adjust bucket sizes.
+  void AdjustBuckets() {
+    std::vector<MemoryUsagePattern> patterns;
+    for (const auto& pair : memory_patterns_) {
+      patterns.push_back(pair.second);
+    }
+
+    // Store old buckets to handle transitions.
+    auto old_buckets = std::move(buckets_);
+
+    // Clear and recreate buckets structure.
+    buckets_keys_.clear();
+    buckets_.clear();
+
+    // Create new buckets based on patterns.
+    for (const auto& pattern : patterns) {
+      // The request size here is already normalized.
+      size_t bucket_size = pattern.request_size;
+      buckets_keys_.push_back(bucket_size);
+
+      // Initialize bucket vector.
+      auto& bucket = buckets_[bucket_size];
+
+      auto old_bucket_it = old_buckets.find(bucket_size);
+      if (old_bucket_it != old_buckets.end()) {
+        // Transfer buffers from old to new bucket.
+        for (size_t i = 0; i < old_bucket_it->second.size(); ++i) {
+          bucket.push_back(old_bucket_it->second[i]);
+        }
+
+        old_bucket_it->second.clear();
+      }
+    }
+
+    // Sort bucket sizes.
+    std::sort(buckets_keys_.begin(), buckets_keys_.end());
+
+    // Release any remaining buffers in old buckets that were not hit by the memoryusage patterns.
+    for (auto& pair : old_buckets) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+
+    // Clear patterns for next adjustment period
+    memory_patterns_.clear();
+  }
+
+ private:
+  std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current run.
+  std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across runs.
+  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<size_t> buckets_keys_;
 };
 
