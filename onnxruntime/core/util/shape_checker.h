@@ -15,16 +15,30 @@ TensorShape make_shape(Args... args) {
 }
 
 // This assumes the tensor is optional, and check wether its shape is expected.
+#define ASSERT_TENSOR_DIMS(tensor, ...)                                                                          \
+  if (tensor != nullptr) {                                                                                       \
+    static_assert(std::is_same<decltype(tensor), const Tensor*>::value, "tensor must be a pointer to a Tensor"); \
+    const TensorShape& tensor_shape = tensor->Shape();                                                           \
+    const TensorShape& expected_shape = make_shape(__VA_ARGS__);                                                 \
+    if (tensor_shape != expected_shape) {                                                                        \
+      return ORT_MAKE_STATUS(                                                                                    \
+          ONNXRUNTIME, INVALID_ARGUMENT, "Input '" #tensor "' is expected to have shape ", expected_shape,       \
+          ", got ", tensor_shape);                                                                               \
+    }                                                                                                            \
+  }
+
+// This assumes the tensor is optional, and check wether its shape is expected.
 #define ASSERT_TENSOR_SHAPE(tensor, shape)                                                                       \
   if (tensor != nullptr) {                                                                                       \
     static_assert(std::is_same<decltype(tensor), const Tensor*>::value, "tensor must be a pointer to a Tensor"); \
     static_assert(std::is_same<std::remove_cv_t<std::remove_reference_t<decltype(shape)>>,                       \
                                TensorShape>::value,                                                              \
                   "shape must be or refer to a TensorShape");                                                    \
-    if (tensor->Shape() != shape) {                                                                              \
+    const TensorShape& tensor_shape = tensor->Shape();                                                           \
+    if (tensor_shape != shape) {                                                                                 \
       return ORT_MAKE_STATUS(                                                                                    \
           ONNXRUNTIME, INVALID_ARGUMENT, "Input '" #tensor "' is expected to have shape ", shape,                \
-          ", got ", tensor->Shape());                                                                            \
+          ", got ", tensor_shape);                                                                               \
     }                                                                                                            \
   }
 
@@ -38,10 +52,11 @@ TensorShape make_shape(Args... args) {
     static_assert(std::is_same<std::remove_cv_t<std::remove_reference_t<decltype(shape_2)>>,                     \
                                TensorShape>::value,                                                              \
                   "shape_2 must be or refer to a TensorShape");                                                  \
-    if (tensor->Shape() != shape_1 && tensor->Shape() != shape_2) {                                              \
+    const TensorShape& tensor_shape = tensor->Shape();                                                           \
+    if (tensor_shape != shape_1 && tensor_shape != shape_2) {                                                    \
       return ORT_MAKE_STATUS(                                                                                    \
           ONNXRUNTIME, INVALID_ARGUMENT, "Input '" #tensor "' is expected to have shape ", shape_1,              \
-          " or ", shape_2, ", got ", tensor->Shape());                                                           \
+          " or ", shape_2, ", got ", tensor_shape);                                                              \
     }                                                                                                            \
   }
 
