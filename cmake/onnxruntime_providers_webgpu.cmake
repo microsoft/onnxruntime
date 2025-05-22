@@ -59,7 +59,7 @@
           list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:webgpu_dawn.dll")
         endif()
 
-        if (onnxruntime_USE_VCPKG)
+        if (onnxruntime_USE_VCPKG AND FALSE) # temporarily disable this until we can fix the vcpkg build issue
           # Fix Dawn vcpkg build issue (missing IMPORTED_IMPLIB and IMPORTED_LOCATION for target dawn::webgpu_dawn)
           get_target_property(webgpu_dawn_target_IMPORTED_IMPLIB dawn::webgpu_dawn IMPORTED_IMPLIB)
           if (NOT webgpu_dawn_target_IMPORTED_IMPLIB)
