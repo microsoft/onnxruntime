@@ -8,6 +8,7 @@ protobuf==4.21.12
 sympy==1.12
 flatbuffers
 psutil
-onnxscript==0.2.3 ; python_version < '3.13'
+onnxscript ; python_version < '3.13'
 jinja2
 markupsafe
+optree

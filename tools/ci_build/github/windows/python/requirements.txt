@@ -8,6 +8,7 @@ protobuf==4.21.12
 sympy==1.12
 flatbuffers
 psutil
-onnxscript==0.2.3
+onnxscript
 jinja2
 markupsafe
+optree
