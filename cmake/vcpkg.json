@@ -88,12 +88,12 @@
       "dependencies": ["fp16"]
     },
     "dml-ep": {
-      "description": "Build with DirectML EP",
+      "description": "Build with CoreML EP",
       "dependencies": ["directx-headers"]
     },
     "webgpu-ep": {
       "description": "Build with WebGPU EP",
-      "dependencies": [{ "name": "dawn", "platform": "!emscripten" }]
+      "dependencies": []
     }
   },
   "overrides": [

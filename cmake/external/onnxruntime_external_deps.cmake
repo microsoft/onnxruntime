@@ -625,7 +625,11 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+  # until we figure out how to resolve the packaging pipeline failures
+  #
+  # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (FALSE)
     # vcpkg does not support Emscripten yet
     find_package(dawn REQUIRED)
   else()
