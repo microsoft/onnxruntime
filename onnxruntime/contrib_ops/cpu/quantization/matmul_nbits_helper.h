@@ -23,17 +23,14 @@ Status CheckInputs(const T* /*activation*/,
                    int64_t block_size,
                    int64_t bits) {
   // activation (A)
-  // quantized_weight (B) : (N, k_blocks, blob_size) or null
+  // quantized_weight (B) : (N, k_blocks, blob_size), or null after prepacking.
   //                        k_blocks = (K + block_size - 1) / block_size
-  //                        blob_size = (block_size * bits + 7) / 8
+  //                        blob_size = block_size * bits / 8
   // scales               : (N, k_blocks)
   // zero_points          : (N, (k_blocks * bits + 7) / 8) for uint8, (N, k_blocks) for other types, or null
   // group_index          : (K) or (k_blocks * block_size), or null
   // bias                 : (N), or null
   // Note that scales and zero_points can be 1D for backward compatibility.
-  int64_t k_blocks = (k + block_size - 1) / block_size;
-  int64_t blob_size = (block_size * bits + 7) / 8;
-
   if (bits != 4 && bits != 8) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "bits should be 4 or 8, got ", bits);
   }
@@ -42,6 +39,9 @@ Status CheckInputs(const T* /*activation*/,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "block_size must be a power of 2, and >= 16. Got ", block_size);
   }
+
+  int64_t k_blocks = (k + block_size - 1) / block_size;
+  int64_t blob_size = block_size * bits / 8;
 
   ASSERT_TENSOR_SHAPE(quantized_weight, make_shape(n, k_blocks, blob_size));
 

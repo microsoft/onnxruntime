@@ -3430,7 +3430,7 @@ This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt t
   static const char* MatMulNBits_ver1_doc = R"DOC(
 MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
 
-The operation is a fusion of two stages:
+It is a fusion of two operations:
 1. Linear dequantization of the quantized weights using scale and (optionally) zero-point with formula:
    dequantized_weight = (quantized_weight - zero_point) * scale
 2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
@@ -3465,7 +3465,7 @@ For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a by
       .Input(0, "A", "The input tensor, not quantized.", "T1")
       .Input(1, "B",
              "Packed uint8 tensor of shape (N, k_blocks, blob_size), "
-             "where k_blocks = ceil(K / block_size) and blob_size = ceil(block_size * bits / 8)."
+             "where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). "
              "The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.",
              "T2")
       .Input(2, "scales", "Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.", "T1")

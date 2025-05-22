@@ -2948,7 +2948,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
   
-  The operation is a fusion of two stages:
+  It is a fusion of two operations:
   1. Linear dequantization of the quantized weights using scale and (optionally) zero-point with formula:
      dequantized_weight = (quantized_weight - zero_point) * scale
   2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
@@ -2986,7 +2986,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dt><tt>A</tt> : T1</dt>
 <dd>The input tensor, not quantized.</dd>
 <dt><tt>B</tt> : T2</dt>
-<dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = ceil(block_size * bits / 8).The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
+<dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
 <dt><tt>scales</tt> : T1</dt>
 <dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.</dd>
 <dt><tt>zero_points</tt> (optional) : T3</dt>
@@ -6345,5 +6345,3 @@ No versioning maintained for experimental ops.
 <dt><tt>T</tt> : tensor(float)</dt>
 <dd>Constrain input and output types to float32 tensors.</dd>
 </dl>
-
-
