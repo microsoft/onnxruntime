@@ -18,11 +18,8 @@ class IConsoleDumper {
   void Disable() { is_enabled_ = false; }
   bool IsEnabled() const { return is_enabled_; }
 
-  virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
   virtual void Print(const char* name, const Tensor& value) const = 0;
   virtual void Print(const char* name, const OrtValue& value) const = 0;
-  virtual void Print(const char* name, int index, bool end_line) const = 0;
-  virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
   virtual void Print(const std::string& value) const = 0;
 
 #define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                        \

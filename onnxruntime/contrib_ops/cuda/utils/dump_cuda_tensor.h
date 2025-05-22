@@ -16,11 +16,8 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   CudaTensorConsoleDumper();
   virtual ~CudaTensorConsoleDumper() {}
 
-  void Print(const char* name, const size_t* tensor, int dim0, int dim1) const override;
   void Print(const char* name, const Tensor& value) const override;
   void Print(const char* name, const OrtValue& value) const override;
-  void Print(const char* name, int index, bool end_line) const override;
-  void Print(const char* name, const std::string& value, bool end_line) const override;
   void Print(const std::string& value) const override;
 
 #define CUDA_DUMPER_PRINT_TYPE(dtype)                                                              \
