@@ -84,9 +84,64 @@ TEST(TensorOpTest, Reshape_WithOutAllowZero) {
   OpTester test("Reshape", 14);
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
-  test.AddInput<int64_t>("shape", {2}, {0, 3});
+  test.AddInput<int64_t>("shape", {2}, {0, 3}, true);
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3}, std::vector<float>(6, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroDiffRank) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {2, 3, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroDiffRankOneZero) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {0, 3, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroDiffRankOneZeroInitializer) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f), true);
+  test.AddInput<int64_t>("shape", {4}, {0, 3, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroDiffRankTwoZeroes) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f));
+  test.AddInput<int64_t>("shape", {4}, {0, 0, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
+  // TensorRT doesn't support dynamic shape tensor for now
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+}
+
+TEST(TensorOpTest, Reshape_WithOutAllowZeroDiffRankTwoZeroesInitializer) {
+  OpTester test("Reshape", 14);
+
+  test.AddInput<float>("data", {2, 3, 12}, std::vector<float>(72, 1.0f), true);
+  test.AddInput<int64_t>("shape", {4}, {0, 0, 3, 4}, true);
+  test.AddAttribute<int64_t>("allowzero", 0);
+  test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
   // TensorRT doesn't support dynamic shape tensor for now
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
@@ -142,7 +197,7 @@ TEST(TensorOpTest, Reshape_UnknownDimWithoutAllowZero) {
   OpTester test("Reshape");
 
   test.AddInput<float>("data", {2, 3}, std::vector<float>(6, 1.0f));
-  test.AddInput<int64_t>("shape", {2}, {-1, 6});
+  test.AddInput<int64_t>("shape", {2}, {-1, 6}, true);
   test.AddOutput<float>("reshaped", {1, 6}, std::vector<float>(6, 1.0f));
   test.Run();
 }

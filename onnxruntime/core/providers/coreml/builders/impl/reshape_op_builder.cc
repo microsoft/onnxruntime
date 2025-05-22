@@ -96,12 +96,6 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (shape_constant) {
     Initializer unpacked_tensor(*shape_constant);
     new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
-    // ReshapeHelper applies the ONNX rules to create the concrete output shape
-<<<<<<< Updated upstream
-    ReshapeHelper helper(TensorShape(input_shape), new_shape);
-=======
-    ReshapeHelper(TensorShape(input_shape), new_shape);
->>>>>>> Stashed changes
   }
 
   if (model_builder.CreateMLProgram()) {
@@ -137,6 +131,38 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
   return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
 }
 
+// Checks that all values in new_shape (except -1) appear in input_shape
+// and that the number of 0's in new_shape accounts for unaccounted dimensions
+bool ValidateShapeValues(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
+  // First, gather all unique values from input_shape
+  std::unordered_set<int64_t> input_values;
+  int input_values_seen = 0;
+  for (const auto& dim : input_shape) {
+    input_values.insert(dim);
+    input_values_seen++;
+  }
+
+  // Now check that all values in new_shape (except -1 and 0) appear in input_shape
+  int new_shape_unknown = 0;
+  for (const auto& dim : new_shape) {
+    if (dim == -1) {
+      new_shape_unknown++;
+    } else if (dim == 0) {
+      continue;
+    } else if (input_values.find(dim) == input_values.end()) {
+      // Found a value that doesn't appear in input_shape
+      return false;
+    } else {
+      input_values_seen--;
+    }
+  }
+
+  // If we have unknown dimensions in input_shape, we need at least as many
+  // placeholders (0 or -1) in new_shape to account for them
+  // return new_shape_zeros == input_values_seen;
+  return input_values_seen < 2 && new_shape_unknown <= 1;
+}
+
 bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape) {
   // Count how many -1 dimensions exist in input_shape
   auto input_negative_one_count = std::count(input_shape.begin(), input_shape.end(), -1);
@@ -146,12 +172,12 @@ bool LegalNegativeOneInNewShape(gsl::span<const int64_t> input_shape, gsl::span<
   auto zero_count = std::count(new_shape.begin(), new_shape.end(), 0);
 
   // Case 1: If new_shape has no -1 dimensions, it's always valid
-  if (negative_one_count == 0) {
+  if (negative_one_count == 0 && zero_count == 0) {
     return true;
   }
 
   // Case 2: If new_shape has exactly one -1 dimension, check if input_shape has at least one -1
-  if (negative_one_count == 1) {
+  if (negative_one_count == 1 && ValidateShapeValues(input_shape, new_shape)) {
   // This isn't an explicit requirement of the spec, but to ensure that we can calculate the unknown
   // dimension in reshape, check that the number of -1 (unknown) dimensions in the input shape is
   // less than or equal to the number of -1 and 0's in the new shape.
@@ -227,14 +253,6 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   if (new_shape.size() > 5) {
     LOGS(logger, VERBOSE) << "Reshape does not support new shape with more than 5 dimensions. "
-                             "Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-    return false;
-  }
-
-  // -1 is only allowed in the new shape if it appears in the input shape
-  if (!LegalNegativeOneInNewShape(input_shape, new_shape)) {
-    LOGS(logger, VERBOSE) << "Reshape does not support -1 in new shape unless it appears in the input shape. "
                              "Input shape: "
                           << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
