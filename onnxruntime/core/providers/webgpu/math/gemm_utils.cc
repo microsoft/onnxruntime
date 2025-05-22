@@ -30,7 +30,7 @@ void HanldeMaybeHaveBiasForGEMM(ShaderHelper& shader,
     // That means the shape of C is either {M,1} or {1,1}
     if (c_components == output_components) {
       shader.AdditionalImplementation() << "output_value_t("
-                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(u32(row), u32(col))", output)) << ");\n";
+                                        << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(u32(row), u32(colIn))", output)) << ");\n";
     } else if (c_is_scalar) {
       shader.AdditionalImplementation() << "output_value_t(C[0]);\n";
     } else {
@@ -293,10 +293,26 @@ Status MakeMatMulPackedVec4Source(ShaderHelper& shader,
       shader.MainFunctionBody()
           << "      for (var i = 0; i < rowPerThread; i = i + 1) {\n"
           << "        let ACached = mm_Asub[tileRow + i][k];\n"
-          << "        acc[i].x += dot(ACached, BCached0);\n"
-          << "        acc[i].y += dot(ACached, BCached1);\n"
-          << "        acc[i].z += dot(ACached, BCached2);\n"
-          << "        " << (inner_elements_size == 3 ? "" : "acc[i].w += dot(ACached, BCached3);") << "\n"
+          << "        acc[i].x += ACached.x * BCached0.x;\n"
+          << "        acc[i].x += ACached.y * BCached0.y;\n"
+          << "        acc[i].x += ACached.z * BCached0.z;\n"
+          << "        acc[i].x += ACached.w * BCached0.w;\n"
+
+          << "        acc[i].y += ACached.x * BCached1.x;\n"
+          << "        acc[i].y += ACached.y * BCached1.y;\n"
+          << "        acc[i].y += ACached.z * BCached1.z;\n"
+          << "        acc[i].y += ACached.w * BCached1.w;\n"
+
+          << "        acc[i].z += ACached.x * BCached2.x;\n"
+          << "        acc[i].z += ACached.y * BCached2.y;\n"
+          << "        acc[i].z += ACached.z * BCached2.z;\n"
+          << "        acc[i].z += ACached.w * BCached2.w;\n"
+
+          << "        " << (inner_elements_size == 3 ? "" : "acc[i].w += ACached.x * BCached3.x;\n"
+                                                            "        acc[i].w += ACached.y * BCached3.y;\n"
+                                                            "        acc[i].w += ACached.z * BCached3.z;\n"
+                                                            "        acc[i].w += ACached.w * BCached3.w;")
+          << "\n"
           << "      }\n";
     } else {
       shader.MainFunctionBody()
