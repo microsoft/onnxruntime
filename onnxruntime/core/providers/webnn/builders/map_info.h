@@ -1,4 +1,3 @@
-
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
@@ -65,21 +64,21 @@ const std::map<std::string_view, std::vector<std::string_view>> decomposed_op_ma
  * WebNN operation inputs. It contains the index of the input as specified
  * in the ONNX operation and the name of the input in the WebNN operation.
  *
- * inputInfo::index
+ * InputInfo::index
  * The index of this input as defined in the ONNX operation specification.
  *
- * inputInfo::name
+ * InputInfo::name
  * The name of this input in the WebNN operation.
  */
-struct inputInfo {
+struct InputInfo {
   int index;
   std::string_view name;
 };
 
-struct webnnOpInfo {
+struct WebnnOpInfo {
   std::string_view opType;
-  std::vector<inputInfo> inputs;
-  webnnOpInfo(std::string_view op, std::initializer_list<inputInfo> in)
+  std::vector<InputInfo> inputs;
+  WebnnOpInfo(std::string_view op, std::initializer_list<InputInfo> in)
       : opType(op), inputs(in) {}
 };
 
@@ -87,9 +86,9 @@ struct webnnOpInfo {
  * Maps ONNX operation type to their corresponding WebNN operation type and input mappings.
  *
  * This unordered map provides a mapping between ONNX operation names (keys) and their corresponding
- * WebNN operation information (values). Each value is a `webnnOpInfo` structure that contains:
+ * WebNN operation information (values). Each value is a `WebnnOpInfo` structure that contains:
  * - The WebNN operation name (`opType`).
- * - A vector of `inputInfo` structures, where each `inputInfo` specifies:
+ * - A vector of `InputInfo` structures, where each `InputInfo` specifies:
  *   - The index of the input in the ONNX operation (`index`).
  *   - The corresponding input name in the WebNN operation (`name`).
  *
@@ -101,9 +100,9 @@ struct webnnOpInfo {
  *
  * Order:
  *   The sorting rule is based on character length in ascending order (for better formatting),
- * and for items with the same length, they are sorted alphabetically.
+ *   and for items with the same length, they are sorted alphabetically.
  */
-const std::unordered_map<std::string_view, webnnOpInfo> op_inputs_map = {
+const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Cos", {"cos", {{0, "input"}}}},
     {"Abs", {"abs", {{0, "input"}}}},
     {"Elu", {"elu", {{0, "input"}}}},
