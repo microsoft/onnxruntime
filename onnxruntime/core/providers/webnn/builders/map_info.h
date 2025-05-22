@@ -188,7 +188,6 @@ const std::unordered_map<std::string_view, webnnOpInfo> op_inputs_map = {
     {"GatherND", {"gatherND", {{0, "input"}, {1, "indices"}}}},
     {"GreaterOrEqual", {"greaterOrEqual", {{0, "a"}, {1, "b"}}}},
     {"Conv", {"conv2d", {{0, "input"}, {1, "filter"}, {2, "bias"}}}},
-    {"ConvInteger", {"conv2dInteger", {{0, "input"}, {1, "filter"}}}},
     {"DynamicQuantizeLinear", {"dynamicQuantizeLinear", {{0, "input"}}}},
     {"GatherElements", {"gatherElements", {{0, "input"}, {1, "indices"}}}},
     {"ScatterND", {"scatterND", {{0, "input"}, {1, "indices"}, {2, "updates"}}}},
