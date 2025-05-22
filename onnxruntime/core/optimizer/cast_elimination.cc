@@ -44,8 +44,17 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     }
   }
 
+  // No repeating pattern was found.
+  if (current == final_non_cast_node) {
+    return Status::OK();
+  }
+
+  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
+
   std::vector<Node*> to_remove;
   current = &node;
+
+  // Collect the nodes to remove.
   while (current != final_non_cast_node && current->OpType() == "Cast") {
     to_remove.push_back(current);
     auto it = current->OutputNodesBegin();
@@ -54,26 +63,8 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     current = const_cast<Node*>(&*it);
   }
 
-  // No repeating pattern was found.
-  if (to_remove.empty()) {
-    return Status::OK();
-  }
-
-  std::cout << "to remove size " << to_remove.size() << std::endl;
-
-  for (Node* n : to_remove) {
-    std::cout << "el is" << std::endl;
-    std::cout << n->Name() << " " << n->Index() << std::endl;
-  }
-
-  std::cout << "Explicit args count" << to_remove[0]->MutableInputArgsCount() << std::endl;
-  std::cout << "Explicit args count2 " << to_remove[0]->GetInputEdgesCount() << std::endl;
-
-  rule_effect = RewriteRuleEffect::kRemovedCurrentNode;
-
   // First remove all outbound edges.
   for (Node* n : to_remove) {
-    std::cout << n->Name() << std::endl;
     graph_utils::RemoveNodeOutputEdges(graph, *n);
   }
 
