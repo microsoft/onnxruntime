@@ -1453,6 +1453,12 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     // Fails with QNN SDK 2.17.0:
     // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
     broken_tests->insert({"facedetection_op8_qdq", "result differs"});
+    // Fails with QNN SDK 2.34.0:
+    // expected 2.18661 (400bf164), got 1.48898 (3fbe96ce), diff: 0.697631, tol=0.00318661 idx=0. 8 of 8 differ
+    broken_tests->insert({"gemm_default_vector_bias", "result differs with 2.34"});
+    // expected 0.0505495 (3d4f0d00), got 0.0506369 (3d4f68ae), diff: 8.74326e-05, tol=6.05495e-05 idx=448
+    broken_tests->insert({"mobilenetv2-1.0", "result differs with 2.34"});
+    broken_tests->insert({"facedetection_op8", "segfault with CPU backend, will be fixed by QNN 2.36"});
 
 #if defined(_WIN32) && defined(_M_AMD64)
     // Fails with QNN SDK 2.17.0 on Windows x64:
