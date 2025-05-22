@@ -362,7 +362,7 @@ def export_onnx_models(
 
     output_paths = []
     for name, model in models.items():
-        print(f"========> Handling {name} model......")
+        print(f"========> Handling {name} model {model.__class__.__name__}......")
         filename_suffix = "_" + name
 
         onnx_path = WhisperHelper.get_onnx_path(

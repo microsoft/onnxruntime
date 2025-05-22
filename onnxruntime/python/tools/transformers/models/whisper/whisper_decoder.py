@@ -479,7 +479,12 @@ class WhisperDecoder(torch.nn.Module):
                 model_ir = ir.serde.deserialize_model(model)
                 opt_model_ir, fusion_count = ort_fusions.optimize_for_ort(model_ir)
                 logger.info(f"The following fusions were successfully appiled {fusion_count}")
-                model = ir.serde.serialize_model(opt_model_ir)
+                new_model = ir.serde.serialize_model(opt_model_ir)
+                node_types = {n.op_type for n in new_model.graph.node}
+                if "SDPA" not in node_types:
+                    model = new_model
+                else:
+                    print(f"-- optimize_for_ort failed and left a node SDPA, node_types={node_types}.")
 
             model = self.fix_inputs_and_outputs(model)
             model = self.fix_layernorm_weights(model, use_fp16_inputs)
