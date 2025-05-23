@@ -18,7 +18,7 @@
 #include <cuda_runtime_api.h>
 
 #include "cutlass/device_kernel.h"
-#include "contrib_ops/cuda/llm/common/cudaUtils.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
 namespace onnxruntime::llm {

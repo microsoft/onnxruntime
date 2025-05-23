@@ -34,7 +34,7 @@
 #endif  // __GNUC__
 
 #include "core/common/common.h"
-#include "contrib_ops/cuda/llm/common/cudaUtils.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"

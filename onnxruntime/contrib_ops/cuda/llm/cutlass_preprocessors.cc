@@ -26,7 +26,7 @@
 #endif
 
 #include "core/common/common.h"
-#include "contrib_ops/cuda/llm/common/cudaUtils.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
@@ -158,7 +158,7 @@ std::vector<int> get_permutation_map(QuantType quant_type) {
 
 void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
                                    std::vector<size_t> const& shape, QuantType quant_type, int64_t const arch_version) {
-  ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+  ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
   // We only want to run this step for weight only quant.
   std::vector<int> row_permutation = get_permutation_map(quant_type);
 
@@ -217,7 +217,7 @@ void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t con
 template <QuantType quant_type>
 void subbyte_transpose_impl(
     int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor, std::vector<size_t> const& shape) {
-  ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+  ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
   constexpr int bits_per_elt = get_weight_quant_bits(quant_type);
 
   ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
@@ -244,9 +244,8 @@ void subbyte_transpose_impl(
   // of 64 for weight-only quantization. As a result, this seemed like a reasonable tradeoff because it
   // allows GCC to emit vector instructions.
   ORT_ENFORCE(!(col_bytes_trans % VECTOR_WIDTH) && !(col_bytes % VECTOR_WIDTH),
-              fmtstr("Number of bytes for rows and cols must be a multiple of %d. However, num_rows_bytes = %ld and "
-                     "num_col_bytes = %ld.",
-                     VECTOR_WIDTH, col_bytes_trans, col_bytes));
+              "Number of bytes for rows and cols must be a multiple of ", VECTOR_WIDTH, ". However, num_rows_bytes = ",
+              col_bytes_trans, " and num_col_bytes = ", col_bytes);
 
   // int const num_m_tiles = (num_rows + M_TILE_L1 - 1) / M_TILE_L1;
   // int const num_n_tiles = (col_bytes + N_TILE_L1 - 1) / N_TILE_L1;
@@ -332,7 +331,7 @@ void subbyte_transpose_impl(
 
 void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
                        std::vector<size_t> const& shape, QuantType quant_type) {
-  ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+  ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
 
   if (quant_type == QuantType::W8_A16) {
     subbyte_transpose_impl<QuantType::W8_A16>(transposed_quantized_tensor, quantized_tensor, shape);
@@ -417,7 +416,7 @@ void add_bias_and_interleave_int4s_inplace(int8_t* packed_int4_tensor, const siz
 }
 
 void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size_t num_elts, QuantType quant_type) {
-  ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+  ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
   if (quant_type == QuantType::W8_A16) {
     add_bias_and_interleave_int8s_inplace(tensor, num_elts);
   } else if (quant_type == QuantType::W4_A16 || quant_type == QuantType::W4_AFP8) {
@@ -433,7 +432,7 @@ void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size
 
 void interleave_column_major_tensor(int8_t* interleaved_quantized_tensor, int8_t const* quantized_tensor,
                                     std::vector<size_t> const& shape, QuantType quant_type, LayoutDetails details) {
-  ORT_LLM_LOG_TRACE("%s start", __PRETTY_FUNCTION__);
+  ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
 
   ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
   const size_t num_experts = shape.size() == 2 ? 1 : shape[0];
