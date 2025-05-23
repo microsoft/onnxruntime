@@ -369,7 +369,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
   // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
-  HMODULE dxcoreModule = LoadLibraryW(L"dxcore.dll");
+  HMODULE dxcoreModule = LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
   if (!dxcoreModule) {
     return device_info;
   }
