@@ -8,18 +8,21 @@
 #include <string>
 #include <utility>
 
-#include "core/session/allocator_adapters.h"
+#include "core/framework/allocator.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
-#include "core/session/ort_env.h"
+#include "core/session/environment.h"
 
 namespace onnxruntime {
-ModelCompilationOptions::ModelCompilationOptions(const OrtEnv& env, const OrtSessionOptions& session_options)
+ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment& env, const OrtSessionOptions& session_options)
     : env_(env), session_options_(session_options) {
   session_options_.value.has_explicit_ep_context_gen_options = true;
   session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
   session_options_.value.ep_context_gen_options.enable = true;
-  session_options_.value.ep_context_gen_options.overwrite_existing_output_file = true;
-  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = true;
+  session_options_.value.ep_context_gen_options.error_if_output_file_exists = false;
+
+  // defaulting to kGenerateModel to support wider usage.
+  session_options_.value.ep_context_gen_options.action_if_no_compiled_nodes =
+      EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
@@ -84,15 +87,14 @@ void ModelCompilationOptions::SetOutputModelExternalInitializersFile(const std::
       external_initializer_size_threshold;
 }
 
-Status ModelCompilationOptions::SetOutputModelBuffer(OrtAllocator* allocator,
+Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr allocator,
                                                      void** output_model_buffer_ptr,
                                                      size_t* output_model_buffer_size_ptr) {
   ORT_RETURN_IF_ERROR(ResetOutputModelSettings());
 
   session_options_.value.ep_context_gen_options.output_model_buffer_ptr = output_model_buffer_ptr;
   session_options_.value.ep_context_gen_options.output_model_buffer_size_ptr = output_model_buffer_size_ptr;
-  session_options_.value.ep_context_gen_options.output_model_buffer_allocator =
-      std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
+  session_options_.value.ep_context_gen_options.output_model_buffer_allocator = std::move(allocator);
   return Status::OK();
 }
 
@@ -100,6 +102,15 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
   ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
   session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::SetFlags(size_t flags) {
+  EpContextModelGenerationOptions& options = session_options_.value.ep_context_gen_options;
+  options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  options.action_if_no_compiled_nodes =
+      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError
+                                                              : EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
   return Status::OK();
 }
 

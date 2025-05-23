@@ -1,0 +1,125 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index b46b68204b..3e985ae3cd 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -127,6 +127,8 @@ if (DAWN_SUPPORTS_GLFW_FOR_WINDOWING)
+     set(BUILD_SAMPLES ON)
+ endif()
+ 
++option(DAWN_ENABLE_VCPKG "Enable vcpkg integration" OFF)
++
+ option(DAWN_ENABLE_ASAN "Enable address sanitizer" OFF)
+ option(DAWN_ENABLE_INSTALL "Enable install step for Dawn libraries" OFF)
+ option(DAWN_ENABLE_TSAN "Enable thread sanitizer" OFF)
+@@ -439,16 +441,25 @@ set(TINT_SPIRV_TOOLS_DIR   ${DAWN_SPIRV_TOOLS_DIR})
+ ################################################################################
+ # Run on all subdirectories
+ ################################################################################
+-if (DAWN_BUILD_PROTOBUF AND EXISTS "${DAWN_PROTOBUF_DIR}/cmake")
+-  if (("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") AND WIN32)
+-    set(protobuf_HAVE_BUILTIN_ATOMICS 1)
++if (DAWN_ENABLE_VCPKG)
++  find_package(absl REQUIRED)
++  find_package(SPIRV-Headers REQUIRED)
++  find_package(SPIRV-Tools REQUIRED)
++  if (DAWN_USE_BUILT_DXC)
++    find_package(directx-dxc CONFIG REQUIRED)
+   endif()
++else()
++  if (DAWN_BUILD_PROTOBUF AND EXISTS "${DAWN_PROTOBUF_DIR}/cmake")
++    if (("${CMAKE_CXX_COMPILER_ID}" STREQUAL "Clang") AND WIN32)
++      set(protobuf_HAVE_BUILTIN_ATOMICS 1)
++    endif()
+ 
+-  # Needs to come before SPIR-V Tools
+-  include("third_party/protobuf.cmake")
+-endif()
++    # Needs to come before SPIR-V Tools
++    include("third_party/protobuf.cmake")
++  endif()
+ 
+-add_subdirectory(third_party)
++  add_subdirectory(third_party)
++endif()
+ 
+ # TODO(crbug.com/tint/455): Tint does not currently build with CMake when
+ # BUILD_SHARED_LIBS=1, so always build it as static for now.
+diff --git a/src/dawn/native/CMakeLists.txt b/src/dawn/native/CMakeLists.txt
+index d3128bf764..319a847311 100644
+--- a/src/dawn/native/CMakeLists.txt
++++ b/src/dawn/native/CMakeLists.txt
+@@ -865,7 +865,9 @@ if (DAWN_ENABLE_D3D12)
+     if (DAWN_USE_BUILT_DXC)
+         target_compile_definitions(dawn_native PRIVATE "DAWN_USE_BUILT_DXC")
+         target_compile_definitions(dawn_native_objects PRIVATE "DAWN_USE_BUILT_DXC")
+-        add_dependencies(dawn_native copy_dxil_dll)
++        if (NOT DAWN_ENABLE_VCPKG)
++            add_dependencies(dawn_native copy_dxil_dll)
++        endif()
+     endif()
+ endif()
+ 
+@@ -942,5 +944,9 @@ endif ()
+ # They happen because dxcompiler is declared a shared library and bundle_libraries
+ # doesn't work well with shared libs
+ if (DAWN_USE_BUILT_DXC)
+-    target_link_libraries(dawn_native PRIVATE dxcompiler)
++    if (DAWN_ENABLE_VCPKG)
++        target_link_libraries(dawn_native PRIVATE Microsoft::DirectXShaderCompiler)
++    else()
++        target_link_libraries(dawn_native PRIVATE dxcompiler)
++    endif()
+ endif()
+diff --git a/src/tint/CMakeLists.txt b/src/tint/CMakeLists.txt
+index 8692171222..b3da2fbbbf 100644
+--- a/src/tint/CMakeLists.txt
++++ b/src/tint/CMakeLists.txt
+@@ -214,13 +214,21 @@ function(tint_default_compile_options TARGET)
+ endfunction()
+ 
+ function(tint_spvheaders_compile_options TARGET)
+-  target_link_libraries(${TARGET} PRIVATE SPIRV-Headers)
+-  target_include_directories(${TARGET} PRIVATE "${TINT_SPIRV_HEADERS_DIR}/include")
++  if (DAWN_ENABLE_VCPKG)
++    target_link_libraries(${TARGET} PRIVATE SPIRV-Headers::SPIRV-Headers)
++  else ()
++    target_link_libraries(${TARGET} PRIVATE SPIRV-Headers)
++    target_include_directories(${TARGET} PRIVATE "${TINT_SPIRV_HEADERS_DIR}/include")
++  endif()
+ endfunction()
+ 
+ function(tint_spvtools_compile_options TARGET)
+-  target_link_libraries(${TARGET} PRIVATE SPIRV-Tools)
+-  target_include_directories(${TARGET} PRIVATE "${TINT_SPIRV_TOOLS_DIR}/include")
++  if (DAWN_ENABLE_VCPKG)
++    target_link_libraries(${TARGET} PRIVATE SPIRV-Tools-static)
++  else ()
++    target_link_libraries(${TARGET} PRIVATE SPIRV-Tools)
++    target_include_directories(${TARGET} PRIVATE "${TINT_SPIRV_TOOLS_DIR}/include")
++  endif()
+ endfunction()
+ 
+ function(tint_lib_compile_options TARGET)
+@@ -562,12 +570,16 @@ function(tint_target_add_external_dependencies TARGET KIND)
+       target_link_libraries(${TARGET} PRIVATE
+         SPIRV-Tools-opt
+       )
+-      target_include_directories(${TARGET} PRIVATE
+-        "${TINT_SPIRV_TOOLS_DIR}"
+-        "${TINT_SPIRV_TOOLS_DIR}/include"
+-        "${TINT_SPIRV_TOOLS_DIR}/source"
+-        "${spirv-tools_BINARY_DIR}"
+-      )
++      if (DAWN_ENABLE_VCPKG)
++        target_link_libraries(${TARGET} PRIVATE SPIRV-Tools-static)
++      else ()
++        target_include_directories(${TARGET} PRIVATE
++          "${TINT_SPIRV_TOOLS_DIR}"
++          "${TINT_SPIRV_TOOLS_DIR}/include"
++          "${TINT_SPIRV_TOOLS_DIR}/source"
++          "${spirv-tools_BINARY_DIR}"
++        )
++      endif()
+     elseif(${DEPENDENCY} STREQUAL "thread")
+       find_package(Threads REQUIRED)
+       target_link_libraries(${TARGET} PRIVATE Threads::Threads)

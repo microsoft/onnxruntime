@@ -1,5 +1,5 @@
 /***************************************************************************************************
- * Copyright (c) 2017 - 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+ * Copyright (c) 2017 - 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
  * SPDX-License-Identifier: BSD-3-Clause
  *
  * Redistribution and use in source and binary forms, with or without
@@ -38,6 +38,7 @@
 
 #include <curand_kernel.h>
 #include <cmath>
+#include <cinttypes>
 #include <vector>
 
 #include "cutlass/fast_math.h"
@@ -70,8 +71,6 @@
 #include "41_fused_multi_head_attention/gemm/mma_from_smem.h"
 #include "41_fused_multi_head_attention/gemm_kernel_utils.h"
 #include "41_fused_multi_head_attention/transform/tile_smem_loader.h"
-
-#include <inttypes.h>
 
 using namespace gemm_kernel_utils;
 
@@ -174,9 +173,10 @@ struct AttentionKernel {
     scalar_t* key_ptr = nullptr;        // [num_keys, num_heads, head_dim]
     scalar_t* value_ptr = nullptr;      // [num_keys, num_heads, head_dim_value]
     scalar_t* attn_bias_ptr = nullptr;  // [num_heads, num_queries, num_keys]
-    const int32_t* seqstart_q_ptr = nullptr;
-    const int32_t* seqstart_k_ptr = nullptr;
-    const int32_t* seqlen_k_ptr = nullptr;
+    int32_t* seqstart_q_ptr = nullptr;
+    int32_t* seqstart_k_ptr = nullptr;
+
+    int32_t* seqlen_k_ptr = nullptr;
     uint32_t causal_diagonal_offset = 0;
 
     // Output tensors
@@ -1105,15 +1105,15 @@ struct AttentionKernel {
                       using EpilogueOutputOp = typename cutlass::epilogue::
                           thread::MemoryEfficientAttentionNormalize<
                               typename cutlass::platform::conditional<
-                                  kIsLast,
+                                  kIsLast::value,
                                   output_t,
                                   output_accum_t>::type,
                               output_accum_t,
                               DefaultOp::kCount,
                               typename DefaultOp::ElementAccumulator,
                               ElementCompute,
-                              kIsFirst,
-                              kIsLast,
+                              kIsFirst::value,
+                              kIsLast::value,
                               cutlass::Array<ElementCompute, kQueriesPerBlock>>;
                       using Epilogue = typename cutlass::epilogue::threadblock::
                           EpiloguePipelined<
@@ -1121,7 +1121,7 @@ struct AttentionKernel {
                               typename MM1::Mma::Operator,
                               DefaultEpilogue::kPartitionsK,
                               typename cutlass::platform::conditional<
-                                  kIsLast,
+                                  kIsLast::value,
                                   typename MM1::OutputTileIterator,
                                   typename MM1::OutputTileIteratorAccum>::type,
                               typename DefaultEpilogue::
@@ -1139,7 +1139,7 @@ struct AttentionKernel {
                       int col = blockN * MM1::Mma::Shape::kN;
                       auto source_iter = createOutputAccumIter(col);
                       auto dest_iter = call_conditional<
-                          kIsLast,
+                          kIsLast::value,
                           decltype(createOutputIter),
                           decltype(createOutputAccumIter)>::
                           apply(createOutputIter, createOutputAccumIter, col);

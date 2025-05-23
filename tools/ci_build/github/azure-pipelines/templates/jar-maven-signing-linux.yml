@@ -7,7 +7,7 @@ steps:
     displayName: 'Get GnuPG signing keys'
     inputs:
       #The value below is the name of an ADO service connection.
-      azureSubscription: 'OnnxrunTimeCodeSign_20240611'
+      azureSubscription: 'AIInfraBuildOnnxRuntimeOSS'
       KeyVaultName: 'ort-release'
       SecretsFilter: 'java-pgp-pwd,java-pgp-key'
       RunAsPreJob: false
