@@ -31,6 +31,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/eltwise.cpp
   ${MLAS_SRC_DIR}/erf.cpp
   ${MLAS_SRC_DIR}/compute.cpp
+  ${MLAS_SRC_DIR}/dequantize.cpp
   ${MLAS_SRC_DIR}/quantize.cpp
   ${MLAS_SRC_DIR}/qgemm_kernel_default.cpp
   ${MLAS_SRC_DIR}/qladd.cpp
