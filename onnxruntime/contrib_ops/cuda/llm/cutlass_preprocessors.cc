@@ -20,9 +20,14 @@
  #endif
 
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
-#include "contrib_ops/cuda/llm/common/cudaBf16Wrapper.h"
-#include "core/common/common.h"
 
+#ifdef ENABLE_BF16
+#include <cuda_bf16.h>
+#endif
+
+#include "core/common/common.h"
+#include "contrib_ops/cuda/llm/common/cudaUtils.h"
+#include "contrib_ops/cuda/llm/common/logger.h"
 #include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
 using namespace onnxruntime::llm::common;

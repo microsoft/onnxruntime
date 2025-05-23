@@ -40,7 +40,10 @@
 #include "cutlass/platform/platform.h"
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
-#include "contrib_ops/cuda/llm/common/cudaBf16Wrapper.h"
+
+#ifdef ENABLE_BF16
+#include <cuda_bf16.h>
+#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 

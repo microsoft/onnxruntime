@@ -399,10 +399,8 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
     OutputType>::CutlassFpAIntBGemmRunner()
 {
     ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
-    int device{-1};
-    CUDA_CALL_THROW(cudaGetDevice(&device));
-    sm_ = tk::getSMVersion();
-    CUDA_CALL_THROW(cudaDeviceGetAttribute(&multi_processor_count_, cudaDevAttrMultiProcessorCount, device));
+    sm_ = ::onnxruntime::llm::common::getSMVersion();
+    multi_processor_count_ = ::onnxruntime::llm::common::getMultiProcessorCount();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,

@@ -18,7 +18,6 @@
 
 #include "cute/tensor.hpp"
 #include "cutlass_extensions/gemm_configs.h"
-#include "contrib_ops/cuda/llm/common/cudaUtils.h"
 
 namespace onnxruntime::llm
 {
