@@ -379,7 +379,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         GetProcAddress(dxcoreModule, "DXCoreCreateAdapterFactory"));
 
     if (!pfnDXCoreCreateAdapterFactory) {
-      std::cerr << "Failed to get DXCoreCreateAdapterFactory function address.\n";
+      LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
       break;
     }
 
