@@ -301,13 +301,16 @@ inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
   for (const auto& index : nodes_vector) {
     const auto& node = graph_viewer.GetNode(node_index[index]);
     for (const auto* node_arg : node->OutputDefs()) {
-      if (node_arg->Exists()) {
+      if (node_arg != nullptr && node_arg->Exists()) {
         hash_str(node_arg->Name());
       }
     }
     for (const auto* node_arg : node->InputDefs()) {
-      if (node_arg->Exists()) {
+      if (node_arg != nullptr && node_arg->Exists()) {
         hash_str(node_arg->Name());
+        if (node_arg->Shape() == nullptr) {
+          continue;
+        }
         int dim_size = node_arg->Shape()->dim_size();
         for (int i = 0; i < dim_size; i++) {
           hash_str(std::to_string(node_arg->Shape()->dim(i).dim_value()));
