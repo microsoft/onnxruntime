@@ -17,12 +17,12 @@
 #pragma once
 
 #include "cutlass/gemm/threadblock/default_mma.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/dq_mma_pipelined.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/default_mma_tensor_op.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/mma_tensorop_compute_B_with_f16.h"
-#include "contrib_ops/cuda/moe/cutlass_extensions/tile_interleaved_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/tile_interleaved_layout.h"
 
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/threadblock/default_dq_mma.h"
 
