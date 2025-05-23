@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -64,9 +65,13 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* zero_points = ctx->Input<Tensor>(3);
   const Tensor* reorder_idx = ctx->Input<Tensor>(4);
   const Tensor* bias = ctx->Input<Tensor>(5);
+
   if (bias != nullptr) {
     ORT_THROW("MatMulNBits does not support bias in CUDA kernel");
   }
+
+  ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   const auto* a_data = a->Data<T>();
   const uint8_t* blob_data = b->Data<uint8_t>();
@@ -395,7 +400,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<float>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<float>()}),
     MatMulNBits<float>);
 
 ONNX_OPERATOR_TYPED_KERNEL_EX(
@@ -406,7 +412,8 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
     kCudaExecutionProvider,
     (*KernelDefBuilder::Create())
         .TypeConstraint("T1", DataTypeImpl::GetTensorType<MLFloat16>())
-        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>()),
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     MatMulNBits<MLFloat16>);
 
 }  // namespace cuda
