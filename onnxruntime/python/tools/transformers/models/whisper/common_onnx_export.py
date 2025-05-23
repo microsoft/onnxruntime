@@ -30,7 +30,7 @@ if whisper:
                 v = v.view(*v.shape[:2], self.n_head, -1).permute(0, 2, 1, 3)
 
                 # a = scaled_dot_product_attention(q, k, v, is_causal=mask is not None and n_ctx > 1)
-                if torch.compiler.is_exporting():
+                if True or torch.compiler.is_exporting() or torch.jit.is_tracing():
                     # torchscript is only tracing one branch, even if does not match
                     # the implementation of oepnai-whisper, it matches what needs to be exported.
                     a = torch.nn.functional.scaled_dot_product_attention(q, k, v, is_causal=True)

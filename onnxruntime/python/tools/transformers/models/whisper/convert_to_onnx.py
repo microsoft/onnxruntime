@@ -542,12 +542,13 @@ def main(argv=None):
             )
 
         # Remove extra ONNX models saved in output directory
-        for _file in os.listdir(output_dir):
-            if "_beamsearch" not in _file and "_jump_times" not in _file:
-                path = os.path.join(output_dir, _file)
-                os.remove(path)
-                if path in output_paths:
-                    output_paths.remove(path)
+        if os.environ.get("KEEPONNX", "0") == "0":
+            for _file in os.listdir(output_dir):
+                if "_beamsearch" not in _file and "_jump_times" not in _file:
+                    path = os.path.join(output_dir, _file)
+                    os.remove(path)
+                    if path in output_paths:
+                        output_paths.remove(path)
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff

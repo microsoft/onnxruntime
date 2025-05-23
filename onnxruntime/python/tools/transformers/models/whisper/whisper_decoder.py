@@ -6,6 +6,7 @@
 
 import logging
 import os
+import shutil
 import tempfile
 from itertools import chain
 from pathlib import Path
@@ -436,7 +437,7 @@ class WhisperDecoder(torch.nn.Module):
         inputs = self.inputs(use_fp16_inputs=use_fp16_inputs, use_int32_inputs=use_int32_inputs)
         input_names = self.input_names()
         output_names = self.output_names()
-        dynamic_axes = tuple(self.dynamic_axes(input_names, output_names))
+        dynamic_axes = self.dynamic_axes(input_names, output_names)
 
         Path(onnx_model_path).parent.mkdir(parents=True, exist_ok=True)
         with tempfile.TemporaryDirectory() as tmp_dir_name:
@@ -459,21 +460,34 @@ class WhisperDecoder(torch.nn.Module):
                 )
             else:
                 dynamic_shapes = self.dynamic_shapes(inputs)
-                with bypass_export_some_errors(patch_transformers=True, custom_patches=_custom_patches):
-                    onnx_program = torch.onnx.export(
-                        self,
-                        inputs,
-                        input_names=input_names,
-                        output_names=output_names,
-                        dynamic_shapes=dynamic_shapes,
-                        dynamo=True,
-                        verbose=verbose,
-                    )
-                    onnx_program.save(out_path, external_data=True)
+                    
 
-            model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+                #with bypass_export_some_errors(patch_transformers=True, custom_patches=_custom_patches):
+                if _custom_patches:
+                    import whisper
+                    assert len(_custom_patches) == 1
+                    PatchedMultiHeadAttention = _custom_patches[0]
+                    keep = whisper.model.MultiHeadAttention.qkv_attention
+                    whisper.model.MultiHeadAttention.qkv_attention = PatchedMultiHeadAttention.qkv_attention
+
+                onnx_program = torch.onnx.export(
+                    self,
+                    inputs,
+                    input_names=input_names,
+                    output_names=output_names,
+                    dynamic_shapes=dynamic_shapes,
+                    dynamo=True,
+                    verbose=verbose,
+                )
+                onnx_program.optimize()
+                onnx_program.save(out_path, external_data=True)
+                shutil.copy(out_path, onnx_model_path + ".decoder.onnx")
+
+                if _custom_patches:
+                    whisper.model.MultiHeadAttention.qkv_attention = keep
 
             # Apply ort_fusions optimizations
+            model = onnx.load_model(out_path, load_external_data=use_external_data_format)
             if use_onnxscript_fusion_optimizations:
                 logger.info(f"Applying onnxscript op-fusion optimizations to {onnx_model_path}")
                 model_ir = ir.serde.deserialize_model(model)
@@ -494,8 +508,8 @@ class WhisperDecoder(torch.nn.Module):
                 save_as_external_data=use_external_data_format,
                 all_tensors_to_one_file=True,
             )
-
         self.verify_onnx(onnx_model_path, provider, use_fp16_inputs, use_int32_inputs)
+        
 
     def verify_onnx(
         self,
@@ -530,32 +544,37 @@ class WhisperDecoder(torch.nn.Module):
             use_int32_inputs=use_int32_inputs,
             return_dict=True,
         )
-        print(f"[verify_onnx] inputs={string_type(inputs, with_shape=True)}")
+        assert not self.first_pass
+        if isinstance(inputs, dict):
+            args, kwargs = (), inputs
+        else:
+            args, kwargs = inputs, {}
+
         pt_outputs = []
         if self.first_pass:
-            out = self.forward(**inputs)
+            out = self(*args, **kwargs)
             pt_outputs.append(out[0].detach().cpu().numpy())
             for present_key_value_layer in out[1]:
                 for present_key_value in present_key_value_layer:
                     pt_outputs.append(present_key_value.detach().cpu().numpy())
         else:
-            out = self.forward(**inputs)
+            out = self(*args, **kwargs)
             pt_outputs.append(out[0].detach().cpu().numpy())
             for present_self_key_value in out[1]:
                 pt_outputs.append(present_self_key_value.detach().cpu().numpy())
 
         # Run ONNX model
+        print(f"[verify_onnx] {onnx_model_path!r}")
         sess = InferenceSession(onnx_model_path, providers=[provider])
         print(f"[verify_onnx] onnx_inputs {[i.name for i in sess.get_inputs()]}")
-        ort_inputs = convert_inputs_for_ort(inputs, sess)
-        print(f"[verify_onnx] ort_inputs={string_type(ort_inputs, with_shape=True)}")
+        ort_inputs = convert_inputs_for_ort(inputs if isinstance(inputs, dict) else dict(zip(["decoder_input_ids", "encoder_hidden_states", "past_key_values"], inputs)), sess)
+
+        print(f"[verify_onnx] ort_inputs={string_type(ort_inputs, with_shape=True, with_min_max=True)}")
         ort_outputs = sess.run(None, ort_inputs)
 
         # Calculate output difference
-        try:
-            for i, output_name in enumerate(self.output_names()):
-                diff = np.abs(pt_outputs[i] - ort_outputs[i])
-                logger.warning(f"Comparing {output_name}...")
-                logger.warning(f"Max diff: {np.max(diff)}")
-        except:  # noqa: E722
-            pass
+        for i, output_name in enumerate(self.output_names()):
+            diff = np.abs(pt_outputs[i] - ort_outputs[i])
+            logger.warning(f"Comparing {output_name}... {pt_outputs[i].shape}, {ort_outputs[i].shape}")
+            logger.warning(f"Max diff: {np.max(diff)}")
+            assert np.max(diff) < 1e-3

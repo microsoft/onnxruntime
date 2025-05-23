@@ -6,6 +6,7 @@
 
 import logging
 import os
+import shutil
 import tempfile
 from pathlib import Path
 
@@ -147,6 +148,7 @@ class WhisperEncoder(torch.nn.Module):
                     onnx_program.save(out_path, external_data=True)
 
             model = onnx.load_model(out_path, load_external_data=use_external_data_format)
+            shutil.copy(out_path, onnx_model_path + ".encoder.onnx")
 
             # Apply ort_fusions optimizations
             if use_onnxscript_fusion_optimizations:
