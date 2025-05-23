@@ -10,10 +10,7 @@
 #include "core/common/safeint.h"
 #include "core/providers/cuda/cuda_kernel.h"
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
-#include "contrib_ops/cuda/llm/gemmProfiler.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
-#include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "core/platform/env_var_utils.h"
 
 namespace onnxruntime {
