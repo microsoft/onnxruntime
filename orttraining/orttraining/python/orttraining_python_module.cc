@@ -310,8 +310,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
 
-  // Instantiate singletons
-  GetTrainingEnv();
   addGlobalMethods(m);
   addObjectMethods(m, ORTTrainingRegisterExecutionProviders);
   addOrtValueMethods(m);
