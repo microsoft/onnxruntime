@@ -47,6 +47,8 @@ GraphOptimizationLevel convertOptimizationLevel(jint level) {
             return ORT_ENABLE_BASIC;
         case 2:
             return ORT_ENABLE_EXTENDED;
+        case 3:
+            return ORT_ENABLE_LAYOUT;
         case 99:
             return ORT_ENABLE_ALL;
         default:

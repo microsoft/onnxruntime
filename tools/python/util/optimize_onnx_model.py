@@ -22,7 +22,7 @@ def optimize_model_helper():
     parser.add_argument(
         "--opt_level",
         default="basic",
-        choices=["disable", "basic", "extended", "all"],
+        choices=["disable", "basic", "extended", "layout", "all"],
         help="Optimization level to use.",
     )
     parser.add_argument(
