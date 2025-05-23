@@ -1090,7 +1090,11 @@ endif()
 
 if (onnxruntime_USE_WEBGPU)
   if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-    if (onnxruntime_USE_VCPKG)
+    # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+    # until we figure out how to resolve the packaging pipeline failures
+    #
+    # if (onnxruntime_USE_VCPKG)
+    if (FALSE)
       add_custom_command(
         TARGET onnxruntime_pybind11_state POST_BUILD
         COMMAND ${CMAKE_COMMAND} -E copy
