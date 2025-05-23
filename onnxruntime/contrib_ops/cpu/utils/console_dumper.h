@@ -25,11 +25,11 @@ class IConsoleDumper {
   virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
   virtual void Print(const std::string& value) const = 0;
 
-#define TENSOR_DUMPER_PRINT_TYPE(dtype) \
-  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1) const= 0; \
-  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const= 0; \
-  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const= 0; \
-  virtual void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const= 0;
+#define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                        \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1) const = 0;                     \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const = 0;           \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const = 0; \
+  virtual void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const = 0;
 
   TENSOR_DUMPER_PRINT_TYPE(int8_t)
   TENSOR_DUMPER_PRINT_TYPE(uint8_t)

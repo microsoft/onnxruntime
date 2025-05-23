@@ -23,10 +23,9 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   void Print(const char* name, const std::string& value, bool end_line) const override;
   void Print(const std::string& value) const override;
 
-
-#define CUDA_DUMPER_PRINT_TYPE(dtype) \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const; \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const; \
+#define CUDA_DUMPER_PRINT_TYPE(dtype)                                                              \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const;                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const;           \
   void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const; \
   void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const;
 

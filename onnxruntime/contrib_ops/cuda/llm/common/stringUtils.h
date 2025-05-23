@@ -18,52 +18,45 @@
 
 #if ENABLE_BF16
 #include <cuda_bf16.h>
-#endif // ENABLE_BF16
+#endif  // ENABLE_BF16
 #include <cuda_fp16.h>
 
-#include <memory>  // std::make_unique
-#include <sstream> // std::stringstream
+#include <memory>   // std::make_unique
+#include <sstream>  // std::stringstream
 #include <string>
 #include <unordered_set>
 #include <vector>
 
-namespace onnxruntime::llm::common
-{
+namespace onnxruntime::llm::common {
 #if ENABLE_BF16
-static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& stream, __nv_bfloat16 const& val)
-{
-    stream << __bfloat162float(val);
-    return stream;
+static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& stream, __nv_bfloat16 const& val) {
+  stream << __bfloat162float(val);
+  return stream;
 }
-#endif // ENABLE_BF16
+#endif  // ENABLE_BF16
 
-static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& stream, __half const& val)
-{
-    stream << __half2float(val);
-    return stream;
+static inline std::basic_ostream<char>& operator<<(std::basic_ostream<char>& stream, __half const& val) {
+  stream << __half2float(val);
+  return stream;
 }
 
 // Add forward declaration before printElement functions
 template <typename... Args>
 std::ostream& operator<<(std::ostream& os, std::tuple<Args...> const& t);
 
-
 template <typename... Args>
-std::string to_string(std::tuple<Args...> const& t)
-{
-    std::stringstream ss;
-    ss << t;
-    return ss.str();
+std::string to_string(std::tuple<Args...> const& t) {
+  std::stringstream ss;
+  ss << t;
+  return ss.str();
 }
 
-inline std::string fmtstr(std::string const& s)
-{
-    return s;
+inline std::string fmtstr(std::string const& s) {
+  return s;
 }
 
-inline std::string fmtstr(std::string&& s)
-{
-    return s;
+inline std::string fmtstr(std::string&& s) {
+  return s;
 }
 
 #if defined(_MSC_VER)
@@ -78,5 +71,4 @@ std::string fmtstr(char const* format, ...) __attribute__((format(printf, 1, 2))
 #define __PRETTY_FUNCTION__ __FUNCSIG__
 #endif
 
-
-} // namespace onnxruntime::llm::common
+}  // namespace onnxruntime::llm::common

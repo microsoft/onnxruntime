@@ -20,49 +20,41 @@
 
 #include "core/common/common.h"
 
+namespace onnxruntime::llm::common {
 
-namespace onnxruntime::llm::common
-{
+Logger::Logger() {
+  char* isFirstRankOnlyChar = std::getenv("ORT_LLM_LOG_FIRST_RANK_ONLY");
+  bool isFirstRankOnly = (isFirstRankOnlyChar != nullptr && std::string(isFirstRankOnlyChar) == "ON");
 
-Logger::Logger()
-{
-    char* isFirstRankOnlyChar = std::getenv("ORT_LLM_LOG_FIRST_RANK_ONLY");
-    bool isFirstRankOnly = (isFirstRankOnlyChar != nullptr && std::string(isFirstRankOnlyChar) == "ON");
+  auto const* levelName = std::getenv("ORT_LLM_LOG_LEVEL");
+  if (levelName != nullptr) {
+    auto level = [levelName = std::string(levelName)]() {
+      if (levelName == "TRACE")
+        return TRACE;
+      if (levelName == "VERBOSE" || levelName == "DEBUG")
+        return DEBUG;
+      if (levelName == "INFO")
+        return INFO;
+      if (levelName == "WARNING")
+        return WARNING;
+      if (levelName == "ERROR")
+        return ERROR;
+      ORT_THROW("Invalid log level:", levelName);
+    }();
 
-    auto const* levelName = std::getenv("ORT_LLM_LOG_LEVEL");
-    if (levelName != nullptr)
-    {
-        auto level = [levelName = std::string(levelName)]()
-        {
-            if (levelName == "TRACE")
-                return TRACE;
-            if (levelName == "VERBOSE" || levelName == "DEBUG")
-                return DEBUG;
-            if (levelName == "INFO")
-                return INFO;
-            if (levelName == "WARNING")
-                return WARNING;
-            if (levelName == "ERROR")
-                return ERROR;
-            ORT_THROW("Invalid log level:", levelName);
-        }();
-        
-        // If ORT_LLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
-        if (isFirstRankOnly)
-        {
-            auto const deviceId = getDevice();
-            if (deviceId != 1)
-            {
-                level = ERROR;
-            }
-        }
-        setLevel(level);
+    // If ORT_LLM_LOG_FIRST_RANK_ONLY=ON, set LOG LEVEL of other device to ERROR
+    if (isFirstRankOnly) {
+      auto const deviceId = getDevice();
+      if (deviceId != 1) {
+        level = ERROR;
+      }
     }
+    setLevel(level);
+  }
 }
 
-Logger* Logger::getLogger()
-{
-    thread_local Logger instance;
-    return &instance;
+Logger* Logger::getLogger() {
+  thread_local Logger instance;
+  return &instance;
 }
-} // namespace onnxruntime::llm::common
+}  // namespace onnxruntime::llm::common

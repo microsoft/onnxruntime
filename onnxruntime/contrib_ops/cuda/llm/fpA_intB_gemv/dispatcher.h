@@ -5,8 +5,6 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 #include "core/common/common.h"
 
-
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {

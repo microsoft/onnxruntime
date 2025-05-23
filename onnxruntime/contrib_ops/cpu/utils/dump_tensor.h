@@ -30,10 +30,9 @@ class CpuTensorConsoleDumper : public IConsoleDumper {
     this->Print(name, vec.data(), 1, static_cast<int>(std::min(max_count, vec.size())));
   }
 
-
-#define TENSOR_DUMPER_PRINT_TYPE(dtype) \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const override; \
-  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const override; \
+#define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const override;                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const override;           \
   void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const override; \
   void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const override;
 
@@ -44,7 +43,6 @@ class CpuTensorConsoleDumper : public IConsoleDumper {
   TENSOR_DUMPER_PRINT_TYPE(float)
   TENSOR_DUMPER_PRINT_TYPE(MLFloat16)
 #undef TENSOR_DUMPER_PRINT_TYPE
-
 };
 
 }  // namespace contrib

@@ -8,6 +8,7 @@ from itertools import product
 
 from cutlass_library import *
 
+
 ################################################################################
 # Epilogue Tag enum and string utils
 class Llm_EpilogueTag(enum.Enum):
@@ -24,28 +25,21 @@ class Llm_EpilogueFusion(enum.Enum):
 
 EpiTagNames = {
     Llm_EpilogueTag.epilogue_op_default: "lc",  # linear combination
-    Llm_EpilogueTag.epilogue_op_bias:
-    "lc_bias",  # linear combination with bias addition
+    Llm_EpilogueTag.epilogue_op_bias: "lc_bias",  # linear combination with bias addition
     Llm_EpilogueTag.epilogue_op_silu: "silu",  # silu or swiglu
-    Llm_EpilogueTag.epilogue_op_gelu: "gelu"  # gelu or geglu
+    Llm_EpilogueTag.epilogue_op_gelu: "gelu",  # gelu or geglu
 }
 
 EpiTag = {
-    Llm_EpilogueTag.epilogue_op_default:
-    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefault",
-    Llm_EpilogueTag.epilogue_op_bias:
-    "onnxruntime::llm::cutlass_extensions::EpilogueOpBias",
-    Llm_EpilogueTag.epilogue_op_silu:
-    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu",
-    Llm_EpilogueTag.epilogue_op_gelu:
-    "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu"
+    Llm_EpilogueTag.epilogue_op_default: "onnxruntime::llm::cutlass_extensions::EpilogueOpDefault",
+    Llm_EpilogueTag.epilogue_op_bias: "onnxruntime::llm::cutlass_extensions::EpilogueOpBias",
+    Llm_EpilogueTag.epilogue_op_silu: "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultSilu",
+    Llm_EpilogueTag.epilogue_op_gelu: "onnxruntime::llm::cutlass_extensions::EpilogueOpDefaultFtGelu",
 }
 
 EpiFusion = {
-    Llm_EpilogueFusion.epilogue_fusion_none:
-    "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE",
-    Llm_EpilogueFusion.epilogue_fusion_finalize:
-    "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE",
+    Llm_EpilogueFusion.epilogue_fusion_none: "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::NONE",
+    Llm_EpilogueFusion.epilogue_fusion_finalize: "onnxruntime::llm::TmaWarpSpecializedGroupedGemmInput::EpilogueFusion::FINALIZE",
 }
 
 EpiFusionSuffixes = {
@@ -68,17 +62,14 @@ QuantOpNames = {
     Llm_QuantOp.per_column_scale_only: "cs",
     Llm_QuantOp.finegrained_scale_only: "fgs",
     Llm_QuantOp.finegrained_scale_and_zeros: "fgsz",
-    Llm_QuantOp.none: "noquant"
+    Llm_QuantOp.none: "noquant",
 }
 
 QuantOpTag = {
-    Llm_QuantOp.per_column_scale_only:
-     "cutlass::WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY",
-    Llm_QuantOp.finegrained_scale_only:
-    "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY",
-    Llm_QuantOp.finegrained_scale_and_zeros:
-    "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS",
-    Llm_QuantOp.none: "void"
+    Llm_QuantOp.per_column_scale_only: "cutlass::WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY",
+    Llm_QuantOp.finegrained_scale_only: "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY",
+    Llm_QuantOp.finegrained_scale_and_zeros: "cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS",
+    Llm_QuantOp.none: "void",
 }
 
 ################################################################################
@@ -110,31 +101,32 @@ CudaTypeName = {
     DataType.e4m3: "__nv_fp8_e4m3",
     DataType.bf16: "__nv_bfloat16",
     DataType.f16: "half",
-    DataType.f32: "float"
+    DataType.f32: "float",
 }
 
 
 ################################################################################
 # A data structure holding all info to instantiate gemm launchers in TRT LLM.
 class Llm_GemmLauncher:
-
-    def __init__(self,
-                 gemm_kind,
-                 arch,
-                 act_type,
-                 weight_type,
-                 scalezero_type,
-                 bias_type,
-                 output_type,
-                 quant_op,
-                 epi_tag,
-                 cta_shape,
-                 warp_shape,
-                 stages,
-                 cga_shape,
-                 mainloop_schedule,
-                 epi_schedule,
-                 epi_fusion=None):
+    def __init__(
+        self,
+        gemm_kind,
+        arch,
+        act_type,
+        weight_type,
+        scalezero_type,
+        bias_type,
+        output_type,
+        quant_op,
+        epi_tag,
+        cta_shape,
+        warp_shape,
+        stages,
+        cga_shape,
+        mainloop_schedule,
+        epi_schedule,
+        epi_fusion=None,
+    ):
         self.gemm_kind = gemm_kind
         self.arch = arch
         self.act_type = act_type
@@ -153,21 +145,9 @@ class Llm_GemmLauncher:
         self.epi_fusion = epi_fusion
 
     def __repr__(self):
-        kernel_prefix = "{}_sm{}_{}_{}_{}_{}_{}_{}_{}_{}x{}x{}_{}x{}x{}_{}".format(
-            GemmKindNames[self.gemm_kind], self.arch,
-            GetDataTypeNames(self.act_type), GetDataTypeNames(self.weight_type),
-            GetDataTypeNames(self.scalezero_type),
-            GetDataTypeNames(self.bias_type),
-            GetDataTypeNames(self.output_type), QuantOpNames[self.quant_op],
-            EpiTagNames[self.epi_tag], self.cta_shape[0], self.cta_shape[1],
-            self.cta_shape[2], self.warp_shape[0], self.warp_shape[1],
-            self.warp_shape[2], self.stages)
+        kernel_prefix = f"{GemmKindNames[self.gemm_kind]}_sm{self.arch}_{GetDataTypeNames(self.act_type)}_{GetDataTypeNames(self.weight_type)}_{GetDataTypeNames(self.scalezero_type)}_{GetDataTypeNames(self.bias_type)}_{GetDataTypeNames(self.output_type)}_{QuantOpNames[self.quant_op]}_{EpiTagNames[self.epi_tag]}_{self.cta_shape[0]}x{self.cta_shape[1]}x{self.cta_shape[2]}_{self.warp_shape[0]}x{self.warp_shape[1]}x{self.warp_shape[2]}_{self.stages}"
 
-        hopper_suffix = "_{}x{}x{}{}{}{}".format(
-            self.cga_shape[0], self.cga_shape[1], self.cga_shape[2],
-            KernelScheduleSuffixes[self.mainloop_schedule],
-            EpilogueScheduleSuffixes[self.epi_schedule],
-            EpiFusionSuffixes[self.epi_fusion])
+        hopper_suffix = f"_{self.cga_shape[0]}x{self.cga_shape[1]}x{self.cga_shape[2]}{KernelScheduleSuffixes[self.mainloop_schedule]}{EpilogueScheduleSuffixes[self.epi_schedule]}{EpiFusionSuffixes[self.epi_fusion]}"
 
         if self.arch >= 90:
             return kernel_prefix + hopper_suffix
@@ -211,7 +191,7 @@ const {act_tag}*, const {weight_tag}*, const {scale_zero_tag}*, const {scale_zer
         # Similar to MixedInput above, we must modify the tags for grouped gemm as CUTLASS library does not have the updated schedules
         assert operation.mainloop_schedule in [
             KernelScheduleType.TmaWarpSpecializedCooperative,
-            KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum
+            KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum,
         ]
         assert operation.epi_schedule == EpilogueScheduleType.NoSmemWarpSpecialized
         kernel_sched.replace("::Kernel", "::KernelGrouped")
@@ -223,16 +203,15 @@ const {act_tag}*, const {weight_tag}*, const {scale_zero_tag}*, const {scale_zer
         assert operation.epi_fusion is not None
         epi_fusion = EpiFusion[operation.epi_fusion]
 
-        epi_fusion = epi_fusion.split(':')[-1]
-        epi_tag = epi_tag.split(':')[-1]
+        epi_fusion = epi_fusion.split(":")[-1]
+        epi_tag = epi_tag.split(":")[-1]
 
         guard_map = {
             e2m1: "defined(ENABLE_FP4)",
             DataType.e4m3: "defined(ENABLE_FP8)",
-            DataType.bf16: "defined(ENABLE_BF16)"
+            DataType.bf16: "defined(ENABLE_BF16)",
         }
-        guard = guard_map[
-            operation.act_type] if operation.act_type in guard_map else "1"
+        guard = guard_map[operation.act_type] if operation.act_type in guard_map else "1"
         # TODO Revert this once compiler bug is fixed so we can use template instead of macro again
         #         instantiation = f"""
         #         template void tma_warp_specialized_generic_moe_gemm_kernelLauncher<{arch_tag}, {act_tag}, {weight_tag}, {out_tag},
@@ -271,7 +250,7 @@ def get_file_content(launcher_inl_files, operations):
     assert operations
     include_list = list()
     for file in launcher_inl_files:
-        include_list.append(f"#include \"{file}\"")
+        include_list.append(f'#include "{file}"')
     includes = "\n".join(include_list)
 
     insts_list = list()
@@ -301,7 +280,7 @@ def write_file(launcher_inl_files, operations, output_file):
     # Avoid changing modified time if file content is up to date
     content = get_file_content(launcher_inl_files, operations)
     try:
-        with open(output_file, mode="r") as f:
+        with open(output_file) as f:
             if f.read() == content:
                 return
     except FileNotFoundError:
@@ -314,7 +293,7 @@ from operator import mul, truediv
 
 
 def elementwise(x, y, f):
-    return tuple(f(a, b) for (a, b) in zip(x, y))
+    return tuple(f(a, b) for (a, b) in zip(x, y, strict=False))
 
 
 def is_gemm_op_valid_sm100(op):
@@ -328,9 +307,7 @@ def is_gemm_op_valid_sm100(op):
         return False
 
     # Shapes for fp8 small N shapes
-    if (op.act_type == DataType.e4m3) and (tile_n == 16
-                                           or tile_n == 8) and (cga_m == 1
-                                                                and cga_n == 1):
+    if (op.act_type == DataType.e4m3) and (tile_n == 16 or tile_n == 8) and (cga_m == 1 and cga_n == 1):
         # todo: double check why this is disable in CUTLASS backend. @yuhan
         if tile_m == 128 and tile_n == 8:
             return False
@@ -386,8 +363,8 @@ def is_grouped_gemm_op_valid(op):
         return False
 
     if op.mainloop_schedule not in [
-            KernelScheduleType.TmaWarpSpecializedCooperative,
-            KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum
+        KernelScheduleType.TmaWarpSpecializedCooperative,
+        KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum,
     ]:
         return False
 
@@ -443,14 +420,31 @@ def generate_sm90_mixed_gemm_operations():
     for dtype_combo, quant_op, epi_tag, cta_shape_mn, cga_shape in partial_args:
         max_k_bits = 128 * 8
         cta_shape_k = max_k_bits // GetDataTypeBits(dtype_combo[0])
-        cta_shape_mnk = cta_shape_mn + (cta_shape_k, )
+        cta_shape_mnk = cta_shape_mn + (cta_shape_k,)
 
         use_coop = cta_shape_mn[0] == 128
-        mainloop_schedule = KernelScheduleType.TmaWarpSpecializedCooperative if use_coop else KernelScheduleType.TmaWarpSpecializedPingpong
-        epi_schedule = EpilogueScheduleType.TmaWarpSpecializedCooperative if use_coop else EpilogueScheduleType.TmaWarpSpecialized
+        mainloop_schedule = (
+            KernelScheduleType.TmaWarpSpecializedCooperative
+            if use_coop
+            else KernelScheduleType.TmaWarpSpecializedPingpong
+        )
+        epi_schedule = (
+            EpilogueScheduleType.TmaWarpSpecializedCooperative if use_coop else EpilogueScheduleType.TmaWarpSpecialized
+        )
 
-        fpA_intB_operation = Llm_GemmLauncher(GemmKind.Gemm, arch, *dtype_combo, quant_op, epi_tag, cta_shape_mnk, \
-                                                 warp_shape, stages, cga_shape, mainloop_schedule, epi_schedule)
+        fpA_intB_operation = Llm_GemmLauncher(
+            GemmKind.Gemm,
+            arch,
+            *dtype_combo,
+            quant_op,
+            epi_tag,
+            cta_shape_mnk,
+            warp_shape,
+            stages,
+            cga_shape,
+            mainloop_schedule,
+            epi_schedule,
+        )
 
         if is_op_valid(fpA_intB_operation):
             operations.append(fpA_intB_operation)
@@ -472,23 +466,23 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
     warp_shape = [0, 0, 0]  # ignored except for naming
     stages = 0  # auto
 
-    epi_fusions = [
-        Llm_EpilogueFusion.epilogue_fusion_none,
-        Llm_EpilogueFusion.epilogue_fusion_finalize
-    ]
+    epi_fusions = [Llm_EpilogueFusion.epilogue_fusion_none, Llm_EpilogueFusion.epilogue_fusion_finalize]
 
     cga_shapes = product([1, 2], [1, 2], [1])
 
-    partial_args = product(supported_dtypes, quant_ops, epi_tags, epi_fusions,
-                           cta_shapes_mn, cga_shapes)
+    partial_args = product(supported_dtypes, quant_ops, epi_tags, epi_fusions, cta_shapes_mn, cga_shapes)
 
     operations = list()
     for dtype, quant_op, epi_tag, epi_fusion, cta_shape_mn, cga_shape in partial_args:
         max_k_bits = 128 * 8
         cta_shape_k = max_k_bits // GetDataTypeBits(dtype)
-        cta_shape_mnk = cta_shape_mn + (cta_shape_k, )
+        cta_shape_mnk = cta_shape_mn + (cta_shape_k,)
 
-        mainloop_schedule = KernelScheduleType.TmaWarpSpecializedCooperative if dtype != DataType.e4m3 else KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum
+        mainloop_schedule = (
+            KernelScheduleType.TmaWarpSpecializedCooperative
+            if dtype != DataType.e4m3
+            else KernelScheduleType.TmaWarpSpecializedCooperativeFP8FastAccum
+        )
         epi_schedule = EpilogueScheduleType.NoSmemWarpSpecialized
 
         otypes = [dtype]
@@ -497,9 +491,23 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
 
         for otype in otypes:
             moe_gemm_operation = Llm_GemmLauncher(
-                GemmKind.Grouped, arch, dtype, dtype, dtype, dtype, otype,
-                quant_op, epi_tag, cta_shape_mnk, warp_shape, stages, cga_shape,
-                mainloop_schedule, epi_schedule, epi_fusion)
+                GemmKind.Grouped,
+                arch,
+                dtype,
+                dtype,
+                dtype,
+                dtype,
+                otype,
+                quant_op,
+                epi_tag,
+                cta_shape_mnk,
+                warp_shape,
+                stages,
+                cga_shape,
+                mainloop_schedule,
+                epi_schedule,
+                epi_fusion,
+            )
 
             if is_op_valid(moe_gemm_operation):
                 operations.append(moe_gemm_operation)
@@ -508,7 +516,7 @@ def generate_sm90_grouped_gemm_operations(is_arch_enabled):
 
 def generate_sm90_operations(is_arch_enabled):
     operations = generate_sm90_mixed_gemm_operations()
-    #operations.extend(generate_sm90_grouped_gemm_operations(is_arch_enabled))
+    # operations.extend(generate_sm90_grouped_gemm_operations(is_arch_enabled))
     return operations
 
 
@@ -519,7 +527,7 @@ def calc_shape_mnk_sm100_grouped_gemm(cta_shape_mn, dtype):
         cta_shape_k = 256
     if dtype == DataType.e4m3 and (cta_shape_mn[1] == 16):
         cta_shape_k = 128
-    return cta_shape_mn + (cta_shape_k, )
+    return cta_shape_mn + (cta_shape_k,)
 
 
 def generate_sm100_grouped_gemm_operations(is_arch_enabled):
@@ -543,8 +551,7 @@ def generate_sm100_grouped_gemm_operations(is_arch_enabled):
 
     cga_shapes = list(product([1, 2], [1, 2], [1]))
 
-    partial_args = product(supported_dtypes, quant_ops, epi_tags, epi_fusions,
-                           cta_shapes_mn, cga_shapes)
+    partial_args = product(supported_dtypes, quant_ops, epi_tags, epi_fusions, cta_shapes_mn, cga_shapes)
 
     operations = list()
     for dtype, quant_op, epi_tag, epi_fusion, cta_shape_mn, cga_shape in partial_args:
@@ -561,9 +568,23 @@ def generate_sm100_grouped_gemm_operations(is_arch_enabled):
 
         for otype in otypes:
             moe_gemm_operation = Llm_GemmLauncher(
-                GemmKind.Grouped, arch, dtype, dtype, dtype, dtype, otype,
-                quant_op, epi_tag, cga_tile_shape_mnk, warp_shape, stages,
-                cga_shape, mainloop_schedule, epi_schedule, epi_fusion)
+                GemmKind.Grouped,
+                arch,
+                dtype,
+                dtype,
+                dtype,
+                dtype,
+                otype,
+                quant_op,
+                epi_tag,
+                cga_tile_shape_mnk,
+                warp_shape,
+                stages,
+                cga_shape,
+                mainloop_schedule,
+                epi_schedule,
+                epi_fusion,
+            )
 
             if is_op_valid(moe_gemm_operation):
                 operations.append(moe_gemm_operation)
@@ -576,7 +597,6 @@ def generate_sm100_operations(is_arch_enabled):
 
 
 class GemmSm80LauncherConfig:
-
     def __init__(self, gemm_kind, arch, dtype, epi_tag, cta_shape, stage):
         self.gemm_kind = gemm_kind
         self.arch = arch
@@ -589,11 +609,8 @@ class GemmSm80LauncherConfig:
 def generate_sm80_fused_grouped_gemm_operations():
     arch = 80
     supported_dtypes = [DataType.f16, DataType.bf16]
-    epi_tags = [
-        Llm_EpilogueTag.epilogue_op_silu, Llm_EpilogueTag.epilogue_op_gelu
-    ]
-    cta_shapes_mnk = [(16, 128, 64), (16, 256, 64), (32, 128, 64),
-                      (64, 128, 64), (128, 128, 64)]
+    epi_tags = [Llm_EpilogueTag.epilogue_op_silu, Llm_EpilogueTag.epilogue_op_gelu]
+    cta_shapes_mnk = [(16, 128, 64), (16, 256, 64), (32, 128, 64), (64, 128, 64), (128, 128, 64)]
 
     stages = [2, 3, 4]
 
@@ -601,8 +618,7 @@ def generate_sm80_fused_grouped_gemm_operations():
 
     operations = list()
     for dtype, epi_tag, cta_shape_mnk, stage in partial_args:
-        item = GemmSm80LauncherConfig(GemmKind.Grouped, arch, dtype, epi_tag,
-                                      cta_shape_mnk, stage)
+        item = GemmSm80LauncherConfig(GemmKind.Grouped, arch, dtype, epi_tag, cta_shape_mnk, stage)
         operations.append(item)
     return operations
 
@@ -613,43 +629,33 @@ def generate_sm80_operations(is_arch_enabled):
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description='Print the output directory')
+    parser = argparse.ArgumentParser(description="Print the output directory")
 
     # Add the output_dir argument with short and long options
-    parser.add_argument('-o',
-                        '--output_dir',
-                        type=str,
-                        required=True,
-                        help='Path to the output directory')
-    parser.add_argument("-a",
-                        "--architectures",
-                        type=str,
-                        required=True,
-                        help="Architectures to generate kernels for")
-    parser.add_argument("-i",
-                        "--internal",
-                        action='store_true',
-                        required=False,
-                        help="Generate the internal build kernels")
+    parser.add_argument("-o", "--output_dir", type=str, required=True, help="Path to the output directory")
+    parser.add_argument("-a", "--architectures", type=str, required=True, help="Architectures to generate kernels for")
+    parser.add_argument(
+        "-i", "--internal", action="store_true", required=False, help="Generate the internal build kernels"
+    )
 
     # Parse the command line arguments
     args = parser.parse_args()
 
-    arches = args.architectures.split(';')
+    arches = args.architectures.split(";")
     # Get the absolute path of the provided directory
     output_dir = os.path.abspath(args.output_dir)
 
     fpA_intB_inl = "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.inl"
     # moe_gemm_inl = "tensorrt_llm/kernels/cutlass_kernels/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl"
-    #moe_gemm_inl = "tensorrt_llm/kernels/internal_cutlass_kernels/src/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl"
+    # moe_gemm_inl = "tensorrt_llm/kernels/internal_cutlass_kernels/src/moe_gemm/launchers/moe_gemm_tma_ws_launcher.inl"
     # sm80_moe_gemm_inl = "tensorrt_llm/kernels/cutlass_kernels/moe_gemm/launchers/fused_moe_gemm_launcher_sm80.inl"
-    #sm80_moe_gemm_inl = "tensorrt_llm/kernels/internal_cutlass_kernels/src/moe_gemm/launchers/fused_moe_gemm_launcher_sm80.inl"
+    # sm80_moe_gemm_inl = "tensorrt_llm/kernels/internal_cutlass_kernels/src/moe_gemm/launchers/fused_moe_gemm_launcher_sm80.inl"
 
     inl_map = {
         (GemmKind.Gemm, 90): [fpA_intB_inl],
-        #(GemmKind.Grouped, 90): [moe_gemm_inl],
-        #(GemmKind.Grouped, 100): [moe_gemm_inl],
-        #(GemmKind.Grouped, 80): [sm80_moe_gemm_inl]
+        # (GemmKind.Grouped, 90): [moe_gemm_inl],
+        # (GemmKind.Grouped, 100): [moe_gemm_inl],
+        # (GemmKind.Grouped, 80): [sm80_moe_gemm_inl]
     }
 
     def has_arch(sm):
@@ -679,7 +685,7 @@ if __name__ == "__main__":
     for key, value in op_groups.items():
         gemm_kind, _, _ = key
         out_file = os.path.join(
-            output_dir, GemmKindNames[gemm_kind],
-            f"cutlass_kernel_file_{file_counter}.generated.cu")
+            output_dir, GemmKindNames[gemm_kind], f"cutlass_kernel_file_{file_counter}.generated.cu"
+        )
         write_file(inl_map[key[:2]], value, out_file)
         file_counter += 1

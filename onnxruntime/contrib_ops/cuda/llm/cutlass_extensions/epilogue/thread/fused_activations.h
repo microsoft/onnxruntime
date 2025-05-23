@@ -33,34 +33,29 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace cutlass
-{
-namespace epilogue
-{
-namespace thread
-{
+namespace cutlass {
+namespace epilogue {
+namespace thread {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-__forceinline__ __device__ float copysignf_pos(float a, float b)
-{
-    float r;
-    r = __int_as_float(__float_as_int(a) | (__float_as_int(b) & 0x80000000));
-    return r;
+__forceinline__ __device__ float copysignf_pos(float a, float b) {
+  float r;
+  r = __int_as_float(__float_as_int(a) | (__float_as_int(b) & 0x80000000));
+  return r;
 }
 
-__forceinline__ __device__ float tanh_opt(float x)
-{
+__forceinline__ __device__ float tanh_opt(float x) {
 #if (__CUDACC_VER_MAJOR__ < 11) || (__CUDA_ARCH__ < 750)
-    float const exp_val = -1.f * fabs(2 * x);
-    return copysignf_pos((1.0f - __expf(exp_val)) / (__expf(exp_val) + 1.0f), x);
+  float const exp_val = -1.f * fabs(2 * x);
+  return copysignf_pos((1.0f - __expf(exp_val)) / (__expf(exp_val) + 1.0f), x);
 #else
-    return fast_tanh(x);
+  return fast_tanh(x);
 #endif
 }
 
-} // namespace thread
-} // namespace epilogue
-} // namespace cutlass
+}  // namespace thread
+}  // namespace epilogue
+}  // namespace cutlass
 
 /////////////////////////////////////////////////////////////////////////////////////////////////

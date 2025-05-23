@@ -35,12 +35,9 @@
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
-namespace cutlass
-{
-namespace gemm
-{
-namespace threadblock
-{
+namespace cutlass {
+namespace gemm {
+namespace threadblock {
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -89,8 +86,8 @@ template <
     typename Enable = void>
 class DqMmaMultistage;
 
-} // namespace threadblock
-} // namespace gemm
-} // namespace cutlass
+}  // namespace threadblock
+}  // namespace gemm
+}  // namespace cutlass
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm/threadblock/dq_mma_multistage_finegrained.h"
