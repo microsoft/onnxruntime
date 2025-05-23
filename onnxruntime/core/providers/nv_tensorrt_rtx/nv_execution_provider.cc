@@ -5,6 +5,7 @@
 #include <list>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
@@ -20,6 +21,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
+#include "core/common/parse_string.h"
 #include <gsl/gsl>
 #include <unordered_map>
 #include <utility>
@@ -1140,6 +1142,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   cuda_graph_enable_ = info.cuda_graph_enable;
+  multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
   // Validate setting
@@ -1321,7 +1324,12 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
   return std::make_unique<GPUDataTransfer>();
 }
 
-Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  if (multi_profile_enable_ == true) {
+    auto graph_annotation_str =
+        run_options.GetConfigOptions().GetConfigEntry(nv::run_option_names::kProfileIndex);
+    TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
+  }
   return Status::OK();
 }
 
@@ -1987,10 +1995,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
 
     // Exclude any ops, if applicable
     if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
-      supported_node = false;
-    }
-    // Exclude contrib ops
-    if (node->Domain() == kMSDomain) {
       supported_node = false;
     }
 
@@ -2686,6 +2690,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    if (multi_profile_enable_ == true) {
+      if (!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
+    }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
