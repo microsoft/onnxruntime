@@ -55,7 +55,7 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || (nbits_ == 4 && block_size_ == 128)) &&
+      if ((block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
           !has_g_idx_ && has_zero_points_ && !has_bias_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
@@ -69,12 +69,14 @@ class MatMulNBits final : public CudaKernel {
         }
 
         if (sm >= 75) {
-          constexpr int max_m = 32;  // TODO: change it to 8192.
+          constexpr int max_m = 8291;  // TODO: change it to 8192.
           RunGemmProfile(has_fpA_intB_gemv_, sm, max_m);
           has_fpA_intB_gemm_ = true;
         }
       }
     }
+
+    printf("n=%d, k=%d, block_size=%d, nbits=%d, gemv=%d, gemm=%d\n", int(K_), int(N_), int(block_size_), int(nbits_), int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
