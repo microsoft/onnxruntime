@@ -34,7 +34,7 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
                                                                 graph_viewer_(graph_viewer_param),
                                                                 device_type_(std::move(device_type_param)) {
   bool npu_qdq_optimizer_enabled = false;
-  if (device_type_.find("NPU") != std::string::npos) {
+  if (device_type_.find("NPU") != std::string::npos || device_type_.find("GPU") != std::string::npos) {
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   }

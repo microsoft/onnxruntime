@@ -380,8 +380,9 @@ BackendManager::GetModelProtoFromFusedNode(const onnxruntime::Node& fused_node,
 #endif
 
   const auto& onnx_model_path_name = subgraph.ModelPath();
-  // QDQ stripping enabled only for the NPU
-  if (session_context_.device_type.find("NPU") != std::string::npos &&
+  // QDQ stripping enabled only for the NPU and experimentally on the GPU
+  if ((session_context_.device_type.find("NPU") != std::string::npos ||
+      session_context_.device_type.find("GPU") != std::string::npos) &&
       (enable_ovep_qdq_optimizer || session_context_.so_share_ep_contexts)) {
     std::unique_ptr<onnxruntime::Model> model;
     Status status = CreateModelWithStrippedQDQNodes(subgraph, logger, session_context_.so_share_ep_contexts, enable_ovep_qdq_optimizer, model, shared_context_.shared_weights);
