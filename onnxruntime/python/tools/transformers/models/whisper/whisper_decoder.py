@@ -265,7 +265,7 @@ class WhisperDecoder(torch.nn.Module):
         if len(inputs) == 3:
             n_layers = len(inputs[-1])
             dynamic_shapes = [
-                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
                 {0: "batch_size"},
                 [
                     (
@@ -279,7 +279,7 @@ class WhisperDecoder(torch.nn.Module):
             ]
         else:
             dynamic_shapes = [
-                {0: "batch_size", 1: "sequence_length"},
+                {0: "batch_size"},
                 {0: "batch_size"},
             ]
         return dynamic_shapes
@@ -290,7 +290,7 @@ class WhisperDecoder(torch.nn.Module):
             self.device,
             batch_size=2,
             past_sequence_length=(0 if self.first_pass else 6),
-            sequence_length=(6 if self.first_pass else 2),  # 2 is needed to make the dim dynamic
+            sequence_length=(6 if self.first_pass else 1),
             use_fp16=use_fp16_inputs,
             use_int32=use_int32_inputs,
         )
