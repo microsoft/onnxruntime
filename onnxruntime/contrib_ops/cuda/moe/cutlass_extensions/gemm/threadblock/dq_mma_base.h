@@ -43,7 +43,7 @@
 #include "cutlass/matrix_shape.h"
 #include "cutlass/numeric_types.h"
 
-#include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/weight_only_quant_op.h"
 
 ////////////////////////////////////////////////////////////////////////////////
 

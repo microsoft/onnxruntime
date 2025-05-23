@@ -38,7 +38,7 @@
 #include "cutlass/gemm/warp/default_mma_tensor_op.h"
 #include "cutlass/gemm/warp/mma_tensor_op.h"
 
-#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/warp/mma_tensorop_compute_B_with_f16.h"
 
 namespace cutlass {

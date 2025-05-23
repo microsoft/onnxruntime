@@ -16,8 +16,8 @@
  */
 #pragma once
 
-#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
-#include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/interleaved_numeric_conversion.h"
 
 namespace cutlass {
 namespace gemm {

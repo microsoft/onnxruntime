@@ -23,7 +23,7 @@
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/layout/matrix.h"
 
-#include "contrib_ops/cuda/llm/cutlass_extensions/arch/mma.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/arch/mma.h"
 #include "contrib_ops/cuda/moe/cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
 namespace cutlass {

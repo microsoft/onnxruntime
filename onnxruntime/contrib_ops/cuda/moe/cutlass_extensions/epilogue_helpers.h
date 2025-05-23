@@ -25,7 +25,7 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/llm/cutlass_extensions/epilogue/thread/fused_activations.h"
+#include "contrib_ops/cuda/moe/cutlass_extensions/epilogue/thread/fused_activations.h"
 #include "cutlass/epilogue/thread/linear_combination.h"
 #include "cutlass/epilogue/thread/linear_combination_generic.h"
 #include "cutlass/epilogue/thread/linear_combination_relu.h"
