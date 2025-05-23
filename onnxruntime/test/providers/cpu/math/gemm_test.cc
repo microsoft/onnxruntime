@@ -1057,7 +1057,6 @@ TEST(GemmOpTest, GemmOptimizePacked) {
         for (int64_t k = 0; k < K; ++k) {
           sum += a_data[i * K + k] * b_data[k * N + j];
         }
-        float bias_value = 0.0f;
         expected_data[i * N + j] = sum + get_bias_value(c_data, bias_type, i, j, N);
       }
     }
