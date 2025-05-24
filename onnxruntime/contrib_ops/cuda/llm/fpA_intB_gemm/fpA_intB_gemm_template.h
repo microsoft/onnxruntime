@@ -460,7 +460,7 @@ template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuant
           typename BiasType, typename OutputType>
 size_t
 CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType, OutputType>::getWorkspaceSize(
-    int const m, int const n, int const k) {
+    int const m, int const n, int const /*k*/) {
   ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
   // For Hopper, we have to allocate large memory size in case for stream-K
   if (sm_ == 90) {

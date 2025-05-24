@@ -64,7 +64,7 @@ template <typename ActivationType, typename WeightType, typename ScaleZeroType, 
     typename MainloopScheduleType, typename EpilogueScheduleType>
 void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const* B,
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
-    float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig gemm_config,
+    float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig /*gemm_config*/,
     char* workspace, size_t workspace_bytes, cudaStream_t stream, int* occupancy)
 {
     ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);

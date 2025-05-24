@@ -74,7 +74,6 @@ ignore = [
 # Eventually this list should become empty.
 "orttraining/orttraining/test/**" = ["N802"] # Function casing
 "tools/nuget/generate_nuspec_for_native_nuget.py" = ["ISC003"] # Too many errors to fix
-"onnxruntime/contrib_ops/cuda/llm/generate_kernels.py"=["E402", "F403", "F405", "N801", "N802", "N806", "N816", "PIE796", "RUF005", "SIM401"]
 "onnxruntime/contrib_ops/cuda/sparse/sparse_attention_v1/sparse_attention_triton.py" = ["N806"]  # use of Q, K and V in triton script
 "onnxruntime/contrib_ops/cuda/sparse/sparse_attention_v2/sparse_attention_v2_triton.py" = ["N806"]  # use of Q, K and V in triton script
 "onnxruntime/python/tools/transformers/models/torch_export_patches/*" = ["F401", "PLW0211", "N801", "N806", "RUF012"]  # patches are based on pytorch code
