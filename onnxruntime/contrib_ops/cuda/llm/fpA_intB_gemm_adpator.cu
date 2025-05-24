@@ -15,7 +15,7 @@ namespace fpA_intB_gemv {
 template <bool is_zero_point_int4_packed, typename T, typename Z>
 __global__ void computeScaledZeroPointAndTransposeKernel(
     const T* scale,        // Input scale matrix [n, k_blocks]
-    const Z* zero_point,   // Input zero_point matrix [n, k_blocks]
+    const Z* zero_point,   // Input zero_point matrix [n, k_blocks]  or [n, (k_blocks + 1) / 2] if packed int4
     T* transposed_scale,   // transposed scale [k_blocks, n]
     T* scaled_zero_point,  // Output matrix [k_blocks, n]
     int n,                 // Rows of input matrices
@@ -38,7 +38,8 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
     float zero_point_val;
     if (zero_point != nullptr) {
       if constexpr (is_zero_point_int4_packed) {  // zero point is 4 bit, and two elements are packed into one byte.
-        int64_t packed_zp_offset = static_cast<int64_t>(in_row) * k_blocks + in_col / 2;
+        int64_t packed_row_size = (k_blocks + 1) / 2;
+        int64_t packed_zp_offset = static_cast<int64_t>(in_row) * packed_row_size + in_col / 2;
         uint8_t packed_zp = zero_point[packed_zp_offset];
         zero_point_val = static_cast<float>((in_col & 0x01) ? (packed_zp >> 4) : (packed_zp & 0x0f));
       } else {
