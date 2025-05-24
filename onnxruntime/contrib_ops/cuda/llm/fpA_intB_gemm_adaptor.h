@@ -19,7 +19,8 @@ void launch_scaled_zero_point_kernel(
     int n, int k_blocks, float default_zero_point);
 
 // unpack int4 packed transposed weight of shape (n, k/2) to int8 weight of shape (k, n)
-void unpack_uint4_transposed_to_int8_cuda(cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight, const void* weight, int n, int k);
+void unpack_uint4_transposed_to_int8_cuda(cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight,
+                                          const void* weight, int n, int k);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

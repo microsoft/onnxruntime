@@ -25,12 +25,10 @@ using onnxruntime::llm::kernels::weight_only::GemmPluginProfilerManager;
 using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPluginProfiler;
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
-// static std::once_flag s_gemm_profiler_once_flag;
 
 template <typename T>
 void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int max_m) {
-  gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false, /*skip*/ false);
-  // std::call_once(s_gemm_profiler_once_flag, [&]() {
+  gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
@@ -54,7 +52,6 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
   GemmDims dims = {minM, maxM, n_16b, K_};
 
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
-  //});
 }
 
 template <typename T>
