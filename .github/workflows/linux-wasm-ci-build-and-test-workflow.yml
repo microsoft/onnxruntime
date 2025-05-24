@@ -65,27 +65,6 @@ jobs:
             --skip_tests
         working-directory: ${{ github.workspace }}
 
-      - name: Test (Node.js) (simd + threads)
-        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
-        if: ${{ inputs.build_config == 'Debug' }}
-        run: |
-          python ./tools/ci_build/build.py \
-            ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
-            --test
-        working-directory: ${{ github.workspace }}
-
-      - name: Test (browser) (simd + threads)
-        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
-        if: ${{ inputs.build_config == 'Debug' }}
-        run: |
-          python ./tools/ci_build/build.py \
-            ${{ env.common_build_args }} \
-            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
-            --wasm_run_tests_in_browser \
-            --test
-        working-directory: ${{ github.workspace }}
-
       - name: Build (simd + threads + JSEP)
         if: ${{ inputs.build_jsep == true }}
         run: |
@@ -142,6 +121,28 @@ jobs:
         with:
           name: ${{ inputs.build_config }}_wasm_webgpu
           path: ${{ github.workspace }}/artifacts/wasm_webgpu
+
+      - name: Test (Node.js) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --test
+        working-directory: ${{ github.workspace }}
+
+      - name: Test (browser) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --wasm_run_tests_in_browser \
+            --target onnxruntime_test_all \
+            --update --build --test
+        working-directory: ${{ github.workspace }}
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}
