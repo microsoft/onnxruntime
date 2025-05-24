@@ -652,6 +652,8 @@ public class OrtSession implements AutoCloseable {
        * graph.
        */
       EXTENDED_OPT(2),
+      /** Applies all the layout optimizations like NCHW and NCHWC to the ONNX graph. */
+      LAYOUT_OPT(3),
       /** Applies all available optimizations to the ONNX graph. */
       ALL_OPT(99);
 
