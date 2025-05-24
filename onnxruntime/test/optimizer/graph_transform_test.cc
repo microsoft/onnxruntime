@@ -4362,7 +4362,7 @@ TEST_F(GraphTransformationTests, ExpandElimination) {
   ASSERT_TRUE(op_to_count["Expand"] == 3);
 }
 
-TEST_F(GraphTransformationTests, CastElimination) {
+TEST_F(GraphTransformationTests, CastEliminationSimple) {
   constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "cast_elimination.onnx";
   std::shared_ptr<Model> model;
   ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
@@ -4378,6 +4378,25 @@ TEST_F(GraphTransformationTests, CastElimination) {
 
   op_to_count = CountOpsInGraph(graph);
   ASSERT_TRUE(op_to_count["Cast"] == 4);
+}
+
+TEST_F(GraphTransformationTests, CastEliminationRepeatedPattern) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "cast_elimination_complex.onnx";
+
+  std::shared_ptr<Model> model;
+  ASSERT_TRUE(Model::Load(model_uri, model, nullptr, *logger_).IsOK());
+  Graph& graph = model->MainGraph();
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 7);
+
+  auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<CastElimination>()));
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  op_to_count = CountOpsInGraph(graph);
+  ASSERT_TRUE(op_to_count["Cast"] == 1);
 }
 
 TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
