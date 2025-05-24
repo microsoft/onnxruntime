@@ -12,7 +12,9 @@ import onnx
 
 from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
+from ...quant_utils import save_and_reload_model_with_shape_infer
 from .fusion_lpnorm import FusionLpNormalization
+from .fusion_spacetodepth import FusionSpaceToDepth
 
 
 def qnn_preprocess_model(
@@ -83,6 +85,7 @@ def qnn_preprocess_model(
     """
     modified = False
     model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load_model(model_input)
+    model = save_and_reload_model_with_shape_infer(model)
     onnx_model = ONNXModel(model)
 
     # Fuse Erf sequence into a single Gelu
@@ -93,6 +96,11 @@ def qnn_preprocess_model(
     # Fuse ReduceL2 sequence into a single LpNormalization node with p == 2.
     fusion_lpnorm = FusionLpNormalization(onnx_model)
     if fusion_lpnorm.apply():
+        modified = True
+
+    # Fuse Reshape/Transpose sequence into a single SpaceToDepth.
+    fusion_s2d = FusionSpaceToDepth(onnx_model)
+    if fusion_s2d.apply():
         modified = True
 
     # Optionally, fuse ReduceMean sequence into a single LayerNormalization node.
