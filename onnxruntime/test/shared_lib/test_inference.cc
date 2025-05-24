@@ -10,6 +10,7 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
+#include <unordered_map>
 #include <vector>
 
 #include <absl/base/config.h>
@@ -1992,6 +1993,35 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  std::unordered_map<std::string, std::string> stats;
+  auto status = cpu_allocator.GetStats(stats);
+
+#ifdef ORT_NO_RTTI
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
+#else
+  // CPU allocator may not support arena usage.
+  // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
+  if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
+    ASSERT_TRUE(status.IsOK());
+
+    ASSERT_EQ("-1", stats["Limit"]);
+    ASSERT_EQ("1024", stats["InUse"]);
+    ASSERT_EQ("1024", stats["MaxInUse"]);
+    ASSERT_EQ("1024", stats["MaxAllocSize"]);
+    ASSERT_EQ("2", stats["NumAllocs"]);
+    ASSERT_EQ("0", stats["NumReserves"]);
+
+    // We don't check values of the following stats keys
+    ASSERT_TRUE(stats.find("TotalAllocated") != stats.end());
+    ASSERT_TRUE(stats.find("NumArenaExtensions") != stats.end());
+    ASSERT_TRUE(stats.find("NumArenaShrinkages") != stats.end());
+  } else {
+    ASSERT_FALSE(status.IsOK());
+    ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
+  }
+#endif
 }
 
 #ifdef USE_CUDA
@@ -2014,6 +2044,22 @@ TEST(CApiTest, get_allocator_cuda) {
   auto mem_allocation = cuda_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  std::unordered_map<std::string, std::string> stats;
+  auto status = cuda_allocator.GetStats(stats);
+  ASSERT_TRUE(status.IsOK());
+
+  ASSERT_EQ("-1", stats["Limit"]);
+  ASSERT_EQ("1024", stats["InUse"]);
+  ASSERT_EQ("1024", stats["MaxInUse"]);
+  ASSERT_EQ("1024", stats["MaxAllocSize"]);
+  ASSERT_EQ("2", stats["NumAllocs"]);
+  ASSERT_EQ("0", stats["NumReserves"]);
+
+  // We don't check values of the following stats keys
+  ASSERT_TRUE(stats.find("TotalAllocated") != stats.end());
+  ASSERT_TRUE(stats.find("NumArenaExtensions") != stats.end());
+  ASSERT_TRUE(stats.find("NumArenaShrinkages") != stats.end());
 }
 #endif
 

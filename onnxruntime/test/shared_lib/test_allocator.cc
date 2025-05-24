@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <unordered_map>
+
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
 #include <gtest/gtest.h>
@@ -31,4 +33,10 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_EQ(allocation.size(), 100U);
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
+
+  // Default Allocator does not support GetStats
+  std::unordered_map<std::string, std::string> stats;
+  auto status = default_allocator.GetStats(stats);
+  ASSERT_FALSE(status.IsOK());
+  ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
 }

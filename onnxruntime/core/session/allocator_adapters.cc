@@ -11,6 +11,7 @@ namespace onnxruntime {
 
 namespace {
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
+constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -25,6 +26,26 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
   if (OrtAllocator::version >= kOrtAllocatorReserveMinVersion) {
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
+  }
+  if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
+    OrtAllocator::GetStats =
+        [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) noexcept -> OrtStatusPtr {
+      API_IMPL_BEGIN
+#ifdef ORT_NO_RTTI
+      ORT_UNUSED_PARAMETER(this_);
+      ORT_UNUSED_PARAMETER(allocator);
+      ORT_UNUSED_PARAMETER(stats);
+      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported in a NO_RTTI build.");
+#else
+      auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
+      memcpy(stats_string, str.c_str(), str.size());
+      stats_string[str.size()] = '\0';
+      *stats = stats_string;
+      return nullptr;
+#endif
+      API_IMPL_END
+    };
   }
 }
 
@@ -42,6 +63,26 @@ void OrtAllocatorImplWrappingIAllocator::Free(void* p) {
 
 const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
   return &i_allocator_->Info();
+}
+
+std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
+  AllocatorStats stats{};
+  i_allocator_->GetStats(&stats);
+  auto stats_str = stats.DebugString();
+
+  // Process the debug string to a comma-separated format and remove redundant spaces
+  std::string::size_type pos = 0;
+  while ((pos = stats_str.find('\n', pos)) != std::string::npos) {
+    stats_str.replace(pos, 1, ",");
+    pos += 1;
+  }
+
+  pos = 0;
+  while ((pos = stats_str.find(' ', pos)) != std::string::npos) {
+    stats_str.replace(pos, 1, "");
+  }
+
+  return stats_str;
 }
 
 onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {

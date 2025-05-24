@@ -340,6 +340,27 @@ typedef struct OrtAllocator {
    * those made during session initialization. This allows for separate memory management strategies for these allocations.
    */
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+
+  /**
+   * @brief Function used to get the statistics of the allocator.
+   *
+   * Return a stats string that is formatted as 'key:value' pairs separated by commas.
+   * Supported keys are:
+   * - Limit: Bytes limit of the allocator. -1 if no limit is set.
+   * - InUse: Number of bytes in use.
+   * - TotalAllocated: The total number of allocated bytes by the allocator.
+   * - MaxInUse: The maximum bytes in use.
+   * - NumAllocs: Number of allocations.
+   * - NumReserves: Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+   * - NumArenaExtensions: Number of arena extensions (Relevant only for arena based allocators)
+   * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
+   * - MaxAllocSize: The max single allocation seen.
+   *
+   * Note that not all allocators support this function. If the allocator does not support this function,
+   * it returns ORT_NOT_IMPLEMENTED.
+   */
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
+                  _Outptr_ char** stats);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -5275,6 +5296,25 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+  /** \brief Calls OrtAllocator::GetStats function
+   *
+   * Return a stats string that contains statistics collected by the allocator. The string is
+   * formatted as 'key:value' pairs separated by commas.
+   *
+   * Note that not all allocators support this function. If the allocator does not support this function,
+   * it returns ORT_NOT_IMPLEMENTED.
+   *
+   * \param[in] ort_allocator The allocator to get stats from
+   * \param[in] allocator The allocator to allocate the stats string
+   * \param[out] out The stats string
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Inout_ OrtAllocator* allocator,
+                  _Outptr_ char** out);
 };
 
 /*
