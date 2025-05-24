@@ -506,8 +506,13 @@ public class TensorInfo implements ValueInfo {
         throw new OrtException(
             "Supplied array is ragged, expected " + shape[curDim] + ", found " + curLength);
       }
-      for (int i = 0; i < curLength; i++) {
-        extractShape(shape, curDim + 1, Array.get(obj, i));
+      int nextDim = curDim + 1;
+      // Avoid traversing the entire array (autoboxing its values) when the next dimension is equal
+      // to the shape's length
+      if (shape.length != nextDim) {
+        for (int i = 0; i < curLength; i++) {
+          extractShape(shape, nextDim, Array.get(obj, i));
+        }
       }
     }
   }
