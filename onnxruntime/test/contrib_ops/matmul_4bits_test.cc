@@ -564,6 +564,47 @@ TEST(MatMulNBits, Float16Large) {
   }
 }
 
+#ifdef USE_CUDA
+TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
+  float abs_error = 0.3f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = true;
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Fp16ZeroPoint) {
+  float abs_error = 0.3f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = false;
+  constexpr bool has_zeropoint = true;
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
+  float abs_error = 0.3f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+#endif
+
 #endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 }  // namespace test
 }  // namespace onnxruntime
