@@ -105,27 +105,15 @@ QuantOpTag = {
 # not CUTLASS types. This map materializes the name of the CUDA type.
 
 
-class E2m1Type:  # WAR until we have upgraded everything to a supported version
-    pass
-
-
-e2m1 = E2m1Type()
-
-
 def get_data_type_bits(type):
-    if isinstance(type, E2m1Type):
-        return 4
     return DataTypeSize[type]
 
 
 def get_data_type_names(type):
-    if isinstance(type, E2m1Type):
-        return "e2m1"
     return DataTypeNames[type]
 
 
 CudaTypeName = {
-    e2m1: "SafeFP4",
     DataType.e4m3: "__nv_fp8_e4m3",
     DataType.bf16: "__nv_bfloat16",
     DataType.f16: "half",
@@ -287,11 +275,6 @@ def is_gemm_op_valid(op):
     return False
 
 
-def is_op_valid(op):
-    assert op.gemm_kind == GemmKind.Gemm
-    return is_gemm_op_valid(op)
-
-
 ################################################################################
 def generate_sm90_mixed_gemm_operations(enable_bf16=False, enable_fp8=False, enable_scale_only=False):
     arch = 90
@@ -369,7 +352,7 @@ def generate_sm90_mixed_gemm_operations(enable_bf16=False, enable_fp8=False, ena
             epi_schedule,
         )
 
-        if is_op_valid(mixed_gemm_operation):
+        if is_gemm_op_valid(mixed_gemm_operation):
             operations.append(mixed_gemm_operation)
 
     return operations

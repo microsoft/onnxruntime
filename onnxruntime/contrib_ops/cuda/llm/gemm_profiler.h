@@ -28,7 +28,7 @@
 #include <unordered_map>
 #include <vector>
 
-#include "contrib_ops/cuda/llm/nv_infer_runtime.h"
+#include "contrib_ops/cuda/llm/nv_infer_datatype.h"
 #include "core/common/common.h"
 
 #if defined(__GNUC__)

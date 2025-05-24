@@ -27,12 +27,6 @@
 #include <string>
 #include <vector>
 
-#if defined(ENABLE_FP4)
-// The blank line here is to avoid clang-format -sort-includes option reordering these two cutlass header files and
-// breaking dependencies
-#include "cutlass/integer_subbyte.h"
-#endif
-
 using WeightOnlyGemmRunner = onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<WeightOnlyGemmRunner>;
 using KernelType = onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;

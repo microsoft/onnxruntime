@@ -16,7 +16,7 @@
 
 #pragma once
 
-#include "contrib_ops/cuda/llm/nv_infer_runtime.h"
+#include "contrib_ops/cuda/llm/nv_infer_datatype.h"
 
 #include "cutlass/half.h"
 #include <cuda_fp16.h>

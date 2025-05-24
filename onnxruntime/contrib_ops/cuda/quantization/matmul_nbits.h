@@ -73,7 +73,13 @@ class MatMulNBits final : public CudaKernel {
       }
     }
 
-    printf("n=%d, k=%d, block_size=%d, nbits=%d, gemv=%d, gemm=%d\n", int(K_), int(N_), int(block_size_), int(nbits_), int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
+#ifndef NDEBUG
+    printf("n=%d, k=%d, block_size=%d, bits=%d, zp_bits=%d, g_idx=%d, bias=%d, gemv=%d, gemm=%d\n",
+           int(N_), int(K_), int(block_size_), int(nbits_),
+           has_zero_points_ ? (is_zero_points_scale_same_type_ ? int(sizeof(T)) * 8 : int(nbits_)) : int(0),
+           int(has_g_idx_ ? 1 : 0), int(has_bias_ ? 1 : 0),
+           int(has_fpA_intB_gemv_), int(has_fpA_intB_gemm_));
+#endif
   }
 
   Status ComputeInternal(OpKernelContext* context) const override;
