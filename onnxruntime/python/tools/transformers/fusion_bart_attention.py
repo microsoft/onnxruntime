@@ -41,8 +41,8 @@ class FusionBartAttention(FusionAttention):
                 transpose_qkv,
                 matmul_qkv,
             ) = qkv_nodes
-            print("qkv_nodes is found")
         else:
+            logger.debug("fuse_attention: failed to match qkv path")
             return
 
         other_inputs = []
@@ -81,7 +81,6 @@ class FusionBartAttention(FusionAttention):
                 root_input = output
                 break
 
-        print(root_input)
         graph_input_names = {node.name for node in self.model.graph().input}
         graph_output_names = {node.name for node in self.model.graph().output}
 
@@ -129,23 +128,18 @@ class FusionBartAttention(FusionAttention):
                         break
                 if present_v != "":
                     break
-
-            print("v_nodes_past_or_present is found")
         elif v_nodes_with_past is not None:
             v_nodes = v_nodes_with_past
             (concat_v, transpose_v, reshape_v, add_v, matmul_v) = v_nodes
             past_v = concat_v.input[0]
             present_v = concat_v.output[0]
-            print("v_nodes_with_past is found")
         elif matmul_qkv.input[1] in graph_input_names:
             # Hugging Face's cross-attention where past_v is used directly as value
             past_v = matmul_qkv.input[1]
-            print("v_nodes_with_past_directly is found")
         elif v_nodes_past_only_oai is not None:
             # OpenAI's cross-attention where past_v is used directly as value
             v_nodes = v_nodes_past_only_oai
             past_v = v_nodes[-1].input[0]
-            print("v_nodes_past_only_oai is found")
         else:
             logger.debug("fuse_attention: failed to match v path")
             return
@@ -158,12 +152,11 @@ class FusionBartAttention(FusionAttention):
         if qk_nodes_no_mask is not None:
             _, matmul_qk = qk_nodes_no_mask
             qk_nodes = qk_nodes_no_mask
-            print("qk_nodes_no_mask is found")
         elif qk_nodes_with_mask is not None:
             _, add_qk, matmul_qk = qk_nodes_with_mask
             qk_nodes = qk_nodes_with_mask
-            print("qk_nodes_with_mask is found")
         else:
+            logger.debug("fuse_attention: failed to match qk path")
             return
 
         q_nodes_hf = self.model.match_parent_path(
@@ -180,12 +173,11 @@ class FusionBartAttention(FusionAttention):
         if q_nodes_hf is not None:
             q_nodes = q_nodes_hf
             (transpose_q, reshape_q, mul_q, add_q, matmul_q) = q_nodes
-            print("q_nodes_hf is found")
         elif q_nodes_oai is not None:
             q_nodes = q_nodes_oai
             (mul_q, transpose_q, reshape_q, add_q, matmul_q) = q_nodes
-            print("q_nodes_oai is found")
         else:
+            logger.debug("fuse_attention: failed to match q path")
             return
 
         k_nodes_no_past_hf = self.model.match_parent_path(
@@ -220,18 +212,15 @@ class FusionBartAttention(FusionAttention):
                 if transpose_k_node.output[0] in graph_output_names:
                     present_k = transpose_k_node.output[0]
                     break
-            print("k_nodes_no_past is found")
         elif k_nodes_with_past_hf is not None:
             k_nodes = k_nodes_with_past_hf
             (_, concat_k, transpose_k, reshape_k, matmul_k) = k_nodes
             past_k = concat_k.input[0]
             present_k = concat_k.output[0]
-            print("k_nodes_with_past is found")
         elif output_name_to_node[matmul_qk.input[1]].input[0] in graph_input_names:
             # Hugging Face's cross-attention where past_k is used directly as key
             k_nodes = [output_name_to_node[matmul_qk.input[1]]]
             past_k = k_nodes[0].input[0]
-            print("k_nodes_with_past_directly is found")
         elif k_nodes_past_or_present_oai is not None:
             k_nodes = k_nodes_past_or_present_oai
             (_, transpose_k, reshape_k, matmul_k) = k_nodes
@@ -259,14 +248,12 @@ class FusionBartAttention(FusionAttention):
                         break
                 if present_k != "":
                     break
-
-            print("k_nodes_past_or_present_oai is found")
         elif k_nodes_past_only_oai is not None:
             # OpenAI's cross-attention where past_k is used directly as key
             k_nodes = k_nodes_past_only_oai
             past_k = k_nodes[-1].input[0]
-            print("k_nodes_past_only_oai is found")
         else:
+            logger.debug("fuse_attention: failed to match k path")
             return
         past_k = past_k if past_k in graph_input_names else ""
         present_k = present_k if present_k in graph_output_names else ""
@@ -405,6 +392,7 @@ class FusionBartAttention(FusionAttention):
                 )
                 self.use_multi_head_attention = use_multi_head_attention_ground_truth
             if new_node is None:
+                logger.debug("fuse_attention: failed to create fused node")
                 return
 
             self.nodes_to_add.append(new_node)
