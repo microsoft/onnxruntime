@@ -339,10 +339,9 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
           std::copy(onesm.begin(), onesm.end(), std::back_inserter(base));
         }
 
-        constexpr std::array<std::array<ClusterShape, 2>, 2> cluster_shapes = {{
-            std::array<ClusterShape, 2>{ClusterShape::ClusterShape_1x1x1, ClusterShape::ClusterShape_1x2x1},
-            std::array<ClusterShape, 2>{ClusterShape::ClusterShape_2x1x1, ClusterShape::ClusterShape_2x2x1}
-        }};
+        constexpr std::array<std::array<ClusterShape, 2>, 2> cluster_shapes =
+            {{std::array<ClusterShape, 2>{ClusterShape::ClusterShape_1x1x1, ClusterShape::ClusterShape_1x2x1},
+              std::array<ClusterShape, 2>{ClusterShape::ClusterShape_2x1x1, ClusterShape::ClusterShape_2x2x1}}};
 
         auto cluster = cluster_shapes[cluster_m - 1][cluster_n - 1];
         for (auto tile : base) {
@@ -402,9 +401,10 @@ std::vector<CutlassGemmConfig> get_candidate_configs(
   return candidate_configs;
 }
 
-CutlassGemmConfig estimate_best_config_from_occupancies(std::vector<CutlassGemmConfig> const& candidate_configs,
-                                                        std::vector<int> const& occupancies, int64_t const m, int64_t const n, int64_t const k, int64_t const /*num_experts*/,
-                                                        int const split_k_limit, size_t const workspace_bytes, int const multi_processor_count, int const is_weight_only) {
+CutlassGemmConfig estimate_best_config_from_occupancies(
+    std::vector<CutlassGemmConfig> const& candidate_configs,
+    std::vector<int> const& occupancies, int64_t const m, int64_t const n, int64_t const k, int64_t const /*num_experts*/,
+    int const split_k_limit, size_t const workspace_bytes, int const multi_processor_count, int const is_weight_only) {
   if (occupancies.size() != candidate_configs.size()) {
     ORT_THROW(
         "[estimate_best_config_from_occupancies] occpancies and "

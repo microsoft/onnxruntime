@@ -477,10 +477,10 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
     // https://github.com/NVIDIA/cutlass/blob/19b4c5e065e7e5bbc8082dfc7dbd792bdac850fc/include/cutlass/gemm/kernel/tile_scheduler_params.h#L505
     // The above lines scales sk_tiles by the factor of static_cast<uint32_t>(sk_units / sk_tiles + 2)
     // That means the final sk_tiles is at most 2 * max_sk_tiles + max_sk_units;
-    int const max_sk_tiles_with_seperate_reduction = 2 * max_sk_tiles + max_sk_units;
+    int const max_sk_tiles_with_separate_reduction = 2 * max_sk_tiles + max_sk_units;
 
     return static_cast<size_t>(
-        max_sk_tiles_with_seperate_reduction * MAX_M_TILE_SM90 * MAX_N_TILE_SM90 * sizeof(float));
+        max_sk_tiles_with_separate_reduction * MAX_M_TILE_SM90 * MAX_N_TILE_SM90 * sizeof(float));
   }
   // These are the min tile sizes for each config, which would launch the maximum number of blocks
   int const max_grid_m = cutlass::ceil_div(m, MIN_M_TILE);

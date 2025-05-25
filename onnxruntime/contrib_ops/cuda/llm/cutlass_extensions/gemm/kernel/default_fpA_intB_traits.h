@@ -33,7 +33,7 @@ namespace kernel {
 
 template <typename TypeA, typename TypeB, typename arch, typename Enable = void>
 struct MixedGemmArchTraits {
-  static_assert(dependent_false<arch>, "Unrecognised parameterization");
+  static_assert(dependent_false<arch>, "Unrecognized parameterization");
 };
 
 template <typename Arch>
