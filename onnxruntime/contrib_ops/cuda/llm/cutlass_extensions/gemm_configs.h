@@ -150,6 +150,7 @@ enum class MainloopScheduleType {
   WARPSPECIALIZED
 };
 
+#if 0
 static auto get_mainloop_schedule_name(MainloopScheduleType schedule) {
   if (schedule == MainloopScheduleType::AUTO) {
     return "auto";
@@ -162,6 +163,7 @@ static auto get_mainloop_schedule_name(MainloopScheduleType schedule) {
   }
   return "unknown schedule";
 }
+#endif
 
 enum class EpilogueScheduleType {
   AUTO,  // Automatically chooses an epilogue schedule compatible with the selected main loop schedule for Hopper. For
@@ -211,6 +213,7 @@ constexpr auto get_tile_shape() {
   }
 }
 
+#if 0
 static auto get_tile_shape_name(TileShape Shape_MNK) {
   if (Shape_MNK == TileShape::TileShape_64x16x128) {
     return "64x16x128";
@@ -237,6 +240,7 @@ static auto get_tile_shape_name(TileShape Shape_MNK) {
   }
   return "Unknown shape";
 }
+#endif
 
 enum class ClusterShape {
   ClusterShape_1x1x1,
@@ -251,6 +255,7 @@ enum class ClusterShape {
   ClusterShape_8x1x1
 };
 
+#if 0
 static auto get_cluster_shape_name(ClusterShape Shape_MNK) {
   if (Shape_MNK == ClusterShape::ClusterShape_1x1x1) {
     return "1x1x1";
@@ -285,6 +290,7 @@ constexpr auto get_cluster_shape() {
     return cute::Shape<_8, _1, _1>{};
   }
 }
+#endif
 
 struct CutlassGemmConfig {
   enum CandidateConfigTypeParam : int {

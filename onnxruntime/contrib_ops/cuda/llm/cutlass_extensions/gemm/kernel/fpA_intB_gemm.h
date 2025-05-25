@@ -255,7 +255,7 @@ struct GemmFpAIntB {
     return Status::kSuccess;
   }
 
-  static size_t get_extra_workspace_size(Arguments const& args, cutlass::gemm::GemmCoord const& grid_tiled_shape) {
+  static size_t get_extra_workspace_size(Arguments const& /*args*/, cutlass::gemm::GemmCoord const& /*grid_tiled_shape*/) {
     return 0;
   }
 
