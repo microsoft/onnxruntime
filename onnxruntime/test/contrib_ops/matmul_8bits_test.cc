@@ -217,12 +217,15 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
   {
     TestOptions8Bits opts = base_opts;
+    opts.has_zero_point = false;
+    opts.has_bias = false;
     RunTest8Bits<AType>(opts);
   }
 
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = true;
+    opts.has_bias = false;
     RunTest8Bits<AType>(opts);
   }
 
@@ -230,6 +233,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 #if !defined(USE_CUDA) && !defined(USE_WEBGPU)
   {
     TestOptions8Bits opts = base_opts;
+    opts.has_zero_point = false;
     opts.has_bias = true;
     RunTest8Bits<AType>(opts);
   }

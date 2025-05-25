@@ -34,6 +34,7 @@
 #include <cuda_runtime_api.h>
 #include <set>
 #include <vector>
+#include <array>
 
 using namespace onnxruntime::llm::cutlass_extensions;
 
@@ -295,7 +296,7 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape256x128x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_2x1x1});
       // candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
-      //     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1});
+      //                                               MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x1x1});
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape128x256x128B,
                                                     MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, ClusterShape::ClusterShape_1x2x1});
       candidate_configs.push_back(CutlassGemmConfig{CutlassTileConfigSM100::CtaShape256x64x128B,
@@ -338,9 +339,11 @@ std::vector<CutlassGemmConfig> get_candidate_configs_sm100(CutlassGemmConfig::Ca
           std::copy(onesm.begin(), onesm.end(), std::back_inserter(base));
         }
 
-        constexpr std::array<std::array<ClusterShape, 2>, 2> cluster_shapes = {
-            std::array{ClusterShape::ClusterShape_1x1x1, ClusterShape::ClusterShape_1x2x1},
-            std::array{ClusterShape::ClusterShape_2x1x1, ClusterShape::ClusterShape_2x2x1}};
+        constexpr std::array<std::array<ClusterShape, 2>, 2> cluster_shapes = {{
+            std::array<ClusterShape, 2>{ClusterShape::ClusterShape_1x1x1, ClusterShape::ClusterShape_1x2x1},
+            std::array<ClusterShape, 2>{ClusterShape::ClusterShape_2x1x1, ClusterShape::ClusterShape_2x2x1}
+        }};
+
         auto cluster = cluster_shapes[cluster_m - 1][cluster_n - 1];
         for (auto tile : base) {
           CutlassGemmConfig config{tile, MainloopScheduleType::AUTO, EpilogueScheduleType::AUTO, cluster};

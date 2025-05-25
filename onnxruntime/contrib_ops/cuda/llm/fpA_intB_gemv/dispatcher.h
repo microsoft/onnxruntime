@@ -130,8 +130,6 @@ __device__ __forceinline__ void dequantize(void* w, void* quantized_w, void* sca
     for (int k = 0; k < VecK; ++k) {
       reinterpret_cast<Type2*>(w)[n * VecK + k] = MathWrapper<typename Details::TypeDetailsA>::fma2(
           reinterpret_cast<Type2*>(w)[n * VecK + k], vec_scale, vec_zero);
-      // reinterpret_cast<Type2*>(w)[n * VecK + k] = MathWrapper<typename Details::TypeDetailsA>::deq2(
-      //     reinterpret_cast<Type2*>(w)[n * VecK + k], vec_scale, vec_zero);
     }
   }
 }
@@ -159,9 +157,10 @@ __device__ __forceinline__ void mma(void* acc, void* w_pack2, void* act) {
     for (int n = 0; n < VecN; ++n) {
 #pragma unroll
       for (int k = 0; k < K; ++k) {
-        reinterpret_cast<Type2*>(acc)[m * VecN + n] = MathWrapper<typename Details::TypeDetailsA>::fma2(reinterpret_cast<Type2*>(w_pack2)[n * K + k],
-                                                                                                        MathWrapper<typename Details::TypeDetailsA>::to_vec2(reinterpret_cast<Type*>(act)[m * K + k]),
-                                                                                                        reinterpret_cast<Type2*>(acc)[m * VecN + n]);
+        reinterpret_cast<Type2*>(acc)[m * VecN + n] = MathWrapper<typename Details::TypeDetailsA>::fma2(
+            reinterpret_cast<Type2*>(w_pack2)[n * K + k],
+            MathWrapper<typename Details::TypeDetailsA>::to_vec2(reinterpret_cast<Type*>(act)[m * K + k]),
+            reinterpret_cast<Type2*>(acc)[m * VecN + n]);
       }
     }
   }
@@ -233,17 +232,14 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
-  // clang-format off
-    // ArgType          ArgName          DataType               Shape                           Layout
-    //
-    // input            act              fp16/bf16              [m, k]                          RowMajor
-    // input            act_scale        fp16/bf16              [1, k]                          RowMajor
-    // input            weight           int4b/int8b            [k, n]                          ColumnMajor or ColumnMajorInterleaved
-    // input            scales           fp16/bf16              [k / GroupSize, n] or [1, n]    RowMajor
-    // input            zeros            fp16/bf16              [k / GroupSize, n] or [1, n]    RowMajor
-    // input            bias             fp16/bf16              [1, n]                          RowMajor
-    // output           out              fp16/bf16              [m, n]                          RowMajor
-  // clang-format on
+  // ArgType          ArgName          DataType           Shape                 Layout
+  // input            act              fp16/bf16          [m, k]                RowMajor
+  // input            act_scale        fp16/bf16          [1, k]                RowMajor
+  // input            weight           int4b/int8b        [k, n]                ColumnMajor or ColumnMajorInterleaved
+  // input            scales           fp16/bf16          [k / GroupSize, n]    RowMajor
+  // input            zeros            fp16/bf16          [k / GroupSize, n]    RowMajor
+  // input            bias             fp16/bf16          [1, n]                RowMajor
+  // output           out              fp16/bf16          [m, n]                RowMajor
 
   using AccessTypeA = typename Details::AccessTypeA;
   using AccessTypeW = typename Details::AccessTypeW;
@@ -267,16 +263,20 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
       act, offset_m * origin_k + real_offset_k, CtaK / Details::kInterleave, origin_k);
   GMemIterator<EnableActScale, AccessTypeA, 1, Details::kAccessNumA, TypeA> act_scale_iterator(
       act_scale, real_offset_k, CtaK / Details::kInterleave, 0);
-  GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(weight,
-                                                                                            (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW, CtaK / Details::kElemsPerByteW,
-                                                                                            interleaved_k / Details::kElemsPerByteW);
+  GMemIterator<Mandatory, AccessTypeW, CtaN, Details::kAccessNumW, uint8_t> weight_iterator(
+      weight,
+      (interleaved_offset_n * interleaved_k + tid * StepK) / Details::kElemsPerByteW, CtaK / Details::kElemsPerByteW,
+      interleaved_k / Details::kElemsPerByteW);
 
-  GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(scales,
-                                                                 (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
-                                                                 (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
-  GMemIterator<EnableZero, TypeA, CtaN, 1, TypeA> zeros_iterator(zeros,
-                                                                 (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
-                                                                 (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+  GMemIterator<Mandatory, TypeA, CtaN, 1, TypeA> scales_iterator(
+      scales,
+      (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
+
+  GMemIterator<EnableZero, TypeA, CtaN, 1, TypeA> zeros_iterator(
+      zeros,
+      (GroupSize != 0 ? real_offset_k / GroupSize * n : 0) + real_offset_n,
+      (GroupSize != 0 ? CtaK / Details::kInterleave / GroupSize * n : 0), Details::kInterleave);
 
   out += offset_m * n + tile_id_n * CtaN * Details::kInterleave;
   if constexpr (EnableBias) {
@@ -323,19 +323,16 @@ void exec_kernel(Params& params, cudaStream_t s) {
   }
   dim3 grid(params.m / CtaM, params.n / (CtaN * Details::kInterleave));
   dim3 block(Threads);
-  // clang-format off
-    kernel<Details, CtaM, CtaN, Threads, GroupSize, EnableActScale, EnableZero, EnableBias, ApplyAlphaInAdvance><<<grid, block, 0, s>>>(
-        reinterpret_cast<T*>(params.act),
-        reinterpret_cast<T*>(params.act_scale),
-        reinterpret_cast<uint8_t*>(params.weight),
-        reinterpret_cast<T*>(params.scales),
-        reinterpret_cast<T*>(params.zeros),
-        reinterpret_cast<T*>(params.bias),
-        reinterpret_cast<T*>(params.out),
-        params.alpha,
-        params.m, params.n, params.k
-    );
-  // clang-format on
+  kernel<Details, CtaM, CtaN, Threads, GroupSize, EnableActScale, EnableZero, EnableBias, ApplyAlphaInAdvance><<<grid, block, 0, s>>>(
+      reinterpret_cast<T*>(params.act),
+      reinterpret_cast<T*>(params.act_scale),
+      reinterpret_cast<uint8_t*>(params.weight),
+      reinterpret_cast<T*>(params.scales),
+      reinterpret_cast<T*>(params.zeros),
+      reinterpret_cast<T*>(params.bias),
+      reinterpret_cast<T*>(params.out),
+      params.alpha,
+      params.m, params.n, params.k);
 }
 
 template <typename Details, int GroupSize, bool EnableActScale, bool EnableZero, bool EnableBias, bool ApplyAlphaInAdvance>
@@ -350,78 +347,55 @@ void dispatcher(Params& params, cudaStream_t s) {
   } while (0);
 
   if constexpr (EnableZero) {
-    // clang-format off
-        DISPATCHER_FOR_M(1, 1, 4, 128);
-        DISPATCHER_FOR_M(2, 2, 4, 128);
-        DISPATCHER_FOR_M(3, 3, 4, 128);
-        DISPATCHER_FOR_M(4, 4, 4, 128);
-        DISPATCHER_FOR_M(5, 5, 4, 128);
-        DISPATCHER_FOR_M(6, 6, 4, 128);
-        DISPATCHER_FOR_M(7, 7, 4, 128);
-        DISPATCHER_FOR_M(8, 8, 4, 128);
-        DISPATCHER_FOR_M(9, 9, 4, 128);
-        DISPATCHER_FOR_M(10, 10, 4, 128);
-        DISPATCHER_FOR_M(11, 11, 4, 128);
-        DISPATCHER_FOR_M(12, 12, 4, 128);
-        DISPATCHER_FOR_M(13, 13, 4, 128);
-        DISPATCHER_FOR_M(14, 14, 4, 128);
-        DISPATCHER_FOR_M(15, 15, 4, 128);
-    // clang-format on
+    DISPATCHER_FOR_M(1, 1, 4, 128);
+    DISPATCHER_FOR_M(2, 2, 4, 128);
+    DISPATCHER_FOR_M(3, 3, 4, 128);
+    DISPATCHER_FOR_M(4, 4, 4, 128);
+    DISPATCHER_FOR_M(5, 5, 4, 128);
+    DISPATCHER_FOR_M(6, 6, 4, 128);
+    DISPATCHER_FOR_M(7, 7, 4, 128);
+    DISPATCHER_FOR_M(8, 8, 4, 128);
+    DISPATCHER_FOR_M(9, 9, 4, 128);
+    DISPATCHER_FOR_M(10, 10, 4, 128);
+    DISPATCHER_FOR_M(11, 11, 4, 128);
+    DISPATCHER_FOR_M(12, 12, 4, 128);
+    DISPATCHER_FOR_M(13, 13, 4, 128);
+    DISPATCHER_FOR_M(14, 14, 4, 128);
+    DISPATCHER_FOR_M(15, 15, 4, 128);
   } else {
-    // clang-format off
-        DISPATCHER_FOR_M(1, 1, 8, 128);
-        DISPATCHER_FOR_M(2, 2, 8, 128);
-        DISPATCHER_FOR_M(3, 3, 8, 128);
-        DISPATCHER_FOR_M(4, 4, 8, 128);
-        DISPATCHER_FOR_M(5, 5, 8, 128);
-        DISPATCHER_FOR_M(6, 6, 8, 128);
-        DISPATCHER_FOR_M(7, 7, 8, 128);
-        DISPATCHER_FOR_M(8, 8, 8, 128);
-        DISPATCHER_FOR_M(9, 9, 8, 128);
-        DISPATCHER_FOR_M(10, 10, 8, 128);
-        DISPATCHER_FOR_M(11, 11, 8, 128);
-        DISPATCHER_FOR_M(12, 12, 8, 128);
-        DISPATCHER_FOR_M(13, 13, 8, 128);
-        DISPATCHER_FOR_M(14, 14, 8, 128);
-        DISPATCHER_FOR_M(15, 15, 8, 128);
-    // clang-format on
+    DISPATCHER_FOR_M(1, 1, 8, 128);
+    DISPATCHER_FOR_M(2, 2, 8, 128);
+    DISPATCHER_FOR_M(3, 3, 8, 128);
+    DISPATCHER_FOR_M(4, 4, 8, 128);
+    DISPATCHER_FOR_M(5, 5, 8, 128);
+    DISPATCHER_FOR_M(6, 6, 8, 128);
+    DISPATCHER_FOR_M(7, 7, 8, 128);
+    DISPATCHER_FOR_M(8, 8, 8, 128);
+    DISPATCHER_FOR_M(9, 9, 8, 128);
+    DISPATCHER_FOR_M(10, 10, 8, 128);
+    DISPATCHER_FOR_M(11, 11, 8, 128);
+    DISPATCHER_FOR_M(12, 12, 8, 128);
+    DISPATCHER_FOR_M(13, 13, 8, 128);
+    DISPATCHER_FOR_M(14, 14, 8, 128);
+    DISPATCHER_FOR_M(15, 15, 8, 128);
   }
   throw std::runtime_error("unsupported m");
 #undef DISPATCHER_FOR_M
 }
 
-template <typename Details, int GroupSize, bool EnableActScale, bool EnableZero, bool EnableBias>
-void check_alpha(Params& params, cudaStream_t s) {
-  if (params.apply_alpha_in_advance && params.alpha != 1.f) {
-    dispatcher<Details, GroupSize, EnableActScale, EnableZero, EnableBias, true>(params, s);
-  } else {
-    dispatcher<Details, GroupSize, EnableActScale, EnableZero, EnableBias, false>(params, s);
-  }
-}
-
 template <typename Details, int GroupSize>
 void check_pointer(Params& params, cudaStream_t s) {
-  if constexpr (GroupSize == 0) {
-    check_alpha<Details, 0, false, false, false>(params, s);  // Assuming no act_scale/zero for GS=0 in original
+  assert(!params.act_scale);               // act_scale is not supported for now.
+  assert(!params.apply_alpha_in_advance);  // apply_alpha_in_advance is not supported for now.
+
+  if (params.zeros && params.bias) {
+    dispatcher<Details, GroupSize, false, true, true, false>(params, s);
+  } else if (!params.zeros && params.bias) {
+    dispatcher<Details, GroupSize, false, false, true, false>(params, s);
+  } else if (params.zeros && !params.bias) {
+    dispatcher<Details, GroupSize, false, true, false, false>(params, s);
   } else {
-    // Logic for GroupSize != 0 (groupwise scales/zeros, now [n, k/GroupSize] column major)
-    if (params.act_scale && params.zeros && params.bias) {
-      check_alpha<Details, GroupSize, true, true, true>(params, s);
-    } else if (params.act_scale && params.zeros && !params.bias) {
-      check_alpha<Details, GroupSize, true, true, false>(params, s);
-    } else if (params.act_scale && !params.zeros && params.bias) {
-      check_alpha<Details, GroupSize, true, false, true>(params, s);
-    } else if (!params.act_scale && params.zeros && params.bias) {
-      check_alpha<Details, GroupSize, false, true, true>(params, s);
-    } else if (!params.act_scale && !params.zeros && params.bias) {
-      check_alpha<Details, GroupSize, false, false, true>(params, s);
-    } else if (params.act_scale && !params.zeros && !params.bias) {
-      check_alpha<Details, GroupSize, true, false, false>(params, s);
-    } else if (!params.act_scale && params.zeros && !params.bias) {
-      check_alpha<Details, GroupSize, false, true, false>(params, s);
-    } else {
-      check_alpha<Details, GroupSize, false, false, false>(params, s);
-    }
+    dispatcher<Details, GroupSize, false, false, false, false>(params, s);
   }
 }
 

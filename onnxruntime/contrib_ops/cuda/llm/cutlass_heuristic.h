@@ -17,7 +17,7 @@
 #pragma once
 
 #include "cute/tensor.hpp"
-#include "cutlass_extensions/gemm_configs.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm_configs.h"
 
 namespace onnxruntime::llm {
 namespace kernels {

@@ -36,9 +36,17 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
   gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
 
   if (nbits_ == 8) {
-    weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    } else {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>>();
+    }
   } else if (nbits_ == 4) {
-    weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    } else {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>>();
+    }
   }
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -95,9 +103,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   typedef typename ToCudaType<T>::MappedType CudaT;
   CudaT* out_data = reinterpret_cast<CudaT*>(Y->MutableData<T>());
 
-  auto& device_prop = this->GetDeviceProp();
-  int sm = device_prop.major * 10 + device_prop.minor;
-
   int m = SafeInt<int>(helper.M());
   int n = SafeInt<int>(helper.N());
   int k = SafeInt<int>(helper.K());
@@ -112,9 +117,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       fpA_intB_scale_buffer_ = this->GetTransientScratchBuffer<void>(scale_bytes);
       CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-      fpA_intB_zero_buffer_ = this->GetTransientScratchBuffer<void>(scale_bytes);
-
-      CudaT* scaled_zero_points = reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get());
+      fpA_intB_zero_buffer_ = this->GetTransientScratchBuffer<void>(has_zero_points_ ? scale_bytes : 0);
+      CudaT* scaled_zero_points = has_zero_points_ ? reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get()) : nullptr;
 
       size_t weight_bytes = n * k;
       IAllocatorUniquePtr<void> transpose_weight_space = this->GetTransientScratchBuffer<void>(weight_bytes);
@@ -176,20 +180,23 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       constexpr float kDefaultZeroPoint4Bit = 8.0f;
       constexpr float kDefaultZeroPoint8Bit = 128.0f;
       const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
-      if (zero_points != nullptr && !zero_points->IsDataType<T>()) {  // zero point is uint8_t type
-        if (nbits_ == 4) {
-          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
-              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
-              transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
-        } else {
-          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
-              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+      // The scaled zero point will be zero for the default zero point, so there is no need to scale when it is nullptr.
+      if (zero_points != nullptr) {
+        if (!zero_points->IsDataType<T>()) {  // zero point is uint8_t type
+          if (nbits_ == 4) {
+            onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+                stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+                transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+          } else {
+            onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+                stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+                transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+          }
+        } else {  // zero point is not uint8_t type
+          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
               transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
         }
-      } else {  // zero point is not uint8_t type
-        onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
-            stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
-            transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
       }
 
       DUMP_STRING("k_blocks=", k_blocks, " n=", n);
@@ -212,11 +219,11 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       float alpha = 1.0f;
       onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
           a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
-          fpA_intB_scale_buffer_.get(), fpA_intB_zero_buffer_.get(),
+          fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
           bias_data, out_data,
           alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
 
-      onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm, params, stream);
+      onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
     } else {
       const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
       auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
@@ -225,7 +232,7 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
           a_data,
           fpA_intB_weight_buffer_.get(),
           fpA_intB_scale_buffer_.get(),
-          fpA_intB_zero_buffer_.get(),
+          has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
           bias_data,
           1.f,
           out_data,

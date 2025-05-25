@@ -53,7 +53,20 @@ struct Params {
   Params(ConstPointer _act, ConstPointer _act_scale, ConstPointer _weight, ConstPointer _scales, ConstPointer _zeros,
          ConstPointer _bias, Pointer _out, float _alpha, int _m, int _n, int _k, int _groupsize, KernelType _type,
          bool _apply_alpha_in_advance = false)
-      : act(const_cast<Pointer>(_act)), act_scale(const_cast<Pointer>(_act_scale)), weight(const_cast<Pointer>(_weight)), scales(const_cast<Pointer>(_scales)), zeros(const_cast<Pointer>(_zeros)), bias(const_cast<Pointer>(_bias)), out(_out), alpha(_alpha), m(_m), n(_n), k(_k), groupsize(_groupsize), type(_type), apply_alpha_in_advance(_apply_alpha_in_advance) {
+      : act(const_cast<Pointer>(_act)),
+        act_scale(const_cast<Pointer>(_act_scale)),
+        weight(const_cast<Pointer>(_weight)),
+        scales(const_cast<Pointer>(_scales)),
+        zeros(const_cast<Pointer>(_zeros)),
+        bias(const_cast<Pointer>(_bias)),
+        out(_out),
+        alpha(_alpha),
+        m(_m),
+        n(_n),
+        k(_k),
+        groupsize(_groupsize),
+        type(_type),
+        apply_alpha_in_advance(_apply_alpha_in_advance) {
   }
 };
 

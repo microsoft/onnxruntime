@@ -44,6 +44,7 @@ class MatMulNBits final : public CudaKernel {
     has_zero_points_ = info.GetInputCount() > kInputIndexZeroPoints && info.node().InputDefs()[kInputIndexZeroPoints]->Exists();
     has_g_idx_ = info.GetInputCount() > kInputIndexGroupIndex && info.node().InputDefs()[kInputIndexGroupIndex]->Exists();
     has_bias_ = info.GetInputCount() > kInputIndexBias && info.node().InputDefs()[kInputIndexBias]->Exists();
+    sm_ = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
 
     if (has_zero_points_) {
       int32_t zero_point_type = info.node().InputDefs()[kInputIndexZeroPoints]->TypeAsProto()->tensor_type().elem_type();
@@ -57,19 +58,17 @@ class MatMulNBits final : public CudaKernel {
           !has_g_idx_ && has_zero_points_ && !has_bias_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
-          !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false)) {
+          !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false) &&
+          sm_ >= 75) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-        int sm = this->GetDeviceProp().major * 10 + this->GetDeviceProp().minor;
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm, cuda_kernel_type)) {
+        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
           has_fpA_intB_gemv_ = true;
         }
 
-        if (sm >= 75) {
-          constexpr int max_m = 8291;  // TODO: change it to 8192.
-          RunGemmProfile(has_fpA_intB_gemv_, sm, max_m);
-          has_fpA_intB_gemm_ = true;
-        }
+        constexpr int max_m = 8291;
+        RunGemmProfile(has_fpA_intB_gemv_, sm_, max_m);
+        has_fpA_intB_gemm_ = true;
       }
     }
 
@@ -91,6 +90,7 @@ class MatMulNBits final : public CudaKernel {
   int64_t N_;
   int64_t block_size_;
   int64_t nbits_;
+  int sm_{0};
   bool column_wise_quant_blk_{true};
 
   bool has_g_idx_{false};
