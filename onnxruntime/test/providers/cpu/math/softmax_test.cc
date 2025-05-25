@@ -49,6 +49,14 @@ TEST(SoftmaxOperator, Simple) {
   RunTest(x_vals, expected_vals, dimensions);
 }
 
+TEST(SoftmaxOperator, neg_inf) {
+  std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
+  std::vector<float> expected_vals = {0, 0, 0};
+  std::vector<int64_t> dimensions = {1, 3};
+
+  RunTest(x_vals, expected_vals, dimensions);
+}
+
 #if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_XNNPACK)
 TEST(SoftmaxOperator, Simple_fp16) {
 #ifdef USE_CUDA
