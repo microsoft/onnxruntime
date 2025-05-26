@@ -28,7 +28,6 @@ class GemmProgram final : public Program<GemmProgram> {
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
-      {"num_tile_n", ProgramUniformVariableDataType::Uint32},
       {"alpha", ProgramUniformVariableDataType::Float32},
       {"beta", ProgramUniformVariableDataType::Float32},
       {"dim_a_outer", ProgramUniformVariableDataType::Uint32},

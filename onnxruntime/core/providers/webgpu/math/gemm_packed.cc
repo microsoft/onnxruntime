@@ -100,8 +100,7 @@ Status ApplyGemmPacked(const Tensor* a,
       .AddOutputs({{y, ProgramTensorMetadataDependency::TypeAndRank, output_components}})
       .SetDispatchGroupSize(num_tile_n, num_tile_m, 1)
       .SetWorkgroupSize(GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_X, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Y, GemmProgram::MATMUL_PACKED_WORKGROUP_SIZE_Z)
-      .AddUniformVariables({{num_tile_n},
-                            {alpha},
+      .AddUniformVariables({{alpha},
                             {beta},
                             {M}, /* dim_a_outer */
                             {N}, /* dim_b_outer */
