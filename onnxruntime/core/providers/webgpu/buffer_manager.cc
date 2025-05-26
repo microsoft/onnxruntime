@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-constexpr const char* METRICS_FILE = "webgpu_memory_metrics_session_run_op.csv";
+constexpr const char* METRICS_FILE = "webgpu_memory_metrics_session_run_op_no_default_bucket_limits.csv";
 constexpr const char* METRICS_HEADER = "Timestamp,TotalMemory(MB),PeakMemory(MB),ActiveBuffers,TotalBuffers,TimeoutMs\n";
 
 constexpr size_t NormalizeBufferSize(size_t size) {
@@ -133,49 +133,20 @@ class SimpleCacheManager : public IBufferCacheManager {
   std::vector<WGPUBuffer> pending_buffers_;
 };
 
-// TODO: maybe use different bucket size for storage and uniform buffers?
-constexpr std::initializer_list<std::pair<const size_t, size_t>> BUCKET_DEFAULT_LIMIT_TABLE = {
-    {64, 250},
-    {128, 200},
-    {256, 200},
-    {512, 200},
-    {2048, 230},
-    {4096, 200},
-    {8192, 50},
-    {16384, 50},
-    {32768, 50},
-    {65536, 50},
-    {131072, 50},
-    {262144, 50},
-    {524288, 50},
-    {1048576, 50},
-    {2097152, 30},
-    {4194304, 20},
-    {8388608, 10},
-    {12582912, 10},
-    {16777216, 10},
-    {26214400, 15},
-    {33554432, 22},
-    {44236800, 2},
-    {58982400, 6},
-    // we don't want to cache the bucket sizes below but not caching them
-    // results in some major performance hits for models like sd-turbo.
-    {67108864, 6},
-    {134217728, 6},
-    {167772160, 6},
-};
-
 class BucketCacheManager : public IBufferCacheManager {
  private:
+  static constexpr size_t MAX_BUCKET_COUNT = 500;
+  static constexpr size_t INITIAL_BUCKET_LIMIT = 100;
+
   // Memory metrics
-  int64_t total_memory_{0};     // Current total allocated memory
-  int64_t peak_memory_{0};      // Peak memory usage observed
-  int64_t active_buffers_{0};   // Number of buffers currently in use
-  int64_t total_buffers_{0};    // Total number of buffers (active + cached)
-  std::ofstream metrics_file_;  // File stream for logging metrics
+  int64_t total_memory_{0};      // Current total allocated memory
+  int64_t peak_memory_{0};       // Peak memory usage observed
+  int64_t active_buffers_{0};    // Number of buffers currently in use
+  int64_t total_buffers_{0};     // Total number of buffers (active + cached)
+  std::ofstream metrics_file_;   // File stream for logging metrics
+  bool first_run_ended_{false};  // Track if first run has ended
  public:
-  BucketCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
-    Initialize();
+  BucketCacheManager() {
     OpenMetricsFile();
   }
   BucketCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
@@ -188,6 +159,8 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void OnRunEnd() override {
+    first_run_ended_ = true;
+
     // Update memory patterns based on this run
     for (const auto& usage : current_run_usage_) {
       auto& pattern = memory_patterns_[usage.first];
@@ -208,6 +181,15 @@ class BucketCacheManager : public IBufferCacheManager {
 
     // Track usage for the current run
     current_run_usage_[request_size]++;
+
+    if (!first_run_ended_) {
+      if (buckets_.find(request_size) == buckets_.end() && buckets_.size() < MAX_BUCKET_COUNT) {
+        buckets_.emplace(request_size, std::vector<WGPUBuffer>());
+        buckets_limit_.emplace(request_size, INITIAL_BUCKET_LIMIT);
+        buckets_keys_.push_back(request_size);
+        std::sort(buckets_keys_.begin(), buckets_keys_.end());
+      }
+    }
 
     // Find appropriate bucket size
     auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
@@ -351,26 +333,13 @@ class BucketCacheManager : public IBufferCacheManager {
 
  protected:
   void Initialize() {
-    buckets_keys_.reserve(buckets_limit_.size());
-    buckets_.reserve(buckets_limit_.size());
-    for (const auto& pair : buckets_limit_) {
-      buckets_keys_.push_back(pair.first);
-      buckets_.emplace(pair.first, std::vector<WGPUBuffer>());
-    }
-    std::sort(buckets_keys_.begin(), buckets_keys_.end());
-
-#ifndef NDEBUG  // if debug build
-    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
-                "Bucket sizes must be multiples of 16.");
-
-    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
-      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
-    }
-#endif
+    buckets_.reserve(MAX_BUCKET_COUNT);
+    buckets_keys_.reserve(MAX_BUCKET_COUNT);
+    buckets_limit_.reserve(MAX_BUCKET_COUNT);
   }
 
  private:
-  static constexpr size_t kRunsBeforeAdjustment = 5;   // Number of runs before adjusting buckets
+  static constexpr size_t kRunsBeforeAdjustment = 1;   // Number of runs before adjusting buckets
   static constexpr size_t kMinFrequencyThreshold = 3;  // Minimum frequency to create a bucket
   static constexpr float kHeadroomFactor = 1.1f;       // Add 10% headroom to max concurrent use
 
