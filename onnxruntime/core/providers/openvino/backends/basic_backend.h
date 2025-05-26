@@ -13,11 +13,14 @@
 #include <mutex>
 #include <map>
 #include <functional>
+#include <algorithm>
+#include <utility>
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/openvino/contexts.h"
 #include "core/providers/openvino/ibackend.h"
 #include "core/providers/openvino/ov_interface.h"
+#include "core/providers/openvino/backend_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -25,6 +28,47 @@ namespace openvino_ep {
 struct ov_tensor_data_t {
   OVTensorPtr tensor_ptr;
   const void* ort_ptr;
+};
+
+struct OnnxToOvNetworkBindings {
+  struct ParameterInfo {
+    std::string name;
+    uint32_t ov_index;
+    uint32_t onnx_index;
+    ov::element::Type type;
+    ov::PartialShape ov_shape;
+    std::vector<int64_t> onnx_shape;
+  };
+  std::vector<ParameterInfo> network_outputs_;
+  std::vector<ParameterInfo> network_inputs_;
+
+  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context) {
+    auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
+      for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
+        auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
+                               [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
+
+        ORT_ENFORCE(it != ov_parameters.end(), backend_utils::log_tag,
+                    "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
+                    " doesn't exist in the list of OpenVINO input tensor names");
+
+        auto ov_param_index = std::distance(ov_parameters.begin(), it);
+
+        auto shape = ov_parameters[ov_param_index].get_partial_shape();
+        auto type = ov_parameters[ov_param_index].get_element_type();
+        ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
+
+        if (shape.is_static()) {
+          auto static_shape = shape.get_shape();
+          std::transform(static_shape.begin(), static_shape.end(), std::back_inserter(info.onnx_shape), [](const auto& dim) { return static_cast<int64_t>(dim); });
+        }
+        input_output_map.push_back(std::move(info));
+      }
+    };
+
+    populate(network_inputs_, subgraph_context.input_names, exec_network.Get().inputs());
+    populate(network_outputs_, subgraph_context.output_names, exec_network.Get().outputs());
+  }
 };
 
 class InferRequestsQueue;
@@ -43,7 +87,6 @@ class BasicBackend : public IBackend {
   }
 
  private:
-  void PopulateCompiledDirectory(std::string, std::string&, std::string&, bool&);
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
   void PopulateConfigValue(ov::AnyMap& device_config);
   void EnableCaching();
@@ -71,6 +114,7 @@ class BasicBackend : public IBackend {
 
   using ort_tensor_key_t = const std::string;
   std::map<ort_tensor_key_t, ov_tensor_data_t> ort_ov_tensor_map;
+  std::unique_ptr<OnnxToOvNetworkBindings> bindings_;
 };
 
 class InferRequestsQueue {

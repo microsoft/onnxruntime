@@ -121,7 +121,7 @@ std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Met
 namespace backend_utils {
 
 bool IsDebugEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
     return true;
   }
@@ -129,7 +129,7 @@ bool IsDebugEnabled() {
 }
 
 bool IsCILogEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
   if (!env_name.empty()) {
     return true;
   }
