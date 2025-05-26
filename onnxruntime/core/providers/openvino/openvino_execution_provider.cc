@@ -238,10 +238,20 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
         LOGS_DEFAULT(WARNING) << "Supported types are 'Efficient' and 'Default' \n";
       }
       if (workload_type != "") {
-        LOGS_DEFAULT(INFO) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
+        LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
         for (auto& backend : backend_managers_) {
-          ov::CompiledModel& ov_compiled_model = backend.GetOVCompiledModel();
-          ov_compiled_model.set_property(ov::workload_type(workload_type));
+            ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+            if(ov_compiled_model) {
+              ov_compiled_model.set_property(ov::workload_type(workload_type));
+          } else {
+            LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
+            ov::AnyMap map;
+            map["WORKLOAD_TYPE"] = workload_type;
+            if (session_context_.device_type == "NPU")
+              session_context_.load_config["NPU"] = std::move(map);
+            else
+              ORT_THROW(" WORKLOAD_TYPE property is supported only for NPU");
+          }
         }
       }
     } else {

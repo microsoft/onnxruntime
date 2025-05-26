@@ -82,7 +82,7 @@ class BasicBackend : public IBackend {
 
   void Infer(OrtKernelContext* context) override;
   ~BasicBackend() override = default;
-  ov::CompiledModel& GetOVCompiledModel() override {
+  ov::CompiledModel GetOVCompiledModel() override {
     return exe_network_.Get();
   }
 

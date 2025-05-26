@@ -29,7 +29,7 @@ class BackendManager {
   void ShutdownBackendManager();
   SessionContext& GetSessionContext();
   Status ExportCompiledBlobAsEPCtxNode(const onnxruntime::GraphViewer& subgraph);
-  ov::CompiledModel& GetOVCompiledModel();
+  ov::CompiledModel GetOVCompiledModel();
 
  private:
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> GetModelProtoFromFusedNode(

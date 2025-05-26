@@ -28,9 +28,10 @@ SessionContext& BackendManager::GetSessionContext() {
   return session_context_;
 }
 
-ov::CompiledModel& BackendManager::GetOVCompiledModel() {
-  ov::CompiledModel& ov_ptr = concrete_backend_->GetOVCompiledModel();
-  return (ov_ptr);
+ov::CompiledModel BackendManager::GetOVCompiledModel() {
+  if (concrete_backend_)
+    return concrete_backend_->GetOVCompiledModel();
+  return ov::CompiledModel();
 }
 
 BackendManager::BackendManager(SessionContext& session_context,
