@@ -624,6 +624,14 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_bf16_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_bf16_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_bf16_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_bf16_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
           } else if (option.first == "trt_int8_enable") {
             if (option.second == "True" || option.second == "true") {
               params.trt_int8_enable = true;

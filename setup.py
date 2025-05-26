@@ -343,6 +343,7 @@ providers_qnn = "onnxruntime_providers_qnn"
 if platform.system() == "Linux":
     providers_cuda_or_rocm = "lib" + providers_cuda_or_rocm + ".so"
     providers_tensorrt_or_migraphx = "lib" + providers_tensorrt_or_migraphx + ".so"
+    providers_nv_tensorrt_rtx = "lib" + providers_nv_tensorrt_rtx + ".so"
     providers_openvino = "lib" + providers_openvino + ".so"
     providers_cann = "lib" + providers_cann + ".so"
     providers_qnn = "lib" + providers_qnn + ".so"
@@ -380,6 +381,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
     libs.extend(["libonnxruntime_providers_openvino.so"])
     libs.extend(["libonnxruntime_providers_vitisai.so"])
     libs.append(providers_cuda_or_rocm)
+    libs.append(providers_nv_tensorrt_rtx)
     libs.append(providers_tensorrt_or_migraphx)
     libs.append(providers_cann)
     libs.append(providers_qnn)
