@@ -12,7 +12,7 @@ namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-constexpr const char* METRICS_FILE = "webgpu_memory_metrics_session_run_op_no_default_bucket_limits.csv";
+constexpr const char* METRICS_FILE = "webgpu_memory_metrics_session_run_op_1_fast_release_but_no_default_bucket_limits.csv";
 constexpr const char* METRICS_HEADER = "Timestamp,TotalMemory(MB),PeakMemory(MB),ActiveBuffers,TotalBuffers,TimeoutMs\n";
 
 constexpr size_t NormalizeBufferSize(size_t size) {
@@ -216,24 +216,20 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
-    pending_buffers_.emplace_back(buffer);
+    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
+      it->second.emplace_back(buffer);
+      UpdateMetrics(false, 0);
+    } else {
+      UpdateMetrics(false, buffer_size);
+      wgpuBufferRelease(buffer);
+    }
   }
 
   void OnRefresh() override {
-    for (auto& buffer : pending_buffers_) {
-      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-
-      auto it = buckets_.find(buffer_size);
-      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-        it->second.emplace_back(buffer);
-        UpdateMetrics(false, 0);
-      } else {
-        UpdateMetrics(false, buffer_size);
-        wgpuBufferRelease(buffer);
-      }
-    }
-
-    pending_buffers_.clear();
+    // No op.
   }
 
   // Analyze memory patterns and adjust bucket sizes
@@ -286,7 +282,7 @@ class BucketCacheManager : public IBufferCacheManager {
 
           // Release any excess buffers
           for (size_t i = transfer_count; i < old_bucket_it->second.size(); ++i) {
-            UpdateMetrics(false, wgpuBufferGetSize(old_bucket_it->second[i]));
+            UpdateMetrics(false, wgpuBufferGetSize(old_bucket_it->second[i]), false, true);
             wgpuBufferRelease(old_bucket_it->second[i]);
           }
 
@@ -305,7 +301,7 @@ class BucketCacheManager : public IBufferCacheManager {
     // Release any remaining buffers in old buckets
     for (auto& pair : old_buckets) {
       for (auto& buffer : pair.second) {
-        UpdateMetrics(false, wgpuBufferGetSize(buffer));
+        UpdateMetrics(false, wgpuBufferGetSize(buffer), false, true);
         wgpuBufferRelease(buffer);
       }
     }
@@ -315,10 +311,6 @@ class BucketCacheManager : public IBufferCacheManager {
   }
 
   ~BucketCacheManager() {
-    for (auto& buffer : pending_buffers_) {
-      UpdateMetrics(false, wgpuBufferGetSize(buffer), true);
-      wgpuBufferRelease(buffer);
-    }
     for (auto& pair : buckets_) {
       for (auto& buffer : pair.second) {
         UpdateMetrics(false, wgpuBufferGetSize(buffer), true);
@@ -369,20 +361,24 @@ class BucketCacheManager : public IBufferCacheManager {
     metrics_file_.flush();
   }
 
-  void UpdateMetrics(bool is_allocation, size_t buffer_size, bool is_from_destructor = false) {
+  void UpdateMetrics(bool is_allocation, size_t buffer_size, bool is_from_destructor = false, bool skip_active_buffers_update = false) {
     if (is_allocation) {
       total_memory_ += buffer_size;
-      active_buffers_++;
+      if (!skip_active_buffers_update) {
+        active_buffers_++;
+      }
       if (buffer_size > 0) {
         total_buffers_++;
       }
       peak_memory_ = std::max(peak_memory_, total_memory_);
     } else {
       total_memory_ -= buffer_size;
-      if (is_from_destructor) {
-        active_buffers_ = std::max(active_buffers_ - 1, 0LL);
-      } else {
-        active_buffers_--;
+      if (!skip_active_buffers_update) {
+        if (is_from_destructor) {
+          active_buffers_ = std::max(active_buffers_ - 1, 0LL);
+        } else {
+          active_buffers_--;
+        }
       }
       // Only decrement total_buffers when truly releasing a buffer (buffer_size > 0)
       // For cache operations where buffer_size = 0, we keep the total count
@@ -394,7 +390,6 @@ class BucketCacheManager : public IBufferCacheManager {
   }
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
-  std::vector<WGPUBuffer> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
