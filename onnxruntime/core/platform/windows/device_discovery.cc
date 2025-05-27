@@ -369,7 +369,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
   // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
-  HMODULE dxcore_lib = LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32);
+  wil::unique_hmodule dxcore_lib{LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)};
   if (!dxcore_lib) {
     LOGS_DEFAULT(INFO) << "Failed to load dxcore.dll. Expected on older Windows version that do not support dxcore.";
     return device_info;
@@ -377,7 +377,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   do {
     auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
-        GetProcAddress(dxcore_lib, "DXCoreCreateAdapterFactory"));
+        GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
 
     if (!pfnDXCoreCreateAdapterFactory) {
       // this isn't expected to fail so ERROR not WARNING
@@ -466,7 +466,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
     }
   } while (false);
 
-  FreeLibrary(dxcore_lib);
   return device_info;
 }
 
