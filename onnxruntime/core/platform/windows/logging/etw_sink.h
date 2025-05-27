@@ -85,6 +85,7 @@ class EtwRegistrationManager {
  private:
   EtwRegistrationManager();
   ~EtwRegistrationManager();
+  void LazyInitialize();
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(EtwRegistrationManager);
 
@@ -100,10 +101,11 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
+  std::mutex init_mutex_;
+  std::atomic<InitializationStatus> initialization_status_ = InitializationStatus::NotInitialized;
   std::unordered_map<std::string, EtwInternalCallback> callbacks_;
   std::mutex callbacks_mutex_;
   mutable std::mutex provider_change_mutex_;
-  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;

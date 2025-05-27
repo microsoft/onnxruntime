@@ -60,6 +60,7 @@ TRACELOGGING_DEFINE_PROVIDER(etw_provider_handle, "ONNXRuntimeTraceLoggingProvid
 
 EtwRegistrationManager& EtwRegistrationManager::Instance() {
   static EtwRegistrationManager instance;
+  instance.LazyInitialize();
   return instance;
 }
 
@@ -125,34 +126,45 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
   auto& manager = EtwRegistrationManager::Instance();
-  {
-    std::lock_guard<std::mutex> lock(manager.provider_change_mutex_);
-    manager.is_enabled_ = (IsEnabled != 0);
-    manager.level_ = Level;
-    manager.keyword_ = MatchAnyKeyword;
-  }
+  std::lock_guard<std::mutex> lock(manager.provider_change_mutex_);
+  // XXX: It is not clear at all why we need to assign the below 3 to the members
+  // had we passed them along on the stack, no mutex would be necessary.
+  manager.is_enabled_ = (IsEnabled != 0);
+  manager.level_ = Level;
+  manager.keyword_ = MatchAnyKeyword;
   manager.InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
-}
-
-EtwRegistrationManager::~EtwRegistrationManager() {
-  if (initialization_status_ == InitializationStatus::Initialized) {
-    ::TraceLoggingUnregister(etw_provider_handle);
-    initialization_status_ = InitializationStatus::NotInitialized;
-  }
 }
 
 EtwRegistrationManager::EtwRegistrationManager()
     : initialization_status_(InitializationStatus::NotInitialized),
       is_enabled_(false),
       level_(),
-      keyword_(0) {
-  etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
-  if (FAILED(etw_status_)) {
-    // Registration can fail when running under Low Integrity process, and should be non-fatal
-    initialization_status_ = InitializationStatus::Failed;
-    LOGS_DEFAULT(WARNING) << "Error in ETW registration: " << std::to_string(etw_status_);
-  } else {
-    initialization_status_ = InitializationStatus::Initialized;
+      keyword_(0),
+      etw_status_(S_OK) {
+}
+
+void EtwRegistrationManager::LazyInitialize() {
+  if (initialization_status_ == InitializationStatus::NotInitialized) {
+    std::lock_guard<std::mutex> lock(init_mutex_);
+    if (initialization_status_ == InitializationStatus::NotInitialized) {  // Double-check locking pattern
+      initialization_status_ = InitializationStatus::Initializing;
+      etw_status_ = ::TraceLoggingRegisterEx(etw_provider_handle, ORT_TL_EtwEnableCallback, nullptr);
+      if (FAILED(etw_status_)) {
+        // Registration can fail when running under Low Integrity process, and should be non-fatal
+        initialization_status_ = InitializationStatus::Failed;
+        // Injection of ETW logger can happen very early if ETW provider was already listening.
+        // Don't use LOGS_DEFAULT here or can get "Attempt to use DefaultLogger but none has been registered"
+        std::cerr << "Error in ETW registration: " << std::to_string(etw_status_) << std::endl;
+      }
+      initialization_status_ = InitializationStatus::Initialized;
+    }
+  }
+}
+
+EtwRegistrationManager::~EtwRegistrationManager() {
+  if (initialization_status_ == InitializationStatus::Initialized) {
+    ::TraceLoggingUnregister(etw_provider_handle);
+    initialization_status_ = InitializationStatus::NotInitialized;
   }
 }
 
