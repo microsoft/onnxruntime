@@ -8,6 +8,7 @@ namespace Microsoft.ML.OnnxRuntime.Tests;
 
 using System;
 using System.Globalization;
+using System.IO;
 using System.Runtime.InteropServices;
 using Xunit;
 
@@ -60,6 +61,63 @@ public class CompileApiTests
             }
 
             allocator.FreeMemory(bytePtr);
+        }
+
+        // Test using OrtCompileApiFlags.ERROR_NO_NODES_COMPILED. A model compiled with CPU EP will not generate
+        // any compiled EPContext nodes, so expect an ORT_FAIL error.
+        using (var compileOptions = new OrtModelCompilationOptions(so))
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            var output_model_file = "should_not_generate.onnx";
+            compileOptions.SetInputModelFromBuffer(model);
+            compileOptions.SetOutputModelPath(output_model_file);
+            compileOptions.SetFlags(OrtCompileApiFlags.ERROR_IF_NO_NODES_COMPILED);
+
+            // compile should fail
+            try
+            {
+                compileOptions.CompileModel();
+                Assert.Fail("CompileModel() should have thrown an exception");
+            }
+            catch (OnnxRuntimeException ex)
+            {
+                Assert.Contains("Unable to compile any nodes", ex.Message);
+            }
+
+            Assert.False(File.Exists(output_model_file));  // Output file should not be generated.
+        }
+
+        // Test using OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS.
+        using (var compileOptions = new OrtModelCompilationOptions(so))
+        {
+            var model = TestDataLoader.LoadModelFromEmbeddedResource("squeezenet.onnx");
+            var output_model_file = "squeezenet_ctx.onnx";
+
+            // Compile and generate an output model.
+            compileOptions.SetInputModelFromBuffer(model);
+            compileOptions.SetOutputModelPath(output_model_file);
+            compileOptions.CompileModel();
+            Assert.True(File.Exists(output_model_file));
+
+            // Try to compile again with flag that prevents replacing an existing file.
+            // Expect failure.
+            compileOptions.SetFlags(OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS);
+
+            // compile should fail
+            try
+            {
+                compileOptions.CompileModel();
+                Assert.Fail("CompileModel() should have thrown an exception");
+            }
+            catch (OnnxRuntimeException ex)
+            {
+                Assert.Contains("exists already", ex.Message);
+            }
+
+            if (File.Exists(output_model_file))
+            {
+                File.Delete(output_model_file);
+            }
         }
     }
 }
