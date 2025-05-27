@@ -1624,6 +1624,7 @@ void addGlobalMethods(py::module& m) {
         py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
         py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
         "Set the number of threads used by the global thread pools for intra and inter op parallelism.");
+  m.def("ensure_env_initialized", []() { GetEnv(); }, "Ensure the onnxruntime environment is initialized.");
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
