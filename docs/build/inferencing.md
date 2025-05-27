@@ -77,8 +77,8 @@ Please make sure your python interpreter is a 64-bit Windows application. We no 
 
 #### macOS
 
-By default, ONNX Runtime is configured to be built for a minimum target macOS version of 10.12.
-The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 10.12+.
+By default, ONNX Runtime is configured to be built for a minimum target macOS version of 13.3.
+The shared library in the release Nuget(s) and the Python wheel may be installed on macOS versions of 13.3+.
 
 If you would like to use [Xcode](https://developer.apple.com/xcode/) to build the onnxruntime for x86_64 macOS, please add the `--use_xcode` argument in the command line.
 
