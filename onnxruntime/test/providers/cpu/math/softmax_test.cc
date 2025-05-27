@@ -51,9 +51,9 @@ TEST(SoftmaxOperator, Simple) {
 
 #ifdef USE_WEBGPU
 TEST(SoftmaxOperator, webgpu_nan) {
-  std::vector<float> x_vals = {-3.4028234663852886e+38, -3.4028234663852886e+38, -3.4028234663852886e+38, 0, -3.4028234663852886e+38, -3.4028234663852886e+38};
-  std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f};
-  std::vector<int64_t> dimensions = {1, 6};
+  std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
+  std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
+  std::vector<int64_t> dimensions = {1, 3};
 
   RunTest(x_vals, expected_vals, dimensions);
 }
