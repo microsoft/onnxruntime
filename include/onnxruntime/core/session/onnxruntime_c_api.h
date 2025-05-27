@@ -4756,6 +4756,17 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+  ORT_API2_STATUS(PushD3d12Resource, _In_ OrtSessionOptions* options, _In_ void* resource);
+
+  ORT_API2_STATUS(GetD3d12Resource, _In_ OrtSessionOptions* options, _In_ int index, _Outptr_ void** output);
+
+  ORT_API2_STATUS(ClearResources, _In_ OrtSessionOptions* options);
+
+  ORT_API2_STATUS(SetD3d12DeviceResources, _In_ OrtSessionOptions* options, _In_ void* resource);
+
+  ORT_API2_STATUS(GetD3d12DeviceResources, _In_ OrtSessionOptions* options, _Outptr_ void** output);
+
 };
 
 /*

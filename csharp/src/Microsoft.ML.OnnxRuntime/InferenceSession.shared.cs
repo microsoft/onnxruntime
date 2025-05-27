@@ -25,7 +25,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <summary>
         /// A pointer to a underlying native instance of OrtSession
         /// </summary>
-        private IntPtr _nativeHandle;
+        public IntPtr _nativeHandle;
 
         /// <summary>
         /// Dictionary that represents input metadata

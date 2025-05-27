@@ -339,3 +339,14 @@ ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions*
   return nullptr;
   API_IMPL_END
 }
+//
+//ORT_API_STATUS_IMPL(OrtApis::PushD3d12Resource, _In_ OrtSessionOptions* options, _In_ void* resource) {
+//    options->value.d3d12_resources.push_back(resource);
+//    return nullptr;
+//}
+//
+//ORT_API_STATUS_IMPL(OrtApis::GetD3d12Resource, _In_ OrtSessionOptions* options, _In_ int index, _Out_ void* resource) {
+//
+//    resource = options->value.d3d12_resources[index];
+//    return nullptr;
+//}

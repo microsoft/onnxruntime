@@ -533,4 +533,12 @@ ORT_API_STATUS_IMPL(RunOptionsAddActiveLoraAdapter, _Inout_ OrtRunOptions* optio
 
 ORT_API_STATUS_IMPL(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                     _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+ORT_API_STATUS_IMPL(PushD3d12Resource, _In_ OrtSessionOptions* options, _In_ void* resource);
+ORT_API_STATUS_IMPL(GetD3d12Resource, _Inout_ OrtSessionOptions* options, _Inout_ int index, _Outptr_ void** output);
+ORT_API_STATUS_IMPL(ClearResources, _Inout_ OrtSessionOptions* options);
+
+ORT_API_STATUS_IMPL(SetD3d12DeviceResources, _In_ OrtSessionOptions* options, _In_ void* resource);
+ORT_API_STATUS_IMPL(GetD3d12DeviceResources, _Inout_ OrtSessionOptions* options, _Outptr_ void** output);
+
 }  // namespace OrtApis

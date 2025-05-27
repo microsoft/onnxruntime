@@ -865,6 +865,32 @@ ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _Inout_ OrtSession* sess,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::PushD3d12Resource, _In_ OrtSessionOptions* options, _In_ void* resource) {
+    options->value.d3d12_resources.push_back(resource);
+    return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetD3d12Resource, _In_ OrtSessionOptions* options, _In_ int index, _Outptr_ void** output) {
+    *output = options->value.d3d12_resources[index];
+    return nullptr;
+}
+
+
+ORT_API_STATUS_IMPL(OrtApis::ClearResources, _In_ OrtSessionOptions* options) {
+    options->value.d3d12_resources.clear();
+    return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SetD3d12DeviceResources, _In_ OrtSessionOptions* options, _In_ void* resource) {
+    options->value.d3d12_device_resources = resource;
+    return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetD3d12DeviceResources, _In_ OrtSessionOptions* options, _Outptr_ void** output) {
+    *output = options->value.d3d12_device_resources;
+    return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Run, _Inout_ OrtSession* sess, _In_opt_ const OrtRunOptions* run_options,
                     _In_reads_(input_len) const char* const* input_names,
                     _In_reads_(input_len) const OrtValue* const* input, size_t input_len,
@@ -2809,6 +2835,11 @@ static constexpr OrtApi ort_api_1_to_21 = {
     &OrtApis::RunOptionsAddActiveLoraAdapter,
 
     &OrtApis::SetEpDynamicOptions,
+    &OrtApis::PushD3d12Resource,
+    &OrtApis::GetD3d12Resource,
+    &OrtApis::ClearResources,
+    &OrtApis::SetD3d12DeviceResources,
+    &OrtApis::GetD3d12DeviceResources
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

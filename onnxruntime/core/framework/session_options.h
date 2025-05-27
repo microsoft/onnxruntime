@@ -184,6 +184,9 @@ struct SessionOptions {
   // User specified logging func and param
   OrtLoggingFunction user_logging_function = nullptr;
   void* user_logging_param = nullptr;
+
+  std::vector<void*> d3d12_resources;
+  void* d3d12_device_resources = nullptr;
 };
 
 inline std::ostream& operator<<(std::ostream& os, const SessionOptions& session_options) {
