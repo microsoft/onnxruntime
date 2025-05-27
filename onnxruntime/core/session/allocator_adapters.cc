@@ -32,6 +32,7 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
         [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
 #ifdef ORT_NO_RTTI
+      // When exception is disabled, we should directly return an error status to avoid aborting the program.
       ORT_UNUSED_PARAMETER(this_);
       ORT_UNUSED_PARAMETER(allocator);
       ORT_UNUSED_PARAMETER(stats);
