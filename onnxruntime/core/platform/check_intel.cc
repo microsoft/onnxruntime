@@ -43,7 +43,7 @@ CheckIntelResult CheckIntel() {
   }
 
   for (auto intel_specified_platform : kVendorID_IntelSpecifiedPlatformIDs) {
-    if ((static_cast<unsigned int>(regs_leaf1[0] >> 4)) == intel_specified_platform) {
+    if ((static_cast<unsigned int>(regs_leaf1[0]) >> 4) == intel_specified_platform) {
       is_intel_specified_platform = true;
       break;
     }
