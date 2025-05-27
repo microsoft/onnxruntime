@@ -62,6 +62,7 @@ namespace cutlass_kernels
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
     cutlass::WeightOnlyQuantOp QuantOp, typename EpilogueTag, typename CTAShape, typename ClusterShape,
     typename MainloopScheduleType, typename EpilogueScheduleType>
+#ifdef COMPILE_HOPPER_TMA_GEMMS
 void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const* B,
     ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
     float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig /*gemm_config*/,
@@ -69,7 +70,6 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 {
     ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
-#ifdef COMPILE_HOPPER_TMA_GEMMS
     using CutlassActivationType = typename CudaToCutlassTypeAdapter<ActivationType>::type;
 
     if constexpr (!should_filter_tma_warp_specialized_gemm_problem_shape_v<cutlass::arch::Sm90, CTAShape, ClusterShape,
@@ -287,11 +287,18 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 
         ORT_THROW(ss.str());
     }
-
-#else  // COMPILE_HOPPER_TMA_GEMMS
-    ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90-real as an arch.");
-#endif // COMPILE_HOPPER_TMA_GEMMS
 }
+#else  // COMPILE_HOPPER_TMA_GEMMS
+void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const*, WeightType const*,
+    ScaleZeroType const*, ScaleZeroType const*, BiasType const*,
+    float const, OutputType*, int, int, int, int const, tkc::CutlassGemmConfig,
+    char*, size_t, cudaStream_t, int*)
+{
+    ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+    ORT_THROW("[fpA_intB_gemm] Please recompile with support for hopper by passing 90a-real as an arch.");
+}
+#endif // COMPILE_HOPPER_TMA_GEMMS
+
 
 } // namespace cutlass_kernels
 } // namespace kernels
