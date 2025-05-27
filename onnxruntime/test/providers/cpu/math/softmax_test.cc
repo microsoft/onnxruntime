@@ -54,8 +54,9 @@ TEST(SoftmaxOperator, webgpu_nan) {
   std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
   std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
   std::vector<int64_t> dimensions = {1, 3};
-
-  RunTest(x_vals, expected_vals, dimensions);
+  
+  excluded_providers = { kCPUExecutionProvider } // only run test on WebGPU
+  RunTest(x_vals, expected_vals, dimensions, excluded_providers=excluded_providers);
 }
 #endif
 
