@@ -189,46 +189,46 @@ struct GemmFpAIntB {
 
   /// Determines whether kernel satisfies alignment
   static Status can_implement(Arguments const& args) {
-    static int const kAlignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
-                                   : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Mma::IteratorA::AccessType::kElements;
-    static int const kAlignmentB = (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value) ? 32
-                                   : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Mma::IteratorB::AccessType::kElements;
+    static int const alignmentA = (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<32>>::value) ? 32
+                                  : (platform::is_same<typename Mma::IteratorA::Layout, layout::ColumnMajorInterleaved<64>>::value)
+                                      ? 64
+                                      : Mma::IteratorA::AccessType::kElements;
+    static int const alignmentB = (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<32>>::value) ? 32
+                                  : (platform::is_same<typename Mma::IteratorB::Layout, layout::RowMajorInterleaved<64>>::value)
+                                      ? 64
+                                      : Mma::IteratorB::AccessType::kElements;
 
-    static int const kAlignmentScale = Mma::IteratorScale::AccessType::kElements;
+    static int const alignmentScale = Mma::IteratorScale::AccessType::kElements;
 
-    static int const kAlignmentC = (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
-                                                      layout::ColumnMajorInterleaved<32>>::value)
-                                       ? 32
-                                   : (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
-                                                        layout::ColumnMajorInterleaved<64>>::value)
-                                       ? 64
-                                       : Epilogue::OutputTileIterator::kElementsPerAccess;
+    static int const alignmentC = (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
+                                                     layout::ColumnMajorInterleaved<32>>::value)
+                                      ? 32
+                                  : (platform::is_same<typename Epilogue::OutputTileIterator::Layout,
+                                                       layout::ColumnMajorInterleaved<64>>::value)
+                                      ? 64
+                                      : Epilogue::OutputTileIterator::kElementsPerAccess;
 
-    if (!TensorRef_aligned(args.ref_A, kAlignmentA)) {
+    if (!TensorRef_aligned(args.ref_A, alignmentA)) {
       return Status::kErrorMisalignedOperand;
     }
 
-    if (!TensorRef_aligned(args.ref_B, kAlignmentB)) {
+    if (!TensorRef_aligned(args.ref_B, alignmentB)) {
       return Status::kErrorMisalignedOperand;
     }
 
-    if (!TensorRef_aligned(args.ref_scale, kAlignmentScale)) {
+    if (!TensorRef_aligned(args.ref_scale, alignmentScale)) {
       return Status::kErrorMisalignedOperand;
     }
 
-    if (!TensorRef_aligned(args.ref_zero, kAlignmentScale)) {
+    if (!TensorRef_aligned(args.ref_zero, alignmentScale)) {
       return Status::kErrorMisalignedOperand;
     }
 
-    if (!TensorRef_aligned(args.ref_C, kAlignmentC)) {
+    if (!TensorRef_aligned(args.ref_C, alignmentC)) {
       return Status::kErrorMisalignedOperand;
     }
 
-    if (!TensorRef_aligned(args.ref_D, kAlignmentC)) {
+    if (!TensorRef_aligned(args.ref_D, alignmentC)) {
       return Status::kErrorMisalignedOperand;
     }
 

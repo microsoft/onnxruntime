@@ -69,10 +69,6 @@ void sm90_generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType 
 {
     ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
-//#if __CUDA_ARCH__ >= 900
-#define COMPILE_HOPPER_TMA_GEMMS 1
-//#endif
-
 #ifdef COMPILE_HOPPER_TMA_GEMMS
     using CutlassActivationType = typename CudaToCutlassTypeAdapter<ActivationType>::type;
 
