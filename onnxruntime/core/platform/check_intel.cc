@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "check_intel.h"
+#include "core/platform/check_intel.h"
 
 #if (defined(_M_AMD64) || defined(__x86_64__))
 #if defined(__linux__)
@@ -42,9 +42,10 @@ CheckIntelResult CheckIntel() {
     return intel_check;  // if not an Intel CPU, return early
   }
 
-  for (auto intelSpecifiedPlatform : kVendorID_IntelSpecifiedPlatformIDs) {
-    if (static_cast<unsigned int>(regs_leaf1[0] >> 4) == intelSpecifiedPlatform) {
+  for (auto intel_specified_platform : kVendorID_IntelSpecifiedPlatformIDs) {
+    if ((static_cast<unsigned int>(regs_leaf1[0] >> 4)) == intel_specified_platform) {
       is_intel_specified_platform = true;
+      break;
     }
   }
 
@@ -85,7 +86,7 @@ CheckIntelResult CheckIntel() {
     }
   }
 #endif  //__linux__
-#endif //(_M_AMD64) || (__x86_64__)
+#endif  // (_M_AMD64) || (__x86_64__)
 
   intel_check.is_intel = is_intel;
   intel_check.is_intel_specified_platform = is_intel_specified_platform;
