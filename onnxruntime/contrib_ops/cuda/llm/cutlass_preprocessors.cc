@@ -21,9 +21,7 @@
 
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
 
-#ifdef ENABLE_BF16
 #include <cuda_bf16.h>
-#endif
 
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
@@ -655,13 +653,11 @@ template void symmetric_quantize<half, float>(
 template void symmetric_quantize<half, half>(
     int8_t*, int8_t*, half*, half const*, std::vector<size_t> const&, QuantType, bool);
 
-#ifdef ENABLE_BF16
 template void symmetric_quantize<__nv_bfloat16, __nv_bfloat16>(
     int8_t*, int8_t*, __nv_bfloat16*, __nv_bfloat16 const*, std::vector<size_t> const&, QuantType, bool);
 
 template void symmetric_quantize<__nv_bfloat16, float>(
     int8_t*, int8_t*, __nv_bfloat16*, float const*, std::vector<size_t> const&, QuantType, bool);
-#endif
 
 template <typename ComputeType, typename WeightType>
 void symmetric_quantize(int8_t* processed_quantized_weight, ComputeType* scale_ptr, WeightType const* input_weight_ptr,
@@ -678,7 +674,6 @@ template void symmetric_quantize<half, float>(
 
 template void symmetric_quantize<half, half>(int8_t*, half*, half const*, std::vector<size_t> const&, QuantType, bool);
 
-#ifdef ENABLE_BF16
 template void symmetric_quantize<__nv_bfloat16, __nv_bfloat16>(
     int8_t*, __nv_bfloat16*, __nv_bfloat16 const*, std::vector<size_t> const&, QuantType, bool);
 
@@ -690,7 +685,6 @@ template void symmetric_quantize<half, __nv_bfloat16>(
 
 template void symmetric_quantize<__nv_bfloat16, float>(
     int8_t*, __nv_bfloat16*, float const*, std::vector<size_t> const&, QuantType, bool);
-#endif
 
 }  // namespace cutlass_kernels
 }  // namespace kernels

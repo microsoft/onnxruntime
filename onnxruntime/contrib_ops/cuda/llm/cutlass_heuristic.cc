@@ -23,9 +23,7 @@
 
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"
 
-#ifdef ENABLE_BF16
 #include <cuda_bf16.h>
-#endif
 
 #include "cutlass/gemm/gemm.h"
 #include "cutlass/numeric_types.h"

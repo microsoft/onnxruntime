@@ -58,17 +58,12 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
                                        cudaStream_t stream, int* occupancy = nullptr) {
   ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
 
-#ifdef ENABLE_BF16
   static_assert(
 #ifdef ENABLE_FP8
       cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value ||
 #endif
           cutlass::platform::is_same<ActivationType, __nv_bfloat16>::value || cutlass::platform::is_same<ActivationType, half>::value || cutlass::platform::is_same<ActivationType, float>::value,
       "Specialized for bfloat16, half, float");
-#else
-  static_assert(cutlass::platform::is_same<ActivationType, half>::value || cutlass::platform::is_same<ActivationType, float>::value,
-                "Specialized for half, float");
-#endif
 
   static_assert(cutlass::platform::is_same<ActivationType, WeightType>::value || cutlass::platform::is_same<WeightType, uint8_t>::value || cutlass::platform::is_same<WeightType, cutlass::uint4b_t>::value,
                 "");

@@ -54,7 +54,7 @@ struct MathWrapper<BF16DetailsA> {
   using Type2 = typename BF16DetailsA::Type2;
 
   __device__ __forceinline__ static Type2 to_vec2(Type const& v) {
-#if ((defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)) && defined(ENABLE_BF16))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
     return __bfloat162bfloat162(v);
 #else
     uint32_t val = 0;
@@ -64,7 +64,7 @@ struct MathWrapper<BF16DetailsA> {
   }
 
   __device__ __forceinline__ static Type2 fma2(Type2 const& a, Type2 const& b, Type2 const& c) {
-#if ((defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)) && defined(ENABLE_BF16))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
     return __hfma2(a, b, c);
 #else
     return to_vec2(static_cast<Type>(0.f));
@@ -72,7 +72,7 @@ struct MathWrapper<BF16DetailsA> {
   }
 
   __device__ __forceinline__ static Type2 mul2(Type2 const& a, Type2 const& b) {
-#if ((defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800)) && defined(ENABLE_BF16))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
     return __hmul2(a, b);
 #else
     return to_vec2(static_cast<Type>(0.f));

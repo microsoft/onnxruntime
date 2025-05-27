@@ -1595,22 +1595,14 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
 
-  add_definitions("-DENABLE_BF16")
-
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
     add_definitions("-DENABLE_FP8")
-    message(
-      STATUS
-        "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag"
-    )
+    message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
   endif()
 
   if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
     add_definitions("-DENABLE_FP4")
-    message(
-      STATUS
-        "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag"
-    )
+    message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
   endif()
 
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")

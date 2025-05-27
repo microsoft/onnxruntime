@@ -276,7 +276,7 @@ def is_gemm_op_valid(op):
 
 
 ################################################################################
-def generate_sm90_mixed_gemm_operations(enable_bf16=False, enable_fp8=False, enable_scale_only=False):
+def generate_sm90_mixed_gemm_operations(enable_fp8=False, enable_scale_only=False):
     arch = 90
 
     # For legacy reasons, we use unsigned types for the weights. The instanitated template
@@ -285,6 +285,8 @@ def generate_sm90_mixed_gemm_operations(enable_bf16=False, enable_fp8=False, ena
     supported_dtypes = [
         (DataType.f16, DataType.u4, DataType.f16, DataType.f16, DataType.f16),
         (DataType.f16, DataType.u8, DataType.f16, DataType.f16, DataType.f16),
+        (DataType.bf16, DataType.u4, DataType.bf16, DataType.bf16, DataType.bf16),
+        (DataType.bf16, DataType.u8, DataType.bf16, DataType.bf16, DataType.bf16),
     ]
 
     if enable_fp8:
@@ -292,13 +294,6 @@ def generate_sm90_mixed_gemm_operations(enable_bf16=False, enable_fp8=False, ena
             *supported_dtypes,
             (DataType.e4m3, DataType.u4, DataType.f16, DataType.f16, DataType.f16),
             (DataType.e4m3, DataType.u4, DataType.f16, DataType.bf16, DataType.bf16),
-        ]
-
-    if enable_bf16:
-        supported_dtypes = [
-            *supported_dtypes,
-            (DataType.bf16, DataType.u4, DataType.bf16, DataType.bf16, DataType.bf16),
-            (DataType.bf16, DataType.u8, DataType.bf16, DataType.bf16, DataType.bf16),
         ]
 
     quant_ops = [LlmQuantOp.finegrained_scale_and_zeros]

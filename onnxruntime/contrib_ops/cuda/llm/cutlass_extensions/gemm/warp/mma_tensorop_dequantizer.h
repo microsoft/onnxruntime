@@ -41,9 +41,7 @@
 
 #include "contrib_ops/cuda/llm/cutlass_extensions/weight_only_quant_op.h"
 
-#ifdef ENABLE_BF16
 #include <cuda_bf16.h>
-#endif
 
 ////////////////////////////////////////////////////////////////////////////////
 
@@ -145,7 +143,7 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, bfloat16_t, layo
 
   CUTLASS_DEVICE
   void dequantize(FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800) && defined(ENABLE_BF16))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
     using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
     static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
@@ -192,7 +190,7 @@ class MmaTensorOpDequantizer<MmaOperator_, Shape_, Operand::kB, bfloat16_t, layo
   CUTLASS_DEVICE
   void dequantize(
       FragmentDequantizedOperand& operand_frag, FragmentScale const& scale_frag, FragmentScale const& zero_frag) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800) && defined(ENABLE_BF16))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 800))
     using _MmaOperandB = typename ArchMmaOperator::FragmentB;
     using ExpandedMmaOperandB = Array<typename _MmaOperandB::Element, kExpansionFactor * _MmaOperandB::kElements>;
     static_assert(ExpandedMmaOperandB::kElements * MmaOperator::MmaIterations::kColumn == FragmentDequantizedOperand::kElements,
