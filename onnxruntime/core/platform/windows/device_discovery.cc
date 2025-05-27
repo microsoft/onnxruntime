@@ -375,96 +375,94 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
     return device_info;
   }
 
-  do {
-    auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
-        GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
+  auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
+      GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
 
-    if (!pfnDXCoreCreateAdapterFactory) {
-      // this isn't expected to fail so ERROR not WARNING
-      LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
-      break;
+  if (!pfnDXCoreCreateAdapterFactory) {
+    // this isn't expected to fail so ERROR not WARNING
+    LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
+    return device_info;
+  }
+
+  // Get all GPUs and NPUs by querying WDDM/MCDM.
+  wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
+  if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
+    return device_info;
+  }
+
+  // NOTE: These GUIDs requires a newer Windows SDK than what we target by default.
+  // They were added in 10.0.22621.0 as part of DirectXCore API
+  // To workaround this we define a local copy of the values. On an older Windows machine they won't match anything.
+  static const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
+  static const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
+
+  // Look for devices that expose compute engines
+  std::vector<const GUID*> allowedAttributes;
+  allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE);
+  allowedAttributes.push_back(&local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
+  allowedAttributes.push_back(&local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
+
+  // These attributes are not OR'd.  Have to query one at a time to get a full view.
+  for (const auto& hwAttribute : allowedAttributes) {
+    wil::com_ptr<IDXCoreAdapterList> adapterList;
+    if (FAILED(adapterFactory->CreateAdapterList(1, hwAttribute, IID_PPV_ARGS(&adapterList)))) {
+      continue;
     }
 
-    // Get all GPUs and NPUs by querying WDDM/MCDM.
-    wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
-    if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
-      return device_info;
-    }
-
-    // NOTE: These GUIDs requires a newer Windows SDK than what we target by default.
-    // They were added in 10.0.22621.0 as part of DirectXCore API
-    // To workaround this we define a local copy of the values. On an older Windows machine they won't match anything.
-    static const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
-    static const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
-
-    // Look for devices that expose compute engines
-    std::vector<const GUID*> allowedAttributes;
-    allowedAttributes.push_back(&DXCORE_ADAPTER_ATTRIBUTE_D3D12_CORE_COMPUTE);
-    allowedAttributes.push_back(&local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML);
-    allowedAttributes.push_back(&local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU);
-
-    // These attributes are not OR'd.  Have to query one at a time to get a full view.
-    for (const auto& hwAttribute : allowedAttributes) {
-      wil::com_ptr<IDXCoreAdapterList> adapterList;
-      if (FAILED(adapterFactory->CreateAdapterList(1, hwAttribute, IID_PPV_ARGS(&adapterList)))) {
+    const uint32_t adapterCount{adapterList->GetAdapterCount()};
+    for (uint32_t adapterIndex = 0; adapterIndex < adapterCount; adapterIndex++) {
+      wil::com_ptr<IDXCoreAdapter> adapter;
+      if (FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)))) {
         continue;
       }
 
-      const uint32_t adapterCount{adapterList->GetAdapterCount()};
-      for (uint32_t adapterIndex = 0; adapterIndex < adapterCount; adapterIndex++) {
-        wil::com_ptr<IDXCoreAdapter> adapter;
-        if (FAILED(adapterList->GetAdapter(adapterIndex, IID_PPV_ARGS(&adapter)))) {
-          continue;
-        }
+      // Ignore software based devices
+      bool isHardware{false};
+      if (!adapter->IsPropertySupported(DXCoreAdapterProperty::IsHardware) ||
+          FAILED(adapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware)) || !isHardware) {
+        continue;
+      }
 
-        // Ignore software based devices
-        bool isHardware{false};
-        if (!adapter->IsPropertySupported(DXCoreAdapterProperty::IsHardware) ||
-            FAILED(adapter->GetProperty(DXCoreAdapterProperty::IsHardware, &isHardware)) || !isHardware) {
-          continue;
-        }
+      static_assert(sizeof(LUID) == sizeof(uint64_t), "LUID and uint64_t are not the same size");
+      LUID luid;  // really a LUID but we only need it to skip duplicated devices
+      if (!adapter->IsPropertySupported(DXCoreAdapterProperty::InstanceLuid) ||
+          FAILED(adapter->GetProperty(DXCoreAdapterProperty::InstanceLuid, sizeof(luid), &luid))) {
+        continue;  // need this for the key
+      }
 
-        static_assert(sizeof(LUID) == sizeof(uint64_t), "LUID and uint64_t are not the same size");
-        LUID luid;  // really a LUID but we only need it to skip duplicated devices
-        if (!adapter->IsPropertySupported(DXCoreAdapterProperty::InstanceLuid) ||
-            FAILED(adapter->GetProperty(DXCoreAdapterProperty::InstanceLuid, sizeof(luid), &luid))) {
-          continue;  // need this for the key
-        }
+      uint64_t key = GetLuidKey(luid);
+      if (device_info.find(key) != device_info.end()) {
+        // already found this device
+        continue;
+      }
 
-        uint64_t key = GetLuidKey(luid);
-        if (device_info.find(key) != device_info.end()) {
-          // already found this device
-          continue;
-        }
+      DeviceInfo& info = device_info[key];
 
-        DeviceInfo& info = device_info[key];
+      // Get hardware identifying information
+      DXCoreHardwareIDParts idParts = {};
+      if (!adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts) ||
+          FAILED(adapter->GetProperty(DXCoreAdapterProperty::HardwareIDParts, sizeof(idParts), &idParts))) {
+        continue;  // also need valid ids
+      }
 
-        // Get hardware identifying information
-        DXCoreHardwareIDParts idParts = {};
-        if (!adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts) ||
-            FAILED(adapter->GetProperty(DXCoreAdapterProperty::HardwareIDParts, sizeof(idParts), &idParts))) {
-          continue;  // also need valid ids
-        }
+      info.vendor_id = idParts.vendorID;
+      info.device_id = idParts.deviceID;
 
-        info.vendor_id = idParts.vendorID;
-        info.device_id = idParts.deviceID;
+      // Is this a GPU or NPU
+      if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
+        info.type = OrtHardwareDeviceType::OrtHardwareDeviceType_GPU;
+      } else {
+        info.type = OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
+      }
 
-        // Is this a GPU or NPU
-        if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
-          info.type = OrtHardwareDeviceType::OrtHardwareDeviceType_GPU;
-        } else {
-          info.type = OrtHardwareDeviceType::OrtHardwareDeviceType_NPU;
-        }
-
-        bool is_integrated = false;
-        if (adapter->IsPropertySupported(DXCoreAdapterProperty::IsIntegrated) &&
-            SUCCEEDED(adapter->GetProperty(DXCoreAdapterProperty::IsIntegrated, sizeof(is_integrated),
-                                           &is_integrated))) {
-          info.metadata[L"Discrete"] = is_integrated ? L"0" : L"1";
-        }
+      bool is_integrated = false;
+      if (adapter->IsPropertySupported(DXCoreAdapterProperty::IsIntegrated) &&
+          SUCCEEDED(adapter->GetProperty(DXCoreAdapterProperty::IsIntegrated, sizeof(is_integrated),
+                                         &is_integrated))) {
+        info.metadata[L"Discrete"] = is_integrated ? L"0" : L"1";
       }
     }
-  } while (false);
+  }
 
   return device_info;
 }
