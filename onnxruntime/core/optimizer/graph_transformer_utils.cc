@@ -114,7 +114,8 @@ std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
 
 InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
     TransformerLevel level,
-    const InlinedHashSet<std::string>& rules_to_disable) {
+    const InlinedHashSet<std::string>& rules_to_disable = {},
+    [[maybe_unused]] bool ignore_cast_chain = true) {
   InlinedVector<std::unique_ptr<RewriteRule>> rules;
   switch (level) {
     case TransformerLevel::Level1:
@@ -123,7 +124,7 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<UnsqueezeElimination>());
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
-      rules.push_back(std::make_unique<CastElimination>());
+      rules.push_back(std::make_unique<CastElimination>(false));
       rules.push_back(std::make_unique<PreShapeNodeElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
@@ -171,8 +172,11 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
     TransformerLevel level,
     const InlinedHashSet<std::string>& rules_to_disable,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
-  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable);
+    const InlinedHashSet<std::string_view>& compatible_execution_providers,
+    const SessionOptions& session_options) {
+      bool disable_quant_qdq =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable, disable_quant_qdq);
   if (rewrite_rules_to_register.empty()) {
     return nullptr;
   }
@@ -211,7 +215,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
       // CommonSubexpressionElimination and TransposeOptimizer to do.
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, session_options);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }
@@ -265,7 +269,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, session_options);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }

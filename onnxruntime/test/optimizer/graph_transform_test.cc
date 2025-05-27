@@ -4371,7 +4371,7 @@ TEST_F(GraphTransformationTests, CastEliminationSimple) {
   ASSERT_TRUE(op_to_count["Cast"] == 7);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<CastElimination>()));
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<CastElimination>(true)));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
@@ -4390,7 +4390,7 @@ TEST_F(GraphTransformationTests, CastEliminationRepeatedPattern) {
   ASSERT_TRUE(op_to_count["Cast"] == 7);
 
   auto rule_transformer_L1 = std::make_unique<RuleBasedGraphTransformer>("RuleTransformer1");
-  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<CastElimination>()));
+  ASSERT_STATUS_OK(rule_transformer_L1->Register(std::make_unique<CastElimination>(true)));
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::move(rule_transformer_L1), TransformerLevel::Level1));
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
