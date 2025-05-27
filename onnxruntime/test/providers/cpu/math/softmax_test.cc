@@ -51,11 +51,13 @@ TEST(SoftmaxOperator, Simple) {
 
 #ifdef USE_WEBGPU
 TEST(SoftmaxOperator, webgpu_nan) {
+  // explicitly disable CPU EP for this test since CPU implementation returns NaN
+  const std::unordered_set<std::string>& excluded_providers = { kCpuExecutionProvider };
+  
   std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
   std::vector<float> expected_vals = {0.0f, 0.0f, 0.0f};
   std::vector<int64_t> dimensions = {1, 3};
   
-  const std::unordered_set<std::string>& excluded_providers = { kCpuExecutionProvider }; // only run test on WebGPU
   RunTest(x_vals, expected_vals, dimensions, excluded_providers=excluded_providers);
 }
 #endif
