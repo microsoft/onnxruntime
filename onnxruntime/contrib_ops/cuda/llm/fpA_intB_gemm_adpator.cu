@@ -83,23 +83,23 @@ void launch_scaled_zero_point_kernel(
 }
 
 // Explicit instantiations:
-template
-void launch_scaled_zero_point_kernel<false, float, float>(
-    cudaStream_t stream,
-    const float* scale,
-    const float* zero_point,
-    float* transposed_scale,
-    float* scaled_zero_point,
-    int n, int k_blocks, float default_zero_point);
+// template
+// void launch_scaled_zero_point_kernel<false, float, float>(
+//     cudaStream_t stream,
+//     const float* scale,
+//     const float* zero_point,
+//     float* transposed_scale,
+//     float* scaled_zero_point,
+//     int n, int k_blocks, float default_zero_point);
 
-template
-void launch_scaled_zero_point_kernel<false, float, uint8_t>(
-    cudaStream_t stream,
-    const float* scale,
-    const uint8_t* zero_point,
-    float* transposed_scale,
-    float* scaled_zero_point,
-    int n, int k_blocks, float default_zero_point);
+// template
+// void launch_scaled_zero_point_kernel<false, float, uint8_t>(
+//     cudaStream_t stream,
+//     const float* scale,
+//     const uint8_t* zero_point,
+//     float* transposed_scale,
+//     float* scaled_zero_point,
+//     int n, int k_blocks, float default_zero_point);
 
 
 template
@@ -131,14 +131,14 @@ void launch_scaled_zero_point_kernel<true, half, uint8_t>(
     int n, int k_blocks, float default_zero_point);
 
 // zero point is 4 bits packed.
-template
-void launch_scaled_zero_point_kernel<true, float, uint8_t>(
-    cudaStream_t stream,
-    const float* scale,
-    const uint8_t* zero_point,
-    float* transposed_scale,
-    float* scaled_zero_point,
-    int n, int k_blocks, float default_zero_point);
+// template
+// void launch_scaled_zero_point_kernel<true, float, uint8_t>(
+//     cudaStream_t stream,
+//     const float* scale,
+//     const uint8_t* zero_point,
+//     float* transposed_scale,
+//     float* scaled_zero_point,
+//     int n, int k_blocks, float default_zero_point);
 
 // CUDA kernel to unpack int4 to int8 and transposed tensor
 __global__ void unpack_uint4_transposed_to_int8_kernel(

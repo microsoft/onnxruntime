@@ -61,8 +61,8 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s)
         EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
         EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
 
-        // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
-        // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
+        EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true);
+        EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleaved, true);
     }
     else if (arch >= 90)
     {
@@ -73,8 +73,8 @@ void kernel_launcher(int arch, Params& params, cudaStream_t s)
         EXEC(KernelType::FP16Int8Groupwise, FP16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
         EXEC(KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
 
-        // EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
-        // EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
+        EXEC(KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleavedForHopper, true);
+        EXEC(KernelType::BF16Int4Groupwise, BF16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true);
     }
 #undef EXEC_W4A8
 #undef EXEC
@@ -95,8 +95,9 @@ bool is_supported(int arch, KernelType kernel_type)
     {
         SUPPORT(KernelType::FP16Int8Groupwise);
         SUPPORT(KernelType::FP16Int4Groupwise);
-        // SUPPORT(KernelType::BF16Int8Groupwise);
-        // SUPPORT(KernelType::BF16Int4Groupwise);
+
+        SUPPORT(KernelType::BF16Int8Groupwise);
+        SUPPORT(KernelType::BF16Int4Groupwise);
     }
     return false;
 #undef SUPPORT

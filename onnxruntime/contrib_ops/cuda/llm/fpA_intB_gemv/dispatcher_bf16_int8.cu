@@ -22,10 +22,7 @@ namespace kernels {
 namespace fpA_intB_gemv {
 
 INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
-    KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true, 64);
-
-// INSTANTIATE_WEIGHT_ONLY_CUDA_DISPATCHERS(
-//     KernelType::FP16Int4Groupwise, FP16DetailsA, Int4DetailsW, ColumnMajorInterleavedForHopper, true, 128);
+    KernelType::BF16Int8Groupwise, BF16DetailsA, Int8DetailsW, ColumnMajorInterleaved, true, 64);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

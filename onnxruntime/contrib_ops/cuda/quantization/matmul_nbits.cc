@@ -35,10 +35,18 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int sm, int ma
 
   gemmId_ = GemmIdCore(n_16b, K_, onnxruntime::llm::nvinfer::DataType::kHALF);
 
-  if (nbits_ == 8) {
-    weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-  } else if (nbits_ == 4) {
-    weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+  if constexpr (std::is_same_v<T, MLFloat16>) {
+    if (nbits_ == 8) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    } else if (nbits_ == 4) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    }
+  } else if constexpr (std::is_same_v<T, BFloat16>) {
+    if (nbits_ == 8) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    } else if (nbits_ == 4) {
+      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    }
   }
 
   using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -101,143 +109,145 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   DUMP_TENSOR_INIT();
 
-  if (has_fpA_intB_gemm_) {
-    std::call_once(fpA_intB_init_once_flag_, [&]() {
-      size_t k_blocks = (k + block_size_ - 1) / block_size_;
-      size_t scale_bytes = n * k_blocks * sizeof(T);
+  if constexpr (std::is_same<T, MLFloat16>::value) {
+    if (has_fpA_intB_gemm_) {
+      std::call_once(fpA_intB_init_once_flag_, [&]() {
+        size_t k_blocks = (k + block_size_ - 1) / block_size_;
+        size_t scale_bytes = n * k_blocks * sizeof(T);
 
-      fpA_intB_scale_buffer_ = this->GetTransientScratchBuffer<void>(scale_bytes);
-      CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
+        fpA_intB_scale_buffer_ = this->GetTransientScratchBuffer<void>(scale_bytes);
+        CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-      fpA_intB_zero_buffer_ = this->GetTransientScratchBuffer<void>(has_zero_points_ ? scale_bytes : 0);
-      CudaT* scaled_zero_points = has_zero_points_ ? reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get()) : nullptr;
+        fpA_intB_zero_buffer_ = this->GetTransientScratchBuffer<void>(has_zero_points_ ? scale_bytes : 0);
+        CudaT* scaled_zero_points = has_zero_points_ ? reinterpret_cast<CudaT*>(fpA_intB_zero_buffer_.get()) : nullptr;
 
-      size_t weight_bytes = n * k;
-      IAllocatorUniquePtr<void> transpose_weight_space = this->GetTransientScratchBuffer<void>(weight_bytes);
-      int8_t* transposed_weight = reinterpret_cast<int8_t*>(transpose_weight_space.get());
+        size_t weight_bytes = n * k;
+        IAllocatorUniquePtr<void> transpose_weight_space = this->GetTransientScratchBuffer<void>(weight_bytes);
+        int8_t* transposed_weight = reinterpret_cast<int8_t*>(transpose_weight_space.get());
 
-      size_t packed_weight_bytes = n * k / (8 / nbits_);
+        size_t packed_weight_bytes = n * k / (8 / nbits_);
 
-      // uint8 does not need to be packed so we do not need to allocate extra space.
-      IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(nbits_ == 4 ? packed_weight_bytes : 0);
-      int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
+        // uint8 does not need to be packed so we do not need to allocate extra space.
+        IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(nbits_ == 4 ? packed_weight_bytes : 0);
+        int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
 
-      fpA_intB_weight_buffer_ = this->GetTransientScratchBuffer<void>(packed_weight_bytes);
-      int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
+        fpA_intB_weight_buffer_ = this->GetTransientScratchBuffer<void>(packed_weight_bytes);
+        int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
 
-      auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
+        auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
 
-      using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
-      QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
-      if (nbits_ == 4) {
-        // transpose the weight and add default zp.
-        onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_cuda(
-            stream,
-            packed_transposed_weight,
-            transposed_weight,
-            blob_data,
-            n,
-            k);
-        CUDA_CALL_THROW(cudaStreamSynchronize(stream));
-        DUMP_TENSOR_D("transposed_weight in GPU", transposed_weight, k, n);
-        DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n / 2);
+        using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
+        QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
+        if (nbits_ == 4) {
+          // transpose the weight and add default zp.
+          onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_cuda(
+              stream,
+              packed_transposed_weight,
+              transposed_weight,
+              blob_data,
+              n,
+              k);
+          CUDA_CALL_THROW(cudaStreamSynchronize(stream));
+          DUMP_TENSOR_D("transposed_weight in GPU", transposed_weight, k, n);
+          DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n / 2);
 
-        CUDA_CALL_THROW(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
+          CUDA_CALL_THROW(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
+        } else {
+          auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
+          CUDA_CALL_THROW(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
+
+          // Transpose the weight from (n, k) to (k, n), and convert to int8_t by subtracting 128.
+          for (int64_t i = 0; i < n; i++) {
+            for (int64_t j = 0; j < k; j++) {
+              tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
+            }
+          }
+        }
+
+        auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
+        bool force_interleave = false;
+        onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
+            reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
+            reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
+            {static_cast<size_t>(k), static_cast<size_t>(n)},
+            quant_type,
+            force_interleave);
+
+        CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
+        CUDA_CALL_THROW(cudaDeviceSynchronize());
+
+        DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n / 2);
+
+        constexpr float kDefaultZeroPoint4Bit = 8.0f;
+        constexpr float kDefaultZeroPoint8Bit = 128.0f;
+        const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
+        // The scaled zero point will be zero for the default zero point, so there is no need to scale when it is nullptr.
+        if (zero_points != nullptr) {
+          if (!zero_points->IsDataType<T>()) {  // zero point is uint8_t type
+            if (nbits_ == 4) {
+              onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
+                  stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+                  transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+            } else {
+              onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
+                  stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
+                  transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+            }
+          } else {  // zero point is not uint8_t type
+            onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
+                stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
+                transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
+          }
+        }
+
+        DUMP_STRING("k_blocks=", k_blocks, " n=", n);
+        DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
+        if (scaled_zero_points != nullptr) {
+          DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
+        }
+      });
+
+      auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
+
+      DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+
+      if (bestTactic->enableCudaKernel) {
+        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+        KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+
+        void const* pre_quant_scale_ptr = nullptr;
+        bool apply_alpha_in_advance = false;
+        float alpha = 1.0f;
+        onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
+            a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
+            fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
+            bias_data, out_data,
+            alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
+
+        onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
       } else {
-        auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
-        CUDA_CALL_THROW(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
+        const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
+        auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
 
-        // Transpose the weight from (n, k) to (k, n), and convert to int8_t by subtracting 128.
-        for (int64_t i = 0; i < n; i++) {
-          for (int64_t j = 0; j < k; j++) {
-            tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
-          }
-        }
+        weightOnlyGemmRunner_->gemm(
+            a_data,
+            fpA_intB_weight_buffer_.get(),
+            fpA_intB_scale_buffer_.get(),
+            has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
+            bias_data,
+            1.f,
+            out_data,
+            m, n, k,
+            block_size_,
+            *bestTactic,
+            reinterpret_cast<char*>(workspace_buffer.get()),
+            workspace_size,
+            stream);
       }
 
-      auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
-      bool force_interleave = false;
-      onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
-          reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
-          reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
-          {static_cast<size_t>(k), static_cast<size_t>(n)},
-          quant_type,
-          force_interleave);
-
-      CUDA_CALL_THROW(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
-      CUDA_CALL_THROW(cudaDeviceSynchronize());
-
-      DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n / 2);
-
-      constexpr float kDefaultZeroPoint4Bit = 8.0f;
-      constexpr float kDefaultZeroPoint8Bit = 128.0f;
-      const float default_zero_point = nbits_ == 4 ? kDefaultZeroPoint4Bit : kDefaultZeroPoint8Bit;
-      // The scaled zero point will be zero for the default zero point, so there is no need to scale when it is nullptr.
-      if (zero_points != nullptr) {
-        if (!zero_points->IsDataType<T>()) {  // zero point is uint8_t type
-          if (nbits_ == 4) {
-            onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<true, CudaT, uint8_t>(
-                stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
-                transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
-          } else {
-            onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, uint8_t>(
-                stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const uint8_t*>(zero_points_data),
-                transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
-          }
-        } else {  // zero point is not uint8_t type
-          onnxruntime::llm::kernels::fpA_intB_gemv::launch_scaled_zero_point_kernel<false, CudaT, CudaT>(
-              stream, reinterpret_cast<const CudaT*>(scales_data), reinterpret_cast<const CudaT*>(zero_points_data),
-              transposed_scales, scaled_zero_points, n, k_blocks, default_zero_point);
-        }
-      }
-
-      DUMP_STRING("k_blocks=", k_blocks, " n=", n);
-      DUMP_TENSOR_D("transposed_scales", transposed_scales, k_blocks, n);
-      if (scaled_zero_points != nullptr) {
-        DUMP_TENSOR_D("scaled_zero_points", scaled_zero_points, k_blocks, n);
-      }
-    });
-
-    auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
-
-    DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
-
-    if (bestTactic->enableCudaKernel) {
-      using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-      KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-
-      void const* pre_quant_scale_ptr = nullptr;
-      bool apply_alpha_in_advance = false;
-      float alpha = 1.0f;
-      onnxruntime::llm::kernels::fpA_intB_gemv::Params params(
-          a_data, pre_quant_scale_ptr, fpA_intB_weight_buffer_.get(),
-          fpA_intB_scale_buffer_.get(), has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
-          bias_data, out_data,
-          alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
-
-      onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
-    } else {
-      const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
-      auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
-
-      weightOnlyGemmRunner_->gemm(
-          a_data,
-          fpA_intB_weight_buffer_.get(),
-          fpA_intB_scale_buffer_.get(),
-          has_zero_points_ ? fpA_intB_zero_buffer_.get() : nullptr,
-          bias_data,
-          1.f,
-          out_data,
-          m, n, k,
-          block_size_,
-          *bestTactic,
-          reinterpret_cast<char*>(workspace_buffer.get()),
-          workspace_size,
-          stream);
+      DUMP_TENSOR_D("out_data", out_data, m, n);
+      return Status::OK();
     }
-
-    DUMP_TENSOR_D("out_data", out_data, m, n);
-    return Status::OK();
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
