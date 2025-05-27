@@ -71,17 +71,14 @@ macro(setup_cuda_compiler)
 endmacro()
 
 macro(setup_cuda_architectures)
-  # cmake-format: off
   # Initialize and normalize CMAKE_CUDA_ARCHITECTURES before enabling CUDA.
   # Special values:
-  # * `native` is resolved to HIGHEST available architecture.
-  #   * Fallback to `all` if detection failed.
-  # * `all` and all-major` /unset is resolved to a set of architectures we optimized for and compiler supports.
+  # (1) `native` is resolved to HIGHEST available architecture. Fallback to `all` if detection failed.
+  # (2) `all` / `all-major` / unset is resolved to a default set of architectures we optimized and compiler supports.
   # Numerical architectures:
-  #   * `*-virtual` architectures are kept as it is.
-  #   * `-real` suffix is automatically added for other cases.
-  # * Always use accelerated (`-a` suffix) target for supported architectures.
-  # cmake-format: on
+  #  * For `-virtual` architectures, the last one is kept as it is, and the others are ignored.
+  #  * `-real` suffix is automatically added for other cases.
+  #  * Always use accelerated (`-a` suffix) target for supported real architectures.
 
   if(CMAKE_CUDA_ARCHITECTURES STREQUAL "native")
     # Detect highest available compute capability
@@ -150,7 +147,6 @@ macro(setup_cuda_architectures)
       list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
     elseif(CUDA_ARCH MATCHES "^(([1-9])([0-9])+)a?$")
       list(APPEND CMAKE_CUDA_ARCHITECTURES_CLEAN ${CMAKE_MATCH_1})
-      set(CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL "${CUDA_ARCH}-virtual")
     else()
       message(FATAL_ERROR "Unrecognized CUDA architecture: ${CUDA_ARCH}")
     endif()
@@ -172,6 +168,7 @@ macro(setup_cuda_architectures)
     endif()
   endforeach()
 
+  # Enable accelerated features (like WGMMA, TMA and setmaxnreg) for SM >= 90.
   set(ARCHITECTURES_WITH_ACCEL "90" "100" "101" "120")
   unset(CMAKE_CUDA_ARCHITECTURES_NORMALIZED)
   foreach(CUDA_ARCH IN LISTS CMAKE_CUDA_ARCHITECTURES)
@@ -183,7 +180,6 @@ macro(setup_cuda_architectures)
   endforeach()
 
   if (DEFINED CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL)
-    message(STATUS "Keep last virtual architecture: ${CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL}")
     list(APPEND CMAKE_CUDA_ARCHITECTURES_NORMALIZED "${CMAKE_CUDA_ARCHITECTURES_LAST_VIRTUAL}")
   endif()
 
