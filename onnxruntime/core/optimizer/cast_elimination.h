@@ -22,8 +22,11 @@ All the Cast nodes throughout the path need to have one input and one output to 
 It is attempted to be triggered only on nodes with op type "Cast".
 */
 class CastElimination : public RewriteRule {
+ private:
+  const bool enable_chain_elimination_;
+
  public:
-  CastElimination() noexcept : RewriteRule("CastElimination") {}
+  CastElimination(bool enable_chain_elimination = false) noexcept : RewriteRule("CastElimination"), enable_chain_elimination_(enable_chain_elimination) {}
 
   std::vector<std::string> TargetOpTypes() const noexcept override {
     return {"Cast"};

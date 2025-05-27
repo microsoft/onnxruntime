@@ -24,6 +24,11 @@ Status CastElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_
     return Status::OK();
   }
 
+  // Check if we can continue
+  if (!enable_chain_elimination_) {
+    return Status::OK();
+  }
+
   // If not, find the longest chain that casts to the input type, if it exists.
   Node* current = &node;
   Node* final_non_cast_node = &node;
