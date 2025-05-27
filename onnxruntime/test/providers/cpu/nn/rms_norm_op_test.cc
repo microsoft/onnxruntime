@@ -1,5 +1,7 @@
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+#include "test/providers/provider_test_utils.h"
+#include "test/common/tensor_op_test_utils.h"
 
 using namespace std;
 
