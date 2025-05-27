@@ -65,22 +65,26 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   info.onnx_bytestream = onnx_bytestream;
 
   // EP context settings
-  const auto embed_enable = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
-  if (embed_enable == "0") {
-    info.dump_ep_context_model = false;
-  } else if (embed_enable == "1") {
-    info.dump_ep_context_model = true;
-  } else {
-    ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
-  }
-  info.ep_context_file_path = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+  // default recommeneded is EP context with embed mode enabled and weight stripped engine enabled
 
-  const auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1"));
+  const auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "0"));
   if (0 <= embed_mode || embed_mode < 2) {
     info.ep_context_embed_mode = embed_mode;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEmbedMode, " must 0 or 1");
   }
+
+  const auto ep_context_enable = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "1");
+  if (ep_context_enable == "0") {
+    info.dump_ep_context_model = false;
+  } else if (ep_context_enable == "1") {
+    info.dump_ep_context_model = true;
+    info.ep_context_embed_mode = 1;
+    info.weight_stripped_engine_enable = true;
+  } else {
+    ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
+  }
+  info.ep_context_file_path = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
 
   return info;
 }
