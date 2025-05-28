@@ -17,6 +17,12 @@ cmake_linux:
   sha256: 14e15d0b445dbeac686acc13fe13b3135e8307f69ccf4c5c91403996ce5aa2d4
   content_root: cmake-{version}-linux-x86_64
   bindir: bin
+cmake_windows_x86_64:
+  version: 3.31.7
+  url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-windows-x86_64.zip
+  sha265: ab1c7f46a1b1314f9fcb766c2573148679af599d94c5566bc12b8b35bb563362
+  content_root: cmake-{version}-windows-x86_64
+  bindir: bin
 ninja_linux:
   version: 1.12.1
   url: https://github.com/ninja-build/ninja/releases/download/v{version}/ninja-linux.zip

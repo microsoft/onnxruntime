@@ -31,7 +31,8 @@ $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.De
 
 . "$RepoRoot\qcom\scripts\windows\tools.ps1"
 
-$BuildDir = (Join-Path $RepoRoot "build\Windows-$Arch")
+$BuildRoot = (Join-Path $RepoRoot "build")
+$BuildDir = (Join-Path $BuildRoot "windows-$Arch")
 $CMakeGenerator = "Visual Studio 17 2022"
 $ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
 $ValidArchs = "arm64", "arm64ec", "x86_64"
@@ -41,14 +42,14 @@ if ($PyVEnv -ne "") {
 }
 
 if ($QairtSdkRoot -eq "") {
-    $QairtSdkRoot = (Install-Package qairt)
+    $QairtSdkRoot = (Get-PackageContentDir qairt)
 }
 else {
     $QairtSdkRoot = Resolve-Path -Path $QairtSdkRoot
 }
 
 function Get-QairtSdkFilePath() {
-    "$BuildDir\$Config\qairt-sdk-path.txt"
+    "$BuildDir\qairt-sdk-path-$Config.txt"
 }
 
 function Save-QairtSdkFilePath() {
@@ -102,52 +103,72 @@ if ($Arch -eq "x86_64")
 
 $Actions = @()
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
+$MakeTestArchive = $false
 
-if ($Mode -eq "build")
-{
-    if (!(Test-Path $ProtocPath)) {
-        Write-Host "$ProtocPath does not exist"
-        $Nuget = (Join-Path (Install-Package nuget_win) "nuget.exe")
-        & $Nuget `
-            restore "$RepoRoot\packages.config" `
-            -PackagesDirectory "$BuildDir\$Config" `
-            -ConfigFile "$RepoRoot\NuGet.config"
-    }
+switch ($Mode) {
+    "build" {
+        if (!(Test-Path $ProtocPath)) {
+            Write-Host "$ProtocPath does not exist"
+            $Nuget = (Join-Path (Get-PackageBinDir nuget_win) "nuget.exe")
+            & $Nuget `
+                restore "$RepoRoot\packages.config" `
+                -PackagesDirectory "$BuildDir\$Config" `
+                -ConfigFile "$RepoRoot\NuGet.config"
+        }
 
-    if (Test-UpdateNeeded) {
-        $Actions += "--update"
-        Save-QairtSdkFilePath
-    }
+        if (Test-UpdateNeeded) {
+            $Actions += "--update"
+            Save-QairtSdkFilePath
+        }
 
-    $Actions += "--build"
-}
-elseif ($Mode -eq "test") {
-    $Actions += "--test"
-    if ($Arch -ne "arm64") {
-        Write-Host "Disabling QNN tests on $Arch."
-        $QnnArgs = @()
+        $Actions += "--build"
+    }
+    "test" {
+        $Actions += "--test"
+        if ($Arch -ne "arm64") {
+            Write-Host "Disabling QNN tests on $Arch."
+            $QnnArgs = @()
+        }
+    }
+    "archive" {
+        $MakeTestArchive = $true
+    }
+    default {
+        throw "Unknown build mode $Mode."
     }
 }
-else {
-    throw "Unknown build mode $Mode."
-}
+
+$CmakeDir = (Get-PackageBinDir cmake_windows_x86_64)
+$env:Path = "$CmakeDir;" + $env:Path
 
 Push-Location $RepoRoot
-.\build.bat `
-    $Actions `
-    $ArchArg `
-    --config "$Config" `
-    --build_shared_lib `
-    --parallel `
-    --cmake_generator "$CmakeGenerator" `
-    $QnnArgs `
-    --build_dir "$BuildDir" `
-    --path_to_protoc "$ProtocPath"
 
-$BuildStatus = $?
+if ($MakeTestArchive) {
+    $QdcTestRunner = (Join-Path (Resolve-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition)).Path run_tests.ps1)
+    Compress-Archive `
+        -Force `
+        -DestinationPath $BuildRoot\onnxruntime-tests-windows-${arch}.zip `
+        -Path `
+            $BuildDir\$Config\CTestTestfile.cmake, `
+            $BuildDir\$Config\$Config, `
+            $CmakeDir\ctest.exe, `
+            $QdcTestRunner
+}
+else {
+    .\build.bat `
+        $Actions `
+        $ArchArg `
+        --config "$Config" `
+        --build_shared_lib `
+        --parallel `
+        --cmake_generator "$CmakeGenerator" `
+        $QnnArgs `
+        --build_dir "$BuildDir" `
+        --path_to_protoc "$ProtocPath"
+}
 
-Pop-Location
-
-if (-not $BuildStatus) {
+if (-not $?) {
     throw "Build failure"
 }
+
+Pop-Location

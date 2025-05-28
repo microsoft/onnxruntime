@@ -19,7 +19,7 @@ jobs:
       - name: Build Windows x86_64
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py build_ort_windows_x86_64
+          python .\qcom\build_and_test.py archive_ort_windows_x86_64
 
       - name: Test Windows x86_64
         shell: cmd
@@ -28,10 +28,9 @@ jobs:
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ORT Windows x86_64
+          name: ORT Windows x86_64 Tests
           path: |
-            ${{ github.workspace }}/build/Windows-x86_64/RelWithDebInfo/CTestTestfile.cmake
-            ${{ github.workspace }}/build/Windows-x86_64/RelWithDebInfo/RelWithDebInfo
+            ${{ github.workspace }}/build/onnxruntime-tests-windows-x86_64.zip
 
   build-windows-arm64:
     runs-on: ["self-hosted", "Windows", "X64"]
@@ -43,11 +42,10 @@ jobs:
       - name: Build Windows ARM64
         shell: cmd
         run: |
-          python .\qcom\build_and_test.py build_ort_windows_arm64
+          python .\qcom\build_and_test.py archive_ort_windows_arm64
 
       - uses: actions/upload-artifact@v3
         with:
-          name: ORT Windows ARM64
+          name: ORT Windows ARM64 Tests
           path: |
-            ${{ github.workspace }}/build/Windows-arm64/RelWithDebInfo/CTestTestfile.cmake
-            ${{ github.workspace }}/build/Windows-arm64/RelWithDebInfo/RelWithDebInfo
+            ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip

@@ -1,7 +1,12 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
+backoff >= 2.2.1, == 2.*
 certifi >= 2025.4.26
+prettytable >= 3.16.0, == 3.*
 pyyaml >= 6.0.2, == 6.*
+requests >= 2.32.3, == 2.*
 tqdm >= 4.67.1, == 4.*
 types-pyyaml >= 6.0.2, == 6.*
 types-tqdm >= 4.67, == 4.*
+# TODO: [AISW-137627] QDC client library can be installed by devs and CI
+# qdc-public-api-client

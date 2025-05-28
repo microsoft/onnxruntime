@@ -99,7 +99,6 @@ Run the installer, ensuring to add the following:
   * Enable symbolic links.
   * Optional, but very handy: Add Git Prompt to Terminal.
   * (Use defaults otherwise.)
-* [CMake 3.28+](https://cmake.org/download/)
 
 #### GitHub Actions Runner Service
 

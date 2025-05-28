@@ -8,6 +8,32 @@ function Get-ToolsDir() {
     New-Item -ItemType Directory $ToolsDir -Force
 }
 
+function Get-PackageBinDir() {
+    param(
+        [Parameter(Mandatory = $true,
+        HelpMessage = "The package whose bin directory to get.")]
+        [string]$Package
+    )
+
+    Install-Package $Package
+    python.exe (Get-PackageManager) --print-bin-dir --package $Package --package-root (Get-ToolsDir)
+}
+
+function Get-PackageContentDir() {
+    param(
+        [Parameter(Mandatory = $true,
+        HelpMessage = "The package whose content directory to get.")]
+        [string]$Package
+    )
+
+    Install-Package $Package
+    python.exe (Get-PackageManager) --print-content-dir --package $Package --package-root (Get-ToolsDir)
+}
+
+function Get-PackageManager() {
+    Join-Path $RepoRoot "qcom\scripts\all\package_manager.py"
+}
+
 function Install-Package() {
     param(
         [Parameter(Mandatory = $true,
@@ -15,7 +41,5 @@ function Install-Package() {
         [string]$Package
     )
 
-    $PackageManager = (Join-Path $RepoRoot "qcom\scripts\all\package_manager.py")
-    python.exe $PackageManager --install --package $Package --package-root (Get-ToolsDir)
-    python.exe $PackageManager --print-content-dir --package $Package --package-root (Get-ToolsDir)
+    python.exe (Get-PackageManager) --install --package $Package --package-root (Get-ToolsDir)
 }

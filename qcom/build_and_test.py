@@ -136,6 +136,32 @@ class TaskLibrary:
         elements_str = "\n".join([f"  {element};" for element in elements])
         return f"digraph {{\n{elements_str}\n}}"
 
+    @task
+    @depends(["build_ort_windows_arm64"])
+    def archive_ort_windows_arm64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Archiving ONNX Runtime for Windows on ARM64",
+                self.__venv_path,
+                "arm64",
+                self.__qairt_sdk_root,
+                "archive",
+            )
+        )
+
+    @task
+    @depends(["build_ort_windows_x86_64"])
+    def archive_ort_windows_x86_64(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpWindowsTask(
+                "Archiving ONNX Runtime for Windows on x86_64",
+                self.__venv_path,
+                "x86_64",
+                self.__qairt_sdk_root,
+                "archive",
+            )
+        )
+
     @public_task("Build ONNX Runtime")
     @depends(
         [
@@ -247,6 +273,7 @@ class TaskLibrary:
             BuildEpLinuxTask(
                 "Testing ONNX Runtime for Linux",
                 self.__venv_path,
+                "linux",
                 self.__qairt_sdk_root,
                 "test",
             )
