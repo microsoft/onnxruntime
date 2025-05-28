@@ -36,6 +36,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateBinaryOpBuilder("Max", op_registrations);
   CreateBinaryOpBuilder("Pow", op_registrations);
   CreateBinaryOpBuilder("Sub", op_registrations);
+  CreateBinaryOpBuilder("Equal", op_registrations);
 
   // Pooling ops
   CreatePoolOpBuilder("AveragePool", op_registrations);

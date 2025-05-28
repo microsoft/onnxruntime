@@ -151,6 +151,8 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
       }
     } else if (op_type == "Pow") {
       coreml_op_type = "pow";
+    } else if (op_type == "Equal") {
+      coreml_op_type = "equal";
     } else {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "BinaryOpBuilder::AddToModelBuilderImpl, unexpected op: ", op_type);
@@ -232,6 +234,10 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   }
 
   if (node.OpType() == "Max" && !input_params.create_mlprogram) {
+    return false;
+  }
+
+  if (node.OpType() == "Equal" && !input_params.create_mlprogram) {
     return false;
   }
 

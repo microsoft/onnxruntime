@@ -36,6 +36,19 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
+void RemoveBooleanOutputsFromPartitions(std::vector<std::unique_ptr<ComputeCapability>>& capabilities) {
+  for (auto& capability : capabilities) {
+    if (capability && capability->sub_graph) {
+      auto& nodes = capability->sub_graph->nodes;
+      nodes.erase(std::remove_if(nodes.begin(), nodes.end(),
+                                 [](const NodeUnit& node_unit) {
+                                   return node_unit.node && node_unit.node->OpType() == "BooleanOutput";
+                                 }),
+                   nodes.end());
+    }
+  }
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const IKernelLookup& /*kernel_lookup*/,
@@ -93,6 +106,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                             nullptr,
                                             /*drop_constant_initializers*/ true);
 
+  RemoveBooleanOutputsFromPartitions(result);
   const auto num_of_partitions = result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
       result.begin(), result.end(),
