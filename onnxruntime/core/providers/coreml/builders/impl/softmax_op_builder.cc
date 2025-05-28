@@ -30,12 +30,15 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& output_name = node.OutputDefs()[0]->Name();
 
   std::vector<int64_t> data_shape;
-  ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
 
   NodeAttrHelper helper(node);
   int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
   const auto axis = helper.Get("axis", axis_default_value);
-  auto axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  int64_t axis_nonnegative = axis;
+  if (node.SinceVersion() < 13) {
+    ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
+    axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  }
 
   // CoreML's softmax match onnx's softmax behavior since opset 13.
   // For opset < 13, we need to reshape to 2D and set axis to -1 to simulate onnx softmax behavior.
