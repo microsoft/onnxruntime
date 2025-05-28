@@ -285,6 +285,14 @@ class TopKNodeGroupSelector : public NodeGroupSelector {
              const std::vector<const Node*>& q_nodes) const override;
 };
 
+// one DQ node for first input -> node -> Q
+class CumSumNodeGroupSelector : public NodeGroupSelector {
+  bool Check(const GraphViewer& graph_viewer,
+             const Node& node, const Node* redundant_clip_node,
+             const std::vector<const Node*>& dq_nodes,
+             const std::vector<const Node*>& q_nodes) const override;
+};
+
 /*
  * NodeSelector instances for use in the QDQ::SelectorActionTransformer.
  */
