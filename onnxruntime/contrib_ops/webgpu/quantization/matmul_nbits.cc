@@ -382,6 +382,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
   // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
+  // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
   uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
   const bool has_zero_points = zero_points != nullptr;

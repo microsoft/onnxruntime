@@ -143,16 +143,17 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
   }
 
-  test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+  int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
+  test.AddInput<uint8_t>("B", {q_cols, k_blocks, q_rows / k_blocks}, input1_vals, true);
 
   if constexpr (std::is_same<T1, float>::value) {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, true);
   } else {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, FloatsToMLFloat16s(scales), true);
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToMLFloat16s(scales), true);
   }
 
   if (opts.has_zero_point) {
-    test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
+    test.AddInput<uint8_t>("zero_points", {N, static_cast<int64_t>(q_zp_size_in_bytes) / N}, zp, true);
   } else {
     test.AddOptionalInputEdge<uint8_t>();
   }

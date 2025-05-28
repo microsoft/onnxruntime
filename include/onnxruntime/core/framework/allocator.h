@@ -203,7 +203,8 @@ class IAllocator {
      @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
   */
   template <typename T>
-  static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
+  static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes,
+                                                              bool use_reserve = false) {
     ValidateAllocator(ort_allocator);
 
     size_t alloc_size = count_or_bytes;
@@ -215,7 +216,12 @@ class IAllocator {
       alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
 
-    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    T* p = nullptr;
+    if (use_reserve) {
+      p = static_cast<T*>(ort_allocator->Reserve(ort_allocator, alloc_size));
+    } else {
+      p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    }
     ValidateAllocation(p, alloc_size);
 
     return IAllocatorUniquePtr<T>{p,

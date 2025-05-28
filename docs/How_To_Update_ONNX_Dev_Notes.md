@@ -6,7 +6,7 @@ If you need to update the ONNX submodule to a different version, follow the step
 
 ## Update ONNX installation
 
-Currently, ONNXRUNTIME supports two ways to install ONNX cpp dependencies, one is through cmake/deps.txt, and the other one is by vcpkg. And both of them are guarded by CI. It is recommeded to test vcpkg within Windows machines.
+Currently, ONNXRUNTIME supports two ways to install ONNX cpp dependencies, one is through cmake/deps.txt, and the other one is by vcpkg. And both of them are guarded by CI. It is recommended to test vcpkg within Windows machines.
 
 ### Update the ONNX submodule (commit would be more precise than branch)
 
