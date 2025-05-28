@@ -55,7 +55,6 @@
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
 namespace cutlass::gemm::collective {
-using namespace cute;
 
 /////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -250,7 +249,7 @@ struct CollectiveMmaInterleaved<MainloopSm90TmaGmmaRmemAWarpSpecializedMixedInpu
                                                                      Step<_1, _2, _3>>{}));
 
   static_assert(DispatchPolicy::Stages >= 2, "Specialization requires Stages set to value 2 or more.");
-  static_assert(not cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeA>::value && cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeB>::value,
+  static_assert(!cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeA>::value && cute::is_base_of<cute::GMMA::DescriptorIterator, typename TiledMma::FrgTypeB>::value,
                 "MMA atom must source A from rmem and B operand from smem_desc for this mainloop.");
   static_assert(
       cute::is_same_v<GmemTiledCopyA, SM90_TMA_LOAD> || cute::is_same_v<GmemTiledCopyA, SM90_TMA_LOAD_MULTICAST>,
@@ -338,7 +337,7 @@ struct CollectiveMmaInterleaved<MainloopSm90TmaGmmaRmemAWarpSpecializedMixedInpu
   // Just pick the max alignment of A and B since it is required to be at least 128B
   static constexpr size_t SmemAlignmentScale = cute::max(SmemAlignmentA, SmemAlignmentB);
 
-  static_assert(SmemAlignmentA >= 128 and SmemAlignmentB >= 128, "Require at least 128B alignment");
+  static_assert(SmemAlignmentA >= 128 && SmemAlignmentB >= 128, "Require at least 128B alignment");
 
   struct SharedStorage {
     static constexpr int scale_elements = elements_per_smem_scale();
@@ -382,26 +381,26 @@ struct CollectiveMmaInterleaved<MainloopSm90TmaGmmaRmemAWarpSpecializedMixedInpu
     // Assumption: StrideA is congruent with Problem_MK
     using TMA_A = decltype(make_tma_copy<TmaElementA>(GmemTiledCopyA{},
                                                       make_tensor(Outer::get_logical_ptr(static_cast<InternalElementA const*>(nullptr)),
-                                                                  repeat_like(InternalStrideA{}, int32_t(0)), InternalStrideA{}),
+                                                                  repeat_like(InternalStrideA{}, static_cast<int32_t>(0)), InternalStrideA{}),
                                                       SmemLayoutA{}(_, _, cute::Int<0>{}), make_shape(shape<0>(TileShape{}), shape<2>(TileShape{})),
                                                       size<1>(ClusterShape{})));  // mcast along N mode for this M load, if any
 
     using TMA_Scale = decltype(make_tma_copy(GmemTiledCopyScale{},
                                              make_tensor(Outer::get_logical_ptr(static_cast<NonVoidElementScale const*>(nullptr)),
-                                                         repeat_like(NonVoidStrideScale{}, int32_t(0)), NonVoidStrideScale{}),
+                                                         repeat_like(NonVoidStrideScale{}, static_cast<int32_t>(0)), NonVoidStrideScale{}),
                                              SmemLayoutScale{}(_, _, cute::Int<0>{}), ScaleTileShape{},
                                              _1{}));  // mcast along N mode for this M load, if any. Scale is ALWAYS loaded with A for RF kernel
 
     using TMA_Zero = decltype(make_tma_copy(GmemTiledCopyScale{},
                                             make_tensor(Outer::get_logical_ptr(static_cast<NonVoidElementZero const*>(nullptr)),
-                                                        repeat_like(NonVoidStrideScale{}, int32_t(0)), NonVoidStrideScale{}),
+                                                        repeat_like(NonVoidStrideScale{}, static_cast<int32_t>(0)), NonVoidStrideScale{}),
                                             SmemLayoutScale{}(_, _, cute::Int<0>{}), ScaleTileShape{},
                                             _1{}));  // mcast along N mode for this M load, if any. Scale is ALWAYS loaded with A for RF kernel
 
     // Assumption: StrideB is congruent with Problem_NK
     using TMA_B = decltype(make_tma_copy(GmemTiledCopyB{},
                                          make_tensor(Outer::get_logical_ptr(static_cast<InternalElementB const*>(nullptr)),
-                                                     repeat_like(InternalStrideB{}, int32_t(0)), InternalStrideB{}),
+                                                     repeat_like(InternalStrideB{}, static_cast<int32_t>(0)), InternalStrideB{}),
                                          SmemLayoutB{}(_, _, cute::Int<0>{}), make_shape(shape<1>(TileShape{}), shape<2>(TileShape{})),
                                          size<0>(ClusterShape{})));  // mcast along M mode for this N load, if any
     TMA_A tma_load_a;

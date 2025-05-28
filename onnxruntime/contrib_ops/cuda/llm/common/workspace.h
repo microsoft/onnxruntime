@@ -26,7 +26,7 @@ inline int8_t* alignPtr(int8_t* ptr, uintptr_t to) {
   if (addr % to) {
     addr += to - addr % to;
   }
-  return (int8_t*)addr;
+  return reinterpret_cast<int8_t*>(addr);
 }
 
 constexpr size_t alignSize(size_t size, size_t to) {
@@ -39,7 +39,7 @@ constexpr size_t alignSize(size_t size, size_t to) {
 inline int8_t* nextWorkspacePtrCommon(int8_t* ptr, uintptr_t previousWorkspaceSize, uintptr_t const alignment) {
   uintptr_t addr = (uintptr_t)ptr;
   addr += previousWorkspaceSize;
-  return alignPtr((int8_t*)addr, alignment);
+  return alignPtr(reinterpret_cast<int8_t*>(addr), alignment);
 }
 
 inline int8_t* nextWorkspacePtr(int8_t* ptr, uintptr_t previousWorkspaceSize) {
