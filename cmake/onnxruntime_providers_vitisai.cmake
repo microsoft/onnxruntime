@@ -1,14 +1,29 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
-  FetchContent_Declare(
-    vaip
-    GIT_REPOSITORY ${DEP_URL_vaip}
-    GIT_TAG ${DEP_SHA1_vaip}
-    GIT_SUBMODULES_RECURSE FALSE
-    GIT_SHALLOW TRUE
-    EXCLUDE_FROM_ALL
+
+  find_path(VAIP_CMAKE_LIST_TEXT_IN_LOCAL_WORKING_DIR
+    NAME "CMakeLists.txt"
+    PATHS "${ONNXRUNTIME_ROOT}/../../vaip"
+    NO_DEFAULT_PATH)
+  if(VAIP_CMAKE_LIST_TEXT_IN_LOCAL_WORKING_DIR)
+    message(STATUS "Found local vaip CMakeLists.txt: ${VAIP_CMAKE_LIST_TEXT_IN_LOCAL_WORKING_DIR}")
+    FetchContent_Declare(
+      vaip
+      SOURCE_DIR "${VAIP_CMAKE_LIST_TEXT_IN_LOCAL_WORKING_DIR}"
+      OVERRIDE_FIND_PACKAGE
+      )
+  else()
+    message(STATUS "Did not find local vaip CMakeLists.txt, using FetchContent")
+    FetchContent_Declare(
+      vaip
+      GIT_REPOSITORY ${DEP_URL_vaip}
+      GIT_TAG ${DEP_SHA1_vaip}
+      GIT_SUBMODULES_RECURSE FALSE
+      GIT_SHALLOW TRUE
+      EXCLUDE_FROM_ALL
     OVERRIDE_FIND_PACKAGE
   )
+  endif()
 
   if ("${GIT_COMMIT_ID}" STREQUAL "")
   execute_process(
