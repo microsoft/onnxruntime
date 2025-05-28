@@ -255,7 +255,6 @@ std::atomic<uint32_t> InferenceSession::global_session_id_{1};
 std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
 std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 const std::string InferenceSession::callback_ML_ORT_provider_key_{"InferenceSessionML_ORT_provider"};
-onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -511,7 +510,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   {
     std::lock_guard<std::mutex> lock(active_sessions_mutex_);
     auto result = active_sessions_.insert_or_assign(session_id_, this);
-    ORT_ENFORCE(result.second, "active_sessions has not been cleanup for session_id", session_id_);
+    ORT_ENFORCE(result.second, "active_sessions has not been cleaned up for session_id", session_id_);
     // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
     // one for all sessions
     if (active_sessions_.size() == 1) {
@@ -524,12 +523,12 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   etw_deregistrar_.emplace([this]() { UnregisterETWCallbacks(); });
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
-  callback_ETWSink_provider_key_ = "InferenceSession_Start_Stop_";
-  callback_ETWSink_provider_key_.append(std::to_string(session_id_));
+  callback_ETWSink_key_ = "InferenceSession_Start_Stop_";
+  callback_ETWSink_key_.append(std::to_string(session_id_));
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
 
   // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_key_,
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_key_,
                                                   [&etwRegistrationManager, this](
                                                       LPCGUID SourceId,
                                                       ULONG IsEnabled,
@@ -3403,8 +3402,8 @@ IOBinding* SessionIOBinding::Get() {
 #ifdef _WIN32
 
 void InferenceSession::UnregisterETWCallbacks() {
-  if (!callback_ETWSink_provider_key_.empty()) {
-    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_key_);
+  if (!callback_ETWSink_key_.empty()) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_key_);
   }
   {
     std::lock_guard<std::mutex> lock(active_sessions_mutex_);

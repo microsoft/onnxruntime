@@ -62,7 +62,7 @@ ExecutionProviders::ExecutionProviders() {
 
 ExecutionProviders::~ExecutionProviders() {
 #ifdef _WIN32
-  WindowsTelemetry ::UnregisterInternalCallback(etw_callback_key_);
+  WindowsTelemetry::UnregisterInternalCallback(etw_callback_key_);
 #endif
 }
 

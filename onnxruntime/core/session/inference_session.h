@@ -138,10 +138,9 @@ class InferenceSession {
   static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
   static std::map<uint32_t, InferenceSession*> active_sessions_;
   // Single callback for all sessions. Registers when the first session comes up
-  // unregisters when the last session goes away.
+  // and unregister when the last session goes away.
   static const std::string callback_ML_ORT_provider_key_;
-  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
-  std::string callback_ETWSink_provider_key_;  // Session Start Stop
+  std::string callback_ETWSink_key_;  // Session Start Stop
 
   void UnregisterETWCallbacks();
 
