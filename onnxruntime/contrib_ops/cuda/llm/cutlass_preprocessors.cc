@@ -14,11 +14,6 @@
  * limitations under the License.
  */
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
 #include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
 
 #include <cuda_bf16.h>
@@ -26,7 +21,17 @@
 #include "core/common/common.h"
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wunused-parameter"
+#endif
+
 #include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
+
+#if defined(__GNUC__)
+#pragma GCC diagnostic pop
+#endif
 
 using namespace onnxruntime::llm::common;
 
@@ -93,7 +98,6 @@ LayoutDetails getLayoutDetailsForArchAndQuantType() {
 
 template <typename cutlassArch>
 LayoutDetails getLayoutDetailsForArch(QuantType quant_type) {
-  // int const bits_per_weight_element = get_weight_quant_bits(quant_type);
   LayoutDetails details;
   switch (quant_type) {
     case QuantType::W8_A16:
@@ -118,8 +122,6 @@ LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
     return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
   } else if (arch >= 90 && arch < 100) {
     return getLayoutDetailsForArch<cutlass::arch::Sm90>(quant_type);
-  } else if (arch == 120) {
-    return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
   } else if (arch >= 100) {
     return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
   } else {
@@ -155,7 +157,7 @@ std::vector<int> get_permutation_map(QuantType quant_type) {
 }
 
 void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
-                                   std::vector<size_t> const& shape, QuantType quant_type, int64_t const arch_version) {
+                                   std::vector<size_t> const& shape, QuantType quant_type) {
   ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
   // We only want to run this step for weight only quant.
   std::vector<int> row_permutation = get_permutation_map(quant_type);
@@ -167,8 +169,6 @@ void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t con
 
   int const BITS_PER_ELT = get_weight_quant_bits(quant_type);
   int const K = 16 / BITS_PER_ELT;
-  // int const ELTS_PER_BYTE = 8 / BITS_PER_ELT;
-  // int const ELTS_PER_REG = 32 / BITS_PER_ELT;
 
   uint32_t const* input_byte_ptr = reinterpret_cast<uint32_t const*>(quantized_tensor);
   uint32_t* output_byte_ptr = reinterpret_cast<uint32_t*>(permuted_quantized_tensor);
@@ -225,7 +225,6 @@ void subbyte_transpose_impl(
 
   const size_t col_bytes = num_cols * bits_per_elt / 8;
   const size_t col_bytes_trans = num_rows * bits_per_elt / 8;
-  // const size_t num_bytes = size_t(num_experts) * num_rows * col_bytes;
 
   uint8_t const* input_byte_ptr = reinterpret_cast<uint8_t const*>(quantized_tensor);
   uint8_t* output_byte_ptr = reinterpret_cast<uint8_t*>(transposed_quantized_tensor);
@@ -244,9 +243,6 @@ void subbyte_transpose_impl(
   ORT_ENFORCE(!(col_bytes_trans % VECTOR_WIDTH) && !(col_bytes % VECTOR_WIDTH),
               "Number of bytes for rows and cols must be a multiple of ", VECTOR_WIDTH, ". However, num_rows_bytes = ",
               col_bytes_trans, " and num_col_bytes = ", col_bytes);
-
-  // int const num_m_tiles = (num_rows + M_TILE_L1 - 1) / M_TILE_L1;
-  // int const num_n_tiles = (col_bytes + N_TILE_L1 - 1) / N_TILE_L1;
 
   for (size_t expert = 0; expert < num_experts; ++expert) {
     const size_t matrix_offset = expert * num_rows * col_bytes;
@@ -481,7 +477,7 @@ void preprocess_weights_for_mixed_gemm(int8_t* preprocessed_quantized_weight, in
     arch = 80;
   }
   // Force use sm80 kernel for GB20x.
-  if (arch == 120) {
+  if (arch >= 100) {
     arch = 80;
   }
   LayoutDetails details = getLayoutDetailsForTransform(quant_type, arch);
@@ -501,7 +497,7 @@ void preprocess_weights_for_mixed_gemm(int8_t* preprocessed_quantized_weight, in
 
   // Works on row major data, so issue this permutation first.
   if (details.uses_imma_ldsm) {
-    permute_B_rows_for_mixed_gemm(dst_buf.data(), src_buf.data(), shape, quant_type, arch);
+    permute_B_rows_for_mixed_gemm(dst_buf.data(), src_buf.data(), shape, quant_type);
     src_buf.swap(dst_buf);
   }
 
@@ -689,7 +685,3 @@ template void symmetric_quantize<__nv_bfloat16, float>(
 }  // namespace cutlass_kernels
 }  // namespace kernels
 }  // namespace onnxruntime::llm
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif

@@ -20,11 +20,6 @@
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
 namespace onnxruntime::llm::kernels::weight_only {
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
@@ -90,11 +85,11 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, siz
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(
-    int m, int n, int k) const {
+    int /*m*/, int /*n*/, int /*k*/) const {
   return mRunner->getConfigs();
 }
 
-bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k, Config const& tactic) const {
+bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int /*n*/, int /*k*/, Config const& tactic) const {
   // stop to profile Cuda kernel for m >= 16
   if (tactic.enableCudaKernel) {
     return m < 16;
@@ -103,7 +98,3 @@ bool WeightOnlyGroupwiseQuantGemmPluginProfiler::checkTactic(int m, int n, int k
 }
 
 }  // namespace onnxruntime::llm::kernels::weight_only
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif

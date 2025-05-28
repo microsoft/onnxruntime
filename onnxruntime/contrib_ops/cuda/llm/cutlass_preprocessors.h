@@ -49,7 +49,7 @@ constexpr int get_weight_quant_bits(QuantType quant_type) {
 // Shapes here can be 2 or 3D. 2-D shapes are [num_rows, num_cols]
 // 3-D shapes are [num_experts, num_rows, num_cols]
 void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
-                                   std::vector<size_t> const& shape, QuantType quant_type, const int64_t arch_version);
+                                   std::vector<size_t> const& shape, QuantType quant_type);
 
 void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
                        std::vector<size_t> const& shape, QuantType quant_type);

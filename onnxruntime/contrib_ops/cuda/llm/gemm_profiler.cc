@@ -15,11 +15,6 @@
  * limitations under the License.
  */
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
@@ -103,7 +98,7 @@ int GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getMaxPro
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::initTmpData(
-    int m, int n, int k, char* workspace, size_t size, cudaStream_t stream) {
+    int /*m*/, int /*n*/, int /*k*/, char* /*workspace*/, size_t /*size*/, cudaStream_t /*stream*/) {
   /* Do nothing */
 }
 
@@ -314,7 +309,3 @@ template class GemmPluginProfiler<onnxruntime::llm::cutlass_extensions::CutlassG
                                   GemmIdCoreHash>;
 
 }  // namespace onnxruntime::llm::kernels::weight_only
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif

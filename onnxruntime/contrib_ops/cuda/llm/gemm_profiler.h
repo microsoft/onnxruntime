@@ -31,11 +31,6 @@
 #include "contrib_ops/cuda/llm/nv_infer_datatype.h"
 #include "core/common/common.h"
 
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wunused-parameter"
-#endif
-
 namespace onnxruntime::llm::kernels::weight_only {
 
 struct GemmDims {
@@ -212,7 +207,7 @@ class GemmPluginProfiler {
 
   virtual void computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
 
-  virtual bool checkTactic(int m, int n, int k, Config const& tactic) const {
+  virtual bool checkTactic(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/) const {
     return true;
   }
 
@@ -286,7 +281,3 @@ class GemmPluginProfilerManager {
 };
 
 }  // namespace onnxruntime::llm::kernels::weight_only
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
