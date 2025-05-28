@@ -163,7 +163,7 @@ bool HasNeuralEngine() {
 }
 
 /* static */
-bool CheckShapeForConvMemoryLimit(onnxruntime::VectorInt64& shape, const logging::Logger& logger) {
+bool CheckShapeForConvMemoryLimit(gsl::span<const int64_t> shape, const logging::Logger& logger) {
   // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
   // input has dimension > 16384
   // See this issue, https://github.com/apple/coremltools/issues/1003

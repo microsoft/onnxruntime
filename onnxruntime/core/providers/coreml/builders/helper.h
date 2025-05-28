@@ -51,7 +51,7 @@ bool HasNeuralEngine();
 // See this issue, https://github.com/apple/coremltools/issues/1003
 // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
 // root cause.
-bool CheckShapeForConvMemoryLimit(onnxruntime::VectorInt64& shape, const logging::Logger& logger);
+bool CheckShapeForConvMemoryLimit(gsl::span<const int64_t> shape, const logging::Logger& logger);
 
 }  // namespace coreml
 }  // namespace onnxruntime

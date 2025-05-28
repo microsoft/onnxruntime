@@ -79,6 +79,16 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
   return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
 }
 
+// CoreML does not handle 0's in the new_shape, even though its documentation claims 0's in the new_shape will
+// match the corresponding dimension in x.shape
+// https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
+//
+// So instead, we use ReshapeHelper to populate the values from input_shape. However, input_shape may have -1's in it
+// to represent symbolic dimensions (input_shape refers to the shape info of the first input, referred to as
+// x.shape in the CoreML docs).
+//
+// The below method checks for these collisions. In the case that x.shape has symbolic dimensions at the locations where
+// there is a 0 in new_shape, then we move the reshape op to CPU EP.
 bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
   for (int i = 0; i < new_shape.size(); i++) {
     if (new_shape[i] == 0 && input_shape[i] == -1) {
@@ -89,6 +99,7 @@ bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<c
   return true;
 }
 
+// https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
