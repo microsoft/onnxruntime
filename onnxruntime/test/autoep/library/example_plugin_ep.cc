@@ -15,24 +15,39 @@
 
 struct ApiPtrs {
   const OrtApi& ort_api;
-  // const OrtEpApi& ep_api;  TODO: Add this when we flesh out the EP API.
+  const OrtEpApi& ep_api;
 };
 
 struct ExampleEp : OrtEp, ApiPtrs {
   ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
       : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
     // Initialize the execution provider.
-
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                             ("ExampleEp has been created with name " + name_).c_str(),
                                             ORT_FILE, __LINE__, __FUNCTION__);
     // ignore status for now
     (void)status;
+
+    ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
+    GetCapability = GetCapabilityImpl;
   }
 
   ~ExampleEp() {
     // Clean up the execution provider
+  }
+
+  static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
+                                                   size_t* num_supported_subgraphs,
+                                                   OrtEpSupportedSubgraph** supported_subgraphs,
+                                                   OrtAllocator* allocator) {
+    ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+    *num_supported_subgraphs = 0;
+    *supported_subgraphs = nullptr;
+    (void)ep;
+    (void)allocator;  // Do not use for now. Should be used to allocate the array of supported_subgraphs
+    (void)graph;
+    return nullptr;
   }
 
   std::string name_;
@@ -168,11 +183,11 @@ extern "C" {
 EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  // const OrtEpApi* ep_api = ort_api->GetEpApi();
+  const OrtEpApi* ort_ep_api = ort_api->GetEpApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api});
+                                                                             ApiPtrs{*ort_api, *ort_ep_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

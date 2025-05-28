@@ -316,6 +316,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(EpSupportedSubgraph);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -6026,6 +6027,27 @@ struct OrtEpApi {
                   _Out_ OrtEpDevice** ep_device);
 
   ORT_CLASS_RELEASE(EpDevice);
+
+  /** \brief Create an OrtEpSupportedSubgraph that specifies a subgraph (i.e., connected nodes) supported by an EP.
+   * \param[in] graph Top-level graph that contains all nodes.
+   * \param[in] subgraph_name The name of the fused node that will represent the subgraph supported by the EP.
+   * \param[in] hardware_device The OrtHardwareDevice that will execute the supported nodes.
+   * \param[in] supported_nodes Array of nodes supported by the EP.
+   * \param[in] num_supported_nodes The number of supported nodes.
+   * \param out OrtEpSupportedSubgraph that is created.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateEpSupportedSubgraph, _In_ const OrtGraph* graph,
+                  _In_ const char* subgraph_name,
+                  _In_ const OrtHardwareDevice* hardware_device,
+                  _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
+                  size_t num_supported_nodes,
+                  _Outptr_ OrtEpSupportedSubgraph** out);
+
+  ORT_CLASS_RELEASE(EpSupportedSubgraph);
 };
 
 /**
@@ -6053,9 +6075,10 @@ struct OrtEp {
    */
   const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
 
-  // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
-  //                          size_t* num_supported_subgraphs,
-  //                          OrtIndexedSubgraph** supported_subgraphs, OrtAllocator* allocator);
+  OrtStatus*(ORT_API_CALL* GetCapability)(OrtEp* this_ptr, const OrtGraph* graph,
+                                          size_t* num_supported_subgraphs,
+                                          OrtEpSupportedSubgraph** supported_subgraphs,
+                                          OrtAllocator* allocator);
 
   // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);

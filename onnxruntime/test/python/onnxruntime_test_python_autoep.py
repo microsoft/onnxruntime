@@ -13,7 +13,7 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -227,11 +227,8 @@ class TestAutoEP(AutoEpTestCase):
 
         # Test adding this EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
-        with self.assertRaises(InvalidArgument) as context:
-            # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
-            # Actual plugin EPs will be supported in the future.
-            sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
-        self.assertIn("EP is not currently supported", str(context.exception))
+        sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
+        del sess_options
 
         self.unregister_execution_provider_library(ep_name)
 

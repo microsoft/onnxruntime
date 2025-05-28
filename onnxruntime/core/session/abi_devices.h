@@ -63,3 +63,10 @@ struct OrtEpDevice {
 
   OrtEpFactory* ep_factory;
 };
+
+struct OrtNode;
+struct OrtEpSupportedSubgraph {
+  std::string name;
+  const OrtHardwareDevice* hardware_device;
+  std::vector<const OrtNode*> nodes;
+};

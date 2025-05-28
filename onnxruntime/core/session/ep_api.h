@@ -16,4 +16,13 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _Out_ OrtEpDevice** ep_device);
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device);
+
+ORT_API_STATUS_IMPL(CreateEpSupportedSubgraph, _In_ const OrtGraph* graph,
+                    _In_ const char* subgraph_name,
+                    _In_ const OrtHardwareDevice* hardware_device,
+                    _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
+                    size_t num_supported_nodes,
+                    _Outptr_ OrtEpSupportedSubgraph** out);
+
+ORT_API(void, ReleaseEpSupportedSubgraph, _Frees_ptr_opt_ OrtEpSupportedSubgraph* subgraph);
 }  // namespace OrtExecutionProviderApi
