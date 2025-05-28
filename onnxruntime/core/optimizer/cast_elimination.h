@@ -11,13 +11,6 @@ namespace onnxruntime {
 @Class CastElimination
 
 Rewrite rule that eliminates Cast nodes if 'to' attribute has same data type as input tensor data type.
-Additionally, it will try to find the longest chain where the 'to' attribute has the same data type as the input of the first Cast node in the chain.
-E.g.
-A ('float32') -> Cast (to='float16') ->  Cast (to='int4') ->  Cast (to='float32') -> Cast (to='float16') -> B
-will reduce to
- A ('float32') -> Cast (to='float16') -> B
-
-All the Cast nodes throughout the path need to have one input and one output to be considered for the fusion.
 
 It is attempted to be triggered only on nodes with op type "Cast".
 */
