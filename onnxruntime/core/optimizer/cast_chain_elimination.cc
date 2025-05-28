@@ -9,6 +9,29 @@
 
 namespace onnxruntime {
 
+static Node* FollowCastChain(Node* current) {
+  while (true) {
+    // A rare case when the Cast node output is branching out.
+    // We don't really want to deal with this complexity, hence we will skip it.
+    if (current->GetOutputEdgesCount() > 1) {
+      return nullptr;
+    }
+
+    auto it = current->OutputNodesBegin();
+    if (it == current->OutputNodesEnd()) {
+      break;
+    }
+
+    Node* next = const_cast<Node*>(&(*it));
+    if (next->OpType() != "Cast") {
+      break;
+    }
+    current = next;
+  }
+
+  return current;
+}
+
 Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -20,13 +43,13 @@ Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_l
 
     Node& node = *node_ptr;
 
-    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
-
-    if (!graph_utils::CanRemoveNode(graph, node, logger)) {
+    if (node.OpType() != "Cast") {
       continue;
     }
 
-    if (node.OpType() != "Cast") {
+    ORT_RETURN_IF_ERROR(Recurse(node, modified, graph_level, logger));
+
+    if (graph_utils::IsGraphOutput(graph, node.OutputDefs()[0])) {
       continue;
     }
 
@@ -35,33 +58,19 @@ Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    // If not, find the longest chain that casts to the input type, if it exists.
-    Node* current = &node;
-    Node* final_non_cast_node = &node;
-    int matching_elem_type = input_type->tensor_type().elem_type();
-
-    while (current->OpType() == "Cast") {
-      const auto& to_attr = current->GetAttributes().at("to");
-
-      // A rare case when the Cast node output is branching out.
-      // We don't really want to deal with this complexity, hence we will skip it.
-      if (current->GetOutputEdgesCount() > 1) {
-        return Status::OK();
-      }
-
-      auto it = current->OutputNodesBegin();
-      if (it == current->OutputNodesEnd()) {
-        break;
-      }
-      current = const_cast<Node*>(&(*it));
-
-      // We found the repeating pattern.
-      if (to_attr.i() == matching_elem_type) {
-        final_non_cast_node = current;
-      }
+    if (!graph_utils::CanRemoveNode(graph, node, logger)) {
+      continue;
     }
 
-    // No repeating pattern was found.
+    // If not, find the longest chain that casts to the input type, if it exists.
+    Node* current = &node;
+    Node* final_non_cast_node = FollowCastChain(current);
+
+    if (!final_non_cast_node) {
+      continue;
+    }
+
+    // No extra casts were found.
     if (node.Index() == final_non_cast_node->Index()) {
       continue;
     }

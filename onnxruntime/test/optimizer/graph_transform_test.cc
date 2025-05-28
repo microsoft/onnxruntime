@@ -4397,7 +4397,7 @@ TEST_F(GraphTransformationTests, CastChainEliminationRepeatedPattern) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
 
   op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["Cast"] == 1);
+  ASSERT_TRUE(op_to_count["Cast"] == 3);
 }
 
 TEST_F(GraphTransformationTests, PreShapeNodeElimination) {
