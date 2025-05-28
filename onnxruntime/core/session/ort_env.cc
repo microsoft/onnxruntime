@@ -14,6 +14,8 @@
 #include "core/framework/provider_shutdown.h"
 #include "core/platform/logging/make_platform_default_log_sink.h"
 
+// Whether the process is shutting down
+std::atomic<bool> g_is_shutting_down(false);
 using namespace onnxruntime;
 using namespace onnxruntime::logging;
 
@@ -85,7 +87,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
 }
 
 void OrtEnv::Release(OrtEnv* env_ptr) {
-  if (!env_ptr) {
+  if (!env_ptr || g_is_shutting_down) {
     return;
   }
   std::lock_guard<std::mutex> lock(m_);
