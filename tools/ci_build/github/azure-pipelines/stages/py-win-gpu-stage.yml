@@ -133,6 +133,26 @@ stages:
                 $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }} ${{ parameters.EP_BUILD_FLAGS }} ${{ variables.trt_build_flag }}
               workingDirectory: '$(Build.BinariesDirectory)'
 
+
+          - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+            - template: ../templates/publish-symbolrequestprod-api.yml
+              parameters:
+                ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+                  symbolExpiryTime: 60
+                includePublicSymbolServer: true
+                symbolsArtifactName: onnxruntime_gpu_win_x64_${{ parameters.PYTHON_VERSION }}
+                symbolsVersion: $(Build.BuildId)
+                symbolProject: 'ONNX Runtime'
+                subscription: 'OnnxrunTimeCodeSign_20240611'
+                searchPattern: |
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_cuda.pdb
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_tensorrt.pdb
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_dml.pdb
+                  $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
+
+
           # Esrp signing
           - template: ../templates/win-esrp-dll.yml
             parameters:
@@ -170,7 +190,6 @@ stages:
       pool:
         name: ${{parameters.MACHINE_POOL}}
       steps:
-
         - checkout: self
           clean: true
           submodules: none

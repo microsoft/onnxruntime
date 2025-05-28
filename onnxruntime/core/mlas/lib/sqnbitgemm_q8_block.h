@@ -66,5 +66,5 @@ MLAS_FORCEINLINE
 constexpr size_t
 Q8BlkAlignment()
 {
-    return alignof(float);
+    return 16 * alignof(float);
 }

@@ -309,11 +309,23 @@ void QnnHTPBackendTests::SetUp() {
   }
 }
 
+static BackendSupport GetIRSupport(const onnxruntime::logging::Logger& logger);
+
+BackendSupport QnnHTPBackendTests::IsIRBackendSupported() const {
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  if (cached_ir_support_ == BackendSupport::SUPPORT_UNKNOWN) {
+    cached_ir_support_ = test::GetIRSupport(logger);
+  }
+
+  return cached_ir_support_;
+}
+
 // Testing helper function that calls QNN EP's GetCapability() function with a mock graph to check
 // if the QNN CPU backend is available.
 // TODO: Remove once the QNN CPU backend works on Windows ARM64 pipeline VM.
-static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) {
-  onnxruntime::Model model("Check if CPU is available", false, logger);
+static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger, const std::string& backend_type = "cpu") {
+  onnxruntime::Model model("Check if " + backend_type + " is available", false, logger);
   Graph& graph = model.MainGraph();
   ModelTestBuilder helper(graph);
 
@@ -343,7 +355,7 @@ static BackendSupport GetCPUSupport(const onnxruntime::logging::Logger& logger) 
   MockKernelLookup kernel_lookup;
   onnxruntime::GraphViewer graph_viewer(graph);
   std::unique_ptr<onnxruntime::IExecutionProvider> qnn_ep = QnnExecutionProviderWithOptions(
-      {{"backend_type", "cpu"}, {"offload_graph_io_quantization", "0"}});
+      {{"backend_type", backend_type}, {"offload_graph_io_quantization", "0"}});
   GraphOptimizerRegistry graph_optimizer_registry(nullptr, nullptr, nullptr);  // as a placeholder to feed into GetCapability
 
   qnn_ep->SetLogger(&logger);
@@ -373,6 +385,33 @@ void QnnCPUBackendTests::SetUp() {
   }
 }
 
+static BackendSupport GetIRSupport(const onnxruntime::logging::Logger& logger) {
+  // QnnIr should be able to serialize any model supported by the QNN reference spec.
+  // Use a model that works on QnnCpu to verify QnnIr availability.
+  return GetCPUSupport(logger, "ir");
+}
+
+void QnnIRBackendTests::SetUp() {
+  if (cached_ir_support_ == BackendSupport::SUPPORTED) {
+    return;
+  }
+
+  const auto& logger = DefaultLoggingManager().DefaultLogger();
+
+  // Determine if IR backend is supported only if we done so haven't before.
+  if (cached_ir_support_ == BackendSupport::SUPPORT_UNKNOWN) {
+    cached_ir_support_ = GetIRSupport(logger);
+  }
+
+  if (cached_ir_support_ == BackendSupport::UNSUPPORTED) {
+    LOGS(logger, WARNING) << "QNN IR backend is not available! Skipping test.";
+    GTEST_SKIP();
+  } else if (cached_ir_support_ == BackendSupport::SUPPORT_ERROR) {
+    LOGS(logger, ERROR) << "Failed to check if QNN IR backend is available.";
+    FAIL();
+  }
+}
+
 #if defined(_WIN32)
 // TODO: Remove or set to SUPPORTED once HTP emulation is supported on win arm64.
 BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORT_UNKNOWN;
@@ -383,6 +422,9 @@ BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORT
 BackendSupport QnnHTPBackendTests::cached_htp_support_ = BackendSupport::SUPPORTED;
 BackendSupport QnnCPUBackendTests::cached_cpu_support_ = BackendSupport::SUPPORTED;
 #endif  // defined(_WIN32)
+
+BackendSupport QnnHTPBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
+BackendSupport QnnIRBackendTests::cached_ir_support_ = BackendSupport::SUPPORT_UNKNOWN;
 
 bool ReduceOpHasAxesInput(const std::string& op_type, int opset_version) {
   static const std::unordered_map<std::string, int> opset_with_axes_as_input = {

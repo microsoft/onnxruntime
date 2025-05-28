@@ -32,6 +32,62 @@ namespace qnn {
 
 class QnnModel;
 
+class QnnSerializerConfig {
+ public:
+  virtual ~QnnSerializerConfig();
+
+  /**
+   * Create a config to write a DLC file for each graph using the Ir backend.
+   */
+  static std::unique_ptr<QnnSerializerConfig> CreateIr(std::string backend_path, std::string dlc_dir);
+
+  /**
+   * Create a config to write C++ source files using the Saver backend.
+   */
+  static std::unique_ptr<QnnSerializerConfig> CreateSaver(std::string backend_path);
+
+  /**
+   * Get the path to the serializer backend.
+   */
+  const std::string& GetBackendPath() const;
+
+  /**
+   * Set the name of the graph being serialized. This value may be used to determine the name
+   * of the output files.
+   *
+   * \param graph_name The name of the graph being serialized.
+   */
+  void SetGraphName(std::string graph_name);
+
+  /**
+   * Get any QNN Graph configs required to configure this serializer and perform any
+   * preparation, such as creating output directories.
+   *
+   * \return nullptr or a null-terminated list of QnnGraph_Config_t*.
+   */
+  virtual const QnnGraph_Config_t** Configure() = 0;
+
+  /**
+   * Some serializers allow for GraphConfigs that are unrelated to serialization to be
+   * specified at context creation time, while others raise an error. If true, this
+   * serializer should be configured with graph configs for any applicable real (e.g., HTP)
+   * backend.
+   *
+   * \return true if the backend can be configured with non-serialization graph configs.
+   */
+  virtual bool SupportsArbitraryGraphConfigs() const = 0;
+
+  ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnSerializerConfig);
+
+ protected:
+  QnnSerializerConfig(std::string backend_path);
+  const std::string& GetGraphName() const;
+
+ private:
+  std::string backend_path_;
+  std::string graph_name_{"graph"};
+};
+
 // configuration values for QnnBackendManager creation
 struct QnnBackendManagerConfig {
   std::string backend_path;
@@ -39,7 +95,7 @@ struct QnnBackendManagerConfig {
   ProfilingLevel profiling_level;
   std::string profiling_file_path;
   ContextPriority context_priority;
-  std::string qnn_saver_path;
+  std::shared_ptr<QnnSerializerConfig> qnn_serializer_config;
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
@@ -63,7 +119,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         profiling_level_(config.profiling_level),
         profiling_file_path_(config.profiling_file_path),
         context_priority_(config.context_priority),
-        qnn_saver_path_(config.qnn_saver_path),
+        qnn_serializer_config_(config.qnn_serializer_config),
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
         soc_model_(config.soc_model) {
@@ -141,6 +197,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ParseLoraConfig(std::string lora_config);
 
+  QnnSerializerConfig* GetQnnSerializerConfig();
+
  private:
   Status LoadBackend();
 
@@ -176,7 +234,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status LoadQnnSystemLib();
 
-  Status LoadQnnSaverBackend();
+  Status LoadQnnSerializerBackend();
 
   Status UnloadLib(void* handle);
 
@@ -295,7 +353,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #ifdef _WIN32
   std::set<HMODULE> mod_handles_;
 #endif
-  const std::string qnn_saver_path_;
+  const std::shared_ptr<QnnSerializerConfig> qnn_serializer_config_;
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;

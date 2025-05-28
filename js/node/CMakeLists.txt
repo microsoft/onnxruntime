@@ -92,9 +92,21 @@ if (WIN32)
   endif()
   message(STATUS "onnxruntime dist dir: ${ONNXRUNTIME_WIN_BIN_DIR}")
 endif()
+
+if (APPLE)
+  if (${ONNXRUNTIME_GENERATOR} MATCHES "Xcode")
+    set(ONNXRUNTIME_MAC_BIN_DIR ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE})
+  else()
+    set(ONNXRUNTIME_MAC_BIN_DIR ${ONNXRUNTIME_BUILD_DIR})
+  endif()
+  message(STATUS "onnxruntime dist dir: ${ONNXRUNTIME_MAC_BIN_DIR}")
+endif()
+
 # add libraries
 if (WIN32)
   target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_WIN_BIN_DIR})
+elseif (APPLE)
+  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_MAC_BIN_DIR})
 else()
   target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR})
 endif()
@@ -114,7 +126,7 @@ if (WIN32)
   file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
       DESTINATION ${dist_folder})
 elseif (APPLE)
-  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
+  file(COPY ${ONNXRUNTIME_MAC_BIN_DIR}/libonnxruntime.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 elseif (UNIX)
   file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so

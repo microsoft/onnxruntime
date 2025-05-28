@@ -25,6 +25,7 @@ limitations under the License.
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <cublas_v2.h>
 #include <cub/cub.cuh>
 
@@ -60,6 +61,15 @@ __device__ inline half2 AddHalf2(const half2 a, const half2 b) {
 #endif
 }
 
+template <>
+__device__ inline nv_bfloat16 Rsqrt(const nv_bfloat16& x) {
+  return hrsqrt(x);
+}
+
+__device__ inline nv_bfloat162 AddHalf2(const nv_bfloat162 a, const nv_bfloat162 b) {
+  return __hadd2(a, b);
+}
+
 struct KeyValuePairSum {
   __device__ inline cub::KeyValuePair<float, float> operator()(const cub::KeyValuePair<float, float>& a,
                                                                const cub::KeyValuePair<float, float>& b) {
@@ -77,6 +87,14 @@ struct KeyValuePairSum {
   __device__ inline cub::KeyValuePair<half2, half2> operator()(const cub::KeyValuePair<half2, half2>& a,
                                                                const cub::KeyValuePair<half2, half2>& b) {
     return cub::KeyValuePair<half2, half2>(AddHalf2(a.key, b.key), AddHalf2(a.value, b.value));
+  }
+
+  __device__ inline cub::KeyValuePair<nv_bfloat16, nv_bfloat16> operator()(const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& a,
+                                                                           const cub::KeyValuePair<nv_bfloat16, nv_bfloat16>& b) {
+    const nv_bfloat162 a2 = __halves2bfloat162(a.key, a.value);
+    const nv_bfloat162 b2 = __halves2bfloat162(b.key, b.value);
+    const nv_bfloat162 res = AddHalf2(a2, b2);
+    return cub::KeyValuePair<nv_bfloat16, nv_bfloat16>(__low2bfloat16(res), __high2bfloat16(res));
   }
 };
 

@@ -124,7 +124,7 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
           ) {
             // for a build bundled the wasm JS, if either of the following conditions is met:
             // - the proxy worker is loaded from a blob URL
-            // - `import.meta.url` is a file URL, it means it is overwriten by the bundler.
+            // - `import.meta.url` is a file URL, it means it is overwritten by the bundler.
             //
             // in either case, the path information is lost, we need to pass the path of the .wasm file to the worker.
             // we need to use the bundler preferred URL format:

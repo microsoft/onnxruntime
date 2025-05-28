@@ -448,6 +448,20 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   return device_info;
 }
+
+DeviceInfo GetDeviceInfoCPUID() {
+  DeviceInfo cpu_info{};
+  cpu_info.type = OrtHardwareDeviceType_CPU;
+
+  auto& cpuinfo = CPUIDInfo::GetCPUIDInfo();
+  cpu_info.vendor_id = cpuinfo.GetCPUVendorId();
+
+  std::string_view cpuid_vendor = cpuinfo.GetCPUVendor();
+  cpu_info.vendor = std::wstring(cpuid_vendor.begin(), cpuid_vendor.end());
+  cpu_info.description = cpu_info.vendor;
+
+  return cpu_info;
+}
 }  // namespace
 
 // Get devices from various sources and combine them into a single set of devices.
@@ -468,6 +482,22 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12();
   // setupapi_info. key is vendor_id+device_id
   std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus);
+
+  // Ensure we have at least one CPU
+  bool found_cpu = false;
+  for (auto& [key, device] : setupapi_info) {
+    if (device.type == OrtHardwareDeviceType_CPU) {
+      found_cpu = true;
+      break;
+    }
+  }
+
+  // If no CPU was found via SetupApi, add one from CPUID
+  if (!found_cpu) {
+    DeviceInfo device = GetDeviceInfoCPUID();
+    uint64_t key = GetDeviceKey(device);
+    setupapi_info[key] = std::move(device);
+  }
 
   // add dxcore info for any devices that are not in d3d12.
   // d3d12 info is more complete and has a good description and metadata.

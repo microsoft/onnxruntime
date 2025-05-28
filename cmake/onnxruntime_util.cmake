@@ -21,7 +21,7 @@ if (WIN32)
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_util
+    install(TARGETS onnxruntime_util EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -21,6 +21,7 @@ struct OrtTensorRTProviderOptionsV2 {
   int trt_min_subgraph_size{1};                          // minimum size of TensorRT subgraphs
   size_t trt_max_workspace_size{0};                      // maximum workspace size for TensorRT. Default is 0 means max device memory size
   int trt_fp16_enable{0};                                // enable TensorRT FP16 precision. Default 0 = false, nonzero = true
+  int trt_bf16_enable{0};                                // enable TensorRT BF16 precision. Default 0 = false, nonzero = true
   int trt_int8_enable{0};                                // enable TensorRT INT8 precision. Default 0 = false, nonzero = true
   const char* trt_int8_calibration_table_name{nullptr};  // TensorRT INT8 calibration table name.
   int trt_int8_use_native_calibration_table{0};          // use native TensorRT generated calibration table. Default 0 = false, nonzero = true

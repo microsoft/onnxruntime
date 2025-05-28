@@ -68,7 +68,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         /// Ctor
         /// </summary>
         /// <param name="elementType">TensorElementType value</param>
-        /// <param name="typeSize">size fo the type in bytes</param>
+        /// <param name="typeSize">size of the type in bytes</param>
         public TensorTypeInfo(TensorElementType elementType, int typeSize)
         {
             ElementType = elementType;
@@ -674,7 +674,7 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
 
             // the diagonal will be the length of the smaller axis
             // if offset it positive, the length will shift along the second axis
-            // if the offsett is negative, the length will shift along the first axis
+            // if the offset is negative, the length will shift along the first axis
             // In that way the length of the diagonal will be 
             //   Min(offset < 0 ? axisLength0 + offset : axisLength0, offset > 0 ? axisLength1 - offset : axisLength1)
             // To illustrate, consider the following
@@ -907,21 +907,21 @@ namespace Microsoft.ML.OnnxRuntime.Tensors
         }
 
         /// <summary>
-        /// Gets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
+        /// Gets the value at the specified index, where index is a linearized version of n-dimension indices using strides.
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <returns>The value at the specified position in this Tensor.</returns>
         public abstract T GetValue(int index);
 
         /// <summary>
-        /// Sets the value at the specied index, where index is a linearized version of n-dimension indices using strides.
+        /// Sets the value at the specified index, where index is a linearized version of n-dimension indices using strides.
         /// </summary>
         /// <param name="index">An integer index computed as a dot-product of indices.</param>
         /// <param name="value">The new value to set at the specified position in this Tensor.</param>
         public abstract void SetValue(int index, T value);
 
 
-        #region statics
+        #region statistics
         /// <summary>
         /// Performs a value comparison of the content and shape of two tensors.  Two tensors are equal if they have the same shape and same value at every set of indices.  If not equal a tensor is greater or less than another tensor based on the first non-equal element when enumerating in linear order.
         /// </summary>

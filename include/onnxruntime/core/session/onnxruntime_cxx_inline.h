@@ -832,6 +832,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   return *this;
 }
 
+inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
+  return *this;
+}
+
 namespace detail {
 
 template <typename T>

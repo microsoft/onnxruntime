@@ -302,7 +302,7 @@ inline std::wstring ToWideString(const std::wstring& s) { return s; }
 inline std::string ToWideString(const std::string& s) { return s; }
 #endif
 
-constexpr size_t kMaxStrLen = 2048;
+constexpr size_t kMaxStrLen = 4096;
 
 // Returns whether `key` is in `container`.
 // Like C++20's map/set contains() member function.

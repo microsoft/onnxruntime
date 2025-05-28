@@ -100,7 +100,7 @@ export const validateInputs = (
   }
   const hasPastKey = pastKey && pastKey.dims.length !== 0;
   const hasPastValue = pastValue && pastValue.dims.length !== 0;
-  // Currenly the onnxruntime GQA specification only support key/value BNSH format.
+  // Currently the onnxruntime GQA specification only support key/value BNSH format.
   const isPastkvBSNH =
     hasPastKey &&
     pastKey.dims.length === 4 &&

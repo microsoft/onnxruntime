@@ -93,7 +93,7 @@ class SparseTensor final {
 
   /// <summary>
   /// The factory function creates an instance of SparseTensor on the heap
-  /// using appropriate constructor and initializes OrtValue instance wit it.
+  /// using appropriate constructor and initializes OrtValue instance with it.
   /// </summary>
   /// <param name="elt_type">element data type</param>
   /// <param name="dense_shape">dense shape of the sparse tensor</param>
@@ -110,7 +110,7 @@ class SparseTensor final {
 
   /// <summary>
   /// The factory function creates an instance of SparseTensor on the heap
-  /// using appropriate constructor and initializes OrtValue instance wit it.
+  /// using appropriate constructor and initializes OrtValue instance with it.
   /// </summary>
   /// <param name="elt_type">element data type</param>
   /// <param name="dense_shape">dense shape of the sparse tensor</param>

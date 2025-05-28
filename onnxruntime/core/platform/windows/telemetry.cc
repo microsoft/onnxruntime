@@ -183,6 +183,7 @@ void WindowsTelemetry::LogProcessInfo() const {
                     // Telemetry info
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
+                    TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
                     TraceLoggingBool(isRedist, "isRedist"));
 
   process_info_logged = true;

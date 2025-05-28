@@ -671,6 +671,7 @@ TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize16) {
 }
 
 TEST(MultiHeadAttentionTest, CrossAttention_Batch1_HeadSize8) {
+  ROCM_GTEST_SKIP("ROCm MHA skip - missing support for ROCm on Radeon");
   AttentionTestData data;
   GetCrossAttentionData_HeadSize8_NoBias(data);
   RunMultiHeadAttentionTests(data, DISABLE_CUDA);

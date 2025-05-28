@@ -366,6 +366,8 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_EpMetadata;
         public IntPtr EpDevice_EpOptions;
         public IntPtr EpDevice_Device;
+        public IntPtr GetEpApi;
+        public IntPtr GetTensorSizeInBytes;
     }
 
     internal static class NativeMethods
@@ -539,6 +541,7 @@ namespace Microsoft.ML.OnnxRuntime
             OrtValueIsTensor = (DOrtValueIsTensor)Marshal.GetDelegateForFunctionPointer(api_.IsTensor, typeof(DOrtValueIsTensor));
             OrtValueIsSparseTensor = (DOrtValueIsSparseTensor)Marshal.GetDelegateForFunctionPointer(api_.IsSparseTensor, typeof(DOrtValueIsSparseTensor));
             OrtGetTensorMutableData = (DOrtGetTensorMutableData)Marshal.GetDelegateForFunctionPointer(api_.GetTensorMutableData, typeof(DOrtGetTensorMutableData));
+            OrtGetTensorSizeInBytes = (DOrtGetTensorSizeInBytes)Marshal.GetDelegateForFunctionPointer(api_.GetTensorSizeInBytes, typeof(DOrtGetTensorSizeInBytes));
             OrtFillStringTensor = (DOrtFillStringTensor)Marshal.GetDelegateForFunctionPointer(api_.FillStringTensor, typeof(DOrtFillStringTensor));
             OrtGetResizedStringTensorElementBuffer = (DOrtGetResizedStringTensorElementBuffer)Marshal.GetDelegateForFunctionPointer(api_.GetResizedStringTensorElementBuffer, typeof(DOrtGetResizedStringTensorElementBuffer));
             OrtGetStringTensorContent = (DOrtGetStringTensorContent)Marshal.GetDelegateForFunctionPointer(api_.GetStringTensorContent, typeof(DOrtGetStringTensorContent));
@@ -1456,7 +1459,7 @@ namespace Microsoft.ML.OnnxRuntime
         /// <param name="bytes">bytes</param>
         /// <param name="size">size in bytes</param>
         /// <param name="allocator">optional device allocator</param>
-        /// <param name="lora_adapter">resuling LoraAdapter instance</param>
+        /// <param name="lora_adapter">resulting LoraAdapter instance</param>
         /// <returns></returns>
         [UnmanagedFunctionPointer(CallingConvention.Winapi)]
         public delegate IntPtr /*(OrtStatus*)*/ DCreateLoraAdapterFromArray(
@@ -2094,6 +2097,12 @@ namespace Microsoft.ML.OnnxRuntime
         public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorMutableData(IntPtr /*(OrtValue*)*/ value, out IntPtr /* (void**)*/ dataBufferHandle);
 
         public static DOrtGetTensorMutableData OrtGetTensorMutableData;
+
+        [UnmanagedFunctionPointer(CallingConvention.Winapi)]
+        public delegate IntPtr /*(OrtStatus*)*/ DOrtGetTensorSizeInBytes(IntPtr /* const struct OrtValue*/ ortValue,
+                                  out UIntPtr /* size_t* */ tensorSizeInBytes);
+
+        public static DOrtGetTensorSizeInBytes OrtGetTensorSizeInBytes;
 
         /// \param value A tensor created from OrtCreateTensor... function.
         /// \param len total data length, not including the trailing '\0' chars.
