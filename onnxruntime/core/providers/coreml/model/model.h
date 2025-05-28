@@ -54,6 +54,7 @@ class Model {
         std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
         std::unordered_set<std::string>&& scalar_outputs,
         std::unordered_set<std::string>&& int64_outputs,
+        std::unordered_set<std::string>&& boolean_outputs,
         const logging::Logger& logger, const CoreMLOptions& coreml_options);
 
   ~Model();
@@ -71,6 +72,10 @@ class Model {
 
   bool IsInt64Output(const std::string& output_name) const {
     return Contains(int64_outputs_, output_name);
+  }
+
+  bool IsBooleanOutput(const std::string& output_name) const {
+    return Contains(boolean_outputs_, output_name);
   }
 
   // Mutex for exclusive lock to this model object
@@ -101,6 +106,7 @@ class Model {
   std::unordered_map<std::string, OnnxTensorInfo> input_output_info_;
   std::unordered_set<std::string> scalar_outputs_;
   std::unordered_set<std::string> int64_outputs_;
+  std::unordered_set<std::string> boolean_outputs_;
 
   std::mutex mutex_;
 };

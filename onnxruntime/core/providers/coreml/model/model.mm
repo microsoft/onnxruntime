@@ -677,6 +677,7 @@ Model::Model(const std::string& path,
              std::unordered_map<std::string, OnnxTensorInfo>&& input_output_info,
              std::unordered_set<std::string>&& scalar_outputs,
              std::unordered_set<std::string>&& int64_outputs,
+             std::unordered_set<std::string>&& boolean_outputs,
              const logging::Logger& logger,
              const CoreMLOptions& coreml_options)
     : execution_(std::make_unique<Execution>(path, logger, coreml_options)),
@@ -684,7 +685,8 @@ Model::Model(const std::string& path,
       model_output_names_(std::move(model_output_names)),
       input_output_info_(std::move(input_output_info)),
       scalar_outputs_(std::move(scalar_outputs)),
-      int64_outputs_(std::move(int64_outputs)) {
+      int64_outputs_(std::move(int64_outputs)),
+      boolean_outputs(std::move(boolean_outputs)) {
 }
 
 Model::~Model() {}

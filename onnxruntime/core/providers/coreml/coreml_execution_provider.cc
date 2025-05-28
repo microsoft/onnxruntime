@@ -258,6 +258,12 @@ common::Status CoreMLExecutionProvider::Compile(const std::vector<FusedNodeAndGr
             output_type = ONNX_NAMESPACE::TensorProto_DataType_INT64;
           }
 
+          // CoreML MLProgram supports boolean output types for nodes but not as outputs for the graph
+          // so we cast boolean outputs to floats
+          if (model->IsBooleanOutput(output_name)) {
+            output_type = ONNX_NAMESPACE::TensorProto_DataType_BOOL;
+          }
+
           outputs.emplace(output_name, coreml::OnnxTensorInfo{output_type, output_shape});
         }
 

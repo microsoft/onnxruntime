@@ -837,7 +837,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   input_output.set_name(name);
 
   auto* multi_array = input_output.mutable_type()->mutable_multiarraytype();
-  auto* tensor_type = input_output.mutable_type()->mutable_tensortype();
 
   std::vector<int64_t> shape;
   ORT_RETURN_IF_NOT(GetShape(node_arg, shape, logger_), "Unable to get shape for ", input_output_type, ": ", name);
@@ -882,6 +881,7 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
   }
 
   int32_t data_type;
+  {  // type
     const auto* type_proto = node_arg.TypeAsProto();
     if (!type_proto || !type_proto->tensor_type().has_elem_type()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -889,10 +889,6 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
     }
 
     data_type = type_proto->tensor_type().elem_type();
-    if (create_ml_program_) {
-      tensor_type->set_datatype(OnnxDataTypeToMILSpec(data_type));
-    }
-   else {  // type
     switch (data_type) {
       case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
         multi_array->set_datatype(ArrayFeatureType::FLOAT32);
@@ -912,12 +908,14 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
           AddInt64Output(name);
         }
         break;
+      case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
+        multi_array->set_datatype(ArrayFeatureType::FLOAT32);
+        break;
       default: {
         // TODO: support other type
-        break;
-        // return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-        //                        "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
-        //                        " type: ", type_proto->tensor_type().elem_type());
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                               "The ", input_output_type, " of graph doesn't have valid type, name: ", name,
+                               " type: ", type_proto->tensor_type().elem_type());
       }
     }
   }
@@ -1059,6 +1057,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     get_sanitized_io_info(std::move(input_output_info_)),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
+                                    std::move(boolean_outputs_),
                                     logger_, coreml_options_);
   } else {
     model = std::make_unique<Model>(model_output_path_,
@@ -1067,6 +1066,7 @@ Status ModelBuilder::LoadModel(std::unique_ptr<Model>& model) {
                                     std::move(input_output_info_),
                                     std::move(scalar_outputs_),
                                     std::move(int64_outputs_),
+                                    std::move(boolean_outputs_),
                                     logger_, coreml_options_);
   }
 
@@ -1140,6 +1140,10 @@ void ModelBuilder::AddScalarOutput(const std::string& output_name) {
 
 void ModelBuilder::AddInt64Output(const std::string& output_name) {
   int64_outputs_.insert(output_name);
+}
+
+void ModelBuilder::AddBooleanOutput(const std::string& output_name) {
+  boolean_outputs_.insert(output_name);
 }
 
 void ModelBuilder::AddInitializerToSkip(const std::string& tensor_name) {
