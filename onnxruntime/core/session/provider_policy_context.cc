@@ -10,6 +10,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_factory_plugin.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -288,19 +289,15 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
       return ToStatus(status);
     }
   } else {
-    // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
-    // and we would add that IExecutionProvider to the InferenceSession.
-    // but first we need OrtEp and the OrtEpApi to be implemented.
-    ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+    OrtEp* api_ep = nullptr;
+    auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
+                                            info.devices.size(), &options, &logger,
+                                            &api_ep);
+    if (status != nullptr) {
+      return ToStatus(status);
+    }
 
-    // OrtEp* api_ep = nullptr;
-    //// add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-    // auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-    //                                         info.devices.size(), &options, &logger,
-    //                                         &api_ep);
-    // if (status != nullptr) {
-    //   return ToStatus(status);
-    // }
+    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)));
   }
 
   return Status::OK();

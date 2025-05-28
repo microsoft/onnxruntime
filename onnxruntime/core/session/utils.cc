@@ -17,6 +17,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_factory_plugin.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/model_compilation_options.h"
@@ -348,12 +349,17 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
   }
 
-  EpFactoryInternal* internal_factory = nullptr;
+  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
+
   for (const OrtEpDevice* ep_device : ep_devices) {
-    // we expect the internal factory to be available for internal and provider bridge EPs, which is all we support.
-    internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
-    if (!internal_factory) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
+    if (provider_factory == nullptr) {
+      EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
+
+      if (internal_factory) {
+        provider_factory = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+      } else {
+        provider_factory = std::make_unique<PluginExecutionProviderFactory>(*ep_device->ep_factory, ep_devices);
+      }
     }
 
     // add the options to the session options with the EP prefix.
@@ -373,13 +379,7 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
     }
   }
 
-  if (!internal_factory) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
-  }
-
-  out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory,
-                                                           std::vector<const OrtEpDevice*>(ep_devices.begin(),
-                                                                                           ep_devices.end()));
+  out = std::move(provider_factory);
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)

@@ -68,7 +68,7 @@ void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
-                                                                   const std::vector<const OrtEpDevice*>& ep_devices)
+                                                                   gsl::span<const OrtEpDevice* const> ep_devices)
     : ep_factory_{ep_factory} {
   devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
