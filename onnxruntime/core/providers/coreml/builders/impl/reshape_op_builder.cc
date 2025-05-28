@@ -40,15 +40,15 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger));
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
   Initializer unpacked_tensor(*model_builder.GetConstantInitializer(new_shape_name));
   TensorShapeVector new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
-  if (GetShape(*input_defs[0], input_shape, logger)) {
-    // ReshapeHelper applies the ONNX rules to create the concrete output shape
-    ReshapeHelper helper(TensorShape(input_shape), new_shape);
-  }
+
+  // ReshapeHelper applies the ONNX rules to create the concrete output shape
+  ReshapeHelper helper(TensorShape(input_shape), new_shape);
 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
