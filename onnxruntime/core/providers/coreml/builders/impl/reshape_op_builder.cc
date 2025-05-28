@@ -90,7 +90,7 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
 // The below method checks for these collisions. In the case that x.shape has symbolic dimensions at the locations where
 // there is a 0 in new_shape, then we move the reshape op to CPU EP.
 bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
-  for (int i = 0; i < new_shape.size(); i++) {
+  for (size_t i = 0; i < new_shape.size(); i++) {
     if (new_shape[i] == 0 && input_shape[i] == -1) {
       LOGS(logger, VERBOSE) << "CoreML does not support 0's in the new shape. New shape: " << Shape2String(new_shape);
       return false;
@@ -139,14 +139,10 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
   if (!GetShape(*input_defs[0], input_shape, logger)) {
-    if (!AllPositiveShape(new_shape)) {
-      LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape, unless the new shape contains all positive integers. "
-                               "Input shape: "
-                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-      return false;
-    } else {
-      return true;
-    }
+    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. "
+                             "Input shape: "
+                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+    return false;
   }
 
   if (!input_params.create_mlprogram && !IsStaticShape(input_shape)) {
