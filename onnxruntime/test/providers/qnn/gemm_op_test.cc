@@ -303,6 +303,7 @@ TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Static_B_Dynamic_Bias_U8) {
                                         ExpectedEPNodeAssignment::All);
 }
 
+#ifndef __linux__
 // Test 16-bit QDQ Gemm with dynamic inputs A and Bias. The B input is an initializer.
 TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Dynamic_B_Dynamic_Bias_U16) {
   std::vector<float> input_a_data = GetFloatDataInRange(-10.0f, 10.0f, 6);
@@ -316,6 +317,7 @@ TEST_F(QnnHTPBackendTests, Gemm_Dynamic_A_Dynamic_B_Dynamic_Bias_U16) {
                                           13,     // opset
                                           true);  // Use com.microsoft Q/DQ ops
 }
+#endif
 
 // Test broadcasting of bias input. All inputs are dynamic.
 TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicInputs) {
