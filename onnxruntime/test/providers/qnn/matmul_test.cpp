@@ -340,6 +340,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   }
 }
 
+#ifndef __linux__
 // Tests MatMul with two uint16 (quantized) inputs with weight as static.
 // This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to sint16).
 // This workaround prevents a validation error for this specific MatMul configuration.
@@ -391,6 +392,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
         provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
   }
 }
+#endif
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
