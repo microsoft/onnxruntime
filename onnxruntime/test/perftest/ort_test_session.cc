@@ -813,6 +813,10 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   }
 
+#if defined(ENABLE_EXTENSION_CUSTOM_OPS)
+  session_options.EnableOrtCustomOps();
+#endif
+
   if (!performance_test_config.model_info.load_via_path) {
     session_ = Ort::Session(env, performance_test_config.model_info.model_file_path.c_str(), session_options);
   } else {
