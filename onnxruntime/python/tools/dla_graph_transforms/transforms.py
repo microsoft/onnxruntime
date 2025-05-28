@@ -130,7 +130,8 @@ def transform_matmul_to_transpose_conv_transpose(model):
             # Otherwise, we considered the input tensor has been "transposed" to perform 1x1 Conv
             return False
 
-        need_to_apply_transpose = check_to_apply_transpose(node)
+        need_to_apply_transpose = True
+        # need_to_apply_transpose = check_to_apply_transpose(node)
         graph.node.remove(node)
 
         # Add Transpose if needed
