@@ -154,7 +154,7 @@ const createSoftmaxProgramInfo = (context: ComputeContext, attributes: SoftmaxAt
         for (var col = lindex; col < cols; col += wg) {
           var value = exp(getValue(row, col, row_stride) - rowMaxShared) / rowSumShared;
           // max operation protects against NaN since all values should be >=0
-          value = max(value, x_value_t(0.0));
+          value = max(value, ${valueType}(0.0));
           setValue(row, col, row_stride, value);
         }
       }`;
