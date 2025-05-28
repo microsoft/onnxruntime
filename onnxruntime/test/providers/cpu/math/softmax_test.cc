@@ -51,7 +51,7 @@ TEST(SoftmaxOperator, Simple) {
 
 #ifdef USE_WEBGPU
 TEST(SoftmaxOperator, webgpu_nan) {
-  OpTester test("Softmax", 13); // axis default is -1
+  OpTester test("Softmax", 13);  // axis default is -1
 
   std::vector<float> x_vals = {-INFINITY, -INFINITY, -INFINITY};
   std::vector<float> expected_result = {0.0f, 0.0f, 0.0f};
