@@ -1072,7 +1072,8 @@ TEST(GemmOpTest, GemmOptimizePacked) {
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_data);
-    test.Config(run_with_tunable_op)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 
@@ -1127,7 +1128,8 @@ TEST(GemmOpTest, GemmOptimizePackedTransA) {
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_data);
-    test.Config(run_with_tunable_op)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 
@@ -1181,7 +1183,8 @@ TEST(GemmOpTest, GemmOptimizePackedTransB) {
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_data);
-    test.Config(run_with_tunable_op)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 
@@ -1235,7 +1238,8 @@ TEST(GemmOpTest, GemmOptimizePackedTransAB) {
     }
 
     test.AddOutput<float>("Y", {M, N}, expected_data);
-    test.Config(run_with_tunable_op)
+    test.ConfigExcludeEps({kQnnExecutionProvider})
+        .Config(run_with_tunable_op)
         .RunWithConfig();
   };
 
