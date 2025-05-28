@@ -1,5 +1,14 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+  FetchContent_Declare(
+    vaip
+    GIT_REPOSITORY ${DEP_URL_vaip}
+    GIT_TAG ${DEP_SHA1_vaip}
+    GIT_SUBMODULES_RECURSE FALSE
+    GIT_SHALLOW TRUE
+    OVERRIDE_FIND_PACKAGE
+  )
+  find_package(vaip)
 
   if ("${GIT_COMMIT_ID}" STREQUAL "")
   execute_process(
@@ -20,16 +29,17 @@
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_vitisai_cc_srcs})
   onnxruntime_add_shared_library(onnxruntime_providers_vitisai ${onnxruntime_providers_vitisai_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} safeint_interface flatbuffers::flatbuffers  Boost::mp11)
-  target_link_libraries(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED})
+  onnxruntime_add_include_to_target(onnxruntime_providers_vitisai ${ONNXRUNTIME_PROVIDERS_SHARED} ${GSL_TARGET} safeint_interface flatbuffers::flatbuffers)
+  target_link_libraries(onnxruntime_providers_vitisai PRIVATE ${ONNXRUNTIME_PROVIDERS_SHARED} onnxruntime_vitisai_ep::onnxruntime_vitisai_ep)
   if(MSVC)
     onnxruntime_add_include_to_target(onnxruntime_providers_vitisai dbghelp)
     set_property(TARGET onnxruntime_providers_vitisai APPEND_STRING PROPERTY LINK_FLAGS "-DEF:${ONNXRUNTIME_ROOT}/core/providers/vitisai/symbols.def")
+    target_sources(onnxruntime_providers_vitisai PRIVATE ${vaip_BINARY_DIR}/onnxruntime_vitisai_ep/onnxruntime_vitisai_ep.def)
   else(MSVC)
     set_property(TARGET onnxruntime_providers_vitisai APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${ONNXRUNTIME_ROOT}/core/providers/vitisai/version_script.lds -Xlinker --gc-sections")
   endif(MSVC)
 
-  target_include_directories(onnxruntime_providers_vitisai PRIVATE "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include" ${XRT_INCLUDE_DIRS} ${CMAKE_CURRENT_BINARY_DIR}/VitisAI)
+  target_include_directories(onnxruntime_providers_vitisai PRIVATE "${ONNXRUNTIME_ROOT}/core/providers/vitisai/include" ${CMAKE_CURRENT_BINARY_DIR}/VitisAI)
   if(MSVC)
     target_compile_options(onnxruntime_providers_vitisai PRIVATE "/Zc:__cplusplus")
     # for dll interface warning.
@@ -41,6 +51,13 @@
   else(MSVC)
     target_compile_options(onnxruntime_providers_vitisai PUBLIC $<$<CONFIG:DEBUG>:-U_FORTIFY_SOURCE -D_FORTIFY_SOURCE=0>)
     target_compile_options(onnxruntime_providers_vitisai PRIVATE -Wno-unused-parameter)
+  endif(MSVC)
+
+  if(MSVC)
+    target_link_options(onnxruntime_providers_vitisai PRIVATE
+      "$<$<CONFIG:Debug>:/NODEFAULTLIB:libucrtd.lib /DEFAULTLIB:ucrtd.lib>"
+      "$<$<CONFIG:Release>:/NODEFAULTLIB:libucrt.lib /DEFAULTLIB:ucrt.lib>"
+      )
   endif(MSVC)
 
   set_target_properties(onnxruntime_providers_vitisai PROPERTIES FOLDER "ONNXRuntime")
