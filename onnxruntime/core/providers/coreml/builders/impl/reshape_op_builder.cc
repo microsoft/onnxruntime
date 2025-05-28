@@ -40,15 +40,15 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                                const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get shape of data");
 
   const auto& data_name = input_defs[0]->Name();
   const auto& new_shape_name = input_defs[1]->Name();
   Initializer unpacked_tensor(*model_builder.GetConstantInitializer(new_shape_name));
   TensorShapeVector new_shape = ToShapeVector(unpacked_tensor.DataAsSpan<int64_t>());
-
-  // ReshapeHelper applies the ONNX rules to create the concrete output shape
-  ReshapeHelper helper(TensorShape(input_shape), new_shape);
+  if (GetShape(*input_defs[0], input_shape, logger)) {
+    // ReshapeHelper applies the ONNX rules to create the concrete output shape
+    ReshapeHelper helper(TensorShape(input_shape), new_shape);
+  }
 
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;
@@ -79,34 +79,11 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
   return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
 }
 
-bool OnlyOneNewSymbol(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
-  std::unordered_map<int64_t, int> num_dim_count;
-
-  for (const auto& dim : input_shape) {
-    if (num_dim_count.find(dim) == num_dim_count.end()) {
-      num_dim_count[dim] = 1;
-    } else {
-      num_dim_count[dim]++;
-    }
-  }
-
-  bool new_introduced = false;
-  for (const auto& dim : new_shape) {
-    if (num_dim_count.find(dim) == num_dim_count.end()) {
-      // new shape can only have one new symbol not in input shape
-      if (new_introduced) {
-        LOGS(logger, VERBOSE) << "Reshape new_shape cannot introduce more than 1 new symbol. "
-                              << "Input shape: " << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-        return false;
-      } else {
-        new_introduced = true;
-      }
-    } else {
-      if (num_dim_count[dim] == 1) {
-        num_dim_count.erase(dim);
-      } else {
-        num_dim_count[dim]--;
-      }
+bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
+  for (int i = 0; i < new_shape.size(); i++) {
+    if (new_shape[i] == 0 && input_shape[i] == -1) {
+      LOGS(logger, VERBOSE) << "CoreML does not support 0's in the new shape. New shape: " << Shape2String(new_shape);
+      return false;
     }
   }
   return true;
@@ -151,25 +128,23 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
   if (!GetShape(*input_defs[0], input_shape, logger)) {
-    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape.";
-    return false;
+    if (!AllPositiveShape(new_shape)) {
+      LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape, unless the new shape contains all positive integers. "
+                               "Input shape: "
+                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+      return false;
+    } else {
+      return true;
+    }
   }
 
-  if (!input_params.create_mlprogram && IsStaticShape(input_shape)) {
+  if (!input_params.create_mlprogram && !IsStaticShape(input_shape)) {
     LOGS(logger, VERBOSE) << "Input must have static shape for NeuralNetwork.";
     return false;
   }
 
-  if (input_shape.empty() && !AllPositiveShape(new_shape)) {
-    // unknown rank & fails the positive shape check
-    LOGS(logger, VERBOSE) << "Reshape does not support empty input shape unless the shape input contains all positive integers. "
-                             "Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-    return false;
-  }
-
-  if (!OnlyOneNewSymbol(input_shape, new_shape, logger)) {
-    return false;
+  if (std::find(input_shape.begin(), input_shape.end(), 0) != input_shape.end()) {
+    LOGS(logger, VERBOSE) << "Input shape must not have any 0's in it.";
   }
 
   if (new_shape.size() > 5) {
@@ -179,16 +154,17 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
+  if (!CheckNegativeOneCollision(input_shape, new_shape, logger)) {
+    return false;
+  }
+
   // Max of one -1 allowed
-  // Unknown / symbolic dimensions in the input shape are parsed as -1 in input_shape variable
-  // So there are cases where multiple -1's will pass the OnlyOneNewSymbol check
-  if (input_params.create_mlprogram && std::count(new_shape.begin(), new_shape.end(), -1) < 2) {
+  if (input_params.create_mlprogram && std::count(new_shape.begin(), new_shape.end(), -1) > 1) {
     LOGS(logger, VERBOSE) << "Reshape does not support -1 in new shape unless it appears in the input shape. "
                              "Input shape: "
                           << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
-
   return true;
 }
 
