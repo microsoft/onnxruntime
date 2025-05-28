@@ -1984,6 +1984,10 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
     }
+    // Exclude contrib ops
+    if (node->Domain() == kMSDomain) {
+      supported_node = false;
+    }
 
     if (supported_node) {
       if (new_subgraph) {
@@ -2242,6 +2246,18 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
     }
   }
   return Status::OK();
+}
+
+const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
+  for (auto& model : ep_context_nodes_) {
+    auto& graph = model->MainGraph();
+    for (int i = 0; i < graph.MaxNodeIndex(); i++) {
+      auto node = graph.GetNode(i);
+      ep_context_nodes.push_back(node);
+    }
+  }
+  return ep_context_nodes;
 }
 
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
@@ -2543,8 +2559,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                                                              ep_context_embed_mode_,
                                                                              compute_capability_hw_compat,
                                                                              model_path_,
-                                                                             GetLogger())};
-      DumpCtxModel(model_proto.get(), ctx_model_path_);
+                                                                             GetLogger(),
+                                                                             ep_context_nodes_, fused_node.Name())};
+      // DumpCtxsModel(model_proto.get(), ctx_model_path_);
     }
   }
 

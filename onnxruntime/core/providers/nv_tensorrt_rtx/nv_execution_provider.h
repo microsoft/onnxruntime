@@ -228,6 +228,8 @@ class NvExecutionProvider : public IExecutionProvider {
                                     bool serialize_refitted_engine,
                                     bool detailed_build_log);
 
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+
  private:
   mutable NvExecutionProviderInfo info_;
   bool external_stream_ = false;
@@ -264,6 +266,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
   int nv_profile_index_ = 0;
+  std::vector<std::unique_ptr<onnxruntime::Model>> ep_context_nodes_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
