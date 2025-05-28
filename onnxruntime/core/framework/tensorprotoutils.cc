@@ -165,7 +165,7 @@ Status UnpackTensorWithRawData(const void* raw_data, size_t raw_data_len, size_t
 DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(Int4x2)
 DEFINE_INT4_UNPACK_TENSOR_WITH_RAW_DATA_IMPL(UInt4x2)
 
-// Read external data for tensor in unint8_t* form and return Status::OK() if the data is read successfully.
+// Read external data for tensor in uint8_t* form and return Status::OK() if the data is read successfully.
 // Uses the tensor_proto_dir to construct the full path for external data. If tensor_proto_dir == nullptr
 // then uses the current directory instead.
 // This function does not unpack string_data of an initializer tensor
@@ -179,11 +179,16 @@ Status ReadExternalDataForTensor(const ONNX_NAMESPACE::TensorProto& tensor_proto
       GetExternalDataInfo(tensor_proto, tensor_proto_dir, external_file_path, file_offset, tensor_byte_size));
 
   unpacked_tensor.resize(tensor_byte_size);
-  ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
-      external_file_path.c_str(),
-      file_offset,
-      tensor_byte_size,
-      gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+  if (external_file_path == onnxruntime::utils::kTensorProtoMemoryAddressTag) {
+    gsl::copy(gsl::make_span(reinterpret_cast<uint8_t*>(file_offset), tensor_byte_size),
+              gsl::make_span(unpacked_tensor));
+  } else {
+    ORT_RETURN_IF_ERROR(onnxruntime::Env::Default().ReadFileIntoBuffer(
+        external_file_path.c_str(),
+        file_offset,
+        tensor_byte_size,
+        gsl::make_span(reinterpret_cast<char*>(unpacked_tensor.data()), tensor_byte_size)));
+  }
 
   return Status::OK();
 }
