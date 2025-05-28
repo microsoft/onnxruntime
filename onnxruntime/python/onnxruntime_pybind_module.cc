@@ -5,7 +5,7 @@
 #include <pybind11/stl.h>
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
-
+#include "core/common/common.h"
 namespace onnxruntime {
 namespace python {
 namespace py = pybind11;
@@ -16,13 +16,13 @@ static constexpr bool HAS_COLLECTIVE_OPS = true;
 static constexpr bool HAS_COLLECTIVE_OPS = false;
 #endif
 
-bool CreateInferencePybindStateModule(py::module& m);
+Status CreateInferencePybindStateModule(py::module& m);
 void CreateQuantPybindModule(py::module& m);
 
 PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
-  if (!CreateInferencePybindStateModule(m)) {
-    throw pybind11::import_error();
-  }
+  auto st = CreateInferencePybindStateModule(m);
+  if (!st.IsOK())
+    throw pybind11::import_error(st.ErrorMessage());
   // move it out of shared method since training build has a little different behavior.
   m.def(
       "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
