@@ -2250,7 +2250,7 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
 
 const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const {
   InlinedVector<const Node*> ep_context_nodes;
-  for (auto& model : ep_context_nodes_) {
+  for (auto& model : ep_context_models_) {
     auto& graph = model->MainGraph();
     for (int i = 0; i < graph.MaxNodeIndex(); i++) {
       auto node = graph.GetNode(i);
@@ -2560,7 +2560,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                                                              compute_capability_hw_compat,
                                                                              model_path_,
                                                                              GetLogger(),
-                                                                             ep_context_nodes_, fused_node.Name())};
+                                                                             ep_context_models_, fused_node.Name())};
       // DumpCtxsModel(model_proto.get(), ctx_model_path_);
     }
   }

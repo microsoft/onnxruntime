@@ -35,7 +35,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string compute_capability,
                                            const std::string onnx_model_path,
                                            const logging::Logger* logger,
-                                           std::vector<std::unique_ptr<onnxruntime::Model>>& ep_context_nodes, const std::string& node_name);
+                                           std::vector<std::unique_ptr<onnxruntime::Model>>& ep_context_models, const std::string& ep_context_node_name);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
 bool IsAbsolutePath(const std::string& path_string);
