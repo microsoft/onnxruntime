@@ -73,7 +73,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string compute_capability,
                                            const std::string onnx_model_path,
                                            const logging::Logger* logger,
-                                           std::vector<std::unique_ptr<onnxruntime::Model>>& ep_context_nodes, const std::string& node_name) {
+                                           std::vector<std::unique_ptr<onnxruntime::Model>>& ep_context_models, const std::string& ep_context_node_name) {
   auto model_build = graph_viewer.CreateModel(*logger);
   auto& graph_build = model_build->MainGraph();
 
@@ -127,8 +127,11 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   node_attributes->emplace(ONNX_MODEL_FILENAME, *attr_3);
 
   // Create EP context node
-  graph_build.AddNode(node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
+  graph_build.AddNode(ep_context_node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
   ORT_ENFORCE(graph_build.Resolve().IsOK());
+
+  // A model with one EP context node is created for a supported subgraph
+  ep_context_models.push_back(std::move(model_build));
 
   // Serialize modelproto to string
   auto new_graph_viewer = graph_build.CreateGraphViewer();
@@ -137,8 +140,6 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   auto model_proto = model->ToProto();
   new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
   model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  ep_context_nodes.push_back(std::move(model_build));
 
   return model_proto.release();
 }
