@@ -385,6 +385,16 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                        bool output_symmetric,
                        bool do_op_validation);
 
+/**
+ * Get permutation to transpose given axis to the last one.
+ *
+ * @param[in] axis the current axis to be transposed
+ * @param[in] rank the expected rank for permutation
+ * @param[out] perm the permutation for transpose
+ * @return execution status of this function
+ */
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime
