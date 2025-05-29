@@ -227,7 +227,8 @@ class PackageManager:
 
     def __format(self, fmt_str: str) -> str:
         """Format a config file string, performing any necessary substitutions."""
-        return fmt_str.format_map({"version": self.__config["version"]})
+        simple_substitutions = ["major_version", "version"]
+        return fmt_str.format_map({key: self.__config.get(key) for key in simple_substitutions})
 
     @staticmethod
     def __parse_config(config_path: Path) -> dict[str, dict[str, Any]]:

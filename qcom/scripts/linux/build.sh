@@ -111,6 +111,8 @@ case "${target_platform}" in
       rm -fr "${build_dir}/${config}"
     fi
 
+    export PATH="$(get_java_bindir):${PATH}"
+
     if [ -n "${ANDROID_HOME:-}" -a -n "${ANDROID_NDK_HOME:-}" ]; then
       android_sdk_path="${ANDROID_HOME}"
       android_ndk_path="${ANDROID_NDK_HOME}"
