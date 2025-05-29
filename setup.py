@@ -551,6 +551,7 @@ packages = [
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py",
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs",
     "onnxruntime.tools.qdq_helpers",
+    "onnxruntime.tools.qnn",
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",
