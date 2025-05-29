@@ -66,8 +66,10 @@ class MatMulNBits final : public CudaKernel {
           has_fpA_intB_gemv_ = true;
         }
 
+        InitGemmProfiler(sm_);
+
         constexpr int max_m = 8291;
-        RunGemmProfile(has_fpA_intB_gemv_, sm_, max_m);
+        RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
         has_fpA_intB_gemm_ = true;
       }
     }
@@ -83,8 +85,16 @@ class MatMulNBits final : public CudaKernel {
 
   Status ComputeInternal(OpKernelContext* context) const override;
 
+  Status PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
+                 bool& is_packed, PrePackedWeights* prepacked_weights) override;
+
  private:
-  void RunGemmProfile(bool hasCudaKernel, int sm, int max_m);
+  void InitGemmProfiler(int sm);
+  void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
+
+  Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+  Status PrePack_Scale(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
+  Status PrePack_ZeroPoint(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
 
   int64_t K_;
   int64_t N_;
@@ -104,10 +114,9 @@ class MatMulNBits final : public CudaKernel {
   mutable GemmProfilerPtr gemmProfiler_{nullptr};
   GemmIdCore gemmId_{};
 
-  mutable std::once_flag fpA_intB_init_once_flag_;
-  mutable IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
-  mutable IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
-  mutable IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
+  IAllocatorUniquePtr<void> fpA_intB_weight_buffer_;
+  IAllocatorUniquePtr<void> fpA_intB_scale_buffer_;
+  IAllocatorUniquePtr<void> fpA_intB_zero_buffer_;
 };
 
 }  // namespace cuda

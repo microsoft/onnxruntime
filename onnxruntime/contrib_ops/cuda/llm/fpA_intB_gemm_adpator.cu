@@ -10,13 +10,54 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
+template <typename T>
+__global__ void transposeScaleKernel(
+    const T* scale,
+    T* transposed_scale,
+    int n, int k_blocks) {
+  // Calculate the output matrix coordinates [row, col] for this thread
+  // The output matrix has dimensions [k_blocks, n]
+  int out_row = blockIdx.y * blockDim.y + threadIdx.y;
+  int out_col = blockIdx.x * blockDim.x + threadIdx.x;
+
+  // Check bounds to ensure we are within the output matrix dimensions [k_blocks, n]
+  if (out_row < k_blocks && out_col < n) {
+    int in_row = out_col;
+    int in_col = out_row;
+    int64_t input_offset = static_cast<int64_t>(in_row) * k_blocks + in_col;
+    int64_t output_offset = static_cast<int64_t>(out_row) * n + out_col;
+    T scale_val = scale[input_offset];
+    transposed_scale[output_offset] = scale_val;
+  }
+}
+
+template <typename T>
+void launch_transpose_scale_kernel(
+    cudaStream_t stream,
+    const T* scale,
+    T* transposed_scale,
+    int n, int k_blocks) {
+    constexpr int BLOCK_SIZE = 16;
+    dim3 blockDim(BLOCK_SIZE, BLOCK_SIZE);
+    dim3 gridDim(
+        (n + blockDim.x - 1) / blockDim.x, // Grid size in x covers output columns (n)
+        (k_blocks + blockDim.y - 1) / blockDim.y  // Grid size in y covers output rows (k_blocks)
+    );
+
+    transposeScaleKernel<T><<<gridDim, blockDim, 0, stream>>>(
+        scale,
+        transposed_scale,
+        n,
+        k_blocks
+    );
+}
+
 // CUDA kernel to compute -scale * zero_point and transpose
 // Each thread computes one element of the OUTPUT matrix (shape [k_blocks, n])
 template <bool is_zero_point_int4_packed, typename T, typename Z>
 __global__ void computeScaledZeroPointAndTransposeKernel(
-    const T* scale,        // Input scale matrix [n, k_blocks]
     const Z* zero_point,   // Input zero_point matrix [n, k_blocks]  or [n, (k_blocks + 1) / 2] if packed int4
-    T* transposed_scale,   // transposed scale [k_blocks, n]
+    const T* transposed_scale,   // transposed scale [k_blocks, n]
     T* scaled_zero_point,  // Output matrix [k_blocks, n]
     int n,                 // Rows of input matrices
     int k_blocks,          // Columns of input matrices
@@ -34,7 +75,7 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
     int64_t output_offset = static_cast<int64_t>(out_row) * n + out_col;
 
     // Perform the computation: scaled_zero_point[out_row, out_col] = -scale[in_row, in_col] * zero_point[in_row, in_col]
-    T scale_val = scale[input_offset];
+    T scale_val = transposed_scale[output_offset];
     float zero_point_val;
     if (zero_point != nullptr) {
       if constexpr (is_zero_point_int4_packed) {  // zero point is 4 bit, and two elements are packed into one byte.
@@ -51,16 +92,14 @@ __global__ void computeScaledZeroPointAndTransposeKernel(
 
     float result = static_cast<float>(scale_val) * (-zero_point_val + default_zero_point);
     scaled_zero_point[output_offset] = static_cast<T>(result);
-    transposed_scale[output_offset] = scale_val;
   }
 }
 
 template<bool is_zero_point_int4_packed, typename T, typename Z>
 void launch_scaled_zero_point_kernel(
     cudaStream_t stream,
-    const T* scale,
     const Z* zero_point,
-    T* transposed_scale,
+    const T* transposed_scale,
     T* scaled_zero_point,
     int n, int k_blocks, float default_zero_point)
 {
@@ -72,7 +111,6 @@ void launch_scaled_zero_point_kernel(
     );
 
     computeScaledZeroPointAndTransposeKernel<is_zero_point_int4_packed, T, Z><<<gridDim, blockDim, 0, stream>>>(
-        scale,
         zero_point,
         transposed_scale,
         scaled_zero_point,
@@ -83,22 +121,26 @@ void launch_scaled_zero_point_kernel(
 }
 
 // Explicit instantiations:
+template
+void launch_transpose_scale_kernel<half>(
+    cudaStream_t stream,
+    const half* scale,
+    half* transposed_scale,
+    int n, int k_blocks);
 
 template
 void launch_scaled_zero_point_kernel<false, half, half>(
     cudaStream_t stream,
-    const half* scale,
     const half* zero_point,
-    half* transposed_scale,
+    const half* transposed_scale,
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
 template
 void launch_scaled_zero_point_kernel<false, half, uint8_t>(
     cudaStream_t stream,
-    const half* scale,
     const uint8_t* zero_point,
-    half* transposed_scale,
+    const half* transposed_scale,
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
@@ -106,9 +148,8 @@ void launch_scaled_zero_point_kernel<false, half, uint8_t>(
 template
 void launch_scaled_zero_point_kernel<true, half, uint8_t>(
     cudaStream_t stream,
-    const half* scale,
     const uint8_t* zero_point,
-    half* transposed_scale,
+    const half* transposed_scale,
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
