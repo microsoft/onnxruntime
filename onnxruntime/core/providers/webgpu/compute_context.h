@@ -40,6 +40,9 @@ class ComputeContext {
   inline bool HasFeature(wgpu::FeatureName feature) const {
     return webgpu_context_.DeviceHasFeature(feature);
   }
+  inline const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const {
+    return webgpu_context_.SubgroupMatrixConfigs();
+  }
 
   //
   // Get the kernel context.

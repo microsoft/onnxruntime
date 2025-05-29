@@ -418,10 +418,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   uint32_t components = GetMaxComponents(N);
 
   const bool has_zero_points = zero_points != nullptr;
+  int32_t subgroup_matrix_config_index = -1;
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
-  if (M >= kMinMForTileOptimization &&
-      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, context, y);
+  if (M >= kMinMForTileOptimization && context.AdapterInfo().vendor == std::string_view{"apple"} &&
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points, subgroup_matrix_config_index)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, subgroup_matrix_config_index, context, y);
   }
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
@@ -429,6 +430,12 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
       CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
     return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
+  }
+
+  // Intel - Experimental dawn support for subgroup matrix matmul on Intel.
+  if (M >= kMinMForTileOptimization && context.AdapterInfo().vendor == std::string_view{"intel"} &&
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points, subgroup_matrix_config_index)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, subgroup_matrix_config_index, context, y);
   }
 
   // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
