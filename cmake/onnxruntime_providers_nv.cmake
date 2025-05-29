@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the MIT License.
   find_package(CUDAToolkit REQUIRED 12.8)
   enable_language(CUDA)
@@ -9,6 +10,9 @@
   if (onnxruntime_NV_PLACEHOLDER_BUILDER)
     add_definitions(-DORT_NV_PLACEHOLDER_BUILDER)
   endif()
+if (NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+  message(FATAL_ERROR "TensorRT RTX can not be used with the open source parser.")
+endif ()
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
