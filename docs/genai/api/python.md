@@ -32,341 +32,469 @@ import onnxruntime_genai
 
 ### Load a model
 
-Loads the ONNX model(s) and configuration from a folder on disk.
-
 ```python
-onnxruntime_genai.Model(model_folder: str) -> onnxruntime_genai.Model
+onnxruntime_genai.Model(config_path: str) -> Model
+onnxruntime_genai.Model(config: onnxruntime_genai.Config) -> Model
 ```
 
-#### Parameters
+#### Properties
 
-- `model_folder`: Location of model and configuration on disk
+- `type`: Returns the model type as a string.
 
-#### Returns
+  ```python
+  model = onnxruntime_genai.Model("config.json")
+  print(model.type)
+  ```
 
-`onnxruntime_genai.Model`
+- `device_type`: Returns the device type as a string.
 
-### Generate method
+  ```python
+  print(model.device_type)
+  ```
 
-```python
-onnxruntime_genai.Model.generate(params: GeneratorParams) -> numpy.ndarray[int, int]
-```
+#### Methods
 
-#### Parameters
-- `params`: (Required) Created by the `GeneratorParams` method.
+- `create_multimodal_processor() -> MultiModalProcessor`
 
-#### Returns
+  ```python
+  processor = model.create_multimodal_processor()
+  ```
 
-`numpy.ndarray[int, int]`: a two dimensional numpy array with dimensions equal to the size of the batch passed in and the maximum length of the sequence of tokens.
+---
 
-### Device type
-
-Return the device type that the model has been configured to run on.
-
-```python
-onnxruntime_genai.Model.device_type
-```
-
-#### Returns
-
-`str`: a string describing the device that the loaded model will run on
-
-
-## Tokenizer class
-
-### Create tokenizer object
+## Config class
 
 ```python
-onnxruntime_genai.Model.Tokenizer(model: onnxruntime_genai.Model) -> onnxruntime_genai.Tokenizer
+onnxruntime_genai.Config(config_path: str) -> Config
 ```
 
-#### Parameters
+#### Methods
 
-- `model`: (Required) The model that was loaded by the `Model()`
+- `append_provider(provider: str)`
 
-#### Returns
+  ```python
+  config = onnxruntime_genai.Config("config.json")
+  config.append_provider("CUDAExecutionProvider")
+  ```
 
-- `Tokenizer`: The tokenizer object
+- `set_provider_option(option: str, value: str)`
 
-### Encode
+  ```python
+  config.set_provider_option("device_id", "0")
+  ```
 
-```python
-onnxruntime_genai.Tokenizer.encode(text: str) -> numpy.ndarray[numpy.int32]
-```
+- `clear_providers()`
 
-#### Parameters
+  ```python
+  config.clear_providers()
+  ```
 
-- `text`: (Required)
-
-#### Returns
-
-`numpy.ndarray[numpy.int32]`: an array of tokens representing the prompt
-
-### Decode
-
-```python
-onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[int]) -> str 
-```
-
-#### Parameters
-
-- `numpy.ndarray[numpy.int32]`: (Required) a sequence of generated tokens
-
-
-#### Returns
-
-`str`: the decoded generated tokens
-
-
-### Encode batch
-
-```python
-onnxruntime_genai.Tokenizer.encode_batch(texts: list[str]) -> numpy.ndarray[int, int]
-```
-
-#### Parameters
-
-- `texts`: A list of inputs
-
-#### Returns
-
-`numpy.ndarray[int, int]`: The batch of tokenized strings
-
-### Decode batch
-
-```python
-onnxruntime_genai.Tokenize.decode_batch(tokens: [[numpy.int32]]) -> list[str]
-```
-
-#### Parameters
-
-- tokens
-
-#### Returns
-
-`texts`: a batch of decoded text
-
-
-### Create tokenizer decoding stream
-
-
-```python
-onnxruntime_genai.Tokenizer.create_stream() -> TokenizerStream
-```
-
-#### Parameters
-
-None
-
-#### Returns
-
-`onnxruntime_genai.TokenizerStream` The tokenizer stream object
-
-## TokenizerStream class
-
-This class accumulates the next displayable string (according to the tokenizer's vocabulary).
-
-### Decode method
-
- 
-```python
-onnxruntime_genai.TokenizerStream.decode(token: int32) -> str
-```
-  
-#### Parameters
-
-- `token`: (Required) A token to decode
-
-#### Returns
-
-`str`: If a displayable string has accumulated, this method returns it. If not, this method returns the empty string.
+---
 
 ## GeneratorParams class
-
-### Create a Generator Params object
 
 ```python
 onnxruntime_genai.GeneratorParams(model: Model) -> GeneratorParams
 ```
 
-### Pad token id member
+#### Methods
 
-```python
-onnxruntime_genai.GeneratorParams.pad_token_id
-```
+- `set_inputs(named_tensors: NamedTensors)`
 
-### EOS token id member
+  ```python
+  params = onnxruntime_genai.GeneratorParams(model)
+  named_tensors = onnxruntime_genai.NamedTensors()
+  params.set_inputs(named_tensors)
+  ```
 
-```python
-onnxruntime_genai.GeneratorParams.eos_token_id
-```
+- `set_model_input(name: str, value: numpy.ndarray)`
 
-### vocab size member
+  ```python
+  import numpy as np
+  params.set_model_input("input_ids", np.array([1, 2, 3], dtype=np.int32))
+  ```
 
-```python
-onnxruntime_genai.GeneratorParams.vocab_size
-```
+- `try_graph_capture_with_max_batch_size(max_batch_size: int)`
 
-### input_ids member
+  ```python
+  params.try_graph_capture_with_max_batch_size(8)
+  ```
 
-```python
-onnxruntime_genai.GeneratorParams.input_ids: numpy.ndarray[numpy.int32, numpy.int32]
-```
+- `set_search_options(**options)`
 
-### Set model input
+  ```python
+  params.set_search_options(temperature=0.7, top_p=0.9)
+  ```
 
-```python
-onnxruntime_genai.GeneratorParams.set_model_input(name: str, value: [])
-```
+- `set_guidance(type: str, data: str)`
 
+  ```python
+  params.set_guidance("prefix", "Once upon a time")
+  ```
 
-### Set search options method
-
-```python
-onnxruntime_genai.GeneratorParams.set_search_options(options: dict[str, Any])
-```
-
-### Try graph capture with max batch size
-
-```python
-onnxruntime_genai.GeneratorParams.try_graph_capture_with_max_batch_size(max_batch_size: int)
-```
+---
 
 ## Generator class
-
-### Create a Generator
 
 ```python
 onnxruntime_genai.Generator(model: Model, params: GeneratorParams) -> Generator
 ```
 
-#### Parameters
+#### Methods
 
-- `model`: (Required) The model to use for generation
-- `params`: (Required) The set of parameters that control the generation
+- `is_done() -> bool`
 
-#### Returns
+  ```python
+  generator = onnxruntime_genai.Generator(model, params)
+  done = generator.is_done()
+  ```
 
-`onnxruntime_genai.Generator` The Generator object
+- `get_output(name: str) -> numpy.ndarray`
 
+  ```python
+  output = generator.get_output("output_ids")
+  ```
 
-### Is generation done
+- `append_tokens(tokens: numpy.ndarray[int32])`
 
-```python
-onnxruntime_genai.Generator.is_done() -> bool
-```
+  ```python
+  generator.append_tokens(np.array([4, 5], dtype=np.int32))
+  ```
 
-#### Returns
+- `append_tokens(tokens: onnxruntime_genai.Tensor)`
 
-Returns true when all sequences are at max length, or have reached the end of sequence.
+  ```python
+  tensor = onnxruntime_genai.Tensor(np.array([4, 5], dtype=np.int32))
+  generator.append_tokens(tensor)
+  ```
 
+- `get_logits() -> numpy.ndarray[float32]`
 
-### Compute logits
+  ```python
+  logits = generator.get_logits()
+  ```
 
-Runs the model through one iteration.
+- `set_logits(new_logits: numpy.ndarray[float32])`
 
-```python
-onnxruntime_genai.Generator.compute_logits()
-```
+  ```python
+  generator.set_logits(np.zeros_like(logits))
+  ```
 
-### Get output
+- `generate_next_token()`
 
-Returns an output of the model.
+  ```python
+  generator.generate_next_token()
+  ```
 
-```python
-onnxruntime_genai.Generator.get_output(str: name) -> numpy.ndarray
-```
+- `rewind_to(new_length: int)`
 
-#### Parameters
-- `name`: the name of the model output
+  ```python
+  generator.rewind_to(2)
+  ```
 
-#### Returns
-- `numpy.ndarray`: a multi dimensional array of the model outputs. The shape of the array is shape of the output.
+- `get_next_tokens() -> numpy.ndarray[int32]`
 
-#### Example
+  ```python
+  next_tokens = generator.get_next_tokens()
+  ```
 
-The following code returns the output logits of a model.
+- `get_sequence(index: int) -> numpy.ndarray[int32]`
 
-```python
-logits = generator.get_output("logits")
-```
+  ```python
+  sequence = generator.get_sequence(0)
+  ```
 
+- `set_active_adapter(adapters: onnxruntime_genai.Adapters, adapter_name: str)`
 
-### Generate next token
+  ```python
+  adapters = onnxruntime_genai.Adapters(model)
+  generator.set_active_adapter(adapters, "adapter_name")
+  ```
 
-Using the current set of logits and the specified generator parameters, calculates the next batch of tokens, using Top P sampling.
+---
 
-```python
-onnxruntime_genai.Generator.generate_next_token()
-```
-
-### Get next tokens
-
-```python
-onnxruntime_genai.Generator.get_next_tokens() -> numpy.ndarray[numpy.int32]
-```
-
-Returns
-
-`numpy.ndarray[numpy.int32]`: The most recently generated tokens
-
-### Get sequence
-
-```python
-onnxruntime_genai.Generator.get_sequence(index: int) -> numpy.ndarray[numpy.int32] 
-```
-
-- `index`: (Required) The index of the sequence in the batch to return
-
-## Adapter class
-
-### Create
-
-Create an Adapters object, using a model that has been loaded.
+## Tokenizer class
 
 ```python
-model = ...
-adapters = og.Adapters(model)
+onnxruntime_genai.Tokenizer(model: Model) -> Tokenizer
 ```
 
-#### Parameters
+#### Methods
 
-* `model`: the model that the adapters will be used with
+- `encode(text: str) -> numpy.ndarray[int32]`
 
-#### Return value
+  ```python
+  tokenizer = onnxruntime_genai.Tokenizer(model)
+  tokens = tokenizer.encode("Hello world")
+  ```
 
-An `Adapter` object
+- `to_token_id(text: str) -> int`
 
-### Load
+  ```python
+  token_id = tokenizer.to_token_id("Hello")
+  ```
 
-Load an adapter from disk into an Adapter object in memory.
+- `decode(tokens: numpy.ndarray[int32]) -> str`
+
+  ```python
+  text = tokenizer.decode(tokens)
+  ```
+
+- `apply_chat_template(template_str: str, messages: str, tools: str = None, add_generation_prompt: bool = False) -> str`
+
+  ```python
+  chat = tokenizer.apply_chat_template("{user}: {message}", messages="Hi!", add_generation_prompt=True)
+  ```
+
+- `encode_batch(texts: list[str]) -> onnxruntime_genai.Tensor`
+
+  ```python
+  batch_tensor = tokenizer.encode_batch(["Hello", "World"])
+  ```
+
+- `decode_batch(tokens: onnxruntime_genai.Tensor) -> list[str]`
+
+  ```python
+  texts = tokenizer.decode_batch(batch_tensor)
+  ```
+
+- `create_stream() -> TokenizerStream`
+
+  ```python
+  stream = tokenizer.create_stream()
+  ```
+
+---
+
+## TokenizerStream class
 
 ```python
-onnxruntime_genai.Adapters(file: str, name: str) -> None
+onnxruntime_genai.TokenizerStream(tokenizer: Tokenizer) -> TokenizerStream
 ```
 
-#### Parameters
+#### Methods
 
-* `file`: the location on disk from which to load the adapter
-* `name`: the name of the adapter
+- `decode(token: int32) -> str`
 
-#### Return value
+  ```python
+  token_str = stream.decode(123)
+  ```
 
-None
+---
 
-### Set active adapter
-
-Sets the actove adapter on a `Generator` object.
+## NamedTensors class
 
 ```python
-onnxruntime_genai.Generator(adapters: Generators::Adapters, adapter: str) -> None
+onnxruntime_genai.NamedTensors() -> NamedTensors
 ```
 
-#### Parameters
+#### Methods
 
-* `adapters`: the adapters object, which has had the identified adapter loading into it
-* `adapter`: the name of the adapter to set as active
+- `__getitem__(name: str) -> onnxruntime_genai.Tensor`
 
-#### Return value
+  ```python
+  tensor = named_tensors["input_ids"]
+  ```
 
-None
+- `__setitem__(name: str, value: numpy.ndarray or onnxruntime_genai.Tensor)`
+
+  ```python
+  named_tensors["input_ids"] = np.array([1, 2, 3], dtype=np.int32)
+  ```
+
+- `__contains__(name: str) -> bool`
+
+  ```python
+  exists = "input_ids" in named_tensors
+  ```
+
+- `__delitem__(name: str)`
+
+  ```python
+  del named_tensors["input_ids"]
+  ```
+
+- `__len__() -> int`
+
+  ```python
+  length = len(named_tensors)
+  ```
+
+- `keys() -> list[str]`
+
+  ```python
+  keys = named_tensors.keys()
+  ```
+
+---
+
+## Tensor class
+
+```python
+onnxruntime_genai.Tensor(array: numpy.ndarray) -> Tensor
+```
+
+#### Methods
+
+- `shape() -> list[int]`
+
+  ```python
+  tensor = onnxruntime_genai.Tensor(np.array([1, 2, 3]))
+  print(tensor.shape())
+  ```
+
+- `type() -> int`
+
+  ```python
+  print(tensor.type())
+  ```
+
+- `data() -> memoryview`
+
+  ```python
+  data = tensor.data()
+  ```
+
+- `as_numpy() -> numpy.ndarray`
+
+  ```python
+  arr = tensor.as_numpy()
+  ```
+
+---
+
+## Adapters class
+
+```python
+onnxruntime_genai.Adapters(model: Model) -> Adapters
+```
+
+#### Methods
+
+- `unload(adapter_name: str)`
+
+  ```python
+  adapters.unload("adapter_name")
+  ```
+
+- `load(file: str, name: str)`
+
+  ```python
+  adapters.load("adapter_file.bin", "adapter_name")
+  ```
+
+---
+
+## MultiModalProcessor class
+
+```python
+onnxruntime_genai.MultiModalProcessor(model: Model) -> MultiModalProcessor
+```
+
+#### Methods
+
+- `__call__(prompt: str = None, images: Images = None, audios: Audios = None) -> onnxruntime_genai.Tensor`
+
+  ```python
+  result = processor(prompt="Describe this image", images=onnxruntime_genai.Images.open("image.png"))
+  ```
+
+- `create_stream() -> TokenizerStream`
+
+  ```python
+  stream = processor.create_stream()
+  ```
+
+- `decode(tokens: numpy.ndarray[int32]) -> str`
+
+  ```python
+  text = processor.decode(tokens)
+  ```
+
+---
+
+## Images class
+
+```python
+onnxruntime_genai.Images.open(*image_paths: str) -> Images
+onnxruntime_genai.Images.open_bytes(*image_datas: bytes) -> Images
+```
+
+```python
+images = onnxruntime_genai.Images.open("image1.png", "image2.jpg")
+with open("image1.png", "rb") as f:
+    images_bytes = onnxruntime_genai.Images.open_bytes(f.read())
+```
+
+---
+
+## Audios class
+
+```python
+onnxruntime_genai.Audios.open(*audio_paths: str) -> Audios
+onnxruntime_genai.Audios.open_bytes(*audio_datas: bytes) -> Audios
+```
+
+```python
+audios = onnxruntime_genai.Audios.open("audio1.wav")
+with open("audio1.wav", "rb") as f:
+    audios_bytes = onnxruntime_genai.Audios.open_bytes(f.read())
+```
+
+---
+
+## Utility functions
+
+- `onnxruntime_genai.set_log_options(**options)`
+
+  ```python
+  onnxruntime_genai.set_log_options(verbose=True)
+  ```
+
+- `onnxruntime_genai.is_cuda_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_cuda_available())
+  ```
+
+- `onnxruntime_genai.is_dml_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_dml_available())
+  ```
+
+- `onnxruntime_genai.is_rocm_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_rocm_available())
+  ```
+
+- `onnxruntime_genai.is_webgpu_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_webgpu_available())
+  ```
+
+- `onnxruntime_genai.is_qnn_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_qnn_available())
+  ```
+
+- `onnxruntime_genai.is_openvino_available() -> bool`
+
+  ```python
+  print(onnxruntime_genai.is_openvino_available())
+  ```
+
+- `onnxruntime_genai.set_current_gpu_device_id(device_id: int)`
+
+  ```python
+  onnxruntime_genai.set_current_gpu_device_id(0)
+  ```
+
+- `onnxruntime_genai.get_current_gpu_device_id() -> int`
+
+  ```python
+  print(onnxruntime_genai.get_current_gpu_device_id())
+  ```
