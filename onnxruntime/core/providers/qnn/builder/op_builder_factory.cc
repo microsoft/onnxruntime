@@ -185,7 +185,7 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateLSTMOpBuilder("LSTM", *this);
   }
- 
+
   {
     CreateCumSumOpBuilder("CumSum", *this);
   }
