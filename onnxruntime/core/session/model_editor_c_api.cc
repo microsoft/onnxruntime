@@ -58,46 +58,46 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
                     _In_reads_(attribs_len) _Inout_opt_ OrtOpAttr** attributes, _In_opt_ size_t attribs_len,
                     _Outptr_ OrtNode** node) {
   API_IMPL_BEGIN
-  auto editor_node = std::make_unique<onnxruntime::ModelEditorNode>();
-  editor_node->operator_name = operator_name;
-  editor_node->domain_name = domain_name == kOnnxDomainAlias ? kOnnxDomain : domain_name;
-  editor_node->node_name = node_name;
+  auto n = std::make_unique<onnxruntime::ModelEditorNode>();
+  n->operator_name = operator_name;
+  n->domain_name = domain_name == kOnnxDomainAlias ? kOnnxDomain : domain_name;
+  n->node_name = node_name;
 
-  editor_node->input_names.reserve(input_names_len);
+  n->input_names.reserve(input_names_len);
   for (size_t i = 0; i < input_names_len; ++i) {
-    editor_node->input_names.push_back(input_names[i]);
+    n->input_names.push_back(input_names[i]);
   }
 
-  editor_node->output_names.reserve(output_names_len);
+  n->output_names.reserve(output_names_len);
   for (size_t i = 0; i < output_names_len; ++i) {
-    editor_node->output_names.push_back(output_names[i]);
+    n->output_names.push_back(output_names[i]);
   }
 
   if (attributes != nullptr) {
-    editor_node->attributes.reserve(attribs_len);
+    n->attributes.reserve(attribs_len);
     for (size_t i = 0; i < attribs_len; ++i) {
-      editor_node->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
+      n->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
       // take ownership. as we took a copy that means releasing the original value
       OrtApis::ReleaseOpAttr(attributes[i]);
       attributes[i] = nullptr;
     }
   }
 
-  *node = editor_node.release()->ToExternal();
+  *node = n.release()->ToExternal();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
   API_IMPL_BEGIN
-  auto editor_graph = std::make_unique<onnxruntime::ModelEditorGraph>();
+  auto g = std::make_unique<onnxruntime::ModelEditorGraph>();
 
   // do some reserves to reduce reallocation. if we had a hint about sizes upfront that would be optimal
-  editor_graph->initializers.reserve(32);
-  editor_graph->external_initializers.reserve(32);
-  editor_graph->nodes.reserve(64);
+  g->initializers.reserve(32);
+  g->external_initializers.reserve(32);
+  g->nodes.reserve(64);
 
-  *graph = editor_graph.release()->ToExternal();
+  *graph = g.release()->ToExternal();
   return nullptr;
   API_IMPL_END
 }
