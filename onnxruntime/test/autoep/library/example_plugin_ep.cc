@@ -41,13 +41,24 @@ struct ExampleEp : OrtEp, ApiPtrs {
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                    OrtEpGraphSupportInfo* graph_support_info) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
-    (void)graph;  // TODO: Use to build lists of supported subgraphs.
 
-    const OrtNode** supported_nodes = nullptr;
-    size_t num_supported_nodes = 0;
-    ep->ep_api.EpGraphSupportInfo_AddSubgraph(graph_support_info, "Subgraph1", &ep->hardware_device_,
-                                              supported_nodes, num_supported_nodes);
-    return nullptr;
+    size_t num_nodes = 0;
+    OrtStatus* status = ep->ep_api.OrtGraph_GetNumNodes(graph, &num_nodes);
+    if (status != nullptr || num_nodes == 0) {
+      return status;
+    }
+
+    std::vector<const OrtNode*> nodes(num_nodes, nullptr);
+    status = ep->ep_api.OrtGraph_GetNodes(graph, /*order*/ 0, nodes.data(), nodes.size());
+    if (status != nullptr) {
+      return status;
+    }
+
+    std::vector<const OrtNode*> supported_nodes;
+    supported_nodes.push_back(nodes[0]);  // TODO: Support simple node types like Relu or Mul.
+    status = ep->ep_api.EpGraphSupportInfo_AddSubgraph(graph_support_info, "Subgraph1", &ep->hardware_device_,
+                                                       supported_nodes.data(), supported_nodes.size());
+    return status;
   }
 
   std::string name_;

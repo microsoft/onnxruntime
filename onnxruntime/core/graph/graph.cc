@@ -5853,7 +5853,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
   const onnxruntime::ModelEditorGraph* editor_graph = api_graph.TryGetModelEditorGraph();
-  ORT_RETURN_IF(editor_graph == nullptr, "OrtGraph is not the expected type for use in the model-editing API.");
+  ORT_RETURN_IF(editor_graph == nullptr, "OrtGraph is not the expected type for use in the model editor API.");
 
   add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 
@@ -5867,7 +5867,9 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // add nodes
   for (const auto& ort_node : editor_graph->nodes) {
-    const OrtNode& node = *ort_node;
+    const onnxruntime::ModelEditorNode* maybe_editor_node = ort_node->TryGetModelEditorNode();
+    ORT_RETURN_IF(maybe_editor_node == nullptr, "OrtNode is not the expected type for use in the model editor API.");
+    const onnxruntime::ModelEditorNode& node = *maybe_editor_node;
 
     // convert Constant nodes to initializers
     if (node.operator_name == "Constant" && node.domain_name == kOnnxDomain) {

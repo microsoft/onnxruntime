@@ -4,6 +4,8 @@
 #include "core/session/ep_api.h"
 
 #include "core/framework/error_code_helper.h"
+#include "core/graph/graph_viewer.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ort_apis.h"
 
@@ -60,6 +62,48 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
+  API_IMPL_BEGIN
+  const onnxruntime::EpGraph* ep_graph = graph->TryGetEpGraph();
+  if (ep_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
+  }
+
+  *num_nodes = ep_graph->graph_viewer.NumberOfNodes();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
+                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
+  API_IMPL_BEGIN
+  const onnxruntime::EpGraph* ep_graph = graph->TryGetEpGraph();
+  if (ep_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
+  }
+
+  // TODO: make order an enum value.
+  if (order < 0 || order > 2) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid `order` value passed to OrtGraph_GetNodes(); only accepts values "
+                                 "0, 1, or 2.");
+  }
+
+  ExecutionOrder execution_order = static_cast<ExecutionOrder>(order);
+  const std::vector<NodeIndex>& node_indices = ep_graph->graph_viewer.GetNodesInTopologicalOrder(execution_order);
+  size_t num_nodes = std::min(max_num_nodes, node_indices.size());
+
+  for (size_t i = 0; i < num_nodes; i++) {
+    NodeIndex node_idx = node_indices[i];
+    auto node_it = ep_graph->index_to_node.find(node_idx);
+    ORT_ENFORCE(node_it != ep_graph->index_to_node.end());
+    nodes[i] = node_it->second;
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -69,6 +113,8 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 22 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSubgraph,
+    &OrtExecutionProviderApi::OrtGraph_GetNumNodes,
+    &OrtExecutionProviderApi::OrtGraph_GetNodes,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

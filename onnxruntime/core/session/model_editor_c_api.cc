@@ -58,32 +58,35 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
                     _In_reads_(attribs_len) _Inout_opt_ OrtOpAttr** attributes, _In_opt_ size_t attribs_len,
                     _Outptr_ OrtNode** node) {
   API_IMPL_BEGIN
-  auto n = std::make_unique<OrtNode>();
-  n->operator_name = operator_name;
-  n->domain_name = domain_name == kOnnxDomainAlias ? kOnnxDomain : domain_name;
-  n->node_name = node_name;
+  auto ort_node = std::make_unique<OrtNode>(onnxruntime::ModelEditorNode());
+  onnxruntime::ModelEditorNode* editor_node = ort_node->TryGetModelEditorNode();
+  assert(editor_node != nullptr);
 
-  n->input_names.reserve(input_names_len);
+  editor_node->operator_name = operator_name;
+  editor_node->domain_name = domain_name == kOnnxDomainAlias ? kOnnxDomain : domain_name;
+  editor_node->node_name = node_name;
+
+  editor_node->input_names.reserve(input_names_len);
   for (size_t i = 0; i < input_names_len; ++i) {
-    n->input_names.push_back(input_names[i]);
+    editor_node->input_names.push_back(input_names[i]);
   }
 
-  n->output_names.reserve(output_names_len);
+  editor_node->output_names.reserve(output_names_len);
   for (size_t i = 0; i < output_names_len; ++i) {
-    n->output_names.push_back(output_names[i]);
+    editor_node->output_names.push_back(output_names[i]);
   }
 
   if (attributes != nullptr) {
-    n->attributes.reserve(attribs_len);
+    editor_node->attributes.reserve(attribs_len);
     for (size_t i = 0; i < attribs_len; ++i) {
-      n->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
+      editor_node->attributes.push_back(*reinterpret_cast<const ONNX_NAMESPACE::AttributeProto*>(attributes[i]));
       // take ownership. as we took a copy that means releasing the original value
       OrtApis::ReleaseOpAttr(attributes[i]);
       attributes[i] = nullptr;
     }
   }
 
-  *node = n.release();
+  *node = ort_node.release();
   return nullptr;
   API_IMPL_END
 }

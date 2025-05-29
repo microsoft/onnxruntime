@@ -22,5 +22,8 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
                     _In_ const OrtHardwareDevice* hardware_device,
                     _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
                     size_t num_supported_nodes);
+ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
+                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
 }  // namespace OrtExecutionProviderApi

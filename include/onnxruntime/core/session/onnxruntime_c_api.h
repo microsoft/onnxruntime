@@ -6044,6 +6044,37 @@ struct OrtEpApi {
                   _In_ const OrtHardwareDevice* hardware_device,
                   _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
                   size_t num_supported_nodes);
+
+  /** \brief Returns the number of nodes in the OrtGraph instance.
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_nodes Output parameter set to the number of nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+
+  /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
+   *
+   * Caller provides a pre-allocated array that is filled with the nodes. Use OrtGraph_NumNodes() to get the number of
+   * nodes in the graph. The nodes are ordered according to the `order` argument.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[in] order The ordering of the nodes:
+   *                  0 means the nodes are sorted in topological order.
+   *                  1 means the nodes are sorted in topological order with priority.
+   *                  2 means the nodes are sorted in memory efficient topological order.
+   * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode pointers.
+   * \param[in] max_num_nodes The maximum size of the nodes array.
+                              Typical usage sets this to the value of OrtGraph_NumNodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OrtGraph_GetNodes, const OrtGraph* graph, int order,
+                  _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 };
 
 /**
