@@ -10,7 +10,6 @@
 #include <mutex>
 #include <sstream>
 #include <thread>
-#include <unordered_map>
 #include <vector>
 
 #include <absl/base/config.h>
@@ -1994,8 +1993,8 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  std::unordered_map<std::string, std::string> stats;
-  auto status = cpu_allocator.GetStats(stats);
+  Ort::ConstKeyValuePairs stats;
+  auto status = cpu_allocator.GetStats(&stats);
 
 #ifdef ORT_NO_RTTI
   ASSERT_FALSE(status.IsOK());
@@ -2006,17 +2005,17 @@ TEST(CApiTest, get_allocator_cpu) {
   if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
     ASSERT_TRUE(status.IsOK());
 
-    ASSERT_EQ("-1", stats["Limit"]);
-    ASSERT_EQ("1024", stats["InUse"]);
-    ASSERT_EQ("1024", stats["MaxInUse"]);
-    ASSERT_EQ("1024", stats["MaxAllocSize"]);
-    ASSERT_EQ("2", stats["NumAllocs"]);
-    ASSERT_EQ("0", stats["NumReserves"]);
+    ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+    ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+    ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
 
-    // We don't check values of the following stats keys
-    ASSERT_TRUE(stats.find("TotalAllocated") != stats.end());
-    ASSERT_TRUE(stats.find("NumArenaExtensions") != stats.end());
-    ASSERT_TRUE(stats.find("NumArenaShrinkages") != stats.end());
+    // We don't check values of the following stats
+    ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
   } else {
     ASSERT_FALSE(status.IsOK());
     ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
@@ -2045,21 +2044,21 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  std::unordered_map<std::string, std::string> stats;
+  Ort::ConstKeyValuePairs stats;
   auto status = cuda_allocator.GetStats(stats);
   ASSERT_TRUE(status.IsOK());
 
-  ASSERT_EQ("-1", stats["Limit"]);
-  ASSERT_EQ("1024", stats["InUse"]);
-  ASSERT_EQ("1024", stats["MaxInUse"]);
-  ASSERT_EQ("1024", stats["MaxAllocSize"]);
-  ASSERT_EQ("2", stats["NumAllocs"]);
-  ASSERT_EQ("0", stats["NumReserves"]);
+  ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+  ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+  ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
 
-  // We don't check values of the following stats keys
-  ASSERT_TRUE(stats.find("TotalAllocated") != stats.end());
-  ASSERT_TRUE(stats.find("NumArenaExtensions") != stats.end());
-  ASSERT_TRUE(stats.find("NumArenaShrinkages") != stats.end());
+  // We don't check values of the following stats
+  ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
 }
 #endif
 
