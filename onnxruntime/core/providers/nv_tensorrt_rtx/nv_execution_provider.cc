@@ -1984,10 +1984,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
     }
-    // Exclude contrib ops
-    if (node->Domain() == kMSDomain) {
-      supported_node = false;
-    }
 
     if (supported_node) {
       if (new_subgraph) {
