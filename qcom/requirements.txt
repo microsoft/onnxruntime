@@ -8,5 +8,4 @@ requests >= 2.32.3, == 2.*
 tqdm >= 4.67.1, == 4.*
 types-pyyaml >= 6.0.2, == 6.*
 types-tqdm >= 4.67, == 4.*
-# TODO: [AISW-137627] QDC client library can be installed by devs and CI
-# qdc-public-api-client
+qdc-public-api-client == 0.0.8
