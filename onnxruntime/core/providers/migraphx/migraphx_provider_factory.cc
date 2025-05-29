@@ -2,6 +2,12 @@
 // Licensed under the MIT License
 #include <atomic>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <shlwapi.h>
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
@@ -164,6 +170,23 @@ struct MIGraphX_Provider : Provider {
   }
 
   void Initialize() override {
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          static_cast<LPCSTR>(static_cast<void*>(InitializeRegistry)),
+                          &module) != 0) {
+      std::vector<wchar_t> pathBuf;
+      for (;;) {
+        pathBuf.resize(pathBuf.size() + MAX_PATH);
+        if (const auto writen = GetModuleFileNameW(module, pathBuf.data(), static_cast<DWORD>(pathBuf.size())); writen < pathBuf.size()) {
+          break;
+        }
+      }
+      std::filesystem::path path(pathBuf.begin(), pathBuf.end());
+      SetDllDirectoryW(path.parent_path().native().c_str());
+    }
+#endif
     InitializeRegistry();
   }
 
