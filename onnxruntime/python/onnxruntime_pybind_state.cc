@@ -2884,6 +2884,8 @@ static Status CreateOrtEnv() {
   Status status;
   ort_env = OrtEnv::GetInstance(lm_info, status);
   if (!status.IsOK()) return status;
+  // Keep the ort_env alive, don't free it. It's ok to leak the memory.
+  OrtEnv::ReleaseSingleton(); 
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = ort_env->GetLoggingManager()->DefaultLogger();
