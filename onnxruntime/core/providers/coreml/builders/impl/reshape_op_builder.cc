@@ -87,6 +87,9 @@ bool AllPositiveShape(gsl::span<const int64_t> shape) {
 // to represent symbolic dimensions (input_shape refers to the shape info of the first input, referred to as
 // x.shape in the CoreML docs).
 //
+// CoreML would then either produce an incorrect shape or emit an error in the cases that there is more than one -1
+// in the deduced shape.
+//
 // The below method checks for these collisions. In the case that x.shape has symbolic dimensions at the locations where
 // there is a 0 in new_shape, then we move the reshape op to CPU EP.
 bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
@@ -124,8 +127,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  // CoreML reshape does not support 0 as a dimension
-  // Even though MLProgram Reshape docs imply 0 is supported as a dimension, it is not supported
+  // CoreML reshape does not support 0 as a literal dimension in new_shape
   if (allow_zero) {
     if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
       LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0. "
@@ -138,6 +140,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
+  // We do not support the second case at the moment.
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. "
                              "Input shape: "
@@ -161,17 +164,13 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
+  // CoreML docs claim that 0 in new_shape will have the same behavior as in ONNX spec when allow_zero is false
+  // In practice, CoreML does not handle 0's in new_shape. CheckNegativeOneCollision has a more detailed comment on
+  // why this check is necessary.
   if (!CheckNegativeOneCollision(input_shape, new_shape, logger)) {
     return false;
   }
 
-  // Max of one -1 allowed
-  if (input_params.create_mlprogram && std::count(new_shape.begin(), new_shape.end(), -1) > 1) {
-    LOGS(logger, VERBOSE) << "Reshape does not support -1 in new shape unless it appears in the input shape. "
-                             "Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
-    return false;
-  }
   return true;
 }
 
