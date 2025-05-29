@@ -14,10 +14,16 @@ struct EpGraph;
 struct EpNode;
 }  // namespace onnxruntime
 
+/// <summary>
+/// Class used specify the nodes an EP supports. An instance of this class is passed to OrtEp's
+/// GetCapability() function. An OrtEp adds groups (i.e., subgraphs) of supported nodes
+/// to the OrtEpGraphSupportInfo instance.
+/// </summary>
 struct OrtEpGraphSupportInfo {
+  // A grouping of supported nodes that are executed by a specific hardware device.
   struct Subgraph {
     std::string name;
-    const OrtHardwareDevice* hardware_device;
+    const OrtHardwareDevice* hardware_device;  // The hw device that executes the supported nodes.
     std::vector<const onnxruntime::EpNode*> nodes;
   };
 

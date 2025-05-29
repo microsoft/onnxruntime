@@ -13,6 +13,9 @@ namespace onnxruntime {
 class Node;
 class GraphViewer;
 
+/// <summary>
+/// Concrete implementation of OrtNode used in the OrtEpApi.
+/// </summary>
 struct EpNode : public OrtNode {
   EpNode(const Node& node) : OrtNode(OrtNode::Type::kEditorNode), node(node) {}
   OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
@@ -21,6 +24,9 @@ struct EpNode : public OrtNode {
   const Node& node;
 };
 
+/// <summary>
+/// Concrete implementation of OrtGraph used in the OrtEpApi.
+/// </summary>
 struct EpGraph : public OrtGraph {
   explicit EpGraph(const GraphViewer& g_viewer);
   OrtGraph* ToExternal() { return static_cast<OrtGraph*>(this); }
