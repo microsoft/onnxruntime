@@ -68,7 +68,10 @@ struct OrtEpDevice {
 
 // TODO: Move to a different file
 struct OrtNode;
-struct OrtGraph;
+namespace onnxruntime {
+struct EpGraph;
+}  // namespace onnxruntime
+
 struct OrtEpGraphSupportInfo {
   struct Subgraph {
     std::string name;
@@ -76,9 +79,9 @@ struct OrtEpGraphSupportInfo {
     std::vector<const OrtNode*> nodes;
   };
 
-  explicit OrtEpGraphSupportInfo(const OrtGraph& graph) : ort_graph(graph) {}
+  explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
 
-  const OrtGraph& ort_graph;
+  const onnxruntime::EpGraph& ort_graph;
   std::vector<Subgraph> subgraphs;
 
   void AddSubgraph(const char* name, const OrtHardwareDevice* hardware_device, gsl::span<const OrtNode* const> nodes) {

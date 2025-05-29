@@ -50,10 +50,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
-  OrtGraph api_graph(graph_viewer);
-  OrtEpGraphSupportInfo api_graph_support_info(api_graph);
+  onnxruntime::EpGraph ep_graph(graph_viewer);
+  OrtEpGraphSupportInfo api_graph_support_info(ep_graph);
 
-  ort_ep_->GetCapability(ort_ep_.get(), &api_graph, &api_graph_support_info);
+  ort_ep_->GetCapability(ort_ep_.get(), ep_graph.ToExternal(), &api_graph_support_info);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   if (api_graph_support_info.subgraphs.empty()) {

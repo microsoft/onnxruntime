@@ -64,10 +64,10 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
   API_IMPL_BEGIN
-  const onnxruntime::EpGraph* ep_graph = graph->TryGetEpGraph();
-  if (ep_graph == nullptr) {
+  if (graph->type != OrtGraph::Type::kEpGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
   }
+  const auto* ep_graph = static_cast<const onnxruntime::EpGraph*>(graph);
 
   *num_nodes = ep_graph->graph_viewer.NumberOfNodes();
   return nullptr;
@@ -77,10 +77,10 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size
 ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
-  const onnxruntime::EpGraph* ep_graph = graph->TryGetEpGraph();
-  if (ep_graph == nullptr) {
+  if (graph->type != OrtGraph::Type::kEpGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
   }
+  const auto* ep_graph = static_cast<const onnxruntime::EpGraph*>(graph);
 
   // TODO: make order an enum value.
   if (order < 0 || order > 2) {
@@ -97,7 +97,7 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
     NodeIndex node_idx = node_indices[i];
     auto node_it = ep_graph->index_to_node.find(node_idx);
     ORT_ENFORCE(node_it != ep_graph->index_to_node.end());
-    nodes[i] = node_it->second;
+    nodes[i] = node_it->second->ToExternal();
   }
 
   return nullptr;

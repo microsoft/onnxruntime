@@ -20,8 +20,25 @@ struct OrtOpAttr {
   ONNX_NAMESPACE::AttributeProto attr_proto;
 };
 
+struct OrtNode {
+  enum class Type {
+    kInvalid = 0,
+    kEditorNode,
+    kEpNode,
+  };
+
+  OrtNode() = default;
+  explicit OrtNode(OrtNode::Type type) : type(type) {}
+  virtual ~OrtNode() = default;
+  OrtNode::Type type = OrtNode::Type::kInvalid;
+};
+
 namespace onnxruntime {
-struct ModelEditorNode {
+struct ModelEditorNode : public OrtNode {
+  ModelEditorNode() : OrtNode(OrtNode::Type::kEditorNode) {}
+  OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
+  const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
+
   std::string operator_name;
   std::string domain_name;
   std::string node_name;
@@ -35,80 +52,58 @@ struct ModelEditorNode {
   // FUTURE if we need control flow nodes
   // std::unordered_map<std::string, OrtGraph> subgraphs;
 };
-}  // namespace onnxruntime
 
-struct OrtNode {
-  explicit OrtNode(onnxruntime::ModelEditorNode&& editor_node) : node_variant_(std::move(editor_node)) {}
-  explicit OrtNode(const onnxruntime::Node& node) : node_variant_(&node) {}
+struct EpNode : public OrtNode {
+  EpNode(const onnxruntime::Node& node) : OrtNode(OrtNode::Type::kEditorNode), node(node) {}
+  OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
+  const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
 
-  std::variant<std::monostate,
-               onnxruntime::ModelEditorNode,
-               gsl::not_null<const onnxruntime::Node*>>
-      node_variant_;
-
-  const onnxruntime::ModelEditorNode* TryGetModelEditorNode() const {
-    return std::get_if<onnxruntime::ModelEditorNode>(&node_variant_);
-  }
-
-  onnxruntime::ModelEditorNode* TryGetModelEditorNode() {
-    return std::get_if<onnxruntime::ModelEditorNode>(&node_variant_);
-  }
-
-  const onnxruntime::Node* TryGetNode() const {
-    const auto* impl_ptr = std::get_if<gsl::not_null<const onnxruntime::Node*>>(&node_variant_);
-    return (impl_ptr == nullptr) ? nullptr : impl_ptr->get();
-  }
-};
-
-namespace onnxruntime {
-struct ModelEditorGraph {
-  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
-  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
-  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
-  std::vector<std::unique_ptr<OrtNode>> nodes;
-};
-
-struct EpGraph {
-  explicit EpGraph(const GraphViewer& g_viewer) : graph_viewer(g_viewer) {
-    nodes.reserve(g_viewer.NumberOfNodes());
-    for (const Node& node : g_viewer.Nodes()) {
-      nodes.push_back(std::make_unique<OrtNode>(node));
-      index_to_node[node.Index()] = nodes.back().get();
-    }
-  }
-
-  const onnxruntime::GraphViewer& graph_viewer;
-  std::vector<std::unique_ptr<OrtNode>> nodes;
-  std::unordered_map<NodeIndex, OrtNode*> index_to_node;
+  const onnxruntime::Node& node;
 };
 }  // namespace onnxruntime
 
 struct OrtGraph {
-  explicit OrtGraph(onnxruntime::ModelEditorGraph&& editor_graph) : graph_variant_(std::move(editor_graph)) {}
-  explicit OrtGraph(const onnxruntime::GraphViewer& graph_viewer) : graph_variant_(onnxruntime::EpGraph(graph_viewer)) {}
+  enum class Type {
+    kInvalid = 0,
+    kEditorGraph,
+    kEpGraph,
+  };
 
-  std::variant<std::monostate,
-               onnxruntime::ModelEditorGraph,
-               onnxruntime::EpGraph>
-      graph_variant_;
-
-  const onnxruntime::EpGraph* TryGetEpGraph() const {
-    return std::get_if<onnxruntime::EpGraph>(&graph_variant_);
-  }
-
-  onnxruntime::EpGraph* TryGetEpGraph() {
-    return std::get_if<onnxruntime::EpGraph>(&graph_variant_);
-  }
-
-  const onnxruntime::ModelEditorGraph* TryGetModelEditorGraph() const {
-    return std::get_if<onnxruntime::ModelEditorGraph>(&graph_variant_);
-  }
-
-  onnxruntime::ModelEditorGraph* TryGetModelEditorGraph() {
-    return std::get_if<onnxruntime::ModelEditorGraph>(&graph_variant_);
-  }
+  OrtGraph() = default;
+  explicit OrtGraph(OrtGraph::Type type) : type(type) {}
+  virtual ~OrtGraph() = default;
+  OrtGraph::Type type = OrtGraph::Type::kInvalid;
 };
+
+namespace onnxruntime {
+struct ModelEditorGraph : public OrtGraph {
+  ModelEditorGraph() : OrtGraph(OrtGraph::Type::kEditorGraph) {}
+  OrtGraph* ToExternal() { return static_cast<OrtGraph*>(this); }
+  const OrtGraph* ToExternal() const { return static_cast<const OrtGraph*>(this); }
+
+  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
+  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
+  std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
+  std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
+  std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
+};
+
+struct EpGraph : public OrtGraph {
+  explicit EpGraph(const GraphViewer& g_viewer) : OrtGraph(OrtGraph::Type::kEpGraph), graph_viewer(g_viewer) {
+    nodes.reserve(g_viewer.NumberOfNodes());
+    for (const Node& node : g_viewer.Nodes()) {
+      nodes.push_back(std::make_unique<EpNode>(node));
+      index_to_node[node.Index()] = nodes.back().get();
+    }
+  }
+  OrtGraph* ToExternal() { return static_cast<OrtGraph*>(this); }
+  const OrtGraph* ToExternal() const { return static_cast<const OrtGraph*>(this); }
+
+  const onnxruntime::GraphViewer& graph_viewer;
+  std::vector<std::unique_ptr<EpNode>> nodes;
+  std::unordered_map<NodeIndex, EpNode*> index_to_node;
+};
+}  // namespace onnxruntime
 
 struct OrtModel {
   std::unique_ptr<OrtGraph> graph;
