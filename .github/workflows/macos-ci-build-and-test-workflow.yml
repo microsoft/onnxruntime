@@ -51,7 +51,7 @@ jobs:
         --build_objc
         --build_java
         --build_wheel
-        ${{ inputs.use_webgpu && '--use_webgpu --cmake_extra_defines onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON' || '' }}
+        ${{ inputs.use_webgpu && '--use_webgpu' || '' }}
         ${{ inputs.use_xnnpack && '--use_xnnpack' || '' }}
         ${{ inputs.use_coreml && '--use_coreml' || '' }}
         --use_vcpkg --use_vcpkg_ms_internal_asset_cache
