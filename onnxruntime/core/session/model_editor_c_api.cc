@@ -90,21 +90,29 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
   API_IMPL_BEGIN
-  auto g = std::make_unique<OrtGraph>();
+  auto ort_graph = std::make_unique<OrtGraph>(onnxruntime::ModelEditorGraph());
+  onnxruntime::ModelEditorGraph* editor_graph = ort_graph->TryGetModelEditorGraph();
+  assert(editor_graph != nullptr);
 
   // do some reserves to reduce reallocation. if we had a hint about sizes upfront that would be optimal
-  g->initializers.reserve(32);
-  g->external_initializers.reserve(32);
-  g->nodes.reserve(64);
+  editor_graph->initializers.reserve(32);
+  editor_graph->external_initializers.reserve(32);
+  editor_graph->nodes.reserve(64);
 
-  *graph = g.release();
+  *graph = ort_graph.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = ort_graph->TryGetModelEditorGraph();
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtGraph is not the expected type required by the model-editing API");
+  }
+
   graph->inputs.clear();
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
@@ -119,9 +127,15 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = ort_graph->TryGetModelEditorGraph();
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtGraph is not the expected type required by the model-editing API");
+  }
+
   graph->outputs.clear();
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
@@ -136,9 +150,15 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
                     _Inout_ OrtValue* tensor, bool data_is_external) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = ort_graph->TryGetModelEditorGraph();
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtGraph is not the expected type required by the model-editing API");
+  }
+
   if (!tensor->IsTensor()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only Tensor is currently supported.");
   }
@@ -172,8 +192,14 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* gra
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node) {
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph, _Inout_ OrtNode* node) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = ort_graph->TryGetModelEditorGraph();
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "OrtGraph is not the expected type required by the model-editing API");
+  }
+
   graph->nodes.push_back(std::unique_ptr<OrtNode>(node));  // take ownership
   return nullptr;
   API_IMPL_END

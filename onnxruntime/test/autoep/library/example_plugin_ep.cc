@@ -19,8 +19,9 @@ struct ApiPtrs {
 };
 
 struct ExampleEp : OrtEp, ApiPtrs {
-  ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
+  ExampleEp(ApiPtrs apis, const std::string& name, const OrtHardwareDevice& device,
+            const OrtSessionOptions& session_options, const OrtLogger& logger)
+      : ApiPtrs(apis), name_{name}, hardware_device_{device}, session_options_{session_options}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -38,19 +39,19 @@ struct ExampleEp : OrtEp, ApiPtrs {
   }
 
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
-                                                   size_t* num_supported_subgraphs,
-                                                   OrtEpSupportedSubgraph** supported_subgraphs,
-                                                   OrtAllocator* allocator) {
+                                                   OrtEpGraphSupportInfo* graph_support_info) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
-    *num_supported_subgraphs = 0;
-    *supported_subgraphs = nullptr;
-    (void)ep;
-    (void)allocator;  // Do not use for now. Should be used to allocate the array of supported_subgraphs
-    (void)graph;
+    (void)graph;  // TODO: Use to build lists of supported subgraphs.
+
+    const OrtNode** supported_nodes = nullptr;
+    size_t num_supported_nodes = 0;
+    ep->ep_api.EpGraphSupportInfo_AddSubgraph(graph_support_info, "Subgraph1", &ep->hardware_device_,
+                                              supported_nodes, num_supported_nodes);
     return nullptr;
   }
 
   std::string name_;
+  const OrtHardwareDevice& hardware_device_;
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
 };
@@ -128,7 +129,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   }
 
   static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
-                                              _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
+                                              _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                               _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
                                               _In_ size_t num_devices,
                                               _In_ const OrtSessionOptions* session_options,
@@ -154,7 +155,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     // const OrtHardwareDevice* device = devices[0];
     // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
 
-    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *session_options, *logger);
+    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *devices[0], *session_options, *logger);
 
     *ep = dummy_ep.release();
     return nullptr;

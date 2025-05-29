@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <variant>
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -33,12 +34,37 @@ struct OrtNode {
   // std::unordered_map<std::string, OrtGraph> subgraphs;
 };
 
-struct OrtGraph {
+namespace onnxruntime {
+struct ModelEditorGraph {
   onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   std::vector<std::unique_ptr<OrtNode>> nodes;
+};
+}  // namespace onnxruntime
+
+struct OrtGraph {
+  explicit OrtGraph(onnxruntime::ModelEditorGraph&& editor_graph) : graph_variant_(std::move(editor_graph)) {}
+  explicit OrtGraph(const onnxruntime::GraphViewer& graph_viewer) : graph_variant_(&graph_viewer) {}
+
+  std::variant<std::monostate,
+               onnxruntime::ModelEditorGraph,
+               gsl::not_null<const onnxruntime::GraphViewer*>>
+      graph_variant_;
+
+  const onnxruntime::GraphViewer* TryGetGraphViewer() const {
+    const auto* impl_ptr = std::get_if<gsl::not_null<const onnxruntime::GraphViewer*>>(&graph_variant_);
+    return (impl_ptr == nullptr) ? nullptr : impl_ptr->get();
+  }
+
+  const onnxruntime::ModelEditorGraph* TryGetModelEditorGraph() const {
+    return std::get_if<onnxruntime::ModelEditorGraph>(&graph_variant_);
+  }
+
+  onnxruntime::ModelEditorGraph* TryGetModelEditorGraph() {
+    return std::get_if<onnxruntime::ModelEditorGraph>(&graph_variant_);
+  }
 };
 
 struct OrtModel {

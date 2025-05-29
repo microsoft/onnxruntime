@@ -38,14 +38,13 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(CreateEpSupportedSubgraph, _In_ const OrtGraph* graph,
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
                     _In_ const char* subgraph_name,
                     _In_ const OrtHardwareDevice* hardware_device,
                     _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                    size_t num_supported_nodes,
-                    _Outptr_ OrtEpSupportedSubgraph** out) {
+                    size_t num_supported_nodes) {
   API_IMPL_BEGIN
-  if (graph == nullptr) {
+  if (ort_graph_support_info == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
   }
 
@@ -53,19 +52,12 @@ ORT_API_STATUS_IMPL(CreateEpSupportedSubgraph, _In_ const OrtGraph* graph,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of 1 or more supported nodes");
   }
 
-  // TODO: Check that the OrtNodes are all contained by OrtGraph.
+  // TODO: Check that the OrtNodes are all contained by OrtEpGraphSupportInfo.
 
-  auto ep_subgraph = std::make_unique<OrtEpSupportedSubgraph>();
-  ep_subgraph->name = subgraph_name;
-  ep_subgraph->hardware_device = hardware_device;
-  ep_subgraph->nodes = std::vector<const OrtNode*>(supported_nodes, supported_nodes + num_supported_nodes);
-  *out = ep_subgraph.release();
+  gsl::span<const OrtNode* const> nodes_span(supported_nodes, supported_nodes + num_supported_nodes);
+  ort_graph_support_info->AddSubgraph(subgraph_name, hardware_device, nodes_span);
   return nullptr;
   API_IMPL_END
-}
-
-ORT_API(void, ReleaseEpSupportedSubgraph, _Frees_ptr_opt_ OrtEpSupportedSubgraph* subgraph) {
-  delete subgraph;
 }
 
 static constexpr OrtEpApi ort_ep_api = {
@@ -76,8 +68,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpDevice,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::CreateEpSupportedSubgraph,
-    &OrtExecutionProviderApi::ReleaseEpSupportedSubgraph,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSubgraph,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

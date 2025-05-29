@@ -3,8 +3,11 @@
 
 #include "core/session/ep_factory_plugin.h"
 
+#include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
+#include "core/session/allocator_adapters.h"
 
 namespace onnxruntime {
 
@@ -36,5 +39,29 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
     : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
       ort_ep_(std::move(ep)) {
+}
+
+std::vector<std::unique_ptr<ComputeCapability>>
+PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                                       const IKernelLookup& kernel_lookup,
+                                       const GraphOptimizerRegistry& graph_optimizer_registry,
+                                       IResourceAccountant* resource_accountant) const {
+  ORT_UNUSED_PARAMETER(graph_optimizer_registry);  // TODO: Add support
+  ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
+  ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
+
+  OrtGraph api_graph(graph_viewer);
+  OrtEpGraphSupportInfo api_graph_support_info(api_graph);
+
+  ort_ep_->GetCapability(ort_ep_.get(), &api_graph, &api_graph_support_info);
+
+  std::vector<std::unique_ptr<ComputeCapability>> result;
+  if (api_graph_support_info.subgraphs.empty()) {
+    return result;
+  }
+
+  // TODO: Create ComputeCapability instances from OrtEpGraphSupportInfo::Subgraph instances.
+
+  return result;
 }
 }  // namespace onnxruntime

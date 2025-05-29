@@ -5852,18 +5852,21 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
-  add_graph_inputs_outputs(api_graph.inputs, /*input*/ true);
+  const onnxruntime::ModelEditorGraph* editor_graph = api_graph.TryGetModelEditorGraph();
+  ORT_RETURN_IF(editor_graph == nullptr, "OrtGraph is not the expected type for use in the model-editing API.");
+
+  add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 
   // add initializers
-  ortvalue_initializers_.reserve(api_graph.external_initializers.size());
-  add_initializers(api_graph.external_initializers, /*is_external*/ true);
-  add_initializers(api_graph.initializers, /*is_external*/ false);
+  ortvalue_initializers_.reserve(editor_graph->external_initializers.size());
+  add_initializers(editor_graph->external_initializers, /*is_external*/ true);
+  add_initializers(editor_graph->initializers, /*is_external*/ false);
 
   // add graph outputs
-  add_graph_inputs_outputs(api_graph.outputs, /*input*/ false);
+  add_graph_inputs_outputs(editor_graph->outputs, /*input*/ false);
 
   // add nodes
-  for (const auto& ort_node : api_graph.nodes) {
+  for (const auto& ort_node : editor_graph->nodes) {
     const OrtNode& node = *ort_node;
 
     // convert Constant nodes to initializers

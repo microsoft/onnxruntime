@@ -57,6 +57,12 @@ class PluginExecutionProvider : public IExecutionProvider {
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep);
 
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant = nullptr) const override;
+
  private:
   UniqueOrtEp ort_ep_;
 };

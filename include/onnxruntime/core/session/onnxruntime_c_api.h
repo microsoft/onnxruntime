@@ -316,7 +316,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
-ORT_RUNTIME_CLASS(EpSupportedSubgraph);
+ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -6028,26 +6028,22 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(EpDevice);
 
-  /** \brief Create an OrtEpSupportedSubgraph that specifies a subgraph (i.e., connected nodes) supported by an EP.
-   * \param[in] graph Top-level graph that contains all nodes.
-   * \param[in] subgraph_name The name of the fused node that will represent the subgraph supported by the EP.
+  /** \brief Adds a subgraph of nodes supported by an EP to a OrtEpGraphSupportInfo instance.
+   * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
+   * \param[in] subgraph_name The name of the fused ONNX node that will represent the subgraph supported by the EP.
    * \param[in] hardware_device The OrtHardwareDevice that will execute the supported nodes.
    * \param[in] supported_nodes Array of nodes supported by the EP.
    * \param[in] num_supported_nodes The number of supported nodes.
-   * \param out OrtEpSupportedSubgraph that is created.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateEpSupportedSubgraph, _In_ const OrtGraph* graph,
+  ORT_API2_STATUS(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_ const char* subgraph_name,
                   _In_ const OrtHardwareDevice* hardware_device,
                   _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                  size_t num_supported_nodes,
-                  _Outptr_ OrtEpSupportedSubgraph** out);
-
-  ORT_CLASS_RELEASE(EpSupportedSubgraph);
+                  size_t num_supported_nodes);
 };
 
 /**
@@ -6075,10 +6071,19 @@ struct OrtEp {
    */
   const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
 
+  /** \brief Get information about the nodes/subgraphs supported by the OrtEp instance.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph The top-level OrtGraph instance containing all nodes in the graph.
+   * \param[inout] graph_support_info OrtEpGraphSupportInfo instance that the implementer must fill out in order to
+   *                                  specify the supported nodes/subgraphs. All nodes in a subgraph must be connected.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
   OrtStatus*(ORT_API_CALL* GetCapability)(OrtEp* this_ptr, const OrtGraph* graph,
-                                          size_t* num_supported_subgraphs,
-                                          OrtEpSupportedSubgraph** supported_subgraphs,
-                                          OrtAllocator* allocator);
+                                          OrtEpGraphSupportInfo* graph_support_info);
 
   // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);

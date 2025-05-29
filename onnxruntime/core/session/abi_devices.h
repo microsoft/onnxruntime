@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <string>
 #include <unordered_map>
+#include <vector>
 
 #include "core/common/hash_combine.h"
 #include "core/session/abi_key_value_pairs.h"
@@ -64,9 +66,22 @@ struct OrtEpDevice {
   OrtEpFactory* ep_factory;
 };
 
+// TODO: Move to a different file
 struct OrtNode;
-struct OrtEpSupportedSubgraph {
-  std::string name;
-  const OrtHardwareDevice* hardware_device;
-  std::vector<const OrtNode*> nodes;
+struct OrtGraph;
+struct OrtEpGraphSupportInfo {
+  struct Subgraph {
+    std::string name;
+    const OrtHardwareDevice* hardware_device;
+    std::vector<const OrtNode*> nodes;
+  };
+
+  explicit OrtEpGraphSupportInfo(const OrtGraph& graph) : ort_graph(graph) {}
+
+  const OrtGraph& ort_graph;
+  std::vector<Subgraph> subgraphs;
+
+  void AddSubgraph(const char* name, const OrtHardwareDevice* hardware_device, gsl::span<const OrtNode* const> nodes) {
+    subgraphs.push_back(Subgraph{name, hardware_device, std::vector<const OrtNode*>(nodes.begin(), nodes.end())});
+  }
 };
