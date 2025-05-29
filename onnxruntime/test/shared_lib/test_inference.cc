@@ -2045,7 +2045,7 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_EQ(1024U, mem_allocation.size());
 
   Ort::ConstKeyValuePairs stats;
-  auto status = cuda_allocator.GetStats(stats);
+  auto status = cuda_allocator.GetStats(&stats);
   ASSERT_TRUE(status.IsOK());
 
   ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
