@@ -2157,7 +2157,7 @@ struct AllocatorImpl : Base<T> {
 
   /** \brief Function that returns the statistics of the allocator.
    *
-   * \param stats: A Ort::ConstKeyValuePairs to store the allocator statistics.
+   * \param[out] stats: A pointer to a ConstKeyValuePairs object that will be filled with the allocator statistics.
    * \return A Status indicating success or failure.
    */
   Status GetStats(ConstKeyValuePairs* stats) const;
