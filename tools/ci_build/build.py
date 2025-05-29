@@ -318,7 +318,6 @@ def generate_vcpkg_install_options(build_dir, args):
     elif "RUNNER_TEMP" in os.environ:
         temp_dir = os.environ["RUNNER_TEMP"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
-        vcpkg_install_options.append("--binarysource=clear\\;x-gha,readwrite")
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
