@@ -36,23 +36,25 @@ Below is the matrix of supported ROCm versions corresponding to Ubuntu builds.
 As of ROCm 6.0.2 Links for prebuild Python Wheels (.whl) are linked below corresponding to python versions for the host OS based on Ubuntu support.
 All links can be found on AMD's [repo.radeon manylinux page](https://repo.radeon.com/rocm/manylinux) for each corresponding to the ROCm release.
 
-| ONNX Runtime Version | ROCm Version | Python 3.8 | Python 3.10 | Python 3.12 |
-|---|---|---|---|---|
-|1.21|6.4|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp312-cp312-linux_x86_64.whl)|
-|1.19|6.3.1|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
-|1.19|6.3|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
-|1.18|6.2.4|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.4/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
-|1.18|6.2.3|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
-|1.18|6.2| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp38-cp38-linux_x86_64.whl)| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
-|1.17|6.1.3|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1.3/onnxruntime_rocm-1.17.0-cp310-cp310-linux_x86_64.whl)||
-|1.17|6.1| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp38-cp38-linux_x86_64.whl)| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)||
-|1.17|6.0.2||[3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.0.2/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)||
-|1.17|6.0<br/>5.7||||
-|1.16|5.6<br/>5.5<br/>5.4.2||||
-|1.15|5.4.2<br/>5.4<br/>5.3.2||||
-|1.14|5.4<br/>5.3.2||||
-|1.13|5.4<br/>5.3.2||||
-|1.12|5.2.3<br/>5.2||||
+| ONNX Runtime Version | ROCm Version | Python 3.8 | Python 3.9 | Python 3.10 | Python 3.12 |
+|---|---|---|---|---|---|
+|||||||
+|1.21|6.4.1|| [3.9](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp39-cp39-manylinux_2_28_x86_64.whl) | [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp310-cp310-manylinux_2_28_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4.1/onnxruntime_rocm-1.21.0-cp312-cp312-manylinux_2_28_x86_64.whl) |
+|1.21|6.4||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.4/onnxruntime_rocm-1.21.0-cp312-cp312-linux_x86_64.whl)|
+|1.19|6.3.1||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3.1/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.19|6.3||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp310-cp310-linux_x86_64.whl) | [3.12](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.3/onnxruntime_rocm-1.19.0-cp312-cp312-linux_x86_64.whl)|
+|1.18|6.2.4||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.4/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
+|1.18|6.2.3||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2.3/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
+|1.18|6.2| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp38-cp38-linux_x86_64.whl)|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.2/onnxruntime_rocm-1.18.0-cp310-cp310-linux_x86_64.whl)||
+|1.17|6.1.3||| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1.3/onnxruntime_rocm-1.17.0-cp310-cp310-linux_x86_64.whl)||
+|1.17|6.1| [3.8](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp38-cp38-linux_x86_64.whl)|| [3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.1/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)||
+|1.17|6.0.2|||[3.10](https://repo.radeon.com/rocm/manylinux/rocm-rel-6.0.2/onnxruntime_rocm-inference-1.17.0-cp310-cp310-linux_x86_64.whl)||
+|1.17|6.0<br/>5.7|||||
+|1.16|5.6<br/>5.5<br/>5.4.2|||||
+|1.15|5.4.2<br/>5.4<br/>5.3.2|||||
+|1.14|5.4<br/>5.3.2|||||
+|1.13|5.4<br/>5.3.2|||||
+|1.12|5.2.3<br/>5.2|||||
 
 ## Docker Support
 
