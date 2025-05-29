@@ -5,9 +5,12 @@
 
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
-#include "core/graph/model_editor_api_types.h"
+#include "core/framework/model_metadef_id_generator.h"
+#include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_ep_types.h"
 #include "core/session/allocator_adapters.h"
+#include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
 
@@ -41,6 +44,28 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
       ort_ep_(std::move(ep)) {
 }
 
+/// <summary>
+/// Functor used to generate a Metadef name for a subgraph supported by a plugin EP.
+/// The generated name is a concatenation of the subgraph name provided by the EP with
+/// the model's hash and a unique ID.
+/// </summary>
+struct PluginEpMetaDefNameFunctor {
+  explicit PluginEpMetaDefNameFunctor(const ModelMetadefIdGenerator& generator,
+                                      const GraphViewer& graph_viewer,
+                                      const std::string& subgraph_prefix)
+      : generator_(generator), graph_viewer_(graph_viewer), subgraph_prefix_(subgraph_prefix) {}
+
+  std::string operator()() {
+    uint64_t model_hash = 0;
+    int id = generator_.GenerateId(graph_viewer_, model_hash);
+    return MakeString(subgraph_prefix_, "_", model_hash, "_", id);
+  }
+
+  const ModelMetadefIdGenerator& generator_;
+  const GraphViewer& graph_viewer_;
+  const std::string& subgraph_prefix_;
+};
+
 std::vector<std::unique_ptr<ComputeCapability>>
 PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                        const IKernelLookup& kernel_lookup,
@@ -56,11 +81,31 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ort_ep_->GetCapability(ort_ep_.get(), ep_graph.ToExternal(), &api_graph_support_info);
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
+  result.reserve(api_graph_support_info.subgraphs.size());
+
   if (api_graph_support_info.subgraphs.empty()) {
     return result;
   }
 
-  // TODO: Create ComputeCapability instances from OrtEpGraphSupportInfo::Subgraph instances.
+  ModelMetadefIdGenerator generator;
+
+  // Create ComputeCapability instances from OrtEpGraphSupportInfo::Subgraph instances.
+  for (const OrtEpGraphSupportInfo::Subgraph& subgraph : api_graph_support_info.subgraphs) {
+    std::unordered_set<const Node*> node_set;
+    node_set.reserve(subgraph.nodes.size());
+    for (const EpNode* ep_node : subgraph.nodes) {
+      node_set.insert(&ep_node->node);
+    }
+
+    std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
+        graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, subgraph.name),
+        this->Type(), this->Type(), /*node_unit_map*/ nullptr);
+
+    for (auto& capability : capabilities) {
+      // capability->hardware_device = subgraph.hardware_device;
+      result.push_back(std::move(capability));
+    }
+  }
 
   return result;
 }

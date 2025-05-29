@@ -3,10 +3,8 @@
 
 #pragma once
 
-#include <gsl/gsl>
 #include <string>
 #include <unordered_map>
-#include <vector>
 
 #include "core/common/hash_combine.h"
 #include "core/session/abi_key_value_pairs.h"
@@ -64,27 +62,4 @@ struct OrtEpDevice {
   OrtKeyValuePairs ep_options;
 
   OrtEpFactory* ep_factory;
-};
-
-// TODO: Move to a different file
-struct OrtNode;
-namespace onnxruntime {
-struct EpGraph;
-}  // namespace onnxruntime
-
-struct OrtEpGraphSupportInfo {
-  struct Subgraph {
-    std::string name;
-    const OrtHardwareDevice* hardware_device;
-    std::vector<const OrtNode*> nodes;
-  };
-
-  explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
-
-  const onnxruntime::EpGraph& ort_graph;
-  std::vector<Subgraph> subgraphs;
-
-  void AddSubgraph(const char* name, const OrtHardwareDevice* hardware_device, gsl::span<const OrtNode* const> nodes) {
-    subgraphs.push_back(Subgraph{name, hardware_device, std::vector<const OrtNode*>(nodes.begin(), nodes.end())});
-  }
 };

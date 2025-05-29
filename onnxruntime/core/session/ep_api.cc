@@ -5,8 +5,9 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/graph/graph_viewer.h"
-#include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_ep_types.h"
 #include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
@@ -55,9 +56,9 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
   }
 
   // TODO: Check that the OrtNodes are all contained by OrtEpGraphSupportInfo.
-
-  gsl::span<const OrtNode* const> nodes_span(supported_nodes, supported_nodes + num_supported_nodes);
-  ort_graph_support_info->AddSubgraph(subgraph_name, hardware_device, nodes_span);
+  gsl::span<const OrtNode* const> nodes_span(supported_nodes,
+                                             supported_nodes + num_supported_nodes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSubgraph(subgraph_name, hardware_device, nodes_span));
   return nullptr;
   API_IMPL_END
 }
