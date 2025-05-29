@@ -78,6 +78,8 @@ class CreateVenvTask(CompositeTask):
                             "install",
                             "-r",
                             f"{REPO_ROOT}/qcom/requirements.txt",
+                            "--trusted-host=ort-ep-win-01",
+                            "--index-url=http://ort-ep-win-01:8080",
                         ],
                     ],
                 ),
