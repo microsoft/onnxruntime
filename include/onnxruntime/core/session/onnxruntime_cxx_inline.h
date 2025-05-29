@@ -262,7 +262,12 @@ inline Status AllocatorImpl<T>::GetStats(std::unordered_map<std::string, std::st
     }
     std::string key = line.substr(0, pos);
     std::string value = line.substr(pos + 1);
+    // insert_or_assign is C++17 and later
+  #if __cplusplus >= 201703L || defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)
     stats.insert_or_assign(std::move(key), std::move(value));
+  #else
+    stats[key] = std::move(value);
+  #endif
   }
   return Ort::Status();
 }
