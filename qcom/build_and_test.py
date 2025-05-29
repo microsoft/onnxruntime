@@ -137,6 +137,19 @@ class TaskLibrary:
         return f"digraph {{\n{elements_str}\n}}"
 
     @task
+    @depends(["build_ort_android"])
+    def archive_ort_android(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Archiving ONNX Runtime for Android",
+                self.__venv_path,
+                "android",
+                self.__qairt_sdk_root,
+                "archive",
+            )
+        )
+
+    @task
     @depends(["build_ort_windows_arm64"])
     def archive_ort_windows_arm64(self, plan: Plan) -> str:
         return plan.add_step(
