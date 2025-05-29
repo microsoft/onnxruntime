@@ -7,7 +7,6 @@
 
 #include <hip/hip_runtime_api.h>
 #include <roctracer/roctracer.h>
-#include <roctracer/roctracer_hcc.h>
 #include <roctracer/roctracer_hip.h>
 #include <roctracer/roctracer_ext.h>
 #include <roctracer/roctracer_roctx.h>
