@@ -20,6 +20,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -570,6 +571,8 @@ TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
   constexpr bool zp_is_4bit = true;
   constexpr bool has_zeropoint = true;
 
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
   for (auto block_size : {64, 128}) {
     RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
     RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
@@ -583,6 +586,8 @@ TEST(MatMulNBits, Fp16_Int4_Fp16ZeroPoint) {
   constexpr bool zp_is_4bit = false;
   constexpr bool has_zeropoint = true;
 
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
   for (auto block_size : {64, 128}) {
     RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
     RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
@@ -595,6 +600,8 @@ TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
   constexpr bool has_g_idx = false;
   constexpr bool zp_is_4bit = true;
   constexpr bool has_zeropoint = false;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
   for (auto block_size : {64, 128}) {
     RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);

@@ -89,7 +89,6 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
       is_packed = true;
     } else if (input_idx == MatMulNBits_Input_ZeroPoint) {
       if (has_zero_points_) {
-        // If zero points are present, we need to prepack them.
         ORT_RETURN_IF_ERROR(PrePack_ZeroPoint(tensor, alloc, stream));
         is_packed = true;
       }
@@ -330,7 +329,6 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             stream);
       }
 
-      DUMP_TENSOR_D("out_data", out_data, m, n);
       return Status::OK();
     }
   }

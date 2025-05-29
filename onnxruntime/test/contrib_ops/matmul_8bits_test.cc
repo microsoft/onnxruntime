@@ -21,6 +21,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -296,6 +297,9 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
 TEST(MatMulNBits, Fp16_Int8_Cuda) {
   constexpr float abs_error = 0.5f;
   constexpr float rel_error = 0.05f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
   TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 64, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 32, 512, 512, 64, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 128, 4>(abs_error, rel_error);

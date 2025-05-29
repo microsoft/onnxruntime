@@ -25,7 +25,12 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using GemmProfilerPtr = std::shared_ptr<WeightOnlyGroupwiseQuantGemmPluginProfiler>;
 using WeightOnlyGemmRunnerPtr = std::shared_ptr<onnxruntime::llm::kernels::cutlass_kernels::CutlassFpAIntBGemmRunnerInterface>;
 
-constexpr const char* kDisableFpAIntBGemm = "ORT_DISABLE_FPA_INTB_GEMM";
+// Environment variable to configure fpA_intB_gemm for experiments. Set it to 0 to disable, 1 to eanble all.
+constexpr const char* kFpAIntBGemmOption = "ORT_FPA_INTB_GEMM";
+constexpr int kFpAIntBGemmOption_All = 0x01;
+constexpr int kFpAIntBGemmOption_Gemv = 0x02;
+constexpr int kFpAIntBGemmOption_Int4 = 0x04;
+constexpr int kFpAIntBGemmOption_Int8 = 0x08;
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -53,17 +58,20 @@ class MatMulNBits final : public CudaKernel {
     }
 
     if constexpr (std::is_same<T, MLFloat16>::value) {
-      if ((block_size_ == 64 || block_size_ == 128) &&
+      int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
+      if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
+          (block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
           !has_g_idx_ && has_zero_points_ && !has_bias_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
-          !ParseEnvironmentVariableWithDefault<bool>(kDisableFpAIntBGemm, false) &&
           sm_ >= 75) {
-        using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-        KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
-        if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
-          has_fpA_intB_gemv_ = true;
+        if ((option & (kFpAIntBGemmOption_Gemv | kFpAIntBGemmOption_All)) != 0) {
+          using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
+          KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
+            has_fpA_intB_gemv_ = true;
+          }
         }
 
         InitGemmProfiler(sm_);
