@@ -88,7 +88,7 @@ OrtEnv* OrtEnv::GetInstance(const OrtEnv::LoggingManagerConstructionInfo& lm_inf
 
 void OrtEnv::Release(OrtEnv* env_ptr) {
   if (!env_ptr || g_is_shutting_down) {
-    //TODO: should we still call CleanupWebGpuContexts?
+    // TODO: should we still call CleanupWebGpuContexts?
     return;
   }
   std::lock_guard<std::mutex> lock(m_);

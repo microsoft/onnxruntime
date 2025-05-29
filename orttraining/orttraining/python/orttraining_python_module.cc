@@ -128,7 +128,7 @@ ORTTrainingPythonEnv::ORTTrainingPythonEnv() : ort_env_(GetEnv()) {
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
 
-std::shared_ptr<Environment> ORTTrainingPythonEnv::GetORTEnv() const {
+Environment& ORTTrainingPythonEnv::GetORTEnv() const {
   return ort_env_;
 }
 

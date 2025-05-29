@@ -33,7 +33,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
         // do not do cleanup if process termination scenario
       } else {
         ::google::protobuf::ShutdownProtobufLibrary();
-      }      
+      }
       break;
   }
   return TRUE;

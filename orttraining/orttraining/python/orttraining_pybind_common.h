@@ -22,7 +22,7 @@ class ORTTrainingPythonEnv {
  public:
   ORTTrainingPythonEnv();
 
-  std::shared_ptr<Environment> GetORTEnv() const;
+  Environment& GetORTEnv() const;
 
   std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
                                                                    size_t hash);
@@ -45,7 +45,7 @@ class ORTTrainingPythonEnv {
   std::string GetExecutionProviderMapKey(const std::string& provider_type,
                                          size_t hash);
 
-  std::shared_ptr<Environment> ort_env_;
+  Environment& ort_env_;
   ExecutionProviderMap execution_provider_instances_map_;
   std::vector<std::string> available_training_eps_;
 };
