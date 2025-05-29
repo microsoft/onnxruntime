@@ -344,7 +344,7 @@ typedef struct OrtAllocator {
   /**
    * @brief Function used to get the statistics of the allocator.
    *
-   * Return a stats string that is formatted as 'key:value' pairs separated by commas.
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator.
    * Supported keys are:
    * - Limit: Bytes limit of the allocator. -1 if no limit is set.
    * - InUse: Number of bytes in use.
@@ -359,8 +359,7 @@ typedef struct OrtAllocator {
    * Note that not all allocators support this function. If the allocator does not support this function,
    * it returns ORT_NOT_IMPLEMENTED.
    */
-  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Inout_ struct OrtAllocator* allocator,
-                  _Outptr_ char** stats);
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -5297,15 +5296,13 @@ struct OrtApi {
    * it returns ORT_NOT_IMPLEMENTED.
    *
    * \param[in] ort_allocator The allocator to get stats from
-   * \param[in] allocator The allocator to allocate the stats string
-   * \param[out] out The stats string
+   * \param[out] out A pointer to the OrtKeyValuePairs instance that contains the stats
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Inout_ OrtAllocator* allocator,
-                  _Outptr_ char** out);
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
 };
 
 /*

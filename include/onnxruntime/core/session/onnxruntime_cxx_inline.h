@@ -11,7 +11,6 @@
 #include <functional>
 #include <iterator>
 #include <string>
-#include <sstream>
 #include <type_traits>
 #include <vector>
 
@@ -245,30 +244,10 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
 }
 
 template <typename T>
-inline Status AllocatorImpl<T>::GetStats(std::unordered_map<std::string, std::string>& stats) const {
-  AllocatorWithDefaultOptions allocator;
-  char* raw_stats = nullptr;
-  ORT_CXX_RETURN_ON_API_FAIL(GetApi().AllocatorGetStats(this->p_, allocator, &raw_stats));
-
-  auto free_fn = detail::AllocatedFree(allocator);
-  std::unique_ptr<void, decltype(free_fn)> raw_stats_g(raw_stats, free_fn);
-
-  std::istringstream iss(raw_stats);
-  std::string line;
-  while (std::getline(iss, line, ',')) {
-    auto pos = line.find(':');
-    if (pos == std::string::npos) {
-      continue;  // Skip lines without a colon
-    }
-    std::string key = line.substr(0, pos);
-    std::string value = line.substr(pos + 1);
-    // insert_or_assign is C++17 and later
-  #if __cplusplus >= 201703L || defined(_MSVC_LANG) && (_MSVC_LANG >= 201703L)
-    stats.insert_or_assign(std::move(key), std::move(value));
-  #else
-    stats[key] = std::move(value);
-  #endif
-  }
+inline Status AllocatorImpl<T>::GetStats(ConstKeyValuePairs* stats) const {
+  OrtKeyValuePairs* out;
+  ORT_CXX_RETURN_ON_API_FAIL(GetApi().AllocatorGetStats(this->p_, &out));
+  *stats = ConstKeyValuePairs(out);
   return Ort::Status();
 }
 }  // namespace detail

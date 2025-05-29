@@ -2157,10 +2157,10 @@ struct AllocatorImpl : Base<T> {
 
   /** \brief Function that returns the statistics of the allocator.
    *
-   * \param stats: A map to store the allocator statistics.
+   * \param stats: A Ort::ConstKeyValuePairs to store the allocator statistics.
    * \return A Status indicating success or failure.
    */
-  Status GetStats(std::unordered_map<std::string, std::string>& stats) const;
+  Status GetStats(ConstKeyValuePairs* stats) const;
 };
 
 }  // namespace detail

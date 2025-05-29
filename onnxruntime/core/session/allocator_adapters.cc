@@ -3,6 +3,7 @@
 
 #include "allocator_adapters.h"
 #include "core/framework/error_code_helper.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/inference_session.h"
 #include "core/session/ort_env.h"
 #include "core/session/ort_apis.h"
@@ -29,20 +30,18 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
   }
   if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
     OrtAllocator::GetStats =
-        [](const OrtAllocator* this_, OrtAllocator* allocator, char** stats) noexcept -> OrtStatusPtr {
+        [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
 #ifdef ORT_NO_RTTI
       // When exception is disabled, we should directly return an error status to avoid aborting the program.
       ORT_UNUSED_PARAMETER(this_);
-      ORT_UNUSED_PARAMETER(allocator);
       ORT_UNUSED_PARAMETER(stats);
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported in a NO_RTTI build.");
 #else
-      auto str = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-      char* stats_string = reinterpret_cast<char*>(allocator->Alloc(allocator, str.size() + 1));
-      memcpy(stats_string, str.c_str(), str.size());
-      stats_string[str.size()] = '\0';
-      *stats = stats_string;
+      auto kvp = std::make_unique<OrtKeyValuePairs>();
+      auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      kvp->Copy(stats_map);
+      *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
 #endif
       API_IMPL_END
@@ -66,24 +65,21 @@ const OrtMemoryInfo* OrtAllocatorImplWrappingIAllocator::Info() const {
   return &i_allocator_->Info();
 }
 
-std::string OrtAllocatorImplWrappingIAllocator::Stats() const {
+std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator::Stats() const {
   AllocatorStats stats{};
   i_allocator_->GetStats(&stats);
-  auto stats_str = stats.DebugString();
 
-  // Process the debug string to a comma-separated format and remove redundant spaces
-  std::string::size_type pos = 0;
-  while ((pos = stats_str.find('\n', pos)) != std::string::npos) {
-    stats_str.replace(pos, 1, ",");
-    pos += 1;
-  }
-
-  pos = 0;
-  while ((pos = stats_str.find(' ', pos)) != std::string::npos) {
-    stats_str.replace(pos, 1, "");
-  }
-
-  return stats_str;
+  std::unordered_map<std::string, std::string> entries;
+  entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
+  entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
+  entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
+  entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
+  entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));
+  entries.insert_or_assign("NumReserves", std::to_string(stats.num_reserves));
+  entries.insert_or_assign("NumArenaExtensions", std::to_string(stats.num_arena_extensions));
+  entries.insert_or_assign("NumArenaShrinkages", std::to_string(stats.num_arena_shrinkages));
+  entries.insert_or_assign("MaxAllocSize", std::to_string(stats.max_alloc_size));
+  return entries;
 }
 
 onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocator() {

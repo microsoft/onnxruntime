@@ -601,5 +601,5 @@ ORT_API(const OrtEpApi*, GetEpApi);
 
 ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 
-ORT_API_STATUS_IMPL(AllocatorGetStats, _In_ const OrtAllocator* ptr, _Inout_ OrtAllocator* allocator, _Outptr_ char** out);
+ORT_API_STATUS_IMPL(AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out);
 }  // namespace OrtApis

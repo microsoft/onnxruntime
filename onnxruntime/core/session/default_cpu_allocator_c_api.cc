@@ -20,7 +20,7 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultCpuAllocator*>(this_)->Alloc(size); };
     OrtAllocator::GetStats =
-        [](const OrtAllocator* /*this_*/, OrtAllocator* /*allocator*/, char** /*stats*/) noexcept -> OrtStatusPtr {
+        [](const OrtAllocator* /*this_*/, OrtKeyValuePairs** /*stats*/) noexcept -> OrtStatusPtr {
       return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported by the allocator");
     };
     Ort::ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));

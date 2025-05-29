@@ -31,7 +31,7 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   const OrtMemoryInfo* Info() const;
   void* Reserve(size_t size);
 
-  std::string Stats() const;
+  std::unordered_map<std::string, std::string> Stats() const;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
