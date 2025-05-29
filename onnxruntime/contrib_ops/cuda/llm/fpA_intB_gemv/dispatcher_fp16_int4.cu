@@ -16,7 +16,6 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/dispatcher.h"
 
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
