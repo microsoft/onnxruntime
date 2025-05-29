@@ -52,6 +52,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/if_to_where_transformer.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -626,6 +627,53 @@ TEST_F(GraphTransformationTests, ConstantFoldingNodesOnDifferentEP) {
   for (auto& node : graph.Nodes()) {
     EXPECT_STREQ(node.GetExecutionProviderType().c_str(), kCudaExecutionProvider);
   }
+}
+
+// Tests that a simple If node with dynamic condition is transformed into a Where node
+TEST_F(GraphTransformationTests, IfToWhereTransformer_BasicDynamicCondition) {
+  const ORTCHAR_T* model_uri = MODEL_FOLDER "if_to_where_test.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  // Assign all nodes to QNN EP
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType("QNNExecutionProvider");
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<IfToWhereTransformer>(), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["If"], 0);
+  EXPECT_EQ(op_to_count["Where"], 1);
+  EXPECT_EQ(op_to_count["Add"], 1);       // from then_branch
+  EXPECT_EQ(op_to_count["Identity"], 1);  // from else_branch
+}
+
+// Tests that the transformer skips If nodes when assigned to a non-QNN execution provider
+TEST_F(GraphTransformationTests, IfToWhereTransformer_NonQnnEP) {
+  const ORTCHAR_T* model_uri = MODEL_FOLDER "if_to_where_test.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType("CPUExecutionProvider");  // Not QNN
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<IfToWhereTransformer>(), TransformerLevel::Level1));
+
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["If"], 1);     // Should remain
+  EXPECT_EQ(op_to_count["Where"], 0);  // Should not be added
 }
 
 TEST_F(GraphTransformationTests, ConstantFoldingUnsupportedFloat16) {
