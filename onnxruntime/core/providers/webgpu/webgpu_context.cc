@@ -715,16 +715,10 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
   auto bind_group = Device().CreateBindGroup(&bind_group_desc);
 
-  // Handle capture if we're in capture mode
   if (session_status_ == SStatus::Capturing) {
     captured_commands_map_[session_id_].push_back({program_artifact.compute_pipeline,
                                                    bind_group,
                                                    {x, y, z}});
-
-    if (is_profiling_) {
-      // Store a copy of the pending kernel info for replaying
-      //   captured_kernels_map_[session_id_].push_back(pending_kernels_.back());
-    }
   }
 
   // Execute the command directly
@@ -738,9 +732,8 @@ void WebGpuContext::CaptureBegin(uint32_t session_id) {
 
   captured_commands_map_.emplace(session_id, std::vector<CapturedCommandInfo>());
 
-  if (is_profiling_) {
-    captured_kernels_map_.emplace(session_id, std::vector<PendingKernelInfo>());
-  }
+  // TODO: support profiling with graph capture.
+  ORT_ENFORCE(!is_profiling_, "profiing is not supported yet under graph capture mode");
 
   // Flush any pending commands before we change the status
   Flush();
@@ -765,42 +758,22 @@ void WebGpuContext::Replay(uint32_t session_id) {
   session_id_ = session_id;
   session_status_ = SStatus::Replaying;
 
-  // Reset the pending kernels for new profiling data during replay
-  pending_kernels_.clear();
-
   // Replay all captured commands
   auto command_list = captured_commands_map_[session_id];
   const size_t command_count = command_list.size();
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = command_list[i];
     const auto& compute_pass_encoder = GetComputePassEncoder();
-
-    // Record timestamp at the beginning of the command if profiling is enabled
     WriteTimestamp(num_pending_dispatches_ * 2);
-
-    // Execute the command
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
     compute_pass_encoder.SetBindGroup(0, command.bind_group);
     compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
-
-    // Record timestamp at the end of the command if profiling is enabled
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-
-    // If profiling is enabled, add the kernel info for this command
-    if (is_profiling_ && i < captured_kernels_map_.size()) {
-      //  pending_kernels_.push_back(captured_pending_kernels_[i]);
-    }
-
-    // Increment the pending dispatch counter
     ++num_pending_dispatches_;
-
-    // End the compute pass if needed
     if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
         (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
       EndComputePass();
     }
-
-    // Flush if needed
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
       Flush();
       num_pending_dispatches_ = 0;
@@ -817,7 +790,6 @@ void WebGpuContext::Replay(uint32_t session_id) {
 void WebGpuContext::OnReleaseSession(uint32_t session_id) {
   LOGS_DEFAULT(VERBOSE) << "OnReleaseSession: " << session_id;
   captured_commands_map_.erase(session_id);
-  captured_kernels_map_.erase(session_id);
   buffer_mgr_->ReleaseCapturedBuffers(session_id);
 }
 

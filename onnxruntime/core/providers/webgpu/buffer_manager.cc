@@ -250,6 +250,7 @@ class BucketCacheManager : public IBufferCacheManager {
           wgpuBufferRelease(buffer);
         }
       } else {
+        // TODO: Reuse the captured buffers for storage buffer to reduce peak memory.
         auto it = captured_buffers_.find(session_id);
         if (it == captured_buffers_.end()) {
           captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());

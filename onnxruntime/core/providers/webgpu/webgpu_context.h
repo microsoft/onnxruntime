@@ -253,9 +253,6 @@ class WebGpuContext final {
   // A session_id to a vector of corresponding commands map for replay
   std::unordered_map<uint32_t, std::vector<CapturedCommandInfo>> captured_commands_map_;
 
-  // A session_id to a vector of corresponding kernel info map for profiling during replay
-  std::unordered_map<uint32_t, std::vector<PendingKernelInfo>> captured_kernels_map_;
-
   uint32_t session_id_ = 0;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
