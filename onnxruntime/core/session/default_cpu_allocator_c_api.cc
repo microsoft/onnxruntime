@@ -22,6 +22,7 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultCpuAllocator*>(this_)->Alloc(size); };
     OrtAllocator::GetStats =
         [](const OrtAllocator* /*this_*/, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+      // Default allocator does not support stats, return an empty OrtKeyValuePairs.
       auto kvp = std::make_unique<OrtKeyValuePairs>();
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;

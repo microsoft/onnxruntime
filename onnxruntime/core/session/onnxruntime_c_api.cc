@@ -1569,14 +1569,7 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
 
 ORT_API_STATUS_IMPL(OrtApis::AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out) {
   API_IMPL_BEGIN
-#ifdef ORT_NO_RTTI
-  // When exception is disabled, we should directly return an error status to avoid aborting the program.
-  ORT_UNUSED_PARAMETER(ptr);
-  ORT_UNUSED_PARAMETER(out);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported in a NO_RTTI build.");
-#else
   return ptr->GetStats(ptr, out);
-#endif
   API_IMPL_END
 }
 
