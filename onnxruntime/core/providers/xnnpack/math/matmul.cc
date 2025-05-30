@@ -41,7 +41,6 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
       break;
     }
 
-
     // A must at-least be 1-D
     if (A_shape == nullptr || A_shape->dim_size() < 1) {
       break;
