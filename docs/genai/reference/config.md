@@ -82,7 +82,7 @@ Below is an example `genai_config.json` for a decoder-only style model:
 ## Configuration structure
 
 The configuration file is structured as a JSON object with two main sections: `model` and `search`.  
-Below is a mapping of the C++ `Config` struct and its nested structs to the JSON fields.
+
 
 ---
 
