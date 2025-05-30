@@ -39,20 +39,6 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
 
-struct LayoutDetails {
-  enum class Layout {
-    UNKNOWN,
-    ROW_MAJOR,
-    COLUMN_MAJOR
-  };
-
-  Layout layoutB = Layout::UNKNOWN;
-  int rows_per_column_tile = 1;
-  int columns_interleaved = 1;
-
-  bool uses_imma_ldsm = false;
-};
-
 template <typename Layout>
 struct getLayoutDetails {
 };
@@ -156,6 +142,7 @@ std::vector<int> get_permutation_map(QuantType quant_type) {
   }
 }
 
+#ifdef FPA_INTB_PREPROCESS_IN_CPU
 void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
                                    std::vector<size_t> const& shape, QuantType quant_type) {
   ORT_LLM_LOG_TRACE(__PRETTY_FUNCTION__);
@@ -681,6 +668,8 @@ template void symmetric_quantize<half, __nv_bfloat16>(
 
 template void symmetric_quantize<__nv_bfloat16, float>(
     int8_t*, __nv_bfloat16*, float const*, std::vector<size_t> const&, QuantType, bool);
+
+#endif
 
 }  // namespace cutlass_kernels
 }  // namespace kernels

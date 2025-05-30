@@ -16,6 +16,7 @@
 
 #pragma once
 
+#include <cuda_runtime.h>
 #include <cstddef>
 #include <stdint.h>
 #include <vector>
@@ -46,16 +47,44 @@ constexpr int get_weight_quant_bits(QuantType quant_type) {
   }
 }
 
-// Shapes here can be 2 or 3D. 2-D shapes are [num_rows, num_cols]
-// 3-D shapes are [num_experts, num_rows, num_cols]
-void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
-                                   std::vector<size_t> const& shape, QuantType quant_type);
+struct LayoutDetails {
+  enum class Layout {
+    UNKNOWN,
+    ROW_MAJOR,
+    COLUMN_MAJOR
+  };
 
-void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
-                       std::vector<size_t> const& shape, QuantType quant_type);
+  Layout layoutB = Layout::UNKNOWN;
+  int rows_per_column_tile = 1;
+  int columns_interleaved = 1;
 
-void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size_t num_elts, QuantType quant_type);
+  bool uses_imma_ldsm = false;
+};
 
+LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch);
+
+std::vector<int> get_permutation_map(QuantType quant_type);
+
+// void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
+//                                    std::vector<size_t> const& shape, QuantType quant_type);
+
+// void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
+//                        std::vector<size_t> const& shape, QuantType quant_type);
+
+// void interleave_column_major_tensor(int8_t* interleaved_quantized_tensor, int8_t const* quantized_tensor,
+//                                     std::vector<size_t> const& shape, QuantType quant_type, LayoutDetails details);
+
+// void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size_t num_elts, QuantType quant_type);
+
+// cuda version of preprocess_weights_for_mixed_gemm
+void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
+                                            int arch,
+                                            int8_t* preprocessed_quantized_weight,
+                                            int8_t* row_major_quantized_weight,
+                                            int32_t* d_permutation_map,
+                                            std::vector<size_t> const& shape, QuantType quant_type);
+
+#ifdef FPA_INTB_PREPROCESS_IN_CPU
 void preprocess_weights_for_mixed_gemm(int8_t* preprocessed_quantized_weight, int8_t const* row_major_quantized_weight,
                                        std::vector<size_t> const& shape, QuantType quant_type, bool force_interleave = false);
 
@@ -69,6 +98,7 @@ template <typename ComputeType, typename WeightType>
 void symmetric_quantize(int8_t* processed_quantized_weight, int8_t* unprocessed_quantized_weight,
                         ComputeType* scale_ptr, WeightType const* input_weight_ptr, std::vector<size_t> const& shape, QuantType quant_type,
                         bool force_interleave);
+#endif
 
 }  // namespace cutlass_kernels
 }  // namespace kernels
