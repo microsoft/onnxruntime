@@ -244,7 +244,7 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
 }
 
 template <typename T>
-inline Status AllocatorImpl<T>::GetStats(KeyValuePairs* stats) const {
+inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
   OrtKeyValuePairs* out;
   ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
   return KeyValuePairs(out);
