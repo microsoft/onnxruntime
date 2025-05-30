@@ -344,7 +344,8 @@ typedef struct OrtAllocator {
   /**
    * @brief Function used to get the statistics of the allocator.
    *
-   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator.
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
    * Supported keys are:
    * - Limit: Bytes limit of the allocator. -1 if no limit is set.
    * - InUse: Number of bytes in use.
@@ -5288,7 +5289,8 @@ struct OrtApi {
 
   /** \brief Calls OrtAllocator::GetStats function
    *
-   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator.
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
    *
    * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
    *

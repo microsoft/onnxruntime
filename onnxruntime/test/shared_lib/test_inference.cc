@@ -1993,14 +1993,11 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  Ort::KeyValuePairs stats;
-  auto status = cpu_allocator.GetStats(&stats);
+  Ort::KeyValuePairs stats = cpu_allocator.GetStats();
 
   // CPU allocator may not support arena usage.
   // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
   if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
-    ASSERT_TRUE(status.IsOK());
-
     ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
     ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
     ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
@@ -2014,7 +2011,6 @@ TEST(CApiTest, get_allocator_cpu) {
     ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
   } else {
     // If the allocator is not an arena allocator, we expect the stats to be empty.
-    ASSERT_TRUE(status.IsOK());
     ASSERT_EQ(0, stats.GetKeyValuePairs().size());
   }
 }
@@ -2040,9 +2036,7 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  Ort::KeyValuePairs stats;
-  auto status = cuda_allocator.GetStats(&stats);
-  ASSERT_TRUE(status.IsOK());
+  Ort::KeyValuePairs stats = cuda_allocator.GetStats();
 
   ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
   ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));

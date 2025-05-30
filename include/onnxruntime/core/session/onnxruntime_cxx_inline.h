@@ -246,9 +246,8 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
 template <typename T>
 inline Status AllocatorImpl<T>::GetStats(KeyValuePairs* stats) const {
   OrtKeyValuePairs* out;
-  ORT_CXX_RETURN_ON_API_FAIL(GetApi().AllocatorGetStats(this->p_, &out));
-  *stats = KeyValuePairs(out);
-  return Ort::Status();
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
+  return KeyValuePairs(out);
 }
 }  // namespace detail
 

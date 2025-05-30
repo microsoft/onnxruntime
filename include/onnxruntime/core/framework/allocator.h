@@ -102,7 +102,7 @@ class IAllocator {
 
   // Each implementation of IAllocator can override and provide their own implementation
   virtual void GetStats(AllocatorStats* stats) {
-    stats->Clear();
+    *stats = {};
   }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
