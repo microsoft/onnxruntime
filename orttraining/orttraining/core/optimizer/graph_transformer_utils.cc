@@ -216,6 +216,9 @@ std::vector<std::unique_ptr<GraphTransformer>> GeneratePreTrainingTransformers(
     case TransformerLevel::Level3: {
     } break;
 
+    case TransformerLevel::Level4: {
+    } break;
+
     default:
       ORT_ENFORCE(false, "Unsupported level " + std::to_string(static_cast<uint32_t>(level)));
       break;
@@ -293,6 +296,14 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       if (MlasNchwcGetBlockSize() > 1) {
         transformers.emplace_back(std::make_unique<NchwcTransformer>());
       }
+    } break;
+
+    case TransformerLevel::Level4: {
+      // NOTE: Placeholder for adding level 4 transformers to handle unsupported datatype optimizations.
+      // For inference, FuseInitializersTransformer is used to fuse FP16 initializers with FP32 nodes.
+      // For training, if it is necessary to fuse FP16 initializers to FP32 nodes (e.g., to support platforms without FP16),
+      // add FuseInitializersTransformer to the training graph transformers list.
+      // For reference, see FuseFp16InitializerToFp32NodeTransformer in onnxruntime/core/optimizer/graph_transformer_utils.cc.
     } break;
 
     default:
