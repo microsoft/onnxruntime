@@ -1,4 +1,4 @@
-name: Qualcomm_Internal_Windows_CI
+name: Qualcomm_Internal_CI
 on:
   push:
     branches:
@@ -7,6 +7,12 @@ on:
   pull_request:
     branches:
       - main
+
+# only one active job per PR. this will cause jobs to be immediately cancelled on subsequent pushes in PRs.
+# ref: https://docs.github.com/en/actions/using-jobs/using-concurrency#example-using-a-fallback-value
+concurrency:
+  group: ${{ github.workflow }}-${{ github.head_ref || github.run_id }}
+  cancel-in-progress: true
 
 jobs:
   build-windows-x86_64:
