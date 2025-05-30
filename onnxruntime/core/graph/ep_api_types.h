@@ -17,7 +17,7 @@ class GraphViewer;
 /// Concrete implementation of OrtNode used in the OrtEpApi.
 /// </summary>
 struct EpNode : public OrtNode {
-  EpNode(const Node& node) : OrtNode(OrtNode::Type::kEditorNode), node(node) {}
+  EpNode(const Node& node) : OrtNode(OrtNode::Type::kEpNode), node(node) {}
   OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
   const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
 

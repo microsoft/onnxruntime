@@ -75,16 +75,21 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
-  onnxruntime::EpGraph ep_graph(graph_viewer);
+  EpGraph ep_graph(graph_viewer);
   OrtEpGraphSupportInfo api_graph_support_info(ep_graph);
+  Status status = ToStatus(ort_ep_->GetCapability(ort_ep_.get(), ep_graph.ToExternal(), &api_graph_support_info));
 
-  ort_ep_->GetCapability(ort_ep_.get(), ep_graph.ToExternal(), &api_graph_support_info);
+  // GetCapability is not supposed to fail. If there's an error, return an empty result to ensure this EP is not
+  // assigned any nodes and log an error.
+  if (!status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() failed with error: " << status.ToString();
+    return {};
+  }
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
   result.reserve(api_graph_support_info.subgraphs.size());
-
   if (api_graph_support_info.subgraphs.empty()) {
-    return result;
+    return {};
   }
 
   ModelMetadefIdGenerator generator;

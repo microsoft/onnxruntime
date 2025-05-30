@@ -32,10 +32,16 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
     GetCapability = GetCapabilityImpl;
+    GetName = GetNameImpl;
   }
 
   ~ExampleEp() {
     // Clean up the execution provider
+  }
+
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
+    const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+    return ep->name_.c_str();
   }
 
   static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,

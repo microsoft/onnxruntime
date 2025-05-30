@@ -583,6 +583,44 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
 
+// Test creating a session with the example plugin EP and loading a model with a single Mul node.
+TEST(OrtEpLibrary, PluginLibrary_CreateSession) {
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
+
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  {
+    std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+    Ort::ConstEpDevice plugin_ep_device;
+    for (Ort::ConstEpDevice& device : ep_devices) {
+      if (std::string(device.EpName()) == registration_name) {
+        plugin_ep_device = device;
+        break;
+      }
+    }
+    ASSERT_NE(plugin_ep_device, nullptr);
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
+
+    auto input_model_path = ORT_TSTR("testdata/mul_1.onnx");
+
+    // Try creating a session with the plugin EP. The EP supports GetCapability(), but not Compile(),
+    // so expect a ORT_NOT_IMPLEMENTED error for now.
+    try {
+      Ort::Session session(*ort_env, input_model_path, session_options);
+      FAIL();
+    } catch (const Ort::Exception& excpt) {
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("IExecutionProvider::Compile with FusedNodeAndGraph is not "
+                                                   "implemented by example_ep"));
+    }
+  }
+
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
 }  // namespace test
 }  // namespace onnxruntime
 
