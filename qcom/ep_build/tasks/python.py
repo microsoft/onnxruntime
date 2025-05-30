@@ -70,6 +70,7 @@ class CreateVenvTask(CompositeTask):
                             "install",
                             "-r",
                             f"{REPO_ROOT}/requirements-dev.txt",
+                            "--native-tls",
                         ],
                         ["lintrunner", "init"],
                         [
@@ -80,6 +81,7 @@ class CreateVenvTask(CompositeTask):
                             f"{REPO_ROOT}/qcom/requirements.txt",
                             "--trusted-host=ort-ep-win-01",
                             "--index-url=http://ort-ep-win-01:8080",
+                            "--native-tls",
                         ],
                     ],
                 ),
