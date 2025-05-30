@@ -6,7 +6,7 @@ import logging
 
 import numpy as np
 from fusion_attention import AttentionMask, FusionAttention
-from onnx import TensorProto, helper
+from onnx import helper
 from onnx_model import OnnxModel
 
 logger = logging.getLogger(__name__)
@@ -104,7 +104,7 @@ class FusionBartAttention(FusionAttention):
         if v_nodes_past_or_present is not None:
             v_nodes = v_nodes_past_or_present
             (transpose_v, reshape_v, add_v, matmul_v) = v_nodes
-            
+
             # Find past_v input name
             start_child_nodes = input_name_to_nodes[add_v.output[0]]
             for start_child_node in start_child_nodes:

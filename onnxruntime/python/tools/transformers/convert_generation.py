@@ -1566,13 +1566,17 @@ def fix_past_sequence_length(model: OnnxModel):
         unsqueeze_node = past_key_path[0]
 
         if input_ids_path[2:] != past_key_path[1:]:
-            logger.info("The input_ids path and past_key path do not share the same nodes for calculating the past_sequence_length")
+            logger.info(
+                "The input_ids path and past_key path do not share the same nodes for calculating the past_sequence_length"
+            )
             return
 
         # Remove `past_key_self_0 --> Transpose --> Reshape --> Shape --> Gather` connection
         constant_in_gather = list(filter(lambda n: n.output[0] == past_key_path[1].input[1], model.model.graph.node))[0]  # noqa: RUF015
         model.model.graph.node.remove(constant_in_gather)
-        constant_in_reshape = list(filter(lambda n: n.output[0] == past_key_path[-2].input[1], model.model.graph.node))[0]  # noqa: RUF015
+        constant_in_reshape = list(filter(lambda n: n.output[0] == past_key_path[-2].input[1], model.model.graph.node))[
+            0
+        ]  # noqa: RUF015
         model.model.graph.node.remove(constant_in_reshape)
         model.model.graph.node.remove(past_key_path[1])
         model.model.graph.node.remove(past_key_path[2])

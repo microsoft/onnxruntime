@@ -22,6 +22,7 @@ else:
     from onnxruntime.transformers.onnx_model import OnnxModel
     from onnxruntime.transformers.optimizer import optimize_model
 
+
 # Dummy constants smaller than openai/whisper-tiny
 class WhisperConfig:
     def __init__(self):
@@ -38,6 +39,7 @@ class WhisperConfig:
         self.n_state = self.hidden_size
         self.n_head = self.num_heads
         self.n_mlp = self.encoder_ffn_dim
+
 
 # From https://github.com/huggingface/transformers/blob/31f8a0fe8a7e2db1ee30bf32ed5976cd11f3283c/src/transformers/models/whisper/modeling_whisper.py#L222
 class WhisperHFAttention(torch.nn.Module):
@@ -144,6 +146,7 @@ class WhisperHFAttention(torch.nn.Module):
         past_key_value = past_key_value.to_legacy_cache()
         return attn_output, past_key_value
 
+
 # From https://github.com/huggingface/transformers/blob/31f8a0fe8a7e2db1ee30bf32ed5976cd11f3283c/src/transformers/models/whisper/modeling_whisper.py#L583
 class WhisperHFEncoderLayer(torch.nn.Module):
     def __init__(self):
@@ -195,6 +198,7 @@ class WhisperHFEncoderLayer(torch.nn.Module):
 
         outputs = (hidden_states,)
         return outputs
+
 
 # From https://github.com/huggingface/transformers/blob/31f8a0fe8a7e2db1ee30bf32ed5976cd11f3283c/src/transformers/models/whisper/modeling_whisper.py#L651
 class WhisperHFDecoderLayer(torch.nn.Module):
@@ -289,6 +293,7 @@ class WhisperHFDecoderLayer(torch.nn.Module):
 
         return outputs
 
+
 # From https://github.com/openai/whisper/blob/dd985ac4b90cafeef8712f2998d62c59c3e62d22/whisper/model.py#L44
 class WhisperOAILinear(torch.nn.Linear):
     def forward(self, x: torch.Tensor) -> torch.Tensor:
@@ -297,6 +302,7 @@ class WhisperOAILinear(torch.nn.Linear):
             self.weight.to(x.dtype),
             None if self.bias is None else self.bias.to(x.dtype),
         )
+
 
 # From https://github.com/openai/whisper/blob/423492dda7806206abe56bdfe427c1096473a020/whisper/model.py#L62
 class WhisperOAIAttention(torch.nn.Module):
@@ -388,6 +394,7 @@ class WhisperOAIAttention(torch.nn.Module):
 
         return out, qk
 
+
 # From https://github.com/openai/whisper/blob/dd985ac4b90cafeef8712f2998d62c59c3e62d22/whisper/model.py#L142
 class WhisperOAIResidualAttentionBlock(torch.nn.Module):
     def __init__(self, cross_attention: bool = False):
@@ -397,13 +404,13 @@ class WhisperOAIResidualAttentionBlock(torch.nn.Module):
         self.attn = WhisperOAIAttention()
         self.attn_ln = torch.nn.LayerNorm(config.n_state)
 
-        self.cross_attn = (
-            WhisperOAIAttention() if cross_attention else None
-        )
+        self.cross_attn = WhisperOAIAttention() if cross_attention else None
         self.cross_attn_ln = torch.nn.LayerNorm(config.n_state) if cross_attention else None
 
         self.mlp = torch.nn.Sequential(
-            WhisperOAILinear(config.n_state, config.n_mlp), torch.nn.GELU(), WhisperOAILinear(config.n_mlp, config.n_state)
+            WhisperOAILinear(config.n_state, config.n_mlp),
+            torch.nn.GELU(),
+            WhisperOAILinear(config.n_mlp, config.n_state),
         )
         self.mlp_ln = torch.nn.LayerNorm(config.n_state)
 
@@ -416,13 +423,17 @@ class WhisperOAIResidualAttentionBlock(torch.nn.Module):
     ):
         x += 1  # Add fake add to help with fusion testing
 
-        self_attn_output, self_k, self_v = self.attn(self.attn_ln(x), mask=mask, kv_cache=(kv_cache[:2] if kv_cache is not None else kv_cache))
+        self_attn_output, self_k, self_v = self.attn(
+            self.attn_ln(x), mask=mask, kv_cache=(kv_cache[:2] if kv_cache is not None else kv_cache)
+        )
         x = x + self_attn_output
         if self.cross_attn:
-            cross_attn_output, cross_k, cross_v = self.cross_attn(self.cross_attn_ln(x), xa, kv_cache=(kv_cache[2:] if kv_cache is not None else kv_cache))
+            cross_attn_output, cross_k, cross_v = self.cross_attn(
+                self.cross_attn_ln(x), xa, kv_cache=(kv_cache[2:] if kv_cache is not None else kv_cache)
+            )
             x = x + cross_attn_output
         else:
-            self_k = self_v = cross_k = cross_v = None  # Set to none when creating encoder model's attention block 
+            self_k = self_v = cross_k = cross_v = None  # Set to none when creating encoder model's attention block
         x = x + self.mlp(self.mlp_ln(x))
         return x, (self_k, self_v, cross_k, cross_v)
 
@@ -431,7 +442,9 @@ class TestFusion(unittest.TestCase):
     def verify_fusion(self, optimized_model, expected_model_filename):
         optimized_model.topological_sort(is_deterministic=True)
 
-        expected_model_path = os.path.join(os.path.dirname(__file__), "test_data", "models", "whisper", expected_model_filename)
+        expected_model_path = os.path.join(
+            os.path.dirname(__file__), "test_data", "models", "whisper", expected_model_filename
+        )
         expected_model = OnnxModel(onnx.load(expected_model_path))
         expected_model.topological_sort(is_deterministic=True)
 
@@ -474,7 +487,7 @@ class TestFusion(unittest.TestCase):
         self.batch_size = 2
         self.sequence_length = 10
 
-    def postSetUp(self, precision, split_bias = False):
+    def postSetUp(self, precision, split_bias=False):
         use_fp16 = precision == "fp16"
         self.device = torch.device("cuda" if use_fp16 else "cpu")
         self.torch_dtype = torch.float16 if use_fp16 else torch.float32
@@ -485,19 +498,25 @@ class TestFusion(unittest.TestCase):
         if os.path.exists(path):
             os.remove(path)
 
-    @parameterized.expand([
-        ("fp16", "cuda"),
-        ("fp32", "cpu"),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda"),
+            ("fp32", "cpu"),
+        ]
+    )
     def test_hf_whisper_encoder_self_attention(self, precision, ep):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision)
         model = WhisperHFEncoderLayer().to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        inputs = (hidden_states, )
-        self.export(model, inputs, input_names=["input_hidden_states"], output_names=["output_hidden_states"], dynamic_axes={})
+        hidden_states = torch.randn(
+            self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
+        inputs = (hidden_states,)
+        self.export(
+            model, inputs, input_names=["input_hidden_states"], output_names=["output_hidden_states"], dynamic_axes={}
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
@@ -514,23 +533,49 @@ class TestFusion(unittest.TestCase):
         # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
         self.verify_fusion(optimized_model, name)
 
-    @parameterized.expand([
-        ("fp16", "cuda", False),
-        ("fp16", "cuda", True),
-        ("fp32", "cpu", False),
-        ("fp32", "cpu", True),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda", False),
+            ("fp16", "cuda", True),
+            ("fp32", "cpu", False),
+            ("fp32", "cpu", True),
+        ]
+    )
     def test_hf_whisper_decoder_no_past(self, precision, ep, split_bias):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision, split_bias)
         model = WhisperHFDecoderLayer().to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
+        hidden_states = torch.randn(
+            self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
         attention_mask = torch.ones(self.batch_size, self.sequence_length, device=self.device, dtype=self.torch_dtype)
-        encoder_hidden_states = torch.randn(self.batch_size, self.config.encoder_sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        inputs = (hidden_states, attention_mask, encoder_hidden_states,)
-        self.export(model, inputs, input_names=["input_hidden_states", "attention_mask", "encoder_hidden_states"], output_names=["output_hidden_states", "present_key_self", "present_value_self", "present_key_cross", "present_value_cross"], dynamic_axes={})
+        encoder_hidden_states = torch.randn(
+            self.batch_size,
+            self.config.encoder_sequence_length,
+            self.config.embed_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        inputs = (
+            hidden_states,
+            attention_mask,
+            encoder_hidden_states,
+        )
+        self.export(
+            model,
+            inputs,
+            input_names=["input_hidden_states", "attention_mask", "encoder_hidden_states"],
+            output_names=[
+                "output_hidden_states",
+                "present_key_self",
+                "present_value_self",
+                "present_key_cross",
+                "present_value_cross",
+            ],
+            dynamic_axes={},
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
@@ -547,25 +592,65 @@ class TestFusion(unittest.TestCase):
         # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
         self.verify_fusion(optimized_model, name)
 
-    @parameterized.expand([
-        ("fp16", "cuda", False),
-        ("fp16", "cuda", True),
-        ("fp32", "cpu", False),
-        ("fp32", "cpu", True),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda", False),
+            ("fp16", "cuda", True),
+            ("fp32", "cpu", False),
+            ("fp32", "cpu", True),
+        ]
+    )
     def test_hf_whisper_decoder_with_past(self, precision, ep, split_bias):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision, split_bias)
         model = WhisperHFDecoderLayer().to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, 1, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        attention_mask = torch.ones(self.batch_size, self.sequence_length + 1, device=self.device, dtype=self.torch_dtype)
-        encoder_hidden_states = torch.randn(self.batch_size, self.config.encoder_sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        past_key_self = torch.randn(self.batch_size, self.config.num_heads, self.sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_value_self = torch.randn(self.batch_size, self.config.num_heads, self.sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_key_cross = torch.randn(self.batch_size, self.config.num_heads, self.config.encoder_sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_value_cross = torch.randn(self.batch_size, self.config.num_heads, self.config.encoder_sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
+        hidden_states = torch.randn(
+            self.batch_size, 1, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
+        attention_mask = torch.ones(
+            self.batch_size, self.sequence_length + 1, device=self.device, dtype=self.torch_dtype
+        )
+        encoder_hidden_states = torch.randn(
+            self.batch_size,
+            self.config.encoder_sequence_length,
+            self.config.embed_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_key_self = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_value_self = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_key_cross = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.config.encoder_sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_value_cross = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.config.encoder_sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
 
         # past_key_values is of shape (num_layers) where each element is of shape (4)
         #
@@ -573,10 +658,39 @@ class TestFusion(unittest.TestCase):
         # past_key_values = (layer_0_tuple, layer_1_tuple,)
         # layer_0_tuple = (past_key_self_0, past_value_self_0, past_key_cross_0, past_value_cross_0,)
         # layer_1_tuple = (past_key_self_1, past_value_self_1, past_key_cross_1, past_value_cross_1,)
-        past_key_values = ((past_key_self, past_value_self, past_key_cross, past_value_cross,),)
+        past_key_values = (
+            (
+                past_key_self,
+                past_value_self,
+                past_key_cross,
+                past_value_cross,
+            ),
+        )
 
-        inputs = (hidden_states, attention_mask, encoder_hidden_states, None, None, None, past_key_values,)
-        self.export(model, inputs, input_names=["input_hidden_states", "attention_mask", "encoder_hidden_states", "past_key_self", "past_value_self", "past_key_cross", "past_value_cross"], output_names=["output_hidden_states", "present_key_self", "present_value_self"], dynamic_axes={})
+        inputs = (
+            hidden_states,
+            attention_mask,
+            encoder_hidden_states,
+            None,
+            None,
+            None,
+            past_key_values,
+        )
+        self.export(
+            model,
+            inputs,
+            input_names=[
+                "input_hidden_states",
+                "attention_mask",
+                "encoder_hidden_states",
+                "past_key_self",
+                "past_value_self",
+                "past_key_cross",
+                "past_value_cross",
+            ],
+            output_names=["output_hidden_states", "present_key_self", "present_value_self"],
+            dynamic_axes={},
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
@@ -593,19 +707,25 @@ class TestFusion(unittest.TestCase):
         # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
         self.verify_fusion(optimized_model, name)
 
-    @parameterized.expand([
-        ("fp16", "cuda"),
-        ("fp32", "cpu"),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda"),
+            ("fp32", "cpu"),
+        ]
+    )
     def test_oai_whisper_encoder_self_attention(self, precision, ep):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision)
         model = WhisperOAIResidualAttentionBlock().to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        inputs = (hidden_states, )
-        self.export(model, inputs, input_names=["input_hidden_states"], output_names=["output_hidden_states"], dynamic_axes={})
+        hidden_states = torch.randn(
+            self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
+        inputs = (hidden_states,)
+        self.export(
+            model, inputs, input_names=["input_hidden_states"], output_names=["output_hidden_states"], dynamic_axes={}
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
@@ -622,23 +742,55 @@ class TestFusion(unittest.TestCase):
         # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
         self.verify_fusion(optimized_model, name)
 
-    @parameterized.expand([
-        ("fp16", "cuda", False),
-        ("fp16", "cuda", True),
-        ("fp32", "cpu", False),
-        ("fp32", "cpu", True),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda", False),
+            ("fp16", "cuda", True),
+            ("fp32", "cpu", False),
+            ("fp32", "cpu", True),
+        ]
+    )
     def test_oai_whisper_decoder_no_past(self, precision, ep, split_bias):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision, split_bias)
         model = WhisperOAIResidualAttentionBlock(cross_attention=True).to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        encoder_hidden_states = torch.randn(self.batch_size, self.config.encoder_sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        attention_mask = torch.ones(self.sequence_length, self.sequence_length, device=self.device, dtype=self.torch_dtype)
-        inputs = (hidden_states, encoder_hidden_states, attention_mask,)
-        self.export(model, inputs, input_names=["input_hidden_states", "encoder_hidden_states", "attention_mask",], output_names=["output_hidden_states", "present_key_self", "present_value_self", "present_key_cross", "present_value_cross"], dynamic_axes={})
+        hidden_states = torch.randn(
+            self.batch_size, self.sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
+        encoder_hidden_states = torch.randn(
+            self.batch_size,
+            self.config.encoder_sequence_length,
+            self.config.embed_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        attention_mask = torch.ones(
+            self.sequence_length, self.sequence_length, device=self.device, dtype=self.torch_dtype
+        )
+        inputs = (
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+        )
+        self.export(
+            model,
+            inputs,
+            input_names=[
+                "input_hidden_states",
+                "encoder_hidden_states",
+                "attention_mask",
+            ],
+            output_names=[
+                "output_hidden_states",
+                "present_key_self",
+                "present_value_self",
+                "present_key_cross",
+                "present_value_cross",
+            ],
+            dynamic_axes={},
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
@@ -655,34 +807,96 @@ class TestFusion(unittest.TestCase):
         # optimized_model.save_model_to_file(name)  # Uncomment for debugging purposes
         self.verify_fusion(optimized_model, name)
 
-    @parameterized.expand([
-        ("fp16", "cuda", False),
-        ("fp16", "cuda", True),
-        ("fp32", "cpu", False),
-        ("fp32", "cpu", True),
-    ])
+    @parameterized.expand(
+        [
+            ("fp16", "cuda", False),
+            ("fp16", "cuda", True),
+            ("fp32", "cpu", False),
+            ("fp32", "cpu", True),
+        ]
+    )
     def test_oai_whisper_decoder_with_past(self, precision, ep, split_bias):
         if ep == "cuda" and not torch.cuda.is_available():
             return
         self.postSetUp(precision, split_bias)
         model = WhisperOAIResidualAttentionBlock(cross_attention=True).to(dtype=self.torch_dtype, device=self.device)
 
-        hidden_states = torch.randn(self.batch_size, 1, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
-        encoder_hidden_states = torch.randn(self.batch_size, self.config.encoder_sequence_length, self.config.embed_dim, device=self.device, dtype=self.torch_dtype)
+        hidden_states = torch.randn(
+            self.batch_size, 1, self.config.embed_dim, device=self.device, dtype=self.torch_dtype
+        )
+        encoder_hidden_states = torch.randn(
+            self.batch_size,
+            self.config.encoder_sequence_length,
+            self.config.embed_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
         attention_mask = torch.ones(1, 1, device=self.device, dtype=self.torch_dtype)
-        past_key_self = torch.randn(self.batch_size, self.config.num_heads, self.sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_value_self = torch.randn(self.batch_size, self.config.num_heads, self.sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_key_cross = torch.randn(self.batch_size, self.config.num_heads, self.config.encoder_sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
-        past_value_cross = torch.randn(self.batch_size, self.config.num_heads, self.config.encoder_sequence_length, self.config.head_dim, device=self.device, dtype=self.torch_dtype)
+        past_key_self = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_value_self = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_key_cross = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.config.encoder_sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
+        past_value_cross = torch.randn(
+            self.batch_size,
+            self.config.num_heads,
+            self.config.encoder_sequence_length,
+            self.config.head_dim,
+            device=self.device,
+            dtype=self.torch_dtype,
+        )
 
         # past_key_values is of shape (num_layers) where each element is a past key/value
         #
         # Ex:
         # past_key_values = (past_key_self_0, past_value_self_0, past_key_cross_0, past_value_cross_0,)
-        past_key_values = (past_key_self, past_value_self, past_key_cross, past_value_cross,)
+        past_key_values = (
+            past_key_self,
+            past_value_self,
+            past_key_cross,
+            past_value_cross,
+        )
 
-        inputs = (hidden_states, encoder_hidden_states, attention_mask, past_key_values,)
-        self.export(model, inputs, input_names=["input_hidden_states", "encoder_hidden_states", "attention_mask", "past_key_self", "past_value_self", "past_key_cross", "past_value_cross"], output_names=["output_hidden_states", "present_key_self", "present_value_self"], dynamic_axes={})
+        inputs = (
+            hidden_states,
+            encoder_hidden_states,
+            attention_mask,
+            past_key_values,
+        )
+        self.export(
+            model,
+            inputs,
+            input_names=[
+                "input_hidden_states",
+                "encoder_hidden_states",
+                "attention_mask",
+                "past_key_self",
+                "past_value_self",
+                "past_key_cross",
+                "past_value_cross",
+            ],
+            output_names=["output_hidden_states", "present_key_self", "present_value_self"],
+            dynamic_axes={},
+        )
 
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
         optimized_model = optimize_model(
