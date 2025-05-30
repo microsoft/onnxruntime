@@ -62,6 +62,9 @@ Environment variables
   ANDROID_HOME/ANDROID_NDK_HOME
     If both are specified, they are used instead of installing known good
     versions into build/tools.
+
+  JAVA_HOME
+    If specified, it is used instead of installing a known good version into build/tools
 """
 
     parser = argparse.ArgumentParser(

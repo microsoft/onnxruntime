@@ -20,8 +20,15 @@ cmake_linux:
 cmake_windows_x86_64:
   version: 3.31.7
   url: https://github.com/Kitware/CMake/releases/download/v{version}/cmake-{version}-windows-x86_64.zip
-  sha265: ab1c7f46a1b1314f9fcb766c2573148679af599d94c5566bc12b8b35bb563362
+  sha256: ab1c7f46a1b1314f9fcb766c2573148679af599d94c5566bc12b8b35bb563362
   content_root: cmake-{version}-windows-x86_64
+  bindir: bin
+java_linux:
+  major_version: 21
+  version: 21.0.5
+  url: https://download.oracle.com/java/{major_version}/archive/jdk-{version}_linux-x64_bin.tar.gz
+  sha256: 9c2f7c39e0d5b296ce50e563740694b2ebfe4a620415d1b2b848ba47bebceb47
+  content_root: jdk-{version}
   bindir: bin
 ninja_linux:
   version: 1.12.1

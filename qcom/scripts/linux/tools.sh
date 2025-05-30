@@ -57,6 +57,17 @@ function get_cmake_bindir() {
 }
 
 #
+# Get the directory containing java, installing it if necessary.
+#
+function get_java_bindir() {
+  if [ -n "${JAVA_HOME:-}" ]; then
+    log_debug "JAVA_HOME found at ${JAVA_HOME}"
+  else
+    get_package_bindir java_linux
+  fi
+}
+
+#
 # Get the directory containing ninja, installing it if necessary.
 #
 function get_ninja_bindir() {
