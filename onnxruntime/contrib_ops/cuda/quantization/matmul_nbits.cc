@@ -105,56 +105,38 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
   if constexpr (std::is_same_v<T, MLFloat16>) {
     size_t n = static_cast<size_t>(N_);
     size_t k = static_cast<size_t>(K_);
-    size_t weight_bytes = n * k;
-    IAllocatorUniquePtr<void> transpose_weight_space = this->GetTransientScratchBuffer<void>(weight_bytes);
-    int8_t* transposed_weight = reinterpret_cast<int8_t*>(transpose_weight_space.get());
 
     size_t packed_weight_bytes = n * k / (8 / nbits_);
 
     // uint8 does not need to be packed so we do not need to allocate extra space.
-    IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(nbits_ == 4 ? packed_weight_bytes : 0);
+    IAllocatorUniquePtr<void> packed_transposed_weight_space = this->GetTransientScratchBuffer<void>(packed_weight_bytes);
     int8_t* packed_transposed_weight = reinterpret_cast<int8_t*>(packed_transposed_weight_space.get());
 
     fpA_intB_weight_buffer_ = IAllocator::MakeUniquePtr<void>(alloc, packed_weight_bytes, true);  // Transient buffer.
 
     int8_t* preprocessed_weight = reinterpret_cast<int8_t*>(fpA_intB_weight_buffer_.get());
 
+    const uint8_t* blob_data = tensor.Data<uint8_t>();
+    if (nbits_ == 4) {
+      // Transpose the weight and add default zero point.
+      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_direct_cuda(
+          stream, packed_transposed_weight, blob_data, n, k);
+    } else {
+      onnxruntime::llm::kernels::fpA_intB_gemv::transpose_uint8_matrix_and_convert_to_int8(
+          stream, packed_transposed_weight, blob_data, n, k);
+    }
+
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
+
     auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
+    CUDA_RETURN_IF_ERROR(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
+
+    auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
+    bool force_interleave = false;
 
     using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
     QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
 
-    const uint8_t* blob_data = tensor.Data<uint8_t>();
-    if (nbits_ == 4) {
-      // Transpose the weight and add default zero point.
-      onnxruntime::llm::kernels::fpA_intB_gemv::unpack_uint4_transposed_to_int8_cuda(
-          stream,
-          packed_transposed_weight,
-          transposed_weight,
-          blob_data,
-          n,
-          k);
-      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-      DUMP_TENSOR_INIT();
-      DUMP_TENSOR_D("transposed_weight in GPU", transposed_weight, k, n);
-      DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n / 2);
-
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
-    } else {
-      auto weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k);
-      CUDA_RETURN_IF_ERROR(cudaMemcpy(weight_buffer.get(), blob_data, n * k, cudaMemcpyDeviceToHost));
-
-      // Transpose the weight from (n, k) to (k, n), and convert to int8_t by subtracting 128.
-      for (size_t i = 0; i < n; i++) {
-        for (size_t j = 0; j < k; j++) {
-          tranpose_weight_buffer.get()[j * n + i] = int8_t(int(weight_buffer.get()[i * k + j]) - 128);
-        }
-      }
-    }
-
-    auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
-    bool force_interleave = false;
     // TODO: Add a cuda kernle for preprocessing so that we can avoid copying the data back to CPU.
     onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
         reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
@@ -166,8 +148,11 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
     CUDA_RETURN_IF_ERROR(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
 
-    DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n / 2);
+    DUMP_TENSOR_INIT();
+    DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
+    DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
   }
+
   return Status::OK();
 }
 

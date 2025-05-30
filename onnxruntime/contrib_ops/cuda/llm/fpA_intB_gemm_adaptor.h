@@ -3,6 +3,7 @@
 
 #pragma once
 #include <cuda_runtime.h>
+#include <stdint.h>
 
 // Convert scale and zero_point from MatMulNBits to the format required by fpA_intB_gemm or fpA_intB_gemv kernels.
 namespace onnxruntime::llm {
@@ -24,9 +25,18 @@ void launch_transpose_scale_kernel(
     T* transposed_scale,
     int n, int k_blocks);
 
-// unpack int4 packed transposed weight of shape (n, k/2) to int8 weight of shape (k, n)
-void unpack_uint4_transposed_to_int8_cuda(cudaStream_t stream, void* packed_transposed_weight, void* transposed_weight,
-                                          const void* weight, int n, int k);
+// Transpose uint4 weight matrix and add default zero points then pack as int8.
+void unpack_uint4_transposed_to_int8_direct_cuda(cudaStream_t stream,
+                                                 void* packed_transposed_weight,
+                                                 const void* packed_weight,
+                                                 int n,
+                                                 int k);
+
+// Transpose uint8 weight matrix and add default zero points as int8.
+void transpose_uint8_matrix_and_convert_to_int8(cudaStream_t stream,
+                                                int8_t* output,        // shape: (k, n)
+                                                const uint8_t* input,  // shape: (n, k)
+                                                int n, int k);
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels
