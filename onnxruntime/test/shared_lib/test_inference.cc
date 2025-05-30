@@ -1993,7 +1993,7 @@ TEST(CApiTest, get_allocator_cpu) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  Ort::ConstKeyValuePairs stats;
+  Ort::KeyValuePairs stats;
   auto status = cpu_allocator.GetStats(&stats);
 
   // CPU allocator may not support arena usage.
@@ -2040,7 +2040,7 @@ TEST(CApiTest, get_allocator_cuda) {
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
 
-  Ort::ConstKeyValuePairs stats;
+  Ort::KeyValuePairs stats;
   auto status = cuda_allocator.GetStats(&stats);
   ASSERT_TRUE(status.IsOK());
 
