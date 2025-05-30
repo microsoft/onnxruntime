@@ -323,6 +323,7 @@ class WhisperOAIAttention(torch.nn.Module):
         kv_cache: tuple[torch.Tensor] | None = None,
     ):
         q = self.query(x)
+        present_k, present_v = None, None
 
         if kv_cache is None or xa is None:
             # If xa == None: self-attention without KV cache inputs
@@ -487,7 +488,7 @@ class TestFusion(unittest.TestCase):
         self.batch_size = 2
         self.sequence_length = 10
 
-    def postSetUp(self, precision, split_bias=False):
+    def postSetUp(self, precision, split_bias=False):  # noqa: N802
         use_fp16 = precision == "fp16"
         self.device = torch.device("cuda" if use_fp16 else "cpu")
         self.torch_dtype = torch.float16 if use_fp16 else torch.float32

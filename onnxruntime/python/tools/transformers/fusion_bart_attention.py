@@ -327,6 +327,10 @@ class FusionBartAttention(FusionAttention):
                 mask_nodes = mask_nodes_whisper_oai
             elif mask_nodes_bart is not None:
                 mask_nodes = mask_nodes_bart
+            else:
+                logger.debug("fuse_attention: failed to match mask nodes")
+                return
+            assert len(mask_nodes) > 0
 
         if (
             encoder_attention

@@ -1574,9 +1574,9 @@ def fix_past_sequence_length(model: OnnxModel):
         # Remove `past_key_self_0 --> Transpose --> Reshape --> Shape --> Gather` connection
         constant_in_gather = list(filter(lambda n: n.output[0] == past_key_path[1].input[1], model.model.graph.node))[0]  # noqa: RUF015
         model.model.graph.node.remove(constant_in_gather)
-        constant_in_reshape = list(filter(lambda n: n.output[0] == past_key_path[-2].input[1], model.model.graph.node))[
+        constant_in_reshape = list(filter(lambda n: n.output[0] == past_key_path[-2].input[1], model.model.graph.node))[  # noqa: RUF015
             0
-        ]  # noqa: RUF015
+        ]
         model.model.graph.node.remove(constant_in_reshape)
         model.model.graph.node.remove(past_key_path[1])
         model.model.graph.node.remove(past_key_path[2])
