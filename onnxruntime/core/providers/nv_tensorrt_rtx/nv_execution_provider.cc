@@ -2566,7 +2566,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                               onnx,
                               onnx_size,
                               trt_engine.get(),
-                              true /* serialize refitted engine to disk */,
+                              false /* serialize refitted engine to disk */,
                               detailed_build_log_);
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2749,7 +2749,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
                                 trt_engine,
-                                true /* serialize refitted engine to disk */,
+                                false /* serialize refitted engine to disk */,
                                 detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
