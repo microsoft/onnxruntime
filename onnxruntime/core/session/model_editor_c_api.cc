@@ -107,7 +107,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
   API_IMPL_BEGIN
   if (ort_graph->type != OrtGraph::Type::kEditorGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtGraph is not the expected type required by the model-editing API");
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
   onnxruntime::ModelEditorGraph* graph = static_cast<onnxruntime::ModelEditorGraph*>(ort_graph);
 
@@ -130,7 +130,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
   API_IMPL_BEGIN
   if (ort_graph->type != OrtGraph::Type::kEditorGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtGraph is not the expected type required by the model-editing API");
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
   onnxruntime::ModelEditorGraph* graph = static_cast<onnxruntime::ModelEditorGraph*>(ort_graph);
 
@@ -153,7 +153,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort
   API_IMPL_BEGIN
   if (ort_graph->type != OrtGraph::Type::kEditorGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtGraph is not the expected type required by the model-editing API");
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
   onnxruntime::ModelEditorGraph* graph = static_cast<onnxruntime::ModelEditorGraph*>(ort_graph);
 
@@ -194,13 +194,13 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
   API_IMPL_BEGIN
   if (ort_graph->type != OrtGraph::Type::kEditorGraph) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtGraph is not the expected type required by the model-editing API");
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
   }
   onnxruntime::ModelEditorGraph* graph = static_cast<onnxruntime::ModelEditorGraph*>(ort_graph);
 
   if (ort_node->type != OrtNode::Type::kEditorNode) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "OrtNode is not the expected type required by the model-editing API");
+                                 "Invalid OrtNode variant for use in the OrtModelEditorApi");
   }
   onnxruntime::ModelEditorNode* node = static_cast<onnxruntime::ModelEditorNode*>(ort_node);
 
