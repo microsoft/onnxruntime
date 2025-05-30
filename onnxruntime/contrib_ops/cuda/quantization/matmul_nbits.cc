@@ -14,7 +14,7 @@
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
-#include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 constexpr int MatMulNBits_Input_B = 1;
@@ -126,30 +126,11 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
           stream, packed_transposed_weight, blob_data, n, k);
     }
 
-    using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
+    using onnxruntime::llm::kernels::weight_only::QuantType;
     QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
 
-#ifdef FPA_INTB_PREPROCESS_IN_CPU
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-    auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
-
-    auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
-
-    // TODO: Add a cuda kernle for preprocessing so that we can avoid copying the data back to CPU.
-    constexpr bool force_interleave = false;
-    onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
-        reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
-        reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
-        {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type,
-        force_interleave);
-
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
-#else
     auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
-    onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm_cuda(
+    onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
         stream,
         sm_,
         preprocessed_weight,
@@ -157,7 +138,6 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
         permutation_map_buffer.get(),
         {static_cast<size_t>(k), static_cast<size_t>(n)},
         quant_type);
-#endif
 
     CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
     DUMP_TENSOR_INIT();

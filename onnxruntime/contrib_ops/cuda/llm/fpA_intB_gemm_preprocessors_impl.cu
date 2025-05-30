@@ -2,11 +2,11 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
-namespace cutlass_kernels {
+namespace weight_only {
 
 /**
  * @brief CUDA kernel to permute rows of a quantized tensor.
@@ -132,37 +132,6 @@ void permute_B_rows_on_gpu(
     );
 }
 
-// void permute_B_rows_for_mixed_gemm(int8_t* permuted_quantized_tensor, int8_t const* quantized_tensor,
-//                                    std::vector<size_t> const& shape, QuantType quant_type){
-//     size_t num_elts = 1;
-//     for (auto const& dim : shape) {
-//         num_elts *= dim;
-//     }
-//     const size_t num_bytes = num_elts * get_weight_quant_bits(quant_type) / 8;
-//     int8_t* d_input = nullptr;
-//     cudaMalloc(&d_input, num_bytes);
-
-//     int8_t* d_output = nullptr;
-//     cudaMalloc(&d_output, num_bytes);
-
-//     std::vector<int> row_permutation = get_permutation_map(quant_type);
-
-//     const size_t row_permutation_bytes = row_permutation.size() * sizeof(int);
-//     int* d_row_permutation = nullptr;
-//     cudaMalloc(&d_row_permutation, row_permutation_bytes);
-
-//     cudaStream_t stream = cudaStreamLegacy;
-//     cudaMemcpyAsync(d_input, quantized_tensor, num_bytes, cudaMemcpyHostToDevice, stream);
-//     cudaMemcpyAsync(d_row_permutation, row_permutation.data(), row_permutation_bytes, cudaMemcpyHostToDevice, stream);
-
-//     permute_B_rows_on_gpu(d_output, d_input, d_row_permutation, row_permutation.size(), shape, quant_type, stream);
-
-//     cudaMemcpyAsync(permuted_quantized_tensor, d_output, num_bytes, cudaMemcpyDeviceToHost, stream);
-//     cudaStreamSynchronize(stream);
-//     cudaFree(d_row_permutation);
-//     cudaFree(d_input);
-//     cudaFree(d_output);
-// }
 
 
 // Constants for the subbyte_transpose_kernel
@@ -319,35 +288,6 @@ void subbyte_transpose_cuda(
     }
 }
 
-// void subbyte_transpose(int8_t* transposed_quantized_tensor, int8_t const* quantized_tensor,
-//                        std::vector<size_t> const& shape, QuantType quant_type) {
-//     size_t num_elts = 1;
-//     for (auto const& dim : shape) {
-//         num_elts *= dim;
-//     }
-//     const size_t num_bytes = num_elts * get_weight_quant_bits(quant_type) / 8;
-//     int8_t* d_input = nullptr;
-//     cudaMalloc(&d_input, num_bytes);
-
-//     int8_t* d_output = nullptr;
-//     cudaMalloc(&d_output, num_bytes);
-
-//     cudaStream_t stream = cudaStreamLegacy;
-//     cudaMemcpyAsync(d_input, quantized_tensor, num_bytes, cudaMemcpyHostToDevice, stream);
-
-//     // Note: The output buffer (dst_buf) must be zero-initialized before the kernel launch
-//     // because the int4 kernel uses atomicOr.
-//     cudaMemsetAsync(d_output, 0, num_bytes, stream);
-
-//     subbyte_transpose_cuda(d_output, d_input, shape, quant_type, stream);
-
-//     cudaMemcpyAsync(transposed_quantized_tensor, d_output, num_bytes, cudaMemcpyDeviceToHost, stream);
-//     cudaStreamSynchronize(stream);
-
-//     cudaFree(d_input);
-//     cudaFree(d_output);
-// }
-
 /**
  * @brief CUDA kernel to interleave a column-major tensor.
  *
@@ -444,36 +384,6 @@ void interleave_column_major_tensor_cuda(
         quant_type
     );
 }
-
-
-// void interleave_column_major_tensor(int8_t* interleaved_quantized_tensor, int8_t const* quantized_tensor,
-//                                     std::vector<size_t> const& shape, QuantType quant_type, LayoutDetails details) {
-//     size_t num_elts = 1;
-//     for (auto const& dim : shape) {
-//         num_elts *= dim;
-//     }
-//     const size_t num_bytes = num_elts * get_weight_quant_bits(quant_type) / 8;
-//     int8_t* d_input = nullptr;
-//     cudaMalloc(&d_input, num_bytes);
-
-//     int8_t* d_output = nullptr;
-//     cudaMalloc(&d_output, num_bytes);
-
-//     cudaStream_t stream = cudaStreamLegacy;
-//     cudaMemcpyAsync(d_input, quantized_tensor, num_bytes, cudaMemcpyHostToDevice, stream);
-
-//     // Note: The output buffer (dst_buf) must be zero-initialized before the kernel launch
-//     // because the int4 kernel uses atomicOr.
-//     cudaMemsetAsync(d_output, 0, num_bytes, stream);
-
-//     interleave_column_major_tensor_cuda(d_output, d_input, shape, quant_type, details, stream);
-
-//     cudaMemcpyAsync(interleaved_quantized_tensor, d_output, num_bytes, cudaMemcpyDeviceToHost, stream);
-//     cudaStreamSynchronize(stream);
-
-//     cudaFree(d_input);
-//     cudaFree(d_output);
-// }
 
 /**
  * @brief CUDA kernel to add bias and interleave an INT8 tensor in place.
@@ -622,26 +532,6 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
     }
 }
 
-// void add_bias_and_interleave_quantized_tensor_inplace(int8_t* tensor, const size_t num_elts, QuantType quant_type) {
-//     const size_t num_bytes = num_elts * get_weight_quant_bits(quant_type) / 8;
-//     int8_t* d_input = nullptr;
-//     cudaMalloc(&d_input, num_bytes);
-
-//     // int8_t* d_output = nullptr;
-//     // cudaMalloc(&d_output, num_bytes);
-
-//     cudaStream_t stream = cudaStreamLegacy;
-//     cudaMemcpyAsync(d_input, tensor, num_bytes, cudaMemcpyHostToDevice, stream);
-
-//     add_bias_and_interleave_quantized_tensor_inplace_cuda(d_input, num_elts, quant_type, stream);
-
-//     cudaMemcpyAsync(tensor, d_input, num_bytes, cudaMemcpyDeviceToHost, stream);
-//     cudaStreamSynchronize(stream);
-
-//     cudaFree(d_input);
-//     //cudaFree(d_output);
-// }
-
 void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int arch,
                                             int8_t* preprocessed_quantized_weight,
@@ -708,6 +598,6 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   }
 }
 
-}  // namespace cutlass_kernels
+}  // namespace weight_only
 }  // namespace kernels
 }  // namespace onnxruntime::llm
