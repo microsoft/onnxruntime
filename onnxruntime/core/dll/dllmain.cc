@@ -34,7 +34,7 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
         // Cleanup protobuf library.
         // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.
         ::google::protobuf::ShutdownProtobufLibrary();
-      }      
+      }
       break;
   }
   return TRUE;

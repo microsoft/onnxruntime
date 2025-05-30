@@ -250,7 +250,7 @@ struct PySessionOptions : public OrtSessionOptions {
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
   PyInferenceSession(OrtEnv& env, const PySessionOptions& so)
-      :session_options_(so) {
+      : session_options_(so) {
     sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment());
   }
 

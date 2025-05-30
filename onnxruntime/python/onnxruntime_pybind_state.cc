@@ -2854,7 +2854,7 @@ Status CreateInferencePybindStateModule(py::module& m) {
   Status import_error(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
   import_array1(import_error);
   ORT_RETURN_IF_ERROR(CreateOrtEnv());
-  
+
   addGlobalMethods(m);
   addObjectMethods(m, RegisterExecutionProviders);
   addOrtValueMethods(m);
@@ -2873,13 +2873,13 @@ bool InitArray() {
   return true;
 }
 
-
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
   ort_env = OrtEnv::GetInstance(lm_info, status);
   if (!status.IsOK()) return status;
+  // Keep the ort_env alive, don't free it. It's ok to leak the memory.
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
     const logging::Logger& default_logger = ort_env->GetLoggingManager()->DefaultLogger();
