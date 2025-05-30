@@ -94,8 +94,7 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
       {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
       {"Gemm", ReshapeGemmFusion::TryFusion},
       {"Mul", ScaleSoftmaxFusion::TryFusion},
-      {"Transpose", ChannelShuffleFusion::TryFusion}
-  };
+      {"Transpose", ChannelShuffleFusion::TryFusion}};
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
