@@ -3,6 +3,8 @@
 
 #include "core/session/ep_api.h"
 
+#include <algorithm>
+#include <vector>
 #include "core/framework/error_code_helper.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ep_api_types.h"

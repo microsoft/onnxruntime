@@ -4,8 +4,10 @@
 #pragma once
 
 #include <gsl/gsl>
+#include <string>
 #include <vector>
 
+#include "core/common/inlined_containers_fwd.h"
 #include "core/common/status.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -24,12 +26,12 @@ struct OrtEpGraphSupportInfo {
   struct Subgraph {
     std::string name;
     const OrtHardwareDevice* hardware_device;  // The hw device that executes the supported nodes.
-    std::vector<const onnxruntime::EpNode*> nodes;
+    onnxruntime::InlinedVector<const onnxruntime::EpNode*> nodes;
   };
 
   explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
   onnxruntime::Status AddSubgraph(const char* name, const OrtHardwareDevice* hardware_device, gsl::span<const OrtNode* const> nodes);
 
   const onnxruntime::EpGraph& ort_graph;
-  std::vector<Subgraph> subgraphs;
+  onnxruntime::InlinedVector<Subgraph> subgraphs;
 };

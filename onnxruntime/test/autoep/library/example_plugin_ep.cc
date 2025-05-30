@@ -1,6 +1,7 @@
 #include "onnxruntime_cxx_api.h"
 
 #include <cassert>
+#include <cstring>
 #include <memory>
 #include <string>
 #include <vector>
@@ -69,7 +70,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
         return status;
       }
 
-      if (std::string(op_type) == "Mul") {
+      if (std::strncmp(op_type, "Mul", 4) == 0) {
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
       }
