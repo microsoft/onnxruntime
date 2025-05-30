@@ -63,6 +63,10 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
   API_IMPL_END
 }
 
+//
+// OrtGraph
+//
+
 ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
   API_IMPL_BEGIN
   if (graph->type != OrtGraph::Type::kEpGraph) {
@@ -105,6 +109,34 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
   API_IMPL_END
 }
 
+//
+// OrtNode
+//
+
+ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** name) {
+  API_IMPL_BEGIN
+  if (node->type != OrtNode::Type::kEpNode) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
+  }
+  const auto* ep_node = static_cast<const onnxruntime::EpNode*>(node);
+
+  *name = ep_node->node.Name().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type) {
+  API_IMPL_BEGIN
+  if (node->type != OrtNode::Type::kEpNode) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
+  }
+  const auto* ep_node = static_cast<const onnxruntime::EpNode*>(node);
+
+  *op_type = ep_node->node.OpType().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -116,6 +148,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSubgraph,
     &OrtExecutionProviderApi::OrtGraph_GetNumNodes,
     &OrtExecutionProviderApi::OrtGraph_GetNodes,
+    &OrtExecutionProviderApi::OrtNode_GetName,
+    &OrtExecutionProviderApi::OrtNode_GetOperatorType,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

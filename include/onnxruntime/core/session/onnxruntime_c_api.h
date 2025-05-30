@@ -6057,8 +6057,8 @@ struct OrtEpApi {
 
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
-   * Caller provides a pre-allocated array that is filled with the nodes. Use OrtGraph_NumNodes() to get the number of
-   * nodes in the graph. The nodes are ordered according to the `order` argument.
+   * Caller provides a pre-allocated array that will be filled with the nodes. Use OrtGraph_NumNodes() to get the
+   * number of nodes in the graph. The nodes are sorted according to the `order` argument.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[in] order The ordering of the nodes:
@@ -6075,6 +6075,26 @@ struct OrtEpApi {
    */
   ORT_API2_STATUS(OrtGraph_GetNodes, const OrtGraph* graph, int order,
                   _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+
+  /** \brief Gets the name of an OrtNode instance.
+   * \param[in] node The OrtNode instance.
+   * \param[out] name Output parameter set to the node's name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** name);
+
+  /** \brief Gets the ONNX operator type (e.g., "Conv") of an OrtNode instance.
+   * \param[in] node The OrtNode instance.
+   * \param[out] op_type Output parameter set to the node's operator type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type);
 };
 
 /**

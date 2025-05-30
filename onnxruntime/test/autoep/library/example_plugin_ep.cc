@@ -61,7 +61,19 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
 
     std::vector<const OrtNode*> supported_nodes;
-    supported_nodes.push_back(nodes[0]);  // TODO: Support simple node types like Relu or Mul.
+
+    for (const OrtNode* node : nodes) {
+      const char* op_type = nullptr;
+      status = ep->ep_api.OrtNode_GetOperatorType(node, &op_type);
+      if (status != nullptr) {
+        return status;
+      }
+
+      if (std::string(op_type) == "Mul") {
+        supported_nodes.push_back(node);  // Only support a single Mul for now.
+        break;
+      }
+    }
     status = ep->ep_api.EpGraphSupportInfo_AddSubgraph(graph_support_info, "Subgraph1", &ep->hardware_device_,
                                                        supported_nodes.data(), supported_nodes.size());
     return status;
