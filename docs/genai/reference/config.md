@@ -435,13 +435,17 @@ Options passed to ONNX Runtime for model execution.
 
 - **name**: *(string)*  
   Name of the provider. One of:
-  - CPU
-  - CUDA
+  - cuda
   - DML
-  - WebGPU
-  - QnnWithSharedMemory
-  - OpenVINO
   - NvTensorRtRtx
+  - OpenVINO
+  - QNN
+  - rocm
+  - WebGPU
+  - VitisAI
+
+  If this option is not given, the provider defaults to CPU.
+
 
 - **options**: *(array of [string, string] pairs)*  
   Provider-specific options.
