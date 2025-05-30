@@ -75,8 +75,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
         break;
       }
     }
-    status = ep->ep_api.EpGraphSupportInfo_AddSubgraph(graph_support_info, "Subgraph1", &ep->hardware_device_,
-                                                       supported_nodes.data(), supported_nodes.size());
+    status = ep->ep_api.EpGraphSupportInfo_AddSupportedNodes(graph_support_info, supported_nodes.data(),
+                                                             supported_nodes.size(), &ep->hardware_device_);
     return status;
   }
 

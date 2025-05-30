@@ -52,18 +52,18 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
 struct PluginEpMetaDefNameFunctor {
   explicit PluginEpMetaDefNameFunctor(const ModelMetadefIdGenerator& generator,
                                       const GraphViewer& graph_viewer,
-                                      const std::string& subgraph_prefix)
-      : generator_(generator), graph_viewer_(graph_viewer), subgraph_prefix_(subgraph_prefix) {}
+                                      const std::string& prefix)
+      : generator_(generator), graph_viewer_(graph_viewer), prefix_(prefix) {}
 
   std::string operator()() {
     uint64_t model_hash = 0;
     int id = generator_.GenerateId(graph_viewer_, model_hash);
-    return MakeString(subgraph_prefix_, "_", model_hash, "_", id);
+    return MakeString(prefix_, "_", model_hash, "_", id);
   }
 
   const ModelMetadefIdGenerator& generator_;
   const GraphViewer& graph_viewer_;
-  const std::string& subgraph_prefix_;
+  const std::string& prefix_;
 };
 
 std::vector<std::unique_ptr<ComputeCapability>>
@@ -103,11 +103,12 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     }
 
     std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
-        graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, subgraph.name),
+        graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
         this->Type(), this->Type(), /*node_unit_map*/ nullptr);
 
     for (auto& capability : capabilities) {
-      // capability->hardware_device = subgraph.hardware_device;
+      // capability->hardware_device = subgraph.hardware_device;  // Would allow app to query which EP+HW runs a subgraph
+      capability->use_subgraph_name_as_fused_node_name = true;
       result.push_back(std::move(capability));
     }
   }

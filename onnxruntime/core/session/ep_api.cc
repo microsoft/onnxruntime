@@ -43,11 +43,10 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
-                    _In_ const char* subgraph_name,
-                    _In_ const OrtHardwareDevice* hardware_device,
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
                     _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                    size_t num_supported_nodes) {
+                    size_t num_supported_nodes,
+                    _In_ const OrtHardwareDevice* hardware_device) {
   API_IMPL_BEGIN
   if (ort_graph_support_info == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
@@ -60,7 +59,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
   // TODO: Check that the OrtNodes are all contained by OrtEpGraphSupportInfo.
   gsl::span<const OrtNode* const> nodes_span(supported_nodes,
                                              supported_nodes + num_supported_nodes);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSubgraph(subgraph_name, hardware_device, nodes_span));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSupportedNodes(hardware_device, nodes_span));
   return nullptr;
   API_IMPL_END
 }
@@ -151,7 +150,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpDevice,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSubgraph,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSupportedNodes,
     &OrtExecutionProviderApi::OrtGraph_GetNumNodes,
     &OrtExecutionProviderApi::OrtGraph_GetNodes,
     &OrtExecutionProviderApi::OrtNode_GetName,

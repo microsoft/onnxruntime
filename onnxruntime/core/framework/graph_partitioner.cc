@@ -356,29 +356,35 @@ static bool IsIndexedSubGraphAvailableForAssignment(Graph& graph,
  * \param fused_node_unique_id A counter for generating fused node names. Unique across the entire model.
  * \return Fused node. Return nullptr if there is no fuse
  */
-static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
+static Node* PlaceNode(Graph& graph, const ComputeCapability& capability,
                        IExecutionProvider::FusionStyle fusion_style,
                        const std::string& provider_type,
                        GraphPartitioner::Mode mode,
                        int& fused_node_unique_id) {
   Node* result = nullptr;
 
-  if (nullptr == capability.GetMetaDef()) {
-    TryAssignSingleNode(graph, capability, provider_type);
+  if (nullptr == capability.sub_graph->GetMetaDef()) {
+    TryAssignSingleNode(graph, *capability.sub_graph, provider_type);
   } else {
-    const bool acc_enabled = capability.IsAccountingEnabled();
+    const bool acc_enabled = capability.sub_graph->IsAccountingEnabled();
     if (mode == GraphPartitioner::Mode::kNormal) {
-      std::ostringstream oss;
-      oss << provider_type << "_" << capability.GetMetaDef()->name << "_" << fused_node_unique_id++;
-      std::string node_name = oss.str();
+      std::string node_name;
+
+      if (capability.use_subgraph_name_as_fused_node_name) {
+        node_name = capability.sub_graph->GetMetaDef()->name;
+      } else {
+        std::ostringstream oss;
+        oss << provider_type << "_" << capability.sub_graph->GetMetaDef()->name << "_" << fused_node_unique_id++;
+        node_name = oss.str();
+      }
 
       Node* fused_node = nullptr;
       if (fusion_style == IExecutionProvider::FusionStyle::Function) {
-        fused_node = &graph.FuseSubGraph(capability, node_name);
+        fused_node = &graph.FuseSubGraph(*capability.sub_graph, node_name);
       } else {
         // create a fused node without copying everything to a Function body. The IndexedSubGraph will be passed
         // through to Compile via a filtered GraphViewer.
-        fused_node = &graph.BeginFuseSubGraph(capability, node_name);
+        fused_node = &graph.BeginFuseSubGraph(*capability.sub_graph, node_name);
       }
 
       fused_node->SetExecutionProviderType(provider_type);
@@ -387,7 +393,7 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
         // that the fused node would use no more memory when the nodes we are fusing.
         // and potentially less than that, and therefore, no threshold check is needed here.
         // All threshold checks are done within the EP.
-        capability.ComputeAndAccountForNode(*fused_node);
+        capability.sub_graph->ComputeAndAccountForNode(*fused_node);
       }
 
       result = fused_node;
@@ -396,12 +402,12 @@ static Node* PlaceNode(Graph& graph, const IndexedSubGraph& capability,
       // This is used when exporting an ORT format model to maintain the original nodes and re-do the fusion
       // at runtime. The original nodes provide a fallback if fewer nodes can be fused at runtime due to device
       // capabilities.
-      for (size_t i = 0, limit = capability.nodes.size(); i < limit; ++i) {
-        auto* node = graph.GetNode(capability.nodes[i]);
+      for (size_t i = 0, limit = capability.sub_graph->nodes.size(); i < limit; ++i) {
+        auto* node = graph.GetNode(capability.sub_graph->nodes[i]);
         if (node != nullptr) {
           node->SetExecutionProviderType(provider_type);
           if (acc_enabled) {
-            capability.AccountForNode(i);
+            capability.sub_graph->AccountForNode(i);
           }
         }
       }
@@ -514,7 +520,7 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
 
     Node* n = nullptr;
     if (sub_graph_available_for_assignment) {
-      n = PlaceNode(graph, *capability->sub_graph, fusion_style, type, mode, fused_node_unique_id);
+      n = PlaceNode(graph, *capability, fusion_style, type, mode, fused_node_unique_id);
     }
 
     if (n != nullptr) {

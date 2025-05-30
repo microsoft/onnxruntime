@@ -6028,22 +6028,26 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(EpDevice);
 
-  /** \brief Adds a subgraph of nodes supported by an EP to a OrtEpGraphSupportInfo instance.
+  /** \brief Adds a set of nodes supported by an EP to a OrtEpGraphSupportInfo instance.
+   *
+   * For compiling EPs, the provided nodes will be fused into 1 or more ONNX nodes. OrtGraph instances
+   * representing each of the fused nodes are passed to OrtEp::Compile() for compilation.
+   *
+   * Can be called multiple times.
+   *
    * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
-   * \param[in] subgraph_name The name of the fused ONNX node that will represent the subgraph supported by the EP.
-   * \param[in] hardware_device The OrtHardwareDevice that will execute the supported nodes.
    * \param[in] supported_nodes Array of nodes supported by the EP.
    * \param[in] num_supported_nodes The number of supported nodes.
+   * \param[in] hardware_device The OrtHardwareDevice that will execute the supported nodes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_ const char* subgraph_name,
-                  _In_ const OrtHardwareDevice* hardware_device,
+  ORT_API2_STATUS(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                  size_t num_supported_nodes);
+                  size_t num_supported_nodes,
+                  _In_ const OrtHardwareDevice* hardware_device);
 
   /** \brief Returns the number of nodes in the OrtGraph instance.
    * \param[in] graph The OrtGraph instance.
