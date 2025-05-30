@@ -310,7 +310,16 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
 
   // Check that the mask shape is 1x1xWxW
   auto shape = mask.Shape();
-  if (shape == nullptr || static_cast<size_t>(shape->dim_size()) != 4 || !utils::HasDimValue(shape->dim(0)) || static_cast<int64_t>(1) != shape->dim(0).dim_value() || !utils::HasDimValue(shape->dim(1)) || static_cast<int64_t>(1) != shape->dim(1).dim_value() || !utils::HasDimValue(shape->dim(2)) || !utils::HasDimValue(shape->dim(3)) || shape->dim(2).dim_value() != shape->dim(3).dim_value()) {
+  if (
+      shape == nullptr ||
+      static_cast<size_t>(shape->dim_size()) != 4 ||
+      !utils::HasDimValue(shape->dim(0)) ||
+      static_cast<int64_t>(1) != shape->dim(0).dim_value() ||
+      !utils::HasDimValue(shape->dim(1)) ||
+      static_cast<int64_t>(1) != shape->dim(1).dim_value() ||
+      !utils::HasDimValue(shape->dim(2)) ||
+      !utils::HasDimValue(shape->dim(3)) ||
+      shape->dim(2).dim_value() != shape->dim(3).dim_value()) {
     DEBUG_LOG("unidir mask shape not expected");
     return false;
   }
@@ -320,28 +329,20 @@ bool ValidateUnidirMask(const Graph& graph, const NodeArg& mask, bool& is_unidir
     return false;
   }
 
-  if (tensor_proto->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-    DEBUG_LOG("This optimizer does not support external data for unidirectional mask right now");
-    return false;
-  }
-
   if (tensor_proto->data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT8) {
     size_t bytes;
     if (!utils::GetSizeInBytesFromTensorProto<0>(*tensor_proto, &bytes).IsOK()) {
       return false;
     }
-    auto data = std::make_unique<uint8_t[]>(bytes);
-    uint8_t* p = data.get();
-    if (!utils::UnpackTensor<uint8_t>(
-             *tensor_proto,
-             tensor_proto->raw_data().size() ? tensor_proto->raw_data().data() : nullptr,
-             tensor_proto->raw_data().size(),
-             p,
-             bytes)
-             .IsOK()) {
+
+    std::vector<uint8_t> mask_data;
+    // This takes care of external data in case present
+    auto status = utils::UnpackInitializerData(*tensor_proto, graph.ModelPath(), mask_data);
+    if (!status.IsOK()) {
+      DEBUG_LOG(status.ErrorMessage());
       return false;
     }
-    std::vector<uint8_t> mask_data(p, p + bytes);
+
     if (!ValidateUnidirMask(mask_data, shape->dim(2).dim_value(), is_unidirectional)) {
       DEBUG_LOG("Mask is neither unidirectional nor all ones");
       return false;
