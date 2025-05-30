@@ -1052,7 +1052,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
 
   if (!info.has_user_compute_stream) {
     // If the app is passing in a compute stream, it already has initialized cuda and created a context.
-    // Calling cudaSetDevice() will set the default context in the current thread 
+    // Calling cudaSetDevice() will set the default context in the current thread
     // which may not be compatible with the stream created by the app.
     CUDA_CALL_THROW(cudaSetDevice(device_id_));
   }
