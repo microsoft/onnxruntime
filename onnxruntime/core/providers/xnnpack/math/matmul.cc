@@ -183,7 +183,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   }
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-      status = xnn_reshape_fully_connected_nc_f32(op0_.get(), batch, threadpool);
+    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), batch, threadpool);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_reshape_fully_connected_nc_f16(op0_.get(), batch, threadpool);
   }
