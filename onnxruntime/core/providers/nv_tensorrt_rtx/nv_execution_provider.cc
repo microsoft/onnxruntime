@@ -2294,6 +2294,8 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
   }
+  trt_config->setNbComputeCapabilities(1);
+  trt_config->setComputeCapability(nvinfer1::ComputeCapability::kCURRENT, 0);
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
