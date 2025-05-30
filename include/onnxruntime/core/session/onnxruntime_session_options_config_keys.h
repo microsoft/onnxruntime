@@ -67,6 +67,10 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable Cast chain elimination in graph optimization. "0": disable; "1": enable. The default is "0".
+// CastElimination with chain elimination has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimization.enable_cast_chain_elimination";
+
 // This setting controls whether to enable AheadOfTime function inlining.
 // AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
 // as possible with the help of enabled execution providers.

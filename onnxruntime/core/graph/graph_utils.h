@@ -132,6 +132,9 @@ bool IsOutputUsed(const Node& node, int index);
 /** Returns true if the graph has the given input.*/
 bool IsGraphInput(const Graph& graph, const NodeArg* input);
 
+/** Returns true if the graph has the given output.*/
+bool IsGraphOutput(const Graph& graph, const NodeArg* output);
+
 /** returns true if 'name' is an initializer in 'graph', or an ancestor graph if check_outer_scope is true.
 @param check_outer_scope If true and 'graph' is a subgraph, check ancestor graph/s for 'name' if not found in 'graph'.
 */

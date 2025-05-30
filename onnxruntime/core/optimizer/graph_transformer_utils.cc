@@ -24,6 +24,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/cast_chain_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -198,6 +199,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool enable_cast_chain_elimination =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCastChainElimination, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
@@ -243,6 +246,9 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
 
       transformers.emplace_back(std::make_unique<GeluFusion>());
       transformers.emplace_back(std::make_unique<LayerNormFusion>());
+      if (enable_cast_chain_elimination) {
+        transformers.emplace_back(std::make_unique<CastChainElimination>());
+      }
 
       if (!disable_quant_qdq) {
         transformers.emplace_back(std::make_unique<QDQPropagationTransformer>());
