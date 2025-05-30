@@ -185,6 +185,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   {
     CreateLSTMOpBuilder("LSTM", *this);
   }
+
+  {
+    CreateCumSumOpBuilder("CumSum", *this);
+  }
 }
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type) {

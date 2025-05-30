@@ -146,6 +146,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
   return {{"TopK", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
+  return {{"CumSum", {}}};
+}
 
 /* Selector rules registration related */
 void RegisterMiscSelectors(Selectors& qdq_selectors) {
@@ -268,6 +271,13 @@ void RegisterTopKSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterCumSumSelector(Selectors& qdq_selectors) {
+  /* register selector for cumsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<CumSumNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetCumSumOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -286,6 +296,7 @@ void SelectorManager::CreateSelectors() {
   RegisterWhereSelectors(qdq_selectors_);
   RegisterPadSelectors(qdq_selectors_);
   RegisterTopKSelector(qdq_selectors_);
+  RegisterCumSumSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {
