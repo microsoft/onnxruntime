@@ -3,6 +3,7 @@
 
 #include "core/framework/utils.h"
 #include "core/framework/allocator.h"
+#include "core/session/abi_key_value_pairs.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_apis.h"
@@ -20,8 +21,10 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtDefaultCpuAllocator*>(this_)->Alloc(size); };
     OrtAllocator::GetStats =
-        [](const OrtAllocator* /*this_*/, OrtKeyValuePairs** /*stats*/) noexcept -> OrtStatusPtr {
-      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported by the allocator");
+        [](const OrtAllocator* /*this_*/, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+      auto kvp = std::make_unique<OrtKeyValuePairs>();
+      *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
+      return nullptr;
     };
     Ort::ThrowOnError(OrtApis::CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
   }

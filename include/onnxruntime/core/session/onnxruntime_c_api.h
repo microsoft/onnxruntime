@@ -356,8 +356,7 @@ typedef struct OrtAllocator {
    * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
    * - MaxAllocSize: The max single allocation seen.
    *
-   * Note that not all allocators support this function. If the allocator does not support this function,
-   * it returns ORT_NOT_IMPLEMENTED.
+   * Note that if the allocator does not implement this function, it will return an empty OrtKeyValuePairs.
    */
   ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 } OrtAllocator;
@@ -5292,8 +5291,7 @@ struct OrtApi {
    * Return a stats string that contains statistics collected by the allocator. The string is
    * formatted as 'key:value' pairs separated by commas.
    *
-   * Note that not all allocators support this function. If the allocator does not support this function,
-   * it returns ORT_NOT_IMPLEMENTED.
+   * Note that if the allocator does not implement this function, it will return an empty OrtKeyValuePairs.
    *
    * \param[in] ort_allocator The allocator to get stats from
    * \param[out] out A pointer to the OrtKeyValuePairs instance that contains the stats

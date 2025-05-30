@@ -1996,10 +1996,6 @@ TEST(CApiTest, get_allocator_cpu) {
   Ort::ConstKeyValuePairs stats;
   auto status = cpu_allocator.GetStats(&stats);
 
-#ifdef ORT_NO_RTTI
-  ASSERT_FALSE(status.IsOK());
-  ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
-#else
   // CPU allocator may not support arena usage.
   // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
   if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
@@ -2017,10 +2013,10 @@ TEST(CApiTest, get_allocator_cpu) {
     ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
     ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
   } else {
-    ASSERT_FALSE(status.IsOK());
-    ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
+    // If the allocator is not an arena allocator, we expect the stats to be empty.
+    ASSERT_TRUE(status.IsOK());
+    ASSERT_EQ(0, stats.GetKeyValuePairs().size());
   }
-#endif
 }
 
 #ifdef USE_CUDA

@@ -32,9 +32,9 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_NE(allocation.get(), nullptr);
   memset(allocation.get(), 0, 100U);
 
-  // Default Allocator does not support GetStats
+  // Default Allocator does not implement GetStats and return empty kvp
   Ort::ConstKeyValuePairs stats{};
   auto status = default_allocator.GetStats(&stats);
-  ASSERT_FALSE(status.IsOK());
-  ASSERT_EQ(ORT_NOT_IMPLEMENTED, status.GetErrorCode());
+  ASSERT_TRUE(status.IsOK());
+  ASSERT_EQ(0, stats.GetKeyValuePairs().size());
 }

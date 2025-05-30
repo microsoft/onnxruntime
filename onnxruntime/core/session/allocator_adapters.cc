@@ -32,18 +32,11 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
     OrtAllocator::GetStats =
         [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
-#ifdef ORT_NO_RTTI
-      // When exception is disabled, we should directly return an error status to avoid aborting the program.
-      ORT_UNUSED_PARAMETER(this_);
-      ORT_UNUSED_PARAMETER(stats);
-      return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API is not supported in a NO_RTTI build.");
-#else
       auto kvp = std::make_unique<OrtKeyValuePairs>();
       auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
       kvp->Copy(stats_map);
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
-#endif
       API_IMPL_END
     };
   }
@@ -69,16 +62,19 @@ std::unordered_map<std::string, std::string> OrtAllocatorImplWrappingIAllocator:
   AllocatorStats stats{};
   i_allocator_->GetStats(&stats);
 
+  // Allocators which does not implement GetStats() will return empty stats
   std::unordered_map<std::string, std::string> entries;
-  entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
-  entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
-  entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
-  entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
-  entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));
-  entries.insert_or_assign("NumReserves", std::to_string(stats.num_reserves));
-  entries.insert_or_assign("NumArenaExtensions", std::to_string(stats.num_arena_extensions));
-  entries.insert_or_assign("NumArenaShrinkages", std::to_string(stats.num_arena_shrinkages));
-  entries.insert_or_assign("MaxAllocSize", std::to_string(stats.max_alloc_size));
+  if (stats.num_allocs > 0 || stats.bytes_limit != 0) {
+    entries.insert_or_assign("Limit", std::to_string(stats.bytes_limit));
+    entries.insert_or_assign("InUse", std::to_string(stats.bytes_in_use));
+    entries.insert_or_assign("TotalAllocated", std::to_string(stats.total_allocated_bytes));
+    entries.insert_or_assign("MaxInUse", std::to_string(stats.max_bytes_in_use));
+    entries.insert_or_assign("NumAllocs", std::to_string(stats.num_allocs));
+    entries.insert_or_assign("NumReserves", std::to_string(stats.num_reserves));
+    entries.insert_or_assign("NumArenaExtensions", std::to_string(stats.num_arena_extensions));
+    entries.insert_or_assign("NumArenaShrinkages", std::to_string(stats.num_arena_shrinkages));
+    entries.insert_or_assign("MaxAllocSize", std::to_string(stats.max_alloc_size));
+  }
   return entries;
 }
 
