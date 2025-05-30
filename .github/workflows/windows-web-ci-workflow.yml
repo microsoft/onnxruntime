@@ -16,9 +16,6 @@ on:
       package_name:
         type: string
         default: "NPM_packages"
-      run_webgpu_tests:
-        type: boolean
-        default: true
 
 jobs:
   build_onnxruntime_web:
@@ -86,6 +83,22 @@ jobs:
         run: |
           copy ${{ github.workspace }}\artifacts_wasm\ort-*.mjs ${{ github.workspace }}\js\web\dist\
 
+      - name: Download WebAssembly WebGPU artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ inputs.build_config }}_wasm_webgpu
+          path: ${{ github.workspace }}/artifacts_wasm_webgpu
+
+      - name: Binplace dist files (.wasm) for WebGPU
+        shell: cmd
+        run: |
+          copy ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.wasm ${{ github.workspace }}\js\web\dist\
+
+      - name: Binplace dist files (.mjs) for WebGPU
+        shell: cmd
+        run: |
+          copy ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.mjs ${{ github.workspace }}\js\web\dist\
+
       - name: npm ci for /js/
         run: npm ci
         working-directory: ${{ github.workspace }}/js
@@ -115,17 +128,7 @@ jobs:
         run: |
           Get-WmiObject Win32_Process -Filter "name = 'chrome.exe'" | Format-List CommandLine
 
-      - name: Run ort-web tests (wasm,webgl backend)
-        if: ${{ inputs.run_webgpu_tests != true }}
-        shell: cmd
-        run: |
-          mkdir ${{ runner.temp }}\web\test\01
-          dir ${{ runner.temp }}\web\test\01
-          npm test -- -e=chrome -b=webgl,wasm --user-data-dir=${{ runner.temp }}\web\test\01 --chromium-flags=--enable-logging --chromium-flags=--v=1
-        working-directory: ${{ github.workspace }}\js\web
-
       - name: Run ort-web tests (ALL backends)
-        if: ${{ inputs.run_webgpu_tests == true }}
         shell: cmd
         run: |
           mkdir ${{ runner.temp }}\web\test\02
@@ -134,7 +137,6 @@ jobs:
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-tensor)
-        if: ${{ inputs.run_webgpu_tests == true }}
         shell: cmd
         run: |
           mkdir ${{ runner.temp }}\web\test\03
@@ -143,7 +145,6 @@ jobs:
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Run ort-web tests (Suite1, webgpu, IO-binding=gpu-location)
-        if: ${{ inputs.run_webgpu_tests == true }}
         shell: cmd
         run: |
           mkdir ${{ runner.temp }}\web\test\04
@@ -169,27 +170,7 @@ jobs:
         working-directory: ${{ github.workspace }}\js\web
 
       # WebGPU EP tests
-      - name: Download WebAssembly WebGPU artifacts
-        if: ${{ inputs.run_webgpu_tests == true }}
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.build_config }}_wasm_webgpu
-          path: ${{ github.workspace }}/artifacts_wasm_webgpu
-
-      - name: Binplace dist files (.wasm) for WebGPU
-        if: ${{ inputs.run_webgpu_tests == true }}
-        shell: cmd
-        run: |
-          copy /Y ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.wasm ${{ github.workspace }}\js\web\dist\
-
-      - name: Binplace dist files (.mjs) for WebGPU
-        if: ${{ inputs.run_webgpu_tests == true }}
-        shell: cmd
-        run: |
-          copy /Y ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.mjs ${{ github.workspace }}\js\web\dist\
-
       - name: Run ort-web tests - WebGPU EP
-        if: ${{ inputs.run_webgpu_tests == true }}
         continue-on-error: true
         shell: cmd
         run: |
@@ -199,7 +180,7 @@ jobs:
         working-directory: ${{ github.workspace }}\js\web
 
       - name: Validate shader keys - WebGPU EP
-        if: ${{ inputs.run_webgpu_tests == true && inputs.build_config == 'Debug' }}
+        if: ${{ inputs.build_config == 'Debug' }}
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
           log_file_path: ${{ runner.temp }}\web\test\07\chrome_debug.log
@@ -207,7 +188,7 @@ jobs:
 
       # this step is added to help investigate the shader validation failure which is hard to reproduce
       - name: Upload WebGPU shader validation log on failure
-        if: ${{ failure() && inputs.run_webgpu_tests == true && inputs.build_config == 'Debug' }}
+        if: ${{ failure() && inputs.build_config == 'Debug' }}
         uses: actions/upload-artifact@v4
         with:
           name: webgpu-shader-validation-logs

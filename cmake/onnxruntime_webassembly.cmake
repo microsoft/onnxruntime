@@ -84,6 +84,10 @@ function(bundle_static_library bundled_target_name)
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
 
+if (onnxruntime_USE_JSEP AND onnxruntime_USE_WEBGPU)
+  message(FATAL_ERROR "onnxruntime_USE_JSEP and onnxruntime_USE_WEBGPU cannot be enabled at the same time.")
+endif()
+
 if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   add_compile_definitions(
     BUILD_MLAS_NO_ONNXRUNTIME
@@ -406,6 +410,16 @@ jsepDownload:_pp_")
     list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js")
   endif()
 
+  if (onnxruntime_USE_WEBNN)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBNN=1)
+    if (NOT onnxruntime_USE_JSEP)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webnn.js\""
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webnn.js")
+    endif()
+  endif()
+
   if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
     # if any of the above is enabled, we need to use the asyncify library
     target_link_options(onnxruntime_webassembly PRIVATE
@@ -499,6 +513,9 @@ jsepDownload:_pp_")
 
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
+  elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
+    string(APPEND target_name ".asyncify")
+    # TODO: support JSPI and add ".jspi" once JSPI build is supported
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
