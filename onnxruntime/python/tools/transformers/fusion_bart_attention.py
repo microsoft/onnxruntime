@@ -321,10 +321,17 @@ class FusionBartAttention(FusionAttention):
                 ["Slice", "Unsqueeze", "Gather", "Shape", "Add"],
                 [1, 2, 0, 0, 0],
             )
+            mask_nodes_whisper_oai_unit_test = self.model.match_parent_path(
+                add_qk,
+                ["Slice", "Slice"],
+                [1, 0],
+            )
             if mask_nodes_whisper_hf is not None:
                 mask_nodes = mask_nodes_whisper_hf
             elif mask_nodes_whisper_oai is not None:
                 mask_nodes = mask_nodes_whisper_oai
+            elif mask_nodes_whisper_oai_unit_test is not None:
+                mask_nodes = mask_nodes_whisper_oai_unit_test
             elif mask_nodes_bart is not None:
                 mask_nodes = mask_nodes_bart
             else:
