@@ -2874,10 +2874,6 @@ bool InitArray() {
 }
 
 
-// This class provides a static shell for on-demand and thread-safe construction
-// of Environment object for both Inference and Training python layers.
-// Environment class contains objects such as default logger, that must be available
-
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};

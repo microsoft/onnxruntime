@@ -28,10 +28,11 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/,
     case DLL_PROCESS_DETACH:
       // Windows API doc says: "When handling DLL_PROCESS_DETACH, a DLL should free resources such as heap memory only if the DLL is being unloaded dynamically"
       if (lpvReserved != nullptr) {
-        OrtEnv::ReleaseSingleton();
         g_is_shutting_down = true;
         // do not do cleanup if process termination scenario
       } else {
+        // Cleanup protobuf library.
+        // NOTE: it might be too early to do so, as all function local statics and global objects are not destroyed yet.
         ::google::protobuf::ShutdownProtobufLibrary();
       }      
       break;

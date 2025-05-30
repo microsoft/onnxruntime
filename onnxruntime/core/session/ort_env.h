@@ -69,14 +69,8 @@ struct OrtEnv {
   ~OrtEnv();
   onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
   
-  /**
-   * Release the singleton pointer to make a memory leak
-   */
-  static void ReleaseSingleton() {
-    p_instance_.release();
-  }
  private:
-  static std::unique_ptr<OrtEnv> p_instance_;
+  static OrtEnv* p_instance_;
   static std::mutex m_;
   static int ref_count_;
 
