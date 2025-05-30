@@ -175,10 +175,9 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
     // Input 'A' is N-dimensional, the batch is made up of the product of the outermost dims
     // (excluding the actual inner reduction dim)
 
-   for (int64_t i = 0; i < rank - 1; ++i)
-   {
+    for (int64_t i = 0; i < rank - 1; ++i) {
       batch *= a_dims[i];
-   }
+    }
   }
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
