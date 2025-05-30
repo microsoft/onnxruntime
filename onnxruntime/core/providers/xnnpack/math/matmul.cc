@@ -169,8 +169,7 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   const auto& a_dims = a->Shape();
   int64_t rank = a_dims.NumDimensions();
 
-  if (rank == 2)
-  {
+  if (rank == 2) {
     batch = a_dims[0];
   } else if (rank > 2) {
     // Input 'A' is N-dimensional, the batch is made up of the product of the outermost dims
