@@ -84,7 +84,6 @@ jobs:
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
             --use_webgpu \
-            --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
