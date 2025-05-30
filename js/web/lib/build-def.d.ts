@@ -17,11 +17,21 @@ interface BuildDefinitions {
    */
   readonly DISABLE_WEBGL: boolean;
   /**
-   * defines whether to disable the whole WebGpu/WebNN backend in the build.
+   * defines whether to disable the JSEP support in the build.
    */
   readonly DISABLE_JSEP: boolean;
   /**
+   * defines whether to disable the WebGPU EP support in the build.
+   */
+  readonly DISABLE_WEBGPU: boolean;
+  /**
+   * defines whether to disable the WebNN EP support in the build.
+   */
+  readonly DISABLE_WEBNN: boolean;
+  /**
    * defines whether to disable the whole WebAssembly backend in the build.
+   *
+   * When this build flag is set to `true`, only WebGL backend will be available.
    */
   readonly DISABLE_WASM: boolean;
   /**
@@ -39,13 +49,6 @@ interface BuildDefinitions {
    * The value is valid only when it's an ESM build.
    */
   readonly ENABLE_BUNDLE_WASM_JS: boolean;
-
-  /**
-   * defines whether to use WebGPU EP instead of JSEP for WebGPU backend.
-   *
-   * This flag requires the corresponding WebAssembly artifact to be built with `--use_webgpu` flag.
-   */
-  readonly USE_WEBGPU_EP: boolean;
 
   // #endregion
 
