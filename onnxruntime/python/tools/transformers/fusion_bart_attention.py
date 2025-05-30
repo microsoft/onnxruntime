@@ -363,7 +363,6 @@ class FusionBartAttention(FusionAttention):
                         past_v=past_v if decoder_self_attention_with_past else "",
                         present_k=present_k,
                         present_v=present_v,
-                        # packed_qkv=decoder_self_attention_with_past,
                     )
                     if self.use_multi_head_attention
                     else None
@@ -409,9 +408,7 @@ class FusionBartAttention(FusionAttention):
                     k_nodes.pop()
                 if len(v_nodes) > 0 and v_nodes[-1].op_type == "MatMul":
                     v_nodes.pop()
-                if self.disable_multi_head_attention_bias and (
-                    decoder_cross_attention or decoder_cross_attention_with_past
-                ):
+                if self.disable_multi_head_attention_bias:
                     if len(q_nodes) > 0 and q_nodes[-1].op_type == "Add":
                         q_nodes.pop()
                     if len(k_nodes) > 0 and k_nodes[-1].op_type == "Add":
