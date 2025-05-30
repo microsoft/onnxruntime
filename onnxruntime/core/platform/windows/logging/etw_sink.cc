@@ -126,12 +126,12 @@ void NTAPI EtwRegistrationManager::ORT_TL_EtwEnableCallback(
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
   auto& manager = EtwRegistrationManager::Instance();
-  std::lock_guard<std::mutex> lock(manager.provider_change_mutex_);
-  // Clarify: It is not clear at all why we need to assign the below 3 to the members
-  // had we passed them along on the stack, no mutex would be necessary.
-  manager.is_enabled_ = (IsEnabled != 0);
-  manager.level_ = Level;
-  manager.keyword_ = MatchAnyKeyword;
+  {
+    std::lock_guard<std::mutex> lock(manager.provider_change_mutex_);
+    manager.is_enabled_ = (IsEnabled != 0);
+    manager.level_ = Level;
+    manager.keyword_ = MatchAnyKeyword;
+  }
   manager.InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
 
