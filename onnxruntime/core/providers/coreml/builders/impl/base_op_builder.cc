@@ -7,6 +7,7 @@
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
+#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
 using namespace CoreML::Specification;
