@@ -168,17 +168,15 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   const auto& a_dims = a->Shape();
   int64_t rank = a_dims.NumDimensions();
 
-  if (rank == 2)
-  {
+  if (rank == 2) {
     batch = a_dims[0];
   } else if (rank > 2) {
     // Input 'A' is N-dimensional, the batch is made up of the product of the outermost dims
     // (excluding the actual inner reduction dim)
 
-   for (int64_t i = 0; i < rank - 1; ++i)
-   {
+    for (int64_t i = 0; i < rank - 1; ++i) {
       batch *= a_dims[i];
-   }
+    }
   }
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
