@@ -5852,9 +5852,8 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
-  ORT_RETURN_IF(api_graph.type != OrtGraph::Type::kEditorGraph,
-                "Invalid OrtGraph variant for use in the model editor API.");
-  const auto* editor_graph = static_cast<const onnxruntime::ModelEditorGraph*>(&api_graph);
+  const auto* editor_graph = onnxruntime::ModelEditorGraph::ToInternal(&api_graph);
+  ORT_RETURN_IF(editor_graph == nullptr, "Invalid OrtGraph variant for use in the model editor API.");
 
   add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 

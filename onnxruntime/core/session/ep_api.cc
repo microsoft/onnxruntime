@@ -69,10 +69,11 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSubgraph, _In_ OrtEpGraphSupportInfo* 
 
 ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
   API_IMPL_BEGIN
-  if (graph->type != OrtGraph::Type::kEpGraph) {
+  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
+
+  if (ep_graph == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
   }
-  const auto* ep_graph = static_cast<const onnxruntime::EpGraph*>(graph);
 
   *num_nodes = ep_graph->graph_viewer.NumberOfNodes();
   return nullptr;
@@ -82,10 +83,11 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size
 ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
-  if (graph->type != OrtGraph::Type::kEpGraph) {
+  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
+
+  if (ep_graph == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
   }
-  const auto* ep_graph = static_cast<const onnxruntime::EpGraph*>(graph);
 
   // TODO: make order an enum value.
   if (order < 0 || order > 2) {
@@ -115,10 +117,11 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
 
 ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** name) {
   API_IMPL_BEGIN
-  if (node->type != OrtNode::Type::kEpNode) {
+  const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
+
+  if (ep_node == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
   }
-  const auto* ep_node = static_cast<const onnxruntime::EpNode*>(node);
 
   *name = ep_node->node.Name().c_str();
   return nullptr;
@@ -127,10 +130,11 @@ ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** 
 
 ORT_API_STATUS_IMPL(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type) {
   API_IMPL_BEGIN
-  if (node->type != OrtNode::Type::kEpNode) {
+  const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
+
+  if (ep_node == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
   }
-  const auto* ep_node = static_cast<const onnxruntime::EpNode*>(node);
 
   *op_type = ep_node->node.OpType().c_str();
   return nullptr;

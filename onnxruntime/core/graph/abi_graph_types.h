@@ -30,6 +30,7 @@ struct OrtNode {
   OrtNode() = default;
   explicit OrtNode(OrtNode::Type type) : type(type) {}
   virtual ~OrtNode() = default;
+
   OrtNode::Type type = OrtNode::Type::kInvalid;
 };
 
@@ -43,5 +44,6 @@ struct OrtGraph {
   OrtGraph() = default;
   explicit OrtGraph(OrtGraph::Type type) : type(type) {}
   virtual ~OrtGraph() = default;
+
   OrtGraph::Type type = OrtGraph::Type::kInvalid;
 };

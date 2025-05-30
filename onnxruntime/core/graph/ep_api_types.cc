@@ -13,4 +13,5 @@ EpGraph::EpGraph(const GraphViewer& g_viewer) : OrtGraph(OrtGraph::Type::kEpGrap
     index_to_node[node.Index()] = nodes.back().get();
   }
 }
+
 }  // namespace onnxruntime

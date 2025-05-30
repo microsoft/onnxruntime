@@ -16,8 +16,15 @@
 namespace onnxruntime {
 struct ModelEditorNode : public OrtNode {
   ModelEditorNode() : OrtNode(OrtNode::Type::kEditorNode) {}
+
   OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
   const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
+  static ModelEditorNode* ToInternal(OrtNode* ort_node) {
+    return ort_node->type == OrtNode::Type::kEditorNode ? static_cast<ModelEditorNode*>(ort_node) : nullptr;
+  }
+  static const ModelEditorNode* ToInternal(const OrtNode* ort_node) {
+    return ort_node->type == OrtNode::Type::kEditorNode ? static_cast<const ModelEditorNode*>(ort_node) : nullptr;
+  }
 
   std::string operator_name;
   std::string domain_name;
@@ -37,6 +44,12 @@ struct ModelEditorGraph : public OrtGraph {
   ModelEditorGraph() : OrtGraph(OrtGraph::Type::kEditorGraph) {}
   OrtGraph* ToExternal() { return static_cast<OrtGraph*>(this); }
   const OrtGraph* ToExternal() const { return static_cast<const OrtGraph*>(this); }
+  static ModelEditorGraph* ToInternal(OrtGraph* ort_graph) {
+    return ort_graph->type == OrtGraph::Type::kEditorGraph ? static_cast<ModelEditorGraph*>(ort_graph) : nullptr;
+  }
+  static const ModelEditorGraph* ToInternal(const OrtGraph* ort_graph) {
+    return ort_graph->type == OrtGraph::Type::kEditorGraph ? static_cast<const ModelEditorGraph*>(ort_graph) : nullptr;
+  }
 
   onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
