@@ -118,11 +118,31 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
 common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_funcs) {
-  ORT_UNUSED_PARAMETER(fused_nodes_and_graphs);
   ORT_UNUSED_PARAMETER(node_compute_funcs);
+  const size_t num_graphs = fused_nodes_and_graphs.size();
+  std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
+  std::vector<const OrtGraph*> api_graphs;
+  std::vector<OrtNodeComputeFunctions*> api_compute_funcs(num_graphs, nullptr);
+
+  api_graphs_holder.reserve(num_graphs);
+  api_graphs.reserve(num_graphs);
+
+  for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
+    const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
+    const Node& fused_node = node_and_graph.fused_node;
+    ORT_ENFORCE(graph_viewer.Name() == fused_node.Name());  // Should be equal for plugin EPs.
+
+    auto ep_graph = std::make_unique<EpGraph>(node_and_graph.filtered_graph);
+    api_graphs.push_back(ep_graph->ToExternal());
+    api_graphs_holder.push_back(std::move(ep_graph));
+  }
 
   // Call plugin EP's Compile(). Expect an error for now.
-  Status status = ToStatus(ort_ep_->Compile(ort_ep_.get(), nullptr, 0, nullptr));
+  Status status = ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), num_graphs, api_compute_funcs.data()));
+
+  // TODO: Initialize node_compute_funcs as wrappers to api_compute_funcs.
+  // TODO: Store api_compute_funcs and call ort_ep_->ReleaseNodeComputeFunctions() in ~PluginExecutionProvider().
+
   return status;
 }
 }  // namespace onnxruntime
