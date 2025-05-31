@@ -69,6 +69,19 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupport
 // OrtGraph
 //
 
+ORT_API_STATUS_IMPL(Graph_GetName, _In_ const OrtGraph* graph, _Out_ const char** name) {
+  API_IMPL_BEGIN
+  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
+
+  if (ep_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
+  }
+
+  *name = ep_graph->graph_viewer.Name().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
   API_IMPL_BEGIN
   const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
@@ -161,6 +174,7 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 22 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSupportedNodes,
+    &OrtExecutionProviderApi::Graph_GetName,
     &OrtExecutionProviderApi::Graph_GetNumNodes,
     &OrtExecutionProviderApi::Graph_GetNodes,
     &OrtExecutionProviderApi::Node_GetName,

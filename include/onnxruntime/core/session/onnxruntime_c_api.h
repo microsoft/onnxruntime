@@ -6035,9 +6035,9 @@ struct OrtNodeComputeInfo {
    *
    * \since Version 1.23.
    */
-  OrtStatusPtr(ORT_API_CALL* CreateComputeState)(_In_ OrtNodeComputeInfo* this_ptr,
-                                                 _In_ OrtNodeComputeContext* compute_context,
-                                                 _Outptr_ void** compute_state);
+  OrtStatus*(ORT_API_CALL* CreateComputeState)(_In_ OrtNodeComputeInfo* this_ptr,
+                                               _In_ OrtNodeComputeContext* compute_context,
+                                               _Outptr_ void** compute_state);
 
   /** \brief Computation function called to execute the fused node compiled by an OrtEp instance.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
@@ -6049,8 +6049,8 @@ struct OrtNodeComputeInfo {
    *
    * \since Version 1.23.
    */
-  OrtStatusPtr(ORT_API_CALL* Compute)(_In_ OrtNodeComputeInfo* this_ptr, _In_ void* compute_state,
-                                      _In_ const OrtApi* api, _In_ OrtKernelContext* kernel_context);
+  OrtStatus*(ORT_API_CALL* Compute)(_In_ OrtNodeComputeInfo* this_ptr, _In_ void* compute_state,
+                                    _In_ const OrtApi* api, _In_ OrtKernelContext* kernel_context);
 
   /** \brief Releases the compute state returned by CreateComputeState().
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
@@ -6103,6 +6103,16 @@ struct OrtEpApi {
                   _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
                   size_t num_supported_nodes,
                   _In_ const OrtHardwareDevice* hardware_device);
+
+  /** \brief Returns the name of a OrtGraph instance.
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] name Output parameter set to the OrtGraph instance's name.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Out_ const char** name);
 
   /** \brief Returns the number of nodes in the OrtGraph instance.
    * \param[in] graph The OrtGraph instance.

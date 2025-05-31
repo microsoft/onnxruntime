@@ -3,6 +3,9 @@
 
 #include "core/session/utils.h"
 
+#include <memory>
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"

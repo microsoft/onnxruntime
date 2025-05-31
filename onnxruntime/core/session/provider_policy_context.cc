@@ -6,6 +6,7 @@
 #include "core/session/provider_policy_context.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"

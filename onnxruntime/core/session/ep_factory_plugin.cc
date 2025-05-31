@@ -3,6 +3,7 @@
 
 #include "core/session/ep_factory_plugin.h"
 
+#include <memory>
 #include <string>
 #include <unordered_set>
 #include <utility>
@@ -185,7 +186,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       Status status = ToStatus(api_node_compute_info->CreateComputeState(api_node_compute_info,
                                                                          reinterpret_cast<OrtNodeComputeContext*>(context),
                                                                          compute_state));
-      if (logger != nullptr) {
+      if (!status.IsOK()) {
         LOGS(*logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
                              << status.ErrorMessage();
       }

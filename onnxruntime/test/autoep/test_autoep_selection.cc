@@ -583,8 +583,35 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
 }
 
-// Test creating a session with the example plugin EP and loading a model with a single Mul node.
-TEST(OrtEpLibrary, PluginLibrary_CreateSession) {
+static void RunModelWithPluginEp(Ort::SessionOptions& session_options) {
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/mul_1.onnx"), session_options);
+
+  // Create input
+  Ort::MemoryInfo memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  std::vector<int64_t> shape = {3, 2};
+  std::vector<float> input0_data(6, 2.0f);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input0_data.data(), input0_data.size(), shape.data(), shape.size()));
+  ort_input_names.push_back("X");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"Y"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check expected output values
+  Ort::Value& ort_output = ort_outputs[0];
+  const float* output_data = ort_output.GetTensorData<float>();
+  gsl::span<const float> output_span(output_data, 6);
+  EXPECT_THAT(output_span, ::testing::ElementsAre(2, 4, 6, 8, 10, 12));
+}
+
+// Creates a session with the example plugin EP and runs a model with a single Mul node.
+// Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   const std::filesystem::path& library_path = example_plugin_info.library_path;
   const std::string& registration_name = example_plugin_info.registration_name;
 
@@ -593,6 +620,7 @@ TEST(OrtEpLibrary, PluginLibrary_CreateSession) {
   {
     std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
 
+    // Find the OrtEpDevice associated with our example plugin EP.
     Ort::ConstEpDevice plugin_ep_device;
     for (Ort::ConstEpDevice& device : ep_devices) {
       if (std::string(device.EpName()) == registration_name) {
@@ -601,20 +629,31 @@ TEST(OrtEpLibrary, PluginLibrary_CreateSession) {
       }
     }
     ASSERT_NE(plugin_ep_device, nullptr);
+
+    // Create session with example plugin EP
     Ort::SessionOptions session_options;
     std::unordered_map<std::string, std::string> ep_options;
     session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
 
-    auto input_model_path = ORT_TSTR("testdata/mul_1.onnx");
+    RunModelWithPluginEp(session_options);
+  }
 
-    // Try creating a session with the plugin EP. The EP currently returns an error from Compile().
-    try {
-      Ort::Session session(*ort_env, input_model_path, session_options);
-      FAIL();
-    } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_EP_FAIL);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("Example EP always returns an error"));
-    }
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
+
+// Creates a session with the example plugin EP and runs a model with a single Mul node.
+// Uses the PREFER_CPU policy to append the example plugin EP to the session.
+TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
+  const std::filesystem::path& library_path = example_plugin_info.library_path;
+  const std::string& registration_name = example_plugin_info.registration_name;
+
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  {
+    // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
+    Ort::SessionOptions session_options;
+    session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
+    RunModelWithPluginEp(session_options);
   }
 
   ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
