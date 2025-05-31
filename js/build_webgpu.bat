@@ -69,7 +69,7 @@ popd
 set PATH=C:\Program Files\Git\usr\bin;%PATH%
 
 call %ROOT%build.bat --config %CONFIG% %CONFIG_EXTRA_FLAG% --skip_submodule_sync --build_wasm --target onnxruntime_webassembly --skip_tests^
- --enable_wasm_simd --enable_wasm_threads --use_jsep --use_webnn --use_webgpu --build_dir %BUILD_DIR%
+ --enable_wasm_simd --enable_wasm_threads --use_webnn --use_webgpu --build_dir %BUILD_DIR%
 
 IF NOT "%ERRORLEVEL%" == "0" (
   exit /b %ERRORLEVEL%

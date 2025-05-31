@@ -1,0 +1,1 @@
+call build.bat --parallel --config Release --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads --target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti --build_dir C:\code\o2\build_webgpu_rel\ --use_webgpu --use_webnn --target onnxruntime_webassembly --skip_tests
