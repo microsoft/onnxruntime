@@ -607,15 +607,13 @@ TEST(OrtEpLibrary, PluginLibrary_CreateSession) {
 
     auto input_model_path = ORT_TSTR("testdata/mul_1.onnx");
 
-    // Try creating a session with the plugin EP. The EP supports GetCapability(), but not Compile(),
-    // so expect a ORT_NOT_IMPLEMENTED error for now.
+    // Try creating a session with the plugin EP. The EP currently returns an error from Compile().
     try {
       Ort::Session session(*ort_env, input_model_path, session_options);
       FAIL();
     } catch (const Ort::Exception& excpt) {
-      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_NOT_IMPLEMENTED);
-      ASSERT_THAT(excpt.what(), testing::HasSubstr("IExecutionProvider::Compile with FusedNodeAndGraph is not "
-                                                   "implemented by example_ep"));
+      ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_EP_FAIL);
+      ASSERT_THAT(excpt.what(), testing::HasSubstr("Example EP always returns an error"));
     }
   }
 

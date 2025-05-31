@@ -32,8 +32,10 @@ struct ExampleEp : OrtEp, ApiPtrs {
     (void)status;
 
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
-    GetCapability = GetCapabilityImpl;
     GetName = GetNameImpl;
+    GetCapability = GetCapabilityImpl;
+    Compile = CompileImpl;
+    ReleaseNodeComputeFunctions = ReleaseNodeComputeFunctionsImpl;
   }
 
   ~ExampleEp() {
@@ -50,13 +52,13 @@ struct ExampleEp : OrtEp, ApiPtrs {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     size_t num_nodes = 0;
-    OrtStatus* status = ep->ep_api.OrtGraph_GetNumNodes(graph, &num_nodes);
+    OrtStatus* status = ep->ep_api.Graph_GetNumNodes(graph, &num_nodes);
     if (status != nullptr || num_nodes == 0) {
       return status;
     }
 
     std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-    status = ep->ep_api.OrtGraph_GetNodes(graph, /*order*/ 0, nodes.data(), nodes.size());
+    status = ep->ep_api.Graph_GetNodes(graph, /*order*/ 0, nodes.data(), nodes.size());
     if (status != nullptr) {
       return status;
     }
@@ -65,7 +67,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
     for (const OrtNode* node : nodes) {
       const char* op_type = nullptr;
-      status = ep->ep_api.OrtNode_GetOperatorType(node, &op_type);
+      status = ep->ep_api.Node_GetOperatorType(node, &op_type);
       if (status != nullptr) {
         return status;
       }
@@ -78,6 +80,22 @@ struct ExampleEp : OrtEp, ApiPtrs {
     status = ep->ep_api.EpGraphSupportInfo_AddSupportedNodes(graph_support_info, supported_nodes.data(),
                                                              supported_nodes.size(), &ep->hardware_device_);
     return status;
+  }
+
+  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, size_t num_graphs,
+                                             OrtNodeComputeFunctions** node_compute_funcs) {
+    (void)graphs;
+    (void)num_graphs;
+    (void)node_compute_funcs;
+    ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+
+    return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Example EP always returns an error");
+  }
+
+  static void ORT_API_CALL ReleaseNodeComputeFunctionsImpl(OrtEp* this_ptr,
+                                                           OrtNodeComputeFunctions* compute_funcs) {
+    (void)this_ptr;
+    delete compute_funcs;
   }
 
   std::string name_;

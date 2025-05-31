@@ -63,6 +63,9 @@ class PluginExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* resource_accountant = nullptr) const override;
 
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
  private:
   UniqueOrtEp ort_ep_;
 };

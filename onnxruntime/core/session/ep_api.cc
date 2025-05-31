@@ -6,6 +6,7 @@
 #include <algorithm>
 #include <vector>
 #include "core/framework/error_code_helper.h"
+#include "core/framework/func_api.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
@@ -68,7 +69,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupport
 // OrtGraph
 //
 
-ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
+ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
   API_IMPL_BEGIN
   const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
 
@@ -81,7 +82,7 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
+ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
   const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
@@ -116,7 +117,7 @@ ORT_API_STATUS_IMPL(OrtGraph_GetNodes, const OrtGraph* graph, int order,
 // OrtNode
 //
 
-ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** name) {
+ORT_API_STATUS_IMPL(Node_GetName, const OrtNode* node, _Outptr_ const char** name) {
   API_IMPL_BEGIN
   const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
 
@@ -129,7 +130,7 @@ ORT_API_STATUS_IMPL(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** 
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type) {
+ORT_API_STATUS_IMPL(Node_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type) {
   API_IMPL_BEGIN
   const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
 
@@ -142,6 +143,15 @@ ORT_API_STATUS_IMPL(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const
   API_IMPL_END
 }
 
+//
+// OrtCompiledNodeComputeContext
+//
+
+ORT_API(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context) {
+  const auto* compute_context = reinterpret_cast<const onnxruntime::ComputeContext*>(context);
+  return compute_context->node_name;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -151,10 +161,12 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 22 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSupportedNodes,
-    &OrtExecutionProviderApi::OrtGraph_GetNumNodes,
-    &OrtExecutionProviderApi::OrtGraph_GetNodes,
-    &OrtExecutionProviderApi::OrtNode_GetName,
-    &OrtExecutionProviderApi::OrtNode_GetOperatorType,
+    &OrtExecutionProviderApi::Graph_GetNumNodes,
+    &OrtExecutionProviderApi::Graph_GetNodes,
+    &OrtExecutionProviderApi::Node_GetName,
+    &OrtExecutionProviderApi::Node_GetOperatorType,
+
+    &OrtExecutionProviderApi::NodeComputeContext_NodeName,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

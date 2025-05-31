@@ -316,7 +316,6 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
-ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -731,6 +730,9 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
+
+struct OrtNodeComputeFunctions;
+typedef struct OrtNodeComputeFunctions OrtNodeComputeFunctions;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -6005,6 +6007,59 @@ struct OrtCompileApi {
 
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
+ORT_RUNTIME_CLASS(EpGraphSupportInfo);
+ORT_RUNTIME_CLASS(NodeComputeContext);
+
+/**
+ * \brief The OrtNodeComputeFunctions struct provides functions that an OrtEp implements to specify the computation
+ * callbacks for a compiled OrtGraph instance.
+ * \since Version 1.22.
+ */
+struct OrtNodeComputeFunctions {
+  /** \brief The ONNX Runtime version the OrtNodeComputeFunctions was compiled with.
+   *
+   * Implementation should set to ORT_API_VERSION.
+   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
+   *
+   * \since Version 1.23.
+   */
+  uint32_t ort_version_supported;
+
+  /** \brief Creates an opaque computation state object that is then passed to the Compute() function during inference.
+   * \param[in] this_ptr The OrtNodeComputeFunctions instance.
+   * \param[in] compute_context OrtNodeComputeContext instance that contains compiled/fused node's name and host
+   *                            memory allocation functions. Can optionally be used to build the compute state.
+   * \param[out] compute_state Output parameter that is assigned the opaque computation state.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatusPtr(ORT_API_CALL* CreateComputeState)(_In_ OrtNodeComputeFunctions* this_ptr,
+                                                 _In_ OrtNodeComputeContext* compute_context,
+                                                 _Outptr_ void** compute_state);
+
+  /** \brief Computation function called to execute the fused node compiled by an OrtEp.
+   * \param[in] this_ptr The OrtNodeComputeFunctions instance.
+   * \param[in] compute_state The opaque computation state returned by CreateComputeState().
+   * \param[in] api The OrtApi instance.
+   * \param[in] kernel_context The OrtKernelContext instance used to access inputs/outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatusPtr(ORT_API_CALL* Compute)(_In_ OrtNodeComputeFunctions* this_ptr, _In_ void* compute_state,
+                                      _In_ const OrtApi* api, _In_ OrtKernelContext* kernel_context);
+
+  /** \brief Releases the compute state returned by CreateComputeState().
+   * \param[in] this_ptr The OrtNodeComputeFunctions instance.
+   * \param[inout] compute_state The opaque computation state returned by CreateComputeState().
+   *
+   * \since Version 1.23.
+   */
+  void(ORT_API_CALL* DestroyComputeState)(_In_ OrtNodeComputeFunctions* this_ptr, _Frees_ptr_opt_ void* compute_state);
+};
 
 struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
@@ -6057,7 +6112,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OrtGraph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+  ORT_API2_STATUS(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
 
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
@@ -6077,7 +6132,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OrtGraph_GetNodes, const OrtGraph* graph, int order,
+  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, int order,
                   _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
   /** \brief Gets the name of an OrtNode instance.
@@ -6088,7 +6143,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OrtNode_GetName, const OrtNode* node, _Outptr_ const char** name);
+  ORT_API2_STATUS(Node_GetName, const OrtNode* node, _Outptr_ const char** name);
 
   /** \brief Gets the ONNX operator type (e.g., "Conv") of an OrtNode instance.
    * \param[in] node The OrtNode instance.
@@ -6098,7 +6153,20 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OrtNode_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type);
+  ORT_API2_STATUS(Node_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type);
+
+  /** \brief Query a OrtNodeComputeContext for the name of the node that encapsulates the compiled/fused node.
+   *
+   * Used in OrtNodeComputeFunctions::CreateComputeState().
+   *
+   * \param[in] context The OrtNodeComputeContext instance to query.
+   * \return The node's name.
+   *
+   * \note Returned string is owned by ORT and valid only while OrtNodeComputeFunctions::CreateComputeState() is called.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* NodeComputeContext_NodeName)(_In_ const OrtNodeComputeContext* context);
 };
 
 /**
@@ -6124,7 +6192,7 @@ struct OrtEp {
    *
    * \since Version 1.22.
    */
-  const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
+  const char*(ORT_API_CALL* GetName)(_In_ const OrtEp* this_ptr);
 
   /** \brief Get information about the nodes/subgraphs supported by the OrtEp instance.
    *
@@ -6137,13 +6205,38 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* GetCapability)(OrtEp* this_ptr, const OrtGraph* graph,
-                                          OrtEpGraphSupportInfo* graph_support_info);
+  OrtStatus*(ORT_API_CALL* GetCapability)(_In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
+                                          _Inout_ OrtEpGraphSupportInfo* graph_support_info);
 
-  // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
-  //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
+  /** \brief Compile OrtGraph instances assigned to the OrtEp. A OrtNodeComputeFunctions instance must be provided
+   * for each OrtGraph to define its computation function.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graphs Array of `num_graphs` OrtGraph instances to be compiled.
+   * \param[inout] node_compute_funcs Array of OrtNodeComputeFunctions instances that define each OrtGraph instance's
+   *                                  computation function. The callee allocates the OrtNodeComputeFunctions instances.
+   *                                  ORT calls ReleaseNodeComputeFunctions to release each instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Do NOT cache the OrtGraph instances in any of the OrtNodeComputeFunctions functions as the OrtGraph instances
+   *       are only valid for the duration of the call to Compile.
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                    _In_ size_t num_graphs,
+                                    _Out_writes_all_(count) OrtNodeComputeFunctions** node_compute_funcs);
 
-  // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
+  /** \brief Release an OrtNodeComputeFunctions instance.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] compute_funcs The OrtNodeComputeFunctions instance to release.
+   *
+   * \since Version 1.23.
+   */
+  void(ORT_API_CALL* ReleaseNodeComputeFunctions)(_In_ OrtEp* this_ptr,
+                                                  _Frees_ptr_opt_ OrtNodeComputeFunctions* compute_funcs);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

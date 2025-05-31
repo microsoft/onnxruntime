@@ -115,4 +115,14 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   return result;
 }
+
+common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
+  ORT_UNUSED_PARAMETER(fused_nodes_and_graphs);
+  ORT_UNUSED_PARAMETER(node_compute_funcs);
+
+  // Call plugin EP's Compile(). Expect an error for now.
+  Status status = ToStatus(ort_ep_->Compile(ort_ep_.get(), nullptr, 0, nullptr));
+  return status;
+}
 }  // namespace onnxruntime
