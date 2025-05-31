@@ -1369,6 +1369,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     max_workspace_size_ = info.max_workspace_size;
     fp16_enable_ = info.fp16_enable;
     bf16_enable_ = info.bf16_enable;
+    // BF16 support is primarily available on NVIDIA GPUs with the Ampere and later architectures with compute capability of 8.0 or higher.
+    if (bf16_enable_ && prop.major < 8) {
+      bf16_enable_ = false;
+      LOGS_DEFAULT(WARNING) << "[TensorRT EP] trt_bf16_enable is set, but platform doesn't support bf16.";
+    }
     int8_enable_ = info.int8_enable;
     if (int8_enable_) {
       int8_calibration_cache_name_ = info.int8_calibration_table_name;
