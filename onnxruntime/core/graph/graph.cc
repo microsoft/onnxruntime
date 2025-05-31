@@ -5852,19 +5852,22 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
-  add_graph_inputs_outputs(api_graph.inputs, /*input*/ true);
+  const auto* editor_graph = onnxruntime::ModelEditorGraph::ToInternal(&api_graph);
+  ORT_RETURN_IF(editor_graph == nullptr, "Invalid OrtGraph variant for use in the model editor API.");
+
+  add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 
   // add initializers
-  ortvalue_initializers_.reserve(api_graph.external_initializers.size());
-  add_initializers(api_graph.external_initializers, /*is_external*/ true);
-  add_initializers(api_graph.initializers, /*is_external*/ false);
+  ortvalue_initializers_.reserve(editor_graph->external_initializers.size());
+  add_initializers(editor_graph->external_initializers, /*is_external*/ true);
+  add_initializers(editor_graph->initializers, /*is_external*/ false);
 
   // add graph outputs
-  add_graph_inputs_outputs(api_graph.outputs, /*input*/ false);
+  add_graph_inputs_outputs(editor_graph->outputs, /*input*/ false);
 
   // add nodes
-  for (const auto& ort_node : api_graph.nodes) {
-    const OrtNode& node = *ort_node;
+  for (const auto& editor_node : editor_graph->nodes) {
+    const onnxruntime::ModelEditorNode& node = *editor_node;
 
     // convert Constant nodes to initializers
     if (node.operator_name == "Constant" && node.domain_name == kOnnxDomain) {
