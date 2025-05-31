@@ -127,7 +127,9 @@ void CPUIDInfo::X86Init() {
       has_f16c_ = has_avx_ && (data[2] & (1 << 29)) && (data[3] & (1 << 26));
 
       if (num_IDs >= 7) {
-        GetCPUID(7, data);
+        // This change is made to overcome the issue of __get_cpuid returning all zeros, instead use __get_cpuid_count.
+        // Reference: https://stackoverflow.com/questions/46272579/why-does-get-cpuid-return-all-zeros-for-leaf-4
+        GetCPUID(7, 0, data);
         const uint32_t max_SubLeaves = data[0];
         has_amx_bf16_ = (data[3] & (1 << 22));
         has_avx2_ = has_avx_ && (data[1] & (1 << 5));

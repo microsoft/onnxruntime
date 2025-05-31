@@ -89,7 +89,7 @@ void usage() {
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
-      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\t-f: Enable EP context cache generation.\n"
       "\t-b: Disable EP context embed mode.\n"
@@ -348,6 +348,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               break;
             case ORT_ENABLE_EXTENDED:
               graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_LAYOUT:
+              graph_optimization_level = ORT_ENABLE_LAYOUT;
               break;
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
