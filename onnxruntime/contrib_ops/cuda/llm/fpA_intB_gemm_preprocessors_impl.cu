@@ -4,6 +4,7 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "core/common/safeint.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -102,7 +103,7 @@ void permute_B_rows_on_gpu(
 
     ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
 
-    const size_t num_experts = shape.size() == 3 ? shape[0] : 1;
+    const int num_experts = shape.size() == 3 ? static_cast<int>(shape[0]) : 1;
     const int k_dim = static_cast<int>(shape.size() == 3 ? shape[1] : shape[0]); // Rows to permute
     const int n_dim = static_cast<int>(shape.size() == 3 ? shape[2] : shape[1]); // Columns (element-wise)
 
@@ -363,14 +364,14 @@ void interleave_column_major_tensor_cuda(
     const LayoutDetails& details,
     cudaStream_t stream) {
 
-    const size_t num_experts = shape.size() == 2 ? 1 : shape[0];
-    const size_t num_rows = shape.size() == 2 ? shape[0] : shape[1];
-    const size_t num_cols = shape.size() == 2 ? shape[1] : shape[2];
+    const int num_experts = shape.size() == 2 ? 1 : static_cast<int>(shape[0]);
+    const int num_rows = static_cast<int>(shape.size() == 2 ? shape[0] : shape[1]);
+    const int num_cols = static_cast<int>(shape.size() == 2 ? shape[1] : shape[2]);
 
     const int BITS_PER_ELT = get_weight_quant_bits(quant_type);
     const int elts_in_int32 = 32 / BITS_PER_ELT;
 
-    const size_t total_elements_32bit = num_experts * (num_rows / elts_in_int32) * num_cols;
+    const int total_elements_32bit = SafeInt<int32_t>(num_experts) * (num_rows / elts_in_int32) * num_cols;
     const int threads_per_block = 256;
     const int num_blocks = (total_elements_32bit + threads_per_block - 1) / threads_per_block;
 
@@ -512,7 +513,7 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
 
     if (quant_type == QuantType::W8_A16) {
         // Each thread handles 4 elements (32 bits)
-        const size_t num_registers = num_elts / 4;
+        const int num_registers = SafeInt<int32_t>(num_elts) / 4;
         const int num_blocks = (num_registers + threads_per_block - 1) / threads_per_block;
 
         add_bias_and_interleave_int8s_inplace_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
@@ -521,7 +522,7 @@ void add_bias_and_interleave_quantized_tensor_inplace_cuda(
         );
     } else if (quant_type == QuantType::W4_A16 || quant_type == QuantType::W4_AFP8) {
         // Each thread handles 8 elements (32 bits)
-        const size_t num_registers = num_elts / 8;
+        const int num_registers = SafeInt<int32_t>(num_elts) / 8;
         const int num_blocks = (num_registers + threads_per_block - 1) / threads_per_block;
 
         add_bias_and_interleave_int4s_inplace_kernel<<<num_blocks, threads_per_block, 0, stream>>>(
@@ -553,8 +554,6 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
     num_elts *= dim;
   }
 
-  const size_t num_bytes = num_elts * get_weight_quant_bits(quant_type) / 8;
-
   int8_t* src_buf = row_major_quantized_weight;
   int8_t* dst_buf = preprocessed_quantized_weight;
 
@@ -563,7 +562,7 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
 
   if (details.uses_imma_ldsm) {
       cudaMemcpyAsync(d_permutation_map, row_permutation.data(), row_permutation.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
-      permute_B_rows_on_gpu(dst_buf, src_buf, d_permutation_map, row_permutation.size(), shape, quant_type, stream);
+      permute_B_rows_on_gpu(dst_buf, src_buf, d_permutation_map, static_cast<int>(row_permutation.size()), shape, quant_type, stream);
       std::swap(src_buf, dst_buf);
   }
 
@@ -593,6 +592,7 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   );
 
   if (preprocessed_quantized_weight != src_buf) {
+    const size_t num_bytes = num_elts * static_cast<size_t>(get_weight_quant_bits(quant_type)) / static_cast<size_t>(8);
     CUDA_CALL_THROW(cudaMemcpyAsync(preprocessed_quantized_weight, src_buf, num_bytes, cudaMemcpyDeviceToDevice, stream));
   }
 
