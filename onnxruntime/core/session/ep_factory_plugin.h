@@ -56,6 +56,7 @@ using UniqueOrtEp = std::unique_ptr<OrtEp, OrtEpDeleter>;
 class PluginExecutionProvider : public IExecutionProvider {
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep);
+  ~PluginExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -68,5 +69,6 @@ class PluginExecutionProvider : public IExecutionProvider {
 
  private:
   UniqueOrtEp ort_ep_;
+  std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
 };
 }  // namespace onnxruntime

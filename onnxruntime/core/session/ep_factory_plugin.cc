@@ -3,6 +3,10 @@
 
 #include "core/session/ep_factory_plugin.h"
 
+#include <string>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
@@ -13,6 +17,10 @@
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
+
+//
+// PluginExecutionProviderFactory
+//
 
 PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
                                                                gsl::span<const OrtEpDevice* const> ep_devices)
@@ -36,12 +44,10 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
     ORT_THROW("Error creating execution provider: ", ToStatus(status).ToString());
   }
 
-  return std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)));
-}
+  auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)));
+  ep_wrapper->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
 
-PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
-    : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
-      ort_ep_(std::move(ep)) {
+  return ep_wrapper;
 }
 
 /// <summary>
@@ -65,6 +71,22 @@ struct PluginEpMetaDefNameFunctor {
   const GraphViewer& graph_viewer_;
   const std::string& prefix_;
 };
+
+//
+// PluginExecutionProvider
+//
+
+PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
+    : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
+      ort_ep_(std::move(ep)) {
+}
+
+PluginExecutionProvider::~PluginExecutionProvider() {
+  if (ort_ep_ && !api_node_compute_infos_.empty()) {
+    ort_ep_->ReleaseNodeComputeInfos(ort_ep_.get(), api_node_compute_infos_.data(),
+                                     api_node_compute_infos_.size());
+  }
+}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -117,16 +139,17 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 }
 
 common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                std::vector<NodeComputeInfo>& node_compute_funcs) {
-  ORT_UNUSED_PARAMETER(node_compute_funcs);
+                                                std::vector<NodeComputeInfo>& node_compute_infos) {
+  const logging::Logger* logger = GetLogger();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
-  std::vector<OrtNodeComputeFunctions*> api_compute_funcs(num_graphs, nullptr);
+  std::vector<OrtNodeComputeInfo*> api_node_compute_infos(num_graphs, nullptr);
 
   api_graphs_holder.reserve(num_graphs);
   api_graphs.reserve(num_graphs);
 
+  // Wrap GraphViewers into OrtGraphs
   for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
     const Node& fused_node = node_and_graph.fused_node;
@@ -138,11 +161,50 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
   }
 
   // Call plugin EP's Compile(). Expect an error for now.
-  Status status = ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), num_graphs, api_compute_funcs.data()));
+  ORT_RETURN_IF_ERROR(ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), num_graphs,
+                                                api_node_compute_infos.data())));
 
-  // TODO: Initialize node_compute_funcs as wrappers to api_compute_funcs.
-  // TODO: Store api_compute_funcs and call ort_ep_->ReleaseNodeComputeFunctions() in ~PluginExecutionProvider().
+  // Save OrtNodeComputeInfo created by OrtEp instance. They're freed when this IExecutionProvider
+  // is destroyed.
+  api_node_compute_infos_.reserve(api_node_compute_infos_.size() + num_graphs);
+  for (size_t i = 0; i < num_graphs; i++) {
+    if (api_node_compute_infos[i] != nullptr) {
+      api_node_compute_infos_.push_back(api_node_compute_infos[i]);
+    }
+  }
 
-  return status;
+  // Initialize node_compute_funcs as wrappers to api_node_compute_infos.
+  for (size_t i = 0; i < num_graphs; i++) {
+    OrtNodeComputeInfo* api_node_compute_info = api_node_compute_infos[i];
+    ORT_RETURN_IF(api_node_compute_info == nullptr, "OrtEp::Compile() did not set a valid OrtNodeComputeInfo ",
+                  "instance for graph at index ", i);
+
+    NodeComputeInfo compute_info;
+    compute_info.create_state_func = [api_node_compute_info, logger](ComputeContext* context,
+                                                                     FunctionState* compute_state) -> int {
+      Status status = ToStatus(api_node_compute_info->CreateComputeState(api_node_compute_info,
+                                                                         reinterpret_cast<OrtNodeComputeContext*>(context),
+                                                                         compute_state));
+      if (logger != nullptr) {
+        LOGS(*logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
+                             << status.ErrorMessage();
+      }
+      return status.IsOK() ? 0 : 1;
+    };
+
+    compute_info.release_state_func = [api_node_compute_info](FunctionState compute_state) -> void {
+      api_node_compute_info->DestroyComputeState(api_node_compute_info, compute_state);
+    };
+
+    compute_info.compute_func = [api_node_compute_info](FunctionState compute_state,
+                                                        const OrtApi* c_api,
+                                                        OrtKernelContext* kernel_context) -> Status {
+      return ToStatus(api_node_compute_info->Compute(api_node_compute_info, compute_state, c_api, kernel_context));
+    };
+
+    node_compute_infos.push_back(std::move(compute_info));
+  }
+
+  return Status::OK();
 }
 }  // namespace onnxruntime

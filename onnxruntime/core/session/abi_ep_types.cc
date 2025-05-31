@@ -13,8 +13,9 @@ onnxruntime::Status OrtEpGraphSupportInfo::AddSupportedNodes(const OrtHardwareDe
   onnxruntime::InlinedVector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.reserve(nodes.size());
   for (const OrtNode* node : nodes) {
-    ORT_RETURN_IF(node->type != OrtNode::Type::kEpNode, "Invalid OrtNode variant for use in OrtEpApi.");
-    ep_nodes.push_back(static_cast<const onnxruntime::EpNode*>(node));
+    const auto* ep_node = onnxruntime::EpNode::ToInternal(node);
+    ORT_RETURN_IF(ep_node == nullptr, "Invalid OrtNode variant for use in OrtEpApi.");
+    ep_nodes.push_back(ep_node);
   }
   subgraphs.push_back(Subgraph{hardware_device, ep_nodes});
 

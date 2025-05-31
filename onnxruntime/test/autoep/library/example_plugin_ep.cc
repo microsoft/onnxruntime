@@ -35,7 +35,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
     GetName = GetNameImpl;
     GetCapability = GetCapabilityImpl;
     Compile = CompileImpl;
-    ReleaseNodeComputeFunctions = ReleaseNodeComputeFunctionsImpl;
+    ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   }
 
   ~ExampleEp() {
@@ -83,19 +83,22 @@ struct ExampleEp : OrtEp, ApiPtrs {
   }
 
   static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, size_t num_graphs,
-                                             OrtNodeComputeFunctions** node_compute_funcs) {
+                                             OrtNodeComputeInfo** node_compute_infos) {
     (void)graphs;
     (void)num_graphs;
-    (void)node_compute_funcs;
+    (void)node_compute_infos;
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Example EP always returns an error");
   }
 
-  static void ORT_API_CALL ReleaseNodeComputeFunctionsImpl(OrtEp* this_ptr,
-                                                           OrtNodeComputeFunctions* compute_funcs) {
+  static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
+                                                       OrtNodeComputeInfo** node_compute_infos,
+                                                       size_t num_node_compute_infos) {
     (void)this_ptr;
-    delete compute_funcs;
+    for (size_t i = 0; i < num_node_compute_infos; i++) {
+      delete node_compute_infos[i];
+    }
   }
 
   std::string name_;
