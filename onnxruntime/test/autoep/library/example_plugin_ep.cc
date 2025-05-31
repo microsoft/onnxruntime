@@ -27,7 +27,7 @@
 struct ExampleEp;
 
 /// <summary>
-/// Example implemetnation of ONNX Mul. Does not handle many things like broadcasting.
+/// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
 /// </summary>
 struct MulKernel {
   MulKernel(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}

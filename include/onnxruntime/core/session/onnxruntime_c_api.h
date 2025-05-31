@@ -6013,7 +6013,7 @@ ORT_RUNTIME_CLASS(NodeComputeContext);
 /**
  * \brief The OrtNodeComputeInfo struct provides functions that an OrtEp implements to specify the compute
  * function for a compiled OrtGraph instance.
- * \since Version 1.22.
+ * \since Version 1.23.
  */
 struct OrtNodeComputeInfo {
   /** \brief The ONNX Runtime version the OrtNodeComputeInfo was compiled with.
@@ -6209,7 +6209,7 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graph The top-level OrtGraph instance containing all nodes in the graph.
    * \param[inout] graph_support_info OrtEpGraphSupportInfo instance that the implementer must fill out in order to
-   *                                  specify the supported nodes/subgraphs. All nodes in a subgraph must be connected.
+   *                                  specify the supported nodes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

@@ -53,7 +53,7 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
 
 /// <summary>
 /// Functor used to generate a Metadef name for a subgraph supported by a plugin EP.
-/// The generated name is a concatenation of the subgraph name provided by the EP with
+/// The generated name is a concatenation of a prefix (i.e., the EP name) with
 /// the model's hash and a unique ID.
 /// </summary>
 struct PluginEpMetaDefNameFunctor {
@@ -174,7 +174,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     }
   }
 
-  // Initialize node_compute_funcs as wrappers to api_node_compute_infos.
+  // Initialize node_compute_infos as wrappers to api_node_compute_infos.
   for (size_t i = 0; i < num_graphs; i++) {
     OrtNodeComputeInfo* api_node_compute_info = api_node_compute_infos[i];
     ORT_RETURN_IF(api_node_compute_info == nullptr, "OrtEp::Compile() did not set a valid OrtNodeComputeInfo ",
