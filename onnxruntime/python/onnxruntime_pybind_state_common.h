@@ -223,7 +223,6 @@ class SparseTensor;
 #endif
 namespace python {
 
-
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
 // TODO remove deprecated global config

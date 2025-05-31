@@ -46,7 +46,6 @@ static Status CreateOrtEnv() {
 
 namespace py = pybind11;
 
-
 /*
  * Register execution provider with options.
  */
@@ -60,15 +59,13 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
   }
 }
 
-
-
 Status CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
   if (!InitArray()) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
   }
-    
+
   ORT_RETURN_IF_ERROR(CreateOrtEnv());
 
   addGlobalMethods(m);
