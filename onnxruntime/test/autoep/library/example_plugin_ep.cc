@@ -86,9 +86,9 @@ struct MulKernel {
 
     int64_t num_elems = 1;
     for (int64_t dim : dims0) {
+      RETURN_IF(dim < 0, ort_api, "Invalid dimension: negative value detected");
       num_elems *= dim;
     }
-    RETURN_IF(num_elems < 0, ort_api, "Do not support negative dims");
 
     for (size_t i = 0; i < static_cast<size_t>(num_elems); ++i) {
       output_data[i] = input_data0[i] * input_data1[i];
