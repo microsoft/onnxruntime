@@ -11,7 +11,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ep_factory_internal.h"
-#include "core/session/ep_factory_plugin.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"

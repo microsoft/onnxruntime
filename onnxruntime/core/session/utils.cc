@@ -20,7 +20,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/ep_factory_internal.h"
-#include "core/session/ep_factory_plugin.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/model_compilation_options.h"

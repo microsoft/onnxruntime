@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/session/ep_factory_plugin.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 
 #include <memory>
 #include <string>
