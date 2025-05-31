@@ -14,6 +14,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/abi_logger.h"
 #include "core/session/allocator_adapters.h"
 #include "core/providers/partitioning_utils.h"
 
@@ -46,7 +47,7 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   }
 
   auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)));
-  ep_wrapper->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
+  ep_wrapper->SetLogger(session_logger.ToInternal());
 
   return ep_wrapper;
 }
