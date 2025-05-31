@@ -2831,7 +2831,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
 
-// This function is only used by orttraining module
 bool InitArray() {
   import_array1(false);
   return true;

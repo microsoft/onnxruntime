@@ -172,6 +172,7 @@ class Environment {
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
+  std::vector<std::string> all_fixed_size_types_;
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

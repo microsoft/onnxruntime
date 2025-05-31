@@ -287,23 +287,23 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
-    static std::vector<std::string> all_fixed_size_types = []() {
-      std::vector<std::string> all_types;
+    {
       std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
       std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
-      all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
-      all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
-      all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
-                      [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
-      return all_types; }();
+      all_fixed_size_types_.insert(all_fixed_size_types_.end(), all_tensor_types.begin(), all_tensor_types.end());
+      all_fixed_size_types_.insert(all_fixed_size_types_.end(), all_sequence_types.begin(), all_sequence_types.end());
+      all_fixed_size_types_.emplace_back("seq(tensor(bfloat16))");
+      all_fixed_size_types_.erase(std::remove_if(all_fixed_size_types_.begin(), all_fixed_size_types_.end(),
+                                     [](const std::string& s) { return s.find("string") != std::string::npos; }),
+                                  all_fixed_size_types_.end());
+    }
 
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            all_fixed_size_types,
+            all_fixed_size_types_,
             "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(
@@ -315,7 +315,7 @@ Internal copy node
         .Output(0, "Y", "output", "T")
         .TypeConstraint(
             "T",
-            all_fixed_size_types,
+            all_fixed_size_types_,
             "Constrain to all fixed size tensor and sequence types. If the dtype attribute is not provided this must be a valid output type.")
         .TypeAndShapeInferenceFunction(propagateShapeAndTypeFromFirstInput)
         .SetDoc(R"DOC(

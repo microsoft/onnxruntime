@@ -1,14 +1,25 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
+#include "onnxruntime_pybind_exceptions.h"
+#include "onnxruntime_pybind_module_functions.h"
 #include <pybind11/stl.h>
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
+#include "core/session/ort_env.h"
+#include "core/session/inference_session.h"
+#include "core/session/provider_bridge_ort.h"
+#include "core/framework/provider_options.h"
+#include "core/platform/env.h"
+
 namespace onnxruntime {
 namespace python {
-
+std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
+    const SessionOptions& session_options,
+    const std::string& type,
+    const ProviderOptionsMap& provider_options_map);
+bool InitArray();
 static OrtEnv* ort_env = nullptr;
 onnxruntime::Environment& GetEnv() {
   return ort_env->GetEnvironment();
@@ -35,6 +46,7 @@ static Status CreateOrtEnv() {
 
 namespace py = pybind11;
 
+
 /*
  * Register execution provider with options.
  */
@@ -48,11 +60,15 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
   }
 }
 
+
+
 Status CreateInferencePybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
-  Status import_error(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
-  import_array1(import_error);
+  if (!InitArray()) {
+    return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
+  }
+    
   ORT_RETURN_IF_ERROR(CreateOrtEnv());
 
   addGlobalMethods(m);
