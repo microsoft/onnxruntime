@@ -1388,6 +1388,7 @@ class OnnxModel:
             else:
                 # Check if tensors are allclose
                 from numpy import allclose
+
                 return allclose(n1, n2, rtol=rtol, atol=atol)
 
         return False
