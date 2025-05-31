@@ -4,10 +4,10 @@
 #pragma once
 
 namespace onnxruntime {
-namespace concurrency {
+typedef struct {
+  bool is_intel;
+  bool is_intel_specified_platform;
+} CheckIntelResult;
 
-// Intrinsic to use in spin-loops
-void SpinPause();
-
-}  // namespace concurrency
+CheckIntelResult CheckIntel();
 }  // namespace onnxruntime
