@@ -294,7 +294,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
       all_fixed_size_types_.insert(all_fixed_size_types_.end(), all_sequence_types.begin(), all_sequence_types.end());
       all_fixed_size_types_.emplace_back("seq(tensor(bfloat16))");
       all_fixed_size_types_.erase(std::remove_if(all_fixed_size_types_.begin(), all_fixed_size_types_.end(),
-                                     [](const std::string& s) { return s.find("string") != std::string::npos; }),
+                                                 [](const std::string& s) { return s.find("string") != std::string::npos; }),
                                   all_fixed_size_types_.end());
     }
 

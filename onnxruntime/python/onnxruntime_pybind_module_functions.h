@@ -1,5 +1,5 @@
 #pragma once
-#include "onnxruntime_pybind.h" 
+#include "onnxruntime_pybind.h"
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {
@@ -18,5 +18,5 @@ void addAdapterFormatMethods(pybind11::module& m);
 void addGlobalSchemaFunctions(pybind11::module& m);
 void addOpSchemaSubmodule(pybind11::module& m);
 void addOpKernelSubmodule(pybind11::module& m);
-}
+}  // namespace python
 }  // namespace onnxruntime

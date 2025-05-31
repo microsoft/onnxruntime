@@ -13,8 +13,6 @@
 #include <cassert>
 #include <stdexcept>  // For std::runtime_error
 
-
-
 // For memory leak detection on Windows with Visual Studio in Debug mode
 #ifdef _WIN32
 #define _CRTDBG_MAP_ALLOC
@@ -23,7 +21,6 @@
 #endif
 
 static constexpr const ORTCHAR_T* MATMUL_MODEL_URI = ORT_TSTR("testdata/matmul_1.onnx");
-
 
 // Typedef for the OrtGetApiBase function pointer
 typedef const OrtApiBase*(ORT_API_CALL* OrtGetApiBaseFunction)(void);
@@ -112,24 +109,20 @@ int main() {
     Ort::AllocatorWithDefaultOptions allocator;
 
     auto input_name_ptr = session.GetInputNameAllocated(0, allocator);
-  
+
     auto output_name_ptr = session.GetOutputNameAllocated(0, allocator);
-    
 
     std::vector<const char*> input_names = {input_name_ptr.get()};
     std::vector<const char*> output_names = {output_name_ptr.get()};
 
-    
     std::vector<float> input_tensor_values = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
     std::vector<int64_t> input_dims = {3, 2};
 
-
     Ort::Value input_tensor = Ort::Value::CreateTensor(allocator.GetInfo(), input_tensor_values.data(),
-                                   input_tensor_values.size(), input_dims.data(), input_dims.size());
+                                                       input_tensor_values.size(), input_dims.data(), input_dims.size());
 
- 
     auto output_tensors = session.Run(Ort::RunOptions{}, input_names.data(), &input_tensor, 1, output_names.data(), 1);
-    
+
     assert(output_tensors.size() == 1);
     const auto& output_tensor = output_tensors[0];
     assert(output_tensor.IsTensor());
