@@ -6226,7 +6226,7 @@ struct OrtEp {
    */
   OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                     _In_ size_t num_graphs,
-                                    _Out_writes_all_(count) OrtNodeComputeFunctions** node_compute_funcs);
+                                    _Out_writes_all_(num_graphs) OrtNodeComputeFunctions** node_compute_funcs);
 
   /** \brief Release an OrtNodeComputeFunctions instance.
    *
