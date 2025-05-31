@@ -33,6 +33,32 @@ TEST(DequantizeLinearOpTest, Int8) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
+// scalar zero & scale with uint8 (large enough input to execute MLAS vectorized loop)
+TEST(DequantizeLinearOpTest, Uint8_Large) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{1, 1039};  // not evenly divisible by 16 (loop unroll amount) to test handling of leftover inputs
+  test.AddInput<uint8_t>("x", dims, std::vector<uint8_t>(1039, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<uint8_t>("x_zero_point", {}, {1});
+  test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
+  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
+// scalar zero & scale with int8 (large enough input to execute MLAS vectorized loop)
+TEST(DequantizeLinearOpTest, Int8_Large) {
+  OpTester test("DequantizeLinear", 10);
+  std::vector<int64_t> dims{1, 1039};  // not evenly divisible by 16 (loop unroll amount) to test handling of leftover inputs
+  test.AddInput<int8_t>("x", dims, std::vector<int8_t>(1039, 1));
+  test.AddInput<float>("x_scale", {}, {1.0f});
+  test.AddInput<int8_t>("x_zero_point", {}, {1});
+  test.AddOutput<float>("y", dims, std::vector<float>(1039, 0.0f));
+  // Disable Tensorrt EP due to error:node1_quantize_scale_node: out of bounds channel axis 1. Number of input dimensions is 1.
+  // Disable WebGPU EP because it requires dims.Size() to be multiple of 4. Fails with error: needs at least component size 4.
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kWebGpuExecutionProvider});
+}
+
 // scalar zero & scale with int4
 TEST(DequantizeLinearOpTest, Int4) {
   OpTester test("DequantizeLinear", 21);
