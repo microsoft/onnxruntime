@@ -95,7 +95,6 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
-
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
 struct AsyncResource {
@@ -2831,8 +2830,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           },
           R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
-
-
 
 // This function is only used by orttraining module
 bool InitArray() {

@@ -172,7 +172,6 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
   execution_provider_instances_map_.clear();
 }
 
-
 static ORTTrainingPythonEnv* ort_training_env = nullptr;
 
 OrtEnv* GetOrtEnv() {
@@ -268,7 +267,6 @@ void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::ve
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(ep));
   }
 }
-
 
 Status CreateTrainingPybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";

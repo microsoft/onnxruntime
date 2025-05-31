@@ -67,7 +67,6 @@ Status CreateInferencePybindStateModule(py::module& m) {
   return Status::OK();
 }
 
-
 #if defined(USE_MPI) && defined(ORT_USE_NCCL)
 static constexpr bool HAS_COLLECTIVE_OPS = true;
 #else
