@@ -139,7 +139,6 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
         {static_cast<size_t>(k), static_cast<size_t>(n)},
         quant_type);
 
-    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);

@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors_impl.h"
+#include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -545,7 +546,7 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   }
   LayoutDetails details = getLayoutDetailsForTransform(quant_type, arch);
 
-  ORT_ENFORCE(shape.size() == 2, "Shape must be 2-D");
+  ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
 
   size_t num_elts = 1;
   for (auto const& dim : shape) {
@@ -557,22 +558,20 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   int8_t* src_buf = row_major_quantized_weight;
   int8_t* dst_buf = preprocessed_quantized_weight;
 
+  // This vector is moved out of the scope of `if (details.uses_imma_ldsm)` to avoid a cudaStreamSynchronize.
+  std::vector<int> row_permutation = get_permutation_map(quant_type);
+
   if (details.uses_imma_ldsm) {
-      std::vector<int> row_permutation = get_permutation_map(quant_type);
       cudaMemcpyAsync(d_permutation_map, row_permutation.data(), row_permutation.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
       permute_B_rows_on_gpu(dst_buf, src_buf, d_permutation_map, row_permutation.size(), shape, quant_type, stream);
       std::swap(src_buf, dst_buf);
   }
 
   if (details.layoutB == LayoutDetails::Layout::COLUMN_MAJOR) {
-    // Note: The output buffer (dst_buf) must be zero-initialized before the kernel launch
-    // because the int4 kernel uses atomicOr.
-    cudaMemsetAsync(dst_buf, 0, num_bytes, stream);
-
     subbyte_transpose_cuda(dst_buf, src_buf, shape, quant_type, stream);
-
     std::swap(src_buf, dst_buf);
-}
+  }
+
   if (details.columns_interleaved > 1 && arch != 90) {
     interleave_column_major_tensor_cuda(
           dst_buf,
@@ -594,8 +593,11 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   );
 
   if (preprocessed_quantized_weight != src_buf) {
-    cudaMemcpyAsync(preprocessed_quantized_weight, src_buf, num_bytes, cudaMemcpyDeviceToDevice, stream);
+    CUDA_CALL_THROW(cudaMemcpyAsync(preprocessed_quantized_weight, src_buf, num_bytes, cudaMemcpyDeviceToDevice, stream));
   }
+
+  // Synchronize the stream to ensure the permutation is complete before row_permutation memory is relased.
+  CUDA_CALL_THROW(cudaStreamSynchronize(stream));
 }
 
 }  // namespace weight_only

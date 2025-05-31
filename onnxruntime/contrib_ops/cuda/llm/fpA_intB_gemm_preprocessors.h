@@ -21,8 +21,6 @@
 #include <stdint.h>
 #include <vector>
 
-#include "core/common/common.h"
-
 namespace onnxruntime::llm {
 namespace kernels {
 namespace weight_only {
