@@ -128,8 +128,12 @@ ORTTrainingPythonEnv::ORTTrainingPythonEnv(OrtEnv* ort_env) : ort_env_(ort_env) 
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
 
-Environment& ORTTrainingPythonEnv::GetORTEnv() const {
-  return ort_env_->GetEnvironment();
+const OrtEnv& ORTTrainingPythonEnv::GetORTEnv() const {
+  return *ort_env_;
+}
+
+OrtEnv& ORTTrainingPythonEnv::GetORTEnv() {
+  return *ort_env_;
 }
 
 std::shared_ptr<IExecutionProvider> ORTTrainingPythonEnv::GetExecutionProviderInstance(const std::string& provider_type,
@@ -171,6 +175,12 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
 
 static ORTTrainingPythonEnv* ort_training_env = nullptr;
 
+OrtEnv* GetOrtEnv() {
+  return &ort_training_env->GetORTEnv();
+}
+onnxruntime::Environment& GetEnv() {
+  return ort_training_env->GetORTEnv().GetEnvironment();
+}
 
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);

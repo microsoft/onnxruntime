@@ -95,7 +95,6 @@ static Env& platform_env = Env::Default();
 #pragma warning(push)
 #endif
 
-static OrtEnv* ort_env = nullptr;
 
 using PyCallback = std::function<void(std::vector<py::object>, py::object user_data, std::string)>;
 
@@ -1413,19 +1412,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
     return ep_factory->CreateProvider();
   }
   return nullptr;
-}
-
-/*
- * Register execution provider with options.
- */
-static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       const ProviderOptionsMap& provider_options_map) {
-  for (const std::string& type : provider_types) {
-    auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
-    if (ep) {
-      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
-    }
-  }
 }
 
 /**
@@ -2846,55 +2832,12 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
 
-static Status CreateOrtEnv();
 
-Status CreateInferencePybindStateModule(py::module& m) {
-  m.doc() = "pybind11 stateful interface to ONNX runtime";
-  RegisterExceptions(m);
-  Status import_error(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
-  import_array1(import_error);
-  ORT_RETURN_IF_ERROR(CreateOrtEnv());
-
-  addGlobalMethods(m);
-  addObjectMethods(m, RegisterExecutionProviders);
-  addOrtValueMethods(m);
-  addSparseTensorMethods(m);
-  addIoBindingMethods(m);
-  addAdapterFormatMethods(m);
-  addGlobalSchemaFunctions(m);
-  addOpSchemaSubmodule(m);
-  addOpKernelSubmodule(m);
-  return Status::OK();
-}
 
 // This function is only used by orttraining module
 bool InitArray() {
   import_array1(false);
   return true;
-}
-
-static Status CreateOrtEnv() {
-  Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
-  Status status;
-  ort_env = OrtEnv::GetInstance(lm_info, status);
-  if (!status.IsOK()) return status;
-  // Keep the ort_env alive, don't free it. It's ok to leak the memory.
-#if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
-  if (!InitProvidersSharedLibrary()) {
-    const logging::Logger& default_logger = ort_env->GetLoggingManager()->DefaultLogger();
-    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
-  }
-#endif
-  return Status::OK();
-}
-
-onnxruntime::Environment& GetEnv() {
-  return ort_env->GetEnvironment();
-}
-
-inline OrtEnv* GetOrtEnv() {
-  return ort_env;
 }
 
 }  // namespace python

@@ -22,7 +22,8 @@ class ORTTrainingPythonEnv {
  public:
   ORTTrainingPythonEnv(OrtEnv* ort_env);
 
-  Environment& GetORTEnv() const;
+  const OrtEnv& GetORTEnv() const;
+  OrtEnv& GetORTEnv();
 
   std::shared_ptr<IExecutionProvider> GetExecutionProviderInstance(const std::string& provider_type,
                                                                    size_t hash);
@@ -46,6 +47,7 @@ class ORTTrainingPythonEnv {
                                          size_t hash);
 
   OrtEnv* ort_env_;
+  // NOTE: the EPs in the following map probably depends on dynamic EP DLLs that are going to be unloaded by OrtEnv's destructor if we delete OrtEnv
   ExecutionProviderMap execution_provider_instances_map_;
   std::vector<std::string> available_training_eps_;
 };

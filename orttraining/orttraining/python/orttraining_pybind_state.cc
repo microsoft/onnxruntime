@@ -173,7 +173,7 @@ struct PyOptimizer {
     auto model_identifiers = onnxruntime::training::api::ModelIdentifiers("", std::nullopt, optimizer_model_uri);
     // XXX: We hope that env will be around when optimizer needs it.
     optimizer_ = std::make_shared<onnxruntime::training::api::Optimizer>(
-        model_identifiers, state, session_options->value, GetTrainingEnv().GetORTEnv(), providers, session_options->custom_op_domains_);
+        model_identifiers, state, session_options->value, GetTrainingEnv().GetORTEnv().GetEnvironment(), providers, session_options->custom_op_domains_);
   }
 
   std::shared_ptr<onnxruntime::training::api::Optimizer> optimizer_;
@@ -582,9 +582,9 @@ void addObjectMethodsForTraining(py::module& m) {
                ORT_THROW_IF_ERROR(onnxruntime::CreateCustomRegistry(options->custom_op_domains_, custom_registry));
                local_registries.push_back(custom_registry->GetOpschemaRegistry());
              }
+             auto logger_ptr = GetOrtEnv()->GetLoggingManager()->CreateLogger("orttraining");
 
              std::shared_ptr<Model> model;
-             auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
              logging::Severity severity = logging::Severity::kINFO;
              if (options && options->value.session_log_severity_level >= 0) {
                severity = static_cast<logging::Severity>(options->value.session_log_severity_level);
@@ -666,7 +666,7 @@ void addObjectMethodsForTraining(py::module& m) {
         std::vector<std::shared_ptr<IExecutionProvider>> provider = GetExecutionProvidersForTrainingApis(device);
         auto model_identifiers = onnxruntime::training::api::ModelIdentifiers(model_uri, eval_model_uri, std::nullopt);
         return std::make_unique<onnxruntime::training::api::Module>(model_identifiers,
-                                                                    state, session_options->value, GetTrainingEnv().GetORTEnv(), provider,                                                                    session_options->custom_op_domains_);
+                                                                    state, session_options->value, GetTrainingEnv().GetORTEnv().GetEnvironment(), provider, session_options->custom_op_domains_);
       }))
       .def("train_step",
            [](onnxruntime::training::api::Module* model,
@@ -977,7 +977,7 @@ void addObjectMethodsForTraining(py::module& m) {
           ORT_THROW_IF_ERROR(Model::Load(buffer, &model_proto));
 
           // Get the ort model from ModelProto model
-          auto logger_ptr = std::make_unique<logging::Logger>(logging::LoggingManager::DefaultLogger());
+          auto logger_ptr = GetOrtEnv()->GetLoggingManager()->CreateLogger("orttraining");
           logging::Severity severity = logging::Severity::kINFO;
           if (options && options->value.session_log_severity_level >= 0) {
             severity = static_cast<logging::Severity>(options->value.session_log_severity_level);
