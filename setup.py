@@ -373,7 +373,6 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libQnnSaver.so",
         "libQnnSystem.so",
         "libHtpPrepare.so",
-        "ep_weight_sharing_ctx_gen",
     ]
     dl_libs.extend(qnn_deps)
     if nightly_build:
