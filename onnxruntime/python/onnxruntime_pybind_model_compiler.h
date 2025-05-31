@@ -40,7 +40,7 @@ class PyModelCompiler {
   /// Initializers with a size greater than this threshold are dumped into the external file.</param>
   /// <returns>A Status indicating error or success.</returns>
   static onnxruntime::Status Create(/*out*/ std::unique_ptr<PyModelCompiler>& out,
-                                    std::shared_ptr<onnxruntime::Environment> env,
+                                    onnxruntime::Environment& env,
                                     const PySessionOptions& sess_options,
                                     std::string&& input_model_path_or_bytes, bool input_model_is_path,
                                     bool embed_compiled_data_into_model = false,
@@ -50,7 +50,7 @@ class PyModelCompiler {
 
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
-  PyModelCompiler(std::shared_ptr<onnxruntime::Environment> env, const PySessionOptions& sess_options,
+  PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
                   PrivateConstructorTag);
 
   /// <summary>
@@ -71,7 +71,7 @@ class PyModelCompiler {
   onnxruntime::Status CompileToBytes(std::string& output_buffer);
 
  private:
-  std::shared_ptr<onnxruntime::Environment> env_;
+  onnxruntime::Environment& env_;
   onnxruntime::ModelCompilationOptions model_compile_options_;
   std::string input_model_bytes_;
 };

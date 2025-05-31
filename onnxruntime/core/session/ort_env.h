@@ -70,7 +70,7 @@ struct OrtEnv {
   onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
-  static std::unique_ptr<OrtEnv> p_instance_;
+  static OrtEnv* p_instance_;
   static std::mutex m_;
   static int ref_count_;
 
