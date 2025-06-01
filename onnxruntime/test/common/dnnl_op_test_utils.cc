@@ -8,6 +8,7 @@
 
 namespace onnxruntime {
 namespace test {
+#if defined(USE_DNNL)
 bool DnnlSupportedGpuFound() {
 // This assumes that if the code was built using the DNNL_GPU_RUNTIME then you have GPU support.
 // It is possible this is not true.
@@ -51,5 +52,10 @@ bool DnnlHasBF16Support() {
   }
   return false;
 }
+#else
+bool DnnlHasBF16Support() {
+  static_assert(false, "DNNL is not enabled in this build.");
+}
+#endif
 }  // namespace test
 }  // namespace onnxruntime
