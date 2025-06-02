@@ -134,8 +134,6 @@ void permute_B_rows_on_gpu(
     );
 }
 
-
-
 // Constants for the subbyte_transpose_kernel
 constexpr int SUBBYTE_TRANSPOSE_TILE_DIM_ELTS = 32; // Tile dimension in elements (e.g., 32 elements wide and 32 elements high)
 constexpr int SUBBYTE_TRANSPOSE_BLOCK_ROWS = 8;    // Affects how many rows of a tile a threadblock y-dimension loads/stores in one pass
@@ -557,13 +555,11 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
   int8_t* src_buf = row_major_quantized_weight;
   int8_t* dst_buf = preprocessed_quantized_weight;
 
-  // This vector is moved out of the scope of `if (details.uses_imma_ldsm)` to avoid a cudaStreamSynchronize.
-  std::vector<int> row_permutation = get_permutation_map(quant_type);
-
   if (details.uses_imma_ldsm) {
-      cudaMemcpyAsync(d_permutation_map, row_permutation.data(), row_permutation.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
-      permute_B_rows_on_gpu(dst_buf, src_buf, d_permutation_map, static_cast<int>(row_permutation.size()), shape, quant_type, stream);
-      std::swap(src_buf, dst_buf);
+    auto row_permutation = get_permutation_map(quant_type);
+    cudaMemcpyAsync(d_permutation_map, row_permutation.data(), row_permutation.size() * sizeof(int), cudaMemcpyHostToDevice, stream);
+    permute_B_rows_on_gpu(dst_buf, src_buf, d_permutation_map, static_cast<int>(row_permutation.size()), shape, quant_type, stream);
+    std::swap(src_buf, dst_buf);
   }
 
   if (details.layoutB == LayoutDetails::Layout::COLUMN_MAJOR) {

@@ -16,13 +16,14 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "core/common/common.h"
+#include "core/common/span_utils.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wunused-parameter"
 #endif
 
-#include "cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
+#include "contrib_ops/cuda/llm/cutlass_extensions/gemm/kernel/mixed_gemm_B_layout.h"
 
 #if defined(__GNUC__)
 #pragma GCC diagnostic pop
@@ -137,6 +138,17 @@ LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
   }
 }
 
+constexpr std::array<int, 16> kPerm_W8_A16 = {
+    0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15};
+
+constexpr std::array<int, 32> kPerm_W4_A16 = {
+    0, 1, 8, 9, 16, 17, 24, 25, 2, 3, 10, 11, 18, 19, 26, 27,
+    4, 5, 12, 13, 20, 21, 28, 29, 6, 7, 14, 15, 22, 23, 30, 31};
+
+constexpr std::array<int, 32> kPerm_W4_AFP8 = {
+    0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23,
+    8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15, 28, 29, 30, 31};
+
 // Permutes the rows of B in a way that is compatible with Turing+ architectures.
 //
 // Throws an error for other architectures.
@@ -149,17 +161,16 @@ LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
 // The goal of this permutation is to ensure data ends up in the correct threads after
 // we execute LDSM. It counteracts the effect of the data being of different widths.
 // For more information about the expected layouts, see the MMA section in the PTX docs.
-std::vector<int> get_permutation_map(QuantType quant_type) {
-  if (quant_type == QuantType::W8_A16) {
-    return {0, 1, 8, 9, 2, 3, 10, 11, 4, 5, 12, 13, 6, 7, 14, 15};
-  } else if (quant_type == QuantType::W4_A16) {
-    return {0, 1, 8, 9, 16, 17, 24, 25, 2, 3, 10, 11, 18, 19, 26, 27, 4, 5, 12, 13, 20, 21, 28, 29, 6, 7, 14, 15,
-            22, 23, 30, 31};
-  } else if (quant_type == QuantType::W4_AFP8) {
-    return {0, 1, 2, 3, 16, 17, 18, 19, 4, 5, 6, 7, 20, 21, 22, 23, 8, 9, 10, 11, 24, 25, 26, 27, 12, 13, 14, 15,
-            28, 29, 30, 31};
-  } else {
-    ORT_THROW("Invalid quantization type for LDSM permutation");
+gsl::span<const int> get_permutation_map(QuantType quant_type) {
+  switch (quant_type) {
+    case QuantType::W8_A16:
+      return AsSpan(kPerm_W8_A16);
+    case QuantType::W4_A16:
+      return AsSpan(kPerm_W4_A16);
+    case QuantType::W4_AFP8:
+      return AsSpan(kPerm_W4_AFP8);
+    default:
+      ORT_THROW("Invalid quantization type for LDSM permutation");
   }
 }
 

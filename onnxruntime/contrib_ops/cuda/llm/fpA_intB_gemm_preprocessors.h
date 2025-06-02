@@ -17,8 +17,8 @@
 #pragma once
 
 #include <cuda_runtime.h>
-#include <cstddef>
 #include <stdint.h>
+#include <cstddef>
 #include <vector>
 
 namespace onnxruntime::llm {
