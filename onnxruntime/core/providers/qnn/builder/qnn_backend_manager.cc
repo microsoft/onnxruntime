@@ -418,23 +418,7 @@ void QnnLogging(const char* format,
   const auto& logger = ::onnxruntime::logging::LoggingManager::DefaultLogger();
   
   // Map QNN log level to ORT severity
-  logging::Severity severity;
-  switch (level) {
-    case QNN_LOG_LEVEL_VERBOSE:
-    case QNN_LOG_LEVEL_DEBUG:
-      severity = logging::Severity::kVERBOSE;
-      break;
-    case QNN_LOG_LEVEL_INFO:
-      severity = logging::Severity::kINFO;
-      break;
-    case QNN_LOG_LEVEL_WARN:
-      severity = logging::Severity::kWARNING;
-      break;
-    case QNN_LOG_LEVEL_ERROR:
-    default:
-      severity = logging::Severity::kERROR;
-      break;
-  }
+  logging::Severity severity = QnnBackendManager::MapQNNLogLevelToOrtSeverity(level);
   
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
@@ -509,7 +493,7 @@ QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity 
   }
 }
 
-logging::Severity QnnBackendManager::MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level) {
+/* static */ logging::Severity QnnBackendManager::MapQNNLogLevelToOrtSeverity(QnnLog_Level_t qnn_log_level) {
   // Map QNN log level to ORT log severity
   switch (qnn_log_level) {
     case QNN_LOG_LEVEL_VERBOSE:
