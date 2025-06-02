@@ -18,10 +18,7 @@ from onnxruntime.transformers.onnx_utils import extract_raw_data_from_model, has
 
 from .fusions import ReplaceUpsampleWithResize
 from .onnx_model import ONNXModel
-from .quant_utils import (
-    add_pre_process_metadata,
-    save_and_reload_model_with_shape_infer
-)
+from .quant_utils import add_pre_process_metadata, save_and_reload_model_with_shape_infer
 
 logger = logging.getLogger(__name__)
 
@@ -94,9 +91,7 @@ def quant_pre_process(
         # be upgraded to at least v11 during quantization, we need to replace Upsample
         # with Resize first to avoid generating an invalid model.
         if model:
-            ai_onnx_domain = [
-                opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"
-            ]
+            ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
             if len(ai_onnx_domain) == 1:
                 opset_version = ai_onnx_domain[0].version
                 if opset_version < 10:

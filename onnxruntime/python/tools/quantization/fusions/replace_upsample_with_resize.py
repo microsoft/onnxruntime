@@ -29,18 +29,18 @@ class ReplaceUpsampleWithResize(Fusion):
         """Replace Upsample with Resize."""
         mode = None
         for attr in node.attribute:
-            if attr.name == 'mode':
-                mode = attr.s.decode('utf-8')
+            if attr.name == "mode":
+                mode = attr.s.decode("utf-8")
                 break
 
         scales_input = None
         if self.opset > 7:
-            scales_input = node.input[1] if len(node.input) > 1 else ''
-            resize_inputs = [node.input[0], node.name + '_roi', scales_input]
+            scales_input = node.input[1] if len(node.input) > 1 else ""
+            resize_inputs = [node.input[0], node.name + "_roi", scales_input]
         else:
             if self.opset == 7:
                 for attr in node.attribute:
-                    if attr.name == 'scales':
+                    if attr.name == "scales":
                         scales_input = attr.floats
                         break
 
@@ -49,51 +49,39 @@ class ReplaceUpsampleWithResize(Fusion):
                 h_scale = 1
                 w_scale = 1
                 for attr in node.attribute:
-                    if attr.name == 'height_scale':
+                    if attr.name == "height_scale":
                         h_scale = attr.float
-                    elif attr.name == 'width_scale':
+                    elif attr.name == "width_scale":
                         w_scale = attr.float
 
-                scales_input = np.array([1 ,1, h_scale, w_scale], np.float32)
+                scales_input = np.array([1, 1, h_scale, w_scale], np.float32)
 
             scales_tensor = onnx.helper.make_tensor(
-                name=node.name + '_scales',
+                name=node.name + "_scales",
                 data_type=onnx.TensorProto.FLOAT,
                 dims=scales_input.shape,
-                vals=scales_input.flatten().tolist()
+                vals=scales_input.flatten().tolist(),
             )
 
             scales_node = onnx.helper.make_node(
-                'Constant',
-                inputs=[],
-                outputs=[node.name + '_scales'],
-                value=scales_tensor
+                "Constant", inputs=[], outputs=[node.name + "_scales"], value=scales_tensor
             )
 
             self.nodes_to_add.append(scales_node)
 
-            resize_inputs = [node.input[0], node.name + '_roi', node.name + '_scales']
+            resize_inputs = [node.input[0], node.name + "_roi", node.name + "_scales"]
 
         roi_tensor = onnx.helper.make_tensor(
-            name=node.name + '_roi',
+            name=node.name + "_roi",
             data_type=onnx.TensorProto.FLOAT,
-            dims=(len(scales_input)*2,),
-            vals=[0]*len(scales_input)+[1]*len(scales_input)
+            dims=(len(scales_input) * 2,),
+            vals=[0] * len(scales_input) + [1] * len(scales_input),
         )
 
-        roi_node = onnx.helper.make_node(
-            'Constant',
-            inputs=[],
-            outputs=[node.name + '_roi'],
-            value=roi_tensor
-        )
+        roi_node = onnx.helper.make_node("Constant", inputs=[], outputs=[node.name + "_roi"], value=roi_tensor)
 
         resize_node = onnx.helper.make_node(
-            op_type='Resize',
-            inputs=resize_inputs,
-            outputs = node.output,
-            mode=mode,
-            nearest_mode='floor'
+            op_type="Resize", inputs=resize_inputs, outputs=node.output, mode=mode, nearest_mode="floor"
         )
 
         self.nodes_to_remove.append(node)
