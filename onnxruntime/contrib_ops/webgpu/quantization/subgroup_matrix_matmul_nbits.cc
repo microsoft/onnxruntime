@@ -248,8 +248,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
   // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
   // FP322 is around 7s.
-  return context.AdapterInfo().backendType == wgpu::BackendType::Metal &&
-         has_subgroup_matrix &&
+  return has_subgroup_matrix &&
+         context.AdapterInfo().vendor == std::string_view{"apple"} &&
          accuracy_level == 4 &&
          block_size == 32 &&
          batch_count == 1 &&

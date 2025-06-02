@@ -3,9 +3,12 @@
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
+#include "core/platform/check_intel.h"
 
 #ifdef __linux__
-
+#if (defined(_M_AMD64) || defined(__x86_64__)) && !defined(__ANDROID__)
+#include <x86intrin.h>
+#endif
 #include <unistd.h>
 #include <sys/syscall.h>
 #if !defined(__NR_getcpu)
@@ -106,6 +109,7 @@ void CPUIDInfo::X86Init() {
   GetCPUID(0, data);
 
   vendor_ = GetX86Vendor(data);
+  vendor_id_ = GetVendorId(vendor_);
 
   int num_IDs = data[0];
   if (num_IDs >= 1) {
@@ -132,6 +136,17 @@ void CPUIDInfo::X86Init() {
         // avx512_skylake = avx512f | avx512vl | avx512cd | avx512bw | avx512dq
         has_avx512_skylake_ = has_avx512 && (data[1] & ((1 << 16) | (1 << 17) | (1 << 28) | (1 << 30) | (1 << 31)));
         is_hybrid_ = (data[3] & (1 << 15));
+        // Check for TPAUSE
+        CheckIntelResult check_intel = CheckIntel();
+        if (check_intel.is_intel) {
+#ifdef __linux__
+#if !defined(__ANDROID__)
+          has_tpause_ = __builtin_cpu_supports("waitpkg") != 0;
+#endif
+#else
+          has_tpause_ = (data[2] & (1 << 5)) != 0;
+#endif
+        }
         if (max_SubLeaves >= 1) {
           GetCPUID(7, 1, data);
           has_avx512_bf16_ = has_avx512 && (data[0] & (1 << 5));
@@ -150,6 +165,14 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 }
 
 #endif  // defined(CPUIDINFO_ARCH_X86)
+
+uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
+  if (vendor == "GenuineIntel") return 0x8086;
+  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
+  if (vendor.find("NV") == 0) return 0x10DE;
+  return 0;
+}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
@@ -204,6 +227,7 @@ void CPUIDInfo::ArmLinuxInit() {
 void CPUIDInfo::ArmWindowsInit() {
   // Get the ARM vendor string from the registry
   vendor_ = GetArmWindowsVendor();
+  vendor_id_ = GetVendorId(vendor_);
 
   // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
   // There should be one per CPU

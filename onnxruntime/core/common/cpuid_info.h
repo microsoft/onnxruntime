@@ -19,6 +19,10 @@ class CPUIDInfo {
     return vendor_;
   }
 
+  uint32_t GetCPUVendorId() const {
+    return vendor_id_;
+  }
+
   bool HasAMX_BF16() const { return has_amx_bf16_; }
   bool HasAVX() const { return has_avx_; }
   bool HasAVX2() const { return has_avx2_; }
@@ -29,6 +33,7 @@ class CPUIDInfo {
   bool HasSSE3() const { return has_sse3_; }
   bool HasSSE4_1() const { return has_sse4_1_; }
   bool IsHybrid() const { return is_hybrid_; }
+  bool HasTPAUSE() const { return has_tpause_; }
 
   // ARM
   bool HasArmNeonDot() const { return has_arm_neon_dot_; }
@@ -108,6 +113,7 @@ class CPUIDInfo {
   bool has_sse3_{false};
   bool has_sse4_1_{false};
   bool is_hybrid_{false};
+  bool has_tpause_{false};
 
   std::vector<uint32_t> core_uarchs_;  // micro-arch of each core
 
@@ -123,6 +129,9 @@ class CPUIDInfo {
   bool has_arm_neon_bf16_{false};
 
   std::string vendor_;
+  uint32_t vendor_id_;
+
+  uint32_t GetVendorId(const std::string& vendor);
 
 #if defined(CPUIDINFO_ARCH_X86)
 

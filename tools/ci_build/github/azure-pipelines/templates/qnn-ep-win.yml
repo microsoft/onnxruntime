@@ -1,5 +1,5 @@
 parameters:
-  QnnSdk: '2.33.2.250410'
+  QnnSdk: '2.34.0.250424'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
@@ -20,7 +20,7 @@ stages:
       name: ${{ parameters.qnn_ep_build_pool_name }}
     variables:
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_binskim_compliant_compile_flags '
+      commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
 
     steps:
     - template: set-version-number-variables-step.yml
@@ -98,7 +98,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: ${{ parameters.build_config }}
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=arm64x'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=arm64'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2

@@ -27,13 +27,14 @@ The following table lists the supported versions of ONNX Runtime Node.js binding
 | EPs/Platforms | Windows x64        | Windows arm64      | Linux x64          | Linux arm64        | MacOS x64          | MacOS arm64        |
 | ------------- | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ | ------------------ |
 | CPU           | ✔️                 | ✔️                 | ✔️                 | ✔️                 | ✔️                 | ✔️                 |
-| WebGPU        | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> |
+| WebGPU        | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> | ❌ <sup>\[2]</sup> | ✔️ <sup>\[1]</sup> | ✔️ <sup>\[1]</sup> |
 | DirectML      | ✔️                 | ✔️                 | ❌                 | ❌                 | ❌                 | ❌                 |
-| CUDA          | ❌                 | ❌                 | ✔️<sup>\[2]</sup>  | ❌                 | ❌                 | ❌                 |
+| CUDA          | ❌                 | ❌                 | ✔️<sup>\[3]</sup>  | ❌                 | ❌                 | ❌                 |
 | CoreML        | ❌                 | ❌                 | ❌                 | ❌                 | ✔️                 | ✔️                 |
 
 - \[1]: WebGPU support is currently experimental.
-- \[2]: CUDA v12. See [CUDA EP Installation](#cuda-ep-installation) for details.
+- \[2]: WebGPU support is not available on Linux arm64 yet in the pre-built binaries.
+- \[3]: CUDA v12. See [CUDA EP Installation](#cuda-ep-installation) for details.
 
 To use on platforms without pre-built binaries, you can build Node.js binding from source and consume it by `npm install <onnxruntime_repo_root>/js/node/`. See also [instructions](https://onnxruntime.ai/docs/build/inferencing.html#apis-and-language-bindings) for building ONNX Runtime Node.js binding locally.
 

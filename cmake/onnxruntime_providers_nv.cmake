@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the MIT License.
   find_package(CUDAToolkit REQUIRED 12.8)
   enable_language(CUDA)
@@ -9,6 +10,9 @@
   if (onnxruntime_NV_PLACEHOLDER_BUILDER)
     add_definitions(-DORT_NV_PLACEHOLDER_BUILDER)
   endif()
+if (NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+  message(FATAL_ERROR "TensorRT RTX can not be used with the open source parser.")
+endif ()
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
@@ -36,44 +40,30 @@
 
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
-  string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
-  string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
-  string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
-  math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
-  math(EXPR NV_TENSORRT_MINOR_INT "${NV_TENSORRT_MINOR}")
-  math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
+  string(REGEX MATCH "define TRT_MAJOR_RTX * +([0-9]+)" NV_TRT_MAJOR_RTX "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define TRT_MAJOR_RTX * +([0-9]+)" "\\1" NV_TRT_MAJOR_RTX "${NV_TRT_MAJOR_RTX}")
+  string(REGEX MATCH "define TRT_MINOR_RTX * +([0-9]+)" NV_TRT_MINOR_RTX "${NVINFER_VER_CONTENT}")
+  string(REGEX REPLACE "define TRT_MINOR_RTX * +([0-9]+)" "\\1" NV_TRT_MINOR_RTX "${NV_TRT_MINOR_RTX}")
+  math(EXPR NV_TRT_MAJOR_RTX_INT "${NV_TRT_MAJOR_RTX}")
+  math(EXPR NV_TRT_MINOR_RTX_INT "${NV_TRT_MINOR_RTX}")
 
-  if (NV_TENSORRT_MAJOR)
-    MESSAGE(STATUS "NV_TENSORRT_MAJOR is ${NV_TENSORRT_MAJOR}")
+  if (NV_TRT_MAJOR_RTX)
+    MESSAGE(STATUS "NV_TRT_MAJOR_RTX is ${NV_TRT_MAJOR_RTX}")
   else()
-    MESSAGE(STATUS "Can't find NV_TENSORRT_MAJOR macro")
+    MESSAGE(STATUS "Can't find NV_TRT_MAJOR_RTX macro")
   endif()
 
-  # Check TRT version >= 10.0.1.6
-  if ((NV_TENSORRT_MAJOR_INT GREATER 10) OR
-      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_MINOR_INT GREATER 0) OR
-      (NV_TENSORRT_MAJOR_INT EQUAL 10 AND NV_TENSORRT_PATCH_INT GREATER 0))
-    set(TRT_GREATER_OR_EQUAL_TRT_10_GA ON)
-  else()
-    message( FATAL_ERROR "Only TensorRT 10.x or higher is supported." )
-  endif()
-
-  # TensorRT 10 GA onwards, the TensorRT libraries will have major version appended to the end on Windows,
-  # for example, nvinfer_10.dll, nvonnxparser_10.dll ...
-  if (WIN32 AND TRT_GREATER_OR_EQUAL_TRT_10_GA)
-    set(NVINFER_LIB "nvinfer_${NV_TENSORRT_MAJOR}")
-    set(PARSER_LIB "nvonnxparser_${NV_TENSORRT_MAJOR}")
+  if (WIN32)
+    set(NVINFER_LIB "tensorrt_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
+    set(PARSER_LIB "tensorrt_onnxparser_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
   endif()
 
   if (NOT NVINFER_LIB)
-     set(NVINFER_LIB "nvinfer")
+     set(NVINFER_LIB "tensorrt_rtx")
   endif()
 
   if (NOT PARSER_LIB)
-     set(PARSER_LIB "nvonnxparser")
+     set(PARSER_LIB "tensorrt_onnxparser_rtx")
   endif()
 
   MESSAGE(STATUS "Looking for ${NVINFER_LIB}")
@@ -100,9 +90,8 @@
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_NVONNXPARSER})
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   else()
-    if (TRT_GREATER_OR_EQUAL_TRT_10_GA)
-      set(ONNX_USE_LITE_PROTO ON)
-    endif()
+    set(ONNX_USE_LITE_PROTO ON)
+
     onnxruntime_fetchcontent_declare(
       onnx_tensorrt
       URL ${DEP_URL_onnx_tensorrt}

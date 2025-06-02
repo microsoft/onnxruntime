@@ -77,27 +77,23 @@
   "features": {
     "tests": {
       "description": "Build ONNXRuntime unit tests",
-      "dependencies": [
-        "gtest"
-      ]
+      "dependencies": ["gtest"]
     },
     "xnnpack-ep": {
       "description": "Build with XNNPack EP",
-      "dependencies": [
-        "xnnpack"
-      ]
+      "dependencies": ["xnnpack"]
     },
     "coreml-ep": {
       "description": "Build with CoreML EP",
-      "dependencies": [
-        "fp16"
-      ]
+      "dependencies": ["fp16"]
     },
     "dml-ep": {
-      "description": "Build with CoreML EP",
-      "dependencies": [
-        "directx-headers"
-      ]
+      "description": "Build with DirectML EP",
+      "dependencies": ["directx-headers"]
+    },
+    "webgpu-ep": {
+      "description": "Build with WebGPU EP",
+      "dependencies": []
     }
   },
   "overrides": [

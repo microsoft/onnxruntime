@@ -20,15 +20,15 @@ const metadata = {
     'linux/x64:cuda12': {
       './libonnxruntime_providers_cuda.so': {
         package: 'nuget:linux/x64:cuda12',
-        path: 'runtimes/win-x64/native/libonnxruntime_providers_cuda.so',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_cuda.so',
       },
       './libonnxruntime_providers_shared.so': {
         package: 'nuget:linux/x64:cuda12',
-        path: 'runtimes/win-x64/native/libonnxruntime_providers_shared.so',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_shared.so',
       },
       './libonnxruntime_providers_tensorrt.so': {
         package: 'nuget:linux/x64:cuda12',
-        path: 'runtimes/win-x64/native/libonnxruntime_providers_tensorrt.so',
+        path: 'runtimes/linux-x64/native/libonnxruntime_providers_tensorrt.so',
       },
     },
   },

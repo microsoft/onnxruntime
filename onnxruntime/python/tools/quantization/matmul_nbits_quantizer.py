@@ -8,7 +8,6 @@ from __future__ import annotations
 
 import argparse
 import copy
-import importlib
 import logging
 import os
 
@@ -16,11 +15,11 @@ import numpy as np
 import numpy.typing as npt
 import onnx
 from onnx.onnx_pb import GraphProto, ModelProto, NodeProto, TensorProto
-from packaging import version
 
 from onnxruntime.capi._pybind_state import quantize_matmul_4bits, quantize_matmul_8bits, quantize_qdq_matmul_4bits
 
 from .calibrate import CalibrationDataReader
+from .neural_compressor import gptq_quantize, rtn_quantize
 from .onnx_model import ONNXModel
 from .quant_utils import QuantFormat, attribute_to_kwarg
 
@@ -91,6 +90,40 @@ class RTNWeightOnlyQuantConfig(WeightOnlyQuantConfig):
             ratios = {}
         super().__init__(
             algorithm="RTN",
+            quant_format=quant_format,
+            op_types_to_quantize=op_types_to_quantize,
+            customized_weight_config=customized_weight_config,
+        )
+        self.ratios = ratios
+
+
+class KQuantWeightOnlyQuantConfig(WeightOnlyQuantConfig):
+    def __init__(
+        self,
+        ratios=None,
+        quant_format=QuantFormat.QOperator,
+        op_types_to_quantize: tuple[str, ...] | None = None,
+        customized_weight_config: dict | None = None,
+    ):
+        """
+        This is a class for k-quant algorithm Weight Only Quant Configuration.
+
+        Args:
+            ratios:
+                percentile of clip. Defaults to {}.
+            quant_format (QuantFormat{QOperator, QDQ}, optional):
+                QOperator format quantizes the model with quantized operators directly.
+                QDQ format quantize the model by inserting QuantizeLinear/DeQuantizeLinear on the tensor.
+                Defaults to QuantFormat.QOperator.
+            op_types_to_quantize (optional):
+                set of operator types to quantize.
+        """
+        assert quant_format == QuantFormat.QOperator, "k-quant only supports QOperator format"
+
+        if ratios is None:
+            ratios = {}
+        super().__init__(
+            algorithm="k_quant",
             quant_format=quant_format,
             op_types_to_quantize=op_types_to_quantize,
             customized_weight_config=customized_weight_config,
@@ -833,7 +866,9 @@ class DefaultWeightOnlyQuantizer:
             kwargs["N"] = cols
             kwargs["bits"] = bits
             kwargs["block_size"] = self.config.block_size
-            if self.config.accuracy_level is not None:
+
+            # Do not output accuracy_level if it is 0 since the attribute is optional and is not supported by most EPs.
+            if self.config.accuracy_level:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
             matmul_qbit_node = onnx.helper.make_node(
@@ -1258,14 +1293,12 @@ class MatMulNBitsQuantizer:
 
         algorithm = self.algo_config.algorithm
         logger.info(f"start to quantize model with {algorithm} algorithm...")
-        if algorithm == "RTN":
-            from neural_compressor.adaptor.ox_utils.weight_only import rtn_quantize
-
+        if algorithm in ["RTN", "k_quant"]:
             kwargs["ratios"] = self.algo_config.ratios
+            kwargs["algorithm"] = algorithm
 
             """
-            neural-compressor uses fp32 to represent the node that skip quantization, it does not mean this node is fp32 type though.
-            https://github.com/intel/neural-compressor/blob/a617115b1490bbe6163c0024fb55bd260c8914df/neural_compressor/adaptor/ox_utils/weight_only.py#L343
+            We uses fp32 to represent the node that skip quantization, it does not mean this node is fp32 type though.
             """
             for n in self.nodes_to_exclude:
                 weight_only_node_config[n] = "fp32"
@@ -1276,8 +1309,6 @@ class MatMulNBitsQuantizer:
                 **kwargs,
             )
         elif algorithm == "GPTQ":
-            from neural_compressor.adaptor.ox_utils.weight_only import gptq_quantize
-
             kwargs["percdamp"] = self.algo_config.percdamp
             kwargs["blocksize"] = self.algo_config.block_size
             kwargs["actorder"] = self.algo_config.actorder
@@ -1325,21 +1356,7 @@ class MatMulNBitsQuantizer:
             self.model = ONNXModel(self.model)  # Ensure the model is wrapped back into ONNXModel
             self.model.clean_initializers()
         else:
-            # use Intel® Neural Compressor for RTN or GPTQ weight-only quantize algorithm
-            try:
-                importlib.import_module("neural_compressor")
-            except Exception as e:
-                logging.error(f"{e}.")
-                raise RuntimeError(
-                    "neural-compressor is not correctly installed. Please check your environment."
-                ) from e
-
-            import neural_compressor
-
-            assert version.parse(neural_compressor.__version__) >= version.parse("2.3.2"), (
-                "Require neural-compressor >= 2.3.2 to support weight only quantization!"
-            )
-
+            # RTN or GPTQ weight-only quantize algorithm
             self.int4_quant_algo()
 
 
@@ -1370,7 +1387,7 @@ set of 4b integers with a scaling factor and an optional offset.
         "--quant_method",
         default="default",
         type=str,
-        choices=["default", "hqq", "rtn", "gptq", "nvidia_awq"],
+        choices=["default", "hqq", "rtn", "k_quant", "gptq", "nvidia_awq"],
         help="the algorithm used to quantize weight, \nrtn and gptq leverage Intel® Neural Compressor",
     )
     parser.add_argument("--bits", default=4, type=int, help="the target bits to represent weight")
@@ -1500,6 +1517,8 @@ if __name__ == "__main__":
         )
     elif args.quant_method == "rtn":
         quant_config = RTNWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)
+    elif args.quant_method == "k_quant":
+        quant_config = KQuantWeightOnlyQuantConfig(op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "gptq":
         quant_config = GPTQWeightOnlyQuantConfig(block_size=args.block_size, op_types_to_quantize=op_types_to_quantize)
     elif args.quant_method == "nvidia_awq":
