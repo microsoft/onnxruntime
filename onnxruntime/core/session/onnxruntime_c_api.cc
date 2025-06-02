@@ -2397,19 +2397,32 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* valu
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info,
                     _Outptr_ const OrtNode** producer_node, _Out_ size_t* producer_output_index) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   OrtValueInfo::ProducerInfo producer_info;
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetProducerInfo(producer_info));
   *producer_node = producer_info.node;
   *producer_output_index = producer_info.output_index;
 
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(producer_node);
+  ORT_UNUSED_PARAMETER(producer_output_index);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+#endif
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumer_nodes) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumers(*num_consumer_nodes));
   return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(num_consumer_nodes);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+#endif
   API_IMPL_END
 }
 
@@ -2418,6 +2431,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoConsumerInfo, _In_ const OrtValueInfo* 
                     _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
                     _In_ size_t max_num_consumers) {
   API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumerInfos(consumer_infos));
   size_t num_consumers = std::min(max_num_consumers, consumer_infos.size());
@@ -2427,6 +2441,98 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoConsumerInfo, _In_ const OrtValueInfo* 
     consumer_input_indices[i] = consumer_infos[i].input_index;
   }
 
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(consumer_nodes);
+  ORT_UNUSED_PARAMETER(consumer_input_indices);
+  ORT_UNUSED_PARAMETER(max_num_consumers);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
+//
+// OrtGraph
+//
+
+ORT_API(const char*, OrtApis::Graph_GetName, _In_ const OrtGraph* graph) {
+  return graph->Name().c_str();
+}
+
+ORT_API(size_t, OrtApis::Graph_GetNumNodes, _In_ const OrtGraph* graph) {
+  return graph->NumberOfNodes();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
+                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
+  API_IMPL_BEGIN
+  // TODO: make order an enum value.
+  if (order < 0 || order > 2) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid `order` value passed to OrtGraph_GetNodes(); only accepts values "
+                                 "0, 1, or 2.");
+  }
+
+  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes(order);
+  size_t num_nodes = std::min(max_num_nodes, sorted_nodes.size());
+
+  for (size_t i = 0; i < num_nodes; i++) {
+    nodes[i] = sorted_nodes[i];
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+//
+// OrtNode
+//
+
+ORT_API(const char*, OrtApis::Node_GetName, const OrtNode* node) {
+  return node->Name().c_str();
+}
+
+ORT_API(const char*, OrtApis::Node_GetOperatorType, const OrtNode* node) {
+  return node->OpType().c_str();
+}
+
+ORT_API(const char*, OrtApis::Node_GetDomain, const OrtNode* node) {
+  return node->Domain().c_str();
+}
+
+ORT_API(size_t, OrtApis::Node_GetNumInputs, const OrtNode* node) {
+  return node->GetNumInputs();
+}
+
+ORT_API(size_t, OrtApis::Node_GetNumOutputs, const OrtNode* node) {
+  return node->GetNumOutputs();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(node_inputs));
+
+  size_t num_inputs = std::min(max_num_inputs, node_inputs.size());
+  for (size_t i = 0; i < num_inputs; i++) {
+    inputs[i] = node_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_outputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(node_outputs));
+
+  size_t num_outputs = std::min(max_num_outputs, node_outputs.size());
+  for (size_t i = 0; i < num_outputs; i++) {
+    outputs[i] = node_outputs[i];
+  }
   return nullptr;
   API_IMPL_END
 }
@@ -3060,10 +3166,22 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::GetTensorSizeInBytes,
+
     &OrtApis::GetValueInfoProducerInfo,
     &OrtApis::GetValueInfoNumConsumers,
     &OrtApis::GetValueInfoConsumerInfo,
+    &OrtApis::Graph_GetName,
+    &OrtApis::Graph_GetNumNodes,
+    &OrtApis::Graph_GetNodes,
+    &OrtApis::Node_GetName,
+    &OrtApis::Node_GetOperatorType,
+    &OrtApis::Node_GetDomain,
+    &OrtApis::Node_GetNumInputs,
+    &OrtApis::Node_GetNumOutputs,
+    &OrtApis::Node_GetInputs,
+    &OrtApis::Node_GetOutputs,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

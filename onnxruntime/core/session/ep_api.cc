@@ -7,7 +7,6 @@
 #include <vector>
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
-#include "core/graph/graph_viewer.h"
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
@@ -66,91 +65,6 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupport
 }
 
 //
-// OrtGraph
-//
-
-ORT_API(const char*, Graph_GetName, _In_ const OrtGraph* graph) {
-  return graph->Name().c_str();
-}
-
-ORT_API(size_t, Graph_GetNumNodes, _In_ const OrtGraph* graph) {
-  return graph->NumberOfNodes();
-}
-
-ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
-                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
-  API_IMPL_BEGIN
-  // TODO: make order an enum value.
-  if (order < 0 || order > 2) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Invalid `order` value passed to OrtGraph_GetNodes(); only accepts values "
-                                 "0, 1, or 2.");
-  }
-
-  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes(order);
-  size_t num_nodes = std::min(max_num_nodes, sorted_nodes.size());
-
-  for (size_t i = 0; i < num_nodes; i++) {
-    nodes[i] = sorted_nodes[i];
-  }
-
-  return nullptr;
-  API_IMPL_END
-}
-
-//
-// OrtNode
-//
-
-ORT_API(const char*, Node_GetName, const OrtNode* node) {
-  return node->Name().c_str();
-}
-
-ORT_API(const char*, Node_GetOperatorType, const OrtNode* node) {
-  return node->OpType().c_str();
-}
-
-ORT_API(const char*, Node_GetDomain, const OrtNode* node) {
-  return node->Domain().c_str();
-}
-
-ORT_API(size_t, Node_GetNumInputs, const OrtNode* node) {
-  return node->GetNumInputs();
-}
-
-ORT_API(size_t, Node_GetNumOutputs, const OrtNode* node) {
-  return node->GetNumOutputs();
-}
-
-ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
-                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
-  API_IMPL_BEGIN
-  onnxruntime::InlinedVector<const OrtValueInfo*> node_inputs;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(node_inputs));
-
-  size_t num_inputs = std::min(max_num_inputs, node_inputs.size());
-  for (size_t i = 0; i < num_inputs; i++) {
-    inputs[i] = node_inputs[i];
-  }
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
-                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
-  API_IMPL_BEGIN
-  onnxruntime::InlinedVector<const OrtValueInfo*> node_outputs;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(node_outputs));
-
-  size_t num_outputs = std::min(max_num_outputs, node_outputs.size());
-  for (size_t i = 0; i < num_outputs; i++) {
-    outputs[i] = node_outputs[i];
-  }
-  return nullptr;
-  API_IMPL_END
-}
-
-//
 // OrtCompiledNodeComputeContext
 //
 
@@ -168,17 +82,6 @@ static constexpr OrtEpApi ort_ep_api = {
     // End of Version 22 - DO NOT MODIFY ABOVE
 
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSupportedNodes,
-    &OrtExecutionProviderApi::Graph_GetName,
-    &OrtExecutionProviderApi::Graph_GetNumNodes,
-    &OrtExecutionProviderApi::Graph_GetNodes,
-    &OrtExecutionProviderApi::Node_GetName,
-    &OrtExecutionProviderApi::Node_GetOperatorType,
-    &OrtExecutionProviderApi::Node_GetDomain,
-    &OrtExecutionProviderApi::Node_GetNumInputs,
-    &OrtExecutionProviderApi::Node_GetNumOutputs,
-    &OrtExecutionProviderApi::Node_GetInputs,
-    &OrtExecutionProviderApi::Node_GetOutputs,
-
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
 };
 

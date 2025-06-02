@@ -608,5 +608,19 @@ ORT_API_STATUS_IMPL(GetValueInfoConsumerInfo, _In_ const OrtValueInfo* value_inf
                     _Out_writes_all_(max_num_consumers) const OrtNode** consumer_nodes,
                     _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
                     _In_ size_t max_num_consumers);
+ORT_API(const char*, Graph_GetName, _In_ const OrtGraph* graph);
+ORT_API(size_t, Graph_GetNumNodes, _In_ const OrtGraph* graph);
+ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
+                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+ORT_API(const char*, Node_GetName, const OrtNode* node);
+ORT_API(const char*, Node_GetOperatorType, const OrtNode* node);
+ORT_API(const char*, Node_GetDomain, const OrtNode* node);
+ORT_API(size_t, Node_GetNumInputs, const OrtNode* node);
+ORT_API(size_t, Node_GetNumOutputs, const OrtNode* node);
+ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
 
 }  // namespace OrtApis
