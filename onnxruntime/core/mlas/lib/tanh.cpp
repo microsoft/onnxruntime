@@ -21,6 +21,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "softmax.h"
 
 //
 // Bundles the floating point constants for use by kernels written in assembly.
@@ -119,9 +120,9 @@ Return Value:
 
         float Value = *Input++;
 
-        // This odd two-step process exists to ensure an input value of NaN carries through 
-        // without modification because "std::min" and "std::max" return unreliable results 
-        // when NaNs are involved, and it's clear from the test's reference outputs that 
+        // This odd two-step process exists to ensure an input value of NaN carries through
+        // without modification because "std::min" and "std::max" return unreliable results
+        // when NaNs are involved, and it's clear from the test's reference outputs that
         // they want a NaN on output whenever the input is a NaN.
         float v_tmp;
         v_tmp = (Value < MlasTanhConstants.LowerRange) ? MlasTanhConstants.LowerRange : Value;
@@ -149,9 +150,10 @@ Return Value:
     }
 }
 
+template <>
 void
 MLASCALL
-MlasComputeTanh(
+MlasComputeTanh<float>(
     const float* Input,
     float* Output,
     size_t N
@@ -181,4 +183,51 @@ Return Value:
 #else
     MlasTanhKernel(Input, Output, N);
 #endif
+}
+
+template <>
+void
+MLASCALL
+MlasComputeTanh<MLAS_FP16>(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N
+) {
+    const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
+    if (dispatch == nullptr || dispatch->Tanh_Fp16 == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "Tanh_Fp16 is not supported.");
+    }
+    dispatch->Tanh_Fp16(Input, Output, N);
+}
+
+template <>
+void
+MLASCALL
+MlasComputeSoftcap<float>(
+    const float* Input,
+    float* Output,
+    size_t N,
+    float cap
+) {
+    for (size_t i = 0; i < N; i++) {
+        Output[i] = Input[i] / cap;
+        Output[i] = std::tanh(Output[i]);
+        Output[i] = Output[i] * cap;
+    }
+}
+
+template <>
+void
+MLASCALL
+MlasComputeSoftcap<MLAS_FP16>(
+    const MLAS_FP16* Input,
+    MLAS_FP16* Output,
+    size_t N,
+    MLAS_FP16 cap
+) {
+    const auto* dispatch = GetMlasPlatform().SoftmaxDispatch;
+    if (dispatch == nullptr || dispatch->Softcap_Fp16 == nullptr) {
+        MLAS_THROW_EX(std::runtime_error, "Softcap_Fp16 is not supported.");
+    }
+    dispatch->Softcap_Fp16(Input, Output, N, cap);
 }

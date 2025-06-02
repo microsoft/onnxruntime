@@ -40,7 +40,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
+      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -61,6 +61,7 @@ namespace perftest {
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [CUDA only][cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q [CUDA only] use separate stream for copy. \n"
+      "\t-g [TensorRT RTX | TensorRT | CUDA] Enable tensor input and output bindings on CUDA before session run \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
@@ -82,9 +83,10 @@ namespace perftest {
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
       "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
       "\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
+      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
-      "\t    [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
+      "\t    [QNN only] [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
@@ -104,7 +106,7 @@ namespace perftest {
       "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
       "\t    [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
       "\t    Defaults to '0' (disabled).\n"
-      "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
+      "\t    [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
       "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
@@ -159,6 +161,9 @@ namespace perftest {
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
       "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
+      "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
+      "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
+      "'--use_extensions' option.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -188,7 +193,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlgR:X"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -263,6 +268,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
         } else {
           return false;
         }
@@ -385,6 +392,12 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'R':
         test_config.run_config.register_custom_op_path = optarg;
+        break;
+      case 'g':
+        test_config.run_config.enable_cuda_io_binding = true;
+        break;
+      case 'X':
+        test_config.run_config.use_extensions = true;
         break;
       case '?':
       case 'h':

@@ -1,0 +1,45 @@
+name: Linux OpenVINO CI
+
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+  packages: write # Needed if the reusable workflow pushes images
+  attestations: write # Optional: for artifact attestations if enabled
+  id-token: write # Optional: may be needed for OIDC authentication (e.g., ACR)
+
+jobs:
+  build_test_openvino:
+    name: Build and Test OpenVINO EP (AlamLinux8, Py3.12)
+    # Use the reusable workflow as the other Linux CI pipelines
+    uses: ./.github/workflows/reusable_linux_build.yml
+    with:
+      pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
+      build_config: Release
+      # Architecture: OpenVino only supports Intel X64
+      architecture: x64
+      dockerfile_path: tools/ci_build/github/linux/docker/inference/x86_64/python/openvino/Dockerfile
+      docker_image_repo: onnxruntimeopenvino
+
+      execution_providers: 'openvino'
+
+      extra_build_flags: '--use_openvino CPU --enable_generic_interface --build_shared_lib'
+
+      # Python Path Prefix: Set the correct Python 3.12 path inside the manylinux container
+      python_path_prefix: 'PATH=/opt/python/cp312-cp312/bin:$PATH'
+
+      run_tests: true
+      upload_build_output: false
+
+    # Secrets: Pass the necessary GitHub token
+    secrets:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

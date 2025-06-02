@@ -1,0 +1,71 @@
+name: Web CI Pipeline
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  precheck:
+    runs-on: ubuntu-latest
+    outputs:
+      commit_sha: ${{ steps.extract_commit.outputs.commit_sha }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          submodules: true
+
+      - name: Init and Precheck
+        uses: ./.github/actions/linux-web-init-and-check
+
+      - name: Extract commit SHA
+        id: extract_commit
+        run: echo "commit_sha=${{ github.sha }}" >> $GITHUB_OUTPUT
+        shell: bash
+
+  wasm_Debug:
+    needs: precheck
+    uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
+    with:
+      build_config: Debug
+      extra_build_args: "--enable_wasm_profiling"
+      build_jsep: true
+      build_webgpu: true
+
+  wasm_Release:
+    needs: precheck
+    uses: ./.github/workflows/linux-wasm-ci-build-and-test-workflow.yml
+    with:
+      build_config: Release
+      extra_build_args: "--target onnxruntime_webassembly --skip_tests --enable_wasm_api_exception_catching --disable_rtti"
+      build_jsep: true
+      build_webgpu: true
+
+  web_Debug:
+    needs:
+      - precheck
+      - wasm_Debug
+    uses: ./.github/workflows/windows-web-ci-workflow.yml
+    with:
+      commit_override: ${{ needs.precheck.outputs.commit_sha }}
+      build_config: Debug
+
+  web_Release:
+    needs:
+      - precheck
+      - wasm_Release
+    uses: ./.github/workflows/windows-web-ci-workflow.yml
+    with:
+      commit_override: ${{ needs.precheck.outputs.commit_sha }}
+      build_config: Release

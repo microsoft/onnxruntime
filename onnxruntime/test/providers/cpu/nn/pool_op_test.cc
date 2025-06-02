@@ -70,7 +70,7 @@ TEST(PoolTest, MaxPool) {
 
 // Only CUDA kernel has float 16 support
 // Disable for now, still investigating the issue with cudnn lib
-#if defined(USE_CUDA) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_COREML)
 TEST(PoolTest, MaxPool_F16) {
 #if defined(USE_CUDA)
   int min_cuda_architecture = 530;
@@ -178,9 +178,10 @@ static void MaxPool_8_WithIndexTest(bool has_index, int64_t storage_order = 0) {
     storage_order == 0 ? test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_row)
                        : test.AddOutput<int64_t>("Indices", expected_dims, expected_indices_col);
   }
+  // TODO: Enable the case for WebGPU once WGSL can support int64.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kDnnlExecutionProvider, kTensorrtExecutionProvider,
-            kAclExecutionProvider, kArmNNExecutionProvider, kOpenVINOExecutionProvider});
+           {kDnnlExecutionProvider, kTensorrtExecutionProvider, kAclExecutionProvider, kArmNNExecutionProvider,
+            kOpenVINOExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool_8_With_Index) {
@@ -228,6 +229,7 @@ TEST(PoolTest, MaxPool1D_case2) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
 }
 
@@ -268,8 +270,10 @@ static void MaxPool1D_8_WithIndexTest(int64_t storage_order) {
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
   test.AddOutput<int64_t>("Indices", expected_dims, expected_indices);
+
+  // TODO: Enable the case for WebGPU once WGSL can support int64.
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kAclExecutionProvider});
+           {kTensorrtExecutionProvider, kAclExecutionProvider, kWebGpuExecutionProvider});
 }
 
 TEST(PoolTest, MaxPool1D_8_With_Index) {
@@ -641,6 +645,7 @@ TEST(PoolTest, MaxPool_10_Dilation_Ceil1_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
@@ -1000,6 +1005,7 @@ TEST(PoolTest, AveragePool_10_ceil1_2d) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider, kAclExecutionProvider});
 }
@@ -1817,8 +1823,10 @@ TEST(PoolTest, MaxPoolDimWithZeroForN) {
 
   test.AddInput<float>("X", x_dims, x_vals);
   test.AddOutput<float>("Y", expected_dims, expected_vals);
+
+  // TODO: Fix WebGPU Transpose error: "Invalid dispatch group size (0, 1, 1)".
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
-           {kTensorrtExecutionProvider, kQnnExecutionProvider});
+           {kTensorrtExecutionProvider, kQnnExecutionProvider, kWebGpuExecutionProvider});
 }
 
 }  // namespace test

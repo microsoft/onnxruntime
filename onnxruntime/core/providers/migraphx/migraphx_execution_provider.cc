@@ -973,6 +973,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "Mod",
                                                     "Mul",
                                                     "Multinomial",
+                                                    "MultiHeadAttention",
                                                     "Neg",
                                                     "NegativeLogLikelihoodLoss",
                                                     "NonMaxSuppression",
@@ -987,6 +988,7 @@ GetUnsupportedNodeIndices(const GraphViewer& graph_viewer,
                                                     "QLinearConv",
                                                     "QLinearMatMul",
                                                     "QuantizeLinear",
+                                                    "QuickGelu",
                                                     "DynamicQuantizeLinear",
                                                     "RandomNormal",
                                                     "RandomNormalLike",
@@ -1095,7 +1097,9 @@ GetPartitionedSubgraphs(const std::vector<NodeIndex>& topological_order,
 
 std::vector<std::unique_ptr<ComputeCapability>>
 MIGraphXExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
-                                         const IKernelLookup& /*kernel_lookup*/) const {
+                                         const IKernelLookup& /*kernel_lookup*/,
+                                         const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                                         IResourceAccountant* /* resource_accountant */) const {
   std::vector<std::unique_ptr<ComputeCapability>> result;
   auto model = graph_viewer.CreateModel(*GetLogger());
   auto model_proto = model->ToProto();

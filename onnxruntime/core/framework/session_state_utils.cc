@@ -81,6 +81,11 @@ static common::Status ExtDataTensorProtoToTensor(const Env& env,
   ORT_RETURN_IF_ERROR(utils::GetExtDataFromTensorProto(env, proto_path.c_str(), tensor_proto,
                                                        ext_data_buf, ext_data_len, ext_data_deleter,
                                                        buffered_tensor, &prepacked_for_graph));
+  if constexpr (endian::native != endian::little) {
+    if (!proto_path.empty() && (proto_path.compare(onnxruntime::utils::kTensorProtoMemoryAddressTag) != 0)) {
+      utils::ConvertRawDataInTensorProto(const_cast<ONNX_NAMESPACE::TensorProto*>(&tensor_proto), ext_data_buf, ext_data_len);
+    }
+  }
 
   // NB: creating a do-nothing allocator per tensor is wasteful; can perhaps be
   // avoided if the Tensor class implements the do-nothing behavior when given a
@@ -203,13 +208,12 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
   }
 }
 
-common::Status AllocateTensor(
-    const onnxruntime::MemBuffer* m,
-    std::unique_ptr<onnxruntime::Tensor>& p_tensor,
-    const onnxruntime::DataTypeImpl* const& type,
-    onnxruntime::TensorShape& tensor_shape,
-    bool use_device_allocator_for_initializers,
-    const onnxruntime::AllocatorPtr& alloc) {
+common::Status AllocateTensor(const onnxruntime::MemBuffer* m,
+                              std::unique_ptr<onnxruntime::Tensor>& p_tensor,
+                              const onnxruntime::DataTypeImpl* const& type,
+                              onnxruntime::TensorShape& tensor_shape,
+                              bool use_device_allocator_for_initializers,
+                              const onnxruntime::AllocatorPtr& alloc) {
   if (m != nullptr) {
     p_tensor = std::make_unique<Tensor>(type, tensor_shape, m->GetBuffer(), m->GetAllocInfo());
     if (m->GetLen() < p_tensor->SizeInBytes()) {
@@ -354,6 +358,7 @@ common::Status SaveInitializedTensors(
     }
     ORT_RETURN_IF_ERROR(planner.Trace(entry.first, entry.second));
   }
+
   // 2. allocate weight buffer on different locations
   //  planned_initializers_memory_size_in_byte is not actual physical size.
   //  It's the virtual size computed by planner.
@@ -364,7 +369,7 @@ common::Status SaveInitializedTensors(
   if (memory_profile_func)
     memory_profile_func(planner);
 
-  for (auto i : planned_initializers_memory_sizes_in_byte) {
+  for (const auto& i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
                        << i.second << " bytes for " << i.first.ToString() << std::endl;
   }
@@ -373,6 +378,12 @@ common::Status SaveInitializedTensors(
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
+    // We check for cancellation for every initializer since mapping from disk can be costly
+    if (session_options.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Saving session state weights is canceled due to user request.");
+    }
+
     int ort_value_index = entry.first;
     const std::string& name = entry.second->name();
 
@@ -386,6 +397,9 @@ common::Status SaveInitializedTensors(
     if (user_supplied_initializer_ids.find(entry.first) != user_supplied_initializer_ids.end()) {
       ort_value = *(session_options.initializers_to_share_map.at(name));
       LOGS(logger, INFO) << "Using user supplied initializer with name (" << name << ").";
+
+    } else if (graph.GetOrtValueInitializer(name, ort_value)) {
+      // populated OrtValue from the Graph instance
     } else {
       const ONNX_NAMESPACE::TensorProto& tensor_proto = *(entry.second);
 
@@ -397,10 +411,9 @@ common::Status SaveInitializedTensors(
           session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsUseDeviceAllocatorForInitializers, "0") == "1";
 
       Tensor* p_tensor = nullptr;
-      if (auto iter = buffered_tensors.find(name);
-          iter != buffered_tensors.end()) {
-        p_tensor = iter->second.release();
-        buffered_tensors.erase(iter);
+      auto buffered_tensors_iter = buffered_tensors.find(name);
+      if (buffered_tensors_iter != buffered_tensors.end()) {
+        p_tensor = buffered_tensors_iter->second.get();
       }
 
       Status st = DeserializeTensorProto(env, graph_loc, tensor_proto, (m.has_value()) ? &*m : nullptr, alloc,
@@ -411,6 +424,12 @@ common::Status SaveInitializedTensors(
         std::ostringstream oss;
         oss << "Deserialize tensor " << name << " failed." << st.ErrorMessage();
         return Status(st.Category(), st.Code(), oss.str());
+      }
+
+      if (p_tensor != nullptr) {
+        // p_tensor was wrapped in a deleter by DeserializeTensorProto so we can simply release it here.
+        ORT_IGNORE_RETURN_VALUE(buffered_tensors_iter->second.release());
+        buffered_tensors.erase(buffered_tensors_iter);
       }
     }
 

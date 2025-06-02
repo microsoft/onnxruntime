@@ -48,7 +48,7 @@ stages:
         buildArch: x64
         # note: need to specify `--gen_doc` when creating the build config so it has to be in additionalBuildFlags
         additionalBuildFlags: >-
-          --gen_doc validate --skip_tests --enable_pybind --use_dml --use_cuda
+          --gen_doc validate --skip_tests --build_wheel --use_dml --use_cuda
           --cuda_home="$(Agent.TempDirectory)\v${{ parameters.CudaVersion }}"
           --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=86
           --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF

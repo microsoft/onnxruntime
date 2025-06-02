@@ -28,6 +28,9 @@ parameters:
   displayName: Use GPG to sign the jars
   type: boolean
 
+- name: is1ES
+  type: boolean
+  default: false
 stages:
 - stage: Build_Android_Packages
   displayName: Build_Android_Packages
@@ -42,6 +45,7 @@ stages:
       enable_code_sign: '${{parameters.enable_code_sign}}'
       pool_name: '${{parameters.PoolName}}'
       packageName: 'onnxruntime-android'
+      is1ES: '${{parameters.is1ES}}'
 - stage: ReactNative_CI_Android
   displayName: ReactNative_CI_Android
   dependsOn: Build_Android_Packages
@@ -51,16 +55,23 @@ stages:
       PackageName: '${{parameters.PackageName}}'
       ArtifactName: 'onnxruntime-android-full-aar'
       NpmPackagingMode: '${{parameters.NpmPackagingMode}}'
+      is1ES: '${{parameters.is1ES}}'
 
 - stage: ReactNative_CI_iOS
   displayName: ReactNative_CI_iOS
   dependsOn: '${{parameters.InitialStageDependsOn}}'
   jobs:
   - job: ReactNative_CI_iOS
-    pool:
-      vmImage: 'macOS-13'
+    ${{ if eq(parameters.is1ES, false) }}:
+      pool:
+        vmImage: 'macOS-14'
+    ${{ if eq(parameters.is1ES, true) }}:
+      pool:
+        name: 'Azure Pipelines'
+        image: 'macOS-14'
+        os: 'macOS'
 
-    timeoutInMinutes: 90
+    timeoutInMinutes: 120
 
     variables:
       runCodesignValidationInjection: false
@@ -107,13 +118,8 @@ stages:
       inputs:
         versionSpec: '20.x'
     - script:
-        brew install coreutils ninja npm yarn
-      displayName: Install coreutils, ninja, npm, and yarn
-
-    - script:
-        yarn global add detox-cli
-      displayName: Install detox cli tools
-
+        brew install coreutils ninja npm
+      displayName: Install coreutils, ninja, npm
     - script:
         brew tap wix/brew
       displayName: brew tap wix/brew
@@ -122,45 +128,7 @@ stages:
         brew install applesimutils
       displayName: Install applesimutils tools required by detox ios
 
-    - script: |
-        npm ci
-      workingDirectory: '$(Build.SourcesDirectory)/js'
-      displayName: npm ci js
-
-    - script: |
-        npm ci
-      workingDirectory: '$(Build.SourcesDirectory)/js/common'
-      displayName: npm ci js/common
-
-    - script: |
-        yarn
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native'
-      displayName: yarn js/react_native
-
-    - task: PowerShell@2
-      inputs:
-        filePath: '$(Build.SourcesDirectory)/tools/ci_build/github/js/pack-npm-packages.ps1'
-        arguments: '"-dev.$(Get-Date -Format yyyyMMdd)-$(git rev-parse --short HEAD)" $(Build.SourcesDirectory) react_native'
-        workingDirectory: '$(Build.SourcesDirectory)'
-        errorActionPreference: stop
-      env:
-        ORT_JS_PACK_MODE: e2e
-      displayName: Pack NPM packages
-
-    - script: |
-        set -x -e
-        mv $(Build.SourcesDirectory)/js/common/onnxruntime-common*.tgz onnxruntime-common.tgz
-        yarn add --no-lockfile file:./onnxruntime-common.tgz
-        mv $(Build.SourcesDirectory)/js/react_native/onnxruntime-react-native*.tgz onnxruntime-react-native.tgz
-        yarn add --no-lockfile file:./onnxruntime-react-native.tgz
-        yarn
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: Bootstrap Android and iOS e2e tests
-
-    - script: |
-        yarn add --dev jest-junit
-      workingDirectory: '$(Build.SourcesDirectory)/js/react_native/e2e'
-      displayName: install jest junit reporter js/react_native/e2e
+    - template: ../stages/jobs/steps/react-native-bootstrap-steps.yml
 
     - script: |
         ORT_C_LOCAL_POD_PATH=$(Build.BinariesDirectory)/ios-full-pod/onnxruntime-c \
@@ -196,7 +164,7 @@ stages:
         scheme: 'OnnxruntimeModuleTest'
         packageApp: false
         destinationPlatformOption: 'iOS'
-        destinationSimulators: 'iPhone 14,OS=16.4'
+        destinationSimulators: 'iPhone 15,OS=17.4'
         workingDirectory: '$(Build.SourcesDirectory)/js/react_native/ios'
         xcprettyArgs: '--output build/reports/test-results.xml'
         publishJUnitResults: true
@@ -242,13 +210,20 @@ stages:
         testRunTitle: 'React Native Detox iOS e2e Test Results'
       condition: succeededOrFailed()
       displayName: Publish React Native Detox iOS e2e Test Results
-
-    - task: PublishPipelineArtifact@1
-      inputs:
-        artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
-        targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
-      condition: succeededOrFailed()
-      displayName: Publish React Native Detox E2E test logs
+    - ${{ if eq(parameters.is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        inputs:
+          artifactName: 'ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)'
+          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox E2E test logs
+    - ${{ if eq(parameters.is1ES, false) }}:
+      - task: PublishPipelineArtifact@1
+        inputs:
+          artifact: ios_e2e_test_logs_$(Build.BuildId)_$(Build.BuildNumber)_$(System.JobAttempt)
+          targetPath: '$(Build.SourcesDirectory)/js/react_native/e2e/artifacts'
+        condition: succeededOrFailed()
+        displayName: Publish React Native Detox E2E test logs
 
     - template: explicitly-defined-final-tasks.yml
 

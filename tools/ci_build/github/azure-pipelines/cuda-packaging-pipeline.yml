@@ -1,125 +1,134 @@
 parameters:
-  - name: RunOnnxRuntimeTests
-    displayName: Run Tests?
-    type: boolean
-    default: true
+- name: RunOnnxRuntimeTests
+  displayName: Run Tests?
+  type: boolean
+  default: true
 
-  - name: UseIncreasedTimeoutForTests
-    displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
-    type: boolean
-    default: false
+- name: UseIncreasedTimeoutForTests
+  displayName: Increase timeout for tests? Set it to false if you are doing an Onnx Runtime release.
+  type: boolean
+  default: false
 
-  - name: DoCompliance
-    displayName: Run Compliance Tasks?
-    type: boolean
-    default: true
+- name: DoEsrp
+  displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
+  type: boolean
+  default: true
 
-  - name: DoEsrp
-    displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
-    type: boolean
-    default: true
+- name: IsReleaseBuild
+  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
+  type: boolean
+  default: false
 
-  - name: IsReleaseBuild
-    displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
-    type: boolean
-    default: false
+- name: PreReleaseVersionSuffixString
+  displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
+  type: string
+  values:
+  - alpha
+  - beta
+  - rc
+  - none
+  default: none
 
-  - name: PreReleaseVersionSuffixString
-    displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
-    type: string
-    values:
-      - alpha
-      - beta
-      - rc
-      - none
-    default: none
+- name: PreReleaseVersionSuffixNumber
+  displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
+  type: number
+  default: 0
 
-  - name: PreReleaseVersionSuffixNumber
-    displayName: Number added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the sequence of a pre-release package.
-    type: number
-    default: 0
+# these 2 parameters are used for debugging.
+- name: SpecificArtifact
+  displayName: Use Specific Artifact (Debugging only)
+  type: boolean
+  default: false
 
-  # these 2 parameters are used for debugging.
-  - name: SpecificArtifact
-    displayName: Use Specific Artifact (Debugging only)
-    type: boolean
-    default: false
+- name: BuildId
+  displayName: Pipeline BuildId, you could find it in the URL
+  type: string
+  default: '0'
 
-  - name: BuildId
-    displayName: Pipeline BuildId, you could find it in the URL
-    type: string
-    default: '0'
-
-  - name: CudaVersion
-    displayName: CUDA version
-    type: string
-    default: '12.2'
-    values:
-      - 11.8
-      - 12.2
+- name: CudaVersion
+  displayName: CUDA version
+  type: string
+  default: '12.2'
+  values:
+  - 12.2
 
 variables:
-  - template: templates/common-variables.yml
-  - name: ReleaseVersionSuffix
-    value: ''
-  - name: win_trt_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
-  - name: win_cuda_home
-    ${{ if eq(parameters.CudaVersion, '11.8') }}:
-      value: $(Agent.TempDirectory)\v11.8
-    ${{ if eq(parameters.CudaVersion, '12.2') }}:
-      value: $(Agent.TempDirectory)\v12.2
+- template: templates/common-variables.yml
+- name: ReleaseVersionSuffix
+  value: ''
+- name: win_trt_home
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda11 }}
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: $(Agent.TempDirectory)\${{ variables.win_trt_folder_cuda12 }}
+- name: win_cuda_home
+  ${{ if eq(parameters.CudaVersion, '11.8') }}:
+    value: $(Agent.TempDirectory)\v11.8
+  ${{ if eq(parameters.CudaVersion, '12.2') }}:
+    value: $(Agent.TempDirectory)\v12.2
+
 resources:
   repositories:
-    - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
-      type: github
-      endpoint: ort-examples
-      name: microsoft/onnxruntime-inference-examples
+  - repository: onnxruntime-inference-examples # The name used to reference this repository in the checkout step
+    type: github
+    endpoint: ort-examples
+    name: microsoft/onnxruntime-inference-examples
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
 
-
-stages:
-  # Set ReleaseVersionSuffix
-  - template: stages/set_packaging_variables_stage.yml
-    parameters:
-      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-      PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
-      PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
-
-  # this is needed for certain artifacts to be published
-  - stage: Linux_C_API_Packaging_CPU
-    dependsOn: [ ]
-    jobs:
-    - template: templates/c-api-linux-cpu.yml
+extends:
+  # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
+  # For non-production pipelines, use "Unofficial" as defined below.
+  # For productions pipelines, use "Official".
+  template: v1/1ES.Official.PipelineTemplate.yml@1esPipelines
+  parameters:
+    sdl:
+      binskim:
+        enabled: true
+        analyzeTargetGlob: $(Build.ArtifactStagingDirectory)/**.dll
+      sourceAnalysisPool:
+        name: onnxruntime-Win-CPU-2022
+        os: windows
+      componentgovernance:
+        ignoreDirectories: $(Build.SourcesDirectory)/onnxruntime-inference-examples
+      sourceRepositoriesToScan:
+        exclude:
+        - repository: onnxruntime-inference-examples
+      spotBugs:
+        enabled: false
+        justificationForDisabling: "Getting ##[error1. SpotBugs Error gdn.unknownFormatResult - File: spotbugs.xml, which indicates that SpotBugs found one or more errors, which are not handled by the Guardian right now."
+    stages:
+    # Set ReleaseVersionSuffix
+    - template: stages/set_packaging_variables_stage.yml
       parameters:
-        OnnxruntimeArch: 'x64'
-        OnnxruntimeNodejsBindingArch: 'x64'
-        PoolName: 'onnxruntime-Ubuntu2204-AMD-CPU'
-        PackageJava: false
-        PackageNodeJS: false
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        PreReleaseVersionSuffixString: ${{ parameters.PreReleaseVersionSuffixString }}
+        PreReleaseVersionSuffixNumber: ${{ parameters.PreReleaseVersionSuffixNumber }}
 
-  # Nuget Packaging
-  - template: stages/nuget-combine-cuda-stage.yml
-    parameters:
-      DoCompliance: ${{ parameters.DoCompliance }}
-      CudaVersion: ${{ parameters.CudaVersion }}
-      RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
-      UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
-      win_trt_home: ${{ variables.win_trt_home }}
-      win_cuda_home: ${{ variables.win_cuda_home }}
-      DoEsrp: ${{ parameters.DoEsrp }}
-      IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-      buildJava: true
-      buildNodejs: false
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      BuildId: ${{ parameters.BuildId }}
+    # this is needed for certain artifacts to be published
+    - template: stages/c-api-linux-cpu-stage.yml
 
-  - template: stages/download-java-tools-stage.yml
+    # Nuget Packaging
+    - template: stages/nuget-combine-cuda-stage.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}
+        RunOnnxRuntimeTests: ${{ parameters.RunOnnxRuntimeTests }}
+        UseIncreasedTimeoutForTests: ${{ parameters.UseIncreasedTimeoutForTests }}
+        win_trt_home: ${{ variables.win_trt_home }}
+        win_cuda_home: ${{ variables.win_cuda_home }}
+        DoEsrp: ${{ parameters.DoEsrp }}
+        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
+        buildJava: true
+        buildNodejs: false
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}
 
-  - template: stages/java-cuda-packaging-stage.yml
-    parameters:
-      CudaVersion: ${{ parameters.CudaVersion }}
-      SpecificArtifact: ${{ parameters.SpecificArtifact }}
-      BuildId: ${{ parameters.BuildId }}
+    - template: stages/download-java-tools-stage.yml
+
+    - template: stages/java-cuda-packaging-stage.yml
+      parameters:
+        CudaVersion: ${{ parameters.CudaVersion }}
+        SpecificArtifact: ${{ parameters.SpecificArtifact }}
+        BuildId: ${{ parameters.BuildId }}

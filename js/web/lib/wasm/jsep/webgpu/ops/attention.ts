@@ -433,7 +433,7 @@ const createInPlaceSoftmaxProgramInfo = (
     getShaderSource,
     getRunData: () => ({
       outputs: [],
-      dispatchGroup: { x: Math.ceil(totalSequenceLength / WG), y: sequenceLength, z: batchSize * numHeads },
+      dispatchGroup: { x: 1, y: sequenceLength, z: batchSize * numHeads },
       programUniforms,
     }),
   };

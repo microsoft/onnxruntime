@@ -7,6 +7,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
 #include "core/framework/utils.h"
+#include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/providers/xnnpack/xnnpack_execution_provider.h"
 #include "core/session/inference_session.h"
@@ -16,6 +17,7 @@
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/test_environment.h"
+#include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/default_providers.h"
 #include "test/util/include/inference_session_wrapper.h"
@@ -126,17 +128,7 @@ TEST(XnnpackEP, TestAllocatorSharing) {
 }
 
 TEST(XnnpackEP, TestAddEpUsingPublicApi) {
-  {
-    // C++ API test
-    Ort::SessionOptions so;
-    onnxruntime::ProviderOptions options;
-    // no real options currently but set a value to make sure it's passed through. requires manual validation.
-    options["one"] = "two";
-    so.AppendExecutionProvider("XNNPACK", options);
-
-    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu.onnx";
-    Ort::Session session(*ort_env, ort_model_path, so);
-
+  auto session_has_xnnpack_ep = [](Ort::Session& session) -> bool {
     // dirty hack to access the underlying InferenceSession but don't know a better way.
     const OrtSession* ort_session = session;
     const InferenceSession* s = reinterpret_cast<const InferenceSession*>(ort_session);
@@ -149,21 +141,46 @@ TEST(XnnpackEP, TestAddEpUsingPublicApi) {
         break;
       }
     }
+    return have_xnnpack_ep;
+  };
 
-    ASSERT_TRUE(have_xnnpack_ep) << "Xnnpack EP was not found in registered providers for session.";
+  {
+    // C++ API test
+    Ort::SessionOptions so;
+    onnxruntime::ProviderOptions options;
+    // no real options currently but set a value to make sure it's passed through. requires manual validation.
+    options["one"] = "two";
+    so.AppendExecutionProvider("XNNPACK", options);
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu.onnx";
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(session_has_xnnpack_ep(session)) << "Xnnpack EP was not found in registered providers for session.";
+  }
+
+  {
+    // C++ API test using canonical EP name 'XnnpackExecutionProvider'
+    Ort::SessionOptions so;
+    onnxruntime::ProviderOptions options;
+    // no real options currently but set a value to make sure it's passed through. requires manual validation.
+    options["one"] = "two";
+    so.AppendExecutionProvider(kXnnpackExecutionProvider, options);
+
+    const ORTCHAR_T* ort_model_path = ORT_MODEL_FOLDER "nhwc_conv_clip_relu.onnx";
+    Ort::Session session(*ort_env, ort_model_path, so);
+    ASSERT_TRUE(session_has_xnnpack_ep(session)) << "Xnnpack EP was not found in registered providers for session.";
   }
 
   {
     // C API test
     const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
     OrtSessionOptions* so{nullptr};
-    ASSERT_ORTSTATUS_OK(api, CreateSessionOptions(&so));
+    ASSERT_ORTSTATUS_OK(api->CreateSessionOptions(&so));
 
     // add with provider options. manually check the ProviderOptions instance passed through to
     // OrtSessionOptionsAppendExecutionProvider_Xnnpack is correct.
     const char* keys[1] = {"one"};
     const char* values[1] = {"two"};
-    ASSERT_ORTSTATUS_OK(api, SessionOptionsAppendExecutionProvider(so, "XNNPACK", keys, values, 1));
+    ASSERT_ORTSTATUS_OK(api->SessionOptionsAppendExecutionProvider(so, "XNNPACK", keys, values, 1));
     api->ReleaseSessionOptions(so);
   }
 }

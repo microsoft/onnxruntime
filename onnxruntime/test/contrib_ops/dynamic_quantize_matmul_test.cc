@@ -141,7 +141,7 @@ void TestDynamicQuantizeMatMul(bool is_matrix_b_constant,
                                     per_column, has_zp, has_bias);
   test.AddOutput<float>("Y", Y_dims, Y_data);
   test.SetOutputRelErr("Y", 0.02f);
-  test.Run();
+  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
 }
 
 template <typename T, bool HasZeroPoint, bool HasBias>

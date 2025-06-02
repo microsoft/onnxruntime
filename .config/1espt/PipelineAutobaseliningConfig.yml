@@ -14,6 +14,13 @@ pipelines:
           lastModifiedDate: 2024-10-25
         armory:
           lastModifiedDate: 2024-10-25
+      binary:
+        credscan:
+          lastModifiedDate: 2025-02-06
+        binskim:
+          lastModifiedDate: 2025-04-25
+        spotbugs:
+          lastModifiedDate: 2025-02-06
     usedNonDefaultBranch: true
   1299:
     retail:
@@ -32,7 +39,7 @@ pipelines:
         credscan:
           lastModifiedDate: 2024-10-25
         binskim:
-          lastModifiedDate: 2024-10-25
+          lastModifiedDate: 2025-04-25
         spotbugs:
           lastModifiedDate: 2024-10-25
   1625:
@@ -52,7 +59,7 @@ pipelines:
         credscan:
           lastModifiedDate: 2024-11-13
         binskim:
-          lastModifiedDate: 2024-11-13
+          lastModifiedDate: 2025-04-25
         spotbugs:
           lastModifiedDate: 2024-11-13
   1626:
@@ -75,3 +82,97 @@ pipelines:
           lastModifiedDate: 2024-11-13
         spotbugs:
           lastModifiedDate: 2024-11-13
+  995:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-02-12
+        eslint:
+          lastModifiedDate: 2025-02-12
+        psscriptanalyzer:
+          lastModifiedDate: 2025-02-12
+        armory:
+          lastModifiedDate: 2025-02-12
+  1313:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-02-27
+        eslint:
+          lastModifiedDate: 2025-02-27
+        psscriptanalyzer:
+          lastModifiedDate: 2025-02-27
+        armory:
+          lastModifiedDate: 2025-02-27
+      binary:
+        credscan:
+          lastModifiedDate: 2025-02-27
+        binskim:
+          lastModifiedDate: 2025-04-25
+        spotbugs:
+          lastModifiedDate: 2025-02-27
+  1312:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-02-27
+        eslint:
+          lastModifiedDate: 2025-02-27
+        psscriptanalyzer:
+          lastModifiedDate: 2025-02-27
+        armory:
+          lastModifiedDate: 2025-02-27
+  841:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-04-24
+        eslint:
+          lastModifiedDate: 2025-04-24
+        psscriptanalyzer:
+          lastModifiedDate: 2025-04-24
+        armory:
+          lastModifiedDate: 2025-04-24
+      binary:
+        credscan:
+          lastModifiedDate: 2025-04-25
+        binskim:
+          lastModifiedDate: 2025-04-25
+        spotbugs:
+          lastModifiedDate: 2025-04-25
+  1757:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-04-25
+        eslint:
+          lastModifiedDate: 2025-04-25
+        psscriptanalyzer:
+          lastModifiedDate: 2025-04-25
+        armory:
+          lastModifiedDate: 2025-04-25
+      binary:
+        credscan:
+          lastModifiedDate: 2025-04-25
+        binskim:
+          lastModifiedDate: 2025-04-25
+        spotbugs:
+          lastModifiedDate: 2025-04-25
+  1234:
+    retail:
+      source:
+        credscan:
+          lastModifiedDate: 2025-04-25
+        eslint:
+          lastModifiedDate: 2025-04-25
+        psscriptanalyzer:
+          lastModifiedDate: 2025-04-25
+        armory:
+          lastModifiedDate: 2025-04-25
+      binary:
+        credscan:
+          lastModifiedDate: 2025-04-25
+        binskim:
+          lastModifiedDate: 2025-04-25
+        spotbugs:
+          lastModifiedDate: 2025-04-25

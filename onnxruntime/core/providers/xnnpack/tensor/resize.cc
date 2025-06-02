@@ -64,7 +64,6 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
 
     // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
     // if not, it is not the C dim as a Resize will not change the number of channels.
-    InlinedVector<float> scale(4, 1.0F);
     if (scale_tensor) {
       const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
