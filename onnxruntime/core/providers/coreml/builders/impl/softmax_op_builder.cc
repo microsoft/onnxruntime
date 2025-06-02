@@ -132,13 +132,14 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   std::vector<int64_t> input_shape;
-  if (!GetStaticShape(*input_defs[0], input_shape, logger) && (!input_params.create_mlprogram || node.SinceVersion() < 13)) {
-    LOGS(logger, VERBOSE) << "Softmax input must have static shape for NeuralNetwork or ONNX opset < 13";
+
+  if (!GetShape(*input_defs[0], input_shape, logger)) {
+    LOGS(logger, VERBOSE) << "Softmax input [" << input_defs[0]->Name() << "] must have shape information.";
     return false;
   }
-  const TensorShape shape(input_shape);
-  if (shape.Size() == 0) {
-    LOGS(logger, VERBOSE) << "Empty input data is not supported.";
+
+  if (!IsStaticShape(input_shape) && (!input_params.create_mlprogram || node.SinceVersion() < 13)) {
+    LOGS(logger, VERBOSE) << "Softmax input must have static shape for NeuralNetwork or ONNX opset < 13";
     return false;
   }
 

@@ -143,8 +143,6 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // We do not support the second case at the moment.
   if (!GetShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. "
-                             "Input shape: "
-                          << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 
@@ -167,7 +165,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // CoreML docs claim that 0 in new_shape will have the same behavior as in ONNX spec when allow_zero is false
   // In practice, CoreML does not handle 0's in new_shape. CheckNegativeOneCollision has a more detailed comment on
   // why this check is necessary.
-  if (!CheckNegativeOneCollision(input_shape, new_shape, logger)) {
+  if (!allow_zero && !CheckNegativeOneCollision(input_shape, new_shape, logger)) {
     return false;
   }
 
