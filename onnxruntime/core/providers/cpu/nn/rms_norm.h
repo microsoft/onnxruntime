@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "layer_norm_impl.h"
+#include "core/providers/cpu/nn/layer_norm_impl.h"
 
 namespace onnxruntime {
 

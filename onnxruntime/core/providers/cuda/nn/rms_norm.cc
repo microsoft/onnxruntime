@@ -17,7 +17,7 @@ namespace cuda {
                                 (*KernelDefBuilder::Create())                                 \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())    \
                                     .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),   \
-                                RMSNorm<T, float, V, true>);
+                                RMSNorm<T, float, T, true>);
 
 REGISTER_KERNEL_TYPED(float)
 REGISTER_KERNEL_TYPED(double)
