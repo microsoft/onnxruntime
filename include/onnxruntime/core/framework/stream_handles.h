@@ -59,7 +59,9 @@ class Stream {
   // timestamp recorded in the lookup table.
 
   // Get the current timestamp
-  uint64_t GetCurrentTimestamp() const { return timestamp_; }
+  uint64_t GetCurrentTimestamp() const {
+    return timestamp_;
+  }
 
   // return the timestamp when the last synchronization happened between target stream and current stream.
   // return 0 if no synchronization happened.
@@ -128,6 +130,9 @@ class Notification {
   // 2. take a snapshot of the timestamp lookup table in current stream.
   // 3. bump the timestamp for current stream.
   void ActivateAndUpdate() {
+    ORT_ENFORCE(num_calls_ == 0);
+    ++num_calls_;
+
     Activate();
     stream_.CloneCurrentStreamSyncTable(stream_clock_);
     stream_clock_[&stream_] = stream_.BumpTimeStampAndReturn();
@@ -146,6 +151,7 @@ class Notification {
   // currently this class is header only, but abseil doesn't compile with nvcc
   // we need to add new symbol to provider_bridge and hide abseil from the header.
   std::unordered_map<Stream*, uint64_t> stream_clock_{};
+  int num_calls_{0};  // number of times this notification has been activated
 };
 }  // namespace synchronize
 
@@ -166,16 +172,34 @@ using SetDeviceFn = std::function<void(OrtDevice::DeviceId)>;
 class IStreamCommandHandleRegistry {
  public:
   virtual ~IStreamCommandHandleRegistry() = default;
-  // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
-  // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
+
+  // Description for this is very confusing...
+  // Assuming the wait handle is awaiting a notification from a source stream.
+  // 'the stream we are waiting on' could mean 'the stream that is waiting'
+  // 'notifies a memory copy' could mean 'notification from a memory copy completing'
+  // 'it could be wait on a CPU stream, or on another cuda stream' could mean 'it could be a CPU stream or another
+  // CUDA stream that is waiting on the notification'
+  // I think this relates to the example in BuildExecutionPlan about a value for a CPU input of a CUDA node coming
+  // from another CUDA node via MemCpy
+  // e.g. Cuda1 produces v1 on GPU, MemCpy to host, consumed by Cuda2 as a CPU input.
+  // Cuda2 is waiting on the value to ensure it's available, but it's coming from a MemCpy node on the same CUDA stream
+  //
+  //
+  // Wait is a little special as we need to consider the source stream that generated the notification,
+  // and the stream we are waiting on.
+  // e.g. for an cuda event that notifies a memory copy, it could be wait on a CPU stream, or on another cuda stream.
   [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type,
                                                          OrtDevice::DeviceType executor_device_type) const = 0;
-  // Get the stream creation function registered on the given device type.
+
+  // Get the stream creation function registered for the given device type.
   [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
-  // register a wait methond which will be invoked when we wait a notification (created by 'notification_device_type' device) on a stream at 'device_type' device.
+
+  // register a wait method which will be invoked to await a notification that is
+  // created by 'notification_device_type' device on a stream at 'device_type' device.
   virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type,
                               OrtDevice::DeviceType device_type,
                               WaitNotificationFn fn) = 0;
+
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 

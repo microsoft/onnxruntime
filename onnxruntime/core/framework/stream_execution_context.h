@@ -98,7 +98,7 @@ class StreamExecutionContext {
 
   // Get the Stream instance for a given logic sequence.
   // return nullptr if the device of given logic sequence doesn't register stream support.
-  Stream* GetDeviceStream(size_t idx);
+  Stream* GetDeviceStream(size_t idx) const;
 
   // Decrease the count of remaining job by 1.
   void CompleteTask();

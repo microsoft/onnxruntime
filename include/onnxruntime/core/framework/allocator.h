@@ -65,7 +65,7 @@ class Stream;
 namespace synchronize {
 class Notification;
 }
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
+using WaitNotificationFn = std::function<void(Stream*, synchronize::Notification&)>;
 void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>

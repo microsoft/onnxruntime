@@ -153,6 +153,10 @@ template <>
 struct TypeToTensorType<Float8E5M2FNUZ_t> {
   static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT8E5M2FNUZ;
 };
+template <>
+struct TypeToTensorType<std::string> {
+  static constexpr ONNXTensorElementDataType type = ONNX_TENSOR_ELEMENT_DATA_TYPE_STRING;
+};
 
 inline bool BFloat16_t::operator==(const BFloat16_t& rhs) const noexcept {
   if (IsNaN() || rhs.IsNaN()) {

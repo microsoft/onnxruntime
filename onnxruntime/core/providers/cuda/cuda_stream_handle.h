@@ -11,7 +11,7 @@
 namespace onnxruntime {
 
 struct CudaStream;
-void WaitCudaNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
+void WaitCudaNotificationOnDevice(Stream* stream, synchronize::Notification& notification);
 
 struct DeferredCpuAllocator : public OrtAllocator {
   DeferredCpuAllocator(CudaStream&);

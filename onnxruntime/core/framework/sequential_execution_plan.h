@@ -157,7 +157,7 @@ struct SequentialExecutionPlan : public ExecutionPlanBase {
   // elements in node_release_list[i] is the index in release_actions.
   std::vector<std::vector<size_t>> node_release_list;
   // for each notification, what is the stream-idx of the its owner.
-  std::vector<size_t> notification_owners;
+  std::vector<size_t> notification_owner_stream;
   // key: notification index.
   // value:  {stream_idx, step_idx}
   // giving a notification, we used this map to figure out what is the downstream steps it need to trigger.

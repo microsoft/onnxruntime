@@ -52,6 +52,9 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
 #endif
 
   // init barriers
+  // one for the producer node: BarrierStep in execution_plan[i]->steps_
+  // one for the downstream node: run via plan_.downstream_map
+  // TODO: is the downstream one required?
   for (size_t i = 0; i < num_barriers; ++i) {
     count_down_barriers_[i].Set(2);
   }
@@ -64,13 +67,15 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
   }
 }
 
-synchronize::Notification* StreamExecutionContext ::GetNotification(size_t idx) { return notifications_[idx].get(); }
+synchronize::Notification* StreamExecutionContext::GetNotification(size_t idx) {
+    return notifications_[idx].get(); 
+}
 
-bool StreamExecutionContext ::DecCountDownBarrier(size_t barrier_id) {
+bool StreamExecutionContext::DecCountDownBarrier(size_t barrier_id) {
   return count_down_barriers_[barrier_id].Dec();
 }
 
-Stream* StreamExecutionContext ::GetDeviceStream(size_t idx) {
+Stream* StreamExecutionContext::GetDeviceStream(size_t idx) const {
   if (device_stream_map_) {
     ORT_ENFORCE(idx < device_stream_map_->NumStreams());
     return device_stream_map_->GetStream(idx);
