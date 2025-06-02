@@ -67,6 +67,7 @@ struct RunConfig {
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
   bool enable_cuda_io_binding{false};
+  bool use_extensions = false;
 };
 
 struct PerformanceTestConfig {
