@@ -25,6 +25,7 @@ platforms. Check the [WebNN status](https://webmachinelearning.github.io/webnn-s
 | Clip | ai.onnx(7-10, 11, 12, 13+) | clamp | |
 | Concat | ai.onnx(7-10, 11-12, 13+) | concat | |
 | Conv | ai.onnx(7-10, 11+) | conv2d | Only supports 3-D or 4-D input and 'W' (weight) |
+| ConvInteger | ai.onnx(10+) | cast, conv2d, dequantizeLinear | Only supports 3-D or 4-D input and 'W' (weight) |
 | ConvTranspose | ai.onnx(7-10, 11+) | convTranspose2d | Only supports 3-D or 4-D input and 'W' (weight) |
 | Cos | ai.onnx(7+) | cos | |
 | CumSum | ai.onnx(11-13, 14+) | cumulativeSum | 'axis' input should be a constant |
