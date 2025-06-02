@@ -24,6 +24,8 @@ REGISTER_KERNEL_TYPED(double)
 REGISTER_KERNEL_TYPED(MLFloat16)
 REGISTER_KERNEL_TYPED(BFloat16)
 
+// The following code is shared from "core/providers/cuda/nn/layer_norm.cc".
+// It is used to implement the RMSNorm kernel, which is a simplified version of LayerNorm.
 template <typename T, typename U, typename V, bool simplified>
 RMSNorm<T, U, V, simplified>::RMSNorm(const OpKernelInfo& op_kernel_info)
     : CudaKernel(op_kernel_info) {
