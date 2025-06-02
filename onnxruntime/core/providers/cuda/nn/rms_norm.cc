@@ -12,11 +12,11 @@ namespace cuda {
 
 // RMSNorm uses LayerNorm kernel, which only supports X and scale both
 // being the same data type.
-#define REGISTER_KERNEL_TYPED(T)                                                             \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(RMSNormalization, kOnnxDomain, 23, T, kCudaExecutionProvider,   \
-                                (*KernelDefBuilder::Create())                                   \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())      \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),     \
+#define REGISTER_KERNEL_TYPED(T)                                                              \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(RMSNormalization, kOnnxDomain, 23, T, kCudaExecutionProvider, \
+                                (*KernelDefBuilder::Create())                                 \
+                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())    \
+                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<T>()),   \
                                 RMSNorm<T, float, V, true>);
 
 REGISTER_KERNEL_TYPED(float)
@@ -99,5 +99,5 @@ Status RMSNorm<T, U, V, simplified>::ComputeInternal(OpKernelContext* ctx) const
   CUDA_RETURN_IF_ERROR(cudaGetLastError());
   return Status::OK();
 }
-} // namespace cuda
-} // namespace onnxruntime
+}  // namespace cuda
+}  // namespace onnxruntime
