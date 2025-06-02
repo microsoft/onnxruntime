@@ -663,12 +663,12 @@ class FusionAttention(Fusion):
         first_input: str,
         output: str,
         add_qk_str: str = "",
+        causal: bool = False,
         past_k: str = "",
         past_v: str = "",
         present_k: str = "",
         present_v: str = "",
         scale: float | None = None,
-        causal: bool = False,
     ) -> NodeProto | None:
         """Create an Attention node.
 
@@ -685,12 +685,12 @@ class FusionAttention(Fusion):
             first_input (str): first input name
             output (str): output name
             add_qk_str (str): name of Add node after Q x K'
+            causal: whether it is uni-directional mask.
             past_k (str): name of input for past K value
             past_v (str): name of input for past V value
             present_k (str): name of output to store present K value
             present_v (str): name of output to store present V value
             scale: scale before softmax
-            causal: whether it is uni-directional mask.
 
         Returns:
             Union[NodeProto, None]: the node created or None if failed.

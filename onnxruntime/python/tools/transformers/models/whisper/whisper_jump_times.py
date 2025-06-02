@@ -196,7 +196,7 @@ class WhisperJumpTimes(torch.nn.Module):
         # Set torch extensions directory to cache directory
         os.environ["TORCH_EXTENSIONS_DIR"] = self.cache_dir
 
-        # Try to import `jinja` pip package
+        # Try to import `ninja` pip package
         try:
             assert torch.utils.cpp_extension.verify_ninja_availability()
         except Exception as e:
