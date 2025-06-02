@@ -200,11 +200,15 @@ Status BinaryElementwise<ShouldBroadcast>::Prepare(OpKernelContext* context, Bin
   BINARY_OP_TYPED(name, ver, double)    \
   BINARY_OP_TYPED(name, ver, BFloat16)
 
-#define BINARY_OP_UZILHFD(name, ver)   \
-  BINARY_OP_TYPED(name, ver, uint32_t) \
-  BINARY_OP_TYPED(name, ver, uint64_t) \
-  BINARY_OP_TYPED(name, ver, int32_t)  \
-  BINARY_OP_TYPED(name, ver, int64_t)  \
+#define BINARY_OP_BWUZCSILHFD(name, ver) \
+  BINARY_OP_TYPED(name, ver, uint8_t)    \
+  BINARY_OP_TYPED(name, ver, uint16_t)   \
+  BINARY_OP_TYPED(name, ver, uint32_t)   \
+  BINARY_OP_TYPED(name, ver, uint64_t)   \
+  BINARY_OP_TYPED(name, ver, int8_t)     \
+  BINARY_OP_TYPED(name, ver, int16_t)    \
+  BINARY_OP_TYPED(name, ver, int32_t)    \
+  BINARY_OP_TYPED(name, ver, int64_t)    \
   BINARY_OP_HFD(name, ver)
 
 #define BINARY_OP_REGISTER_VERSIONED_OIL(name, startver, endver)                      \
@@ -279,10 +283,10 @@ BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Sub, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Mul, 13, 13)
 BINARY_OP_VERSIONED_UZILHFD_WITH_BF16(Div, 13, 13)
 
-BINARY_OP_UZILHFD(Add, 14)
-BINARY_OP_UZILHFD(Sub, 14)
-BINARY_OP_UZILHFD(Mul, 14)
-BINARY_OP_UZILHFD(Div, 14)
+BINARY_OP_BWUZCSILHFD(Add, 14)
+BINARY_OP_BWUZCSILHFD(Sub, 14)
+BINARY_OP_BWUZCSILHFD(Mul, 14)
+BINARY_OP_BWUZCSILHFD(Div, 14)
 
 BINARY_OP_REGISTER_VERSIONED_CLASS_HFD(Pow, Pow_7, 7, 11)
 BINARY_LOGICALOP_TYPED(And, 7, bool)

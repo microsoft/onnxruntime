@@ -2,9 +2,8 @@ parameters:
   - name: CudaVersion
     displayName: 'CUDA version'
     type: string
-    default: '11.8'
+    default: '12.2'
     values:
-      - 11.8
       - 12.2
   - name: machine_pool
     type: string
@@ -45,9 +44,9 @@ jobs:
       - template: ../../templates/common-variables.yml
       - name: docker_base_image
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250124.1
         ${{ if eq(parameters.CudaVersion, '12.2') }}:
-          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250109.1
+          value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
       - name: linux_trt_version
         ${{ if eq(parameters.CudaVersion, '11.8') }}:
           value: ${{ variables.linux_trt_version_cuda11 }}
@@ -114,6 +113,3 @@ jobs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
           arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'

@@ -30,7 +30,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         pt_named_params = list(pt_model.named_parameters())
         self.assertEqual(len(ort_named_params), len(pt_named_params))
 
-        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params):
+        for ort_named_param, pt_named_param in zip(ort_named_params, pt_named_params, strict=False):
             ort_name, ort_param = ort_named_param
             pt_name, pt_param = pt_named_param
 
@@ -84,7 +84,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
         if op_grad_type is not None:
             if isinstance(op_grad_type, tuple):
                 text = str(onnx_graph_train)
-                if all(map(lambda op: (f'op_type: "{op}"') not in text, op_grad_type)):
+                if all((f'op_type: "{op}"') not in text for op in op_grad_type):
                     raise AssertionError("Operator {} not found in {}.".format(" or ".join(op_grad_type), text))
             else:
                 self.assertIn(f'op_type: "{op_grad_type}"', str(onnx_graph_train))
@@ -133,7 +133,7 @@ class TestOnnxOpsOrtModule(unittest.TestCase):
                     out = self.fc2(out)
                     return out
 
-            return TestGatherElement, "GatherElementsGrad", dict(rtol=1e-04, atol=1e-05)
+            return TestGatherElement, "GatherElementsGrad", {"rtol": 1e-04, "atol": 1e-05}
 
         raise AssertionError(f"Unexpected name={name!r}.")
 

@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict, Optional
 
 import numpy as np
 from fusion_base import Fusion
@@ -131,7 +130,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         self.node_name_to_graph_name[reshape_q.name] = self.this_graph_name
         return reshape_q.output[0]
 
-    def adjust_query_from_bnsh_to_bsd_no_concat(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
+    def adjust_query_from_bnsh_to_bsd_no_concat(self, mul_q: NodeProto, output_name_to_node) -> str | None:
         """
         MultiHeadAttenion requires query in BSD format. This function adjusts query from BNSH to BSD format.
 
@@ -179,7 +178,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         return self.reshape_to_3d(sln_a.output[0], sln_output + "_BSD")
 
-    def adjust_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
+    def adjust_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> str | None:
         """
         MultiHeadAttenion requires query in BSD format. This function adjusts query from BNSH to BSD format.
 
@@ -294,7 +293,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         return updated_unsqueeze_output
 
-    def update_unsqueeze_axes(self, add: NodeProto, output_name_to_node: Dict[str, NodeProto]) -> bool:
+    def update_unsqueeze_axes(self, add: NodeProto, output_name_to_node: dict[str, NodeProto]) -> bool:
         """
         Update axes of Unsqueeze from [1] to [2] in the following pattern:
                   Unsqueeze        Unsqueeze
@@ -347,7 +346,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
         nodes_b[0].input[1] = self.update_unsqueeze_axes_1_to_2(nodes_b[1])
         return True
 
-    def adjust_flux_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
+    def adjust_flux_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> str | None:
         """
         Adjust graph to change query format from BNSH to BSD for Flux model.
         Note that the graph pattern is complex, and we only do a shallow match here.
@@ -431,7 +430,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         return self.reshape_to_3d(add.output[0], add.output[0] + "_BSD")
 
-    def adjust_flux_single_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> Optional[str]:
+    def adjust_flux_single_query_from_bnsh_to_bsd(self, mul_q: NodeProto, output_name_to_node) -> str | None:
         """
         Adjust graph to change query format from BNSH to BSD for Flux model.
         Note that the graph pattern is complex, and we only do a shallow match here.
@@ -482,7 +481,7 @@ class FusionMultiHeadAttentionMMDit(Fusion):
 
         return self.reshape_to_3d(add.output[0], add.output[0] + "_BSD")
 
-    def transpose_reshape_bnsh_to_bsd(self, q: str, output_name_to_node) -> Optional[str]:
+    def transpose_reshape_bnsh_to_bsd(self, q: str, output_name_to_node) -> str | None:
         transpose_q = helper.make_node(
             "Transpose",
             [q],

@@ -66,6 +66,8 @@ struct RunConfig {
   bool disable_spinning_between_run = false;
   bool exit_after_session_creation = false;
   std::basic_string<ORTCHAR_T> register_custom_op_path;
+  bool enable_cuda_io_binding{false};
+  bool use_extensions = false;
 };
 
 struct PerformanceTestConfig {

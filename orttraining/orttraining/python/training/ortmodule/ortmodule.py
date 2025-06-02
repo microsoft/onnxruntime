@@ -18,7 +18,10 @@ from onnxruntime.training import ortmodule
 from onnxruntime.tools import pytorch_export_contrib_ops
 
 import torch
-from typing import Iterator, Optional, OrderedDict, Tuple, TypeVar, Callable
+from typing import TypeVar
+from collections import OrderedDict
+from collections.abc import Iterator, Callable
+from typing_extensions import Self
 
 # Needed to override PyTorch methods
 T = TypeVar("T", bound="torch.nn.Module")
@@ -35,7 +38,7 @@ class ORTModule(torch.nn.Module):
         debug_options (:obj:`DebugOptions`, optional): debugging options for ORTModule.
     """
 
-    def __init__(self, module: torch.nn.Module, debug_options: Optional[DebugOptions] = None):
+    def __init__(self, module: torch.nn.Module, debug_options: DebugOptions | None = None):
         # NOTE: torch.nn.Modules that call setattr on their internal attributes regularly
         #       (for example PyTorch Lightning), will trigger regular re-exports. This is
         #       because ORTModule auto detects such setattrs on the original module and
@@ -154,7 +157,7 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module._replicate_for_data_parallel()
 
-    def add_module(self, name: str, module: Optional[torch.nn.Module]) -> None:
+    def add_module(self, name: str, module: torch.nn.Module | None) -> None:
         """Raises a ORTModuleTorchModelException exception since ORTModule does not support adding modules to it"""
 
         self._torch_module.add_module(name, module)
@@ -185,7 +188,7 @@ class ORTModule(torch.nn.Module):
         self._torch_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[[torch.nn.Module], None]) -> T:
+    def apply(self, fn: Callable[[torch.nn.Module], None]) -> Self:
         """Override :meth:`~torch.nn.Module.apply` to delegate execution to ONNX Runtime"""
 
         self._torch_module.apply(fn)
@@ -194,7 +197,7 @@ class ORTModule(torch.nn.Module):
     def _is_training(self):
         return self._torch_module.is_training()
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         """Override :meth:`~torch.nn.Module.train` to delegate execution to ONNX Runtime"""
 
         self.training = mode
@@ -217,12 +220,12 @@ class ORTModule(torch.nn.Module):
 
         return self._torch_module.load_state_dict(state_dict, strict=strict)
 
-    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+    def register_buffer(self, name: str, tensor: torch.Tensor | None, persistent: bool = True) -> None:
         """Override :meth:`~torch.nn.Module.register_buffer`"""
 
         self._torch_module.register_buffer(name, tensor, persistent=persistent)
 
-    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+    def register_parameter(self, name: str, param: torch.nn.Parameter | None) -> None:
         """Override :meth:`~torch.nn.Module.register_parameter`"""
 
         self._torch_module.register_parameter(name, param)
@@ -242,7 +245,7 @@ class ORTModule(torch.nn.Module):
 
         yield from self._torch_module.parameters(recurse=recurse)
 
-    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.nn.Parameter]]:
         """Override :meth:`~torch.nn.Module.named_parameters`"""
 
         yield from self._torch_module.named_parameters(prefix=prefix, recurse=recurse)
@@ -252,7 +255,7 @@ class ORTModule(torch.nn.Module):
 
         yield from self._torch_module.buffers(recurse=recurse)
 
-    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.Tensor]]:
         """Override :meth:`~torch.nn.Module.named_buffers`"""
 
         yield from self._torch_module.named_buffers(prefix=prefix, recurse=recurse)
@@ -266,7 +269,7 @@ class ORTModule(torch.nn.Module):
             state_dict, prefix, local_metadata, strict, missing_keys, unexpected_keys, error_msgs
         )
 
-    def named_children(self) -> Iterator[Tuple[str, torch.nn.Module]]:
+    def named_children(self) -> Iterator[tuple[str, torch.nn.Module]]:
         """Override :meth:`~torch.nn.Module.named_children`"""
 
         yield from self._torch_module.named_children()

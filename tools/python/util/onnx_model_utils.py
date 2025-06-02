@@ -1,9 +1,9 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import logging
 import pathlib
-from typing import Optional
 
 import onnx
 from onnx import version_converter
@@ -62,8 +62,8 @@ def get_opsets_imported(model: onnx.ModelProto):
 def update_onnx_opset(
     model_path: pathlib.Path,
     opset: int,
-    out_path: Optional[pathlib.Path] = None,
-    logger: Optional[logging.Logger] = None,
+    out_path: pathlib.Path | None = None,
+    logger: logging.Logger | None = None,
 ):
     """
     Helper to update the opset of a model using onnx version_converter. Target opset must be greater than current opset.
@@ -284,7 +284,7 @@ def _map_node_dependencies(graph: onnx.GraphProto, node_to_producers: dict, node
         return value in producers or value in initializers or value in graph_inputs
 
     for node in graph.node:
-        inputs = [i for i in node.input]
+        inputs = list(node.input)
 
         for attr in node.attribute:
             if attr.HasField("g"):

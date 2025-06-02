@@ -1,5 +1,6 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
 # Licensed under the MIT License.
+from __future__ import annotations
 
 import collections
 import contextlib
@@ -45,18 +46,36 @@ def get_sdk_tool_paths(sdk_root: str):
 
 def create_virtual_device(sdk_tool_paths: SdkToolPaths, system_image_package_name: str, avd_name: str):
     run(sdk_tool_paths.sdkmanager, "--install", system_image_package_name, input=b"y")
+    android_avd_home = os.environ["ANDROID_AVD_HOME"]
 
-    run(
-        sdk_tool_paths.avdmanager,
-        "create",
-        "avd",
-        "--name",
-        avd_name,
-        "--package",
-        system_image_package_name,
-        "--force",
-        input=b"no",
-    )
+    if android_avd_home is not None:
+        if not os.path.exists(android_avd_home):
+            os.makedirs(android_avd_home)
+        run(
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            "--path",
+            android_avd_home,
+            input=b"no",
+        )
+    else:
+        run(
+            sdk_tool_paths.avdmanager,
+            "create",
+            "avd",
+            "--name",
+            avd_name,
+            "--package",
+            system_image_package_name,
+            "--force",
+            input=b"no",
+        )
 
 
 _process_creationflags = subprocess.CREATE_NEW_PROCESS_GROUP if is_windows() else 0
@@ -108,7 +127,7 @@ def _stop_process_with_pid(pid: int):
 def start_emulator(
     sdk_tool_paths: SdkToolPaths,
     avd_name: str,
-    extra_args: typing.Optional[typing.Sequence[str]] = None,
+    extra_args: typing.Sequence[str] | None = None,
     timeout_minutes: int = 20,
 ) -> subprocess.Popen:
     if check_emulator_running_using_avd_name(avd_name=avd_name):
@@ -326,7 +345,7 @@ def stop_emulator_by_pid(emulator_pid: int, timeout_seconds: int = 120):
     _log.info("Emulator stopped successfully.")
 
 
-def stop_emulator(emulator_proc_or_pid: typing.Union[subprocess.Popen, int], timeout_seconds: int = 120):
+def stop_emulator(emulator_proc_or_pid: subprocess.Popen | int, timeout_seconds: int = 120):
     """
     Stops the emulator process, checking its running status before and after stopping.
     :param emulator_proc_or_pid: The emulator process (subprocess.Popen) or PID (int).

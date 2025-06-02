@@ -40,6 +40,13 @@ interface BuildDefinitions {
    */
   readonly ENABLE_BUNDLE_WASM_JS: boolean;
 
+  /**
+   * defines whether to use WebGPU EP instead of JSEP for WebGPU backend.
+   *
+   * This flag requires the corresponding WebAssembly artifact to be built with `--use_webgpu` flag.
+   */
+  readonly USE_WEBGPU_EP: boolean;
+
   // #endregion
 
   // #region Build definitions for ESM

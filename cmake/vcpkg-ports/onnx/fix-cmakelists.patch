@@ -1,0 +1,21 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 6fe5c96e..633debb6 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -70,6 +70,16 @@ endif()
+ 
+ include(GNUInstallDirs)
+ 
++# install protobuf files
++install(FILES ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-data.proto
++              ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-data.proto3
++              ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-ml.proto
++              ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-ml.proto3
++              ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-operators-ml.proto
++              ${CMAKE_CURRENT_BINARY_DIR}/onnx/onnx-operators-ml.proto3
++        DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnx
++)
++
+ set(ONNX_ROOT ${onnx_SOURCE_DIR})
+ 
+ # Read ONNX version

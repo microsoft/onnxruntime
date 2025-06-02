@@ -420,7 +420,7 @@ class TestTensorQuantOverridesOption(unittest.TestCase):
                 )
 
                 self.assertEqual(wgt_zp.data_type, quant_type.tensor_type)
-                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data)):
+                for index, (zp, scale) in enumerate(zip(wgt_zp.int32_data, wgt_sc.float_data, strict=False)):
                     wgt_qmin, wgt_qmax = get_qmin_qmax_for_qType(
                         wgt_zp.data_type,
                         symmetric=True,  # per-channel is always symmetric

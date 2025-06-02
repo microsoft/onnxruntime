@@ -7,7 +7,7 @@
      If you need a more sophisticated package for testing, you can run the production packaging pipeline against your
      branch and download the resulting nuget package from the build artifacts.
  -->
-<Project Sdk="MSBuild.Sdk.Extras/3.0.22">
+<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <TargetFrameworks>netstandard2.0</TargetFrameworks>
     <NuspecFile>$(OnnxRuntimeBuildDirectory)/NativeNuget.nuspec</NuspecFile>

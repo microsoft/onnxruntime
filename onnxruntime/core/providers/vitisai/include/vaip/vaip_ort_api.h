@@ -13,7 +13,7 @@ struct OrtApi;
 
 namespace vaip_core {
 
-#define VAIP_ORT_API_MAJOR (13u)
+#define VAIP_ORT_API_MAJOR (17u)
 #define VAIP_ORT_API_MINOR (0u)
 #define VAIP_ORT_API_PATCH (0u)
 struct OrtApiForVaip {
@@ -243,6 +243,19 @@ struct OrtApiForVaip {
                                       const std::vector<int64_t>& shape,
                                       const std::vector<uint8_t>& data);                  // [101]
   void (*graph_remove_initialized_tensor)(Graph& graph, const std::string& tensor_name);  // [102]
+  void (*graph_reverse_dfs_from_preemp)(
+      const Graph& graph, gsl::span<const Node* const> from,
+      const std::function<bool(const Node*)>& enter,
+      const std::function<bool(const Node*)>& leave,
+      const std::function<bool(const Node*, const Node*)>& comp,
+      const std::function<bool(const Node* from, const Node* to)>&
+          stop);                                           // [103]
+  void (*graph_set_name)(Graph& graph, const char* name);  // [104]
+  void (*graph_infer_shapes_from_filepath)(
+      const std::string& m, const std::string& save_path);  // [105]
+  GraphProto* (*graph_to_graph_proto)(const Graph& graph);  // [106]
+  void (*graph_proto_delete)(GraphProto* p);                // [107]
+  void (*graph_infer_shapes)(ModelProto& m);                // [108]
 };
 
 #ifndef USE_VITISAI

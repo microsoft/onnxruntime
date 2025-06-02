@@ -54,7 +54,7 @@ class TestOpQuatizerPad(unittest.TestCase):
 
         input_tensor = helper.make_tensor_value_info("input", TensorProto.FLOAT, pad_input_shape)
         pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
-        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
+        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:], strict=False))]
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
 
         inputs = ["input", "pad_dims"]
@@ -108,7 +108,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         identity_node = helper.make_node("Identity", ["conv_output"], ["identity_out"], name="IdentityNode")
 
         pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
-        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
+        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:], strict=False))]
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
         pad_inputs = ["conv_output", "pad_dims"]
         initializers = [conv_weight_initializer, pad_dims_initializer]
@@ -385,7 +385,7 @@ class TestOpQuatizerPad(unittest.TestCase):
         identity_node = helper.make_node("Identity", ["conv_output"], ["identity_out"], name="IdentityNode")
 
         pad_dims_initializer = helper.make_tensor("pad_dims", TensorProto.INT64, [2 * rank], pad_dims)
-        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:]))]
+        output_shape = [sum(e) for e in list(zip(pad_input_shape, pad_dims[:rank], pad_dims[rank:], strict=False))]
         output_tensor = helper.make_tensor_value_info("output", TensorProto.FLOAT, output_shape)
         pad_inputs = ["conv_output", "pad_dims"]
         initializers = [conv_weight_initializer, pad_dims_initializer]

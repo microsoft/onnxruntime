@@ -20,7 +20,7 @@ from onnx.numpy_helper import from_array
 
 from onnxruntime import InferenceSession, get_available_providers
 
-available_providers = [provider for provider in get_available_providers()]
+available_providers = list(get_available_providers())
 
 
 class TestFloat8Gemm8(unittest.TestCase):
@@ -72,19 +72,19 @@ class TestFloat8Gemm8(unittest.TestCase):
         if use_f8:
             assert domain == "com.microsoft"
             inits.append(from_array(np.array([1], dtype=np.float32), name="one"))
-            kwargs = dict(
-                domain=domain,
-                dtype=dtype,
-            )
+            kwargs = {
+                "domain": domain,
+                "dtype": dtype,
+            }
             if activation is not None:
                 kwargs["activation"] = activation
             op_name = "GemmFloat8"
         elif domain == "com.microsoft":
             op_name = "GemmFloat8"
-            kwargs = dict(
-                domain=domain,
-                dtype=dtype,
-            )
+            kwargs = {
+                "domain": domain,
+                "dtype": dtype,
+            }
         else:
             op_name = "Gemm"
         nodes = [

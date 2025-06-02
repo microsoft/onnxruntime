@@ -1,0 +1,64 @@
+name: iOS_CI_on_Mac
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true
+
+jobs:
+  iOS_CI_on_Mac:
+    runs-on: macos-14
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - name: Use Xcode ${{ env.XCODE_VERSION }}
+        shell: bash
+        run: |
+          set -e -x
+          XCODE_DEVELOPER_DIR="/Applications/Xcode_${{ env.XCODE_VERSION }}.app/Contents/Developer"
+          sudo xcode-select --switch "${XCODE_DEVELOPER_DIR}"
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: (CPU, CoreML, XNNPACK EPs) Build onnxruntime for iOS x86_64 and run tests using simulator
+        shell: bash
+        run: |
+          python3 ${{ github.workspace }}/tools/ci_build/build.py \
+            --skip_submodule_sync \
+            --build_dir ${{ github.workspace }}/iOS \
+            --build_shared_lib \
+            --use_coreml \
+            --use_xnnpack \
+            --ios \
+            --apple_sysroot iphonesimulator \
+            --osx_arch x86_64 \
+            --apple_deploy_target=15.1 \
+            --use_xcode \
+            --config RelWithDebInfo \
+            --build_apple_framework \
+            --parallel \
+            --use_binskim_compliant_compile_flags
+        env:
+          ORT_GET_SIMULATOR_DEVICE_INFO_REQUESTED_RUNTIME_VERSION: ${{ env.IOS_SIMULATOR_RUNTIME_VERSION }}
+
+    timeout-minutes: 150
+    env:
+      XCODE_VERSION: 15.3.0
+      IOS_SIMULATOR_RUNTIME_VERSION: 17.4

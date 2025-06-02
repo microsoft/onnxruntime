@@ -1,0 +1,659 @@
+name: Linux CPU Minimal Build E2E
+
+on:
+  push:
+    branches:
+      - main
+      - rel-*
+  pull_request:
+    branches:
+      - main
+      - rel-*
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref
+    || github.sha }}
+  cancel-in-progress: true
+
+env:
+  BUILD_SOURCES_DIRECTORY: ${{ github.workspace }}
+
+jobs:
+  # Job 1: Build full onnxruntime and generate ORT format test files
+  build_full_ort:
+    name: 1. Build Full ORT and Generate ORT Files
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+        with:
+          vcpkg-version: '2025.04.09'
+          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: microsoft/onnxruntime-github-actions/build-and-prep-ort-files@v0.0.7
+
+      - name: Upload Test Data Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: test_data
+          path: ${{ runner.temp }}/minimal_build_test_data/
+          if-no-files-found: error # Fail if test data wasn't generated
+
+  # Job 2: Build minimal onnxruntime [exceptions DISABLED, type reduction DISABLED, training ops ENABLED]
+  build_minimal_exceptions_disabled:
+    name: 2. Build Minimal (Exceptions Disabled)
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Run Build 2 (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: Debug # From original --config Debug
+          mode: 'update' # CMake configure step
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --skip_tests
+            --minimal_build
+            --disable_exceptions
+            --enable_training_ops
+
+      - name: Run Build 2 (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: Debug # From original --config Debug
+          mode: 'build' # Actual build step
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --skip_tests
+            --minimal_build
+            --disable_exceptions
+            --enable_training_ops
+
+  # Job 3a: Build minimal onnxruntime [exceptions ENABLED, type reduction DISABLED, custom ops ENABLED] and run tests
+  build_minimal_custom_ops:
+    name: 3a. Build Minimal (Custom Ops)
+    needs: build_full_ort # Depends on Job 1 for test data
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+        with:
+          vcpkg-version: '2025.04.09'
+          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.7
+        with:
+          reduced-ops-config-file: required_ops.ort_models.config
+          enable-custom-ops: 'true'
+          binary-size-report-name-prefix: "3a"
+
+  # Job 3b: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED] and run tests
+  build_minimal_type_reduction:
+    name: 3b. Build Minimal (Type Reduction)
+    needs: build_full_ort # Depends on Job 1 for test data
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+        with:
+          vcpkg-version: '2025.04.09'
+          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+      - name: Build Full ORT and Prepare Test Files
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.7
+        with:
+          reduced-ops-config-file: required_ops_and_types.ort_models.config
+          enable-type-reduction: 'true'
+          binary-size-report-name-prefix: "3b"
+
+  # Job 4: Build minimal onnxruntime [exceptions ENABLED, type reduction ENABLED (globally allowed types)] and run tests
+  build_minimal_globally_allowed_types:
+    name: 4. Build Minimal (Globally Allowed Types)
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
+        with:
+          vcpkg-version: '2025.04.09'
+          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          cmake-version: '3.31.6'
+          cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
+          add-cmake-to-path: 'true'
+          disable-terrapin: 'true'
+
+      - name: Build Full ORT and Prepare Test Files
+        uses: microsoft/onnxruntime-github-actions/build-minimal-ort-and-run-tests@v0.0.7
+        with:
+          globally_allowed_types: 'bool,float,int8_t,uint8_t'
+          enable-type-reduction: 'true'
+          skip-model-tests: 'true'
+          binary-size-report-name-prefix: "4"
+
+  # Job 5: Build extended minimal onnxruntime and run tests
+  build_extended_minimal:
+    name: 5. Build Extended Minimal
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Run Build 5 (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: Debug
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_shared_lib
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+
+      - name: Run Build 5 (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: Debug
+          mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_shared_lib
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+      - name: Run Build 5 (Test)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: Debug
+          mode: 'test'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_shared_lib
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+
+  # Job 6a: Regular build with python and all optional features disabled.
+  build_regular_no_optional:
+    name: 6a. Build Regular (No Optional Features)
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
+
+      - name: Run Build 6a (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_wheel
+            --use_binskim_compliant_compile_flags
+            --disable_ml_ops
+            --disable_types sparsetensor float8 optional
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+      - name: Run Build 6a (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel
+          mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_wheel
+            --use_binskim_compliant_compile_flags
+            --disable_ml_ops
+            --disable_types sparsetensor float8 optional
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+
+      - name: Run Build 6a (Test)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel
+          mode: 'test'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --build_wheel
+            --use_binskim_compliant_compile_flags
+            --disable_ml_ops
+            --disable_types sparsetensor float8 optional
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+  # Job 6b: Minimal build with all optional features disabled.
+  build_minimal_no_optional:
+    name: 6b. Build Minimal (No Optional Features)
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Run Build 6b (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+      - name: Run Build 6b (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+  # Job 6c: Extended minimal build with all optional features disabled.
+  build_extended_minimal_no_optional:
+    name: 6c. Build Extended Minimal (No Optional Features)
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+      - name: gen config
+        shell: bash
+        run: |
+          mkdir -p ${{ runner.temp }}/.test_data
+          touch ${{ runner.temp }}/.test_data/include_no_operators.config
+
+      - name: Run Build 6c (Update)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'update'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+      - name: Run Build 6c (Build)
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
+        with:
+          docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name
+            }}
+          build_config: MinSizeRel # From original --config MinSizeRel
+          mode: 'build'
+          extra_build_flags: >-
+            --cmake_generator Ninja
+            --use_binskim_compliant_compile_flags
+            --minimal_build extended
+            --disable_exceptions
+            --disable_ml_ops
+            --skip_tests
+            --enable_reduced_operator_type_support
+            --disable_types sparsetensor optional float8
+            --include_ops_by_config /onnxruntime_src/build/.test_data/include_no_operators.config
+            --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=OFF
+
+  # Job 7: Extended minimal build with NNAPI EP for Android(arm64-v8a) and skip tests.
+  # NOTE: Keeping this as direct docker run due to custom volume mounts needed for Android SDK/NDK
+  build_extended_minimal_android:
+    name: 7. Build Extended Minimal (Android NNAPI)
+    needs: build_full_ort # Depends on Job 1 for test data
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    permissions: # Permissions needed for build-docker-image
+      contents: read
+      packages: write
+      id-token: write # If using OIDC for ACR login
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Download Test Data Artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: test_data
+          path: ${{ runner.temp }}/.test_data/
+
+      - name: Get Docker Image using Action
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+        id: build_docker_image_step
+        with:
+          dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+          image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+          push: true
+          azure-container-registry-name: onnxruntimebuildcache
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Setup Android NDK
+        uses: ./.github/actions/setup-android-ndk
+        with:
+          ndk-version: 28.0.13004108
+          # Use default android-sdk-root if not specified
+
+      - name: Export GitHub Actions cache environment variables
+        uses: actions/github-script@v7
+        with:
+          script: |
+            core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+            core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+      - name: Run Build 7 (Using docker run)
+        shell: bash
+        run: |
+          # Create the target dir for build output inside the runner's temp dir first
+          mkdir -p ${{ runner.temp }}/7
+
+          # Ensure ANDROID_NDK_HOME is available and get its real path
+          if [ -z "$ANDROID_NDK_HOME" ]; then
+            echo "ANDROID_NDK_HOME is not set."
+            exit 1
+          fi
+          NDK_HOME_REALPATH=$(realpath $ANDROID_NDK_HOME)
+
+          # Ensure ANDROID_HOME is available
+          if [ -z "$ANDROID_HOME" ]; then
+            echo "ANDROID_HOME is not set. Using default /usr/local/lib/android/sdk"
+            export ANDROID_HOME=/usr/local/lib/android/sdk
+          fi
+
+          docker run --rm \
+            --volume ${{ env.BUILD_SOURCES_DIRECTORY }}:/onnxruntime_src \
+            --volume ${{ runner.temp }}:/build \
+            --volume $ANDROID_HOME:/android_home \
+            --volume $NDK_HOME_REALPATH:/ndk_home \
+            -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+            -e NIGHTLY_BUILD=1 -e ACTIONS_CACHE_URL -e ACTIONS_RUNTIME_TOKEN -e RUNNER_TEMP=/build \
+            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt \
+            && python3 /onnxruntime_src/tools/ci_build/build.py \
+              --build_dir /build/7 \
+              --cmake_generator Ninja \
+              --config MinSizeRel \
+              --skip_submodule_sync \
+              --parallel --use_binskim_compliant_compile_flags \
+              --android \
+              --android_sdk_path /android_home \
+              --android_ndk_path /ndk_home \
+              --android_abi=arm64-v8a \
+              --android_api=29 \
+              --use_nnapi \
+              --minimal_build extended \
+              --build_shared_lib \
+              --disable_ml_ops \
+              --disable_exceptions \
+              --skip_tests"
+        working-directory: ${{ env.BUILD_SOURCES_DIRECTORY }}

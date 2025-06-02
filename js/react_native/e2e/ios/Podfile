@@ -1,16 +1,17 @@
-require_relative '../node_modules/react-native/scripts/react_native_pods'
-require_relative '../node_modules/@react-native-community/cli-platform-ios/native_modules'
+# Resolve react_native_pods.rb with node to allow for hoisting
+require Pod::Executable.execute_command('node', ['-p',
+  'require.resolve(
+    "react-native/scripts/react_native_pods.rb",
+    {paths: [process.argv[1]]},
+  )', __dir__]).strip
+
 
 platform :ios, '15.1'
 
-pre_install do |installer|
-  # Custom pre-install script or commands
-  puts "Running pre-install script..."
+prepare_react_native_project!
+# use_frameworks need to be loaded before use_react_native! for now
+use_frameworks!
 
-  # Recommended fix for https://github.com/facebook/react-native/issues/32483
-  # from https://github.com/facebook/react-native/issues/32483#issuecomment-966784501
-  system("sed -i '' 's/typedef uint8_t clockid_t;//' \"./Pods/RCT-Folly/folly/portability/Time.h\"")
-end
 
 target 'OnnxruntimeModuleExample' do
   config = use_native_modules!
@@ -18,16 +19,10 @@ target 'OnnxruntimeModuleExample' do
   use_react_native!(
     :path => config[:reactNativePath],
 
-    # Hermes is now enabled by default. Disable by setting this flag to false.
-    # Upcoming versions of React Native may rely on get_default_flags(), but
-    # we make it explicit here to aid in the React Native upgrade process.
-
-    :hermes_enabled => false,
 #     :flipper_configuration => FlipperConfiguration.enabled,
     :app_path => "#{Pod::Config.instance.installation_root}/.."
   )
 
-  use_frameworks!
 
   ort_c_local_pod_path = ENV['ORT_C_LOCAL_POD_PATH']
   if ort_c_local_pod_path != nil
@@ -38,12 +33,10 @@ target 'OnnxruntimeModuleExample' do
 
   inherit! :search_paths
   post_install do |installer|
-    # https://github.com/facebook/react-native/blob/main/packages/react-native/scripts/react_native_pods.rb#L197-L202
     react_native_post_install(
       installer,
       config[:reactNativePath],
       :mac_catalyst_enabled => false,
     )
-    __apply_Xcode_12_5_M1_post_install_workaround(installer)
   end
 end

@@ -1,7 +1,8 @@
 import copy
 import logging
 from collections import OrderedDict
-from typing import Any, Dict, List, Mapping, Optional, Tuple, Union
+from collections.abc import Mapping
+from typing import Any
 
 import numpy
 import torch
@@ -9,7 +10,7 @@ import torch
 from onnxruntime import InferenceSession, RunOptions
 
 # Type alias
-ShapeDict = Mapping[str, Union[Tuple, List[int]]]
+ShapeDict = Mapping[str, tuple | list[int]]
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,7 @@ class TypeHelper:
             "tensor(float)": numpy.float32,
             "tensor(float16)": numpy.float16,
             "tensor(bool)": bool,
+            "tensor(uint8)": numpy.uint8,
         }
         if ort_type not in ort_type_to_numpy_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -51,7 +53,9 @@ class TypeHelper:
             "tensor(int32)": torch.int32,
             "tensor(float)": torch.float32,
             "tensor(float16)": torch.float16,
+            "tensor(bfloat16)": torch.bfloat16,
             "tensor(bool)": torch.bool,
+            "tensor(uint8)": torch.uint8,
         }
         if ort_type not in ort_type_to_torch_type_map:
             raise ValueError(f"{ort_type} not found in map")
@@ -67,6 +71,7 @@ class TypeHelper:
             numpy.float32: torch.float32,
             numpy.float16: torch.float16,
             bool: torch.bool,
+            numpy.uint8: torch.uint8,
         }
         if numpy_type not in numpy_type_to_torch_type_map:
             raise ValueError(f"{numpy_type} not found in map")
@@ -81,6 +86,7 @@ class TypeHelper:
             torch.float32: numpy.float32,
             torch.float16: numpy.float16,
             torch.bool: bool,
+            torch.uint8: numpy.uint8,
         }
         if torch_type not in torch_type_to_numpy_type_map:
             raise ValueError(f"{torch_type} not found in map")
@@ -88,7 +94,7 @@ class TypeHelper:
         return torch_type_to_numpy_type_map[torch_type]
 
     @staticmethod
-    def get_io_numpy_type_map(ort_session: InferenceSession) -> Dict[str, numpy.dtype]:
+    def get_io_numpy_type_map(ort_session: InferenceSession) -> dict[str, numpy.dtype]:
         """Create a mapping from input/output name to numpy data type"""
         name_to_numpy_type = {}
         for input in ort_session.get_inputs():
@@ -116,7 +122,7 @@ class IOBindingHelper:
         input_ids: torch.Tensor,
         position_ids: torch.Tensor,
         attention_mask: torch.Tensor,
-        past: List[torch.Tensor],
+        past: list[torch.Tensor],
         output_buffers,
         output_shapes,
         name_to_np_type=None,
@@ -228,7 +234,7 @@ class CudaSession:
         self.device = device
 
         # Pairs of input and output names that share the same buffer.
-        self.buffer_sharing: Dict[str, str] = {}
+        self.buffer_sharing: dict[str, str] = {}
 
     def set_buffer_sharing(self, input_name: str, output_name: str):
         assert input_name in self.input_names
@@ -307,7 +313,7 @@ class CudaSession:
                     tensor.data_ptr(),
                 )
 
-    def infer(self, feed_dict: Dict[str, torch.Tensor], run_options: RunOptions = None, synchronize: bool = True):
+    def infer(self, feed_dict: dict[str, torch.Tensor], run_options: RunOptions = None, synchronize: bool = True):
         """Bind input tensors and run inference"""
         for name, tensor in feed_dict.items():
             assert isinstance(tensor, torch.Tensor) and tensor.is_contiguous()
@@ -330,7 +336,7 @@ class CudaSession:
         return self.output_tensors
 
     @staticmethod
-    def get_cuda_provider_options(device_id: int, enable_cuda_graph: bool, stream: int = 0) -> Dict[str, Any]:
+    def get_cuda_provider_options(device_id: int, enable_cuda_graph: bool, stream: int = 0) -> dict[str, Any]:
         options = {
             "device_id": device_id,
             "arena_extend_strategy": "kSameAsRequested",
@@ -353,7 +359,7 @@ class GpuBinding(CudaSession):
         enable_gpu_graph: bool = False,
         gpu_graph_id: int = -1,
         stream: int = 0,
-        buffer_sharing: Optional[Dict[str, str]] = None,
+        buffer_sharing: dict[str, str] | None = None,
     ):
         super().__init__(ort_session, device, enable_gpu_graph)
         if buffer_sharing:
@@ -379,7 +385,7 @@ class GpuBinding(CudaSession):
 
         return options
 
-    def infer(self, feed_dict: Dict[str, torch.Tensor], disable_cuda_graph_in_run: bool = False):
+    def infer(self, feed_dict: dict[str, torch.Tensor], disable_cuda_graph_in_run: bool = False):
         run_options = self.get_run_options(disable_cuda_graph_in_run)
 
         if self.stream:
@@ -411,7 +417,7 @@ class GpuBindingManager:
         self,
         shape_dict: ShapeDict,
         use_cuda_graph: bool = False,
-        buffer_sharing: Optional[Dict[str, str]] = None,
+        buffer_sharing: dict[str, str] | None = None,
     ) -> GpuBinding:
         for gpu_graph_binding in self.graph_bindings:
             # Found a cuda graph that captured with the same shape

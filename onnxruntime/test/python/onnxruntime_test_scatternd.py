@@ -15,11 +15,11 @@ import onnxruntime
 
 
 def has_cuda():
-    available_providers = [provider for provider in onnxruntime.get_available_providers()]
+    available_providers = list(onnxruntime.get_available_providers())
     return "CUDAExecutionProvider" in available_providers
 
 
-def ignore_warnings(warns: typing.List[Warning]) -> typing.Callable:
+def ignore_warnings(warns: list[Warning]) -> typing.Callable:
     def wrapper(fct):
         if warns is None:
             raise AssertionError(f"warns cannot be None for '{fct}'.")
@@ -297,7 +297,7 @@ class TestScatterPerProvider(unittest.TestCase):
         indices = np.array([[line], [1 - line], [line]], dtype=np.int64)
         updates = (2 ** (np.arange(18) + 1).astype(np.float32).reshape((3, 2, 3))).astype(np.float32)
 
-        feeds = dict(data=data, indices=indices, updates=updates)
+        feeds = {"data": data, "indices": indices, "updates": updates}
         ref = ReferenceEvaluator(model)
         expected = ref.run(None, feeds)[0]
 

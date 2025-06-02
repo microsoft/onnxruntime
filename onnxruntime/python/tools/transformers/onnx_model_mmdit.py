@@ -4,7 +4,6 @@
 # --------------------------------------------------------------------------
 
 import logging
-from typing import Optional
 
 from fusion_layernorm import FusionLayerNormalization
 from fusion_mha_mmdit import FusionMultiHeadAttentionMMDit
@@ -47,7 +46,7 @@ class MmditOnnxModel(BertOnnxModel):
         fusion = FusionMultiHeadAttentionMMDit(self)
         fusion.apply()
 
-    def optimize(self, options: Optional[FusionOptions] = None, add_dynamic_axes: bool = False):
+    def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         assert not add_dynamic_axes
 
         if is_installed("tqdm"):
@@ -62,7 +61,7 @@ class MmditOnnxModel(BertOnnxModel):
             logger.info("tqdm is not installed. Run optimization without progress bar")
             self._optimize(options, None)
 
-    def _optimize(self, options: Optional[FusionOptions] = None, progress_bar=None):
+    def _optimize(self, options: FusionOptions | None = None, progress_bar=None):
         if (options is not None) and not options.enable_shape_inference:
             self.disable_shape_inference()
 

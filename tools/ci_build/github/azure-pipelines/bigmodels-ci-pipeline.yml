@@ -41,11 +41,11 @@ parameters:
 
 variables:
   - name: docker_base_image
-    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda11_x64_almalinux8_gcc11:20250109.1
+    value: onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1
   - name: linux_trt_version
-    value: 10.3.0.26-1.cuda11.8
+    value: 10.9.0.34-1.cuda12.8
   - name: Repository
-    value: 'onnxruntimecuda11manylinuxbuild'
+    value: 'onnxruntimecuda12manylinuxbuild'
 
 stages:
 - stage: Build_Onnxruntime_Cuda
@@ -77,55 +77,35 @@ stages:
         "
         Repository: $(Repository)
 
-    - task: Cache@2
-      inputs:
-        key: '"ccache" | "$(Build.SourceBranch)" | "$(Build.SourceVersion)"'
-        path: $(CCACHE_DIR)
-        restoreKeys: |
-          "ccache" | "$(Build.SourceBranch)"
-          "ccache"
-        cacheHitVar: CACHE_RESTORED
-      displayName: Cach Task
-
-    - script: |
-        sudo mkdir -p $(Pipeline.Workspace)/ccache
-      condition: ne(variables.CACHE_RESTORED, 'true')
-      displayName: Create Cache Dir
-
     - task: CmdLine@2
       inputs:
         script: |
           mkdir -p $HOME/.onnx
-          docker run -e --rm \
+          docker run -e SYSTEM_COLLECTIONURI -e --rm \
             --volume /data/onnx:/data/onnx:ro \
             --volume $(Build.SourcesDirectory):/onnxruntime_src \
             --volume $(Build.BinariesDirectory):/build \
             --volume /data/models:/build/models:ro \
             --volume $HOME/.onnx:/home/onnxruntimedev/.onnx \
-            --volume $(Pipeline.Workspace)/ccache:/cache \
             -e ALLOW_RELEASED_ONNX_OPSET_ONLY=0 \
             -e NIGHTLY_BUILD \
             -e BUILD_BUILDNUMBER \
-            -e CCACHE_DIR=/cache \
             $(Repository) \
-            /bin/bash -c "
+            /bin/bash -c '
               set -ex; \
-              env; \
-              ccache -s; \
-              /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
+              ls /usr/local/; \
+              PATH=/opt/python/cp310-cp310/bin:$PATH  /opt/python/cp310-cp310/bin/python3 /onnxruntime_src/tools/ci_build/build.py \
                 --build_dir /build --cmake_generator Ninja \
                 --config Release --update --build \
                 --skip_submodule_sync \
                 --build_shared_lib \
-                --parallel \
+                --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
                 --build_wheel \
-                --enable_onnx_tests --use_cuda --cuda_version=11.8 --cuda_home=/usr/local/cuda-11.8 --cudnn_home=/usr/local/cuda-11.8 \
+                --enable_onnx_tests --use_cuda --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 \
                 --enable_cuda_profiling \
-                --enable_pybind --build_java \
-                --use_cache \
-                --cmake_extra_defines  'CMAKE_CUDA_ARCHITECTURES=75;86' ; \
-                ccache -sv; \
-                ccache -z"
+                --enable_pybind \
+                --cmake_extra_defines "CMAKE_CUDA_ARCHITECTURES=75;86" '
+
         workingDirectory: $(Build.SourcesDirectory)
 
     - task: CmdLine@2
@@ -185,9 +165,8 @@ stages:
         DockerBuildArgs: "
         --build-arg BUILD_UID=$( id -u )
         "
-        Repository: onnxruntimeubuntupackagestest_cuda11
+        Repository: onnxruntimeubuntupackagestest_cuda12
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
 
     - task: Cache@2
       inputs:
@@ -200,18 +179,18 @@ stages:
 
     - script: |
         mkdir -p $(GenerateImage_DIR)
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(Build.BinariesDirectory)/Release:/Release \
           -v $(STABLE_DIFFUSION_MODEL_CACHE):/model_cache:rw \
           -v $(GenerateImage_DIR):/images:rw \
-          onnxruntimeubuntupackagestest_cuda11 \
+          onnxruntimeubuntupackagestest_cuda12 \
           bash -c ' \
             set -ex; \
             python3 --version; \
             python3 -m pip install --upgrade pip; \
             python3 -m pip install /Release/*.whl; \
             pushd /workspace/onnxruntime/python/tools/transformers/models/stable_diffusion; \
-            python3 -m pip install -r requirements/cuda11/requirements.txt; \
+            python3 -m pip install -r requirements/cuda12/requirements.txt; \
             python3 -m pip install numpy==1.22.2; \
             python3 -m pip install --upgrade polygraphy onnx-graphsurgeon ; \
             echo Generate an image guided by a text prompt; \
@@ -241,9 +220,9 @@ stages:
       displayName: Cache clip model
 
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          onnxruntimeubuntupackagestest_cuda11 \
+          onnxruntimeubuntupackagestest_cuda12 \
           bash -c '
             set -x; \
             python3 --version; \
@@ -268,9 +247,9 @@ stages:
 
     # The step will execute if the gereneate image doesn't hit another test image
     - script: |
-        docker run --rm --gpus all -v $PWD:/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $PWD:/workspace \
           -v $(CLIP_MODEL_CACHE):/model_cache:rw  \
-          onnxruntimeubuntupackagestest_cuda11 \
+          onnxruntimeubuntupackagestest_cuda12 \
           bash -c '
             set -ex; \
             python3 --version; \
@@ -330,19 +309,17 @@ stages:
         "
         Repository: onnxruntimeubi8packagestest_torch
         UseImageCacheContainerRegistry: false
-        UpdateDepsTxt: false
-
     - task: DownloadPackage@1
-      displayName: 'Download Meta Llama2 model'
       inputs:
-        packageType: upack
-        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
-        version: 1.0.0
-        definition: '6fe0c4ed-9d0e-4d66-94cc-fb6a111d02a5'
+        packageType: 'upack'
+        feed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/8fc55c18-5239-4843-a0df-c7a8b1b36be7'
+        view: 'bdf2fe57-11ef-4a86-a145-7857a0405755'
+        definition: '2a6a4112-e5b6-48cb-ab68-ddfb83533702'
+        version: '1.0.0'
         downloadPath: $(Agent.TempDirectory)/meta_llama2_7b_hf
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -354,7 +331,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp16 --precision fp16 --execution_provider cuda --small_gp --use_dynamo_export;\
               ls -l llama2-7b-fp16; \
               du -sh llama2-7b-fp16; \
               popd ; \
@@ -363,7 +340,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -375,7 +352,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-fp32-gpu --precision fp32 --execution_provider cuda --use_dynamo_export;\
               ls -l llama2-7b-fp32-gpu; \
               du -sh llama2-7b-fp32-gpu; \
               popd ; \
@@ -384,7 +361,7 @@ stages:
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
            -v $(Agent.TempDirectory)/meta_llama2_7b_hf:/meta-llama2 \
            onnxruntimeubi8packagestest_torch \
@@ -396,7 +373,7 @@ stages:
               python3 -m pip install -r requirements.txt ; \
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
-              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa;\
+              python3 -m models.llama.convert_to_onnx -m meta-llama/Llama-2-7b-hf --input /meta-llama2 --output llama2-7b-int4-gpu  --precision int4 --execution_provider cuda --use_gqa --use_dynamo_export;\
               ls -l llama2-7b-int4-gpu; \
               du -sh llama2-7b-int4-gpu; \
               popd ; \
@@ -443,23 +420,21 @@ stages:
         ScriptName: tools/ci_build/get_docker_image.py
         DockerBuildArgs: '--build-arg BUILD_UID=$( id -u )'
         Repository: onnxruntimepackagestest_ompffmpeg
-        UpdateDepsTxt: false
-
     - task: DownloadPackage@1
       # The model data in artifact is downloaded from openai/whisper-large-v3 in huggingface model hub
       # In order to save size, removed .git directory and pickled files, and keep the safetensors model files
       displayName: 'Download Whisper Model'
       inputs:
-        packageType: upack
-        feed: '/7424c8e4-5c62-490e-95c4-79446f31017c'
-        version: 1.0.0
-        definition: 'b583ce7c-1a8f-4099-ae28-5d5f56c478b1'
+        packageType: 'upack'
+        feed: '2692857e-05ef-43b4-ba9c-ccf1c22c437c/8fc55c18-5239-4843-a0df-c7a8b1b36be7'
+        view: 'bdf2fe57-11ef-4a86-a145-7857a0405755'
+        definition: 'c78cdb16-4022-4baa-84d4-8bccbe935762'
+        version: '1.0.1'
         downloadPath: $(Agent.TempDirectory)/whisper_large_v3
 
     - script: |
-        docker run --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
            -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
-           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
            onnxruntimepackagestest_ompffmpeg \
             bash -c '
               set -ex; \
@@ -470,11 +445,34 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
-              python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124 ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cpu-hf --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cpu-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cpu-oai --precision fp32 --provider cpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cpu-oai ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp32-cuda-hf --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cuda-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp32-cuda-oai --precision fp32 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              rm -rf wtiny-fp32-cuda-oai ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --output wtiny-fp16-cuda-hf --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              rm -rf wtiny-fp16-cuda-hf ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --no_beam_search_op --output_cross_qk --separate_encoder_and_decoder_init ; \
+              python3 -m models.whisper.convert_to_onnx -m openai/whisper-tiny --model_impl openai --output wtiny-fp16-cuda-oai --precision fp16 --provider cuda --use_gpu --overwrite --use_external_data_format --optimize_onnx --collect_cross_qk --output_cross_qk --use_forced_decoder_ids ; \
+              rm -rf wtiny-fp16-cuda-oai ; \
               popd ; \
             '
-      displayName: 'Convert Whisper Model'
+      displayName: 'Test Whisper export flag combinations'
       workingDirectory: $(Build.SourcesDirectory)
 
     - script: |
@@ -491,7 +489,28 @@ stages:
               popd ; \
               python3 -m pip install /ort-artifact/*.whl ; \
               python3 -m pip uninstall -y torch ; \
-              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu118 ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124 ; \
+              python3 -m models.whisper.convert_to_onnx -m /whisper_large_v3 --output whisperlargev3 --use_external_data_format ; \
+              popd ; \
+            '
+      displayName: 'Convert Whisper Model'
+      workingDirectory: $(Build.SourcesDirectory)
+
+    - script: |
+        docker run -e SYSTEM_COLLECTIONURI --rm --gpus all -v $(Build.SourcesDirectory):/workspace \
+           -v $(Build.BinariesDirectory)/ort-artifact/:/ort-artifact \
+           -v $(Agent.TempDirectory)/whisper_large_v3:/whisper_large_v3 \
+           onnxruntimepackagestest_ompffmpeg \
+            bash -c '
+              set -ex; \
+              pushd /workspace/onnxruntime/python/tools/transformers/ ; \
+              python3 -m pip install --upgrade pip ; \
+              pushd models/whisper ; \
+              python3 -m pip install -r requirements.txt ; \
+              popd ; \
+              python3 -m pip install /ort-artifact/*.whl ; \
+              python3 -m pip uninstall -y torch ; \
+              python3 -m pip install torch --index-url https://download.pytorch.org/whl/cu124 ; \
               ls whisperlargev3; \
               export LD_LIBRARY_PATH=/tmp/ompffmpeg:${LD_LIBRARY_PATH}; \
               ffmpeg -version; \

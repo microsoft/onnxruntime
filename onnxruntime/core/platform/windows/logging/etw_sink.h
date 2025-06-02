@@ -20,6 +20,7 @@
 #include <atomic>
 #include <iostream>
 #include <string>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/logging/capture.h"
@@ -60,6 +61,9 @@ class EtwRegistrationManager {
   // Singleton instance access
   static EtwRegistrationManager& Instance();
 
+  // Returns true if ETW is supported at all.
+  static bool SupportsETW();
+
   // Check if ETW logging is enabled
   bool IsEnabled() const;
 
@@ -74,9 +78,9 @@ class EtwRegistrationManager {
   // Get the ETW registration status
   HRESULT Status() const;
 
-  void RegisterInternalCallback(const EtwInternalCallback& callback);
+  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback);
 
-  void UnregisterInternalCallback(const EtwInternalCallback& callback);
+  void UnregisterInternalCallback(const std::string& cb_key);
 
  private:
   EtwRegistrationManager();
@@ -97,11 +101,11 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::vector<const EtwInternalCallback*> callbacks_;
+  std::mutex init_mutex_;
+  std::atomic<InitializationStatus> initialization_status_ = InitializationStatus::NotInitialized;
+  std::unordered_map<std::string, EtwInternalCallback> callbacks_;
   std::mutex callbacks_mutex_;
   mutable std::mutex provider_change_mutex_;
-  std::mutex init_mutex_;
-  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
@@ -110,5 +114,33 @@ class EtwRegistrationManager {
 
 }  // namespace logging
 }  // namespace onnxruntime
+#else
+// ETW is not supported on this platform but should still define a dummy EtwRegistrationManager
+// so that it can be used in the EP provider bridge.
+#include "core/common/logging/severity.h"
 
+namespace onnxruntime {
+namespace logging {
+class EtwRegistrationManager {
+ public:
+  using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
+                                                 ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
+                                                 PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
+
+  static EtwRegistrationManager& Instance();
+  static bool SupportsETW();
+  bool IsEnabled() const { return false; }
+  UCHAR Level() const { return 0; }
+  Severity MapLevelToSeverity() { return Severity::kFATAL; }
+  uint64_t Keyword() const { return 0; }
+  HRESULT Status() const { return 0; }
+  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {}
+  void UnregisterInternalCallback(const std::string& cb_key) {}
+
+ private:
+  EtwRegistrationManager() = default;
+  ~EtwRegistrationManager() = default;
+};
+}  // namespace logging
+}  // namespace onnxruntime
 #endif  // ETW_TRACE_LOGGING_SUPPORTED

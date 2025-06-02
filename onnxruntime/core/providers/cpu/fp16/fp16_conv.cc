@@ -416,7 +416,8 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           Xdata,
           static_cast<MLFloat16*>(transpose_input_buffer.get()),
           static_cast<size_t>(C),
-          static_cast<size_t>(input_image_size));
+          static_cast<size_t>(input_image_size),
+          thread_pool);
       input_data = static_cast<MLFloat16*>(transpose_input_buffer.get());
       output_data = static_cast<MLFloat16*>(transpose_output_buffer.get());
       add_src = nullptr;
@@ -573,7 +574,8 @@ Status FusedConvFp16::Compute(OpKernelContext* context) const {
           output_data,
           Ydata,
           static_cast<size_t>(output_image_size),
-          static_cast<size_t>(M));
+          static_cast<size_t>(M),
+          thread_pool);
       if (sum_data != nullptr) {
         MLAS_HALF_GEMM_ACTIVATION_PROCESSOR proc(activation_, sum_data);
         proc.Process(Ydata, 0, 0, static_cast<size_t>(M),

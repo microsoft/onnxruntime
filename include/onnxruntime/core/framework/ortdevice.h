@@ -11,6 +11,7 @@ struct OrtDevice {
   using DeviceType = int8_t;
   using MemoryType = int8_t;
   using DeviceId = int16_t;
+  using Alignment = size_t;
 
   // Pre-defined device types.
   static const DeviceType CPU = 0;
@@ -28,23 +29,31 @@ struct OrtDevice {
     static const MemoryType QNN_HTP_SHARED = 4;
   };
 
-  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_)
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_, Alignment alignment) noexcept
       : device_type(device_type_),
         memory_type(memory_type_),
-        device_id(device_id_) {}
+        device_id(device_id_),
+        alignment(alignment) {}
 
-  constexpr OrtDevice() : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+  constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
+      : OrtDevice(device_type_, memory_type_, device_id_, 0) {}
 
-  DeviceType Type() const {
+  constexpr OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, 0) {}
+
+  DeviceType Type() const noexcept {
     return device_type;
   }
 
-  MemoryType MemType() const {
+  MemoryType MemType() const noexcept {
     return memory_type;
   }
 
-  DeviceId Id() const {
+  DeviceId Id() const noexcept {
     return device_id;
+  }
+
+  Alignment GetAlignment() const noexcept {
+    return alignment;
   }
 
   std::string ToString() const {
@@ -53,6 +62,7 @@ struct OrtDevice {
          << "DeviceType:" << static_cast<int>(device_type)
          << " MemoryType:" << static_cast<int>(memory_type)
          << " DeviceId:" << device_id
+         << " Alignment:" << alignment
          << "]";
     return ostr.str();
   }
@@ -62,6 +72,7 @@ struct OrtDevice {
     auto h = std::hash<int>()(device_type);
     onnxruntime::HashCombine(memory_type, h);
     onnxruntime::HashCombine(device_id, h);
+    onnxruntime::HashCombine(alignment, h);
     return h;
   }
 
@@ -71,8 +82,10 @@ struct OrtDevice {
       return device_type < other.device_type;
     if (memory_type != other.memory_type)
       return memory_type < other.memory_type;
+    if (device_id != other.device_id)
+      return device_id < other.device_id;
 
-    return device_id < other.device_id;
+    return alignment < other.alignment;
   }
 
  private:
@@ -84,10 +97,13 @@ struct OrtDevice {
 
   // Device index.
   int32_t device_id : 16;
+
+  // Required alignment
+  Alignment alignment;
 };
 
 inline bool operator==(const OrtDevice& left, const OrtDevice& other) {
-  return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type();
+  return left.Id() == other.Id() && left.MemType() == other.MemType() && left.Type() == other.Type() && left.GetAlignment() == other.GetAlignment();
 }
 
 inline bool operator!=(const OrtDevice& left, const OrtDevice& other) {

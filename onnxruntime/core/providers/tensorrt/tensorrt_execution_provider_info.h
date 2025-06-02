@@ -24,6 +24,7 @@ struct TensorrtExecutionProviderInfo {
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
   bool fp16_enable{false};
+  bool bf16_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
@@ -60,6 +61,8 @@ struct TensorrtExecutionProviderInfo {
   int ep_context_embed_mode{0};
   std::string engine_cache_prefix{""};
   bool engine_hw_compatible{false};
+  std::string op_types_to_exclude{""};
+  std::string preview_features{""};
 
   static TensorrtExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const TensorrtExecutionProviderInfo& info);

@@ -200,7 +200,7 @@ def test_hierarchical_ortmodule():
     def call_allclose(y, y_ref):
         assert type(y) is type(y_ref)
         if isinstance(y, Iterable):
-            for ele, ele_ref in zip(y, y_ref):
+            for ele, ele_ref in zip(y, y_ref, strict=False):
                 torch.allclose(ele, ele_ref)
         else:
             torch.allclose(y, y_ref)

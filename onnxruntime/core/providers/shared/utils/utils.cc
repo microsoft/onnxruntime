@@ -100,17 +100,6 @@ bool GetClipMinMax(const GraphViewer& graph_viewer, const Node& node, float& min
       node, min, max, logger);
 }
 
-// deprecated version that is not able to check if the initializer is constant
-bool GetClipMinMax(const InitializedTensorSet& initializers, const Node& node, float& min, float& max,
-                   const logging::Logger& logger) {
-  return GetClipMinMaxImpl(
-      [&initializers](const std::string& name) -> const ONNX_NAMESPACE::TensorProto* {
-        auto entry = initializers.find(name);
-        return entry == initializers.end() ? nullptr : entry->second;
-      },
-      node, min, max, logger);
-}
-
 NodeAttrHelper::NodeAttrHelper(const onnxruntime::Node& node)
     : node_attributes_(node.GetAttributes()) {}
 

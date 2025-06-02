@@ -1,14 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
 #include <string>
+#include <utility>
 #include <vector>
 
+#include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
-
-#include "base_op_builder.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -30,7 +31,62 @@ class CastOpBuilder : public BaseOpBuilder {
                                      std::vector<std::string>&& input_names,
                                      const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+ private:
+  // QNN HTP currently does not support casting FP16/FP32 to Bool, and thus such Cast will be replaced by NotEqual with
+  // an additional static input 0.f to achieve the idential functional.
+  bool IsFpToBoolCast(const NodeUnit& node_unit) const;
+  Status ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wrapper,
+                                      const NodeUnit& node_unit,
+                                      std::vector<std::string>& input_names,
+                                      const logging::Logger& logger) const;
 };
+
+bool CastOpBuilder::IsFpToBoolCast(const NodeUnit& node_unit) const {
+  const auto* input_type_proto = node_unit.Inputs()[0].node_arg.TypeAsProto();
+  const auto* output_type_proto = node_unit.Outputs()[0].node_arg.TypeAsProto();
+
+  Qnn_DataType_t input_qnn_dtype = QNN_DATATYPE_UNDEFINED;
+  Qnn_DataType_t output_qnn_dtype = QNN_DATATYPE_UNDEFINED;
+
+  if (utils::GetQnnDataType(false, input_type_proto, input_qnn_dtype) != Status::OK() ||
+      utils::GetQnnDataType(false, output_type_proto, output_qnn_dtype) != Status::OK()) {
+    return false;
+  }
+
+  return ((input_qnn_dtype == QNN_DATATYPE_FLOAT_16 || input_qnn_dtype == QNN_DATATYPE_FLOAT_32) &&
+          output_qnn_dtype == QNN_DATATYPE_BOOL_8);
+}
+
+Status CastOpBuilder::ProcessExtraInputForNotEqual(QnnModelWrapper& qnn_model_wrapper,
+                                                   const NodeUnit& node_unit,
+                                                   std::vector<std::string>& input_names,
+                                                   const logging::Logger& logger) const {
+  const auto& input = node_unit.Inputs()[0];
+  if (input.quant_param.has_value()) {
+    return Status::OK();
+  }
+
+  // Build additional static input with value 0.
+  const std::string& input_name = utils::GetNodeName(node_unit) + "_notequal_zero";
+
+  Qnn_DataType_t qnn_data_type = QNN_DATATYPE_UNDEFINED;
+  const auto* type_proto = input.node_arg.TypeAsProto();
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, type_proto, qnn_data_type));
+
+  QnnTensorWrapper input_tensor_wrapper(input_name,
+                                        QNN_TENSOR_TYPE_STATIC,
+                                        qnn_data_type,
+                                        QnnQuantParamsWrapper(),
+                                        std::vector<uint32_t>{1},
+                                        std::vector<uint8_t>(utils::GetElementSizeByType(qnn_data_type), 0));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensor_wrapper)),
+                    "Failed to add additional input tensor for QNN Cast node that will be replaced by NotEqual.");
+  input_names.push_back(input_name);
+
+  LOGS(logger, VERBOSE) << "FP-to-Bool Cast node " << utils::GetNodeName(node_unit) << " is replaced by NotEqual.";
+  return Status::OK();
+}
 
 Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                     const NodeUnit& node_unit,
@@ -48,13 +104,15 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   if (qnn_model_wrapper.IsQnnTensorWrapperExist(input_name)) {
     LOGS(logger, VERBOSE) << "Tensor already added, skip it: " << input_name;
     input_names.push_back(input_name);
-    return Status::OK();
+    return IsFpToBoolCast(node_unit)
+               ? ProcessExtraInputForNotEqual(qnn_model_wrapper, node_unit, input_names, logger)
+               : Status::OK();
   }
 
   std::vector<uint8_t> unpacked_tensor;
-  bool is_initializer_input = qnn_model_wrapper.IsInitializerInput(input_name);
-  if (is_initializer_input) {
-    const auto& input_tensor = qnn_model_wrapper.GetInitializerTensors().at(input_name);
+  bool is_constant_input = qnn_model_wrapper.IsConstantInput(input_name);
+  if (is_constant_input) {
+    const auto& input_tensor = qnn_model_wrapper.GetConstantTensor(input_name);
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.UnpackInitializerData(*input_tensor, unpacked_tensor));
   }
 
@@ -76,7 +134,9 @@ Status CastOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                     "Failed to add input tensor for QNN Cast node.");
   input_names.push_back(input_name);
 
-  return Status::OK();
+  return IsFpToBoolCast(node_unit)
+             ? ProcessExtraInputForNotEqual(qnn_model_wrapper, node_unit, input_names, logger)
+             : Status::OK();
 }
 
 Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -103,6 +163,9 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
 
   const Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  if (qnn_data_type == QNN_DATATYPE_INT_64 && tensor_type == QNN_TENSOR_TYPE_NATIVE) {
+    qnn_data_type = QNN_DATATYPE_INT_32;
+  }
   QnnTensorWrapper output_tensorwrapper(output_name,
                                         tensor_type,
                                         qnn_data_type,
@@ -111,14 +174,17 @@ Status CastOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)),
                     "Failed to add output tensor for QNN Cast node.");
 
+  const std::string qnn_op_type = IsFpToBoolCast(node_unit)
+                                      ? QNN_OP_ELEMENT_WISE_NOT_EQUAL
+                                      : GetQnnOpType(node_unit.OpType());
   ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(utils::GetNodeName(node_unit),
                                                     QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    GetQnnOpType(node_unit.OpType()),
+                                                    qnn_op_type,
                                                     std::move(input_names),
                                                     {output_name},
                                                     {},
                                                     do_op_validation),
-                    "Failed to create QNN Cast node.");
+                    "Failed to create " + qnn_op_type + " node.");
 
   return Status::OK();
 }

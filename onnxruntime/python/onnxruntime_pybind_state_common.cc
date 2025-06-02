@@ -9,7 +9,7 @@ namespace py = pybind11;
 
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 std::string openvino_device_type;
 #endif
@@ -19,7 +19,7 @@ OrtDevice::DeviceId cuda_device_id = 0;
 // TODO remove deprecated global config
 size_t gpu_mem_limit = std::numeric_limits<size_t>::max();
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 OrtCudnnConvAlgoSearch cudnn_conv_algo_search = OrtCudnnConvAlgoSearchExhaustive;
 // TODO remove deprecated global config
@@ -48,9 +48,8 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef USE_MIGRAPHX
 onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
-#endif
 
-#ifdef ENABLE_TRAINING
+#if defined(ENABLE_DLPACK)
 
 void DlpackCapsuleDestructor(PyObject* data) {
   DLManagedTensor* dlmanaged_tensor = reinterpret_cast<DLManagedTensor*>(PyCapsule_GetPointer(data, "dltensor"));

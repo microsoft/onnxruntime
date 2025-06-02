@@ -3,7 +3,6 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 from logging import getLogger
-from typing import Dict
 
 import numpy as np
 from fusion_base import Fusion
@@ -18,7 +17,7 @@ class FusionGroupNorm(Fusion):
         super().__init__(model, "GroupNorm", "Add")
         self.channels_last = channels_last
 
-    def fuse(self, add_node, input_name_to_nodes: Dict, output_name_to_node: Dict):
+    def fuse(self, add_node, input_name_to_nodes: dict, output_name_to_node: dict):
         """
          Fuse Group Normalization subgraph into one node GroupNorm.
          The following is the pattern with swish activation:

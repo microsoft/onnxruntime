@@ -5,8 +5,6 @@
 #include <unordered_map>
 #include <string>
 
-#include <core/graph/graph.h>
-
 #include "op_builder_factory.h"
 
 namespace onnxruntime {
@@ -45,10 +43,12 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("Elu", *this);
     CreateSimpleOpBuilder("Round", *this);
     CreateSimpleOpBuilder("Where", *this);
+    CreateSimpleOpBuilder("ScatterND", *this);
     CreateSimpleOpBuilder("Sigmoid", *this);
     CreateSimpleOpBuilder("Sin", *this);
     CreateSimpleOpBuilder("Sqrt", *this);
     CreateSimpleOpBuilder("Sub", *this);
+    CreateSimpleOpBuilder("Sum", *this);
     CreateSimpleOpBuilder("Tanh", *this);
 
     CreateSimpleOpBuilder("Concat", *this);
@@ -135,6 +135,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateUpsampleOpBuilder("Upsample", *this);
+  }
+
+  {
     CreateTopKOpBuilder("TopK", *this);
   }
 
@@ -171,7 +175,15 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateEinsumOpBuilder("Einsum", *this);
+  }
+
+  {
     CreateMatMulOpBuilder("MatMul", *this);
+  }
+
+  {
+    CreateLSTMOpBuilder("LSTM", *this);
   }
 }
 

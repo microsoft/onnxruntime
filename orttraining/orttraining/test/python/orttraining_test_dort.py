@@ -162,7 +162,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 # ORT result.
                 tensors = run(optimized_elementwise_model, seed)
 
-                for tensor, baseline_tensor in zip(tensors, baseline_tensors):
+                for tensor, baseline_tensor in zip(tensors, baseline_tensors, strict=False):
                     torch.testing.assert_close(tensor, baseline_tensor)
 
             assert len(cached.keys()) == 2, (
@@ -182,7 +182,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
                 # ORT result.
                 tensors = run(optimized_elementwise_model, seed)
 
-                for tensor, baseline_tensor in zip(tensors, baseline_tensors):
+                for tensor, baseline_tensor in zip(tensors, baseline_tensors, strict=False):
                     torch.testing.assert_close(tensor, baseline_tensor)
 
             # 4 GraphModule's respectively for
@@ -369,7 +369,7 @@ class TestTorchDynamoOrt(unittest.TestCase):
 
             print(f"MNIST loss: {loss} (pytorch), {loss_new} (ort).")
             torch.testing.assert_close(loss, loss_new, rtol=1e-2, atol=1e-5)
-            for grad, grad_new in zip(grads, grads_new):
+            for grad, grad_new in zip(grads, grads_new, strict=False):
                 torch.testing.assert_close(grad, grad_new)
 
         # Run 5 times because ORT runs have side effects and we want to make sure

@@ -3,9 +3,11 @@
 # _torch_module_interface.py
 
 from collections import OrderedDict
-from typing import Callable, Iterator, Optional, Tuple, TypeVar
+from collections.abc import Callable, Iterator
+from typing import Optional, TypeVar
 
 import torch
+from typing_extensions import Self
 
 T = TypeVar("T", bound="torch.nn.Module")
 
@@ -43,13 +45,13 @@ class TorchModuleInterface:
     def _apply(self, fn):
         raise NotImplementedError(f"_apply is not implemented for {type(self)}.")
 
-    def apply(self: T, fn: Callable[[T], None]) -> T:
+    def apply(self, fn: Callable[[Self], None]) -> Self:
         raise NotImplementedError(f"apply is not implemented for {type(self)}.")
 
     def is_training(self):
         raise NotImplementedError(f"is_training is not implemented for {type(self)}.")
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         raise NotImplementedError(f"train is not implemented for {type(self)}.")
 
     def state_dict(self, destination=None, prefix="", keep_vars=False):
@@ -58,10 +60,10 @@ class TorchModuleInterface:
     def load_state_dict(self, state_dict: "OrderedDict[str, torch.Tensor]", strict: bool = True):
         raise NotImplementedError(f"load_state_dict is not implemented for {type(self)}.")
 
-    def register_buffer(self, name: str, tensor: Optional[torch.Tensor], persistent: bool = True) -> None:
+    def register_buffer(self, name: str, tensor: torch.Tensor | None, persistent: bool = True) -> None:
         raise NotImplementedError(f"register_buffer is not implemented for {type(self)}.")
 
-    def register_parameter(self, name: str, param: Optional[torch.nn.Parameter]) -> None:
+    def register_parameter(self, name: str, param: torch.nn.Parameter | None) -> None:
         raise NotImplementedError(f"register_parameter is not implemented for {type(self)}.")
 
     def get_parameter(self, target: str) -> torch.nn.Parameter:
@@ -73,13 +75,13 @@ class TorchModuleInterface:
     def parameters(self, recurse: bool = True) -> Iterator[torch.nn.Parameter]:
         raise NotImplementedError(f"parameters is not implemented for {type(self)}.")
 
-    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.nn.Parameter]]:
+    def named_parameters(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.nn.Parameter]]:
         raise NotImplementedError(f"named_parameters is not implemented for {type(self)}.")
 
     def buffers(self, recurse: bool = True) -> Iterator[torch.Tensor]:
         raise NotImplementedError(f"buffers is not implemented for {type(self)}.")
 
-    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[Tuple[str, torch.Tensor]]:
+    def named_buffers(self, prefix: str = "", recurse: bool = True) -> Iterator[tuple[str, torch.Tensor]]:
         raise NotImplementedError(f"named_buffers is not implemented for {type(self)}.")
 
     def _load_from_state_dict(
@@ -87,7 +89,7 @@ class TorchModuleInterface:
     ):
         raise NotImplementedError(f"_load_from_state_dict is not implemented for {type(self)}.")
 
-    def named_children(self) -> Iterator[Tuple[str, T]]:
+    def named_children(self) -> Iterator[tuple[str, T]]:
         raise NotImplementedError(f"named_children is not implemented for {type(self)}.")
 
     def modules(self) -> Iterator[T]:

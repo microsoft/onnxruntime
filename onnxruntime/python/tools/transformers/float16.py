@@ -16,7 +16,6 @@ import itertools
 import logging
 import os
 import tempfile
-from typing import Dict
 
 import numpy as np
 import onnx
@@ -304,7 +303,7 @@ def convert_float_to_float16(
             value_info_list.append(new_value_info)
             io_casts.add(node_name)
 
-    fp32_initializers: Dict[str, InitializerTracker] = {}
+    fp32_initializers: dict[str, InitializerTracker] = {}
     while queue:
         next_level = []
         for q in queue:

@@ -3,7 +3,12 @@
 # This workflow was copied from the link above.
 
 name: "Validate Gradle Wrapper"
-on: [push, pull_request]
+on:
+  push:
+    branches: [main, 'rel-*']
+  pull_request:
+    branches: [main, 'rel-*']
+  workflow_dispatch:
 
 jobs:
   validation:
@@ -12,3 +17,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: gradle/actions/wrapper-validation@v4
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
+  cancel-in-progress: true

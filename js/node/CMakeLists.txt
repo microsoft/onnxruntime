@@ -12,7 +12,7 @@ execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
 file(READ ${CMAKE_SOURCE_DIR}/../../VERSION_NUMBER ort_version)
 string(STRIP "${ort_version}" ort_version)
-set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${NODE_ARCH}/")
+set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v6/${node_platform}/${NODE_ARCH}/")
 
 # onnxruntime.dll dir
 if(NOT ONNXRUNTIME_BUILD_DIR)
@@ -92,9 +92,21 @@ if (WIN32)
   endif()
   message(STATUS "onnxruntime dist dir: ${ONNXRUNTIME_WIN_BIN_DIR}")
 endif()
+
+if (APPLE)
+  if (${ONNXRUNTIME_GENERATOR} MATCHES "Xcode")
+    set(ONNXRUNTIME_MAC_BIN_DIR ${ONNXRUNTIME_BUILD_DIR}/${CMAKE_BUILD_TYPE})
+  else()
+    set(ONNXRUNTIME_MAC_BIN_DIR ${ONNXRUNTIME_BUILD_DIR})
+  endif()
+  message(STATUS "onnxruntime dist dir: ${ONNXRUNTIME_MAC_BIN_DIR}")
+endif()
+
 # add libraries
 if (WIN32)
   target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_WIN_BIN_DIR})
+elseif (APPLE)
+  target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_MAC_BIN_DIR})
 else()
   target_link_directories(onnxruntime_binding PRIVATE ${ONNXRUNTIME_BUILD_DIR})
 endif()
@@ -113,18 +125,18 @@ endif()
 if (WIN32)
   file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
       DESTINATION ${dist_folder})
-  if (ORT_NODEJS_DLL_DEPS)
-    foreach(dll ${ORT_NODEJS_DLL_DEPS})
-      file(COPY ${dll} DESTINATION ${dist_folder})
-    endforeach()
-  endif()
-
 elseif (APPLE)
-  file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
+  file(COPY ${ONNXRUNTIME_MAC_BIN_DIR}/libonnxruntime.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 elseif (UNIX)
   file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.so
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 else()
   message(FATAL_ERROR "Platform not supported.")
+endif()
+
+if (ORT_NODEJS_DLL_DEPS)
+  foreach(dll ${ORT_NODEJS_DLL_DEPS})
+    file(COPY ${dll} DESTINATION ${dist_folder})
+  endforeach()
 endif()

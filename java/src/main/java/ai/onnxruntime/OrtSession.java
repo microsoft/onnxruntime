@@ -1320,6 +1320,10 @@ public class OrtSession implements AutoCloseable {
      */
     public void addQnn(Map<String, String> providerOptions) throws OrtException {
       String qnnProviderName = "QNN";
+
+      // QNN can either be built as a shared or static library. extractQNN() will extract the
+      // (lib)onnxruntime_providers_qnn(.so/.dll) from classpath resources if present.
+      OnnxRuntime.extractQNN();
       addExecutionProvider(qnnProviderName, providerOptions);
     }
 
@@ -1333,6 +1337,18 @@ public class OrtSession implements AutoCloseable {
     public void addCoreML(Map<String, String> providerOptions) throws OrtException {
       String CoreMLProviderName = "CoreML";
       addExecutionProvider(CoreMLProviderName, providerOptions);
+    }
+
+    /**
+     * Adds WebGPU as an execution backend.
+     *
+     * @param providerOptions Configuration options for the WebGPU backend. Refer to the WebGPU
+     *     execution provider's documentation.
+     * @throws OrtException If there was an error in native code.
+     */
+    public void addWebGPU(Map<String, String> providerOptions) throws OrtException {
+      String webGpuProviderName = "WebGPU";
+      addExecutionProvider(webGpuProviderName, providerOptions);
     }
 
     private native void setExecutionMode(long apiHandle, long nativeHandle, int mode)

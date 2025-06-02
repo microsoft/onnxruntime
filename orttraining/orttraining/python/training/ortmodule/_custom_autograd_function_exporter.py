@@ -223,7 +223,7 @@ def _default_export(
     assert len(args) == len(cconv), "Number of arguments does not match calling convention"
 
     # Encode inputs to torch.autograd.Function.
-    for i, arg, call_type in zip(range(len(args)), args, cconv):
+    for i, arg, call_type in zip(range(len(args)), args, cconv, strict=False):
         if call_type == "d":
             # Got a tensor variable.
             tensor_args.append(arg)

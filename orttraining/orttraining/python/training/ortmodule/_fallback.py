@@ -6,7 +6,6 @@
 import os
 from enum import IntFlag
 from logging import Logger
-from typing import Optional
 
 import torch
 
@@ -106,7 +105,7 @@ class _FallbackManager:
         self._logger = logger
 
     def handle_exception(
-        self, exception: Exception, log_level: _logger.LogLevel, override_policy: Optional[_FallbackPolicy] = None
+        self, exception: Exception, log_level: _logger.LogLevel, override_policy: _FallbackPolicy | None = None
     ) -> None:
         """Process incoming `exception` based on the selected `policy`
 
