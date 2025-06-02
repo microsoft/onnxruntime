@@ -43,11 +43,6 @@ Status CastChainElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 }
 
 bool CastChainElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  const auto* input_type = node.InputDefs()[0]->TypeAsProto();
-  if (input_type == nullptr || !input_type->tensor_type().has_elem_type()) {
-    return false;
-  }
-
   if (!graph_utils::CanRemoveNode(graph, node, logger)) {
     return false;
   }
