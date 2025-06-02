@@ -12,13 +12,7 @@ namespace onnxruntime {
 
 Status CastChainElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger&) const {
   auto nextNodeIt = node.OutputNodesBegin();
-
   Node* next = graph.GetNode(nextNodeIt->Index());
-
-  // Skip if the next node is not of type Cast.
-  if (next->OpType() != "Cast") {
-    return Status::OK();
-  }
 
   // We can remove the current node.
   graph_utils::RemoveNodeOutputEdges(graph, node);
@@ -28,6 +22,7 @@ Status CastChainElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 
   // Find the matching def slot, so we can wire the final node to the input of the removeable node.
   int slot = -1;
+
   auto& inputs = next->MutableInputDefs();
   for (int i = 0, n = static_cast<int>(inputs.size()); i < n; ++i) {
     if (inputs[i]->Name() == last_node_output_tensor_name) {
@@ -48,10 +43,6 @@ Status CastChainElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
 }
 
 bool CastChainElimination::SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const {
-  if (graph_utils::IsGraphOutput(graph, node.OutputDefs()[0])) {
-    return false;
-  }
-
   const auto* input_type = node.InputDefs()[0]->TypeAsProto();
   if (input_type == nullptr || !input_type->tensor_type().has_elem_type()) {
     return false;
@@ -63,6 +54,15 @@ bool CastChainElimination::SatisfyCondition(const Graph& graph, const Node& node
 
   // Skip nodes that don't have 1 output edge.
   if (node.GetOutputEdgesCount() != 1) {
+    return false;
+  }
+
+  const auto nextNodeIt = node.OutputNodesBegin();
+
+  const Node* next = graph.GetNode(nextNodeIt->Index());
+
+  // Skip if the next node is not of type Cast.
+  if (next->OpType() != "Cast") {
     return false;
   }
 
