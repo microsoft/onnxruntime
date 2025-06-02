@@ -166,7 +166,7 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     Graph* then_sub = if_node.GetMutableGraphAttribute("then_branch");
     Graph* else_sub = if_node.GetMutableGraphAttribute("else_branch");
     if (!then_sub || !else_sub) {
-      LOGS(logger, ERROR) << "If node missing subgraphs!";
+      LOGS(logger, INFO) << "If node missing subgraphs!";
       continue;
     }
 
@@ -180,7 +180,7 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     size_t num_outputs = if_outputs.size();
 
     if (then_outputs.size() != else_outputs.size() || then_outputs.size() != if_outputs.size()) {
-      LOGS(logger, ERROR) << "Mismatch in output sizes between then/else branches and If node.";
+      LOGS(logger, INFO) << "Mismatch in output sizes between then/else branches and If node.";
       continue;
     }
 
