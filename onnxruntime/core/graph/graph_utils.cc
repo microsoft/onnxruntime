@@ -611,7 +611,7 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
 }
 
 bool IsGraphOutput(const Graph& graph, const NodeArg* output) {
-  const std::vector<const NodeArg*>& graph_outputs = graph.GetOutputs();
+  const auto& graph_outputs = graph.GetOutputs();
   return std::find(graph_outputs.begin(), graph_outputs.end(), output) != graph_outputs.end();
 }
 

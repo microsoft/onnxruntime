@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/optimizer/graph_transformer.h"
+#include "core/optimizer/rewrite_rule.h"
 
 namespace onnxruntime {
 
@@ -17,14 +17,18 @@ will reduce to
 
 All the Cast nodes throughout the path need to have one input and one output to be considered for the fusion.
 */
-class CastChainElimination : public GraphTransformer {
+class CastChainElimination : public RewriteRule {
  public:
-  explicit CastChainElimination(const InlinedHashSet<std::string_view>& compatible_execution_providers = {}) noexcept
-      : GraphTransformer("CastChainElimination", compatible_execution_providers) {
+  CastChainElimination() noexcept : RewriteRule("CastChainElimination") {}
+
+  std::vector<std::string> TargetOpTypes() const noexcept override {
+    return {"Cast"};
   }
 
  private:
-  Status ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const override;
+  bool SatisfyCondition(const Graph& graph, const Node& node, const logging::Logger& logger) const override;
+
+  Status Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_effect, const logging::Logger& logger) const override;
 };
 
 }  // namespace onnxruntime
