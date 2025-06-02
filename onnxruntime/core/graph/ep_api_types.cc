@@ -102,6 +102,7 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& co
 }
 
 Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   num_consumers = 0;
 
   std::vector<const Node*> nodes = graph.graph_viewer.GetConsumerNodes(name);
@@ -118,6 +119,11 @@ Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
   }
 
   return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(num_consumers);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "Getting consumers from OrtValueInfo is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
 static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
