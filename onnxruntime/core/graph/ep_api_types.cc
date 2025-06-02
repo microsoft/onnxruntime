@@ -29,6 +29,7 @@ Status EpNode::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
   return Status::OK();
 }
 
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetIOIndex(gsl::span<const EpValueInfo* const> value_infos, const std::string& value_info_name,
                          /*out*/ size_t& index) {
   bool found = false;
@@ -43,8 +44,10 @@ static Status GetIOIndex(gsl::span<const EpValueInfo* const> value_infos, const 
   ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
   return Status::OK();
 }
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
 Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   producer_info.node = nullptr;
   producer_info.output_index = 0;
 
@@ -62,9 +65,15 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   producer_info.node = ep_node->ToExternal();
   ORT_RETURN_IF_ERROR(GetIOIndex(ep_node->outputs, name, producer_info.output_index));
   return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(producer_info);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "Getting producers from OrtValueInfo is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
 Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::vector<const Node*> nodes = graph.graph_viewer.GetConsumerNodes(name);
   if (nodes.empty()) {
     return Status::OK();
@@ -85,6 +94,11 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& co
   }
 
   return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(consumer_infos);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                         "Getting consumers from OrtValueInfo is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
 Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
