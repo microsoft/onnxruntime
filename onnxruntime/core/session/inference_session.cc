@@ -1229,7 +1229,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 4. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 5. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
   // 6. insert cast nodes (required transformer).
-  // 7. insert copy nodes (required transformer).
+  // 7. run level 4 optimizations.
+  // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
+  // 9. insert copy nodes (required transformer).
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
@@ -1250,9 +1252,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
-                                   Graph& graph) {
+                                   Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
-    return transformer.Apply(graph, modified, logger);
+    auto status = transformer.Apply(graph, modified, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || modified;
+    }
+    return status;
+  };
+
+  auto apply_transformer_at_level = [](onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                       const TransformerLevel& level, const logging::Logger& logger, Graph& graph,
+                                       bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
+    graph_transformer_mgr.ClearGraphModified();
+    auto status = graph_transformer_mgr.ApplyTransformers(graph, level, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || graph_transformer_mgr.IsGraphModified();
+    }
+    return status;
   };
 
   // ensure potential QDQ node units have unique DQ nodes
@@ -1339,23 +1356,70 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
 
-  // apply Level2 and higher transformers.
-  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-  }
+  // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
+  // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
+  unsigned int graph_optimizations_loop_level = static_cast<unsigned int>(std::stoi(
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGraphOptimizationsLoopLevel, "1")));
 
-  // Insert cast node/s.
-  {
-    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
-        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
-    const KernelRegistry* cpu_regs = nullptr;
-    if (!kernel_regs.empty()) {
-      cpu_regs = kernel_regs[0];
+  // Running for an arbitrary number of time to mitigate if graph optimization is stuck in the loop.
+  // Generating warning once we have gone through this loop for more than 3 times, it can be changed in the future
+  for (int steps = 0; steps < 10; steps++) {
+    // Warning that we are running this loop too many times
+    if (steps >= 3) {
+      LOGS(*session_logger_, WARNING) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                      << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
+    } else {
+      LOGS(*session_logger_, INFO) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                   << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
     }
-    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
+
+    // Flag to check if applying optimizations should be repeated on basis of if the graph is changed.
+    // If graph is not changed it will remain false and we will exit out of this loop.
+    bool is_graph_modified = false;
+
+    // Apply Level2 and higher transformers.
+    // We do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+    // Re-Run the Level2+ optimizations. The idea behind re-running Level2 and Level3 graph transforms is that,
+    // after the fusion, the nodes are can be in a format which might be supported by other graph transforms which
+    // were skipped before. Hence, some of the transforms not applied before is now valid and can be applied to
+    // create a more optimal graph for execution.
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level2,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level3,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+
+    // Insert cast node/s.
+    {
+      const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+          kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+
+      const KernelRegistry* cpu_regs = nullptr;
+      if (!kernel_regs.empty()) {
+        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
+        //       of GetKernelRegistriesByProviderType function.
+        cpu_regs = kernel_regs[kernel_regs.size() - 1];
+      }
+
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
+                                 ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    }
+
+    // Level 4 Transforms must be run after Insert Cast Node/s
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level4,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 0) ? &is_graph_modified : nullptr)));
+
+    // Break if no more optimizations are made
+    if (!is_graph_modified) {
+      break;
+    }
   }
 
   // Insert copy node/s.
