@@ -17,16 +17,16 @@ class GraphViewer;
 /// Concrete implementation of OrtNode used in the OrtEpApi.
 /// </summary>
 struct EpNode : public OrtNode {
-  explicit EpNode(const Node& node) : OrtNode(OrtNode::Type::kEpNode), node(node) {}
+  explicit EpNode(const Node& node) : OrtNode(OrtGraphIrApi::kEpApi), node(node) {}
   OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
   const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
 
   static EpNode* ToInternal(OrtNode* ort_node) {
-    return ort_node->type == OrtNode::Type::kEpNode ? static_cast<EpNode*>(ort_node) : nullptr;
+    return ort_node->graph_ir_api == OrtGraphIrApi::kEpApi ? static_cast<EpNode*>(ort_node) : nullptr;
   }
 
   static const EpNode* ToInternal(const OrtNode* ort_node) {
-    return ort_node->type == OrtNode::Type::kEpNode ? static_cast<const EpNode*>(ort_node) : nullptr;
+    return ort_node->graph_ir_api == OrtGraphIrApi::kEpApi ? static_cast<const EpNode*>(ort_node) : nullptr;
   }
 
   const Node& node;
@@ -41,10 +41,10 @@ struct EpGraph : public OrtGraph {
   const OrtGraph* ToExternal() const { return static_cast<const OrtGraph*>(this); }
 
   static EpGraph* ToInternal(OrtGraph* ort_graph) {
-    return ort_graph->type == OrtGraph::Type::kEpGraph ? static_cast<EpGraph*>(ort_graph) : nullptr;
+    return ort_graph->graph_ir_api == OrtGraphIrApi::kEpApi ? static_cast<EpGraph*>(ort_graph) : nullptr;
   }
   static const EpGraph* ToInternal(const OrtGraph* ort_graph) {
-    return ort_graph->type == OrtGraph::Type::kEpGraph ? static_cast<const EpGraph*>(ort_graph) : nullptr;
+    return ort_graph->graph_ir_api == OrtGraphIrApi::kEpApi ? static_cast<const EpGraph*>(ort_graph) : nullptr;
   }
 
   const GraphViewer& graph_viewer;

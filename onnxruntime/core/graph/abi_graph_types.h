@@ -11,6 +11,12 @@
 // ORT C interface types for OrtGraphApi can't be in a namespace.
 // We need to define them here so onnxruntime::Model can be created from OrtModel.
 
+enum class OrtGraphIrApi {
+  kInvalid = 0,
+  kModelEditorApi,
+  kEpApi,
+};
+
 struct OrtValueInfo {
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
@@ -21,29 +27,17 @@ struct OrtOpAttr {
 };
 
 struct OrtNode {
-  enum class Type {
-    kInvalid = 0,
-    kEditorNode,
-    kEpNode,
-  };
-
   OrtNode() = default;
-  explicit OrtNode(OrtNode::Type type) : type(type) {}
+  explicit OrtNode(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtNode() = default;
 
-  OrtNode::Type type = OrtNode::Type::kInvalid;
+  OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
 
 struct OrtGraph {
-  enum class Type {
-    kInvalid = 0,
-    kEditorGraph,
-    kEpGraph,
-  };
-
   OrtGraph() = default;
-  explicit OrtGraph(OrtGraph::Type type) : type(type) {}
+  explicit OrtGraph(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtGraph() = default;
 
-  OrtGraph::Type type = OrtGraph::Type::kInvalid;
+  OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
