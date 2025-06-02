@@ -5747,7 +5747,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
-ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
+ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInfo& vi) {
   // the model builder API checks that the OrtValueInfo has a complete and valid OrtTypeInfo instance and that the
   // name is not null/empty.
   ORT_ENFORCE(vi.type_info->type == ONNX_TYPE_TENSOR,
@@ -5789,7 +5789,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<OrtValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -5799,7 +5799,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     std::vector<const NodeArg*> node_args;
     node_args.reserve(graph_inputs_or_outputs.size());
     for (auto& ort_value_info : graph_inputs_or_outputs) {
-      ValueInfoProto value_info = OrtValueInfoToOnnx(*ort_value_info);
+      ValueInfoProto value_info = ModelEditorValueInfoToOnnx(*ort_value_info);
 
       name_to_type_map[value_info.name()] = value_info.type();
       node_args.push_back(&GetOrCreateNodeArg(value_info.name(), &value_info.type()));

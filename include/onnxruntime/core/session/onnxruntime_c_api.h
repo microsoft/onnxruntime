@@ -5278,6 +5278,49 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+  /** \brief Get the OrtNode that produces the given OrtValueInfo, along with the node's output index.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] node The OrtNode that produces the OrtValueInfo.
+   * \param[out] output_index The OrtNode instance's output index that produces the OrtValueInfo.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+                  _Out_ size_t* producer_output_index);
+
+  /** \brief Return the number of OrtNode instances that consume the given OrtValueInfo as an input.
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] num_consumer_nodes The number of OrtNode instances that consume the given OrtValueInfo as an iput.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueInfoNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumer_nodes);
+
+  /** \brief Returns information (OrtNode and input index) for all nodes that consume the given OrtValueInfo as an input.
+   *
+   * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
+   * Use GetValueInfoNumConsumers() to get the number of consumer nodes.
+   *
+   * If the same OrtNode consumes the OrtValueInfo multiple times, only the first input
+   * index is returned.
+   *
+   * \param[in] OrtValueInfo The OrtValueInfo instance.
+   * \param[out] consumer_nodes Pre-allocated array of `max_num_consumers` elements that will be filled with
+   *                            OrtNode pointers.
+   * \param[out] consumer_input_indices Pre-allocated array of `max_num_consumers` elements that will be filled
+   *                                    with input indices.
+   * \param[in] max_num_consumers The maximum size of the `consumer_nodes` and `consumer_input_indices` arras.
+                                  Typical usage sets this to the value of GetValueInfoNumConsumers.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueInfoConsumerInfo, _In_ const OrtValueInfo* value_info,
+                  _Out_writes_all_(max_num_consumers) const OrtNode** consumer_nodes,
+                  _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
+                  _In_ size_t max_num_consumers);
 };
 
 /*
@@ -6106,23 +6149,19 @@ struct OrtEpApi {
 
   /** \brief Returns the name of a OrtGraph instance.
    * \param[in] graph The OrtGraph instance.
-   * \param[out] name Output parameter set to the OrtGraph instance's name.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return The OrtGraph instance's name.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetName, _In_ const OrtGraph* graph, _Out_ const char** name);
+  const char*(ORT_API_CALL* Graph_GetName)(_In_ const OrtGraph* graph);
 
   /** \brief Returns the number of nodes in the OrtGraph instance.
    * \param[in] graph The OrtGraph instance.
-   * \param[out] num_nodes Output parameter set to the number of nodes.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return The number of nodes.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
+  size_t(ORT_API_CALL* Graph_GetNumNodes)(_In_ const OrtGraph* graph);
 
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
@@ -6145,25 +6184,79 @@ struct OrtEpApi {
   ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, int order,
                   _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
-  /** \brief Gets the name of an OrtNode instance.
+  /** \brief Returns the name of an OrtNode instance.
    * \param[in] node The OrtNode instance.
-   * \param[out] name Output parameter set to the node's name.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return The node's name.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetName, const OrtNode* node, _Outptr_ const char** name);
+  const char*(ORT_API_CALL* Node_GetName)(_In_ const OrtNode* node);
 
-  /** \brief Gets the ONNX operator type (e.g., "Conv") of an OrtNode instance.
+  /** \brief Returns the ONNX operator type (e.g., "Conv") of an OrtNode instance.
    * \param[in] node The OrtNode instance.
-   * \param[out] op_type Output parameter set to the node's operator type.
+   * \return The node's operator type.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Node_GetOperatorType)(_In_ const OrtNode* node);
+
+  /** \brief Returns the domain for an OrtNode instance.
+   * \param[in] node The OrtNode instance.
+   * \return The node's domain.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Node_GetDomain)(_In_ const OrtNode* node);
+
+  /** \brief Returns the number of inputs for an OrtNode instance.
+   * \param[in] node The OrtNode instance.
+   * \return The number of inputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Node_GetNumInputs)(_In_ const OrtNode* node);
+
+  /** \brief Returns the number of outputs for an OrtNode instance.
+   * \param[in] node The OrtNode instance.
+   * \return The number of outputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Node_GetNumOutputs)(_In_ const OrtNode* node);
+
+  /** \brief Returns the input OrtValueInfo instances for an OrtNode.
+   *
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Node_GetNumInputs() to get the
+   * number of inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+                               Typical usage sets this to the value of Node_GetNumInputs().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type);
+  ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+
+  /** \brief Returns the output OrtValueInfo instances for an OrtNode.
+   *
+   * Caller provides a pre-allocated array that will be filled with the outputs. Use Node_GetNumOutputs() to get the
+   * number of outputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_outputs The maximum size of the `outputs` array.
+                                Typical usage sets this to the value of Node_GetNumOutputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
 
   /** \brief Query a OrtNodeComputeContext for the name of the node that encapsulates the compiled/fused node.
    *

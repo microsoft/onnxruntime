@@ -2380,7 +2380,7 @@ ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoName, _In_ const OrtValueInfo* value_info,
                     _Out_ const char** name) {
   API_IMPL_BEGIN
-  *name = value_info->name.c_str();
+  *name = value_info->Name().c_str();
   return nullptr;
   API_IMPL_END
 }
@@ -2388,7 +2388,44 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* valu
                     _Outptr_ const OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
 
-  *type_info = value_info->type_info.get();
+  *type_info = value_info->TypeInfo();
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtNode** producer_node, _Out_ size_t* producer_output_index) {
+  API_IMPL_BEGIN
+  OrtValueInfo::ProducerInfo producer_info;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetProducerInfo(producer_info));
+  *producer_node = producer_info.node;
+  *producer_output_index = producer_info.output_index;
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumer_nodes) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumers(*num_consumer_nodes));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoConsumerInfo, _In_ const OrtValueInfo* value_info,
+                    _Out_writes_all_(max_num_consumers) const OrtNode** consumer_nodes,
+                    _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
+                    _In_ size_t max_num_consumers) {
+  API_IMPL_BEGIN
+  std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumerInfos(consumer_infos));
+  size_t num_consumers = std::min(max_num_consumers, consumer_infos.size());
+
+  for (size_t i = 0; i < num_consumers; ++i) {
+    consumer_nodes[i] = consumer_infos[i].node;
+    consumer_input_indices[i] = consumer_infos[i].input_index;
+  }
 
   return nullptr;
   API_IMPL_END
@@ -3024,6 +3061,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
     &OrtApis::GetTensorSizeInBytes,
+    &OrtApis::GetValueInfoProducerInfo,
+    &OrtApis::GetValueInfoNumConsumers,
+    &OrtApis::GetValueInfoConsumerInfo,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

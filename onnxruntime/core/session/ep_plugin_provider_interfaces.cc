@@ -99,9 +99,9 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
-  EpGraph ep_graph(graph_viewer);
-  OrtEpGraphSupportInfo api_graph_support_info(ep_graph);
-  Status status = ToStatus(ort_ep_->GetCapability(ort_ep_.get(), ep_graph.ToExternal(), &api_graph_support_info));
+  auto ep_graph = EpGraph::Create(graph_viewer);
+  OrtEpGraphSupportInfo api_graph_support_info(*ep_graph);
+  Status status = ToStatus(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info));
 
   // GetCapability is not supposed to fail. If there's an error, return an empty result to ensure this EP is not
   // assigned any nodes and log an error.
@@ -157,7 +157,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     const Node& fused_node = node_and_graph.fused_node;
     ORT_ENFORCE(graph_viewer.Name() == fused_node.Name());  // Should be equal for plugin EPs.
 
-    auto ep_graph = std::make_unique<EpGraph>(node_and_graph.filtered_graph);
+    auto ep_graph = EpGraph::Create(node_and_graph.filtered_graph);
     api_graphs.push_back(ep_graph->ToExternal());
     api_graphs_holder.push_back(std::move(ep_graph));
   }

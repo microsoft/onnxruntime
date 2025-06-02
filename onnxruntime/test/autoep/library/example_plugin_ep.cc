@@ -137,6 +137,31 @@ struct ApiPtrs {
   const OrtEpApi& ep_api;
 };
 
+static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
+  result = false;
+
+  const OrtTypeInfo* type_info = nullptr;
+  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
+
+  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
+  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
+  if (onnx_type != ONNX_TYPE_TENSOR) {
+    return nullptr;
+  }
+
+  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
+
+  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
+  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
+    return nullptr;
+  }
+
+  result = true;
+  return nullptr;
+}
+
 /// <summary>
 /// Example EP that can compile a single Mul operator.
 /// </summary>
@@ -172,8 +197,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                                    OrtEpGraphSupportInfo* graph_support_info) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-    size_t num_nodes = 0;
-    RETURN_IF_ERROR(ep->ep_api.Graph_GetNumNodes(graph, &num_nodes));
+    size_t num_nodes = ep->ep_api.Graph_GetNumNodes(graph);
     if (num_nodes == 0) {
       return nullptr;  // No nodes to process
     }
@@ -184,10 +208,27 @@ struct ExampleEp : OrtEp, ApiPtrs {
     std::vector<const OrtNode*> supported_nodes;
 
     for (const OrtNode* node : nodes) {
-      const char* op_type = nullptr;
-      RETURN_IF_ERROR(ep->ep_api.Node_GetOperatorType(node, &op_type));
+      const char* op_type = ep->ep_api.Node_GetOperatorType(node);
 
       if (std::strncmp(op_type, "Mul", 4) == 0) {
+        // Check that Mul has inputs/output of type float
+        size_t num_inputs = ep->ep_api.Node_GetNumInputs(node);
+        size_t num_outputs = ep->ep_api.Node_GetNumOutputs(node);
+        RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
+
+        std::vector<const OrtValueInfo*> inputs(num_inputs, nullptr);
+        std::vector<const OrtValueInfo*> outputs(num_outputs, nullptr);
+        RETURN_IF_ERROR(ep->ep_api.Node_GetInputs(node, inputs.data(), inputs.size()));
+        RETURN_IF_ERROR(ep->ep_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
+
+        std::array<bool, 3> is_float_tensor = {false, false, false};
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[0], is_float_tensor[0]));
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[1], is_float_tensor[1]));
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, outputs[0], is_float_tensor[2]));
+        if (!is_float_tensor[0] || !is_float_tensor[1] || !is_float_tensor[2]) {
+          continue;  // Input or output is not of type float
+        }
+
         supported_nodes.push_back(node);  // Only support a single Mul for now.
         break;
       }
@@ -205,8 +246,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
     }
 
-    size_t num_nodes = 0;
-    RETURN_IF_ERROR(ep->ep_api.Graph_GetNumNodes(graphs[0], &num_nodes));
+    size_t num_nodes = ep->ep_api.Graph_GetNumNodes(graphs[0]);
 
     std::vector<const OrtNode*> nodes(num_nodes, nullptr);
     RETURN_IF_ERROR(ep->ep_api.Graph_GetNodes(graphs[0], /*order*/ 0, nodes.data(), nodes.size()));
@@ -215,16 +255,14 @@ struct ExampleEp : OrtEp, ApiPtrs {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
-    const char* node_op_type = nullptr;
-    RETURN_IF_ERROR(ep->ep_api.Node_GetOperatorType(nodes[0], &node_op_type));
+    const char* node_op_type = ep->ep_api.Node_GetOperatorType(nodes[0]);
     if (std::strncmp(node_op_type, "Mul", 4) != 0) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
     // Now we know we're compiling a single Mul node.
     // Associate the graph name (aka fused node name) with our MulKernel.
-    const char* fused_node_name = nullptr;
-    RETURN_IF_ERROR(ep->ep_api.Graph_GetName(graphs[0], &fused_node_name));
+    const char* fused_node_name = ep->ep_api.Graph_GetName(graphs[0]);
     ep->kernels[fused_node_name] = std::make_unique<MulKernel>(ep->ort_api, ep->logger_);
 
     // Update the OrtNodeComputeInfo associated with the graph.

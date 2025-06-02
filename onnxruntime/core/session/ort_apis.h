@@ -601,4 +601,12 @@ ORT_API(const OrtEpApi*, GetEpApi);
 
 ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 
+ORT_API_STATUS_IMPL(GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+                    _Out_ size_t* producer_output_index);
+ORT_API_STATUS_IMPL(GetValueInfoNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumer_nodes);
+ORT_API_STATUS_IMPL(GetValueInfoConsumerInfo, _In_ const OrtValueInfo* value_info,
+                    _Out_writes_all_(max_num_consumers) const OrtNode** consumer_nodes,
+                    _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
+                    _In_ size_t max_num_consumers);
+
 }  // namespace OrtApis

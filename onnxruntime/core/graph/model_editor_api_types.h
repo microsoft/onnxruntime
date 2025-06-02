@@ -14,18 +14,50 @@
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
+struct ModelEditorValueInfo : public OrtValueInfo {
+  ModelEditorValueInfo() : OrtValueInfo(OrtGraphIrApi::kModelEditorApi) {}
+
+  // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and ModelEditorValueInfo.
+  DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, ModelEditorValueInfo, OrtGraphIrApi::kModelEditorApi)
+
+  const std::string& Name() const override { return name; }
+  const OrtTypeInfo* TypeInfo() const override { return type_info.get(); }
+  Status GetProducerInfo(ProducerInfo& /*producer_info*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the producer for OrtValueInfo");
+  }
+  Status GetConsumerInfos(std::vector<ConsumerInfo>& /*consumer_infos*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the users for a OrtValueInfo");
+  }
+  Status GetNumConsumers(size_t& /*num_consumers*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the number of users for a OrtValueInfo");
+  }
+
+  std::string name;
+  std::unique_ptr<OrtTypeInfo> type_info;
+};
+
 struct ModelEditorNode : public OrtNode {
   ModelEditorNode() : OrtNode(OrtGraphIrApi::kModelEditorApi) {}
 
-  OrtNode* ToExternal() { return static_cast<OrtNode*>(this); }
-  const OrtNode* ToExternal() const { return static_cast<const OrtNode*>(this); }
-  static ModelEditorNode* ToInternal(OrtNode* ort_node) {
-    return ort_node->graph_ir_api == OrtGraphIrApi::kModelEditorApi ? static_cast<ModelEditorNode*>(ort_node)
-                                                                    : nullptr;
+  // Defines ToExternal() and ToInternal() functions to convert between OrtNode and ModelEditorNode.
+  DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, ModelEditorNode, OrtGraphIrApi::kModelEditorApi)
+
+  const std::string& Name() const override { return node_name; }
+  const std::string& OpType() const override { return operator_name; }
+  const std::string& Domain() const override { return domain_name; }
+  size_t GetNumInputs() const override { return input_names.size(); }
+  size_t GetNumOutputs() const override { return output_names.size(); }
+
+  Status GetInputs(InlinedVector<const OrtValueInfo*>& /*inputs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting input OrtValueInfos for OrtNode");
   }
-  static const ModelEditorNode* ToInternal(const OrtNode* ort_node) {
-    return ort_node->graph_ir_api == OrtGraphIrApi::kModelEditorApi ? static_cast<const ModelEditorNode*>(ort_node)
-                                                                    : nullptr;
+  Status GetOutputs(InlinedVector<const OrtValueInfo*>& /*outputs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
 
   std::string operator_name;
@@ -44,22 +76,26 @@ struct ModelEditorNode : public OrtNode {
 
 struct ModelEditorGraph : public OrtGraph {
   ModelEditorGraph() : OrtGraph(OrtGraphIrApi::kModelEditorApi) {}
-  OrtGraph* ToExternal() { return static_cast<OrtGraph*>(this); }
-  const OrtGraph* ToExternal() const { return static_cast<const OrtGraph*>(this); }
-  static ModelEditorGraph* ToInternal(OrtGraph* ort_graph) {
-    return ort_graph->graph_ir_api == OrtGraphIrApi::kModelEditorApi ? static_cast<ModelEditorGraph*>(ort_graph)
-                                                                     : nullptr;
-  }
-  static const ModelEditorGraph* ToInternal(const OrtGraph* ort_graph) {
-    return ort_graph->graph_ir_api == OrtGraphIrApi::kModelEditorApi ? static_cast<const ModelEditorGraph*>(ort_graph)
-                                                                     : nullptr;
+
+  // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and ModelEditorGraph.
+  DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
+  const std::string& Name() const override { return name; }
+  size_t NumberOfNodes() const override { return nodes.size(); }
+  std::vector<const OrtNode*> GetNodes(int /*order*/) const override {
+    std::vector<const OrtNode*> result;
+    result.reserve(nodes.size());
+    for (const auto& n : nodes) {
+      result.push_back(n.get());
+    }
+    return result;
   }
 
-  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> inputs;
-  onnxruntime::InlinedVector<std::unique_ptr<OrtValueInfo>> outputs;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
+  onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> initializers;
   std::unordered_map<std::string, std::unique_ptr<OrtValue>> external_initializers;
   std::vector<std::unique_ptr<onnxruntime::ModelEditorNode>> nodes;
+  std::string name = "ModelEditorGraph";
 };
 
 }  // namespace onnxruntime

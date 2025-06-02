@@ -69,41 +69,17 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupport
 // OrtGraph
 //
 
-ORT_API_STATUS_IMPL(Graph_GetName, _In_ const OrtGraph* graph, _Out_ const char** name) {
-  API_IMPL_BEGIN
-  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
-
-  if (ep_graph == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
-  }
-
-  *name = ep_graph->graph_viewer.Name().c_str();
-  return nullptr;
-  API_IMPL_END
+ORT_API(const char*, Graph_GetName, _In_ const OrtGraph* graph) {
+  return graph->Name().c_str();
 }
 
-ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes) {
-  API_IMPL_BEGIN
-  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
-
-  if (ep_graph == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
-  }
-
-  *num_nodes = ep_graph->graph_viewer.NumberOfNodes();
-  return nullptr;
-  API_IMPL_END
+ORT_API(size_t, Graph_GetNumNodes, _In_ const OrtGraph* graph) {
+  return graph->NumberOfNodes();
 }
 
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
-  const onnxruntime::EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(graph);
-
-  if (ep_graph == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtGraph variant for use in OrtEpApi");
-  }
-
   // TODO: make order an enum value.
   if (order < 0 || order > 2) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
@@ -111,15 +87,11 @@ ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                                  "0, 1, or 2.");
   }
 
-  ExecutionOrder execution_order = static_cast<ExecutionOrder>(order);
-  const std::vector<NodeIndex>& node_indices = ep_graph->graph_viewer.GetNodesInTopologicalOrder(execution_order);
-  size_t num_nodes = std::min(max_num_nodes, node_indices.size());
+  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes(order);
+  size_t num_nodes = std::min(max_num_nodes, sorted_nodes.size());
 
   for (size_t i = 0; i < num_nodes; i++) {
-    NodeIndex node_idx = node_indices[i];
-    auto node_it = ep_graph->index_to_node.find(node_idx);
-    ORT_ENFORCE(node_it != ep_graph->index_to_node.end());
-    nodes[i] = node_it->second->ToExternal();
+    nodes[i] = sorted_nodes[i];
   }
 
   return nullptr;
@@ -130,28 +102,50 @@ ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
 // OrtNode
 //
 
-ORT_API_STATUS_IMPL(Node_GetName, const OrtNode* node, _Outptr_ const char** name) {
+ORT_API(const char*, Node_GetName, const OrtNode* node) {
+  return node->Name().c_str();
+}
+
+ORT_API(const char*, Node_GetOperatorType, const OrtNode* node) {
+  return node->OpType().c_str();
+}
+
+ORT_API(const char*, Node_GetDomain, const OrtNode* node) {
+  return node->Domain().c_str();
+}
+
+ORT_API(size_t, Node_GetNumInputs, const OrtNode* node) {
+  return node->GetNumInputs();
+}
+
+ORT_API(size_t, Node_GetNumOutputs, const OrtNode* node) {
+  return node->GetNumOutputs();
+}
+
+ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
   API_IMPL_BEGIN
-  const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(node_inputs));
 
-  if (ep_node == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
+  size_t num_inputs = std::min(max_num_inputs, node_inputs.size());
+  for (size_t i = 0; i < num_inputs; i++) {
+    inputs[i] = node_inputs[i];
   }
-
-  *name = ep_node->node.Name().c_str();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(Node_GetOperatorType, const OrtNode* node, _Outptr_ const char** op_type) {
+ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
   API_IMPL_BEGIN
-  const onnxruntime::EpNode* ep_node = onnxruntime::EpNode::ToInternal(node);
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_outputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(node_outputs));
 
-  if (ep_node == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid OrtNode variant for use in OrtEpApi");
+  size_t num_outputs = std::min(max_num_outputs, node_outputs.size());
+  for (size_t i = 0; i < num_outputs; i++) {
+    outputs[i] = node_outputs[i];
   }
-
-  *op_type = ep_node->node.OpType().c_str();
   return nullptr;
   API_IMPL_END
 }
@@ -179,6 +173,11 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::Graph_GetNodes,
     &OrtExecutionProviderApi::Node_GetName,
     &OrtExecutionProviderApi::Node_GetOperatorType,
+    &OrtExecutionProviderApi::Node_GetDomain,
+    &OrtExecutionProviderApi::Node_GetNumInputs,
+    &OrtExecutionProviderApi::Node_GetNumOutputs,
+    &OrtExecutionProviderApi::Node_GetInputs,
+    &OrtExecutionProviderApi::Node_GetOutputs,
 
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
 };
