@@ -3931,7 +3931,7 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
  * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
  */
 INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
-                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
+                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2", "trt_bf16_enable=1"));
 #endif
 
 #ifdef USE_CUDA

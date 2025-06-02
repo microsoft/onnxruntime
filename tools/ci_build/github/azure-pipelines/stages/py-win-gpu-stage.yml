@@ -140,7 +140,6 @@ stages:
                 ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
                   symbolExpiryTime: 60
                 includePublicSymbolServer: true
-                symbolsFolder: '$(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}'
                 symbolsArtifactName: onnxruntime_gpu_win_x64_${{ parameters.PYTHON_VERSION }}
                 symbolsVersion: $(Build.BuildId)
                 symbolProject: 'ONNX Runtime'

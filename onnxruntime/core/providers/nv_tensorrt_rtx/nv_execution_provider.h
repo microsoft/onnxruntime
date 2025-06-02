@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -261,8 +262,10 @@ class NvExecutionProvider : public IExecutionProvider {
   int (*engine_encryption_)(const char*, char*, size_t) = nullptr;
   bool detailed_build_log_ = false;
   bool cuda_graph_enable_ = false;
+  bool multi_profile_enable_ = false;
   std::string cache_prefix_;
   std::string op_types_to_exclude_;
+  int nv_profile_index_ = 0;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;

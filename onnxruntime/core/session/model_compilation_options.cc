@@ -18,10 +18,11 @@ ModelCompilationOptions::ModelCompilationOptions(const onnxruntime::Environment&
   session_options_.value.has_explicit_ep_context_gen_options = true;
   session_options_.value.ep_context_gen_options = session_options.value.GetEpContextGenerationOptions();
   session_options_.value.ep_context_gen_options.enable = true;
-  session_options_.value.ep_context_gen_options.overwrite_existing_output_file = true;
-  // defaulting to false to support wider usage. will log WARNING if compiling model with no context nodes.
-  // TODO: Add ability for user to explicitly set this.
-  session_options_.value.ep_context_gen_options.error_if_no_compiled_nodes = false;
+  session_options_.value.ep_context_gen_options.error_if_output_file_exists = false;
+
+  // defaulting to kGenerateModel to support wider usage.
+  session_options_.value.ep_context_gen_options.action_if_no_compiled_nodes =
+      EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
 
   // Shouldn't fail because the key/value strings are below the maximum string length limits in ConfigOptions.
   ORT_ENFORCE(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1").IsOK());
@@ -101,6 +102,15 @@ Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_m
   ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
   session_options_.value.ep_context_gen_options.embed_ep_context_in_model = embed_ep_context_in_model;
+  return Status::OK();
+}
+
+Status ModelCompilationOptions::SetFlags(size_t flags) {
+  EpContextModelGenerationOptions& options = session_options_.value.ep_context_gen_options;
+  options.error_if_output_file_exists = flags & OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS;
+  options.action_if_no_compiled_nodes =
+      (flags & OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED) ? EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError
+                                                              : EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel;
   return Status::OK();
 }
 

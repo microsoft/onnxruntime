@@ -644,6 +644,7 @@ class ModelCompiler:
         embed_compiled_data_into_model: bool = False,
         external_initializers_file_path: str | os.PathLike | None = None,
         external_initializers_size_threshold: int = 1024,
+        flags: int = C.OrtCompileApiFlags.NONE,
     ):
         """
         Creates a ModelCompiler instance.
@@ -658,6 +659,8 @@ class ModelCompiler:
             initializers for non-compiled nodes.
         :param external_initializers_size_threshold: Defaults to 1024. Ignored if `external_initializers_file_path`
             is None or empty. Initializers larger than this threshold are stored in the external initializers file.
+        :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
+            flags in onnxruntime.OrtCompileApiFlags.
         """
         input_model_path: str | os.PathLike | None = None
         input_model_bytes: bytes | None = None
@@ -688,6 +691,7 @@ class ModelCompiler:
                 embed_compiled_data_into_model,
                 external_initializers_file_path,
                 external_initializers_size_threshold,
+                flags,
             )
         else:
             self._model_compiler = C.ModelCompiler(
@@ -697,6 +701,7 @@ class ModelCompiler:
                 embed_compiled_data_into_model,
                 external_initializers_file_path,
                 external_initializers_size_threshold,
+                flags,
             )
 
     def compile_to_file(self, output_model_path: str | None = None):

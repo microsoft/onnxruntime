@@ -103,6 +103,36 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+static std::vector<uint32_t> AmendOutputShapeForRank3Pool(
+    gsl::span<const uint32_t> input_shape,   // {N, H, W, C}
+    gsl::span<const uint32_t> kernel_shape,  // {k_h, k_w}
+    gsl::span<const uint32_t> strides,       // {s_h, s_w}
+    gsl::span<const uint32_t> pads) {
+  assert(input_shape.size() == 4 &&
+         kernel_shape.size() == 2 &&
+         strides.size() == 2 &&
+         pads.size() == 4);
+
+  const uint32_t N = input_shape[0];
+  const uint32_t H = input_shape[1];
+  const uint32_t W = input_shape[2];
+  const uint32_t C = input_shape[3];
+
+  // pad the spatial dims
+  uint32_t padded_H = H + pads[0] + pads[2];
+  uint32_t padded_W = W + pads[1] + pads[3];
+
+  // floor-mode on NHWC
+  uint32_t out_H = (padded_H < kernel_shape[0])
+                       ? 0
+                       : (padded_H - kernel_shape[0]) / strides[0] + 1;
+  uint32_t out_W = (padded_W < kernel_shape[1])
+                       ? 0
+                       : (padded_W - kernel_shape[1]) / strides[1] + 1;
+
+  return {N, out_H, out_W, C};
+}
+
 Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
                                           std::vector<uint32_t>& filter_size,
                                           std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& strides,
@@ -153,6 +183,14 @@ Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
       dilations = raw_dilations;
     }
 
+    // Max Pool rank 3 input
+    if (output_shape.size() == 3) {
+      // Calculate MaxPool output for rank-4 when input is rank 3
+      output_shape = AmendOutputShapeForRank3Pool(input_shape,
+                                                  filter_size,
+                                                  strides,
+                                                  pad_amount);
+    }
     auto total_pads_0 = (output_shape[1] - 1) * strides[0] + (filter_size[0] - 1) * dilations[0] + 1 - input_shape[1];
     auto total_pads_1 = (output_shape[2] - 1) * strides[1] + (filter_size[1] - 1) * dilations[1] + 1 - input_shape[2];
     if (auto_pad.compare("SAME_LOWER") != 0) {
@@ -187,36 +225,6 @@ void SetPoolParam(const NodeUnit& node_unit,
                             std::move(parm_data));
   param_tensor_names.push_back(qnn_param.GetParamTensorName());
   qnn_model_wrapper.AddParamWrapper(std::move(qnn_param));
-}
-
-std::vector<uint32_t> ComputePoolOutputShape(
-    const std::vector<uint32_t>& input_shape,   // {N, H, W, C}
-    const std::vector<uint32_t>& kernel_shape,  // {k_h, k_w}
-    const std::vector<uint32_t>& strides,       // {s_h, s_w}
-    const std::vector<uint32_t>& pads) {
-  assert(input_shape.size() == 4 &&
-         kernel_shape.size() == 2 &&
-         strides.size() == 2 &&
-         pads.size() == 4);
-
-  const uint32_t N = input_shape[0];
-  const uint32_t H = input_shape[1];
-  const uint32_t W = input_shape[2];
-  const uint32_t C = input_shape[3];
-
-  // pad the spatial dims
-  uint32_t padded_H = H + pads[0] + pads[2];
-  uint32_t padded_W = W + pads[1] + pads[3];
-
-  // floor-mode on NHWC
-  uint32_t out_H = (padded_H < kernel_shape[0])
-                       ? 0
-                       : (padded_H - kernel_shape[0]) / strides[0] + 1;
-  uint32_t out_W = (padded_W < kernel_shape[1])
-                       ? 0
-                       : (padded_W - kernel_shape[1]) / strides[1] + 1;
-
-  return {N, out_H, out_W, C};
 }
 
 Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -316,10 +324,10 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   }
 
   // Calculate MaxPool output for rank-4 when input is rank 3
-  auto pooled_shape = ComputePoolOutputShape(onnx_in_shape,
-                                             filter_size,
-                                             stride,
-                                             pad_amount);
+  auto pooled_shape = AmendOutputShapeForRank3Pool(onnx_in_shape,
+                                                   filter_size,
+                                                   stride,
+                                                   pad_amount);
 
   SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_FILTER_SIZE, std::move(filter_size_dim), std::move(filter_size), param_tensor_names, qnn_model_wrapper);
   SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_PAD_AMOUNT, std::move(pad_amount_dim), std::move(pad_amount), param_tensor_names, qnn_model_wrapper);
