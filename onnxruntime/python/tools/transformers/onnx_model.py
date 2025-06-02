@@ -1349,6 +1349,8 @@ class OnnxModel:
         tensor2: TensorProto,
         signature_cache1: dict | None = None,
         signature_cache2: dict | None = None,
+        rtol: float = 1e-05,
+        atol: float = 1e-08,
     ) -> bool:
         """Returns True when two tensors have same value.
            Note that name can be different.
@@ -1358,6 +1360,8 @@ class OnnxModel:
             tensor2 (TensorProto): initializer 2
             signature_cache1 (dict): Optional dictionary to store data signatures of tensor1 in order to speed up comparison.
             signature_cache2 (dict): Optional dictionary to store data signatures of tensor2 in order to speed up comparison.
+            rtol (float): Optional relative difference threshold for minor precision differences
+            atol (float): Optional absolute difference threshold for minor precision differences
         Returns:
             bool: True when two initializers has same value.
         """
@@ -1375,9 +1379,17 @@ class OnnxModel:
             signature_cache1[tensor1.name] = sig1
         if signature_cache2 is not None:
             signature_cache2[tensor2.name] = sig2
-        if sig1 == sig2 and tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
-            # Same signature, now do the expensive check to confirm the data is the same
-            return (numpy_helper.to_array(tensor1) == numpy_helper.to_array(tensor2)).all()
+        if tensor1.data_type == tensor2.data_type and tensor1.dims == tensor2.dims:
+            n1 = numpy_helper.to_array(tensor1)
+            n2 = numpy_helper.to_array(tensor2)
+            if sig1 == sig2:
+                # Same signature, now do the expensive check to confirm the data is the same
+                return (n1 == n2).all()
+            else:
+                # Check if tensors are allclose
+                from numpy import allclose
+
+                return allclose(n1, n2, rtol=rtol, atol=atol)
 
         return False
 

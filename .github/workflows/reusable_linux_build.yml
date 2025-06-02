@@ -83,7 +83,7 @@ jobs:
           python-version: ${{ inputs.python_version }}
 
       - name: Build Docker Image (${{ inputs.architecture }} / ${{ inputs.build_config }})
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.6
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/${{ inputs.dockerfile_path }}
@@ -103,7 +103,7 @@ jobs:
       # ------------- Update Step (CMake Generation) -------------
       - name: Generate Build Files (CMake) (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: update_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.6
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
@@ -115,7 +115,7 @@ jobs:
       # ------------- Build Step (Compilation) -------------
       - name: Build ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: build_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.6
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}
@@ -128,7 +128,7 @@ jobs:
       - name: Test ONNX Runtime (${{ inputs.architecture }} / ${{ inputs.build_config }})
         id: test_step
         if: inputs.run_tests == true
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.6
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: ${{ inputs.build_config }}

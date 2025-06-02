@@ -69,7 +69,7 @@ set_target_properties(ortcustomops PROPERTIES INTERFACE_INCLUDE_DIRECTORIES "")
 
 # target library or executable are defined in CMakeLists.txt of onnxruntime-extensions
 target_include_directories(ocos_operators PRIVATE ${RE2_INCLUDE_DIR} ${json_SOURCE_DIR}/include)
-target_include_directories(ortcustomops PUBLIC $<BUILD_INTERFACE:${onnxruntime_EXTENSIONS_PATH}/includes>)
+target_include_directories(ortcustomops PUBLIC $<BUILD_INTERFACE:${onnxruntime_EXTENSIONS_PATH}/include>)
 if(OCOS_ENABLE_SPM_TOKENIZER)
   onnxruntime_add_include_to_target(sentencepiece-static ${PROTOBUF_LIB} ${ABSEIL_LIBS})
 endif()
