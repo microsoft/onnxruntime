@@ -48,8 +48,11 @@ const validateInputs = (inputs: readonly TensorView[], attributes: MatMulNBitsAt
   if (inputs.length === 4) {
     const zeroPoints = inputs[3];
     const zeroPointsShape = zeroPoints.dims;
+
+    // This assumes zero points are packed.
+    // Unpack format (zero point has same data type and shape as scale) is not supported by webgpu.
     const expectedZeroPointsSize =
-      attributes.bits > 4 ? attributes.n * nBlocksPerCol : attributes.n * Math.floor((nBlocksPerCol + 1) / 2);
+      attributes.n * (attributes.bits === 8 ? nBlocksPerCol : Math.floor((nBlocksPerCol * attributes.bits + 7) / 8));
     if (ShapeUtil.size(zeroPointsShape) !== expectedZeroPointsSize) {
       throw new Error('zeroPoints input size error.');
     }
