@@ -22,7 +22,7 @@ class MlasScaleOutputTest : public MlasTestBase {
                                                             std::numeric_limits<int16_t>::max());
 
     for (size_t s = 0; s < M * N; s++) {
-      Input[s] = int_distribution(generator); //It could be zero
+      Input[s] = int_distribution(generator);  // It could be zero
       Output[s] = OutputRef[s] = real_distribution(generator);
     }
 
@@ -52,8 +52,8 @@ class MlasScaleOutputTest : public MlasTestBase {
     constexpr float epsilon = 1e-6f;
 
     for (size_t n = 0; n < M * N; n++) {
-      float outvalue = OutputRef[n]; // When `AccumulateMode` is false, there is a high chance that this value could be zero
-      float diff = std::fabs(Output[n] - outvalue) ;
+      float outvalue = OutputRef[n];  // When `AccumulateMode` is false, there is a high chance that this value could be zero
+      float diff = std::fabs(Output[n] - outvalue);
       if (outvalue != 0) {
         diff /= outvalue;
       }
