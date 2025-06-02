@@ -9,29 +9,6 @@
 
 namespace onnxruntime {
 
-static Node* FollowCastChain(Node* current) {
-  while (true) {
-    // A rare case when the Cast node output is branching out.
-    // We don't really want to deal with this complexity, hence we will skip it.
-    if (current->GetOutputEdgesCount() > 1) {
-      return nullptr;
-    }
-
-    auto it = current->OutputNodesBegin();
-    if (it == current->OutputNodesEnd()) {
-      break;
-    }
-
-    Node* next = const_cast<Node*>(&(*it));
-    if (next->OpType() != "Cast") {
-      break;
-    }
-    current = next;
-  }
-
-  return current;
-}
-
 Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_level, const logging::Logger& logger) const {
   GraphViewer graph_viewer(graph);
   const auto& node_topology_list = graph_viewer.GetNodesInTopologicalOrder();
@@ -62,42 +39,29 @@ Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_l
       continue;
     }
 
-    // If not, find the longest chain that casts to the input type, if it exists.
-    Node* current = &node;
-    Node* final_non_cast_node = FollowCastChain(current);
-
-    if (!final_non_cast_node) {
+    // Skip nodes that don't have 1 output edge.
+    if (node.GetOutputEdgesCount() != 1) {
       continue;
     }
 
-    // No extra casts were found.
-    if (node.Index() == final_non_cast_node->Index()) {
+    auto nextNodeIt = node.OutputNodesBegin();
+
+    Node* next = graph.GetNode(nextNodeIt->Index());
+
+    // Skip if the next node is not of type Cast.
+    if (next->OpType() != "Cast") {
       continue;
     }
 
-    std::vector<Node*> to_remove;
-    current = &node;
+    // We can remove the current node.
+    graph_utils::RemoveNodeOutputEdges(graph, node);
 
-    // Collect nodes for removal.
-    while (current != final_non_cast_node && current->OpType() == "Cast") {
-      to_remove.push_back(current);
-      auto it = current->OutputNodesBegin();
-      if (it == current->OutputNodesEnd())
-        break;
-      current = const_cast<Node*>(&*it);
-    }
-
-    // First remove all outbound edges.
-    for (Node* n : to_remove) {
-      graph_utils::RemoveNodeOutputEdges(graph, *n);
-    }
-
-    NodeArg* last_node_output_def = to_remove.back()->MutableOutputDefs()[0];
+    NodeArg* last_node_output_def = node.MutableOutputDefs()[0];
     const std::string& last_node_output_tensor_name = last_node_output_def->Name();
 
-    // Find the matching def slot, so we can wire the final node to the input of the first removeable node.
+    // Find the matching def slot, so we can wire the final node to the input of the removeable node.
     int slot = -1;
-    auto& inputs = final_non_cast_node->MutableInputDefs();
+    auto& inputs = next->MutableInputDefs();
     for (int i = 0, n = static_cast<int>(inputs.size()); i < n; ++i) {
       if (inputs[i]->Name() == last_node_output_tensor_name) {
         slot = i;
@@ -105,14 +69,11 @@ Status CastChainElimination::ApplyImpl(Graph& graph, bool& modified, int graph_l
       }
     }
 
-    final_non_cast_node->MutableInputDefs()[slot] = to_remove[0]->MutableInputDefs()[0];
+    next->MutableInputDefs()[slot] = node.MutableInputDefs()[0];
 
-    graph_utils::MoveAllNodeInputEdges(graph, *to_remove[0], *final_non_cast_node);
+    graph_utils::MoveAllNodeInputEdges(graph, node, *next);
 
-    // Finally, remove the nodes itself.
-    for (Node* n : to_remove) {
-      graph.RemoveNode(n->Index());
-    }
+    graph.RemoveNode(node.Index());
 
     modified = true;
   }
