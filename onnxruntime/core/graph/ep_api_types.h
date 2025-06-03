@@ -31,8 +31,8 @@ struct EpValueInfo : public OrtValueInfo {
   const std::string& Name() const override { return name; }
   const OrtTypeInfo* TypeInfo() const override { return type_info.get(); }
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
-  Status GetConsumerInfos(std::vector<ConsumerInfo>& consumer_infos) const override;
-  Status GetNumConsumers(size_t& num_consumers) const override;
+  Status GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const override;
+  Status GetNumUses(size_t& num_consumers) const override;
 
   const EpGraph& graph;  // Back pointer to graph to be able to get consumers/producer
   std::string name;

@@ -603,11 +603,11 @@ ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ 
 
 ORT_API_STATUS_IMPL(GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
                     _Out_ size_t* producer_output_index);
-ORT_API_STATUS_IMPL(GetValueInfoNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumer_nodes);
-ORT_API_STATUS_IMPL(GetValueInfoConsumerInfo, _In_ const OrtValueInfo* value_info,
-                    _Out_writes_all_(max_num_consumers) const OrtNode** consumer_nodes,
-                    _Out_writes_all_(max_num_consumers) size_t* consumer_input_indices,
-                    _In_ size_t max_num_consumers);
+ORT_API_STATUS_IMPL(GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
+ORT_API_STATUS_IMPL(GetValueInfoUses, _In_ const OrtValueInfo* value_info,
+                    _Out_writes_all_(max_num_uses) const OrtNode** nodes,
+                    _Out_writes_all_(max_num_uses) size_t* input_indices,
+                    _In_ size_t max_num_uses);
 ORT_API(const char*, Graph_GetName, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_GetNumNodes, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
