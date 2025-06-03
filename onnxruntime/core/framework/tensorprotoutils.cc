@@ -282,10 +282,10 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
                            onnxruntime::FileOffsetType& file_offset,
                            SafeInt<size_t>& tensor_byte_size,
                            ExternalDataInfo::PrepackedInfos* prepacked_infos) {
-  ORT_RETURN_IF_NOT(onnxruntime::utils::HasExternalData(tensor_proto),
+  ORT_RETURN_IF_NOT(HasExternalData(tensor_proto),
                     "Tensor does not have external data to read from.");
 
-  ORT_RETURN_IF(!onnxruntime::utils::HasDataType(tensor_proto) || onnxruntime::utils::HasString(tensor_proto),
+  ORT_RETURN_IF(!HasDataType(tensor_proto) || HasString(tensor_proto),
                 "External data type cannot be UNDEFINED or STRING.");
 
   std::unique_ptr<onnxruntime::ExternalDataInfo> external_data_info;
@@ -296,7 +296,7 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
   external_file_path = location == kTensorProtoMemoryAddressTag ? std::filesystem::path(location)
                                                                 : (tensor_proto_dir / location);
 
-  ORT_RETURN_IF_ERROR(onnxruntime::utils::GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
+  ORT_RETURN_IF_ERROR(GetSizeInBytesFromTensorProto<0>(tensor_proto, &tensor_byte_size));
   const size_t external_data_length = external_data_info->GetLength();
   ORT_RETURN_IF_NOT(external_data_length == 0 || external_data_length == tensor_byte_size,
                     "TensorProto: ", tensor_proto.name(),
@@ -316,34 +316,22 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, std::str
   tensor_proto.set_raw_data(std::move(param));
 }
 
-void ConvertRawDataInTensorProto(TensorProto* tensor) {
+void ConvertRawDataInTensorProto(TensorProto& tensor) {
   size_t element_size = 1;
   unsigned char* bytes = NULL;
   size_t num_elements = 0;
 
-  switch (tensor->data_type()) {
+  switch (tensor.data_type()) {
     case TensorProto_DataType_FLOAT:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_float_data()->mutable_data());
-      num_elements = tensor->float_data_size();
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_float_data()->mutable_data());
+      num_elements = tensor.float_data_size();
       element_size = sizeof(float);
-      break;
-
-    case TensorProto_DataType_INT32:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
-      num_elements = tensor->int32_data_size();
-      element_size = sizeof(int32_t);
-      break;
-
-    case TensorProto_DataType_UINT32:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
-      num_elements = tensor->int32_data_size();
-      element_size = sizeof(uint32_t);
       break;
 
     case TensorProto_DataType_UINT8:
     case TensorProto_DataType_INT8:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
-      num_elements = tensor->int32_data_size();
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_int32_data()->mutable_data());
+      num_elements = tensor.int32_data_size();
       element_size = sizeof(uint8_t);
       break;
 
@@ -351,32 +339,37 @@ void ConvertRawDataInTensorProto(TensorProto* tensor) {
     case TensorProto_DataType_INT16:
     case TensorProto_DataType_FLOAT16:
     case TensorProto_DataType_BFLOAT16:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int32_data()->mutable_data());
-      num_elements = tensor->int32_data_size();
-      element_size = sizeof(uint16_t);
+    case TensorProto_DataType_INT32:
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_int32_data()->mutable_data());
+      num_elements = tensor.int32_data_size();
+      // We are setting this to int32_t size because we need to swap all 4 bytes
+      // to represent 16 bits within 32 bits correctly on a LE/BE system.
+      element_size = sizeof(int32_t);
       break;
 
+    // uint32_t is stored in uint64_t
+    case TensorProto_DataType_UINT32:
     case TensorProto_DataType_UINT64:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_uint64_data()->mutable_data());
-      num_elements = tensor->uint64_data_size();
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_uint64_data()->mutable_data());
+      num_elements = tensor.uint64_data_size();
       element_size = sizeof(uint64_t);
       break;
 
-    case TensorProto_DataType_DOUBLE:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_double_data()->mutable_data());
-      num_elements = tensor->double_data_size();
-      element_size = sizeof(double);
-      break;
-
     case TensorProto_DataType_INT64:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_int64_data()->mutable_data());
-      num_elements = tensor->int64_data_size();
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_int64_data()->mutable_data());
+      num_elements = tensor.int64_data_size();
       element_size = sizeof(int64_t);
       break;
 
+    case TensorProto_DataType_DOUBLE:
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_double_data()->mutable_data());
+      num_elements = tensor.double_data_size();
+      element_size = sizeof(double);
+      break;
+
     case TensorProto_DataType_COMPLEX64:
-      bytes = reinterpret_cast<unsigned char*>(tensor->mutable_float_data()->mutable_data());
-      num_elements = tensor->float_data_size();
+      bytes = reinterpret_cast<unsigned char*>(tensor.mutable_float_data()->mutable_data());
+      num_elements = tensor.float_data_size();
       element_size = sizeof(float);
       break;
   }
@@ -385,9 +378,9 @@ void ConvertRawDataInTensorProto(TensorProto* tensor) {
     return;
   }
 
-  if (tensor->has_raw_data()) {
-    num_elements = (tensor->raw_data().size()) / element_size;
-    bytes = reinterpret_cast<unsigned char*>(tensor->mutable_raw_data()->data());
+  if (tensor.has_raw_data()) {
+    num_elements = tensor.raw_data().size() / element_size;
+    bytes = reinterpret_cast<unsigned char*>(tensor.mutable_raw_data()->data());
   }
 
   gsl::span<unsigned char> span = gsl::make_span(bytes, num_elements * element_size);
@@ -1054,7 +1047,7 @@ Status GetExtDataFromTensorProto(const Env& env,
                                  const std::filesystem::path& model_path,
                                  const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                  OrtValue& ort_value, PrepackedWeightsForGraph* prepacked_info) {
-  ORT_ENFORCE(utils::HasExternalData(tensor_proto), "TensorProto for: ",
+  ORT_ENFORCE(HasExternalData(tensor_proto), "TensorProto for: ",
               tensor_proto.name(), "Expected to have external data");
 
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
@@ -1189,7 +1182,7 @@ Status LoadExtDataToTensorFromTensorProto(const Env& env, const std::filesystem:
                                           const ONNX_NAMESPACE::TensorProto& tensor_proto,
                                           const IExternalDataLoader& ext_data_loader,
                                           Tensor& tensor) {
-  ORT_ENFORCE(utils::HasExternalData(tensor_proto));
+  ORT_ENFORCE(HasExternalData(tensor_proto));
   std::basic_string<ORTCHAR_T> tensor_proto_dir;
   if (!model_path.empty()) {
     ORT_RETURN_IF_ERROR(GetDirNameFromFilePath(model_path, tensor_proto_dir));
@@ -1236,10 +1229,9 @@ Status TensorProtoToTensor(const Env& env, const std::filesystem::path& model_pa
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "tensor can't contain negative dims");
   }
 
-  if (utils::HasExternalData(tensor_proto)) {
+  if (HasExternalData(tensor_proto)) {
     OrtValue ort_value;
     ORT_RETURN_IF_ERROR(GetExtDataFromTensorProto(env, model_path, tensor_proto, ort_value));
-    ORT_ENFORCE(ort_value.IsTensor());
     const auto& ext_tensor = ort_value.Get<Tensor>();
     MakeCpuTensorCopy(ext_tensor, tensor);
     return Status::OK();
@@ -1329,7 +1321,7 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 
   auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
-           CPUAllocator::Instance());
+           CPUAllocator::DefaultInstance());
   ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, model_path, tensor_proto, w));
 
   tensor = std::move(w);

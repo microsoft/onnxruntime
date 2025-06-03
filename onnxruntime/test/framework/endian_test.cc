@@ -47,6 +47,100 @@ TEST(EndianTest, SwapByteOrderCopy) {
   }
 }
 
+// Test fixture for SwapByteOrderInplace tests
+class SwapByteOrderInplaceTest : public ::testing::Test {};
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize1) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04};
+  std::vector<unsigned char> expected_data = {0x01, 0x02, 0x03, 0x04};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(1, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize2_SingleElement) {
+  std::vector<unsigned char> data = {0x01, 0x02};
+  std::vector<unsigned char> expected_data = {0x02, 0x01};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(2, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize2_MultipleElements) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+  std::vector<unsigned char> expected_data = {0x02, 0x01, 0x04, 0x03, 0x06, 0x05};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(2, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize4_SingleElement) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04};
+  std::vector<unsigned char> expected_data = {0x04, 0x03, 0x02, 0x01};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(4, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize4_MultipleElements) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  std::vector<unsigned char> expected_data = {0x04, 0x03, 0x02, 0x01, 0x08, 0x07, 0x06, 0x05};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(4, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize8_SingleElement) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08};
+  std::vector<unsigned char> expected_data = {0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(8, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize8_MultipleElements) {
+  std::vector<unsigned char> data = {
+      0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07, 0x08,
+      0x11, 0x12, 0x13, 0x14, 0x15, 0x16, 0x17, 0x18};
+  std::vector<unsigned char> expected_data = {
+      0x08, 0x07, 0x06, 0x05, 0x04, 0x03, 0x02, 0x01,
+      0x18, 0x17, 0x16, 0x15, 0x14, 0x13, 0x12, 0x11};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(8, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, EmptyBuffer) {
+  std::vector<unsigned char> data = {};
+  std::vector<unsigned char> expected_data = {};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  // Should not crash or throw for valid element sizes, e.g., 2 or 4
+  // The ORT_ENFORCE checks will pass as 0 % element_size == 0
+  // The loop for swapping will not execute.
+  utils::SwapByteOrderInplace(2, data_span);
+  EXPECT_EQ(data, expected_data);
+
+  utils::SwapByteOrderInplace(4, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
+TEST_F(SwapByteOrderInplaceTest, ElementSize3_OddElementSize) {
+  std::vector<unsigned char> data = {0x01, 0x02, 0x03, 0x04, 0x05, 0x06};
+  std::vector<unsigned char> expected_data = {0x03, 0x02, 0x01, 0x06, 0x05, 0x04};
+  gsl::span<unsigned char> data_span = gsl::make_span(data);
+
+  utils::SwapByteOrderInplace(3, data_span);
+  EXPECT_EQ(data, expected_data);
+}
+
 }  // namespace test
 }  // namespace utils
 }  // namespace onnxruntime

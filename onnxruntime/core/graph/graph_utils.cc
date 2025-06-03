@@ -286,7 +286,7 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
 }
 
 NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  ORT_ENFORCE(!utils::HasExternalData(new_initializer), "Expecting an initializer that contains data");
+  ORT_ENFORCE(!utils::HasExternalData(new_initializer), "Expecting an initializer that contains data inline");
 
   Tensor tensor;
   ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(),

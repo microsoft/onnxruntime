@@ -47,6 +47,34 @@ static common::Status AllocateBufferUsingDeviceAllocatorFromShapeAndType(const T
   return Status::OK();
 }
 
+/**
+ * @brief Deserializes a TensorProto into an OrtValue.
+ *
+ * This function handles the complexities of deserializing a tensor, including
+ * managing memory allocation, handling external data, and transferring data
+ * between different devices (e.g., CPU to GPU). It can use a pre-allocated
+ * memory buffer or an allocator to manage the tensor's memory.
+ *
+ * @param env The environment object, providing access to logging and other services.
+ * @param proto_path The file path of the ONNX model, used for resolving external data paths.
+ * @param tensor_proto The TensorProto message to deserialize.
+ * @param memory_buffer Optional. A raw memory buffer that is pre-allocated for the tensor.
+ *                      If provided, `alloc` must be null.
+ * @param alloc Optional. An allocator to use for allocating the tensor's memory.
+ *              If provided, `memory_buffer` must be null.
+ * @param default_cpu_alloc The default CPU allocator, used for intermediate buffers if needed
+ *                          (e.g., when copying from CPU to another device).
+ * @param[out] ort_value The OrtValue to be populated with the deserialized tensor data.
+ * @param data_transfer_mgr The manager responsible for copying tensor data between different memory locations/devices.
+ * @param external_data_loader_mgr The manager for handling custom external data loaders.
+ * @param prepacked_for_graph Reference to an object managing prepacked weights for the graph.
+ * @param use_device_allocator_for_initializers A flag indicating whether to use the device-specific allocator
+ *                                              directly for initializers, potentially bypassing arenas.
+ * @return common::Status indicating success or failure of the deserialization process.
+ *         Returns an error status if both `memory_buffer` and `alloc` are provided or if both are null (unless external data on CPU allows mmap),
+ *         if string tensors are attempted to be copied to non-CPU devices, or if any underlying
+ *         data loading, allocation, or copying operation fails.
+ */
 static common::Status DeserializeTensorProto(const Env& env, const std::basic_string<PATH_CHAR_TYPE>& proto_path,
                                              const ONNX_NAMESPACE::TensorProto& tensor_proto, const MemBuffer* memory_buffer,
                                              const AllocatorPtr& alloc, const AllocatorPtr& default_cpu_alloc,
@@ -93,10 +121,10 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
 
       // deserialize to CPU first for non-CPU allocator, then copy to device
       // for external initializer load on non-CPU device:
-      // 1. allocate memory on device - p_tensor
-      // 2. load initializer into CPU memory - p_deserialize_tensor,
+      // 1. allocate memory on device - tensor
+      // 2. load initializer into CPU memory - deserialized_value,
       //    we will use mmap so no need to allocate memory on CPU in advance
-      // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
+      // 3. copy tensor from CPU to device - deserialized_value -> tensor -> ort_value
       ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
       OrtValue deserialized_value;
@@ -108,7 +136,7 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
                                        std::move(tensor), ort_value);
     }
   } else {
-    // for internal initializer, always allocate memory on device - p_tensor
+    // for internal initializer, always allocate memory on device - tensor
     ORT_RETURN_IF_ERROR(AllocateTensor(memory_buffer, tensor, type, tensor_shape, use_device_allocator_for_initializers, alloc));
 
     if (device_type == OrtDevice::CPU) {
@@ -117,23 +145,21 @@ static common::Status DeserializeTensorProto(const Env& env, const std::basic_st
       Tensor::InitOrtValue(std::move(tensor), ort_value);
       return common::Status::OK();
     } else {  // non-cpu tensor
-      if (tensor_proto.data_type() == ONNX_NAMESPACE::TensorProto_DataType_STRING) {
+      if (utils::HasString(tensor_proto)) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "string tensor is not supported for copying between allocators");
       }
 
       // deserialize to CPU first for non-CPU allocator, then copy
       // for internal initializer
-      // 1. allocate memory on CPU - p_deserialize_tensor
-      // 2. deserialize tensor_probo into a preallocated tensor (p_deserialize_tensor)
-      // 3. copy tensor from CPU to device - p_deserialize_tensor -> p_tensor
-      Tensor deserialize_tensor;
+      // 1. allocate memory on CPU - deserialized_tensor
+      // 2. deserialize tensor_proto into a preallocated tensor (deserialized_tensor)
+      // 3. copy tensor from CPU to device - deserialized_tensor -> tensor (allocated above) -> ort_value
+      Tensor deserialized_tensor;
       ORT_RETURN_IF_ERROR(AllocateTensorOnDeviceOrMemory(use_device_allocator_for_initializers, tensor_shape, type,
-                                                         default_cpu_alloc, deserialize_tensor));
+                                                         default_cpu_alloc, deserialized_tensor));
 
-      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, deserialize_tensor));
-      // TODO!! Need a temp buffer allocator for non-escape buffers that maybe too big for stack allocation.
-
-      return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialize_tensor, std::move(tensor), ort_value);
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToTensor(env, proto_path.c_str(), tensor_proto, deserialized_tensor));
+      return CopyTensorFromCPUToDevice(data_transfer_mgr, deserialized_tensor, std::move(tensor), ort_value);
     }
   }
 }

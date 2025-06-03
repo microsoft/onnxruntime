@@ -389,6 +389,7 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
       // We are doing this so the same OrtValue is re-used in subgraphs and no copies made for big items.
       constexpr const bool check_outer_scope_true = true;
       OrtValue ort_value;
+      // The initializer can be in memory with OrtValue or it can be a flatbuffer mapped.
       if (utils::HasExternalData(new_tensor_proto) && graph_.GetOrtValueInitializer(
                                                           name, ort_value, check_outer_scope_true)) {
         // Re-use the same ort_value and proto that points to the same buffer

@@ -52,13 +52,8 @@ void SwapByteOrderInplace(size_t element_size_in_bytes, gsl::span<unsigned char>
   ORT_ENFORCE(element_size_in_bytes > 0, "Expecting a positive element size");
   ORT_ENFORCE(bytes.size_bytes() % element_size_in_bytes == 0, "Expecting a match");
   if (element_size_in_bytes > 1) {
-    auto* data = bytes.data();
-    for (size_t i = 0, num_elements = bytes.size(); i < num_elements; ++i) {
-      auto* start_byte = data + i * element_size_in_bytes;
-      auto* end_byte = start_byte + element_size_in_bytes - 1;
-      for (size_t count = 0; count < element_size_in_bytes / 2; ++count) {
-        std::swap(*start_byte++, *end_byte--);
-      }
+    for (size_t offset = 0, lim = bytes.size_bytes(); offset < lim; offset += element_size_in_bytes) {
+      std::reverse(bytes.begin() + offset, bytes.begin() + offset + element_size_in_bytes);
     }
   }
 }

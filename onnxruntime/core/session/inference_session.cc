@@ -1340,7 +1340,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = CPUAllocator::Instance();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                       std::move(cpu_allocator), debug_graph_fn));
@@ -1709,7 +1709,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
         [](Graph& graph_to_transform, bool& modified,
            const IExecutionProvider& execution_provider,
            const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = CPUAllocator::Instance();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       return layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                          std::move(cpu_allocator), debug_graph_fn);
     };
@@ -1833,7 +1833,7 @@ common::Status InferenceSession::Initialize() {
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
-      if (utils::HasExternalData(*it.second)) {
+      if (utils::HasExternalData(*it.second) && !utils::HasExternalDataInMemory(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
                               "Initializer tensors with external data is not allowed.");
       }

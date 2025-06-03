@@ -203,7 +203,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                         onnxruntime::kAclExecutionProvider};
 #endif
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
-  AllocatorPtr cpu_allocator = CPUAllocator::Instance();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -494,7 +494,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
-        AllocatorPtr cpu_allocator = CPUAllocator::Instance();
+        AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
                                                                   logger);

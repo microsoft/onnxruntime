@@ -119,7 +119,7 @@ void* AllocatorDefaultAlloc(size_t size) {
   return AllocatorDefaultAllocAligned(size, alignment);
 }
 
-AllocatorPtr CPUAllocator::Instance() {
+AllocatorPtr CPUAllocator::DefaultInstance() {
   static AllocatorPtr instance = std::make_shared<CPUAllocator>();
   return instance;
 }

@@ -351,7 +351,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
 
   std::optional<Initializer> zp_src;
-  auto cpu_allocator = CPUAllocator::Instance();
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
   auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
   auto weight_dst = Tensor(uint8_type,
                            TensorShape{N, quant_num, blob_bytes},

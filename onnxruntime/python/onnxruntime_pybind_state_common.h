@@ -306,7 +306,7 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = CPUAllocator::Instance();
+  static AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   return alloc;
 }
 

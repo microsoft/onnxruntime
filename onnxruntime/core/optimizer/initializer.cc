@@ -21,7 +21,7 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
                          gsl::span<const int64_t> dims) : name_(name) {
   auto tensor = Tensor(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
-                       CPUAllocator::Instance());
+                       CPUAllocator::DefaultInstance());
 
   if (!tensor.IsDataTypeString()) {
     memset(tensor.MutableDataRaw(), 0, tensor.SizeInBytes());
@@ -77,7 +77,7 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
       // We need to make a copy of the data to ensure that the original data is not mutated
       // This is generally inline with TensorProtoToTensor() behavior which copies data from
       // TensorProto to Tensor.
-      Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::Instance()};
+      Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::DefaultInstance()};
       utils::MakeCpuTensorCopy(src_tensor, initializer);
       Tensor::InitOrtValue(std::move(initializer), ort_value_);
       data_ = GetTensor(ort_value_);

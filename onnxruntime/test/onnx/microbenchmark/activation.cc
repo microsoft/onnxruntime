@@ -24,7 +24,7 @@ extern OrtEnv* env;
 
 class Allocs : public IExecutionProvider {
  private:
-  AllocatorPtr alloc = CPUAllocator::Instance();
+  AllocatorPtr alloc = CPUAllocator::DefaultInstance();
 
  public:
   Allocs() : IExecutionProvider("fake") {};
