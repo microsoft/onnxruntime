@@ -47,7 +47,7 @@ std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
     TransformerLevel level,
     const InlinedHashSet<std::string>& rules_to_disable,
     const InlinedHashSet<std::string_view>& compatible_execution_providers,
-    const SessionOptions& session_options);
+    const bool enable_cast_chain_elimination = false);
 
 /** Generates all predefined (both rule-based and non-rule-based) transformers for this level.
     Any transformers or rewrite rules named in rules_and_transformers_to_disable will be excluded. */
