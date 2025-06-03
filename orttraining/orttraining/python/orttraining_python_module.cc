@@ -123,7 +123,7 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-ORTTrainingPythonEnv::ORTTrainingPythonEnv(OrtEnv* ort_env) : ort_env_(ort_env) {
+ORTTrainingPythonEnv::ORTTrainingPythonEnv(std::unique_ptr<OrtEnv> ort_env) : ort_env_(std::move(ort_env)) {
   const auto& builtinEPs = GetAvailableExecutionProviderNames();
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
@@ -185,7 +185,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  OrtEnv* ort_env = OrtEnv::GetInstance(lm_info, status);
+  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status));
   if (!status.IsOK()) return status;
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
@@ -193,7 +193,7 @@ static Status CreateOrtEnv() {
     LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
 #endif
-  ort_training_env = new ORTTrainingPythonEnv(ort_env);
+  ort_training_env = new ORTTrainingPythonEnv(std::move(ort_env));
   return Status::OK();
 }
 
@@ -282,16 +282,6 @@ Status CreateTrainingPybindStateModule(py::module& m) {
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
   addAdapterFormatMethods(m);
-
-#if !defined(__APPLE__) && \
-    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
-  Ort::SessionOptions tmp_options;
-  if (!InitProvidersSharedLibrary()) {
-    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
-    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
-  }
-#endif
-
   addObjectMethodsForTraining(m);
 
   return Status::OK();
@@ -328,14 +318,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       },
       "Clean the execution provider instances used in ort training module.");
 
-  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
-
-  // See documentation for class TrainingEnvInitialzer earlier in this module
-  // for an explanation as to why this is needed.
-  auto atexit = py::module_::import("atexit");
-  atexit.attr("register")(py::cpp_function([]() {
-    GetTrainingEnv().ClearExecutionProviderInstances();
-  }));
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });  
 }
 
 }  // namespace python
