@@ -601,8 +601,8 @@ ORT_API(const OrtEpApi*, GetEpApi);
 
 ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 
-ORT_API_STATUS_IMPL(GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
-                    _Out_ size_t* producer_output_index);
+ORT_API_STATUS_IMPL(GetValueInfoProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+                    _Out_opt_ size_t* producer_output_index);
 ORT_API_STATUS_IMPL(GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
 ORT_API_STATUS_IMPL(GetValueInfoUses, _In_ const OrtValueInfo* value_info,
                     _Out_writes_all_(max_num_uses) const OrtNode** nodes,

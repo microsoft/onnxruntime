@@ -5279,15 +5279,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 
-  /** \brief Get the OrtNode that produces the given OrtValueInfo, along with the node's output index.
+  /** \brief Get the OrtNode that produces the given OrtValueInfo and the associated output index.
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] node The OrtNode that produces the OrtValueInfo.
-   * \param[out] output_index The OrtNode instance's output index that produces the OrtValueInfo.
+   * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
+   * \param[out] output_index Optional output parameter set to the OrtNode instance's output index
+   *                          that produces the OrtValueInfo. Ignored if set to NULL.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
-                  _Out_ size_t* producer_output_index);
+  ORT_API2_STATUS(GetValueInfoProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+                  _Out_opt_ size_t* producer_output_index);
 
   /** \brief Get the number of uses of the given OrtValueInfo as an input to an OrtNode instance.
    *

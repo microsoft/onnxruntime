@@ -2394,14 +2394,17 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* valu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducerInfo, _In_ const OrtValueInfo* value_info,
-                    _Outptr_ const OrtNode** producer_node, _Out_ size_t* producer_output_index) {
+ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducer, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   OrtValueInfo::ProducerInfo producer_info;
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetProducerInfo(producer_info));
+
   *producer_node = producer_info.node;
-  *producer_output_index = producer_info.output_index;
+  if (producer_output_index != nullptr) {
+    *producer_output_index = producer_info.output_index;
+  }
 
   return nullptr;
 #else
@@ -3169,7 +3172,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetTensorSizeInBytes,
 
-    &OrtApis::GetValueInfoProducerInfo,
+    &OrtApis::GetValueInfoProducer,
     &OrtApis::GetValueInfoNumUses,
     &OrtApis::GetValueInfoUses,
     &OrtApis::Graph_GetName,
