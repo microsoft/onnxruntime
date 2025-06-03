@@ -44,6 +44,7 @@ void CreateSplitOpBuilder(const std::string& op_type, OpBuilderRegistrations& op
 void CreateSqueezeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 void CreateUnaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+void CreateWhereOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace coreml
 }  // namespace onnxruntime
