@@ -194,8 +194,12 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
     node_inputs.reserve(node.InputDefs().size());
 
     for (const NodeArg* input : node.InputDefs()) {
-      if (input != nullptr && input->Exists()) {
+      assert(input != nullptr);
+
+      if (input->Exists()) {
         node_inputs.push_back(AddValueInfo(value_infos, *input, *ep_graph));
+      } else {
+        node_inputs.push_back(nullptr);  // Optional input has a null OrtValueInfo
       }
     }
 
@@ -203,9 +207,8 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
     node_outputs.reserve(node.OutputDefs().size());
 
     for (const NodeArg* output : node.OutputDefs()) {
-      if (output != nullptr && output->Exists()) {
-        node_outputs.push_back(AddValueInfo(value_infos, *output, *ep_graph));
-      }
+      assert(output != nullptr);
+      node_outputs.push_back(AddValueInfo(value_infos, *output, *ep_graph));
     }
 
     auto ep_node = std::make_unique<EpNode>(node, std::move(node_inputs), std::move(node_outputs));

@@ -5410,8 +5410,9 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
+   *                    An optional node input is set to NULL.
    * \param[in] max_num_inputs The maximum size of the `inputs` array.
-                               Typical usage sets this to the value of Node_GetNumInputs().
+   *                           Typical usage sets this to the value of Node_GetNumInputs().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
