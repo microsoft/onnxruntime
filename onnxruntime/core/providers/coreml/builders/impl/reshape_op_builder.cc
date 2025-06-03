@@ -142,7 +142,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // as per docs, 0 is considered an illegal shape element if the input is variadic
   // We do not support the second case at the moment.
   if (!GetShape(*input_defs[0], input_shape, logger)) {
-    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. "
+    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. ";
     return false;
   }
 
