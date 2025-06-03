@@ -205,6 +205,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
     case ORT_ENABLE_EXTENDED:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
       break;
+    case ORT_ENABLE_LAYOUT:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+      break;
     case ORT_ENABLE_ALL:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
       break;
