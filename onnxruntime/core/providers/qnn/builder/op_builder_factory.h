@@ -104,5 +104,7 @@ void CreateMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateModOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 }  // namespace qnn
 }  // namespace onnxruntime
