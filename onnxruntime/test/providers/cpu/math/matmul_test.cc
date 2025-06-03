@@ -62,6 +62,13 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
        real_expected_vals({2, 3, 6, 7, 6, 11, 26, 31, 10, 19, 46, 55})});
 
   test_cases.push_back(
+      {"test padding and broadcast A > B - no broadcast in B",
+       {2, 2, 3, 2},
+       {2, 1},
+       {2, 2, 3, 1},
+       real_expected_vals({1, 3, 5, 7, 9, 11, 13, 15, 17, 19, 21, 23})});
+
+  test_cases.push_back(
       {"test padding and broadcast B > A",
        {2, 3, 2},
        {3, 2, 2, 1},
