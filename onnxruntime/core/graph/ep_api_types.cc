@@ -155,7 +155,7 @@ static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr
 
   const auto* type_proto = node_arg.TypeAsProto();
   std::unique_ptr<OrtTypeInfo> type_info = type_proto != nullptr ? OrtTypeInfo::FromTypeProto(*type_proto)
-                                                                 : std::make_unique<OrtTypeInfo>(ONNXType::ONNX_TYPE_TENSOR);
+                                                                 : nullptr;
   auto ep_value_info = std::make_unique<EpValueInfo>(ep_graph, node_arg.Name(), std::move(type_info));
   EpValueInfo* result = ep_value_info.get();
   value_infos[node_arg.Name()] = std::move(ep_value_info);

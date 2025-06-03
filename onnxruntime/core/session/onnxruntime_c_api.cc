@@ -2387,9 +2387,16 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoName, _In_ const OrtValueInfo* value_in
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info,
                     _Outptr_ const OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
+  *type_info = nullptr;
 
-  *type_info = value_info->TypeInfo();
+  const OrtTypeInfo* type_info_internal = value_info->TypeInfo();
+  if (type_info_internal == nullptr) {
+    std::ostringstream oss;
+    oss << "OrtValueInfo '" << value_info->Name() << "' does not have valid type information";
+    return OrtApis::CreateStatus(ORT_FAIL, oss.str().c_str());
+  }
 
+  *type_info = type_info_internal;
   return nullptr;
   API_IMPL_END
 }
