@@ -7,7 +7,7 @@
 namespace onnxruntime {
 namespace cuda {
 
-template <typename T, typename U, typename V, bool simplified>
+template <typename T, typename U, typename V>
 class RMSNorm final : public CudaKernel {
  public:
   RMSNorm(const OpKernelInfo& op_kernel_info);
@@ -17,6 +17,8 @@ class RMSNorm final : public CudaKernel {
  private:
   int64_t axis_;
   double epsilon_;
+  // The stash_type is not supported in the current implementation.
+  // int stash_type;
 };
 
 }  // namespace cuda
