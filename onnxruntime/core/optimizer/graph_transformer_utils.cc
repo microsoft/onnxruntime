@@ -24,6 +24,7 @@
 #include "core/optimizer/bias_gelu_fusion.h"
 #include "core/optimizer/bias_softmax_fusion.h"
 #include "core/optimizer/cast_elimination.h"
+#include "core/optimizer/cast_chain_elimination.h"
 #include "core/optimizer/common_subexpression_elimination.h"
 #include "core/optimizer/constant_folding.h"
 #include "core/optimizer/constant_sharing.h"
@@ -115,8 +116,10 @@ std::string GenerateRuleBasedTransformerName(TransformerLevel level) {
 
 InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
     TransformerLevel level,
-    const InlinedHashSet<std::string>& rules_to_disable) {
+    const InlinedHashSet<std::string>& rules_to_disable,
+    const bool enable_cast_chain_elimination) {
   InlinedVector<std::unique_ptr<RewriteRule>> rules;
+
   switch (level) {
     case TransformerLevel::Level1:
       rules.push_back(std::make_unique<EliminateIdentity>());
@@ -125,6 +128,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
       rules.push_back(std::make_unique<EliminateDropout>());
       rules.push_back(std::make_unique<ExpandElimination>());
       rules.push_back(std::make_unique<CastElimination>());
+      if (enable_cast_chain_elimination) {
+        rules.push_back(std::make_unique<CastChainElimination>());
+      }
       rules.push_back(std::make_unique<PreShapeNodeElimination>());
       rules.push_back(std::make_unique<NoopElimination>());
       rules.push_back(std::make_unique<DivMulFusion>());
@@ -175,8 +181,9 @@ InlinedVector<std::unique_ptr<RewriteRule>> GenerateRewriteRules(
 std::unique_ptr<RuleBasedGraphTransformer> GenerateRuleBasedGraphTransformer(
     TransformerLevel level,
     const InlinedHashSet<std::string>& rules_to_disable,
-    const InlinedHashSet<std::string_view>& compatible_execution_providers) {
-  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable);
+    const InlinedHashSet<std::string_view>& compatible_execution_providers,
+    const bool enable_cast_chain_elimination) {
+  auto rewrite_rules_to_register = GenerateRewriteRules(level, rules_to_disable, enable_cast_chain_elimination);
   if (rewrite_rules_to_register.empty()) {
     return nullptr;
   }
@@ -202,6 +209,8 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
+  const bool enable_cast_chain_elimination =
+      session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsEnableCastChainElimination, "0") == "1";
 #ifndef DISABLE_CONTRIB_OPS
   const InlinedHashSet<std::string_view> cpu_ep = {onnxruntime::kCpuExecutionProvider};
   const InlinedHashSet<std::string_view> cpu_acl_eps = {onnxruntime::kCpuExecutionProvider,
@@ -215,7 +224,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
       // RewriteRule optimizations are the simplest (they generally remove unnecessary nodes and are cheap to run)
       // so run them first so there is potentially less for the more intensive optimizations like ConstantFolding,
       // CommonSubexpressionElimination and TransposeOptimizer to do.
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, enable_cast_chain_elimination);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }
@@ -269,7 +278,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     } break;
 
     case TransformerLevel::Level2: {
-      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {});
+      auto rule_transformer = GenerateRuleBasedGraphTransformer(level, rules_and_transformers_to_disable, {}, enable_cast_chain_elimination);
       if (rule_transformer != nullptr) {
         transformers.emplace_back(std::move(rule_transformer));
       }
