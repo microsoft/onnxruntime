@@ -331,8 +331,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                     "Missing required scale: ", scale_arg->Name(), " for node: ", dq_node->Name());
   const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
   if (zp_arg) {
-    ORT_RETURN_IF_NOT(graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto),
-                      "Missing required zero point: ", zp_arg->Name(), " for node: ", dq_node->Name());
+    // zero point is optional, one can have a NodeArg for a missing optional
+    // if the name is an empty string, and the below would not return ptr to a proto.
+    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto),
+        "Missing required zero point: ", zp_arg->Name(), " for node: ", dq_node->Name();
   }
 
   auto K = weight_arg->Shape()->dim(0).dim_value();
@@ -351,7 +353,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
 
   std::optional<Initializer> zp_src;
-  auto cpu_allocator = CPUAllocator::Instance();
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
   auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
   auto weight_dst = Tensor(uint8_type,
                            TensorShape{N, quant_num, blob_bytes},

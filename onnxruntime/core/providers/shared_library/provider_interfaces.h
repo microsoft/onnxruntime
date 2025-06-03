@@ -1114,7 +1114,7 @@ struct ProviderHost {
   virtual void GraphUtils__MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
                                                          const std::string& name, bool load_inline) = 0;
 
-  virtual Status GraphUtils__ConvertInitializerToInlineData(Graph& graph, const std::string& name) = 0;
+  virtual Status GraphUtils__ConvertInMemoryDataToInline(Graph& graph, const std::string& name) = 0;
 
   // Initializer
   virtual Initializer* Initializer__constructor(ONNX_NAMESPACE::TensorProto_DataType data_type,

@@ -21,7 +21,7 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
                          gsl::span<const int64_t> dims) : name_(name) {
   auto tensor = Tensor(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
-                       CPUAllocator::Instance());
+                       CPUAllocator::DefaultInstance());
 
   if (!tensor.IsDataTypeString()) {
     memset(tensor.MutableDataRaw(), 0, tensor.SizeInBytes());
@@ -32,14 +32,13 @@ Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
 }
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path) {
-  if (utils::HasName(tensor_proto)) {
-    name_ = tensor_proto.name();
-  }
+  ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
+  name_ = tensor_proto.name();
 
 #if !defined(__wasm__)
   // using full filepath is required by utils::TensorProtoToTensor(). One exception is WebAssembly platform, where
   // external data is not loaded from real file system.
-  if (utils::HasExternalData(tensor_proto)) {
+  if (utils::HasExternalData(tensor_proto) && !utils::HasExternalDataInMemory(tensor_proto)) {
     ORT_ENFORCE(!model_path.empty(),
                 "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
@@ -54,30 +53,18 @@ Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const 
 
 Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
                          const std::filesystem::path& model_path, bool check_outer_scope) {
-  if (utils::HasName(tensor_proto)) {
-    name_ = tensor_proto.name();
-  }
+  ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
+  name_ = tensor_proto.name();
 
-  // Check if ort_value if already available with this name
-  if (utils::HasExternalData(tensor_proto)) {
+  // Check if the data is in memory. This does not mean, though, that the data is in the ort_value
+  if (utils::HasExternalDataInMemory(tensor_proto)) {
     OrtValue ort_value;
     if (graph.GetOrtValueInitializer(name_, ort_value, check_outer_scope)) {
       const auto& src_tensor = ort_value.Get<Tensor>();
-      if (check_outer_scope) {
-        // let's make sure we are not using tensor we really want
-        ORT_ENFORCE(src_tensor.GetElementType() == tensor_proto.data_type(),
-                    "Tensor data type mismatch. Expected: ",
-                    DataTypeImpl::ToString(DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())),
-                    " Found: ", DataTypeImpl::ToString(src_tensor.DataType()));
-        auto tensor_shape_from_proto = utils::GetTensorShapeFromTensorProto(tensor_proto);
-        ORT_ENFORCE(src_tensor.Shape() == tensor_shape_from_proto,
-                    "Tensor shape mismatch. Expected: ", tensor_shape_from_proto.ToString(),
-                    " Found: ", src_tensor.Shape().ToString());
-      }
       // We need to make a copy of the data to ensure that the original data is not mutated
       // This is generally inline with TensorProtoToTensor() behavior which copies data from
       // TensorProto to Tensor.
-      Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::Instance()};
+      Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::DefaultInstance()};
       utils::MakeCpuTensorCopy(src_tensor, initializer);
       Tensor::InitOrtValue(std::move(initializer), ort_value_);
       data_ = GetTensor(ort_value_);
@@ -99,8 +86,8 @@ Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& 
 Initializer::~Initializer() = default;
 
 void Initializer::ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const {
-  constexpr const bool user_tensor_buffer_true = true;
-  tensor_proto = utils::TensorToTensorProto(*data_, name_, user_tensor_buffer_true);
+  constexpr const bool use_tensor_buffer_true = true;
+  tensor_proto = utils::TensorToTensorProto(*data_, name_, use_tensor_buffer_true);
   ort_value = ort_value_;
 }
 

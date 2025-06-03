@@ -70,7 +70,7 @@ common::Status AllocateTensorOnDeviceOrMemory(
 
 common::Status CopyTensorFromCPUToDevice(
     const onnxruntime::DataTransferManager& data_transfer_mgr,
-    const Tensor& deserialize_tensor,
+    const Tensor& deserialized_tensor,
     Tensor&& tensor,
     OrtValue& ort_value);
 

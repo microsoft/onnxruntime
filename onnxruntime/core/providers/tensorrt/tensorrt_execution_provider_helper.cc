@@ -121,7 +121,7 @@ void TensorrtExecutionProvider::BuildSubGraphContext(Graph& graph) const {
       }
       // This input arg is not the output of another node so must come from either a graph input or an initializer.
       context->inputs_and_initializers[input->Name()] = input;
-      ORT_THROW_IF_ERROR(graph_utils::ConvertInitializerToInlineData(graph, input->Name()));
+      ORT_THROW_IF_ERROR(graph_utils::ConvertInMemoryDataToInline(graph, input->Name()));
     }
   }
 }

@@ -586,9 +586,9 @@ void ApiGraph::TransposeInitializer(std::string_view name, const std::vector<int
   node_arg.SetShape(new_shape);
 
   graph_.RemoveInitializedTensor(name_str);
-  constexpr const bool user_tensor_buffer_true = true;
+  constexpr const bool use_tensor_buffer_true = true;
   ONNX_NAMESPACE::TensorProto new_tensor_proto = utils::TensorToTensorProto(out_tensor, name_str,
-                                                                            user_tensor_buffer_true);
+                                                                            use_tensor_buffer_true);
   graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto, std::move(out_tensor));
 }
 

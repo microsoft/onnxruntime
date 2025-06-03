@@ -439,8 +439,8 @@ inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_gra
   g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_inline);
 }
 
-inline Status ConvertInitializerToInlineData(Graph& graph, const std::string& name) {
-  return g_host->GraphUtils__ConvertInitializerToInlineData(graph, name);
+inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  return g_host->GraphUtils__ConvertInMemoryDataToInline(graph, name);
 }
 }  // namespace graph_utils
 

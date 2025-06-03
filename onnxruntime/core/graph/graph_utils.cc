@@ -274,6 +274,16 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
   return GetOrCreateNodeArg(graph, new_initializer);
 }
 
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  ORT_ENFORCE(!utils::HasExternalData(new_initializer), "Expecting an initializer that contains data inline");
+
+  Tensor tensor;
+  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(),
+                                                        new_initializer, tensor));
+  auto tensor_proto_with_ptr = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
+  return AddInitializerWithExternalData(graph, tensor_proto_with_ptr, std::move(tensor));
+}
+
 NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
                                         Tensor&& tensor) {
   OrtValue ort_value;
@@ -285,16 +295,6 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
   return GetOrCreateNodeArg(graph, new_initializer);
 }
 
-NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  ORT_ENFORCE(!utils::HasExternalData(new_initializer), "Expecting an initializer that contains data");
-
-  Tensor tensor;
-  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(),
-                                                        new_initializer, tensor));
-  auto tensor_proto_with_ptr = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
-  return AddInitializerWithExternalData(graph, tensor_proto_with_ptr, std::move(tensor));
-}
-
 NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
                                         OrtValue ort_value) {
   ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(new_initializer, ort_value));
@@ -302,7 +302,7 @@ NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::Tens
 }
 
 void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
-                                   bool load_inline) {
+                                   bool copy_in_memory_data) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (src_graph.GetInitializedTensor(name, initializer)) {
     // check if the initializer already exists in the destination graph
@@ -310,7 +310,7 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
     if (!dst_graph.GetInitializedTensor(name, existing)) {
       const bool data_in_memory = utils::HasExternalDataInMemory(*initializer);
       if (data_in_memory) {
-        if (load_inline) {
+        if (copy_in_memory_data) {
           ONNX_NAMESPACE::TensorProto tensor_proto;
           ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
           dst_graph.AddInitializedTensor(tensor_proto);
@@ -321,6 +321,7 @@ void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, con
             // add the initializer to the destination graph
             ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
           } else {
+            // Data may be in memory, but stored in flatbuffers etc.
             dst_graph.AddInitializedTensor(*initializer);
           }
           GetOrCreateNodeArg(dst_graph, *initializer);
@@ -346,14 +347,13 @@ void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_gr
   }
 }
 
-Status ConvertInitializerToInlineData(Graph& graph, const std::string& name) {
+Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (graph.GetInitializedTensor(name, initializer) && utils::HasExternalDataInMemory(*initializer)) {
     ONNX_NAMESPACE::TensorProto tensor_proto;
     ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
     graph.RemoveInitializedTensor(name);
     graph.AddInitializedTensor(tensor_proto);
-    GetOrCreateNodeArg(graph, tensor_proto);
   }
   return Status::OK();
 }

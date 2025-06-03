@@ -46,7 +46,7 @@ class Initializer final {
   /// <summary>
   /// This function creates a pair of TensorProto and OrtValue. Unless the data
   /// is short, tensor_proto will be a reference to the data in OrtValue.
-  /// Useful when adding a new initializer to the graph with external data.
+  /// Useful when adding a new initializer to the graph with external data in memory.
   /// </summary>
   /// <param name="tensor_proto"></param>
   /// <param name="ort_value"></param>

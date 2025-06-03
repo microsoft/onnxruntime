@@ -1345,7 +1345,7 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       dla_enable_ = info.dla_enable;
       dla_core_ = info.dla_core;
     }
-    dump_subgraphs_ = true;  // info.dump_subgraphs;
+    dump_subgraphs_ = info.dump_subgraphs;
     engine_cache_enable_ = info.engine_cache_enable;
     weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
     onnx_model_folder_path_ = info.onnx_model_folder_path;

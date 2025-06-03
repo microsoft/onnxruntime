@@ -21,7 +21,7 @@ void SetRandom(Tensor& input) {
 }
 
 static void BM_BatchNormOldEigen(benchmark::State& state) {
-  AllocatorPtr alloc = CPUAllocator::Instance();
+  AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   const int64_t batch_size = state.range(0);
 
   const TensorShape shape = {batch_size, 64, 75, 75};

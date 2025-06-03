@@ -23,7 +23,7 @@ void GraphViewerToProto(const GraphViewer& graph_view,
     *(graph_proto.mutable_output()->Add()) = output_arg->ToProto();
   }
 
-  auto value_infos = graph_view.GetValueInfo();
+  const auto& value_infos = graph_view.GetValueInfo();
 
   // Reserve memory for the vector to avoid reallocations
   InlinedVector<const NodeArg*> value_info_sorted;

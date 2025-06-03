@@ -44,7 +44,7 @@ void SwapByteOrderCopy(size_t element_size_in_bytes,
  * @param source_bytes The source byte span.
  */
 void SwapByteOrderInplace(size_t element_size_in_bytes,
-                          gsl::span<unsigned char> bytes);
+                          gsl::span<std::byte> bytes);
 
 namespace detail {
 

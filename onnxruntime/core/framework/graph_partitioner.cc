@@ -904,7 +904,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   // handle initializers
   for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
-    graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
+    if (ep_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
+    }
   }
 
   size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;

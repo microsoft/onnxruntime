@@ -46,7 +46,7 @@ Status GetExternalDataInfo(const ONNX_NAMESPACE::TensorProto& tensor_proto,
  * generated on little endian system.
  * @param tensor_proto given initializer tensor
  */
-void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto* tensor_proto);
+void ConvertRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /**
  * Wrapper function for set_raw_data.
@@ -62,7 +62,7 @@ void SetRawDataInTensorProto(ONNX_NAMESPACE::TensorProto& tensor_proto, T1* raw_
   using namespace ONNX_NAMESPACE;
   tensor_proto.set_raw_data(raw_data, raw_data_len);
   if constexpr (endian::native != endian::little) {
-    utils::ConvertRawDataInTensorProto((ONNX_NAMESPACE::TensorProto*)&tensor_proto);
+    utils::ConvertRawDataInTensorProto(tensor_proto);
   }
 }
 
@@ -158,7 +158,9 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 /// The data will stay in the TensorProto. Otherwise, the data will be moved to a Tensor instance
 /// and TensorProto will contain a kTensorProtoMemoryAddressTag reference as a result of
 /// TensorToTensorProto() below. This is because shape inferencing code in onnx for
-/// like Reshape parses wheights data and it needs to be in the TensorProto.
+/// like Reshape parses weights data and it needs to be in the TensorProto.
+/// The value of 127 was chosen empirically to be the smallest value that that is required
+/// for onnx shape inference to work correctly.
 constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
 /**
@@ -200,7 +202,7 @@ constexpr const ORTCHAR_T* kTensorProtoMemoryAddressTag = ORT_TSTR("*/_ORT_MEM_A
 /// <summary>
 /// Creates a OrtValue with a tensor on top of the external data.
 /// If tensor_proto points to a memory address, the OrtValue will be created with a tensor
-/// that does not own the memory since the memory is already owned by one of the ortvalue_initializers.
+/// that does not own the memory since the memory is already owned by some other entity.
 /// </summary>
 /// <param name="env"></param>
 /// <param name="model_path">model path</param>
@@ -490,19 +492,19 @@ inline bool HasName(const ONNX_NAMESPACE::TypeProto_Opaque& op_proto) {
 /// <summary>
 /// Quick check if the this tensor proto has external data in memory.
 /// </summary>
-/// <param name="ten_proto">tensor_proto</param>
+/// <param name="tensor_proto">tensor_proto</param>
 /// <returns>true if ten_proto has external data and it is in memory</returns>
-bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto);
+bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
 /// <summary>
 /// This function converts TensorProto with external data to TensorProto with inline data.
 /// </summary>
-/// <param name="ten_proto">source</param>
+/// <param name="tensor_proto">source</param>
 /// <param name="model_path">model_path, can be empty if data is in memory</param>
 /// <param name="new_tensor_proto">result</param>
 /// <returns>Status</returns>
 Status TensorProtoWithExternalDataToTensorProto(
-    const ONNX_NAMESPACE::TensorProto& ten_proto,
+    const ONNX_NAMESPACE::TensorProto& tensor_proto,
     const std::filesystem::path& model_path,
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 

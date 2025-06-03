@@ -272,7 +272,7 @@ class CPUAllocator : public IAllocator {
 
   // Creates a function local static and returns a shared pointer to it.
   // Re-use in all places where we need a standalone CPUAllocator instance
-  static AllocatorPtr Instance();
+  static AllocatorPtr DefaultInstance();
 
   CPUAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 

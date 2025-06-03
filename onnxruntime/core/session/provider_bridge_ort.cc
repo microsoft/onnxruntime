@@ -1499,8 +1499,8 @@ struct ProviderHostImpl : ProviderHost {
     return initializer.data_raw();
   }
 
-  Status GraphUtils__ConvertInitializerToInlineData(Graph& graph, const std::string& name) override {
-    return graph_utils::ConvertInitializerToInlineData(graph, name);
+  Status GraphUtils__ConvertInMemoryDataToInline(Graph& graph, const std::string& name) override {
+    return graph_utils::ConvertInMemoryDataToInline(graph, name);
   }
 
   // OpKernel (direct)
