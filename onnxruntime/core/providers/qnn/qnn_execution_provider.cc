@@ -517,7 +517,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (onnxruntime::logging::EtwRegistrationManager::SupportsETW()) {
     auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
     // Register callback for ETW capture state (rundown)
-    callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+    auto etw_callback =
         [&etwRegistrationManager, this](
             LPCGUID SourceId,
             ULONG IsEnabled,
@@ -557,8 +557,10 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
             // (void)qnn_backend_manager_->SetProfilingLevelETW(qnn::ProfilingLevel::INVALID);
             (void)qnn_backend_manager_->ResetQnnLogLevel(std::nullopt);
           }
-        });
-    etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+        };
+    callback_ETWSink_key_ = "QnnExecutionProvider_";
+    callback_ETWSink_key_.append(std::to_string(reinterpret_cast<uintptr_t>(this)));
+    etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_key_, etw_callback);
   }
 #endif
 }
@@ -574,9 +576,7 @@ QNNExecutionProvider::~QNNExecutionProvider() {
 
   // Unregister the ETW callback
 #if defined(_WIN32)
-  if (callback_ETWSink_provider_ != nullptr) {
-    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
-  }
+  logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_key_);
 #endif
 }
 
