@@ -162,10 +162,10 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string data_type = "x_element_t";
 
   return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_)
-                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0, sequentially_access_by_threads_);
+                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0);
 }
 
-Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, bool sequentially_access_by_threads, const std::vector<TensorShape>& input_output_shapes) {
+Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, const std::vector<TensorShape>& input_output_shapes) {
   const auto* input = inputs[0];
   const auto* weight = inputs[1];
   bool has_bias = inputs.size() > 2;
@@ -203,7 +203,7 @@ Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::v
   std::vector<uint32_t> element_size = {is_vec4 ? inner_element_size : 1, static_cast<uint32_t>(is_vec4 ? 4 : 1), static_cast<uint32_t>(is_vec4 ? 4 : 1)};
   const auto components = is_vec4 ? 4 : 1;
   const auto input_components = static_cast<int>(inner_element_size == 3 ? 1 : inner_element_size);
-  Conv2dMMProgram program(activation, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread), sequentially_access_by_threads);
+  Conv2dMMProgram program(activation, tile_inner, fit_a_outer, fit_b_outer, fit_inner, is_channels_last, is_vec4, has_bias, std::move(element_size), std::move(elements_per_thread));
   TensorShape reduced_input_shape = ReduceShapeByComponents(input_output_shapes[0], input_components);
   TensorShape reduced_weight_shape = ReduceShapeByComponents(input_output_shapes[1], components);
   TensorShape reduced_output_shape = ReduceShapeByComponents(input_output_shapes[has_bias ? 3 : 2], components);
