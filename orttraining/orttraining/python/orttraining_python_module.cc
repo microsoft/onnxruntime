@@ -318,7 +318,7 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       },
       "Clean the execution provider instances used in ort training module.");
 
-  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });  
+  m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
 }
 
 }  // namespace python
