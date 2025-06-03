@@ -7,7 +7,7 @@ namespace webgpu {
 TensorShape ReduceShapeByComponents(const TensorShape& shape, int64_t components) {
   // Reduce the last dimensions by components creating a new tensor shape.
   TensorShapeVector shape_vector = shape.AsShapeVector();
-  ORT_ENFORCE(shape_vector.size() > 0, "The input shape must not be empty.");
+  ORT_ENFORCE(!shape_vector.empty(), "The input shape must not be empty.");
   size_t reduce_index = shape_vector.size() - 1;
   // Find the last dimension that is divisible by components.
   while (shape_vector[reduce_index] % components != 0 && reduce_index > 0) {
