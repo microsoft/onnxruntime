@@ -962,6 +962,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           0,
           0,
           0,
+          0,
           nullptr,
           nullptr,
           false,
@@ -982,6 +983,16 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           } else {
             ORT_THROW(
                 "[ERROR] [MIGraphX] The value for the key 'migraphx_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == migraphx_provider_option::kBf16Enable) {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_bf16_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_bf16_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_bf16_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == migraphx_provider_option::kFp8Enable) {

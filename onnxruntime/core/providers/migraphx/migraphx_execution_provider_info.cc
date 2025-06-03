@@ -61,6 +61,7 @@ MIGraphXExecutionProviderInfo MIGraphXExecutionProviderInfo::FromProviderOptions
                 return Status::OK();
               })
           .AddAssignmentToReference(migraphx_provider_option::kFp16Enable, info.fp16_enable)
+          .AddAssignmentToReference(migraphx_provider_option::kBf16Enable, info.bf16_enable)
           .AddAssignmentToReference(migraphx_provider_option::kFp8Enable, info.fp8_enable)
           .AddAssignmentToReference(migraphx_provider_option::kInt8Enable, info.int8_enable)
           .AddAssignmentToReference(migraphx_provider_option::kModelCacheDir, info.model_cache_dir)
@@ -79,6 +80,7 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const MIGraphXE
   const ProviderOptions options{
       {migraphx_provider_option::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx_provider_option::kFp16Enable, MakeStringWithClassicLocale(info.fp16_enable)},
+      {migraphx_provider_option::kBf16Enable, MakeStringWithClassicLocale(info.bf16_enable)},
       {migraphx_provider_option::kFp8Enable, MakeStringWithClassicLocale(info.fp8_enable)},
       {migraphx_provider_option::kInt8Enable, MakeStringWithClassicLocale(info.int8_enable)},
       {migraphx_provider_option::kModelCacheDir, MakeStringWithClassicLocale(info.model_cache_dir)},
@@ -96,6 +98,7 @@ ProviderOptions MIGraphXExecutionProviderInfo::ToProviderOptions(const OrtMIGrap
   const ProviderOptions options{
       {migraphx_provider_option::kDeviceId, MakeStringWithClassicLocale(info.device_id)},
       {migraphx_provider_option::kFp16Enable, MakeStringWithClassicLocale(info.migraphx_fp16_enable)},
+      {migraphx_provider_option::kBf16Enable, MakeStringWithClassicLocale(info.migraphx_bf16_enable)},
       {migraphx_provider_option::kFp8Enable, MakeStringWithClassicLocale(info.migraphx_fp8_enable)},
       {migraphx_provider_option::kInt8Enable, MakeStringWithClassicLocale(info.migraphx_int8_enable)},
       {migraphx_provider_option::kModelCacheDir, MakeStringWithClassicLocale(info.migraphx_cache_dir)},

@@ -17,6 +17,7 @@ namespace onnxruntime {
 namespace migraphx_provider_option {
 constexpr auto kDeviceId = "device_id";
 constexpr auto kFp16Enable = "migraphx_fp16_enable";
+constexpr auto kBf16Enable = "migraphx_bf16_enable";
 constexpr auto kFp8Enable = "migraphx_fp8_enable";
 constexpr auto kInt8Enable = "migraphx_int8_enable";
 constexpr auto kInt8CalibTable = "migraphx_int8_calibration_table_name";
@@ -58,6 +59,7 @@ struct MIGraphXExecutionProviderInfo {
   std::string target_device;
   OrtDevice::DeviceId device_id{0};
   bool fp16_enable{false};
+  bool bf16_enable{false};
   bool fp8_enable{false};
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
@@ -88,7 +90,8 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
                   (static_cast<size_t>(info.fp16_enable) << 18) ^
                   (static_cast<size_t>(info.int8_enable) << 19) ^
                   (static_cast<size_t>(info.int8_use_native_calibration_table) << 20) ^
-                  (static_cast<size_t>(info.exhaustive_tune) << 21);
+                  (static_cast<size_t>(info.exhaustive_tune) << 21) ^
+                  (static_cast<size_t>(info.bf16_enable) << 22);
     onnxruntime::HashCombine(data, value);
 
     onnxruntime::HashCombine(info.target_device, value);
