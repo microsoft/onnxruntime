@@ -48,6 +48,7 @@ onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExten
 
 #ifdef USE_MIGRAPHX
 onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
+#endif
 
 #if defined(ENABLE_DLPACK)
 
