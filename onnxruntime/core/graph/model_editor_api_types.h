@@ -14,6 +14,10 @@
 #include "core/graph/onnx_protobuf.h"
 
 namespace onnxruntime {
+
+/// <summary>
+/// Concrete implementation of OrtValueInfo used in the ModelEditorApi.
+/// </summary>
 struct ModelEditorValueInfo : public OrtValueInfo {
   ModelEditorValueInfo() : OrtValueInfo(OrtGraphIrApi::kModelEditorApi) {}
 
@@ -39,6 +43,9 @@ struct ModelEditorValueInfo : public OrtValueInfo {
   std::unique_ptr<OrtTypeInfo> type_info;
 };
 
+/// <summary>
+/// Concrete implementation of OrtNode used in the ModelEditorApi.
+/// </summary>
 struct ModelEditorNode : public OrtNode {
   ModelEditorNode() : OrtNode(OrtGraphIrApi::kModelEditorApi) {}
 
@@ -74,6 +81,9 @@ struct ModelEditorNode : public OrtNode {
   // std::unordered_map<std::string, OrtGraph> subgraphs;
 };
 
+/// <summary>
+/// Concrete implementation of OrtGraph used in the ModelEditorApi.
+/// </summary>
 struct ModelEditorGraph : public OrtGraph {
   ModelEditorGraph() : OrtGraph(OrtGraphIrApi::kModelEditorApi) {}
 

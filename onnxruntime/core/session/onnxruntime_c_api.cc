@@ -2408,7 +2408,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducerInfo, _In_ const OrtValueInfo* 
   ORT_UNUSED_PARAMETER(value_info);
   ORT_UNUSED_PARAMETER(producer_node);
   ORT_UNUSED_PARAMETER(producer_output_index);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoProducerInfo() is not supported in this build.");
 #endif
   API_IMPL_END
 }
@@ -2416,12 +2416,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducerInfo, _In_ const OrtValueInfo* 
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumers(*num_uses));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumUses(*num_uses));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(value_info);
   ORT_UNUSED_PARAMETER(num_uses);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoNumUses() is not supported in this build.");
 #endif
   API_IMPL_END
 }
@@ -2432,13 +2432,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoUses, _In_ const OrtValueInfo* value_in
                     _In_ size_t max_num_uses) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumerInfos(consumer_infos));
-  size_t num_uses = std::min(max_num_uses, consumer_infos.size());
+  std::vector<OrtValueInfo::UseInfo> uses;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetUses(uses));
+  size_t num_uses = std::min(max_num_uses, uses.size());
 
   for (size_t i = 0; i < num_uses; ++i) {
-    nodes[i] = consumer_infos[i].node;
-    input_indices[i] = consumer_infos[i].input_index;
+    nodes[i] = uses[i].node;
+    input_indices[i] = uses[i].input_index;
   }
 
   return nullptr;
@@ -2447,7 +2447,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoUses, _In_ const OrtValueInfo* value_in
   ORT_UNUSED_PARAMETER(nodes);
   ORT_UNUSED_PARAMETER(input_indices);
   ORT_UNUSED_PARAMETER(max_num_uses);
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Getting OrtValueInfo producers is not supported in this build.");
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoUses() is not supported in this build.");
 #endif
   API_IMPL_END
 }

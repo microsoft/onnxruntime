@@ -4,6 +4,11 @@
 #include "core/graph/ep_api_types.h"
 
 #include <cassert>
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
@@ -130,7 +135,7 @@ Status EpValueInfo::GetNumUses(size_t& num_uses) const {
     std::vector<size_t> input_indices;
     ORT_RETURN_IF_ERROR(GetInputOrOutputIndices(ep_node->inputs, name, input_indices));
 
-    num_uses += input_indices.size();  // A single OrtNode can use an OrtValueInfo as in input more than once.
+    num_uses += input_indices.size();  // A single OrtNode can use an OrtValueInfo as an input more than once.
   }
 
   return Status::OK();
