@@ -1856,6 +1856,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
       .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
+      .value("ORT_ENABLE_LAYOUT", GraphOptimizationLevel::ORT_ENABLE_LAYOUT)
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   py::enum_<ExecutionMode>(m, "ExecutionMode")
@@ -2234,6 +2235,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                 retval = ORT_ENABLE_EXTENDED;
                 break;
               case onnxruntime::TransformerLevel::Level3:
+                retval = ORT_ENABLE_LAYOUT;
+                break;
+              case onnxruntime::TransformerLevel::MaxLevel:
                 retval = ORT_ENABLE_ALL;
                 break;
               default:
@@ -2255,8 +2259,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
               case ORT_ENABLE_EXTENDED:
                 options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
                 break;
-              case ORT_ENABLE_ALL:
+              case ORT_ENABLE_LAYOUT:
                 options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+                break;
+              case ORT_ENABLE_ALL:
+                options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
                 break;
             }
           },
