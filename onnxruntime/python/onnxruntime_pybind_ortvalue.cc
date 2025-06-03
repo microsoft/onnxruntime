@@ -392,7 +392,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
               auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
               auto device = devices.at(i);
-              OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+              OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
               v->push_back(ml_value);

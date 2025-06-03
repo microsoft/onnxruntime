@@ -15,13 +15,80 @@
 
 struct ApiPtrs {
   const OrtApi& ort_api;
-  // const OrtEpApi& ep_api;  TODO: Add this when we flesh out the EP API.
+  const OrtEpApi& ep_api;
 };
 
-struct ExampleEp : OrtEp, ApiPtrs {
+struct NotificationImpl : OrtSyncNotificationImpl, ApiPtrs {
+  NotificationImpl(ApiPtrs apis) : ApiPtrs(apis) {
+    Activate = ActivateImpl;
+    Release = ReleaseImpl;
+
+    // TODO: Setup the event or similar that will be activated on notification.
+    // See CudaNotification or CannNotification
+  }
+
+  static void ORT_API_CALL ActivateImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<NotificationImpl*>(this_ptr);
+  }
+
+  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept {
+    delete static_cast<NotificationImpl*>(this_ptr);
+  }
+};
+
+struct StreamImpl : OrtSyncStreamImpl, ApiPtrs {
+  StreamImpl(ApiPtrs apis) : ApiPtrs(apis) {
+    version = ORT_API_VERSION;
+    CreateNotification = CreateNotificationImpl;
+    GetWaitNotificationFunc = GetWaitNotificationFuncImpl;
+    Flush = FlushImpl;
+    OnSessionRunEnd = OnSessionRunEndImpl;
+    GetResource = GetResourceImpl;
+    Release = ReleaseImpl;
+  }
+
+  // layer in our implementation and create the OrtSyncNotification
+  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                                                        _In_ size_t num_consumers,
+                                                        _Outptr_ OrtSyncNotification** sync_notification) noexcept {
+    auto& impl = *static_cast<StreamImpl*>(this_ptr);
+    auto notification = std::make_unique<NotificationImpl>(impl);
+    auto* status = impl.ep_api.CreateSyncNotification(this_ptr, stream, notification.get(), sync_notification);
+
+    if (status != nullptr) {
+      return status;  // error occurred
+    }
+
+    notification.release();
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL GetWaitNotificationFuncImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                                                             SyncWaitNotificationFn** notification_fn) noexcept {
+  }
+
+  static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream) noexcept {
+  }
+
+  static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream) noexcept {
+  }
+
+  // TODO: Is this required?
+  static void* ORT_API_CALL GetResourceImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                                            int32_t version, int32_t id) noexcept {
+  }
+
+  // callback for EP library to release any internal state
+  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept {
+  }
+};
+
+class ExampleEp : OrtEp, ApiPtrs {
+ public:
   ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
       : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
     // Initialize the execution provider.
+    CreateSyncStream = CreateSyncStreamImpl;
 
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -33,6 +100,20 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
   ~ExampleEp() {
     // Clean up the execution provider
+  }
+
+ private:
+  static OrtStatus* CreateSyncStreamImpl(OrtEp* this_ptr,
+                                         const OrtSession* session,
+                                         const OrtMemoryDevice* memory_device,
+                                         OrtSyncStream** stream) {
+    auto& ep = *static_cast<ExampleEp*>(this_ptr);
+    ep.ep_api.CreateSyncStream()
+
+        // Create a sync stream for the execution provider.
+        // This is just an example, so we return nullptr to indicate success.
+        * stream = nullptr;
+    return nullptr;  // No error
   }
 
   std::string name_;
@@ -48,6 +129,42 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
+    CreateAllocator = CreateAllocatorImpl;
+
+    // setup the OrtMemoryInfo instances required by the EP.
+
+    // for the sake of this example we specify a CPU allocator with no arena and 1K alignment (arbitrary)
+    OrtMemoryInfo* mem_info = nullptr;
+    auto* status = ort_api.CreateMemoryInfo_V2("ExampleEP CPU", OrtMemoryInfoDeviceType_CPU,
+                                               /*vendor*/ 0x0000, /* device_id */ 0,
+                                               OrtMemType::OrtMemTypeDefault,
+                                               /*alignment*/ 1024,
+                                               OrtAllocatorType::OrtDeviceAllocator,  // no arena
+                                               &mem_info);
+    assert(status == nullptr);  // should never fail.
+    cpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
+
+    //
+    // GPU allocator OrtMemoryInfo for example purposes
+    mem_info = nullptr;
+    status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU", OrtMemoryInfoDeviceType_GPU,
+                                         /*vendor*/ 0x0000, /* device_id */ 0,
+                                         OrtMemType::OrtMemTypeDefault,
+                                         /*alignment*/ 0,
+                                         OrtAllocatorType::OrtDeviceAllocator,
+                                         &mem_info);
+    assert(status == nullptr);  // should never fail.
+    default_gpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
+
+    mem_info = nullptr;
+    status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_CPU,
+                                         /*vendor*/ 0x0000, /* device_id */ 0,
+                                         OrtMemType::OrtMemTypeCPU,
+                                         /*alignment*/ 0,
+                                         OrtAllocatorType::OrtDeviceAllocator,
+                                         &mem_info);
+    assert(status == nullptr);  // should never fail.
+    pinned_gpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
   }
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) {
@@ -93,6 +210,11 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
         if (status != nullptr) {
           return status;
         }
+
+        // add required allocator create funcs
+        // create OrtMemoryInfo
+        // provide callback func
+        // auto* status = factory->ort_api.GetEpApi()->RegisterEpDeviceAllocator(ep_devices[num_ep_devices - 1], factory->CreateAllocatorsImpl, factory->ReleaseEpImpl);
       }
 
       // C++ API equivalent. Throws on error.
@@ -150,8 +272,56 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     delete dummy_ep;
   }
 
+  /*
+  OrtStatus*(ORT_API_CALL* CreateAllocator)(_In_ OrtEpFactory* this_ptr,
+                                            _In_ const OrtMemoryInfo* memory_info,
+                                            _In_ const OrtKeyValuePairs* allocator_options,
+                                            _Outptr_ OrtAllocator** allocator);
+  void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEpFactory* this_ptr,
+                                       _In_ OrtAllocator* allocator);
+
+  // get the OrtDataTransfer for the library.
+  // if none are provided set data_transfer to nullptr.
+  OrtStatus*(ORT_API_CALL* CreateDataTransfer)(_In_ OrtEpFactory* this_ptr,
+                                               _Outptr_ OrtDataTransfer** data_transfer);
+  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransfer* data_transfer);
+
+  */
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEpFactory* this_ptr,
+                                                     _In_ const OrtMemoryInfo* memory_info,
+                                                     _In_ const OrtKeyValuePairs* allocator_options,
+                                                     _Outptr_ OrtAllocator** allocator) {
+    auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+
+    // TODO: If we want to support usage of BFCArena the OrtEnv will have to wrap the OrtAllocator returned with
+    // IAllocatorImplWrappingOrtAllocator (to get an IAllocator), put that in std::unique_ptr, and create the BFCArena.
+    // Any options specific to the arena would need to be parsed/applied at that level.
+    // We also need to wire the OrtEpFactory::ReleaseAllocator call into the IAllocatorImplWrappingOrtAllocator dtor.
+    if (memory_info == factory->cpu_memory_info_.get()) {
+      // create a CPU allocator
+      auto allocator = std::make_unique<OrtAllocator>();
+      allocator->Info = [memory_info]() { return memory_info; }
+
+    } else if (memory_info == factory->default_gpu_memory_info_.get()) {
+      // create a GPU allocator
+    } else if (memory_info == factory->pinned_gpu_memory_info_.get()) {
+      // create a pinned memory allocator
+    } else {
+      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                           "Unknown memory info provided to CreateAllocator.");
+    }
+  }
+
   const std::string ep_name_;            // EP name
   const std::string vendor_{"Contoso"};  // EP vendor name
+
+  // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
+  std::unique_ptr<OrtMemoryInfo> cpu_memory_info_;
+
+  // for example purposes. if the EP used GPU, and pinned/shared memory was required for data transfer, these are the
+  // OrtMemoryInfo instance required for that.
+  std::unique_ptr<OrtMemoryInfo> default_gpu_memory_info_;
+  std::unique_ptr<OrtMemoryInfo> pinned_gpu_memory_info_;
 };
 
 // To make symbols visible on macOS/iOS
@@ -168,11 +338,11 @@ extern "C" {
 EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const OrtApiBase* ort_api_base,
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
-  // const OrtEpApi* ep_api = ort_api->GetEpApi();
+  const OrtEpApi* ep_api = ort_api->GetEpApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api});
+                                                                             ApiPtrs{*ort_api, *ep_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
@@ -186,7 +356,7 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
 }
 
 EXPORT_SYMBOL OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
-  delete factory;
+  delete static_cast<ExampleEpFactory*>(factory);
   return nullptr;
 }
 

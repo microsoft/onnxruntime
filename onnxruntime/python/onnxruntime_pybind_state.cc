@@ -2029,12 +2029,16 @@ for model inference.)pbdoc");
       return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
+          onnxruntime::CUDA, type,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
           mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
-          id, mem_type);
+          onnxruntime::CUDA_PINNED, type,
+          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::SHARED, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
+          mem_type);
     } else {
       throw std::runtime_error("Specified device is not supported.");
     }
