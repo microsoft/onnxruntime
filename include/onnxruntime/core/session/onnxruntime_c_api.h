@@ -5370,7 +5370,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Graph_GetName)(_In_ const OrtGraph* graph);
+  const char*(ORT_API_CALL* Graph_Name)(_In_ const OrtGraph* graph);
 
   /** \brief Returns the number of nodes in the OrtGraph instance.
    * \param[in] graph The OrtGraph instance.
@@ -5378,7 +5378,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Graph_GetNumNodes)(_In_ const OrtGraph* graph);
+  size_t(ORT_API_CALL* Graph_NumNodes)(_In_ const OrtGraph* graph);
 
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
@@ -5407,7 +5407,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_GetName)(_In_ const OrtNode* node);
+  const char*(ORT_API_CALL* Node_Name)(_In_ const OrtNode* node);
 
   /** \brief Returns the ONNX operator type (e.g., "Conv") of an OrtNode instance.
    * \param[in] node The OrtNode instance.
@@ -5415,7 +5415,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_GetOperatorType)(_In_ const OrtNode* node);
+  const char*(ORT_API_CALL* Node_OperatorType)(_In_ const OrtNode* node);
 
   /** \brief Returns the domain for an OrtNode instance.
    * \param[in] node The OrtNode instance.
@@ -5423,7 +5423,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_GetDomain)(_In_ const OrtNode* node);
+  const char*(ORT_API_CALL* Node_Domain)(_In_ const OrtNode* node);
 
   /** \brief Returns the number of inputs for an OrtNode instance.
    * \param[in] node The OrtNode instance.
@@ -5431,7 +5431,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Node_GetNumInputs)(_In_ const OrtNode* node);
+  size_t(ORT_API_CALL* Node_NumInputs)(_In_ const OrtNode* node);
 
   /** \brief Returns the number of outputs for an OrtNode instance.
    * \param[in] node The OrtNode instance.
@@ -5439,7 +5439,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Node_GetNumOutputs)(_In_ const OrtNode* node);
+  size_t(ORT_API_CALL* Node_NumOutputs)(_In_ const OrtNode* node);
 
   /** \brief Returns the input OrtValueInfo instances for an OrtNode.
    *

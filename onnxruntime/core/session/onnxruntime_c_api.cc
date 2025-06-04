@@ -2474,12 +2474,12 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoUses, _In_ const OrtValueInfo* value_in
 // OrtGraph
 //
 
-ORT_API(const char*, OrtApis::Graph_GetName, _In_ const OrtGraph* graph) {
+ORT_API(const char*, OrtApis::Graph_Name, _In_ const OrtGraph* graph) {
   return graph->Name().c_str();
 }
 
-ORT_API(size_t, OrtApis::Graph_GetNumNodes, _In_ const OrtGraph* graph) {
-  return graph->NumberOfNodes();
+ORT_API(size_t, OrtApis::Graph_NumNodes, _In_ const OrtGraph* graph) {
+  return graph->NumNodes();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
@@ -2507,24 +2507,24 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
 // OrtNode
 //
 
-ORT_API(const char*, OrtApis::Node_GetName, const OrtNode* node) {
+ORT_API(const char*, OrtApis::Node_Name, const OrtNode* node) {
   return node->Name().c_str();
 }
 
-ORT_API(const char*, OrtApis::Node_GetOperatorType, const OrtNode* node) {
+ORT_API(const char*, OrtApis::Node_OperatorType, const OrtNode* node) {
   return node->OpType().c_str();
 }
 
-ORT_API(const char*, OrtApis::Node_GetDomain, const OrtNode* node) {
+ORT_API(const char*, OrtApis::Node_Domain, const OrtNode* node) {
   return node->Domain().c_str();
 }
 
-ORT_API(size_t, OrtApis::Node_GetNumInputs, const OrtNode* node) {
-  return node->GetNumInputs();
+ORT_API(size_t, OrtApis::Node_NumInputs, const OrtNode* node) {
+  return node->NumInputs();
 }
 
-ORT_API(size_t, OrtApis::Node_GetNumOutputs, const OrtNode* node) {
-  return node->GetNumOutputs();
+ORT_API(size_t, OrtApis::Node_NumOutputs, const OrtNode* node) {
+  return node->NumOutputs();
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node,
@@ -3191,14 +3191,14 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetValueInfoProducer,
     &OrtApis::GetValueInfoNumUses,
     &OrtApis::GetValueInfoUses,
-    &OrtApis::Graph_GetName,
-    &OrtApis::Graph_GetNumNodes,
+    &OrtApis::Graph_Name,
+    &OrtApis::Graph_NumNodes,
     &OrtApis::Graph_GetNodes,
-    &OrtApis::Node_GetName,
-    &OrtApis::Node_GetOperatorType,
-    &OrtApis::Node_GetDomain,
-    &OrtApis::Node_GetNumInputs,
-    &OrtApis::Node_GetNumOutputs,
+    &OrtApis::Node_Name,
+    &OrtApis::Node_OperatorType,
+    &OrtApis::Node_Domain,
+    &OrtApis::Node_NumInputs,
+    &OrtApis::Node_NumOutputs,
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
 };

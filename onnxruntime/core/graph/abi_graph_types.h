@@ -76,8 +76,8 @@ struct OrtNode {
   virtual const std::string& Name() const = 0;
   virtual const std::string& OpType() const = 0;
   virtual const std::string& Domain() const = 0;
-  virtual size_t GetNumInputs() const = 0;
-  virtual size_t GetNumOutputs() const = 0;
+  virtual size_t NumInputs() const = 0;
+  virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
 
@@ -92,7 +92,9 @@ struct OrtGraph {
   virtual ~OrtGraph() = default;
 
   virtual const std::string& Name() const = 0;
-  virtual size_t NumberOfNodes() const = 0;
+  virtual size_t NumInputs() const = 0;
+  virtual size_t NumOutputs() const = 0;
+  virtual size_t NumNodes() const = 0;
   virtual std::vector<const OrtNode*> GetNodes(int order) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;

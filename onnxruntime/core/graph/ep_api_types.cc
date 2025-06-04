@@ -246,15 +246,16 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
 }
 
 const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
-
-size_t EpGraph::NumberOfNodes() const { return nodes.size(); }
+size_t EpGraph::NumInputs() const { return inputs.size(); }
+size_t EpGraph::NumOutputs() const { return outputs.size(); }
+size_t EpGraph::NumNodes() const { return nodes.size(); }
 
 std::vector<const OrtNode*> EpGraph::GetNodes(int order) const {
   ExecutionOrder execution_order = static_cast<ExecutionOrder>(order);
   const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder(execution_order);
 
   std::vector<const OrtNode*> result;
-  result.reserve(NumberOfNodes());
+  result.reserve(NumNodes());
 
   for (NodeIndex node_idx : node_indices) {
     auto node_it = index_to_node.find(node_idx);

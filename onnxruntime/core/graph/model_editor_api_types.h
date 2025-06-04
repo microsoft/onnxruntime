@@ -55,8 +55,8 @@ struct ModelEditorNode : public OrtNode {
   const std::string& Name() const override { return node_name; }
   const std::string& OpType() const override { return operator_name; }
   const std::string& Domain() const override { return domain_name; }
-  size_t GetNumInputs() const override { return input_names.size(); }
-  size_t GetNumOutputs() const override { return output_names.size(); }
+  size_t NumInputs() const override { return input_names.size(); }
+  size_t NumOutputs() const override { return output_names.size(); }
 
   Status GetInputs(InlinedVector<const OrtValueInfo*>& /*inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -90,7 +90,9 @@ struct ModelEditorGraph : public OrtGraph {
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and ModelEditorGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
   const std::string& Name() const override { return name; }
-  size_t NumberOfNodes() const override { return nodes.size(); }
+  size_t NumInputs() const override { return inputs.size(); }
+  size_t NumOutputs() const override { return outputs.size(); }
+  size_t NumNodes() const override { return nodes.size(); }
   std::vector<const OrtNode*> GetNodes(int /*order*/) const override {
     std::vector<const OrtNode*> result;
     result.reserve(nodes.size());

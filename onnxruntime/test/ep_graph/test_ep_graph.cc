@@ -115,9 +115,9 @@ static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtVal
     if (!within_graph_viewer) {
       ASSERT_EQ(api_producer_node, nullptr);  // Producer is outside the graph viewer, so C API should return null
     } else {
-      ASSERT_EQ(std::string(ort_api.Node_GetName(api_producer_node)), producer_node->Name());
-      ASSERT_EQ(std::string(ort_api.Node_GetOperatorType(api_producer_node)), producer_node->OpType());
-      ASSERT_EQ(std::string(ort_api.Node_GetDomain(api_producer_node)), producer_node->Domain());
+      ASSERT_EQ(std::string(ort_api.Node_Name(api_producer_node)), producer_node->Name());
+      ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_producer_node)), producer_node->OpType());
+      ASSERT_EQ(std::string(ort_api.Node_Domain(api_producer_node)), producer_node->Domain());
 
       std::vector<size_t> indices;
       GetInputOrOutputIndices(producer_node->OutputDefs(), node_arg->Name(), indices);
@@ -148,9 +148,9 @@ static void CheckValueInfoUses(const GraphViewer& graph_viewer, const OrtValueIn
   ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoUses(value_info, api_node_users.data(), api_input_indices.data(), api_num_uses));
 
   for (size_t i = 0; i < api_num_uses; i++) {
-    ASSERT_EQ(std::string(ort_api.Node_GetName(api_node_users[i])), node_arg_uses[i].consumer_node->Name());
-    ASSERT_EQ(std::string(ort_api.Node_GetOperatorType(api_node_users[i])), node_arg_uses[i].consumer_node->OpType());
-    ASSERT_EQ(std::string(ort_api.Node_GetDomain(api_node_users[i])), node_arg_uses[i].consumer_node->Domain());
+    ASSERT_EQ(std::string(ort_api.Node_Name(api_node_users[i])), node_arg_uses[i].consumer_node->Name());
+    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node_users[i])), node_arg_uses[i].consumer_node->OpType());
+    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node_users[i])), node_arg_uses[i].consumer_node->Domain());
     ASSERT_EQ(api_input_indices[i], node_arg_uses[i].input_index);
   }
 }
@@ -215,7 +215,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  size_t num_nodes = ort_api.Graph_GetNumNodes(&api_graph);
+  size_t num_nodes = ort_api.Graph_NumNodes(&api_graph);
   ASSERT_EQ(num_nodes, graph_viewer.NumberOfNodes());
 
   std::vector<const OrtNode*> api_nodes(num_nodes, nullptr);
@@ -227,12 +227,12 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     ASSERT_NE(node, nullptr);
 
     const OrtNode* api_node = api_nodes[node_idx];
-    ASSERT_EQ(std::string(ort_api.Node_GetName(api_node)), node->Name());
-    ASSERT_EQ(std::string(ort_api.Node_GetOperatorType(api_node)), node->OpType());
-    ASSERT_EQ(std::string(ort_api.Node_GetDomain(api_node)), node->Domain());
+    ASSERT_EQ(std::string(ort_api.Node_Name(api_node)), node->Name());
+    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node)), node->OpType());
+    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node)), node->Domain());
 
     const auto input_node_args = node->InputDefs();
-    const size_t num_inputs = ort_api.Node_GetNumInputs(api_node);
+    const size_t num_inputs = ort_api.Node_NumInputs(api_node);
     ASSERT_EQ(num_inputs, input_node_args.size());
 
     std::vector<const OrtValueInfo*> api_inputs(num_inputs, nullptr);
@@ -240,7 +240,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     CheckValueInfosCApi(graph_viewer, api_inputs, input_node_args);
 
     const auto output_node_args = node->OutputDefs();
-    const size_t num_outputs = ort_api.Node_GetNumOutputs(api_node);
+    const size_t num_outputs = ort_api.Node_NumOutputs(api_node);
     ASSERT_EQ(num_outputs, output_node_args.size());
 
     std::vector<const OrtValueInfo*> api_outputs(num_outputs, nullptr);

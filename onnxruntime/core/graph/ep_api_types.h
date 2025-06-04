@@ -70,8 +70,8 @@ struct EpNode : public OrtNode {
   const std::string& Name() const override;
   const std::string& OpType() const override;
   const std::string& Domain() const override;
-  size_t GetNumInputs() const override { return inputs.size(); }
-  size_t GetNumOutputs() const override { return outputs.size(); }
+  size_t NumInputs() const override { return inputs.size(); }
+  size_t NumOutputs() const override { return outputs.size(); }
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
 
@@ -97,7 +97,9 @@ struct EpGraph : public OrtGraph {
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
 
   const std::string& Name() const override;
-  size_t NumberOfNodes() const override;
+  size_t NumInputs() const override;
+  size_t NumOutputs() const override;
+  size_t NumNodes() const override;
   std::vector<const OrtNode*> GetNodes(int order) const override;
 
   const GraphViewer& graph_viewer;
