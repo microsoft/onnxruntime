@@ -9,8 +9,7 @@
 #include <utility>
 #include <string>
 #include <array>
-#include <memory>
-#include <unordered_map>
+#include <vector>
 
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
@@ -38,12 +37,11 @@ std::optional<size_t> GetMulScalarInputIndex(const NodeUnit* mul) {
   if (!is_x_scalar && !is_y_scalar) {
     return std::nullopt;
   }
-  return is_y_scalar ? 1U : 0U;
+  return is_y_scalar ? 1 : 0;
 }
 
 /// @brief Get the axis for softmax
-/// @param mul Multiply node unit
-/// @param softmax Softmax node unit
+/// @param node_units The node units containing the softmax and mul nodes
 /// @return The axis for softmax
 std::optional<uint32_t> GetPositiveSoftmaxAxis(const NodeUnit* mul, const NodeUnit* softmax) {
   NodeAttrHelper softmax_attr_helper(softmax->GetNode());
@@ -54,7 +52,7 @@ std::optional<uint32_t> GetPositiveSoftmaxAxis(const NodeUnit* mul, const NodeUn
   int64_t axis_value = param_axis.value();
   if (axis_value < 0) {
     size_t input_scale_index = GetMulScalarInputIndex(mul).value();
-    size_t input_other_index = 1U - input_scale_index;
+    size_t input_other_index = 1 - input_scale_index;
     int rank = mul->GetNode().InputDefs()[input_other_index]->Shape()->dim_size();
     axis_value += static_cast<int64_t>(rank);
   }
@@ -94,7 +92,7 @@ std::optional<float> ExtractScalarValueFromMul(const GraphViewer& graph_viewer, 
 /// @return Status
 Status CreateOrValidateOnQnn(
     QnnModelWrapper* qnn_model_wrapper,
-    gsl::span<const NodeUnit* const> node_units,
+    std::array<const NodeUnit*, 2> node_units,
     bool validate) {
   const NodeUnit* mul = node_units[0];
   const NodeUnit* softmax = node_units[1];
@@ -103,7 +101,7 @@ Status CreateOrValidateOnQnn(
   ORT_RETURN_IF_NOT(softmax->OpType() == kOpSoftmax,
                     "Expected softmax node to be of type Softmax, got ", softmax->OpType());
   size_t input_scale_index = GetMulScalarInputIndex(mul).value();
-  size_t input_other_index = 1U - input_scale_index;
+  size_t input_other_index = 1 - input_scale_index;
   const NodeUnitIODef& mul_input_other = mul->Inputs()[input_other_index];
   const NodeUnitIODef& softmax_output = softmax->Outputs()[0];
 
@@ -190,26 +188,22 @@ std::unique_ptr<IQnnNodeGroup> ScaleSoftmaxFusion::TryFusion(
     return nullptr;
   }
 
-  std::array<const NodeUnit*, 2> node_unit_array{&mul_node_unit, softmax};
-  auto node_units = gsl::make_span<const NodeUnit*>(node_unit_array.data(), 2);
+  std::array<const NodeUnit*, 2> node_units{&mul_node_unit, softmax};
   if (CreateOrValidateOnQnn(&qnn_model_wrapper, node_units, /*validate=*/true) != Status::OK()) {
     return nullptr;
   }
-  return std::make_unique<ScaleSoftmaxFusion>(node_units);
-}
 
-gsl::span<const NodeUnit* const> ScaleSoftmaxFusion::GetNodeUnits() const {
-  return gsl::span<const NodeUnit* const>{node_units_.data(), node_units_.size()};
+  return std::make_unique<ScaleSoftmaxFusion>(node_units);
 }
 
 Status ScaleSoftmaxFusion::IsSupported(
     QnnModelWrapper& qnn_model_wrapper, [[maybe_unused]] const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), /*validate=*/true);
+  return CreateOrValidateOnQnn(&qnn_model_wrapper, node_units_, /*validate=*/true);
 }
 
 Status ScaleSoftmaxFusion::AddToModelBuilder(
     QnnModelWrapper& qnn_model_wrapper, [[maybe_unused]] const logging::Logger& logger) const {
-  return CreateOrValidateOnQnn(&qnn_model_wrapper, GetNodeUnits(), /*validate=*/false);
+  return CreateOrValidateOnQnn(&qnn_model_wrapper, node_units_, /*validate=*/false);
 }
 
 }  // namespace qnn

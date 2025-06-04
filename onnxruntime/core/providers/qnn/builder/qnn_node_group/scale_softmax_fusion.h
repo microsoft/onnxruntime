@@ -22,16 +22,12 @@ class QnnModelWrapper;
 /// </summary>
 class ScaleSoftmaxFusion : public IQnnNodeGroup {
  public:
-  explicit ScaleSoftmaxFusion(gsl::span<const NodeUnit* const> node_units) {
-    ORT_ENFORCE(node_units.size() == 2, "Pattern expect exactly 2 NodeUnits.");
-    node_units_[0] = node_units[0];
-    node_units_[1] = node_units[1];
-  }
+  explicit ScaleSoftmaxFusion(const std::array<const NodeUnit*, 2>& node_units) : node_units_(node_units) {}
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ScaleSoftmaxFusion);
 
   Status IsSupported(QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const override;
   Status AddToModelBuilder(QnnModelWrapper& qnn_model_wrapper, const logging::Logger& logger) const override;
-  gsl::span<const NodeUnit* const> GetNodeUnits() const override;
+  gsl::span<const NodeUnit* const> GetNodeUnits() const override { return node_units_; }
   const NodeUnit* GetTargetNodeUnit() const override { return node_units_[1]; }
   std::string_view Type() const override { return "ScaleSoftmaxFusion"; }
 

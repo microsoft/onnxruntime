@@ -71,6 +71,8 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializer) {
                   /*opset_version=*/13,
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
                   /*fp32_abs_err=*/1e-2f);
+
+
 }
 
 TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarConstant) {
