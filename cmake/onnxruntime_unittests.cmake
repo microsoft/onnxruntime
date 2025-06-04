@@ -1995,6 +1995,11 @@ if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
     list(APPEND onnxruntime_ep_graph_test_LIBS  ${CMAKE_DL_LIBS})
   endif()
 
+  if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV)
+    # Need this because unittest_main_src defines a global nvinfer1::IBuilder variable.
+    list(APPEND onnxruntime_ep_graph_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  endif()
+
   AddTest(DYN
           TARGET onnxruntime_ep_graph_test
           SOURCES ${onnxruntime_ep_graph_test_SRC} ${onnxruntime_unittest_main_src}

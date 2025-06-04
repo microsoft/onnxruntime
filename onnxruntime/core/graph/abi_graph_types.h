@@ -20,15 +20,18 @@
     return e->graph_ir_api == (internal_api) ? static_cast<const internal_type*>(e) : nullptr;     \
   }
 
-// ORT C interface types for OrtGraphApi can't be in a namespace.
-// We need to define them here so onnxruntime::Model can be created from OrtModel.
-
+// The public ORT graph IR types (e.g., OrtGraph, OrtNode, etc.) have different implementations for the
+// ModelEditor API and EP API. This enum allows a user of the base class (e.g., OrtGraph) to determine
+// the API for which the derived class was created.
 enum class OrtGraphIrApi {
   kInvalid = 0,
   kModelEditorApi,
   kEpApi,
 };
 
+/// <summary>
+/// Public type that represents an ONNX value info.
+/// </summary>
 struct OrtValueInfo {
   explicit OrtValueInfo(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtValueInfo() = default;
@@ -56,10 +59,16 @@ struct OrtValueInfo {
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
 
+/// <summary>
+/// Public type that represents an ONNX attribute. Currently, an OrtOpAttr is interchangable with AttributeProto.
+/// </summary>
 struct OrtOpAttr {
   ONNX_NAMESPACE::AttributeProto attr_proto;
 };
 
+/// <summary>
+/// Public type that represents an ONNX node.
+/// </summary>
 struct OrtNode {
   explicit OrtNode(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtNode() = default;
@@ -75,6 +84,9 @@ struct OrtNode {
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
 
+/// <summary>
+/// Public type that represents an ONNX graph.
+/// </summary>
 struct OrtGraph {
   explicit OrtGraph(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtGraph() = default;

@@ -17,7 +17,7 @@ onnxruntime::Status OrtEpGraphSupportInfo::AddSupportedNodes(const OrtHardwareDe
     ORT_RETURN_IF(ep_node == nullptr, "Invalid OrtNode variant for use in OrtEpApi.");
     ep_nodes.push_back(ep_node);
   }
-  subgraphs.push_back(Subgraph{hardware_device, ep_nodes});
+  node_groupings.push_back(NodeGrouping{hardware_device, ep_nodes});
 
   return onnxruntime::Status::OK();
 }

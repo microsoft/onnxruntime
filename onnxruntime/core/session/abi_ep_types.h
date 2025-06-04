@@ -23,7 +23,7 @@ struct EpNode;
 /// </summary>
 struct OrtEpGraphSupportInfo {
   // A grouping of supported nodes that are executed by a specific hardware device.
-  struct Subgraph {
+  struct NodeGrouping {
     const OrtHardwareDevice* hardware_device;  // The hw device that executes the supported nodes.
     onnxruntime::InlinedVector<const onnxruntime::EpNode*> nodes;
   };
@@ -33,5 +33,5 @@ struct OrtEpGraphSupportInfo {
                                         gsl::span<const OrtNode* const> nodes);
 
   const onnxruntime::EpGraph& ort_graph;
-  onnxruntime::InlinedVector<Subgraph> subgraphs;
+  onnxruntime::InlinedVector<NodeGrouping> node_groupings;
 };

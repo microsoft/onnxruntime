@@ -111,18 +111,18 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   }
 
   std::vector<std::unique_ptr<ComputeCapability>> result;
-  result.reserve(api_graph_support_info.subgraphs.size());
-  if (api_graph_support_info.subgraphs.empty()) {
+  result.reserve(api_graph_support_info.node_groupings.size());
+  if (api_graph_support_info.node_groupings.empty()) {
     return {};
   }
 
   ModelMetadefIdGenerator generator;
 
-  // Create ComputeCapability instances from OrtEpGraphSupportInfo::Subgraph instances.
-  for (const OrtEpGraphSupportInfo::Subgraph& subgraph : api_graph_support_info.subgraphs) {
+  // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
+  for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
     std::unordered_set<const Node*> node_set;
-    node_set.reserve(subgraph.nodes.size());
-    for (const EpNode* ep_node : subgraph.nodes) {
+    node_set.reserve(node_grouping.nodes.size());
+    for (const EpNode* ep_node : node_grouping.nodes) {
       node_set.insert(&ep_node->node);
     }
 
@@ -162,7 +162,6 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     api_graphs_holder.push_back(std::move(ep_graph));
   }
 
-  // Call plugin EP's Compile(). Expect an error for now.
   ORT_RETURN_IF_ERROR(ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), num_graphs,
                                                 api_node_compute_infos.data())));
 
