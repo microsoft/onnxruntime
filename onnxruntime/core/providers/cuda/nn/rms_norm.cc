@@ -11,6 +11,13 @@
 namespace onnxruntime {
 namespace cuda {
 
+// For T and V both are double, we need U to be double
+template <typename T, typename V>
+using MeanVarType = typename std::conditional<
+    std::is_same<T, double>::value && std::is_same<V, double>::value,
+    double,
+    float>::type;
+
 // RMSNorm uses LayerNorm kernel, which only supports X and scale both
 // being the same data type.
 #define REGISTER_KERNEL_TYPED(T, V)                                                                 \
@@ -18,22 +25,14 @@ namespace cuda {
                                 (*KernelDefBuilder::Create())                                       \
                                     .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())          \
                                     .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),         \
-                                RMSNorm<T, float, V>);
+                                RMSNorm<T, MeanVarType<T, V>, V>);
 
 REGISTER_KERNEL_TYPED(float, float)
 REGISTER_KERNEL_TYPED(float, MLFloat16)
 REGISTER_KERNEL_TYPED(MLFloat16, MLFloat16)
 REGISTER_KERNEL_TYPED(MLFloat16, float)
 REGISTER_KERNEL_TYPED(BFloat16, BFloat16)
-
-// For T and V both are double, we need U to be double
-#define REGISTER_KERNEL_TYPED_DOUBLE(T, V)                                                          \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(RMSNormalization, kOnnxDomain, 23, T##_##V, kCudaExecutionProvider, \
-                                (*KernelDefBuilder::Create())                                       \
-                                    .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())          \
-                                    .TypeConstraint("V", DataTypeImpl::GetTensorType<V>()),         \
-                                RMSNorm<T, double, V>);
-REGISTER_KERNEL_TYPED_DOUBLE(double, double)
+REGISTER_KERNEL_TYPED(double, double)
 
 // The following code is shared from "core/providers/cuda/nn/layer_norm.cc".
 // It is used to implement the RMSNorm kernel, which is a simplified version of LayerNorm.
