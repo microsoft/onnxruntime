@@ -48,14 +48,13 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
         const tile_cols = 64;
-        const tile_rows = 32;
+        const tile_rows = 64;
         const tile_k = 32;
         const subtile_rows = 8;
         const quantization_block_size = 32;
 
-        var<workgroup> tile_A: array<component_type, tile_rows * tile_k>;       // 32 x 32 - RxC
+        var<workgroup> tile_A: array<component_type, tile_rows * tile_k>;       // 64 x 32 - RxC
         var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
-        var<workgroup> scratch: array<result_component_type, tile_rows * tile_cols>;  // 32 * 64 - RxC
 
         fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
             let a_global = tile_base + row;
@@ -63,8 +62,8 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
                 return;
             }
             // Each call loads 8 columns, starting at col.
-            var col = c_idx * 8;
-            // 128 threads need to load 32 x 32. 4 threads per row or 8 col per thread.
+            let col = c_idx * 8;
+            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
             for (var col_offset:u32 = 0; col_offset < 8; col_offset++)
             {
                 tile_A[row * tile_k + col + col_offset] = component_type(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
@@ -78,27 +77,24 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             if (b_global >= uniforms.N) {
                 return;
             }
-            // Each call loads 16 columns, starting at col.
-            var col = c_idx * 16;
-            // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
+            // Each call loads 8 columns, starting at col.
+            let col = c_idx * 8;
+            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
             // Stored in column major fashion.
-            let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale   = component_type(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
-            for (var step:u32 = 0; step < 2; step++)
-            {
-                var b_value = input_b[b_idx+step];
-                var b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
-                var b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value_lower[0];
-                tile_B[tile_b_base + 1] = b_value_upper[0];
-                tile_B[tile_b_base + 2] = b_value_lower[1];
-                tile_B[tile_b_base + 3] = b_value_upper[1];
-                tile_B[tile_b_base + 4] = b_value_lower[2];
-                tile_B[tile_b_base + 5] = b_value_upper[2];
-                tile_B[tile_b_base + 6] = b_value_lower[3];
-                tile_B[tile_b_base + 7] = b_value_upper[3];
-            }
+            let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
+            let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
+            let b_value = input_b[b_idx]; // input_b[b_idx+step];
+            let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
+            let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
+            let tile_b_base = row * tile_k + col;
+            tile_B[tile_b_base]     = b_value_lower[0];
+            tile_B[tile_b_base + 1] = b_value_upper[0];
+            tile_B[tile_b_base + 2] = b_value_lower[1];
+            tile_B[tile_b_base + 3] = b_value_upper[1];
+            tile_B[tile_b_base + 4] = b_value_lower[2];
+            tile_B[tile_b_base + 5] = b_value_upper[2];
+            tile_B[tile_b_base + 6] = b_value_lower[3];
+            tile_B[tile_b_base + 7] = b_value_upper[3];
         }
     )ADDNL_FN";
   } else {
@@ -109,41 +105,27 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             if (b_global >= uniforms.N) {
                 return;
             }
-            // Each call loads 16 columns, starting at col.
-            var col = c_idx * 16;
-            // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
+            // Each call loads 8 columns, starting at col.
+            let col = c_idx * 8;
+            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
             // Stored in column major fashion.
-            let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale   = component_type(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
-            for (var step:u32 = 0; step < 2; step++)
-            {
-                var b_value = input_b[b_idx+step];
-                var b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(128)) * scale;
-                var b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(128)) * scale;
-                let tile_b_base = row * tile_k + col + step * 8;
-                tile_B[tile_b_base]     = b_value0[0];
-                tile_B[tile_b_base + 1] = b_value0[1];
-                tile_B[tile_b_base + 2] = b_value0[2];
-                tile_B[tile_b_base + 3] = b_value0[3];
-                tile_B[tile_b_base + 4] = b_value1[0];
-                tile_B[tile_b_base + 5] = b_value1[1];
-                tile_B[tile_b_base + 6] = b_value1[2];
-                tile_B[tile_b_base + 7] = b_value1[3];
-            }
+            let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
+            let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
+            let b_value = input_b[b_idx+step];
+            let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(128)) * scale;
+            let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(128)) * scale;
+            let tile_b_base = row * tile_k + col;
+            tile_B[tile_b_base]     = b_value0[0];
+            tile_B[tile_b_base + 1] = b_value0[1];
+            tile_B[tile_b_base + 2] = b_value0[2];
+            tile_B[tile_b_base + 3] = b_value0[3];
+            tile_B[tile_b_base + 4] = b_value1[0];
+            tile_B[tile_b_base + 5] = b_value1[1];
+            tile_B[tile_b_base + 6] = b_value1[2];
+            tile_B[tile_b_base + 7] = b_value1[3];
         }
     )ADDNL_FN";
   }
-
-  shader.AdditionalImplementation() << R"ADDNL_FN(
-        fn storeOutput(offset:u32, row_base: u32, col: u32, global_row_base: u32) {
-            for (var row = row_base; row < tile_rows; row = row + (workgroup_size_x / tile_cols)) {
-                let global_row = global_row_base + row;
-                if (global_row < uniforms.M) {
-                  output[offset + row * uniforms.N + col] = output_element_t(scratch[row * tile_cols + col]);
-                }
-            }
-        }
-    )ADDNL_FN";
 
   shader.MainFunctionBody() << R"MAIN_FN(
         let a_global_base = workgroup_id.y * tile_rows;
@@ -158,7 +140,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
             // Load Phase
             loadSHMA(a_global_base, kidx, local_idx / 4, local_idx % 4);
-            loadSHMB(b_global_base, kidx, local_idx / 2, local_idx % 2);
+            loadSHMB(b_global_base, kidx, local_idx / 4, local_idx % 4);
             workgroupBarrier();
 
             for (var step: u32 = 0; step < tile_k; step += k_dim)
@@ -187,15 +169,11 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         }
 
         // Write out
-        subgroupMatrixStore(&scratch, subtile_id * m_dim * tile_cols, matC00, false, tile_cols);
-        subgroupMatrixStore(&scratch, subtile_id * m_dim * tile_cols + n_dim, matC01, false, tile_cols);
-        subgroupMatrixStore(&scratch, subtile_id * m_dim * tile_cols + 2 * n_dim, matC02, false, tile_cols);
-        subgroupMatrixStore(&scratch, subtile_id * m_dim * tile_cols + 3 * n_dim, matC03, false, tile_cols);
-        workgroupBarrier();
-        let row = u32(local_idx / tile_cols);
-        var col = u32(local_idx % tile_cols);
-        var matrix_c_offset = (a_global_base) * uniforms.N + b_global_base;
-        storeOutput(matrix_c_offset, row, col, a_global_base);
+        let matrix_c_offset = (a_global_base) * uniforms.N + b_global_base;
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N, matC00, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + n_dim, matC01, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 2 * n_dim, matC02, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 3 * n_dim, matC03, false, uniforms.N);
     )MAIN_FN";
 
   return Status::OK();
@@ -418,15 +396,20 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       int32_t config_index,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
-  constexpr uint32_t kTileSizeA = 32;
+  uint32_t tile_size_a = 32;
+  uint32_t work_group_size = 128;
   constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor};
-  mul_program.SetWorkgroupSize(128);
+  if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    tile_size_a = 64;
+    work_group_size = 256;
+  }
+  mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
-      (M + kTileSizeA - 1) / kTileSizeA, 1);
+      (M + tile_size_a - 1) / tile_size_a, 1);
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
                          {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
