@@ -1479,7 +1479,7 @@ endif()
       target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
       # Avoid fatal error C1128: number of sections exceeded object file format limit: compile with /bigobj
-      target_compile_options(onnxruntime_test_all PRIVATE "/bigobj")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "/bigobj")
     endif()
     if(IOS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES
