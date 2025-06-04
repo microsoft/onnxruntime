@@ -29,26 +29,16 @@ constexpr char kOpSoftmax[] = "Softmax";
 /// @param mul Multiply node unit
 /// @return The index of the scalar input (0 or 1) if found, otherwise std::nullopt
 std::optional<size_t> GetMulScalarInputIndex(const NodeUnit* mul) {
-  const NodeArg* mul_y = mul->GetNode().InputDefs()[1];
   const NodeArg* mul_x = mul->GetNode().InputDefs()[0];
-  auto y_shape_proto = mul_y->Shape();
-  auto x_shape_proto = mul_x->Shape();
-  bool is_y_scalar = false;
-  if (y_shape_proto != nullptr) {
-    auto y_shape = utils::GetTensorProtoShape(*y_shape_proto);
-    is_y_scalar = y_shape.NumDimensions() == 0;
+  const NodeArg* mul_y = mul->GetNode().InputDefs()[1];
+  auto mul_x_shape = utils::GetTensorProtoShape(*mul_x->Shape());
+  auto mul_y_shape = utils::GetTensorProtoShape(*mul_y->Shape());
+  bool is_x_scalar = mul_x_shape.NumDimensions() == 0;
+  bool is_y_scalar = mul_y_shape.NumDimensions() == 0;
+  if (!is_x_scalar && !is_y_scalar) {
+    return std::nullopt;
   }
-  bool is_x_scalar = false;
-  if (x_shape_proto != nullptr) {
-    auto x_shape = utils::GetTensorProtoShape(*x_shape_proto);
-    is_x_scalar = x_shape.NumDimensions() == 0;
-  }
-  if (is_y_scalar) {
-    return 1U;
-  } else if (is_x_scalar) {
-    return 0U;
-  }
-  return std::nullopt;
+  return is_y_scalar ? 1U : 0U;
 }
 
 /// @brief Get the axis for softmax
