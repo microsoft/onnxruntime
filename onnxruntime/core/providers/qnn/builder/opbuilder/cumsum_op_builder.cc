@@ -37,14 +37,6 @@ Status CumSumOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper, cons
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(inputs[1].node_arg.Name()),
                     "QNN CumSum needs axis as a param, hence input[1] must be a constant.");
-
-  NodeAttrHelper node_helper(node_unit);
-  int64_t exclusive = node_helper.Get("exclusive", static_cast<int64_t>(0));
-  int64_t reverse = node_helper.Get("reverse", static_cast<int64_t>(0));
-
-  ORT_RETURN_IF_NOT(exclusive == 0, "QNN only supports default value 0 for exclusive attribute");
-  ORT_RETURN_IF_NOT(reverse == 0, "QNN only supports default value 0 for reverse attribute");
-
   return Status::OK();
 }
 

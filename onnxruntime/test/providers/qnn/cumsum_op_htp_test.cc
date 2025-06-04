@@ -47,6 +47,34 @@ TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r0) {
                             ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r1) {
+  RunOpTest<float, int32_t>("CumSum",
+                            TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
+                            TestInputDef<int32_t>({}, true, {0}),
+                            {utils::MakeAttribute("exclusive", static_cast<int64_t>(0)),
+                             utils::MakeAttribute("reverse", static_cast<int64_t>(1))},
+                            17,
+                            ExpectedEPNodeAssignment::All);
+}
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e1_r0) {
+  RunOpTest<float, int32_t>("CumSum",
+                            TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
+                            TestInputDef<int32_t>({}, true, {0}),
+                            {utils::MakeAttribute("exclusive", static_cast<int64_t>(1)),
+                             utils::MakeAttribute("reverse", static_cast<int64_t>(0))},
+                            17,
+                            ExpectedEPNodeAssignment::All);
+}
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e1_r1) {
+  RunOpTest<float, int32_t>("CumSum",
+                            TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
+                            TestInputDef<int32_t>({}, true, {0}),
+                            {utils::MakeAttribute("exclusive", static_cast<int64_t>(1)),
+                             utils::MakeAttribute("reverse", static_cast<int64_t>(1))},
+                            17,
+                            ExpectedEPNodeAssignment::All);
+}
+
 }  // namespace test
 }  // namespace onnxruntime
 
