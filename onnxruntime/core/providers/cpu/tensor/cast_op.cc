@@ -262,6 +262,58 @@ struct TensorCaster<MLFloat16, float> {
   }
 };
 
+// tensor Int4x2 -> float
+template <>
+struct TensorCaster<Int4x2, float> {
+  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<float>();
+
+    // Confirm we can unpack the int4
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size,
+                "The Int4x2 tensor size is invalid for casting to float.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+
+      // Extract signed high and low nibble
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
+      out_data[2 * i] = static_cast<float>(high_nibble);
+      out_data[2 * i + 1] = static_cast<float>(low_nibble);
+    }
+  }
+};
+
+// tensor UInt4x2 -> float
+template <>
+struct TensorCaster<UInt4x2, float> {
+  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<float>();
+
+    // Confirm we can unpack the uint4
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size,
+                "The UInt4x2 tensor size is invalid for casting to float.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+
+      // Extract unsigned high and low nibble
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+
+      out_data[2 * i] = static_cast<float>(high_nibble);
+      out_data[2 * i + 1] = static_cast<float>(low_nibble);
+    }
+  }
+};
+
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
 
