@@ -1568,6 +1568,12 @@ ORT_API_STATUS_IMPL(OrtApis::AllocatorGetInfo, _In_ const OrtAllocator* ptr, _Ou
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out) {
+  API_IMPL_BEGIN
+  return ptr->GetStats(ptr, out);
+  API_IMPL_END
+}
+
 template <typename T>
 ORT_STATUS_PTR OrtGetNumSequenceElements(const OrtValue* p_ml_value, size_t* out) {
   auto& data = p_ml_value->Get<T>();
@@ -3179,6 +3185,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
 
     &OrtApis::GetTensorSizeInBytes,
+    &OrtApis::AllocatorGetStats,
 
     &OrtApis::GetValueInfoProducer,
     &OrtApis::GetValueInfoNumUses,

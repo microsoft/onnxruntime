@@ -170,10 +170,6 @@ if(APPLE)
 endif()
 
 if(MSVC)
-  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
-endif()
-
-if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
     set(ARM64 TRUE)
   elseif (onnxruntime_target_platform STREQUAL "ARM")

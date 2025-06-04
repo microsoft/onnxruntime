@@ -610,6 +610,11 @@ bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
 }
 
+bool IsGraphOutput(const Graph& graph, const NodeArg* output) {
+  const auto& graph_outputs = graph.GetOutputs();
+  return std::find(graph_outputs.begin(), graph_outputs.end(), output) != graph_outputs.end();
+}
+
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {
   bool is_initializer = false;
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;

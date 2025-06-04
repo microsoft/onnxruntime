@@ -601,6 +601,9 @@ ORT_API(const OrtEpApi*, GetEpApi);
 
 ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
 
+ORT_API_STATUS_IMPL(AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out);
+
+// OrtGraph IR accessors.
 ORT_API_STATUS_IMPL(GetValueInfoProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
                     _Out_opt_ size_t* producer_output_index);
 ORT_API_STATUS_IMPL(GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
@@ -622,5 +625,4 @@ ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
 ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
-
 }  // namespace OrtApis
