@@ -453,7 +453,7 @@ else:
     if nightly_build:
         libs.extend(["onnxruntime_pywrapper.dll"])
     migraphx_deps = [
-        "amd_comgr0602.dll"
+        "amd_comgr0602.dll",
         "amd_comgr0604.dll",
         "hiprtc0602.dll",
         "hiprtc0604.dll",
