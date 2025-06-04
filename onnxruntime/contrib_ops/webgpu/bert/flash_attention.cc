@@ -137,10 +137,10 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << qkv_head_size_ << ";\n"
                                     << "const num_heads: u32 =" << qkv_num_heads_ << ";\n";
 
-  if (is_fp16_)  {
-      shader.AdditionalImplementation() << "const min_value : q_element_t = q_element_t(-65504.0);\n";
+  if (is_fp16_) {
+    shader.AdditionalImplementation() << "const min_value : q_element_t = q_element_t(-65504.0);\n";
   } else {
-      shader.AdditionalImplementation() << "const min_value = f32(-3.402823e+38f);\n";
+    shader.AdditionalImplementation() << "const min_value = f32(-3.402823e+38f);\n";
   }
 
   shader.AdditionalImplementation() << R"HELPER_FN(
