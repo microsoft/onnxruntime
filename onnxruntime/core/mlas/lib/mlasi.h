@@ -196,6 +196,10 @@ class MLASCPUIDInfo
 
     bool HasArmNeon_BF16() const { return has_arm_neon_bf16_; }
 
+    bool HasSSE3() const { return has_sse3_; }
+
+    bool HasAVX2() const { return has_avx2_; }
+
    private:
     MLASCPUIDInfo();
 
@@ -204,6 +208,8 @@ class MLASCPUIDInfo
     bool has_arm_neon_i8mm_{false};
     bool has_arm_sve_i8mm_{false};
     bool has_arm_neon_bf16_{false};
+    bool has_sse3_{false};
+    bool has_avx2_{false};
 };
 using MLAS_CPUIDINFO = MLASCPUIDInfo;
 
