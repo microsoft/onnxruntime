@@ -17,6 +17,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/fpA_intB_gemv.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemv/details.h"
 #include "core/common/common.h"
+#include "core/providers/cuda/shared_inc/cuda_utils.h"
 
 namespace onnxruntime::llm {
 namespace kernels {
@@ -32,20 +33,32 @@ struct MathWrapper<FP16DetailsA> {
   using Type2 = typename FP16DetailsA::Type2;
 
   __device__ __forceinline__ static Type2 to_vec2(Type const& v) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __half2half2(v);
+#else
+    // we only launch fp16_intB_gemv kernel for CUDA arch >= 7.5.
+    // Return dummy value (0) to avoid compilation error for CUDA arch < 5.3.
+    uint32_t val = 0;
+    Type2 ret = reinterpret_cast<Type2&>(val);
+    return ret;
+#endif
   }
 
   __device__ __forceinline__ static Type2 fma2(Type2 const& a, Type2 const& b, Type2 const& c) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __hfma2(a, b, c);
+#else
+    return to_vec2(static_cast<Type>(0.f));
+#endif
   }
 
   __device__ __forceinline__ static Type2 mul2(Type2 const& a, Type2 const& b) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __hmul2(a, b);
+#else
+    return to_vec2(static_cast<Type>(0.f));
+#endif
   }
-
-  // __device__ __forceinline__ static Type2 deq2(Type2 const& weight, Type2 const& scale, Type2 const& zero_point) {
-  //   return __hmul2(__hsub2(weight, zero_point), scale);
-  // }
 };
 
 template <>
