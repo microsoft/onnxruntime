@@ -94,10 +94,10 @@ Top-level configuration object.
   Path to the config directory (not in JSON).
 
 - **model**: *(object)*  
-  Model architecture and ONNX model configuration. See [Model](#model).
+  Model architecture and ONNX model configuration.
 
 - **search**: *(object)*  
-  Generation/search parameters. See [Search](#search).
+  Generation/search parameters.
 
 ---
 
