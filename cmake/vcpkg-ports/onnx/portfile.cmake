@@ -3,7 +3,7 @@ vcpkg_check_linkage(ONLY_STATIC_LIBRARY)
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO onnx/onnx
-    REF v1.18.0
+    REF "v${VERSION}"
     SHA512 8516da994e0d2d1eeaa4f0c4b87e687df74a61ca0a057b7a53200c9f09405d512faa7cdc7ce20bfbe2e7a67f80746c723fb4a86049bd472f5d7125d810caa7f9
     PATCHES
         fix-cmakelists.patch
