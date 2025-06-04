@@ -37,8 +37,11 @@ void CheckOrtCApiStatus(const OrtApi* ort_api_ptr, OrtStatus* status) {
 
 int main() {
 #ifdef _WIN32
-#ifdef _DEBUG
-  _CrtSetDbgFlag(_CRTDBG_ALLOC_MEM_DF | _CRTDBG_LEAK_CHECK_DF);
+#if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+  tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+  tmpFlag |= _CRTDBG_ALLOC_MEM_DF;
+  _CrtSetDbgFlag(tmpFlag);
   std::cout << "CRT Debug Memory Leak Detection Enabled." << std::endl;
 #endif
 #endif
@@ -133,7 +136,8 @@ int main() {
     std::cout << "Output verified successfully." << std::endl;
 
     std::cout << "ONNX Runtime C++ objects (session, env, etc.) are about to go out of scope and be released." << std::endl;
-
+    // You may uncomment the following line to check if memory leak checker still works as expected.
+    // env.release();
   } catch (const Ort::Exception& e) {
     std::cerr << "ONNX Runtime C++ API Exception: " << e.what() << std::endl;
     if (ort_library_handle) {
@@ -175,9 +179,6 @@ int main() {
       std::cout << "This could happen if other references to the DLL exist or if FreeLibrary didn't fully succeed." << std::endl;
     }
   }
-
-  // 11. Memory Leak Check Point
-  std::cout << "Program finished. Check console output for CRT memory leak report if applicable." << std::endl;
 
   return 0;
 }

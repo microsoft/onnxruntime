@@ -7,6 +7,13 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+// For memory leak detection on Windows with Visual Studio in Debug mode
+#ifdef _WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 #ifdef _WIN32
 #include "getopt.h"
 #elif defined(_AIX)
@@ -965,6 +972,16 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+#ifdef _WIN32
+#if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+  tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+  tmpFlag |= _CRTDBG_ALLOC_MEM_DF;
+  _CrtSetDbgFlag(tmpFlag);
+  std::cout << "CRT Debug Memory Leak Detection Enabled." << std::endl;
+#endif
+#endif
+
   Ort::Env env{nullptr};
   int retval = -1;
   ORT_TRY {
