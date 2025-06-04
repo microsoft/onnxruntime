@@ -209,7 +209,7 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
   }
 }
 
-static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(const ProviderOptions& provider_options_map) {
+static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackend(const ProviderOptions& provider_options_map) {
   // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
   static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
   auto qnn_saver_path_pos = provider_options_map.find(QNN_SAVER_PATH_KEY);
@@ -333,7 +333,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
   }
 
-  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackendOptions(provider_options_map);
+  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackend(provider_options_map);
 
   std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
