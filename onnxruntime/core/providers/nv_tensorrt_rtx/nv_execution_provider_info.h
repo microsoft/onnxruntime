@@ -24,6 +24,7 @@ struct NvExecutionProviderInfo {
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
+  size_t max_shared_mem_size{0};
   bool dump_subgraphs{false};
   std::string engine_cache_path{""};
   bool weight_stripped_engine_enable{false};
