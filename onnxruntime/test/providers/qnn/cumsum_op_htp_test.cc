@@ -23,7 +23,7 @@ static void RunOpTest(const std::string& op_type,
                       int opset_version,
                       ExpectedEPNodeAssignment expected_ep_assignment,
                       const std::string& op_domain = kOnnxDomain,
-                      float fp32_abs_err = 2e-3f) {
+                      float fp32_abs_err = 1e-3f) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
