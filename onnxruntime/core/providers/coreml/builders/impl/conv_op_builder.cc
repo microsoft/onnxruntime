@@ -257,7 +257,9 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
     return false;
   }
 
-  if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) || !CheckShapeForConvMemoryLimit(x_shape_vec, logger) || !CheckShapeForConvMemoryLimit(output_shape_vec, logger)) {
+  if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(x_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(output_shape_vec, logger)) {
     return false;
   }
 

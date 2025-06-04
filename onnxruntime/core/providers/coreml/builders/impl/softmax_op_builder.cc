@@ -35,9 +35,13 @@ Status SoftmaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   int32_t axis_default_value = (node.SinceVersion() < 13) ? 1 : -1;
   const auto axis = helper.Get("axis", axis_default_value);
   int64_t axis_nonnegative = axis;
+
   if (node.SinceVersion() < 13) {
     ORT_RETURN_IF_NOT(GetStaticShape(*node.InputDefs()[0], data_shape, logger), "Failed to get input shape.");
     axis_nonnegative = HandleNegativeAxis(axis, data_shape.size());
+  } else {
+    ORT_RETURN_IF_NOT(GetShape(*node.InputDefs()[0], data_shape, logger),
+                      "Softmax input must have shape information.");
   }
 
   // CoreML's softmax match onnx's softmax behavior since opset 13.
@@ -138,8 +142,8 @@ bool SoftmaxOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
     return false;
   }
 
-  if (!IsStaticShape(input_shape) && (!input_params.create_mlprogram || node.SinceVersion() < 13)) {
-    LOGS(logger, VERBOSE) << "Softmax input must have static shape for NeuralNetwork or ONNX opset < 13";
+  if (!IsStaticShape(input_shape) && node.SinceVersion() < 13) {
+    LOGS(logger, VERBOSE) << "Softmax input must have static shape for ONNX opset < 13";
     return false;
   }
 

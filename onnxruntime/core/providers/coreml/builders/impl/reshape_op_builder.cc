@@ -75,10 +75,6 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-bool AllPositiveShape(gsl::span<const int64_t> shape) {
-  return std::all_of(shape.begin(), shape.end(), [](int64_t dim) { return dim > 0; });
-}
-
 // CoreML does not handle 0's in the new_shape, even though its documentation claims 0's in the new_shape will
 // match the corresponding dimension in x.shape
 // https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
@@ -141,13 +137,8 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
   // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
   // as per docs, 0 is considered an illegal shape element if the input is variadic
   // We do not support the second case at the moment.
-  if (!GetShape(*input_defs[0], input_shape, logger)) {
+  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
     LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. ";
-    return false;
-  }
-
-  if (!input_params.create_mlprogram && !IsStaticShape(input_shape)) {
-    LOGS(logger, VERBOSE) << "Input must have static shape for NeuralNetwork.";
     return false;
   }
 
