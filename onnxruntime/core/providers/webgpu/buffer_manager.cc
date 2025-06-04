@@ -352,7 +352,11 @@ class BucketCacheManager : public IBufferCacheManager {
     auto now = std::chrono::system_clock::now();
     auto time_t_now = std::chrono::system_clock::to_time_t(now);
     std::tm tm_now;
-    localtime_s(&tm_now, &time_t_now);  // Use localtime_s for thread safety
+    #ifdef _WIN32
+  localtime_s(&tm_now, &time_t_now);
+#else
+  localtime_r(&time_t_now, &tm_now);
+#endif  // Use localtime_s for thread safety
     metrics_file_ << std::put_time(&tm_now, "%Y-%m-%d %H:%M:%S") << ","
                   << std::fixed << std::setprecision(2)
                   << static_cast<double>(total_memory_) / (1024 * 1024) << ","  // Convert to MB
