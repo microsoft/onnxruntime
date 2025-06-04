@@ -2,7 +2,7 @@
 title: NVIDIA - TensorRT RTX
 description: Instructions to execute ONNX Runtime on NVIDIA RTX GPUs with the Nvidia TensorRT RTX execution provider
 parent: Execution Providers
-nav_order: 2
+nav_order: 17
 redirect_from: /docs/reference/execution-providers/TensorRTRTX-ExecutionProvider
 ---
 
@@ -15,7 +15,7 @@ Just some of the things that make it a better fit on RTX PCs than our legacy Ten
 * Much faster model compile/load times.
 * Better usability in terms of use of cached models across multiple RTX GPUs.
 
-The Nvidia TensorRT RTX execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) RTX Deep Learning inferencing engine (TODO: correct link to TRT RTX documentation once available) to accelerate ONNX model in on RTX GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
+The Nvidia TensorRT RTX execution provider in the ONNX Runtime makes use of NVIDIA's [TensorRT](https://developer.nvidia.com/tensorrt) RTX Deep Learning inferencing engine (TODO: correct link to TRT RTX documentation once available) to accelerate ONNX models on RTX GPUs. Microsoft and NVIDIA worked closely to integrate the TensorRT RTX execution provider with ONNX Runtime.
 
 Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Support for Turing GPUs is coming soon.
 
@@ -60,7 +60,7 @@ sess = ort.InferenceSession('model.onnx', providers=['NvTensorRtRtxExecutionProv
 ## Configurations
 TensorRT RTX settings can be configured via [TensorRT Execution Provider Session Option](./TensorRTRTX-ExecutionProvider.md#execution-provider-options).
 
-Here are examples and different [scenarios](./TensorRT-RTXExecutionProvider.md#scenario) to set NV TensorRT RTX EP session options:
+Here are examples and different [scenarios](./TensorRTRTX-ExecutionProvider.md#scenario) to set NV TensorRT RTX EP session options:
 
 #### Click below for Python API example:
 
@@ -109,7 +109,7 @@ std::vector<const char*> option_values = {
     streamHandle
 };
 
-Ort::ThrowOnError(api.SessionOptionsAppendExecutionProvider(sessionOptions, "NvTensorRtRtx", option_keys.data(), option_values.data(), option_keys.size()));
+Ort::ThrowOnError(api.SessionOptionsAppendExecutionProvider(session_options, "NvTensorRtRtx", option_keys.data(), option_values.data(), option_keys.size()));
 
 ```
 
