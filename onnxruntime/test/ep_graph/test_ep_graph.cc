@@ -205,7 +205,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       CheckValueInfoProducer(graph_viewer, value_info, node_arg);
       CheckValueInfoUses(graph_viewer, value_info, node_arg);
     } else {
-      ASSERT_EQ(value_info, nullptr);  // Optional input has a null OrtValueInfo.
+      ASSERT_EQ(value_info, nullptr);  // A missing optional input has a null OrtValueInfo.
     }
   }
 }

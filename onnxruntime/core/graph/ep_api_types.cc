@@ -6,6 +6,7 @@
 #include <cassert>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -199,7 +200,7 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
       if (input->Exists()) {
         node_inputs.push_back(AddValueInfo(value_infos, *input, *ep_graph));
       } else {
-        node_inputs.push_back(nullptr);  // Optional input has a null OrtValueInfo
+        node_inputs.push_back(nullptr);  // A missing optional input has a null OrtValueInfo
       }
     }
 

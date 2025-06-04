@@ -56,7 +56,6 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupport
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of 1 or more supported nodes");
   }
 
-  // TODO: Check that the OrtNodes are all contained by OrtEpGraphSupportInfo.
   gsl::span<const OrtNode* const> nodes_span(supported_nodes,
                                              supported_nodes + num_supported_nodes);
   ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSupportedNodes(hardware_device, nodes_span));

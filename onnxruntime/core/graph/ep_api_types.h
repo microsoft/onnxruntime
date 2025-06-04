@@ -5,7 +5,9 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include "core/common/inlined_containers.h"

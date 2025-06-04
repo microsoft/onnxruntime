@@ -5,6 +5,7 @@
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <vector>
 #include <sstream>
 
 #include "core/common/common.h"

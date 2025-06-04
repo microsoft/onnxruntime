@@ -18,8 +18,7 @@ struct EpNode;
 
 /// <summary>
 /// Class used specify the nodes an EP supports. An instance of this class is passed to OrtEp's
-/// GetCapability() function. An OrtEp adds groups (i.e., subgraphs) of supported nodes
-/// to the OrtEpGraphSupportInfo instance.
+/// GetCapability() function. An OrtEp adds groups of supported nodes to the OrtEpGraphSupportInfo instance.
 /// </summary>
 struct OrtEpGraphSupportInfo {
   // A grouping of supported nodes that are executed by a specific hardware device.

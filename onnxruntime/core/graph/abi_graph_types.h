@@ -60,7 +60,7 @@ struct OrtValueInfo {
 };
 
 /// <summary>
-/// Public type that represents an ONNX attribute. Currently, an OrtOpAttr is interchangable with AttributeProto.
+/// Public type that represents an ONNX attribute. Currently, an OrtOpAttr is interchangeable with AttributeProto.
 /// </summary>
 struct OrtOpAttr {
   ONNX_NAMESPACE::AttributeProto attr_proto;
