@@ -373,7 +373,6 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libQnnSaver.so",
         "libQnnSystem.so",
         "libHtpPrepare.so",
-        "ep_weight_sharing_ctx_gen",
     ]
     dl_libs.extend(qnn_deps)
     if nightly_build:
@@ -514,6 +513,7 @@ packages = [
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py",
     "onnxruntime.tools.ort_format_model.ort_flatbuffers_py.fbs",
     "onnxruntime.tools.qdq_helpers",
+    "onnxruntime.tools.qnn",
     "onnxruntime.quantization",
     "onnxruntime.quantization.operators",
     "onnxruntime.quantization.CalTableFlatBuffers",

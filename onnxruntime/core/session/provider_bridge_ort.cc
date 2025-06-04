@@ -462,13 +462,14 @@ struct ProviderHostImpl : ProviderHost {
   }
   void logging__EtwRegistrationManager__RegisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const logging::EtwRegistrationManager_EtwInternalCallback& callback) override {
-    p->RegisterInternalCallback(callback);
+      const std::string& cb_key,
+      logging::EtwRegistrationManager_EtwInternalCallback callback) override {
+    p->RegisterInternalCallback(cb_key, std::move(callback));
   }
   void logging__EtwRegistrationManager__UnregisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const logging::EtwRegistrationManager_EtwInternalCallback& callback) override {
-    p->UnregisterInternalCallback(callback);
+      const std::string& cb_key) override {
+    p->UnregisterInternalCallback(cb_key);
   }
 #endif  // defined(_WIN32)
 
