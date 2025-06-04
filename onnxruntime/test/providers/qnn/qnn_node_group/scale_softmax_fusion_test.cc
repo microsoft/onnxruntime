@@ -62,8 +62,6 @@ ProviderOptions GetProviderOptions() {
 
 }  // namespace
 
-#if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
-
 TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializer) {
   ProviderOptions provider_options = GetProviderOptions();
 
@@ -138,8 +136,6 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionSkipNoScalar1d) {
                   /*expected_ep_assignment=*/ExpectedEPNodeAssignment::All,
                   /*fp32_abs_err=*/1e-2f);
 }
-
-#endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
 }  // namespace onnxruntime
