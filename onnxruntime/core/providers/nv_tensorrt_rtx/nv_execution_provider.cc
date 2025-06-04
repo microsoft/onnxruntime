@@ -2429,16 +2429,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
       }
       std::string compute_capability_hw_compat = compute_capability_ + "+";
-      std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                             ep_cache_context_attr_,
-                                                                             reinterpret_cast<char*>(serialized_engine->data()),
-                                                                             serialized_engine->size(),
-                                                                             ep_context_embed_mode_,
-                                                                             compute_capability_hw_compat,
-                                                                             model_path_,
-                                                                             GetLogger(),
-                                                                             ep_context_models_, fused_node.Name())};
-      // DumpCtxsModel(model_proto.get(), ctx_model_path_);
+
+      ep_context_models_.push_back(CreateCtxNode(graph_body_viewer,
+                                    ep_cache_context_attr_,
+                                    reinterpret_cast<char*>(serialized_engine->data()),
+                                    serialized_engine->size(),
+                                    ep_context_embed_mode_,
+                                    compute_capability_hw_compat,
+                                    model_path_,
+                                    GetLogger(),
+                                    fused_node.Name()));
     }
   }
 
