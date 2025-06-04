@@ -304,10 +304,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       const char* eventIdentifier);
 #endif
 
-  // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
-  // TODO: Ideally this should be private... Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
-
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_ContextHandle_t>);

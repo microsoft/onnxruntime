@@ -1044,11 +1044,6 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
 
-  // TODO: consider moving VTCM buffer code to this function somehow
-  //if (context_created_) {
-  //  return Status::OK();
-  //}
-
   QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
 

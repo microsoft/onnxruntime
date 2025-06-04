@@ -1760,20 +1760,21 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 
 TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
   ProviderOptions provider_options;
-  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";  
   provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
+  provider_options["backend_path"] = "QnnHtp.dll";
 
   Ort::SessionOptions so1;
   so1.SetLogId("so1");
+  so1.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   so1.AppendExecutionProvider("QNN", provider_options);
 
   Ort::SessionOptions so2;
   so2.SetLogId("so2");
   so2.AppendExecutionProvider("QNN", provider_options);
-
   Ort::Session session1(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so1);
   Ort::Session session2(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_external.onnx"), so2);
+
 
   std::vector<std::string> input_names;
   std::vector<std::string> output_names;
