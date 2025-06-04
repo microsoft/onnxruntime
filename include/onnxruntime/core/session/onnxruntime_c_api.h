@@ -5512,7 +5512,7 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
-   *                    An optional node input is set to NULL.
+   *                    Any optional input that does not have a value is set to NULL in the `inputs` array.
    * \param[in] max_num_inputs The maximum size of the `inputs` array.
    *                           Typical usage sets this to the value of Node_NumInputs().
    *
@@ -5529,7 +5529,8 @@ struct OrtApi {
    * number of outputs.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] inputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[out] outputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   *                     Any optional output that does not have a value is set to NULL in the `outputs` array.
    * \param[in] max_num_outputs The maximum size of the `outputs` array.
    *                            Typical usage sets this to the value of Node_NumOutputs().
    *

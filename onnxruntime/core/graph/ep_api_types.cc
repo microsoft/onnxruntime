@@ -198,7 +198,12 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
 
   for (const NodeArg* output : node.OutputDefs()) {
     assert(output != nullptr);
-    node_outputs.push_back(AddValueInfo(value_infos, *output, ep_graph));
+
+    if (output->Exists()) {
+      node_outputs.push_back(AddValueInfo(value_infos, *output, ep_graph));
+    } else {
+      node_outputs.push_back(nullptr);  // A missing optional output has a null OrtValueInfo
+    }
   }
 
   return std::make_unique<EpNode>(node, std::move(node_inputs), std::move(node_outputs));
