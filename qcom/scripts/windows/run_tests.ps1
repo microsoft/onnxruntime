@@ -27,6 +27,31 @@ $NewBuildDirectoryBackslashes = ($NewBuildDirectory -replace "/", "\\")
 Push-Location $RootDir
 & $CTestExe --build-config $Config --verbose --timeout $TimeoutSec
 
+$Failed - $false
 if (-not $?) {
+    $Failed = $true
+}
+
+# If it looks like we're running in QDC, copy logs to the directory they'll scan to find them.
+if (Test-Path "C:\Temp\TestContent") {
+    $QdcLogsDir = "C:\Temp\QDC_logs"
+    if (Test-Path $QdcLogsDir) {
+        Remove-Item -Recurse -Force -Path $QdcLogsDir
+        if (-not $?) {
+            throw "Failed to clear old QDC logs dir $QdcLogsDir"
+        }
+    }
+
+    New-Item -ItemType Directory -Force -Path $QdcLogsDir
+    if (-not $?) {
+        throw "Failed to create QDC logs dir $QdcLogsDir"
+    }
+
+    $LocalLogsDir = (Join-Path $RootDir $Config)
+    Write-Host "Copying logs $LocalLogsDir\*.xml --> $QdcLogsDir"
+    Copy-Item $LocalLogsDir\*.xml $QdcLogsDir
+}
+
+if ($Failed) {
     throw "Tests failed"
 }

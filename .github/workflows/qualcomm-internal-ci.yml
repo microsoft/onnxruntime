@@ -27,16 +27,42 @@ jobs:
         run: |
           python .\qcom\build_and_test.py archive_ort_windows_x86_64
 
-      - name: Test Windows x86_64
-        shell: cmd
-        run: |
-          python .\qcom\build_and_test.py test_ort_windows_x86_64
-
       - uses: actions/upload-artifact@v3
         with:
           name: ORT Windows x86_64 Tests
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-x86_64.zip
+
+  test-windows-x86_64:
+    runs-on: ["self-hosted", "Windows", "X64"]
+    needs: [build-windows-x86_64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT Windows x86_64 Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test Windows x86_64
+        shell: cmd
+        run: |
+          python .\qcom\build_and_test.py create_venv extract_ort_windows_x86_64 test_ort_windows_x86_64 --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          report_paths: ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows x86_64 Test Results
+          path: |
+            ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
   build-windows-arm64:
     runs-on: ["self-hosted", "Windows", "X64"]
@@ -55,3 +81,36 @@ jobs:
           name: ORT Windows ARM64 Tests
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip
+
+  test-windows-arm64:
+    runs-on: ["self-hosted", "Windows", "X64"]
+    needs: [build-windows-arm64]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT Windows ARM64 Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test Windows ARM64
+        env:
+          QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        shell: cmd
+        run: |
+          python .\qcom\build_and_test.py create_venv test_ort_qdc_windows_arm64 --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          report_paths: ${{ github.workspace }}/build/qdc-windows/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows ARM64 Test Results
+          path: |
+            ${{ github.workspace }}/build/qdc-windows/*.*

@@ -5,12 +5,16 @@
 import argparse
 import concurrent.futures
 import functools
+import logging
 import os
 import random
+import tempfile
 import time
 import uuid
+import zipfile
 from abc import ABC, abstractmethod
 from enum import Enum
+from pathlib import Path, PurePosixPath
 from typing import ClassVar, NamedTuple
 
 import backoff
@@ -22,10 +26,16 @@ from qdc_public_api_client.api.artifacts import (
     post_artifacts_uuid_continueupload,
     post_artifacts_uuid_endupload,
 )
-from qdc_public_api_client.api.jobs import get_jobs_id, post_jobs
+from qdc_public_api_client.api.jobs import (
+    get_jobs_downloadlogs,
+    get_jobs_id,
+    get_jobs_job_id_logs,
+    post_jobs,
+)
 from qdc_public_api_client.models.artifact_type import ArtifactType
 from qdc_public_api_client.models.artifact_type_0 import ArtifactType0
 from qdc_public_api_client.models.create_job_type_0 import CreateJobType0
+from qdc_public_api_client.models.job_logs_type_0 import JobLogsType0
 from qdc_public_api_client.models.job_mode import JobMode
 from qdc_public_api_client.models.job_result import JobResult
 from qdc_public_api_client.models.job_state import JobState
@@ -38,8 +48,10 @@ from qdc_public_api_client.models.post_artifacts_uuid_continueupload_body import
 from qdc_public_api_client.models.test_framework import TestFramework
 from qdc_public_api_client.types import File, Response
 
-ORT_APPIUM_ARCHIVE = f"{os.path.dirname(os.path.abspath(__file__))}/../../../build/onnxruntime-tests-android.zip"
-ORT_TEST_WIN_ARM64 = f"{os.path.dirname(os.path.abspath(__file__))}/../../../build/onnxruntime-tests-windows-arm64.zip"
+ORT_APPIUM_ARCHIVE = (Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-android.zip").absolute()
+ORT_TEST_WIN_ARM64 = (
+    Path(__file__).parent.parent.parent.parent / "build" / "onnxruntime-tests-windows-arm64.zip"
+).absolute()
 
 
 #
@@ -192,7 +204,7 @@ class TestRuns:
             if not run.is_done():
                 run.poll()
                 timestr = time.strftime("%H:%M:%S")
-                print(f"[{timestr}] {run.test_name} - {run.status.name}")
+                logging.info(f"[{timestr}] {run.test_name} - {run.status.name}")
 
     def get_status_table(self) -> PrettyTable:
         table = PrettyTable()
@@ -234,7 +246,7 @@ class TestRuns:
 class QdcClient:
     _QDC_PROD_API_URL = "https://apigwx-aws.qualcomm.com/saga/v1/public/qdc"
 
-    def __init__(self, api_url: str | None):
+    def __init__(self, api_url: str | None, on_behalf_of: str | None):
         api_token = os.environ["QDC_API_TOKEN"]
 
         if not api_url or len(api_url) == 0:
@@ -243,12 +255,15 @@ class QdcClient:
             self.api_url = api_url
 
         qdc_headers = {
-            "X-QCOM-AppName": "ai hub unit tests",
+            "X-QCOM-AppName": "ONNX QNN EP unit tests",
             "X-QCOM-ClientType": "Python",
             "X-QCOM-TracingId": str(uuid.uuid4()),
             "X-QCOM-TokenType": "apikey",
             "Authorization": api_token,
         }
+
+        if on_behalf_of is not None:
+            qdc_headers["X-QCOM-OnBehalfOf"] = on_behalf_of
 
         self._client = Client(base_url=self.api_url, headers=qdc_headers)
 
@@ -257,6 +272,23 @@ class QdcClient:
             return f"https://qdc.qualcomm.com/#/reports/job/automated/{job_id}"
         else:
             return "User overridden API endpoint provided; unknown job URL"
+
+    def download_logs(self, job_id: int, log_dir: Path) -> None:
+        # Only collect logs whose names contain these:
+        partial_names = [
+            ".results.xml",
+            "_stdout.txt",
+            "test_dbg.stdout",
+        ]
+
+        all_job_log_names = self._get_full_job_log_names(job_id)
+        desired_job_log_names = [PurePosixPath(n) for n in all_job_log_names if any(p in n for p in partial_names)]
+        logging.info(f"Job produced {len(all_job_log_names)} logs, {len(desired_job_log_names)} are interesting.")
+
+        log_dir.mkdir(parents=True, exist_ok=True)
+        for qdc_log_path in desired_job_log_names:
+            local_log_path = log_dir / PurePosixPath(qdc_log_path).name
+            self._download_log(qdc_log_path, local_log_path)
 
     @retry_with_backoff()
     def post_artifacts_startupload(self, *args, **kwargs) -> Response["ArtifactType0 | None"]:
@@ -298,6 +330,47 @@ class QdcClient:
             **kwargs,
         )
 
+    def _download_log(self, qdc_log_path: PurePosixPath, local_log_path: Path) -> None:
+        logging.info(f"Downloading QDC log {qdc_log_path} to {local_log_path}.")
+        download_response = self._download_zipped_log(qdc_log_path)
+        if download_response.status_code != 200:
+            raise RuntimeError(
+                f"Cannot download log file. Response code={download_response.status_code}: {download_response.content.decode('utf-8')}"
+            )
+
+        # QDC artifacts are returned in zip files.
+        with tempfile.NamedTemporaryFile(suffix="log.zip") as zip_file:
+            zip_path = Path(zip_file.name)
+            logging.debug(f"Saving zipped log contents to {zip_path}.")
+            zip_file.write(download_response.content)
+
+            logging.debug(f"Extracting log archive to {local_log_path}.")
+            with zipfile.ZipFile(zip_file, "r") as archive:
+                archive.extractall(local_log_path.parent)
+
+    @retry_with_backoff()
+    def _download_zipped_log(self, qdc_log_path: PurePosixPath) -> Response[File]:
+        return get_jobs_downloadlogs.sync_detailed(client=self._client, path=str(qdc_log_path))
+
+    @retry_with_backoff()
+    def _get_job_log_list(self, job_id: int) -> Response[list["JobLogsType0 | None"]]:
+        return get_jobs_job_id_logs.sync_detailed(job_id=job_id, client=self._client)
+
+    # It takes some time after job completion for logs to show up. Until they do, we just get an
+    # empty log list. Poll until something (and there will always be something) shows up.
+    @backoff.on_predicate(backoff.constant, lambda logs: len(logs) == 0, max_time=60 * 10, interval=5)
+    def _get_full_job_log_names(self, job_id: int) -> list[str]:
+        response = self._get_job_log_list(job_id)
+        if response.status_code != 200:
+            raise RuntimeError(
+                f"Error getting job logs. Response code={response.status_code}: {response.content.decode('utf-8')}",
+            )
+
+        log_list = response.parsed
+        if log_list is None:
+            raise RuntimeError("Error getting job logs. Job logs response does not contain the required fields.")
+        return [lf.filename for lf in log_list if lf is not None and isinstance(lf.filename, str)]
+
 
 class QdcRunner:
     _JOB_TIMEOUT_MINUTES = 15
@@ -309,25 +382,31 @@ class QdcRunner:
 
     def __init__(
         self,
-        test_name,
+        test_name: str,
+        on_behalf_of: str | None,
+        log_dir: Path | None,
         test_runs: TestRuns,
         api_url: str,
+        enable_platforms: list[Platform],
         override_android_id: str,
         override_windows_id: str,
     ):
-        print("Initializing QDC test runner for project.")
-        self._client = QdcClient(api_url)
+        logging.info("Initializing QDC test runner for project.")
+        self._client = QdcClient(api_url, on_behalf_of)
         self._test_name = test_name
+        self._log_dir = log_dir
 
+        enable_android = len(enable_platforms) == 0 or Platform.ANDROID in enable_platforms
+        enable_windows = len(enable_platforms) == 0 or Platform.WINDOWS in enable_platforms
         have_override = override_android_id or override_windows_id
 
         self._job_config = {}
 
-        if not have_override or override_android_id:
+        if (not have_override or override_android_id) and enable_android:
             apk_test_pkg_uuid = self._upload_artifact(ORT_APPIUM_ARCHIVE, ArtifactType.TESTSCRIPT)
             self._job_config[Platform.ANDROID] = QdcRunner.QdcJobConfig([apk_test_pkg_uuid], TestFramework.APPIUM, None)
 
-        if not have_override or override_windows_id:
+        if (not have_override or override_windows_id) and enable_windows:
             windows_test_uuid = self._upload_artifact(ORT_TEST_WIN_ARM64, ArtifactType.TESTSCRIPT)
             self._job_config[Platform.WINDOWS] = QdcRunner.QdcJobConfig(
                 [windows_test_uuid],
@@ -335,7 +414,7 @@ class QdcRunner:
                 "C:\\Temp\\TestContent\\run_tests.ps1",
             )
 
-        if override_android_id:
+        if override_android_id and enable_android:
             self._schedule_tests(
                 test_runs,
                 [
@@ -346,7 +425,7 @@ class QdcRunner:
                     )
                 ],
             )
-        if override_windows_id:
+        if override_windows_id and enable_windows:
             self._schedule_tests(
                 test_runs,
                 [
@@ -358,10 +437,22 @@ class QdcRunner:
                 ],
             )
         if not have_override:
-            self._schedule_tests(test_runs, QDC_TESTS)
+            tests = QDC_TESTS
+            if enable_platforms is not None and len(enable_platforms) > 0:
+                tests = [t for t in tests if t.platform in enable_platforms]
+            self._schedule_tests(test_runs, tests)
+
+    def _finish_run(self, job_id: int, platform: Platform, status: RunStatus) -> RunStatus:
+        if self._log_dir is not None:
+            log_dir = Path(str(self._log_dir).replace("%p", platform.name.lower()))
+            logging.info(f"Downloading log files to {log_dir}.")
+            self._client.download_logs(job_id, log_dir)
+            return status
+
+        return status
 
     def _schedule_tests(self, test_runs: TestRuns, tests: list[TestConfig]) -> None:
-        print("Scheduling QDC tests.")
+        logging.info("Scheduling QDC tests.")
         for test in tests:
             device = random.choice(test.devices)
 
@@ -372,7 +463,7 @@ class QdcRunner:
             )
             test_runs.add_run(run)
 
-    def _upload_artifact(self, artifact_filename: str, artifact_type: ArtifactType) -> str:
+    def _upload_artifact(self, artifact_filename: Path, artifact_type: ArtifactType) -> str:
         def check_http_response(response: Response["ArtifactType0 | None"]) -> None:
             if response.status_code == 200:
                 return
@@ -381,12 +472,12 @@ class QdcRunner:
                 f"Error uploading artifact to QDC. Response code={response.status_code}: {response.content.decode('utf-8')}"
             )
 
-        print(f"Starting QDC artifact upload: {artifact_filename}.")
+        logging.info(f"Starting QDC artifact upload: {artifact_filename}.")
 
         # start upload
         response = self._client.post_artifacts_startupload(
             artifact_type=artifact_type,
-            filename=f"{uuid.uuid4()}-{os.path.basename(artifact_filename)}",
+            filename=f"{uuid.uuid4()}-{artifact_filename.name}",
         )
         check_http_response(response)
 
@@ -394,7 +485,7 @@ class QdcRunner:
             raise RuntimeError("QDC startupload response missing required fields.")
         artifact_upload_uuid = str(response.parsed.uuid)
 
-        print(f"Starting QDC upload for artifact={artifact_upload_uuid}.")
+        logging.info(f"Starting QDC upload for artifact={artifact_upload_uuid}.")
 
         # "continue" upload
         self._upload_artifact_continue_helper(artifact_filename, artifact_upload_uuid)
@@ -403,13 +494,13 @@ class QdcRunner:
         response = self._client.post_artifacts_uuid_endupload(uuid=artifact_upload_uuid)
         check_http_response(response)
 
-        print(f"Finished QDC upload for artifact={artifact_upload_uuid}.")
+        logging.info(f"Finished QDC upload for artifact={artifact_upload_uuid}.")
 
         return artifact_upload_uuid
 
     def _upload_artifact_continue_helper(
         self,
-        artifact_filename: str,
+        artifact_filename: Path,
         artifact_uuid: str,
     ) -> None:
         # This code is based on modified sample code provided by QDC.
@@ -468,9 +559,9 @@ class QdcRunner:
 
                         # Skip the part if its already uploaded in prev attempts
                         if len(last_successfully_uploaded_chunks) > 0 and _part in last_successfully_uploaded_chunks:
-                            print(f"QDC continueupload: data for chunk #{_part} is already uploaded.")
+                            logging.info(f"QDC continueupload: data for chunk #{_part} is already uploaded.")
                         else:
-                            print(
+                            logging.info(
                                 f"QDC continueupload: creating a task to upload chunk #{_part}, offset={_index}, size={size}."
                             )
                             chunk_upload_tasks.append(
@@ -530,12 +621,12 @@ class QdcRunner:
 
         job_id = response.parsed.job_id
         job_url = self._client.get_job_url(job_id)
-        print(f"Started QDC job id={job_id}: {test_name}.")
-        print(f"  Job URL: {job_url}")
+        logging.info(f"Started QDC job id={job_id}: {test_name}.")
+        logging.info(f"  Job URL: {job_url}")
 
-        return QdcRun(self, test_name, job_id, job_url)
+        return QdcRun(self, platform, test_name, job_id, job_url)
 
-    def get_run_status(self, job_id: int) -> RunStatus:
+    def get_run_status(self, job_id: int, platform: Platform) -> RunStatus:
         # Approximate mapping of state and result
         #
         # JobState                                      JobResult
@@ -564,19 +655,27 @@ class QdcRunner:
         elif state in [JobState.RUNNING, JobState.SETUP]:
             return RunStatus.RUNNING
         elif state == JobState.COMPLETED and result == JobResult.SUCCESSFUL:
-            return RunStatus.SUCCESS
+            return self._finish_run(job_id, platform, RunStatus.SUCCESS)
 
-        return RunStatus.FAILED
+        return self._finish_run(job_id, platform, RunStatus.FAILED)
 
 
 class QdcRun(Run):
-    def __init__(self, runner: QdcRunner, test_name: str, job_id: int, url: str):
+    def __init__(
+        self,
+        runner: QdcRunner,
+        platform: Platform,
+        test_name: str,
+        job_id: int,
+        url: str,
+    ):
         super().__init__(test_name, url)
+        self.platform = platform
         self.runner = runner
         self.job_id = job_id
 
     def poll(self) -> None:
-        self.status = self.runner.get_run_status(self.job_id)
+        self.status = self.runner.get_run_status(self.job_id, self.platform)
 
     def get_farm_name(self) -> str:
         return "QDC"
@@ -588,8 +687,36 @@ class QdcRun(Run):
 
 
 class RunnerCli:
-    def __init__(self):
+    def __init__(self) -> None:
         parser = argparse.ArgumentParser(description="Device Farm test runner.")
+        parser.add_argument(
+            "--enable-platforms",
+            action="store",
+            help="Only run tests on these platforms.",
+            nargs="+",
+            type=lambda p: Platform[p.upper()],
+            default=[],
+        )
+        parser.add_argument(
+            "--name",
+            action="store",
+            help="Test name.",
+            required=False,
+            default="localtest",
+        )
+        parser.add_argument(
+            "--log-dir",
+            action="store",
+            type=Path,
+            help="If specified, download QDC logs to this directory. %p is expanded to platform name.",
+            required=False,
+        )
+        parser.add_argument(
+            "--on-behalf-of",
+            action="store",
+            help="Set X-QCOM-OnBehalfOf header to QDC job submission request.",
+            required=False,
+        )
         parser.add_argument(
             "--qdc-api-url",
             action="store",
@@ -608,13 +735,6 @@ class RunnerCli:
             help="Run a QDC test using the specified Windows device device ID.",
             required=False,
         )
-        parser.add_argument(
-            "--name",
-            action="store",
-            help="Test name.",
-            required=False,
-            default="localtest",
-        )
         args = parser.parse_args()
 
         provided_name = args.name[:100].replace("/", "_")
@@ -622,28 +742,30 @@ class RunnerCli:
         # use a generous substring to avoid max test and upload name of 256 characters.
         unique_name = time.strftime("%Y%m%d%H%M%S")
         self.test_name = f"ORT-{provided_name}-{unique_name}"
+        self.log_dir: Path | None = args.log_dir
+        self.on_behalf_of: str | None = args.on_behalf_of
 
-        self.qdc_api_url = args.qdc_api_url
-        self.qdc_android_id = args.qdc_android_id
-        self.qdc_windows_id = args.qdc_windows_id
+        self.enable_platforms: list[Platform] = args.enable_platforms
+        self.qdc_api_url: str = args.qdc_api_url
+        self.qdc_android_id: str = args.qdc_android_id
+        self.qdc_windows_id: str = args.qdc_windows_id
 
-        print(f"Initialized runner. Test name prefix={self.test_name}")
-        print()
+        logging.info(f"Initialized runner. Test name prefix={self.test_name}")
 
     def run(self) -> bool:
         test_runs = TestRuns()
 
         QdcRunner(
             self.test_name,
+            self.on_behalf_of,
+            self.log_dir,
             test_runs,
             self.qdc_api_url,
+            self.enable_platforms,
             self.qdc_android_id,
             self.qdc_windows_id,
         )
-        print()
-
-        print("Waiting for tests to finish...")
-        print()
+        logging.info(f"Initialized runner. Test name prefix={self.test_name}")
 
         while test_runs.has_pending_tasks():
             test_runs.poll_runs()
@@ -661,7 +783,10 @@ class RunnerCli:
         return True
 
 
+log_format = "[%(asctime)s] [qdc_runner.py] [%(levelname)s] %(message)s"
+logging.basicConfig(level=logging.INFO, format=log_format, force=True)
+
 runner = RunnerCli()
 if not runner.run():
-    print("Not all tests were successful.")
+    logging.error("Not all tests were successful.")
     exit(1)

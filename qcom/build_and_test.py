@@ -22,12 +22,14 @@ from ep_build.plan import (
     task,
 )
 from ep_build.task import (
+    ExtractZipTask,
     ListTasksTask,
     NoOpTask,
 )
 from ep_build.tasks.build import (
     BuildEpLinuxTask,
     BuildEpWindowsTask,
+    QdcTestsTask,
 )
 from ep_build.tasks.python import CreateVenvTask, RunLinterTask
 from ep_build.util import (
@@ -65,6 +67,8 @@ Environment variables
 
   JAVA_HOME
     If specified, it is used instead of installing a known good version into build/tools
+  QDC_API_TOKEN
+    API token for use with testing in Qualcomm Device Cloud.
 """
 
     parser = argparse.ArgumentParser(
@@ -254,6 +258,16 @@ class TaskLibrary:
     def create_venv(self, plan: Plan) -> str:
         return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
 
+    @task
+    def extract_ort_windows_x86_64(self, plan: Plan) -> str:
+        return plan.add_step(
+            ExtractZipTask(
+                "Extracting ONNX Runtime for Windows on x86_64",
+                REPO_ROOT / "build" / "onnxruntime-tests-windows-x86_64.zip",
+                REPO_ROOT / "build" / "windows-x86_64" / "RelWithDebInfo",
+            )
+        )
+
     @public_task("Print a list of commonly used tasks; see also --task=list_all.")
     @depends(["list_public"])
     def list(self, plan: Plan) -> str:
@@ -292,6 +306,17 @@ class TaskLibrary:
                 "linux",
                 self.__qairt_sdk_root,
                 "test",
+            )
+        )
+
+    @task
+    @depends(["archive_ort_windows_arm64"])
+    def test_ort_qdc_windows_arm64(self, plan: Plan) -> str:
+        return plan.add_step(
+            QdcTestsTask(
+                "Testing ONNX Runtime for Windows on ARM64 in QDC",
+                self.__venv_path,
+                ["windows"],
             )
         )
 
