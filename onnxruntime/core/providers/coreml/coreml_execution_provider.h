@@ -6,6 +6,7 @@
 #include "core/providers/coreml/coreml_options.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/compute_capability.h"
 
 namespace onnxruntime {
 namespace coreml {
@@ -37,5 +38,22 @@ class CoreMLExecutionProvider : public IExecutionProvider {
 
   // map of fused_node_name to compiled_coreml_model
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
+
+  // Supported input and output types for CoreML MLProgram EP
+  // CoreML EP supports a more limited set of input and output types for models
+  // within the model, more data types are supported.
+  const std::unordered_set<int64_t> supported_input_output_types_ = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+                                                                     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT32,
+                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT64};
+
+  void FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
+                                                const onnxruntime::GraphViewer& graph_viewer,
+                                                const logging::Logger& logger) const;
+
+  std::vector<std::unique_ptr<ComputeCapability>> FilterIncompatibleEdgeNodesFromPartitions(
+      std::vector<std::unique_ptr<ComputeCapability>>&& capabilities,
+      const onnxruntime::GraphViewer& graph_viewer,
+      const logging::Logger& logger) const;
 };
 }  // namespace onnxruntime

@@ -18,6 +18,7 @@
 #include "core/providers/coreml/model/host_utils.h"
 #include "core/providers/coreml/model/model.h"
 #include "core/providers/coreml/shape_utils.h"
+#include "core/providers/shared/utils/utils.h"
 #include "core/graph/model.h"
 
 namespace onnxruntime {
@@ -35,6 +36,111 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
 }
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
+
+std::unordered_set<NodeIndex> GetPartitionNodesAsSet(const IndexedSubGraph& partition) {
+  std::unordered_set<NodeIndex> nodes_set;
+  for (const auto& node_index : partition.nodes) {
+    nodes_set.insert(node_index);
+  }
+  return nodes_set;
+}
+
+// we want to add the inputs of the removed node to the outputs of the partition IF:
+// 1. the input is an output of a node that is part of the partition
+// 2. the input is not already in the outputs of the partition
+void UpdateNewOutputs(std::unordered_set<NodeIndex>& partition_nodes_set,
+                      const Node* node,
+                      std::unordered_set<std::string>& newOutputs,
+                      const onnxruntime::GraphViewer& graph_viewer) {
+  for (const auto& input : node->InputDefs()) {
+    const Node* producer_node_for_input = graph_viewer.GetProducerNode(input->Name());
+    NodeIndex producer_index = producer_node_for_input ? producer_node_for_input->Index() : NodeIndex(-1);
+    if (partition_nodes_set.find(producer_index) != partition_nodes_set.end()) {
+      if (newOutputs.find(input->Name()) == newOutputs.end()) {
+        newOutputs.insert(input->Name());
+      }
+    }
+  }
+}
+
+void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
+                                                                       const onnxruntime::GraphViewer& graph_viewer,
+                                                                       const logging::Logger& logger) const {
+  bool checkForMoreIncompatibleNodes = true;
+  std::unordered_set<NodeIndex> partition_nodes_set = GetPartitionNodesAsSet(partition);
+
+  IndexedSubGraph::MetaDef* meta_def = partition.GetMutableMetaDef();
+  if (!meta_def) {
+    return;
+  }
+
+  while (checkForMoreIncompatibleNodes) {
+    // Reset flag until we find incompatible nodes
+    checkForMoreIncompatibleNodes = false;
+    std::unordered_set<NodeIndex> incompatible_nodes;
+
+    // check inputs
+    // check outputs
+    std::unordered_set<std::string> newOutputs;
+
+    for (const auto& output : meta_def->outputs) {
+      // step 1: get node arg type for output
+      const auto* node_arg = graph_viewer.GetNodeArg(output);
+      int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+      if (!GetType(*node_arg, type, logger)) {
+        LOGS(logger, ERROR) << "NodeArg " << output << " has no type information.";
+        continue;
+      }
+
+      // step 2: check if the type is supported
+      if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
+        checkForMoreIncompatibleNodes = true;
+        const Node* node = graph_viewer.GetProducerNode(output);
+        incompatible_nodes.insert(node->Index());
+        partition_nodes_set.erase(node->Index());
+
+        UpdateNewOutputs(partition_nodes_set, node, newOutputs, graph_viewer);
+      } else {
+        newOutputs.insert(output);
+      }
+    }
+
+    std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
+    meta_def->outputs = std::move(new_outputs_vector);
+
+    // step 3: remove the incompatible nodes from the partition
+    if (!incompatible_nodes.empty()) {
+      std::vector<NodeIndex> updated_nodes;
+      updated_nodes.reserve(partition.nodes.size() - incompatible_nodes.size());
+
+      for (const auto& node_index : partition.nodes) {
+        if (incompatible_nodes.find(node_index) == incompatible_nodes.end()) {
+          updated_nodes.push_back(node_index);
+        }
+      }
+
+      partition.nodes = std::move(updated_nodes);
+    }
+  }
+}
+
+// CoreML only supports a limited set of inputs and outputs (int32 and float32), so we remove all edge nodes with incompatible types
+std::vector<std::unique_ptr<ComputeCapability>> CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartitions(
+    std::vector<std::unique_ptr<ComputeCapability>>&& capabilities,
+    const onnxruntime::GraphViewer& graph_viewer,
+    const logging::Logger& logger) const {
+  std::vector<std::unique_ptr<ComputeCapability>> filtered_capabilities;
+
+  for (auto& capability : capabilities) {
+    if (capability && capability->sub_graph) {
+      FilterIncompatibleEdgeNodesFromPartition(*capability->sub_graph, graph_viewer, logger);
+      if (!capability->sub_graph->nodes.empty()) {
+        filtered_capabilities.push_back(std::move(capability));
+      }
+    }
+  }
+  return filtered_capabilities;
+}
 
 std::vector<std::unique_ptr<ComputeCapability>>
 CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
@@ -93,9 +199,12 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
                                             nullptr,
                                             /*drop_constant_initializers*/ true);
 
-  const auto num_of_partitions = result.size();
+  std::vector<std::unique_ptr<ComputeCapability>> filtered_result =
+      FilterIncompatibleEdgeNodesFromPartitions(std::move(result), graph_viewer, logger);
+
+  const auto num_of_partitions = filtered_result.size();
   const auto num_of_supported_nodes = std::transform_reduce(
-      result.begin(), result.end(),
+      filtered_result.begin(), filtered_result.end(),
       size_t{0}, std::plus<>{},
       [](const auto& partition) -> size_t {
         return partition && partition->sub_graph ? partition->sub_graph->nodes.size() : 0;
@@ -115,7 +224,7 @@ CoreMLExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     LOGS(logger, INFO) << summary_msg;
   }
 
-  return result;
+  return filtered_result;
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
