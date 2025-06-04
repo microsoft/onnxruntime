@@ -238,11 +238,11 @@ struct ExampleEp : OrtEp, ApiPtrs {
     return nullptr;
   }
 
-  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, size_t num_graphs,
-                                             OrtNodeComputeInfo** node_compute_infos) {
+  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
+                                             size_t count, OrtNodeComputeInfo** node_compute_infos) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-    if (num_graphs != 1) {
+    if (count != 1) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
     }
 
@@ -261,8 +261,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
 
     // Now we know we're compiling a single Mul node.
-    // Associate the graph name (aka fused node name) with our MulKernel.
-    const char* fused_node_name = ep->ort_api.Graph_GetName(graphs[0]);
+    // Associate the name of the fused node with our MulKernel.
+    const char* fused_node_name = ep->ort_api.Node_GetName(fused_nodes[0]);
     ep->kernels[fused_node_name] = std::make_unique<MulKernel>(ep->ort_api, ep->logger_);
 
     // Update the OrtNodeComputeInfo associated with the graph.

@@ -59,13 +59,18 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   producer_info.node = nullptr;
   producer_info.output_index = 0;
 
-  const Node* node = graph.graph_viewer.GetProducerNode(name);
+  if (graph == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get producer node for OrtValueInfo '", name,
+                           "' that is not owned by a OrtGraph.");
+  }
+
+  const Node* node = graph->graph_viewer.GetProducerNode(name);
   if (node == nullptr) {
     return Status::OK();
   }
 
-  auto it = graph.index_to_node.find(node->Index());
-  if (it == graph.index_to_node.end()) {
+  auto it = graph->index_to_node.find(node->Index());
+  if (it == graph->index_to_node.end()) {
     return Status::OK();  // Node is not in this GraphViewer
   }
 
@@ -86,7 +91,12 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 
 Status EpValueInfo::GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  std::vector<const Node*> nodes = graph.graph_viewer.GetConsumerNodes(name);
+  if (graph == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get uses of OrtValueInfo '", name,
+                           "' that is not owned by a OrtGraph.");
+  }
+
+  std::vector<const Node*> nodes = graph->graph_viewer.GetConsumerNodes(name);
   if (nodes.empty()) {
     return Status::OK();
   }
@@ -94,8 +104,8 @@ Status EpValueInfo::GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const {
   ORT_RETURN_IF_NOT(uses.empty(), "Internal error: uses should be empty in GetUses()");
   uses.reserve(nodes.size());
   for (const Node* node : nodes) {
-    auto it = graph.index_to_node.find(node->Index());
-    if (it == graph.index_to_node.end()) {
+    auto it = graph->index_to_node.find(node->Index());
+    if (it == graph->index_to_node.end()) {
       continue;  // Node is not in this GraphViewer
     }
 
@@ -121,14 +131,19 @@ Status EpValueInfo::GetNumUses(size_t& num_uses) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   num_uses = 0;
 
-  std::vector<const Node*> nodes = graph.graph_viewer.GetConsumerNodes(name);
+  if (graph == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get number of uses of OrtValueInfo '", name,
+                           "' that is not owned by a OrtGraph.");
+  }
+
+  std::vector<const Node*> nodes = graph->graph_viewer.GetConsumerNodes(name);
   if (nodes.empty()) {
     return Status::OK();
   }
 
   for (const Node* node : nodes) {
-    auto it = graph.index_to_node.find(node->Index());
-    if (it == graph.index_to_node.end()) {
+    auto it = graph->index_to_node.find(node->Index());
+    if (it == graph->index_to_node.end()) {
       continue;  // Node is not in this GraphViewer
     }
 
@@ -148,7 +163,7 @@ Status EpValueInfo::GetNumUses(size_t& num_uses) const {
 }
 
 static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
-                                 const NodeArg& node_arg, const EpGraph& ep_graph) {
+                                 const NodeArg& node_arg, const EpGraph* ep_graph) {
   auto it = value_infos.find(node_arg.Name());
   if (it != value_infos.end()) {
     return it->second.get();
@@ -161,6 +176,32 @@ static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr
   EpValueInfo* result = ep_value_info.get();
   value_infos[node_arg.Name()] = std::move(ep_value_info);
   return result;
+}
+
+std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
+                                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos) {
+  InlinedVector<EpValueInfo*> node_inputs;
+  node_inputs.reserve(node.InputDefs().size());
+
+  for (const NodeArg* input : node.InputDefs()) {
+    assert(input != nullptr);
+
+    if (input->Exists()) {
+      node_inputs.push_back(AddValueInfo(value_infos, *input, ep_graph));
+    } else {
+      node_inputs.push_back(nullptr);  // A missing optional input has a null OrtValueInfo
+    }
+  }
+
+  InlinedVector<EpValueInfo*> node_outputs;
+  node_outputs.reserve(node.OutputDefs().size());
+
+  for (const NodeArg* output : node.OutputDefs()) {
+    assert(output != nullptr);
+    node_outputs.push_back(AddValueInfo(value_infos, *output, ep_graph));
+  }
+
+  return std::make_unique<EpNode>(node, std::move(node_inputs), std::move(node_outputs));
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.
@@ -176,12 +217,12 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
 
   for (const NodeArg* graph_input_node_arg : graph_viewer.GetInputs()) {
     assert(graph_input_node_arg != nullptr);
-    graph_inputs.push_back(AddValueInfo(value_infos, *graph_input_node_arg, *ep_graph));
+    graph_inputs.push_back(AddValueInfo(value_infos, *graph_input_node_arg, ep_graph.get()));
   }
 
   for (const NodeArg* graph_output_node_arg : graph_viewer.GetOutputs()) {
     assert(graph_output_node_arg != nullptr);
-    graph_outputs.push_back(AddValueInfo(value_infos, *graph_output_node_arg, *ep_graph));
+    graph_outputs.push_back(AddValueInfo(value_infos, *graph_output_node_arg, ep_graph.get()));
   }
 
   std::vector<std::unique_ptr<EpNode>> nodes;
@@ -191,28 +232,7 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
   index_to_node.reserve(graph_viewer.NumberOfNodes());
 
   for (const Node& node : graph_viewer.Nodes()) {
-    InlinedVector<EpValueInfo*> node_inputs;
-    node_inputs.reserve(node.InputDefs().size());
-
-    for (const NodeArg* input : node.InputDefs()) {
-      assert(input != nullptr);
-
-      if (input->Exists()) {
-        node_inputs.push_back(AddValueInfo(value_infos, *input, *ep_graph));
-      } else {
-        node_inputs.push_back(nullptr);  // A missing optional input has a null OrtValueInfo
-      }
-    }
-
-    InlinedVector<EpValueInfo*> node_outputs;
-    node_outputs.reserve(node.OutputDefs().size());
-
-    for (const NodeArg* output : node.OutputDefs()) {
-      assert(output != nullptr);
-      node_outputs.push_back(AddValueInfo(value_infos, *output, *ep_graph));
-    }
-
-    auto ep_node = std::make_unique<EpNode>(node, std::move(node_inputs), std::move(node_outputs));
+    auto ep_node = EpNode::Create(node, ep_graph.get(), value_infos);
     nodes.push_back(std::move(ep_node));
     index_to_node[node.Index()] = nodes.back().get();
   }

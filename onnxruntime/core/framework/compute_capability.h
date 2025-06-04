@@ -41,18 +41,5 @@ struct ComputeCapability {
   //  - inputs and outputs will be unchanged
   //  - constant_initializers MAY change if we constant fold an initializer during optimization
   std::vector<std::unique_ptr<ComputeCapability>> nodes_to_optimize;
-
-  // If false (default), the fused node that represents this capability is given a name that is
-  // different from the subgraph's name. This is necessary for EPs that directly set the subgraph name because
-  // ORT can't be sure that the subgraph's name would make a unique node name. This setting is used by default
-  // for all non-plugin EPs.
-  //
-  // If set to true, the fused node will use the same name given to the subgraph. This is used for plugin EPs that
-  // are built externally to ORT for the following reasons:
-  //  - The plugin EP does not name the subgraphs. ORT constructs subgraph names that are unique.
-  //  - Prevents the need to pass in fused nodes into the plugin EP's Compile() function. The plugin EP can get the
-  //    fused node name from the subgraphs themselves.
-  //  - Prevents the need for plugin EPs to provide a subgraph name (for supported groups of nodes) in the first place.
-  bool use_subgraph_name_as_fused_node_name = false;
 };
 }  // namespace onnxruntime

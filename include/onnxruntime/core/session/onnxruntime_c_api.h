@@ -6354,25 +6354,30 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* GetCapability)(_In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
                                           _Inout_ OrtEpGraphSupportInfo* graph_support_info);
 
-  /** \brief Compile OrtGraph instances assigned to the OrtEp. A OrtNodeComputeInfo instance must be provided
-   * for each OrtGraph to define its computation function.
+  /** \brief Compile OrtGraph instances assigned to the OrtEp. Implementer must set a OrtNodeComputeInfo instance
+   * for each OrtGraph in order to define its computation function.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graphs Array of `num_graphs` OrtGraph instances to be compiled.
-   * \param[inout] node_compute_infos Array of OrtNodeComputeInfo instances that define each OrtGraph instance's
-   *                                  computation function. The callee allocates the OrtNodeComputeInfo instances.
-   *                                  ORT calls ReleaseNodeComputeInfo to release each instance.
+   * \param[in] graphs Array of `count` OrtGraph instances to be compiled.
+   * \param[in] fused_nodes Array of `count` fused nodes that will replace the compiled graphs.
+   *                        Each fused node is an OrtNode initialized with the the intended fused node name and
+   *                        input/output information.
+   * \param[in] count The number of OrtGraph instances to compile.
+   * \param[inout] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
+   *                                  computation function. The implementer allocates the OrtNodeComputeInfo instances.
+   *                                  ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \note Do NOT cache the OrtGraph instances in any of the OrtNodeComputeInfo functions as the OrtGraph instances
-   *       are only valid for the duration of the call to Compile.
+   * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
+   *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
+   *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
    *
    * \since Version 1.23.
    */
   OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
-                                    _In_ size_t num_graphs,
-                                    _Out_writes_all_(num_graphs) OrtNodeComputeInfo** node_compute_infos);
+                                    _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos);
 
   /** \brief Release OrtNodeComputeInfo instances.
    *

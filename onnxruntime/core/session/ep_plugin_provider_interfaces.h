@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <unordered_map>
 #include <vector>
 
 #include "core/common/common.h"
@@ -13,6 +14,8 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+struct EpNode;
+struct EpValueInfo;
 
 /// <summary>
 /// IExecutionProviderFactory that wraps a OrtEpFactory. Required for SessionOptionsAppendExecutionProvider_V2.
@@ -68,7 +71,25 @@ class PluginExecutionProvider : public IExecutionProvider {
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
  private:
+  struct FusedNodeState {
+    FusedNodeState() = default;
+    FusedNodeState(FusedNodeState&& other) = default;
+    FusedNodeState(const FusedNodeState& other) = delete;
+    EpNode& AddFusedNode(const Node& fused_node);
+
+    std::vector<std::unique_ptr<EpNode>> nodes;
+    std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
+  };
+
+  FusedNodeState& PushFusedNodeState(size_t num_fused_nodes);
+
   UniqueOrtEp ort_ep_;
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
+
+  // Fused nodes have to be valid throughout model inference because they may be cached in NodeComputeInfo instances.
+  // For each fused node, the Compile() function creates EpNode and EpValueInfo instances on the heap,
+  // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
+  // so that it is not destroyed until the EP itself is destroyed.
+  std::vector<FusedNodeState> fused_node_states_;
 };
 }  // namespace onnxruntime

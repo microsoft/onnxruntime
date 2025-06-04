@@ -132,12 +132,24 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
     for (auto& capability : capabilities) {
       // capability->hardware_device = subgraph.hardware_device;  // Would allow app to query which EP+HW runs a subgraph
-      capability->use_subgraph_name_as_fused_node_name = true;
       result.push_back(std::move(capability));
     }
   }
 
   return result;
+}
+
+PluginExecutionProvider::FusedNodeState& PluginExecutionProvider::PushFusedNodeState(size_t num_fused_nodes) {
+  fused_node_states_.push_back(FusedNodeState());
+  FusedNodeState& fused_node_state = fused_node_states_.back();
+  fused_node_state.nodes.reserve(num_fused_nodes);
+  return fused_node_state;
+}
+
+EpNode& PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node) {
+  auto ep_fused_node = EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos);
+  this->nodes.push_back(std::move(ep_fused_node));
+  return *this->nodes.back();
 }
 
 common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
@@ -147,22 +159,27 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
   std::vector<const OrtGraph*> api_graphs;
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos(num_graphs, nullptr);
+  std::vector<const OrtNode*> api_fused_nodes;
+  FusedNodeState& fused_node_state = PushFusedNodeState(num_graphs);
 
   api_graphs_holder.reserve(num_graphs);
   api_graphs.reserve(num_graphs);
+  api_fused_nodes.reserve(num_graphs);
 
-  // Wrap GraphViewers into OrtGraphs
+  // Wrap GraphViewers into OrtGraphs and fused Nodes into OrtNodes.
   for (const FusedNodeAndGraph& node_and_graph : fused_nodes_and_graphs) {
     const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
     const Node& fused_node = node_and_graph.fused_node;
-    ORT_ENFORCE(graph_viewer.Name() == fused_node.Name());  // Should be equal for plugin EPs.
 
-    auto ep_graph = EpGraph::Create(node_and_graph.filtered_graph);
+    auto ep_graph = EpGraph::Create(graph_viewer);
     api_graphs.push_back(ep_graph->ToExternal());
     api_graphs_holder.push_back(std::move(ep_graph));
+
+    EpNode& ep_fused_node = fused_node_state.AddFusedNode(fused_node);
+    api_fused_nodes.push_back(ep_fused_node.ToExternal());
   }
 
-  ORT_RETURN_IF_ERROR(ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), num_graphs,
+  ORT_RETURN_IF_ERROR(ToStatus(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(), num_graphs,
                                                 api_node_compute_infos.data())));
 
   // Save OrtNodeComputeInfo created by OrtEp instance. They're freed when this IExecutionProvider

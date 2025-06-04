@@ -24,7 +24,7 @@ struct EpGraph;
 /// </summary>
 struct EpValueInfo : public OrtValueInfo {
  public:
-  EpValueInfo(const EpGraph& graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info)
+  EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info)
       : OrtValueInfo(OrtGraphIrApi::kEpApi), graph(graph), name(name), type_info(std::move(type_info)) {}
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and EpValueInfo.
@@ -36,7 +36,10 @@ struct EpValueInfo : public OrtValueInfo {
   Status GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const override;
   Status GetNumUses(size_t& num_consumers) const override;
 
-  const EpGraph& graph;  // Back pointer to graph to be able to get consumers/producer
+  // Back pointer to parent graph. If not null, enables retrieval of consumer and producer nodes.
+  // Is null if the EpValueInfo was created without an owning EpGraph
+  // (e.g., OrtValueInfo instances created for fused nodes in OrtEp::Compile()).
+  const EpGraph* graph;
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
 };
@@ -48,6 +51,18 @@ struct EpNode : public OrtNode {
  public:
   EpNode(const Node& node, InlinedVector<EpValueInfo*>&& inputs, InlinedVector<EpValueInfo*>&& outputs)
       : OrtNode(OrtGraphIrApi::kEpApi), node(node), inputs(std::move(inputs)), outputs(std::move(outputs)) {}
+
+  /// <summary>
+  /// Creates an instance of EpNode, which wraps an onnxruntime::Node.
+  /// </summary>
+  /// <param name="node">The actual node to wrap.</param>
+  /// <param name="ep_graph">Optional pointer to the parent graph. Set this to a valid graph to be able to get
+  ///                        neighboring nodes from this node's input and output OrtValueInfo instances.</param>
+  /// <param name="value_infos">Cache of all OrtValueInfo instances in the graph. Can be set to an empty
+  ///                           std::unordered_map if creating a node without a graph.</param>
+  /// <returns>An EpNode instance.</returns>
+  static std::unique_ptr<EpNode> Create(const Node& node, const EpGraph* ep_graph,
+                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and EpNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, EpNode, OrtGraphIrApi::kEpApi)
