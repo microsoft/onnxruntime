@@ -8,6 +8,13 @@
 #include "ml_common.h"
 #include <math.h>
 
+#if !defined(ORT_MINIMAL_BUILD) && defined(_DEBUG)
+// This prints out the tree structure in DEBUG mode.
+// Method AddNodes can fuse multiple node BRANCH_EQ into a single
+// BRANCH_MEMBER to be more efficient. This shows what was done by the method.
+// #define _TREE_DEBUG
+#endif
+
 namespace onnxruntime {
 namespace ml {
 namespace detail {
@@ -41,9 +48,9 @@ struct ScoreValue {
   T score;
   unsigned char has_score;
   operator T() const { return has_score ? score : 0; }
-  T operator-() { return has_score ? -score : 0; }
-  T operator*(float val) { return has_score ? score * static_cast<T>(val) : 0; }
-  T operator*(double val) { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator-() const { return has_score ? -score : 0; }
+  T operator*(float val) const { return has_score ? score * static_cast<T>(val) : 0; }
+  T operator*(double val) const { return has_score ? score * static_cast<T>(val) : 0; }
   ScoreValue<T>& operator=(ScoreValue<T> v) {
     this->score = v.score;
     this->has_score = v.has_score;
@@ -112,6 +119,31 @@ inline NODE_MODE_ORT Convert_NODE_MODE_ONNX_to_ORT(NODE_MODE_ONNX node_mode) {
   };
 }
 
+#if defined(_TREE_DEBUG)
+inline const char* Convert_NODE_MODE_ONNX_to_string(NODE_MODE_ORT node_mode) {
+  switch (node_mode) {
+    case NODE_MODE_ORT::LEAF:
+      return "LEAF";
+    case NODE_MODE_ORT::BRANCH_LEQ:
+      return "LEQ";
+    case NODE_MODE_ORT::BRANCH_LT:
+      return "LT";
+    case NODE_MODE_ORT::BRANCH_GTE:
+      return "GTE";
+    case NODE_MODE_ORT::BRANCH_GT:
+      return "GT";
+    case NODE_MODE_ORT::BRANCH_EQ:
+      return "EQ";
+    case NODE_MODE_ORT::BRANCH_NEQ:
+      return "NEQ";
+    case NODE_MODE_ORT::BRANCH_MEMBER:
+      return "MEMBER";
+    default:
+      ORT_THROW("Unexpected value for node_mode");
+  };
+}
+#endif
+
 template <typename T>
 struct TreeNodeElement {
   int feature_id;
@@ -137,6 +169,20 @@ struct TreeNodeElement {
   inline NODE_MODE_ORT mode() const { return NODE_MODE_ORT(flags & 0xF); }
   inline bool is_not_leaf() const { return !(flags & NODE_MODE_ORT::LEAF); }
   inline bool is_missing_track_true() const { return flags & MissingTrack::kTrue; }
+
+#if defined(_TREE_DEBUG)
+  std::string str() const {
+    std::ostringstream msg;
+    msg << (&feature_id) << ":" << Convert_NODE_MODE_ONNX_to_string(mode())
+        << (is_missing_track_true() ? ":MT" : ":MF")
+        << ":F" << feature_id
+        << ":[" << value_or_unique_weight << "]"
+        << "->" << truenode_or_weight.ptr
+        << ":" << truenode_or_weight.weight_data.weight
+        << ":" << truenode_or_weight.weight_data.weight;
+    return msg.str();
+  }
+#endif
 };
 
 template <typename InputType, typename ThresholdType, typename OutputType>

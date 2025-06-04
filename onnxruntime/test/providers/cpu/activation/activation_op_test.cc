@@ -358,6 +358,8 @@ TEST_F(ActivationOpTest, Relu_bfloat16) {
 #if defined(USE_DNNL)
 TEST_F(ActivationOpTest, LeakyRelu_bfloat16) {
 #ifdef USE_DNNL
+  DNNL_GTEST_SKIP();
+
   if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
     return;
