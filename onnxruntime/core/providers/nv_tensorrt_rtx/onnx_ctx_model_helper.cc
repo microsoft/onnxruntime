@@ -63,9 +63,9 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
 }
 
 /*
- * Create "EP context node" model where engine information is embedded
+ * Create EP context node where engine information is embedded
  */
-ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
+std::unique_ptr<onnxruntime::Model> CreateCtxNode(const GraphViewer& graph_viewer,
                                            const std::string engine_cache_path,
                                            char* engine_data,
                                            size_t size,
@@ -73,8 +73,8 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
                                            const std::string compute_capability,
                                            const std::string onnx_model_path,
                                            const logging::Logger* logger,
-                                           std::vector<std::unique_ptr<onnxruntime::Model>>& ep_context_models, const std::string& ep_context_node_name) {
-  auto model_build = graph_viewer.CreateModel(*logger);
+                                           const std::string& ep_context_node_name) {
+  auto model_build = Model::Create("nv_trt_rtx_ep_context_model", false, *logger);
   auto& graph_build = model_build->MainGraph();
 
   // Get graph inputs and outputs
@@ -130,18 +130,7 @@ ONNX_NAMESPACE::ModelProto* CreateCtxModel(const GraphViewer& graph_viewer,
   graph_build.AddNode(ep_context_node_name, EPCONTEXT_OP, "", inputs, outputs, node_attributes.get(), EPCONTEXT_OP_DOMAIN);
   ORT_ENFORCE(graph_build.Resolve().IsOK());
 
-  // A model with one EP context node is created for a supported subgraph
-  ep_context_models.push_back(std::move(model_build));
-
-  // Serialize modelproto to string
-  auto new_graph_viewer = graph_build.CreateGraphViewer();
-  auto& metadata = graph_viewer.GetGraph().GetModel().MetaData();
-  auto model = new_graph_viewer->CreateModel(*logger, metadata);
-  auto model_proto = model->ToProto();
-  new_graph_viewer->ToProto(*model_proto->mutable_graph(), true, true);
-  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
-
-  return model_proto.release();
+  return model_build;
 }
 
 /*
