@@ -23,6 +23,11 @@ namespace onnxruntime::llm {
 namespace kernels {
 namespace fpA_intB_gemv {
 
+// This code are only relevant for CUDA architectures where the fpA_intB_gemv is intended to run (sm_75 and above).
+// Therefore, we conditionally compile this block only when __CUDA_ARCH__ >= 750.
+// This prevents compilation errors that half2 requires target sm_53 or higher.
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
+
 template <typename DetailsA>
 struct MathWrapper {
 };
@@ -33,31 +38,15 @@ struct MathWrapper<FP16DetailsA> {
   using Type2 = typename FP16DetailsA::Type2;
 
   __device__ __forceinline__ static Type2 to_vec2(Type const& v) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __half2half2(v);
-#else
-    // we only launch fp16_intB_gemv kernel for CUDA arch >= 7.5.
-    // Return dummy value (0) to avoid compilation error for CUDA arch < 5.3.
-    uint32_t val = 0;
-    Type2 ret = reinterpret_cast<Type2&>(val);
-    return ret;
-#endif
   }
 
   __device__ __forceinline__ static Type2 fma2(Type2 const& a, Type2 const& b, Type2 const& c) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __hfma2(a, b, c);
-#else
-    return to_vec2(static_cast<Type>(0.f));
-#endif
   }
 
   __device__ __forceinline__ static Type2 mul2(Type2 const& a, Type2 const& b) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 530))
     return __hmul2(a, b);
-#else
-    return to_vec2(static_cast<Type>(0.f));
-#endif
   }
 };
 
@@ -240,11 +229,13 @@ __device__ __forceinline__ void fill(void* tile, T v) {
     reinterpret_cast<T*>(tile)[ii] = v;
   }
 }
+#endif  // (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
   // input            act_scale        fp16/bf16          [1, k]                RowMajor
@@ -325,6 +316,7 @@ __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* sca
     }
   }
   epilogue<Details, CtaM, CtaN, Threads, EnableBias, ApplyAlphaInAdvance>(out, n, tile_acc, bias, alpha);
+#endif
 }
 
 template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool EnableActScale, bool EnableZero,
