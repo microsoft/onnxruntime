@@ -16,13 +16,10 @@
 
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template.h"
 
-namespace onnxruntime::llm
-{
-namespace kernels
-{
-namespace cutlass_kernels
-{
+namespace onnxruntime::llm {
+namespace kernels {
+namespace cutlass_kernels {
 template class CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
-} // namespace cutlass_kernels
-} // namespace kernels
-} // namespace onnxruntime::llm
+}  // namespace cutlass_kernels
+}  // namespace kernels
+}  // namespace onnxruntime::llm
