@@ -99,6 +99,70 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
+// Check if all input tensor ranks of the given node are supported by WebNN.
+bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) {
+  const std::string_view op_type = node.OpType();
+
+  auto it = op_inputs_map.find(op_type);
+  if (it == op_inputs_map.end()) {
+    LOGS(logger, VERBOSE) << "Operator type: [" << op_type << "] is not found in the op inputs map.";
+    return false;
+  }
+
+  for (const auto& input : it->second.inputs) {
+    const std::string_view webnn_op_type = it->second.opType;
+
+    if (static_cast<size_t>(input.index) >= node.InputDefs().size() || node.InputDefs()[input.index] == nullptr) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name " << input.name
+                            << "] is not found.";
+      return false;
+    }
+
+    std::vector<int64_t> input_shape;
+    if (!GetShape(*node.InputDefs()[input.index], input_shape, logger)) {
+      return false;
+    }
+
+    if (wnn_limits[std::string(webnn_op_type)].isUndefined() ||
+        wnn_limits[std::string(webnn_op_type)][std::string(input.name)].isUndefined()) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name " << input.name
+                            << " is not defined in wnn_limits.";
+      return false;
+    }
+
+    const auto& input_limits = wnn_limits[std::string(webnn_op_type)][std::string(input.name)];
+    if (input_limits["rankRange"].isUndefined()) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name " << input.name
+                            << "'s rankRange is not defined.";
+      return false;
+    }
+
+    int input_dim_size = static_cast<int>(input_shape.size());
+    int min_rank = input_limits["rankRange"]["min"].as<int>();
+    int max_rank = input_limits["rankRange"]["max"].as<int>();
+
+    if (input_dim_size < min_rank || input_dim_size > max_rank) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name: " << input.name
+                            << ", input size " << input_dim_size
+                            << " is not in supported range [" << min_rank << ", " << max_rank << "]";
+      return false;
+    }
+  }
+  return true;
+}
+
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                   const emscripten::val& wnn_builder,
                                                   const WebnnDeviceType device_type,
