@@ -276,7 +276,7 @@ struct MLFloat16 {
         return MLFloat16(IsNaN() ? val : static_cast<uint16_t>(val ^ kSignMask));
     }
     static constexpr uint16_t kSignMask = 0x8000U;
-    static constexpr uint16_t kPositiveInfinityBits = 0x7F80U;
+    static constexpr uint16_t kPositiveInfinityBits = 0x7C00U;
 
     float ToFloat() const { return MLAS_Half2Float(val); }
 
