@@ -94,6 +94,8 @@ struct OrtGraph {
   virtual const std::string& Name() const = 0;
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
+  virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
+  virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
   virtual size_t NumNodes() const = 0;
   virtual std::vector<const OrtNode*> GetNodes(int order) const = 0;
 

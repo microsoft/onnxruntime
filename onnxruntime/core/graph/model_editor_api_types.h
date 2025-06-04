@@ -92,6 +92,20 @@ struct ModelEditorGraph : public OrtGraph {
   const std::string& Name() const override { return name; }
   size_t NumInputs() const override { return inputs.size(); }
   size_t NumOutputs() const override { return outputs.size(); }
+  Status GetInputs(InlinedVector<const OrtValueInfo*>& result) const override {
+    result.resize(inputs.size());
+    for (size_t i = 0; i < inputs.size(); i++) {
+      result[i] = inputs[i]->ToExternal();
+    }
+    return Status::OK();
+  }
+  Status GetOutputs(InlinedVector<const OrtValueInfo*>& result) const override {
+    result.resize(outputs.size());
+    for (size_t i = 0; i < outputs.size(); i++) {
+      result[i] = outputs[i]->ToExternal();
+    }
+    return Status::OK();
+  }
   size_t NumNodes() const override { return nodes.size(); }
   std::vector<const OrtNode*> GetNodes(int /*order*/) const override {
     std::vector<const OrtNode*> result;

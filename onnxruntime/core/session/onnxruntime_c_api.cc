@@ -2478,6 +2478,42 @@ ORT_API(const char*, OrtApis::Graph_Name, _In_ const OrtGraph* graph) {
   return graph->Name().c_str();
 }
 
+ORT_API(size_t, OrtApis::Graph_NumInputs, _In_ const OrtGraph* graph) {
+  return graph->NumInputs();
+}
+
+ORT_API(size_t, OrtApis::Graph_NumOutputs, _In_ const OrtGraph* graph) {
+  return graph->NumOutputs();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> graph_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(graph_inputs));
+
+  size_t num_inputs = std::min(max_num_inputs, graph_inputs.size());
+  for (size_t i = 0; i < num_inputs; i++) {
+    inputs[i] = graph_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> graph_outputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOutputs(graph_outputs));
+
+  size_t num_outputs = std::min(max_num_outputs, graph_outputs.size());
+  for (size_t i = 0; i < num_outputs; i++) {
+    outputs[i] = graph_outputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(size_t, OrtApis::Graph_NumNodes, _In_ const OrtGraph* graph) {
   return graph->NumNodes();
 }
@@ -3192,6 +3228,10 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetValueInfoNumUses,
     &OrtApis::GetValueInfoUses,
     &OrtApis::Graph_Name,
+    &OrtApis::Graph_NumInputs,
+    &OrtApis::Graph_NumOutputs,
+    &OrtApis::Graph_GetInputs,
+    &OrtApis::Graph_GetOutputs,
     &OrtApis::Graph_NumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Node_Name,

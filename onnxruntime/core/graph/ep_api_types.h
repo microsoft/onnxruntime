@@ -99,6 +99,8 @@ struct EpGraph : public OrtGraph {
   const std::string& Name() const override;
   size_t NumInputs() const override;
   size_t NumOutputs() const override;
+  Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+  Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
   size_t NumNodes() const override;
   std::vector<const OrtNode*> GetNodes(int order) const override;
 

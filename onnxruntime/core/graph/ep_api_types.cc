@@ -215,7 +215,7 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
   graph_inputs.reserve(graph_viewer.GetInputs().size());
   graph_outputs.reserve(graph_viewer.GetOutputs().size());
 
-  for (const NodeArg* graph_input_node_arg : graph_viewer.GetInputs()) {
+  for (const NodeArg* graph_input_node_arg : graph_viewer.GetInputsIncludingInitializers()) {
     assert(graph_input_node_arg != nullptr);
     graph_inputs.push_back(AddValueInfo(value_infos, *graph_input_node_arg, ep_graph.get()));
   }
@@ -248,6 +248,23 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
 const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
 size_t EpGraph::NumInputs() const { return inputs.size(); }
 size_t EpGraph::NumOutputs() const { return outputs.size(); }
+
+Status EpGraph::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
+  result.resize(inputs.size());
+  for (size_t i = 0; i < inputs.size(); i++) {
+    result[i] = inputs[i];
+  }
+  return Status::OK();
+}
+
+Status EpGraph::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
+  result.resize(outputs.size());
+  for (size_t i = 0; i < outputs.size(); i++) {
+    result[i] = outputs[i];
+  }
+  return Status::OK();
+}
+
 size_t EpGraph::NumNodes() const { return nodes.size(); }
 
 std::vector<const OrtNode*> EpGraph::GetNodes(int order) const {

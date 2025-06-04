@@ -5318,6 +5318,7 @@ struct OrtApi {
   ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
 
   /** \brief Get the OrtNode that produces the given OrtValueInfo and the associated output index.
+   *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
    * \param[out] output_index Optional output parameter set to the OrtNode instance's output index
@@ -5365,6 +5366,7 @@ struct OrtApi {
                   _In_ size_t max_num_uses);
 
   /** \brief Returns the name of a OrtGraph instance.
+   *
    * \param[in] graph The OrtGraph instance.
    * \return The OrtGraph instance's name.
    *
@@ -5372,7 +5374,64 @@ struct OrtApi {
    */
   const char*(ORT_API_CALL* Graph_Name)(_In_ const OrtGraph* graph);
 
+  /** \brief Returns the number of inputs for the OrtGraph instance.
+   *
+   * Counts initializers that are also graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of inputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Graph_NumInputs)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns the number of outputs for the OrtGraph instance.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of outputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Graph_NumOutputs)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns the input OrtValueInfo instances for an OrtGraph.
+   *
+   * Includes initializers that are also graph inputs.
+   *
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Graph_NumInputs() to get the
+   * number of inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+   *                           Typical usage sets this to the value of Graph_NumInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
+                  _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+
+  /** \brief Returns the output OrtValueInfo instances for an OrtGraph.
+   *
+   * Caller provides a pre-allocated array that will be filled with the outputs. Use Graph_NumOutputs() to get the
+   * number of outputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] inputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_outputs The maximum size of the `outputs` array.
+   *                            Typical usage sets this to the value of Graph_NumOutputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
+                  _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+
   /** \brief Returns the number of nodes in the OrtGraph instance.
+   *
    * \param[in] graph The OrtGraph instance.
    * \return The number of nodes.
    *
@@ -5392,7 +5451,7 @@ struct OrtApi {
    *                  2 means the nodes are sorted in memory efficient topological order.
    * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode pointers.
    * \param[in] max_num_nodes The maximum size of the nodes array.
-                              Typical usage sets this to the value of OrtGraph_NumNodes.
+   *                          Typical usage sets this to the value of OrtGraph_NumNodes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5402,6 +5461,7 @@ struct OrtApi {
                   _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
   /** \brief Returns the name of an OrtNode instance.
+   *
    * \param[in] node The OrtNode instance.
    * \return The node's name.
    *
@@ -5410,6 +5470,7 @@ struct OrtApi {
   const char*(ORT_API_CALL* Node_Name)(_In_ const OrtNode* node);
 
   /** \brief Returns the ONNX operator type (e.g., "Conv") of an OrtNode instance.
+   *
    * \param[in] node The OrtNode instance.
    * \return The node's operator type.
    *
@@ -5418,6 +5479,7 @@ struct OrtApi {
   const char*(ORT_API_CALL* Node_OperatorType)(_In_ const OrtNode* node);
 
   /** \brief Returns the domain for an OrtNode instance.
+   *
    * \param[in] node The OrtNode instance.
    * \return The node's domain.
    *
@@ -5426,6 +5488,7 @@ struct OrtApi {
   const char*(ORT_API_CALL* Node_Domain)(_In_ const OrtNode* node);
 
   /** \brief Returns the number of inputs for an OrtNode instance.
+   *
    * \param[in] node The OrtNode instance.
    * \return The number of inputs.
    *
@@ -5434,6 +5497,7 @@ struct OrtApi {
   size_t(ORT_API_CALL* Node_NumInputs)(_In_ const OrtNode* node);
 
   /** \brief Returns the number of outputs for an OrtNode instance.
+   *
    * \param[in] node The OrtNode instance.
    * \return The number of outputs.
    *
@@ -5443,14 +5507,14 @@ struct OrtApi {
 
   /** \brief Returns the input OrtValueInfo instances for an OrtNode.
    *
-   * Caller provides a pre-allocated array that will be filled with the inputs. Use Node_GetNumInputs() to get the
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Node_NumInputs() to get the
    * number of inputs.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
    *                    An optional node input is set to NULL.
    * \param[in] max_num_inputs The maximum size of the `inputs` array.
-   *                           Typical usage sets this to the value of Node_GetNumInputs().
+   *                           Typical usage sets this to the value of Node_NumInputs().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5461,13 +5525,13 @@ struct OrtApi {
 
   /** \brief Returns the output OrtValueInfo instances for an OrtNode.
    *
-   * Caller provides a pre-allocated array that will be filled with the outputs. Use Node_GetNumOutputs() to get the
+   * Caller provides a pre-allocated array that will be filled with the outputs. Use Node_NumOutputs() to get the
    * number of outputs.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] inputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
    * \param[in] max_num_outputs The maximum size of the `outputs` array.
-                                Typical usage sets this to the value of Node_GetNumOutputs().
+   *                            Typical usage sets this to the value of Node_NumOutputs().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
