@@ -539,10 +539,6 @@ void preprocess_weights_for_mixed_gemm_cuda(cudaStream_t stream,
                                             int32_t* d_permutation_map,
                                             std::vector<size_t> const& shape,
                                             QuantType quant_type) {
-  // Force use sm80 kernel for GB20x.
-  if (arch >= 100) {
-    arch = 80;
-  }
   LayoutDetails details = getLayoutDetailsForTransform(quant_type, arch);
 
   ORT_ENFORCE(shape.size() == 2 || shape.size() == 3, "Shape must be 2-D or 3-D");
