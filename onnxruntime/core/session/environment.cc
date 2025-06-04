@@ -69,15 +69,7 @@ std::once_flag schemaRegistrationOnceFlag;
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
 #endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 
-Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
-                           std::unique_ptr<Environment>& environment,
-                           const OrtThreadingOptions* tp_options,
-                           bool create_global_thread_pools) {
-  environment = std::make_unique<Environment>();
-  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
-  return status;
-}
-
+namespace {
 // Ugly but necessary for instances where we want to check equality of two OrtMemoryInfos
 // without accounting for OrtAllocatorType in the equality checking process.
 // TODO: Should we remove the OrtAllocatorType field from the OrtMemoryInfo struct to
@@ -95,12 +87,10 @@ static bool AreOrtMemoryInfosEquivalent(
   }
 }
 
-Status Environment::RegisterAllocator(AllocatorPtr allocator) {
-  const auto& mem_info = allocator->Info();
-
-  // We don't expect millions of allocators getting registered. Hence linear search should be fine.
-  auto ite = std::find_if(std::begin(shared_allocators_),
-                          std::end(shared_allocators_),
+std::vector<AllocatorPtr>::const_iterator FindExistingAllocator(const std::vector<AllocatorPtr>& allocators,
+                                                                const OrtMemoryInfo& mem_info) {
+  auto ite = std::find_if(std::begin(allocators),
+                          std::end(allocators),
                           [&mem_info](const AllocatorPtr& alloc_ptr) {
                             // We want to do the equality checking of 2 OrtMemoryInfos sans the OrtAllocatorType field.
                             // This is because we want to avoid registering two allocators for the same device that just
@@ -114,11 +104,29 @@ Status Environment::RegisterAllocator(AllocatorPtr allocator) {
                             return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
                           });
 
-  if (ite != shared_allocators_.end()) {
-    return Status(ONNXRUNTIME, INVALID_ARGUMENT, "An allocator for this device has already been registered for sharing.");
+  return ite;
+}
+}  // namespace
+
+Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
+                           std::unique_ptr<Environment>& environment,
+                           const OrtThreadingOptions* tp_options,
+                           bool create_global_thread_pools) {
+  environment = std::make_unique<Environment>();
+  auto status = environment->Initialize(std::move(logging_manager), tp_options, create_global_thread_pools);
+  return status;
+}
+
+Status Environment::RegisterAllocator(AllocatorPtr allocator) {
+  const auto& mem_info = allocator->Info();
+
+  // We don't expect millions of allocators getting registered. Hence linear search should be fine.
+  if (FindExistingAllocator(shared_allocators_, mem_info) != shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, INVALID_ARGUMENT,
+                  "An allocator for this device has already been registered for sharing.");
   }
 
-  shared_allocators_.insert(ite, allocator);
+  shared_allocators_.push_back(allocator);
 
   return Status::OK();
 }
@@ -181,13 +189,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
 }
 
 Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
-  auto ite = std::find_if(std::begin(shared_allocators_),
-                          std::end(shared_allocators_),
-                          [&mem_info](const AllocatorPtr& alloc_ptr) {
-                            // See comment in RegisterAllocator() as to why we
-                            // use this method of OrtMemoryInfo equality checking
-                            return AreOrtMemoryInfosEquivalent(alloc_ptr->Info(), mem_info, false);
-                          });
+  auto ite = FindExistingAllocator(shared_allocators_, mem_info);
 
   if (ite == shared_allocators_.end()) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -467,6 +469,60 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     });
   }
 
+  return status;
+}
+
+Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type,
+                                          const OrtKeyValuePairs* allocator_options) {
+  auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info : ep_device.shared_memory_info;
+  if (memory_info == nullptr) {
+    return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
+  }
+
+  if (FindExistingAllocator(shared_allocators_, *memory_info) != shared_allocators_.end()) {
+    return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+                  "Shared allocator for this OrtEpDevice has already been registered. "
+                  "Use ReleaseSharedAllocator to re-create.");
+  }
+
+  OrtAllocator* allocator = nullptr;
+  auto* ort_status = ep_device.ep_factory->CreateAllocator(ep_device.ep_factory, memory_info, allocator_options,
+                                                           &allocator);
+  if (ort_status != nullptr) {
+    return ToStatus(ort_status);
+  }
+
+  auto ort_allocator = OrtAllocatorUniquePtr(allocator,
+                                             [&ep_device](OrtAllocator* allocator) {
+                                               ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
+                                             });
+
+  // should never happen that there's no entry in shared_allocators_ but there is one in the map
+  assert(ep_shared_allocators_map_.find(memory_info) == ep_shared_allocators_map_.end());
+
+  ep_shared_allocators_map_[memory_info] = std::move(ort_allocator);
+
+  // create IAllocator wrapper for use in shared_allocators_
+  shared_allocators_.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(allocator));
+
+  return Status::OK();
+}
+
+Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type) {
+  auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info : ep_device.shared_memory_info;
+  if (memory_info == nullptr) {
+    return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
+  }
+
+  auto it = ep_shared_allocators_map_.find(memory_info);
+  if (it == ep_shared_allocators_map_.end()) {
+    return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+                  "Shared allocator for this OrtEpDevice has not been registered. ");
+  }
+
+  ep_shared_allocators_map_.erase(it);  // this will result in OrtEpFactory::ReleaseAllocator being called
+
+  auto status = UnregisterAllocator(*memory_info);
   return status;
 }
 

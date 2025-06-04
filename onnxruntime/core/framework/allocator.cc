@@ -216,7 +216,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
+ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
                     _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtMemType mem_type,
                     _In_ size_t alignment, enum OrtAllocatorType type,
                     _Outptr_ OrtMemoryInfo** out) {

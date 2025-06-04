@@ -118,6 +118,11 @@ class Environment {
   const std::vector<const OrtEpDevice*>& GetOrtEpDevices() const {
     return execution_devices_;
   }
+
+  Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type,
+                               const OrtKeyValuePairs* allocator_options);
+  Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type);
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
   ~Environment();
 
@@ -132,7 +137,13 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
+
   std::vector<AllocatorPtr> shared_allocators_;
+
+  using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
+  // map of the plugin EP shared allocators created with CreateSharedAllocator
+  // the OrtMemoryInfo* matches the value in the OrtEpDevice to disambiguate which factory created it.
+  std::unordered_map<const OrtMemoryInfo*, OrtAllocatorUniquePtr> ep_shared_allocators_map_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection

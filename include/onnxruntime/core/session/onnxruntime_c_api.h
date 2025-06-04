@@ -5309,17 +5309,23 @@ struct OrtApi {
                   _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                   _Outptr_ OrtMemoryInfo** out);
 
-  // Create a shared allocator for the OrtEpDevice.
+  // Create a shared allocator for the OrtEpDevice in the OrtEnv
+  //
   // OrtMemTypeDefault is always supported.
   // OrtMemTypeCPU is optional and dependent on the device as to whether it's required.
   // TODO: Does the user need to be able to discover if OrtMemTypeCPU is supported or they should explicitly know that?
+  //       Start with explicit knowledge required.
   //
   // For custom allocators, use RegisterAllocator with OrtAllocator
-  // OrtEpDevice maps to the EP factory.
-  // Can we also map to allocator creation funcs internally?
+  // OrtEpDevice maps to the EP factory. Factory provides function to create allocator.
   //
+  // Error if shared allocator already exists
   ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device, _In_ OrtMemType mem_type,
-                  _In_ const OrtKeyValuePairs* allocator_options);
+                  _In_opt_ const OrtKeyValuePairs* allocator_options);
+
+  // free a shared allocator from the OrtEnv
+  ORT_API2_STATUS(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtMemType mem_type);
 };
 
 /*
@@ -6066,44 +6072,58 @@ ORT_RUNTIME_CLASS(SyncNotification);
 typedef OrtStatus*(ORT_API_CALL* SyncWaitNotificationFn)(_In_ OrtSyncStream*,
                                                          _In_ OrtSyncNotification*);
 
+// struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
 struct OrtDataTransfer {
   // TODO: Do all functions that will be implemented EP side need to be noexcept?
-  bool(ORT_API_CALL* CanCopy)(_In_ const OrtMemoryDevice* src_memory_device,
+  bool(ORT_API_CALL* CanCopy)(_In_ void* this_ptr,
+                              _In_ const OrtMemoryDevice* src_memory_device,
                               _In_ const OrtMemoryDevice* dst_memory_device) NO_EXCEPTION;
 
   // function to copy one or more tensors.
   // implementation can optionally use async copy if a stream is available for the input.
-  ORT_API2_STATUS(CopyTensors, _In_reads_(num_tensors) const OrtValue** src_tensors,
+  ORT_API2_STATUS(CopyTensors, _In_ void* this_ptr,
+                  _In_reads_(num_tensors) const OrtValue** src_tensors,
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
-                  _In_reads_(num_tensors) OrtSyncStream* streams,
+                  _In_reads_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
 };
 
+// Struct that an EP implements for Stream support
 // virtual methods from onnxruntime::Stream.
 // first arg is the `state` provided in the CreateSyncStream call.
 struct OrtSyncStreamImpl {
   uint32_t version;  ///< Must be initialized to ORT_API_VERSION
-  ORT_API2_STATUS(CreateNotification, _In_ void* state, _In_ struct OrtSyncStream* stream, _In_ size_t num_consumers,
-                  _Outptr_ OrtSyncNotification** notification);
-
-  ORT_API2_STATUS(GetWaitNotificationFunc, _In_ void* state, _In_ struct OrtSyncStream* stream,
-                  SyncWaitNotificationFn** notification_fn);
-
-  ORT_API2_STATUS(Flush, _In_ void* state, _In_ struct OrtSyncStream* stream);
-
-  ORT_API2_STATUS(OnSessionRunEnd, _In_ void* state, _In_ struct OrtSyncStream* stream);
-
-  // TODO: Is this required?
-  void*(ORT_API_CALL* GetResource)(_In_ void* state, _In_ struct OrtSyncStream* stream,
-                                   int32_t version, int32_t id)NO_EXCEPTION;
 
   // callback for EP library to release any internal state
-  void(ORT_API_CALL* Release)(_In_ void* state) NO_EXCEPTION;
+  void(ORT_API_CALL* Release)(_In_ void* this_ptr) NO_EXCEPTION;
+
+  ORT_API2_STATUS(CreateNotification, _In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                  _In_ size_t num_consumers,
+                  _Outptr_ OrtSyncNotification** notification);
+
+  // This is used in custom ops and is the same as the device->device wait func in the stream handle registry.
+  // Implement on the ORT side to simplify the EP implementation.
+  //
+  // ORT_API2_STATUS(GetWaitNotificationFunc, _In_ void* state,
+  //                 SyncWaitNotificationFn** notification_fn);
+
+  ORT_API2_STATUS(Flush, _In_ void* this_ptr);
+
+  ORT_API2_STATUS(OnSessionRunEnd, _In_ void* this_ptr);
+
+  // TODO: Is this required? Used by custom ops for retrieving random things from the EP.
+  // Would be better if we moved it somewhere else as OpKernelContext -> Stream -> EP properties is not ideal
+  // and probably only done as the Stream was already available in OpKernelContext and was internally linked to the EP.
+  void*(ORT_API_CALL* GetResource)(_In_ void* this_ptr, int32_t version, int32_t id)NO_EXCEPTION;
 };
 
+// struct that an EP implements for Stream Notifications
 struct OrtSyncNotificationImpl {
-  void(ORT_API_CALL* Activate)(_In_ void* state) NO_EXCEPTION;
-  void(ORT_API_CALL* Release)(_In_ void* state) NO_EXCEPTION;
+  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+  void(ORT_API_CALL* Release)(_In_ void* this_ptr) NO_EXCEPTION;
+  void(ORT_API_CALL* Activate)(_In_ void* this_ptr) NO_EXCEPTION;
+  void(ORT_API_CALL* WaitOnDevice)(_In_ void* this_ptr, _In_ OrtSyncStream* stream) NO_EXCEPTION;
+  void(ORT_API_CALL* WaitOnHost)(_In_ void* this_ptr) NO_EXCEPTION;
 };
 
 /// <summary>
@@ -6140,34 +6160,29 @@ struct OrtEpApi {
   // get the OrtMemoryDevice information from an OrtMemoryInfo instance and OrtValue
   // this is required for IDataTransfer matching
   const OrtMemoryDevice*(ORT_API_CALL* OrtMemoryInfo_GetMemoryDevice)(_In_ const OrtMemoryInfo* memory_info)NO_EXCEPTION;
-  // TODO: Is this needed? Seems overly painful to go OrtValue -> OrtMemoryInfo -> OrtMemoryDevice in data transfer
-  // implementation. Not sure if any other scenario requires retrieving the OrtMemoryInfo from an OrtValue.
-  // const OrtMemoryInfo*(ORT_API_CALL* OrtValue_GetMemoryInfo)(_In_ const OrtValue* value);
-  const OrtMemoryDevice*(ORT_API_CALL* OrtValue_GetMemoryDevice)(_In_ const OrtValue* value)NO_EXCEPTION;
 
-  // TODO: Is there a use case where you really need to lookup individual fields in the OrtMemoryDevice
-  //       that would warrant adding all the accessors? They will overlap a bit with OrtMemoryInfo.
+  // need to return status as OrtValue may not contain an allocated Tensor
+  ORT_API2_STATUS(OrtValue_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+
   bool(ORT_API_CALL* OrtMemoryDevice_AreEqual)(_In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
+
+  // these two functions simplify data transfer.
+  OrtMemoryInfoDeviceType(ORT_API_CALL* OrtMemoryDevice_GetDeviceType)(_In_ const OrtMemoryDevice* memory_device) NO_EXCEPTION;
+  OrtMemType(ORT_API_CALL* OrtMemoryDevice_GetMemoryType)(_In_ const OrtMemoryDevice* memory_device) NO_EXCEPTION;
 
   //
   // onnxruntime::Stream.
   // We implement a derived class on the ORT side and plugin the virtual functions via OrtSyncStreamImpl.
   //
 
-  // TODO: Technically having 2 `void*` opaque types for `state` and `stream_handle` isn't required.
-  // Should we simplify or does it help them separate?
-  //
-  // e.g. if you were converting CUDA and CANN to the new setup, keeping the stream handle separate from any state
-  // like the `this` pointer of the class that implements the stream logic and has members would match more closely.
-  // but conceptually it's unnecessary to split them.
-  //
-  // Starting with a single state value that we pass through to the functions.
-  // With that we don't need SyncStream_GetHandle
-  ORT_API2_STATUS(CreateSyncStream, _In_ void* state, /*_In_ void* stream_handle,*/ _In_ const OrtMemoryDevice* device,
-                  _In_ OrtSyncStreamImpl* impl, _Outptr_ OrtSyncStream** stream);
+  ORT_API2_STATUS(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
+                  _Outptr_ OrtSyncStream** stream);
 
-  // get the opaque handle from the stream.
-  // void*(ORT_API_CALL* SyncStream_GetHandle)(_In_ const OrtSyncStream* stream);
+  // returns the OrtSyncStreamImpl. used in the notification wait function
+  OrtSyncStreamImpl*(ORT_API_CALL* SyncStream_GetStreamImpl)(_In_ OrtSyncStream* stream);
+
+  // get the memory device from the stream. used in the notification wait function
+  const OrtMemoryDevice*(ORT_API_CALL* SyncStream_GetMemoryDevice)(_In_ const OrtSyncStream* stream)NO_EXCEPTION;
 
   // only needed if the stream isn't registered.
   // otherwise the Release function from OrtSyncStreamImpl is used to cleanup.
@@ -6177,8 +6192,7 @@ struct OrtEpApi {
   // onnxruntime::synchronize::Notification.
   // We implement a derived class on the ORT side and plugin the virtual functions via OrtSyncNotificationImpl.
   //
-  ORT_API2_STATUS(CreateSyncNotification, _In_ void* state, _In_ OrtSyncStream* stream,
-                  _In_ OrtSyncNotificationImpl* impl,
+  ORT_API2_STATUS(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
                   _Outptr_ OrtSyncNotification** notification);
 
   // only needed if the notification isn't returned to ORT.
@@ -6221,9 +6235,9 @@ struct OrtEp {
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
 
   // create stream if required for the memory_device. set `stream` to nullptr if it's not.
-  // ORT will register the stream if created with
+  // ORT will register the stream if created with the session, so it's not passed in here currently
   OrtStatus*(ORT_API_CALL* CreateSyncStreamForDevice)(_In_ OrtEp* this_ptr,
-                                                      _In_ const OrtSession* session,
+                                                      /// _In_ const OrtSession* session,
                                                       _In_ const OrtMemoryDevice* memory_device,
                                                       _Outptr_ OrtSyncStream** stream);
 };
@@ -6358,18 +6372,18 @@ struct OrtEpFactory {
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 
-  OrtStatus*(ORT_API_CALL* CreateAllocator)(_In_ OrtEpFactory* this_ptr,
-                                            _In_ const OrtMemoryInfo* memory_info,
-                                            _In_ const OrtKeyValuePairs* allocator_options,
-                                            _Outptr_ OrtAllocator** allocator);
-  void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEpFactory* this_ptr,
-                                       _In_ OrtAllocator* allocator);
+  // Create an allocator for the OrtMemoryInfo*.
+  // The pointer should match a value set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
+  ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryInfo* memory_info,
+                  _In_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_ OrtAllocator** allocator);
+  void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEpFactory* this_ptr, _In_ OrtAllocator* allocator) NO_EXCEPTION;
 
   // get the OrtDataTransfer for the library.
   // if a data transfer implementation is not required set data_transfer to nullptr.
-  OrtStatus*(ORT_API_CALL* CreateDataTransfer)(_In_ OrtEpFactory* this_ptr,
-                                               _Outptr_ OrtDataTransfer** data_transfer);
-  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransfer* data_transfer);
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransfer** data_transfer);
+  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransfer* data_transfer) NO_EXCEPTION;
 };
 
 /*

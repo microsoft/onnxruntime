@@ -5,6 +5,8 @@
 #include <string>
 #include <vector>
 
+#include "gsl/span"
+
 #define RETURN_IF_ERROR(fn)   \
   do {                        \
     OrtStatus* status = (fn); \
@@ -18,77 +20,176 @@ struct ApiPtrs {
   const OrtEpApi& ep_api;
 };
 
-struct NotificationImpl : OrtSyncNotificationImpl, ApiPtrs {
+struct CustomAllocator : OrtAllocator {
+  CustomAllocator(const OrtMemoryInfo* mem_info) : memory_info{mem_info} {
+    Alloc = AllocImpl;
+    Free = FreeImpl;
+    Info = InfoImpl;
+    Reserve = AllocImpl;  // no special reserve logic and most likely unnecessary unless you have your own arena
+  }
+
+  static void* ORT_API_CALL AllocImpl(struct OrtAllocator* /*this_*/, size_t size) {
+    // CustomAllocator& impl = *static_cast<CustomAllocator*>(this_);
+    return malloc(size);
+  }
+
+  /// Free a block of memory previously allocated with OrtAllocator::Alloc
+  static void ORT_API_CALL FreeImpl(struct OrtAllocator* /*this_*/, void* p) {
+    return free(p);
+  }
+
+  /// Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  static const struct OrtMemoryInfo* ORT_API_CALL InfoImpl(const struct OrtAllocator* this_) {
+    const CustomAllocator& impl = *static_cast<const CustomAllocator*>(this_);
+    return impl.memory_info;
+  }
+
+  const OrtMemoryInfo* memory_info;
+};
+
+//
+// Class implementing Stream support for synchronization.
+//
+class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
+ public:
+  StreamImpl(ApiPtrs apis);
+
+  void* GetHandle() {
+    return handle_;
+  }
+
+ private:
+  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                                                        _In_ size_t num_consumers,
+                                                        _Outptr_ OrtSyncNotification** sync_notification) noexcept;
+
+  // can maybe handle this at a higher level
+  // as it's the same as the device->device wait fn
+  // static OrtStatus* ORT_API_CALL GetWaitNotificationFuncImpl(_In_ void* this_ptr,
+  //                                                           SyncWaitNotificationFn** notification_fn) noexcept {
+  //}
+
+  static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr) noexcept;
+
+  static void* ORT_API_CALL GetResourceImpl(_In_ void* this_ptr, int32_t version, int32_t id) noexcept;
+
+  // callback for EP library to release any internal state
+  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;
+
+  void* handle_{nullptr};  // use the real stream type, like cudaStream_t or aclrtStream, etc.
+};
+
+//
+// Class implementing synchronization notification support.
+//
+class NotificationImpl : public OrtSyncNotificationImpl, public ApiPtrs {
+ public:
   NotificationImpl(ApiPtrs apis) : ApiPtrs(apis) {
     Activate = ActivateImpl;
     Release = ReleaseImpl;
-
-    // TODO: Setup the event or similar that will be activated on notification.
-    // See CudaNotification or CannNotification
+    WaitOnDevice = WaitOnDeviceImpl;
+    WaitOnHost = WaitOnHostImpl;
   }
 
+ private:
   static void ORT_API_CALL ActivateImpl(_In_ void* this_ptr) noexcept {
     auto& impl = *static_cast<NotificationImpl*>(this_ptr);
+    static_cast<void>(impl);
+
+    // CUDA: cudaEventRecord
+    // CANN: aclrtRecordEvent
+  }
+  static void ORT_API_CALL WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept {
+    auto& impl = *static_cast<NotificationImpl*>(this_ptr);
+    StreamImpl& stream_impl = *static_cast<StreamImpl*>(impl.ep_api.SyncStream_GetStreamImpl(stream));
+    static_cast<void>(stream_impl);
+
+    // TODO: Setup the event or similar that will be activated on notification.
+    // See CudaNotification or CannNotification for examples
+    //
+    // e.g.
+    // CUDA: cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.GetHandle()), event_)
+    // CANN: aclrtStreamWaitEvent(static_cast<aclrtStream>(device_stream.GetHandle()), event_)
+    //
+    // `event_` should be a member that is created in the ctor.
+    // The stream handle should come from the StreamImpl instance and can be the real type so no static_cast is needed.
+  }
+
+  static void ORT_API_CALL WaitOnHostImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<NotificationImpl*>(this_ptr);
+    static_cast<void>(impl);
+
+    // CUDA: cudaEventSynchronize(event_)
+    // CANN: aclrtSynchronizeEvent(event_)
   }
 
   static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept {
     delete static_cast<NotificationImpl*>(this_ptr);
   }
+
+  void* event_{NULL};  // placeholder. e.g. CANN uses aclrtEvent, CUDA uses cudaEvent_t
 };
 
-struct StreamImpl : OrtSyncStreamImpl, ApiPtrs {
-  StreamImpl(ApiPtrs apis) : ApiPtrs(apis) {
-    version = ORT_API_VERSION;
-    CreateNotification = CreateNotificationImpl;
-    GetWaitNotificationFunc = GetWaitNotificationFuncImpl;
-    Flush = FlushImpl;
-    OnSessionRunEnd = OnSessionRunEndImpl;
-    GetResource = GetResourceImpl;
-    Release = ReleaseImpl;
+//
+// StreamImpl implementation
+//
+
+StreamImpl::StreamImpl(ApiPtrs apis) : ApiPtrs(apis) {
+  version = ORT_API_VERSION;
+  CreateNotification = CreateNotificationImpl;
+  Flush = FlushImpl;
+  OnSessionRunEnd = OnSessionRunEndImpl;
+  GetResource = GetResourceImpl;
+  Release = ReleaseImpl;
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
+                                                           _In_ size_t /*num_consumers*/,
+                                                           _Outptr_ OrtSyncNotification** sync_notification) noexcept {
+  auto& impl = *static_cast<StreamImpl*>(this_ptr);
+  auto notification = std::make_unique<NotificationImpl>(impl);
+  auto* status = impl.ep_api.CreateSyncNotification(stream, notification.get(), sync_notification);
+
+  if (status != nullptr) {
+    return status;  // error occurred
   }
 
-  // layer in our implementation and create the OrtSyncNotification
-  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                                                        _In_ size_t num_consumers,
-                                                        _Outptr_ OrtSyncNotification** sync_notification) noexcept {
-    auto& impl = *static_cast<StreamImpl*>(this_ptr);
-    auto notification = std::make_unique<NotificationImpl>(impl);
-    auto* status = impl.ep_api.CreateSyncNotification(this_ptr, stream, notification.get(), sync_notification);
+  notification.release();
+  return nullptr;
+}
 
-    if (status != nullptr) {
-      return status;  // error occurred
-    }
+/*static*/
+OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ void* /*this_ptr*/) noexcept {
+  return nullptr;
+}
 
-    notification.release();
-    return nullptr;
-  }
+/*static*/
+OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ void* /*this_ptr*/) noexcept {
+  return nullptr;
+}
 
-  static OrtStatus* ORT_API_CALL GetWaitNotificationFuncImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                                                             SyncWaitNotificationFn** notification_fn) noexcept {
-  }
+/*static*/  // TODO: Is this required?
+void* ORT_API_CALL StreamImpl::GetResourceImpl(_In_ void* /*this_ptr*/, int32_t /*version*/, int32_t /*id*/) noexcept {
+  return nullptr;
+}
 
-  static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream) noexcept {
-  }
+// callback for EP library to release any internal state
+/*static*/
+void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
+  auto* impl = static_cast<StreamImpl*>(this_ptr);
+  delete impl;
+}
 
-  static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream) noexcept {
-  }
-
-  // TODO: Is this required?
-  static void* ORT_API_CALL GetResourceImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                                            int32_t version, int32_t id) noexcept {
-  }
-
-  // callback for EP library to release any internal state
-  static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept {
-  }
-};
-
-class ExampleEp : OrtEp, ApiPtrs {
+class ExampleEp : public OrtEp, public ApiPtrs {
  public:
   ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
       : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
-    // Initialize the execution provider.
-    CreateSyncStream = CreateSyncStreamImpl;
+    // Initialize the execution provider's function table
+    GetName = GetNameImpl;
+    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -103,17 +204,18 @@ class ExampleEp : OrtEp, ApiPtrs {
   }
 
  private:
-  static OrtStatus* CreateSyncStreamImpl(OrtEp* this_ptr,
-                                         const OrtSession* session,
-                                         const OrtMemoryDevice* memory_device,
-                                         OrtSyncStream** stream) {
-    auto& ep = *static_cast<ExampleEp*>(this_ptr);
-    ep.ep_api.CreateSyncStream()
+  static const char* GetNameImpl(const OrtEp* this_ptr) {
+    const auto* ep = static_cast<const ExampleEp*>(this_ptr);
+    return ep->name_.c_str();
+  }
 
-        // Create a sync stream for the execution provider.
-        // This is just an example, so we return nullptr to indicate success.
-        * stream = nullptr;
-    return nullptr;  // No error
+  static OrtStatus* CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
+                                                  const OrtMemoryDevice* memory_device,
+                                                  OrtSyncStream** stream) {
+    auto& ep = *static_cast<ExampleEp*>(this_ptr);
+
+    auto sync_stream = std::make_unique<StreamImpl>(ep);
+    return ep.ep_api.CreateSyncStream(memory_device, sync_stream.get(), stream);
   }
 
   std::string name_;
@@ -130,6 +232,9 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
     CreateAllocator = CreateAllocatorImpl;
+    ReleaseAllocator = ReleaseAllocatorImpl;
+    CreateDataTransfer = CreateDataTransferImpl;
+    ReleaseDataTransfer = ReleaseDataTransferImpl;
 
     // setup the OrtMemoryInfo instances required by the EP.
 
@@ -142,7 +247,8 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                                OrtAllocatorType::OrtDeviceAllocator,  // no arena
                                                &mem_info);
     assert(status == nullptr);  // should never fail.
-    cpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
+
+    cpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
     //
     // GPU allocator OrtMemoryInfo for example purposes
@@ -154,7 +260,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                          OrtAllocatorType::OrtDeviceAllocator,
                                          &mem_info);
     assert(status == nullptr);  // should never fail.
-    default_gpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
+    default_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
     mem_info = nullptr;
     status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_CPU,
@@ -164,7 +270,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                          OrtAllocatorType::OrtDeviceAllocator,
                                          &mem_info);
     assert(status == nullptr);  // should never fail.
-    pinned_gpu_memory_info_ = std::unique_ptr<OrtMemoryInfo>(mem_info);
+    pinned_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
   }
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) {
@@ -210,11 +316,6 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
         if (status != nullptr) {
           return status;
         }
-
-        // add required allocator create funcs
-        // create OrtMemoryInfo
-        // provide callback func
-        // auto* status = factory->ort_api.GetEpApi()->RegisterEpDeviceAllocator(ep_devices[num_ep_devices - 1], factory->CreateAllocatorsImpl, factory->ReleaseEpImpl);
       }
 
       // C++ API equivalent. Throws on error.
@@ -272,56 +373,142 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     delete dummy_ep;
   }
 
-  /*
-  OrtStatus*(ORT_API_CALL* CreateAllocator)(_In_ OrtEpFactory* this_ptr,
-                                            _In_ const OrtMemoryInfo* memory_info,
-                                            _In_ const OrtKeyValuePairs* allocator_options,
-                                            _Outptr_ OrtAllocator** allocator);
-  void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEpFactory* this_ptr,
-                                       _In_ OrtAllocator* allocator);
-
-  // get the OrtDataTransfer for the library.
-  // if none are provided set data_transfer to nullptr.
-  OrtStatus*(ORT_API_CALL* CreateDataTransfer)(_In_ OrtEpFactory* this_ptr,
-                                               _Outptr_ OrtDataTransfer** data_transfer);
-  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransfer* data_transfer);
-
-  */
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEpFactory* this_ptr,
                                                      _In_ const OrtMemoryInfo* memory_info,
-                                                     _In_ const OrtKeyValuePairs* allocator_options,
-                                                     _Outptr_ OrtAllocator** allocator) {
-    auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
+                                                     _In_ const OrtKeyValuePairs* /*allocator_options*/,
+                                                     _Outptr_ OrtAllocator** allocator) noexcept {
+    *allocator = nullptr;
+    auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
 
     // TODO: If we want to support usage of BFCArena the OrtEnv will have to wrap the OrtAllocator returned with
     // IAllocatorImplWrappingOrtAllocator (to get an IAllocator), put that in std::unique_ptr, and create the BFCArena.
     // Any options specific to the arena would need to be parsed/applied at that level.
     // We also need to wire the OrtEpFactory::ReleaseAllocator call into the IAllocatorImplWrappingOrtAllocator dtor.
-    if (memory_info == factory->cpu_memory_info_.get()) {
-      // create a CPU allocator
-      auto allocator = std::make_unique<OrtAllocator>();
-      allocator->Info = [memory_info]() { return memory_info; }
 
-    } else if (memory_info == factory->default_gpu_memory_info_.get()) {
+    if (memory_info == factory.cpu_memory_info_.get()) {
+      // create a CPU allocator. use the basic OrtAllocator for this example. in real code you could derive a class
+      // from it
+      auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info);
+      *allocator = cpu_allocator.release();
+    } else if (memory_info == factory.default_gpu_memory_info_.get()) {
       // create a GPU allocator
-    } else if (memory_info == factory->pinned_gpu_memory_info_.get()) {
+      return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Example is not implemented.");
+    } else if (memory_info == factory.pinned_gpu_memory_info_.get()) {
       // create a pinned memory allocator
+      return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Example is not implemented.");
     } else {
-      return factory->ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
-                                           "Unknown memory info provided to CreateAllocator.");
+      return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
+                                          "Unknown memory info provided to CreateAllocator.");
     }
+
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseAllocatorImpl(_In_ OrtEpFactory* /*this*/, _In_ OrtAllocator* allocator) noexcept {
+    delete static_cast<CustomAllocator*>(allocator);
+  }
+
+  struct ExampleDataTransfer : OrtDataTransfer, ApiPtrs {
+    ExampleDataTransfer(ApiPtrs api_ptrs,
+                        const OrtMemoryDevice* device_mem_info_,
+                        const OrtMemoryDevice* shared_mem_info_ = nullptr)
+        : ApiPtrs(api_ptrs), device_mem_info{device_mem_info_}, shared_mem_info{shared_mem_info_} {
+      CanCopy = CanCopyImpl;
+      CopyTensors = CopyTensorsImpl;
+    }
+
+    static bool ORT_API_CALL CanCopyImpl(_In_ void* this_ptr,
+                                         _In_ const OrtMemoryDevice* src_memory_device,
+                                         _In_ const OrtMemoryDevice* dst_memory_device) noexcept {
+      auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
+      bool src_is_our_device = impl.ep_api.OrtMemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);
+      bool dst_is_our_device = impl.ep_api.OrtMemoryDevice_AreEqual(dst_memory_device, impl.device_mem_info);
+
+      return src_is_our_device || dst_is_our_device;
+    }
+
+    // function to copy one or more tensors.
+    // implementation can optionally use async copy if a stream is available for the input.
+    static OrtStatus* ORT_API_CALL CopyTensorsImpl(_In_ void* this_ptr,
+                                                   _In_reads_(num_tensors) const OrtValue** src_tensors_ptr,
+                                                   _In_reads_(num_tensors) OrtValue** dst_tensors_ptr,
+                                                   _In_reads_(num_tensors) OrtSyncStream** streams_ptr,
+                                                   _In_ size_t num_tensors) noexcept {
+      auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
+
+      auto src_tensors = gsl::make_span<const OrtValue*>(src_tensors_ptr, num_tensors);
+      auto dst_tensors = gsl::make_span<OrtValue*>(dst_tensors_ptr, num_tensors);
+      auto streams = gsl::make_span<OrtSyncStream*>(streams_ptr, num_tensors);
+
+      for (size_t i = 0; i < num_tensors; ++i) {
+        auto* sync_stream = streams[i];
+        StreamImpl* stream = nullptr;
+        if (sync_stream) {
+          // get the Stream implementation which has the handle for managing async copies
+          stream = static_cast<StreamImpl*>(impl.ep_api.SyncStream_GetStreamImpl(sync_stream));
+        }
+
+        const OrtMemoryDevice* src_device = nullptr;
+        const OrtMemoryDevice* dst_device = nullptr;
+        auto* status = impl.ep_api.OrtValue_GetMemoryDevice(src_tensors[i], &src_device);
+        if (status != nullptr) {
+          return status;
+        }
+
+        status = impl.ep_api.OrtValue_GetMemoryDevice(dst_tensors[i], &dst_device);
+        if (status != nullptr) {
+          return status;
+        }
+
+        auto src_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(src_device);
+        auto dst_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(dst_device);
+        auto src_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(src_device);
+        auto dst_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(dst_device);
+
+        bool copy_involves_pinned_memory = src_mem_type == OrtMemType::OrtMemTypeCPU ||
+                                           dst_mem_type == OrtMemType::OrtMemTypeCPU;
+
+        if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
+          if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
+            // GPU -> GPU
+          } else {
+            // CPU -> GPU
+          }
+        } else if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
+          // GPU -> CPU
+        } else {
+          // CPU -> CPU involves copy to/from pinned memory and a synchronize may be required first
+          assert(copy_involves_pinned_memory);
+        }
+      }
+    }
+
+   private:
+    const OrtMemoryDevice* device_mem_info;
+    const OrtMemoryDevice* shared_mem_info;
+  };
+
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(_In_ OrtEpFactory* /*this_ptr*/,
+                                                        _Outptr_ OrtDataTransfer** data_transfer) noexcept {
+    *data_transfer = nullptr;
+    return nullptr;
+  }
+
+  static void ORT_API_CALL ReleaseDataTransferImpl(_In_ OrtEpFactory* /*this_ptr*/,
+                                                   _In_ OrtDataTransfer* /*data_transfer*/) noexcept {
   }
 
   const std::string ep_name_;            // EP name
   const std::string vendor_{"Contoso"};  // EP vendor name
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
-  std::unique_ptr<OrtMemoryInfo> cpu_memory_info_;
+  using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
+  MemoryInfoUniquePtr cpu_memory_info_;
 
   // for example purposes. if the EP used GPU, and pinned/shared memory was required for data transfer, these are the
   // OrtMemoryInfo instance required for that.
-  std::unique_ptr<OrtMemoryInfo> default_gpu_memory_info_;
-  std::unique_ptr<OrtMemoryInfo> pinned_gpu_memory_info_;
+  MemoryInfoUniquePtr default_gpu_memory_info_;
+  MemoryInfoUniquePtr pinned_gpu_memory_info_;
 };
 
 // To make symbols visible on macOS/iOS
