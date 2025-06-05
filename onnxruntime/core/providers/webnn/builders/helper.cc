@@ -109,15 +109,16 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
     return false;
   }
 
-  for (const auto& input : it->second.inputs) {
-    const std::string_view webnn_op_type = it->second.opType;
+  const std::string_view webnn_op_type = it->second.opType;
+  const std::string webnn_op_type_str(webnn_op_type);
 
+  for (const auto& input : it->second.inputs) {
     if (static_cast<size_t>(input.index) >= node.InputDefs().size() || node.InputDefs()[input.index] == nullptr) {
-      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
-                            << "], input index: [" << input.index
-                            << "], corresponding WebNN op type: " << webnn_op_type
-                            << ", WebNN input name " << input.name
-                            << "] is not found.";
+      LOGS(logger, VERBOSE) << "Input index [" << input.index
+                            << "] for operator type [" << op_type
+                            << "], corresponding WebNN op type [" << webnn_op_type
+                            << "], WebNN input name [" << input.name
+                            << "] is invalid.";
       return false;
     }
 
@@ -126,8 +127,10 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
       return false;
     }
 
-    if (wnn_limits[std::string(webnn_op_type)].isUndefined() ||
-        wnn_limits[std::string(webnn_op_type)][std::string(input.name)].isUndefined()) {
+    const std::string input_str(input.name);
+
+    if (wnn_limits[webnn_op_type_str].isUndefined() ||
+        wnn_limits[webnn_op_type_str][input_str].isUndefined()) {
       LOGS(logger, VERBOSE) << "Operator type: [" << op_type
                             << "], input index: [" << input.index
                             << "], corresponding WebNN op type: " << webnn_op_type
@@ -136,7 +139,7 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
       return false;
     }
 
-    const auto& input_limits = wnn_limits[std::string(webnn_op_type)][std::string(input.name)];
+    const auto& input_limits = wnn_limits[webnn_op_type_str][input_str];
     if (input_limits["rankRange"].isUndefined()) {
       LOGS(logger, VERBOSE) << "Operator type: [" << op_type
                             << "], input index: [" << input.index
