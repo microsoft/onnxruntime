@@ -43,6 +43,7 @@ constexpr int get_weight_quant_bits(QuantType quant_type) {
       return 4;
     default:
       ORT_THROW("Invalid quant_type");
+      return -1;
   }
 }
 
@@ -133,6 +134,7 @@ LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
     return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
   } else {
     ORT_THROW("Unsupported Arch");
+    return LayoutDetails();
   }
 }
 
