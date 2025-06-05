@@ -150,6 +150,50 @@ export declare namespace Env {
 
   export type WebGpuProfilingData = WebGpuProfilingDataV1;
 
+  export interface WebGpuStatItem {
+    /**
+     * Set or get a boolean value indicating whether the item is enabled.
+     */
+    enabled: boolean;
+
+    /**
+     * Reset all the statistics of the item.
+     */
+    reset(): void;
+
+    /**
+     * Print out the statistics of the item to console.
+     */
+    print(): void;
+  }
+  export interface WebGpuStatBufferV1 extends WebGpuStatItem {
+    readonly created: number;
+    readonly destroyed: number;
+    readonly uploaded: number;
+    readonly downloaded: number;
+    readonly uploadedExternal: number;
+    readonly downloadedExternal: number;
+  }
+
+  export type WebGpuStatBuffer = WebGpuStatBufferV1;
+
+  export interface WebGpuStatFlags {
+    /**
+     * Set or get a boolean value indicating WebGPU statistics are enabled.
+     *
+     * When setting this property, it will enable or disable all WebGPU statistics.
+     *
+     * When getting this property, it will return `true` if any WebGPU statistics is enabled, otherwise it will
+     * return `false`.
+     */
+    enabled: boolean;
+
+    /**
+     * Get the statistics of WebGPU buffers.
+     */
+    readonly buffer: WebGpuStatBuffer;
+  }
+
   export interface WebGpuFlags {
     /**
      * Set or get the profiling mode.
@@ -175,6 +219,10 @@ export declare namespace Env {
        */
       ondata?: (data: WebGpuProfilingData) => void;
     };
+    /**
+     * Get an object containing the statistics of WebGPU backend.
+     */
+    readonly stat: WebGpuStatFlags;
     /**
      * Set or get the power preference.
      *
@@ -236,6 +284,8 @@ export declare namespace Env {
      * Set or get whether validate input content.
      *
      * @defaultValue `false`
+     *
+     * @deprecated This property is deprecated and will be removed in the future.
      */
     validateInputContent?: boolean;
   }
