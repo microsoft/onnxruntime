@@ -109,6 +109,27 @@ TEST_F(QnnCPUBackendTests, DISABLED_UnaryOp_Relu) {
                  ExpectedEPNodeAssignment::All);
 }
 
+// Test Mod with fmod = 1
+TEST_F(QnnCPUBackendTests, BinaryOp_Mod_FLOAT) {
+  RunOpTestOnCPU<float>("Mod",
+                        {TestInputDef<float>({6}, false, {-4.3f, 7.2f, 5.0f, 4.3f, -7.2f, 8.0f}),
+                         TestInputDef<float>({6}, false, {2.1f, -3.4f, 8.0f, -2.1f, 3.4f, 5.0f})},
+                        {utils::MakeAttribute("fmod", static_cast<int64_t>(1))},
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test Mod with fmod = 0
+// TODO: Fix output mismatch between QNN CPU and CPU EP.
+TEST_F(QnnCPUBackendTests, DISABLED_BinaryOp_Mod_INT32) {
+  RunOpTestOnCPU<int32_t>("Mod",
+                          {TestInputDef<int32_t>({6}, false, {-4, 7, 5, 4, -7, 8}),
+                           TestInputDef<int32_t>({6}, false, {2, -3, 8, -2, 3, 5})},
+                          {utils::MakeAttribute("fmod", static_cast<int64_t>(0))},
+                          13,
+                          ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 // Tests the accuracy of a QDQ model on QNN EP by comparing to CPU EP, which runs both the fp32 model
@@ -331,6 +352,19 @@ TEST_F(QnnHTPBackendTests, UnaryOp_HardSwish_U16) {
                          ExpectedEPNodeAssignment::All,
                          kOnnxDomain,
                          true);
+}
+
+// Test Softplus on HTP
+TEST_F(QnnHTPBackendTests, UnaryOp_Softplus) {
+  const std::vector<float> input_data = {-10.0f, -8.4f, 0.0f, 5.0f, 7.1f, 10.0f};
+  RunOpTest<float>("Softplus",
+                   {TestInputDef<float>({6}, false, input_data)},
+                   {},
+                   14,
+                   ExpectedEPNodeAssignment::All,
+                   kOnnxDomain,
+                   0.01f,
+                   true);
 }
 
 // Check that QNN compiles DQ -> Atan -> Q as a single unit.
@@ -988,6 +1022,16 @@ TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
                    TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
                   {},
                   17,
+                  ExpectedEPNodeAssignment::All);
+}
+
+// Test Xor
+TEST_F(QnnHTPBackendTests, BinaryOp_Xor4D) {
+  RunOpTest<bool>("Xor",
+                  {TestInputDef<bool>({1, 4}, false, {false, false, true, true}),
+                   TestInputDef<bool>({1, 4}, false, {false, true, false, true})},
+                  {},
+                  7,
                   ExpectedEPNodeAssignment::All);
 }
 

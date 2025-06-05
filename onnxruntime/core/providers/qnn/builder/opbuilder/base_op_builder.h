@@ -244,6 +244,14 @@ class BaseOpBuilder : public IOpBuilder {
         {"LRN", QNN_OP_LRN},
 
         {"Pad", QNN_OP_PAD},
+        {"Softplus", QNN_OP_ELEMENT_WISE_NEURON},
+        {"IsNaN", QNN_OP_ELEMENT_WISE_NOT_EQUAL},
+        {"NonZero", QNN_OP_NON_ZERO},
+        {"Xor", QNN_OP_ELEMENT_WISE_XOR},
+
+        // Note: Mod is handled separately inside ModOpBuilder
+        // {"Mod", QNN_OP_ELEMENT_WISE_MOD},
+        // {"Mod", QNN_OP_ELEMENT_WISE_FMOD},
 
         {"Expand", QNN_OP_ELEMENT_WISE_MULTIPLY}};
     auto it = onnx_op_type_to_qnn_op_type.find(onnx_op_type);

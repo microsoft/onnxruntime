@@ -65,6 +65,11 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
     CreateSimpleOpBuilder("GridSample", *this);
 
     CreateSimpleOpBuilder("LpNormalization", *this);
+
+    CreateSimpleOpBuilder("Softplus", *this);
+    CreateSimpleOpBuilder("IsNaN", *this);
+    CreateSimpleOpBuilder("NonZero", *this);
+    CreateSimpleOpBuilder("Xor", *this);
   }
 
   {
@@ -184,6 +189,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateLSTMOpBuilder("LSTM", *this);
+  }
+
+  {
+    CreateModOpBuilder("Mod", *this);
   }
 }
 

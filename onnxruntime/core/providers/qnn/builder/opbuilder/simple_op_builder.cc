@@ -379,6 +379,18 @@ Status SimpleOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
     qnn_model_wrapper.AddParamWrapper(std::move(operation_param));
   }
 
+  if (op_type == "Softplus") {
+    Qnn_Scalar_t neuron_operation = QNN_SCALAR_INIT;
+    neuron_operation.dataType = QNN_DATATYPE_UINT_32;
+    neuron_operation.uint32Value = QNN_OP_ELEMENT_WISE_NEURON_OPERATION_SOFTPLUS;
+
+    QnnParamWrapper operation_param(node_unit.Index(), node_unit.Name(),
+                                    QNN_OP_ELEMENT_WISE_NEURON_PARAM_OPERATION,
+                                    neuron_operation);
+    param_tensor_names.push_back(operation_param.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(operation_param));
+  }
+
   if (op_type == "DepthToSpace") {
     ORT_RETURN_IF_ERROR(ProcessBlockSizeAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
     ORT_RETURN_IF_ERROR(ProcessModeAttribute(qnn_model_wrapper, node_unit, param_tensor_names));
