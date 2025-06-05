@@ -27,7 +27,7 @@ under [Compatibility](../reference/compatibility).
   by running `locale-gen en_US.UTF-8` and `update-locale LANG=en_US.UTF-8`
 
 * Windows builds
-  require [Visual C++ 2019 runtime](https://support.microsoft.com/en-us/help/2977003/the-latest-supported-visual-c-downloads).
+  require [Visual C++ 2019 runtime](https://learn.microsoft.com/en-us/cpp/windows/latest-supported-vc-redist?view=msvc-170#latest-microsoft-visual-c-redistributable-version).
   The latest version is recommended.
 
 ### CUDA and CuDNN

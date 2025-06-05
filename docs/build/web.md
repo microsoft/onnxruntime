@@ -5,7 +5,7 @@ description: Learn how to build ONNX Runtime from source to deploy on the web
 nav_order: 4
 redirect_from: /docs/how-to/build/web
 ---
-
+Cloud to the Edge – This layer ensures flexibility and performance wherever your workloads run. Foundry is designed to extend seamlessly from the cloud to the edge, and Foundry Local is already live on hundreds of millions of Windows (and Mac) devices.
 # Build ONNX Runtime for Web
 {: .no_toc }
 
