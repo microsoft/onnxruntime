@@ -102,8 +102,6 @@ class RunLinterTask(CompositeTask):
                             "lintrunner",
                             "--configs",
                             f"{REPO_ROOT}/.lintrunner.toml",
-                            "--skip",
-                            "RUSTFMT",
                             "--force-color",
                             "--all-files",
                             "-v",
