@@ -76,6 +76,7 @@ struct OrtNode {
   virtual const std::string& Name() const = 0;
   virtual const std::string& OpType() const = 0;
   virtual const std::string& Domain() const = 0;
+  virtual onnxruntime::Status GetSinceVersion(int& since_version) const = 0;
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;

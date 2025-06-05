@@ -70,6 +70,7 @@ struct EpNode : public OrtNode {
   const std::string& Name() const override;
   const std::string& OpType() const override;
   const std::string& Domain() const override;
+  Status GetSinceVersion(int& since_version) const override;
   size_t NumInputs() const override { return inputs.size(); }
   size_t NumOutputs() const override { return outputs.size(); }
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;

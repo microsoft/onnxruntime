@@ -260,6 +260,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node)), node->OpType());
     ASSERT_EQ(std::string(ort_api.Node_Domain(api_node)), node->Domain());
 
+    int api_since_version = 0;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetSinceVersion(api_node, &api_since_version));
+    ASSERT_EQ(api_since_version, node->SinceVersion());
+
     const auto input_node_args = node->InputDefs();
     const size_t num_inputs = ort_api.Node_NumInputs(api_node);
     ASSERT_EQ(num_inputs, input_node_args.size());

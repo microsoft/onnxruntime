@@ -55,6 +55,12 @@ struct ModelEditorNode : public OrtNode {
   const std::string& Name() const override { return node_name; }
   const std::string& OpType() const override { return operator_name; }
   const std::string& Domain() const override { return domain_name; }
+
+  Status GetSinceVersion(int& /*since_version*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting an OrtNode's opset version");
+  }
+
   size_t NumInputs() const override { return input_names.size(); }
   size_t NumOutputs() const override { return output_names.size(); }
 

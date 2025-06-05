@@ -2555,6 +2555,16 @@ ORT_API(const char*, OrtApis::Node_Domain, const OrtNode* node) {
   return node->Domain().c_str();
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version) {
+  API_IMPL_BEGIN
+  if (since_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'since_version' argument is NULL");
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSinceVersion(*since_version));
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(size_t, OrtApis::Node_NumInputs, const OrtNode* node) {
   return node->NumInputs();
 }
@@ -3237,6 +3247,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_Name,
     &OrtApis::Node_OperatorType,
     &OrtApis::Node_Domain,
+    &OrtApis::Node_GetSinceVersion,
     &OrtApis::Node_NumInputs,
     &OrtApis::Node_NumOutputs,
     &OrtApis::Node_GetInputs,

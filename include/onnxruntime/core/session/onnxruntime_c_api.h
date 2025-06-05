@@ -5491,6 +5491,17 @@ struct OrtApi {
    */
   const char*(ORT_API_CALL* Node_Domain)(_In_ const OrtNode* node);
 
+  /** \brief Get the opset version in which the node's operator type was first defined.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
+
   /** \brief Returns the number of inputs for an OrtNode instance.
    *
    * \param[in] node The OrtNode instance.

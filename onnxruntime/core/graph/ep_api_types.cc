@@ -18,6 +18,10 @@ namespace onnxruntime {
 const std::string& EpNode::Name() const { return node.Name(); }
 const std::string& EpNode::OpType() const { return node.OpType(); }
 const std::string& EpNode::Domain() const { return node.Domain(); }
+Status EpNode::GetSinceVersion(int& since_version) const {
+  since_version = node.SinceVersion();
+  return Status::OK();
+}
 
 Status EpNode::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
   result.resize(inputs.size());

@@ -624,6 +624,7 @@ ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
 ORT_API(const char*, Node_Name, const OrtNode* node);
 ORT_API(const char*, Node_OperatorType, const OrtNode* node);
 ORT_API(const char*, Node_Domain, const OrtNode* node);
+ORT_API_STATUS_IMPL(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
 ORT_API(size_t, Node_NumInputs, const OrtNode* node);
 ORT_API(size_t, Node_NumOutputs, const OrtNode* node);
 ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
