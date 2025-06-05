@@ -62,7 +62,7 @@ class MatMulNBits final : public CudaKernel {
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
           (block_size_ == 64 || block_size_ == 128) &&
           (nbits_ == 4 || nbits_ == 8) &&
-          !has_g_idx_ && has_zero_points_ && !has_bias_ &&
+          !has_g_idx_ && !has_bias_ &&
           N_ % (nbits_ == 8 ? 32 : 64) == 0 &&
           K_ % block_size_ == 0 &&
           sm_ >= 75) {
