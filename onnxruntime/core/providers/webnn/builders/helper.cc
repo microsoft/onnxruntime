@@ -102,18 +102,18 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
 // Check if all input tensor ranks of the given node are supported by WebNN.
 bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) {
   const std::string_view op_type = node.OpType();
-
-  auto it = op_inputs_map.find(op_type);
+  const auto it = op_inputs_map.find(op_type);
   if (it == op_inputs_map.end()) {
     LOGS(logger, VERBOSE) << "Operator type: [" << op_type << "] is not found in the op inputs map.";
     return false;
   }
 
+  const auto& input_defs = node.InputDefs();
   const std::string_view webnn_op_type = it->second.opType;
   const std::string webnn_op_type_str(webnn_op_type);
 
   for (const auto& input : it->second.inputs) {
-    if (static_cast<size_t>(input.index) >= node.InputDefs().size() || node.InputDefs()[input.index] == nullptr) {
+    if (static_cast<size_t>(input.index) >= input_defs.size() || input_defs[input.index] == nullptr) {
       LOGS(logger, VERBOSE) << "Input index [" << input.index
                             << "] for operator type [" << op_type
                             << "], corresponding WebNN op type [" << webnn_op_type
@@ -123,14 +123,13 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
     }
 
     std::vector<int64_t> input_shape;
-    if (!GetShape(*node.InputDefs()[input.index], input_shape, logger)) {
+    if (!GetShape(*input_defs[input.index], input_shape, logger)) {
       return false;
     }
 
-    const std::string input_str(input.name);
-
+    const std::string input_name_str(input.name);
     if (wnn_limits[webnn_op_type_str].isUndefined() ||
-        wnn_limits[webnn_op_type_str][input_str].isUndefined()) {
+        wnn_limits[webnn_op_type_str][input_name_str].isUndefined()) {
       LOGS(logger, VERBOSE) << "Operator type: [" << op_type
                             << "], input index: [" << input.index
                             << "], corresponding WebNN op type: " << webnn_op_type
@@ -139,7 +138,7 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
       return false;
     }
 
-    const auto& input_limits = wnn_limits[webnn_op_type_str][input_str];
+    const auto& input_limits = wnn_limits[webnn_op_type_str][input_name_str];
     if (input_limits["rankRange"].isUndefined()) {
       LOGS(logger, VERBOSE) << "Operator type: [" << op_type
                             << "], input index: [" << input.index
