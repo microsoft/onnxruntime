@@ -485,8 +485,9 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   } else {
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute using "
-                             "non-MLAS de-quantization for now");
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for unpacked compute using "
+                "non-MLAS de-quantization for now");
 
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
     if (zero_points && zero_points->IsDataType<float>()) {
