@@ -121,7 +121,6 @@ void DumpCurrentlyAllocatedNormalBlocks(const _CrtMemState* memState, const char
       }
       std::cout << "    Line: " << pHead->_line_number << std::endl;
       std::cout << "    Size: " << pHead->_data_size << " bytes" << std::endl;
-      
     }
   }
 
@@ -268,7 +267,7 @@ int main() {
   // 10. Unload the DLL
   if (ort_library_handle) {
     std::cout << "Unloading onnxruntime.dll..." << std::endl;
-
+    // TODO: take a heap snapshot before unloading the DLL so that we could have symbol information
     BOOL free_result = FreeLibrary(ort_library_handle);
     HMODULE temp_handle_before_nullptr = ort_library_handle;  // For checking GetModuleHandle below
     ort_library_handle = nullptr;
@@ -290,6 +289,7 @@ int main() {
 
       // HEAP_DEBUG: Compare snapshots and dump statistics of the differences
       if (_CrtMemDifference(&s3_diff, &s1, &s2)) {
+        // TODO: now even we have the pointers, we do not know what they were used for since the onnxruntime.dll is already gone
         std::cout << "\n---------- HEAP DIFFERENCE (s2 - s1) ----------" << std::endl;
         std::cout << "This shows memory allocated after s1 that was still allocated at s2." << std::endl;
         _CrtMemDumpStatistics(&s3_diff);
