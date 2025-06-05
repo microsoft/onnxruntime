@@ -23,6 +23,9 @@ limitations under the License.
 #include "layer_norm.cuh"
 #include "embed_layer_norm_impl.h"
 #include <cuda_fp16.h>
+#include <thrust/functional.h> // For thrust::minimum
+#include <cub/cub.cuh>  // For BlockReduce
+
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -39,7 +42,6 @@ __global__ void MaskIndexKernelSmall(int sequence_length, const int* mask, int* 
   // blockIdx.x is b
   const int offset = blockIdx.x * sequence_length;  // batch strides of sequence_length
 
-  cub::Min min;
   int thread_data(sequence_length);
 
   const int idx = offset + threadIdx.x;
@@ -51,8 +53,7 @@ __global__ void MaskIndexKernelSmall(int sequence_length, const int* mask, int* 
     }
   }
 
-  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, min);
-
+  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, thrust::minimum<int>());
   if (threadIdx.x == 0) {
     mask_index[blockIdx.x] = min_index;
   }
@@ -66,7 +67,6 @@ __global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_
   // blockIdx.x is b
   const int offset = blockIdx.x * sequence_length;  // batch strides of sequence_length
 
-  cub::Min min;
   int thread_data(sequence_length);
 
   for (int i = threadIdx.x; i < sequence_length; i += TPB) {
@@ -78,7 +78,7 @@ __global__ void MaskIndexKernel(int sequence_length, const int* mask, int* mask_
     }
   }
 
-  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, min);
+  const auto min_index = BlockReduce(temp_storage).Reduce(thread_data, thrust::minimum<int>());
 
   if (threadIdx.x == 0) {
     mask_index[blockIdx.x] = min_index;
