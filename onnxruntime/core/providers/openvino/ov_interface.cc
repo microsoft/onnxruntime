@@ -143,38 +143,6 @@ void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));
 }
 
-#ifdef IO_BUFFER_ENABLED
-OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
-                                  OVRemoteContextPtr context, std::string name) {
-  try {
-    auto obj = core.compile_model(model, *context);
-#ifndef NDEBUG
-    printDebugInfo(obj);
-#endif
-    return OVExeNetwork(obj);
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
-}
-OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
-                                 OVRemoteContextPtr context, std::string name) {
-  try {
-    auto obj = core.import_model(*model_stream, *context);
-#ifndef NDEBUG
-    printDebugInfo(obj);
-#endif
-    OVExeNetwork exe(obj);
-    return exe;
-  } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph: " + name + e.what());
-  } catch (...) {
-    ORT_THROW(log_tag + " Exception while Loading Network for graph " + name);
-  }
-}
-#endif
-
 std::vector<std::string> OVCore::GetAvailableDevices() const {
   std::vector<std::string> available_devices = core.get_available_devices();
   return available_devices;
@@ -294,12 +262,16 @@ void OVInferRequest::Infer() {
 }
 
 void OVInferRequest::WaitRequest() {
+  ovInfReq.wait();
+}
+
+void OVInferRequest::CancelRequest() {
   try {
-    ovInfReq.wait();
+    ovInfReq.cancel();
   } catch (const Exception& e) {
-    ORT_THROW(log_tag + " Wait Model Failed: " + e.what());
+    ORT_THROW(log_tag + " Cancel Model Failed: " + e.what());
   } catch (...) {
-    ORT_THROW(log_tag + " Wait Mode Failed");
+    ORT_THROW(log_tag + " Cancel Mode Failed");
   }
 }
 
