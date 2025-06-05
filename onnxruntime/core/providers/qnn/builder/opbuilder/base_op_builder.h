@@ -230,6 +230,7 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"LogSoftmax", QNN_OP_LOG_SOFTMAX},
         {"Concat", QNN_OP_CONCAT},
+        {"CumSum", QNN_OP_CUMULATIVE_SUM},
 
         {"Gemm", QNN_OP_FULLY_CONNECTED},
 
