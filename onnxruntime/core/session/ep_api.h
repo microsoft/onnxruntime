@@ -25,8 +25,7 @@ ORT_API_STATUS_IMPL(OrtValue_GetMemoryDevice, _In_ const OrtValue* value, _Out_ 
 
 ORT_API(bool, OrtMemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
 ORT_API(OrtMemoryInfoDeviceType, OrtMemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device);
-ORT_API(OrtMemType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
-
+ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
 
 ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
                     _Outptr_ OrtSyncStream** stream);

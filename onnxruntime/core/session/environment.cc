@@ -8,6 +8,7 @@
 #include "core/common/basic_types.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
@@ -399,6 +400,11 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       internal_ep_factories_.insert(internal_factory);
     }
 
+    for (auto& data_transfer : ep_info->owned_data_transfer_instances) {
+      ep_info->data_transfer_instances.push_back(data_transfer.get());  // save pointer for unregister
+      ORT_RETURN_IF_ERROR(data_transfer_manager_.RegisterDataTransfer(std::move(data_transfer)));
+    }
+
     ep_libraries_[registration_name] = std::move(ep_info);
   }
   ORT_CATCH(const std::exception& ex) {
@@ -443,9 +449,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   auto status = Status::OK();
 
   ORT_TRY {
-    // unload.
     auto ep_info = std::move(ep_libraries_[ep_name]);
-
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
     // something goes wrong in any of the following steps..
     ep_libraries_.erase(ep_name);
@@ -455,10 +459,25 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     }
 
     for (const auto& ed : ep_info->execution_devices) {
+      // remove from global list of OrtEpDevices
       if (auto it = std::find(execution_devices_.begin(), execution_devices_.end(), ed.get());
           it != execution_devices_.end()) {
         execution_devices_.erase(it);
       }
+
+      // remove any shared allocators
+      if (ed->device_memory_info != nullptr) {
+        ORT_RETURN_IF_ERROR(ReleaseSharedAllocator(*ed, OrtDeviceMemoryType_DEFAULT, /*error if not found*/ false));
+      }
+
+      if (ed->shared_memory_info != nullptr) {
+        ORT_RETURN_IF_ERROR(ReleaseSharedAllocator(*ed, OrtDeviceMemoryType_HOST_ACCESSIBLE, /*error if not found*/ false));
+      }
+    }
+
+    // remove any data transfer implementations
+    for (auto* data_transfer : ep_info->data_transfer_instances) {
+      ORT_RETURN_IF_ERROR(data_transfer_manager_.UnregisterDataTransfer(data_transfer));
     }
 
     ep_info.reset();
@@ -472,7 +491,7 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   return status;
 }
 
-Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type,
+Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
                                           const OrtKeyValuePairs* allocator_options) {
   auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info : ep_device.shared_memory_info;
   if (memory_info == nullptr) {
@@ -508,7 +527,8 @@ Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtMemTy
   return Status::OK();
 }
 
-Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type) {
+Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
+                                           bool error_if_not_found) {
   auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info : ep_device.shared_memory_info;
   if (memory_info == nullptr) {
     return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
@@ -516,8 +536,9 @@ Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtMemT
 
   auto it = ep_shared_allocators_map_.find(memory_info);
   if (it == ep_shared_allocators_map_.end()) {
-    return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT,
-                  "Shared allocator for this OrtEpDevice has not been registered. ");
+    return error_if_not_found ? Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT,
+                                       "Shared allocator for this OrtEpDevice has not been registered. ")
+                              : Status::OK();
   }
 
   ep_shared_allocators_map_.erase(it);  // this will result in OrtEpFactory::ReleaseAllocator being called
@@ -583,6 +604,14 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
+
+    OrtDataTransferImpl* data_transfer = nullptr;
+    ORT_RETURN_IF_ERROR(ToStatus(factory.CreateDataTransfer(&factory, &data_transfer)));
+    if (data_transfer != nullptr) {
+      instance.owned_data_transfer_instances.push_back(std::make_unique<plugin_ep::DataTransfer>(*data_transfer));
+    }
+
+    instance.data_transfer_instances.reserve(instance.owned_data_transfer_instances.size());
   }
 
   return Status::OK();

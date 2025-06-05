@@ -196,26 +196,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, 
   return nullptr;
 }
 
-namespace {
-OrtStatus* ValidateSharedAllocatorArgs(OrtEnv* ort_env, const OrtEpDevice* ep_device, OrtMemType mem_type) {
+ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
+                    _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options) {
   if (ort_env == nullptr || ep_device == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
-  }
-
-  if (mem_type != OrtMemTypeDefault && mem_type != OrtMemTypeCPU) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Only OrtMemTypeDefault and OrtMemTypeCPU are supported for OrtEpDevice allocators");
-  }
-
-  return nullptr;
-}
-}  // namespace
-
-ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
-                    _In_ OrtMemType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options) {
-  auto status = ValidateSharedAllocatorArgs(ort_env, ep_device, mem_type);
-  if (status != nullptr) {
-    return status;
   }
 
   auto& env = ort_env->GetEnvironment();
@@ -225,10 +209,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ c
 }
 
 ORT_API_STATUS_IMPL(OrtApis::ReleaseSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
-                    _In_ OrtMemType mem_type) {
-  auto status = ValidateSharedAllocatorArgs(ort_env, ep_device, mem_type);
-  if (status != nullptr) {
-    return status;
+                    _In_ OrtDeviceMemoryType mem_type) {
+  if (ort_env == nullptr || ep_device == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
   }
 
   auto& env = ort_env->GetEnvironment();

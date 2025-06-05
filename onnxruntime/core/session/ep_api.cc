@@ -12,8 +12,6 @@
 #include "core/session/abi_devices.h"
 #include "core/session/ort_apis.h"
 
-struct OrtMemoryDevice : OrtDevice {};
-
 using namespace onnxruntime;
 namespace OrtExecutionProviderApi {
 ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
@@ -97,13 +95,9 @@ ORT_API(OrtMemoryInfoDeviceType, OrtMemoryDevice_GetDeviceType, _In_ const OrtMe
   }
 }
 
-ORT_API(OrtMemType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device) {
-  switch (memory_device->MemType()) {
-    case OrtDevice::MemType::DEFAULT:
-      return OrtMemTypeDefault;
-    default:
-      return OrtMemTypeCPU;  // anything else is shared/pinned which we use OrtMemTypeCPU for (as DeviceType != CPU)
-  }
+ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->MemType() == OrtDevice::MemType::DEFAULT ? OrtDeviceMemoryType_DEFAULT
+                                                                 : OrtDeviceMemoryType_HOST_ACCESSIBLE;
 }
 
 ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,

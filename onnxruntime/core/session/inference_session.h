@@ -235,6 +235,7 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider);
+  // const OrtEpDevice* autoep = nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**
@@ -667,6 +668,11 @@ class InferenceSession {
   // provided by the EP. If that is the case the allocator's `free` implementation may depend on other parts of the
   // EP instance.
   ExecutionProviders execution_providers_;
+
+  // TODO: Is this a good way to support per-session allocator/data transfer and stream registration
+  // matching entries if execution providers was populated from OrtEpDevice instances.
+  // this lets us register any streams using the OrtEpDevice as well as create allocators.
+  // std::vector<const OrtEpDevice*> auto_execution_providers_;
 
   // The model served by this inference session instance.
   // Currently this has to be a shared ptr because the Model::Load method

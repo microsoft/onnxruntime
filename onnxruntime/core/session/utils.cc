@@ -246,6 +246,8 @@ OrtStatus* InitializeSession(_In_ const OrtSessionOptions* options,
     if (options != nullptr && options->value.ep_selection_policy.enable) {
       ProviderPolicyContext context;
       ORT_API_RETURN_IF_STATUS_NOT_OK(context.SelectEpsForSession(sess.GetEnvironment(), *options, sess));
+
+      // 
     }
   }
 #endif  // !defined(ORT_MINIMAL_BUILD)

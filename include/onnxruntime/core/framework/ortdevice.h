@@ -24,7 +24,7 @@ struct OrtDevice {
   struct MemType {
     // Pre-defined memory types.
     static const MemoryType DEFAULT = 0;
-    static const MemoryType SHARED = 5;  // Shared memory that is accessible from host and device.
+    static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
 
     // these are deprecated. use vendor_id instead
     static const MemoryType CUDA_PINNED = 1;
@@ -54,23 +54,23 @@ struct OrtDevice {
         alignment(alignment) {
     // infer vendor id for old values
     // TODO: Can we remove them completely?
-    if (memory_type != MemType::DEFAULT && memory_type != MemType::SHARED) {
+    if (memory_type != MemType::DEFAULT && memory_type != MemType::HOST_ACCESSIBLE) {
       switch (memory_type_) {
         case MemType::CUDA_PINNED:
           vendor_id = VendorIds::NVIDIA;
-          memory_type = MemType::SHARED;
+          memory_type = MemType::HOST_ACCESSIBLE;
           break;
         case MemType::HIP_PINNED:
           vendor_id = VendorIds::AMD;
-          memory_type = MemType::SHARED;
+          memory_type = MemType::HOST_ACCESSIBLE;
           break;
         case MemType::CANN_PINNED:
           vendor_id = VendorIds::HUAWEI;
-          memory_type = MemType::SHARED;
+          memory_type = MemType::HOST_ACCESSIBLE;
           break;
         case MemType::QNN_HTP_SHARED:
           vendor_id = VendorIds::QUALCOMM;
-          memory_type = MemType::SHARED;
+          memory_type = MemType::HOST_ACCESSIBLE;
           break;
       };
     }

@@ -16,6 +16,20 @@ Status DataTransferManager::RegisterDataTransfer(std::unique_ptr<IDataTransfer> 
   return Status::OK();
 }
 
+Status DataTransferManager::UnregisterDataTransfer(IDataTransfer* data_transfer) {
+  auto iter = std::find_if(datatransfers_.begin(), datatransfers_.end(),
+                           [&data_transfer](const std::unique_ptr<IDataTransfer>& dt) {
+                             return dt.get() == data_transfer;
+                           });
+
+  if (iter != datatransfers_.end()) {
+    datatransfers_.erase(iter);
+  }
+
+  // ignore if not found
+  return Status::OK();
+}
+
 const IDataTransfer* DataTransferManager::GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) const {
   for (auto& data_transfer : datatransfers_) {
     if (!data_transfer->CanCopy(src_device, dst_device)) {

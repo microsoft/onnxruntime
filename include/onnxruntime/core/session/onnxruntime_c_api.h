@@ -238,7 +238,7 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_VERBOSE,  ///< Verbose informational messages (least severe).
   ORT_LOGGING_LEVEL_INFO,     ///< Informational messages.
   ORT_LOGGING_LEVEL_WARNING,  ///< Warning messages.
-  ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
+  ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.M
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
@@ -404,6 +404,12 @@ typedef enum OrtMemType {
   OrtMemTypeCPU = OrtMemTypeCPUOutput,  ///< Temporary CPU accessible memory allocated by non-CPU execution provider, i.e. CUDA_PINNED
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
+
+/** \brief This matches OrtDevice::MemoryType values */
+typedef enum OrtDeviceMemoryType {
+  OrtDeviceMemoryType_DEFAULT = 0,          ///< Device memory
+  OrtDeviceMemoryType_HOST_ACCESSIBLE = 5,  ///< Shared/pinned memory for transferring between CPU and the device
+} OrtDeviceMemoryType;
 
 /** \brief This mimics OrtDevice type constants so they can be returned in the API
  */
@@ -5291,9 +5297,9 @@ struct OrtApi {
    * \param[in] device_type Device type.
    * \param[in] vendor_id Vendor ID for a vendor specific allocator is used. 0 if not.
    * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
-   * \param[in] mem_type Memory type. Use OrtMemTypeDefault for the default memory type for the device.
-   *                                  Use OrtMemTypeCPU and device_type of OrtMemoryInfoDeviceType_CPU for
-   *                                  shared memory used to transfer between CPU and a non-CPU device.
+   * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
+   *                                  OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer
+   *                                  between the device and the CPU.
    * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
    * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
    *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
@@ -5302,30 +5308,47 @@ struct OrtApi {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.24
+   * \since Version 1.23
    */
   ORT_API2_STATUS(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
-                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtMemType mem_type,
+                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
                   _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                   _Outptr_ OrtMemoryInfo** out);
 
   // Create a shared allocator for the OrtEpDevice in the OrtEnv
   //
-  // OrtMemTypeDefault is always supported.
-  // OrtMemTypeCPU is optional and dependent on the device as to whether it's required.
+  // OrtEpDevice maps to the EP factory, and the factory provides the allocator implementation.
+  //
+  // OrtDeviceMemoryTypeDefault is always supported for non-CPU based devices.
+  // OrtDeviceMemoryTypeShared is optional and dependent on the device as to whether it's required/supported.
+  //
   // TODO: Does the user need to be able to discover if OrtMemTypeCPU is supported or they should explicitly know that?
   //       Start with explicit knowledge required.
   //
-  // For custom allocators, use RegisterAllocator with OrtAllocator
-  // OrtEpDevice maps to the EP factory. Factory provides function to create allocator.
+  // For custom allocators, use RegisterAllocator with the custom OrtAllocator and memory info.
+
   //
   // Error if shared allocator already exists
-  ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device, _In_ OrtMemType mem_type,
-                  _In_opt_ const OrtKeyValuePairs* allocator_options);
+  ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options);
 
   // free a shared allocator from the OrtEnv
   ORT_API2_STATUS(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
-                  _In_ OrtMemType mem_type);
+                  _In_ OrtDeviceMemoryType mem_type);
+
+  /** \brief Get a const-pointer to the raw data inside a tensor
+   *
+   * Used to read the internal tensor data directly.
+   * \note The returned pointer is valid until the \p value is destroyed.
+   *
+   * \param[in] value A tensor type (string tensors are not supported)
+   * \param[out] out Filled in with a pointer to the internal storage
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ void** out);
 };
 
 /*
@@ -6073,8 +6096,10 @@ typedef OrtStatus*(ORT_API_CALL* SyncWaitNotificationFn)(_In_ OrtSyncStream*,
                                                          _In_ OrtSyncNotification*);
 
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
-struct OrtDataTransfer {
-  // TODO: Do all functions that will be implemented EP side need to be noexcept?
+struct OrtDataTransferImpl {
+  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+  void(ORT_API_CALL* Release)(_In_ void* this_ptr) NO_EXCEPTION;
+
   bool(ORT_API_CALL* CanCopy)(_In_ void* this_ptr,
                               _In_ const OrtMemoryDevice* src_memory_device,
                               _In_ const OrtMemoryDevice* dst_memory_device) NO_EXCEPTION;
@@ -6168,7 +6193,7 @@ struct OrtEpApi {
 
   // these two functions simplify data transfer.
   OrtMemoryInfoDeviceType(ORT_API_CALL* OrtMemoryDevice_GetDeviceType)(_In_ const OrtMemoryDevice* memory_device) NO_EXCEPTION;
-  OrtMemType(ORT_API_CALL* OrtMemoryDevice_GetMemoryType)(_In_ const OrtMemoryDevice* memory_device) NO_EXCEPTION;
+  OrtDeviceMemoryType(ORT_API_CALL* OrtMemoryDevice_GetMemoryType)(_In_ const OrtMemoryDevice* memory_device) NO_EXCEPTION;
 
   //
   // onnxruntime::Stream.
@@ -6382,8 +6407,8 @@ struct OrtEpFactory {
 
   // get the OrtDataTransfer for the library.
   // if a data transfer implementation is not required set data_transfer to nullptr.
-  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransfer** data_transfer);
-  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransfer* data_transfer) NO_EXCEPTION;
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
+  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransferImpl* data_transfer) NO_EXCEPTION;
 };
 
 /*

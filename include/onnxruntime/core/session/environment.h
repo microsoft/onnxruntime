@@ -12,6 +12,7 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
@@ -26,6 +27,9 @@ class EpFactoryInternal;
 class InferenceSession;
 struct IExecutionProviderFactory;
 struct SessionOptions;
+namespace plugin_ep {
+class DataTransfer;
+}  // namespace plugin_ep
 
 /**
    Provides the runtime environment for onnxruntime.
@@ -119,9 +123,10 @@ class Environment {
     return execution_devices_;
   }
 
-  Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type,
+  Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
                                const OrtKeyValuePairs* allocator_options);
-  Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtMemType mem_type);
+  Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
+                                bool error_if_not_found = true);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
   ~Environment();
@@ -139,6 +144,7 @@ class Environment {
   bool create_global_thread_pools_{false};
 
   std::vector<AllocatorPtr> shared_allocators_;
+  DataTransferManager data_transfer_manager_;
 
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
   // map of the plugin EP shared allocators created with CreateSharedAllocator
@@ -168,6 +174,12 @@ class Environment {
     std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
     std::vector<EpFactoryInternal*> internal_factories;  // factories that can create IExecutionProvider instances
+
+    // data transfer instances we have not registered with Environment::data_transfer_manager_;
+    std::vector<std::unique_ptr<plugin_ep::DataTransfer>> owned_data_transfer_instances;
+    // instances we registered with Environment::data_transfer_manager_.
+    // we need the pointer to unregister on library unload
+    std::vector<IDataTransfer*> data_transfer_instances;
 
    private:
     EpInfo() = default;

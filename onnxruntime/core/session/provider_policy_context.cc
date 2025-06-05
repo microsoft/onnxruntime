@@ -249,10 +249,10 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
   // TODO: This is potentially a good spot to add per-session allocators for the selected EPs as we have the
   //       OrtEpDevice instances and the OrtEnv and the session options.
   // 1. Check if shared allocators are enabled for the session. kOrtSessionOptionsConfigUseEnvAllocators
-  // 2. For each EP in priority order either add its shared allocator (if enabled) or 
-  //    create the allocator using the EpFactory (if no entry for the OrtMemoryInfo exists yet). 
+  // 2. For each EP in priority order either add its shared allocator (if enabled) or
+  //    create the allocator using the EpFactory (if no entry for the OrtMemoryInfo exists yet).
   // Might need a new method in InferenceSession for this pre-initialization setup of allocators.
-  // 
+  //
   // Alternatively we could just create a map of OrtMemoryInfo* to OrtEpFactory* for the selected EPs and stuff
   // that in the InferenceSession so that it can be passed through when creating SessionState. That way we don't
   // spread out the logic for picking between environment allocators and EP allocators.
