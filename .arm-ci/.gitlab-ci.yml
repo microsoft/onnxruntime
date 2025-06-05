@@ -1,0 +1,25 @@
+#
+# SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+#
+# SPDX-License-Identifier: MIT
+#
+
+workflow:
+  auto_cancel:
+    on_new_commit: interruptible
+
+default:
+  interruptible: true
+
+stages:
+  - static_analysis
+  - build
+  - test
+  #- publish
+
+include:
+  - local: '.arm-ci/stages/static-analysis.yml'
+  - local: '.arm-ci/stages/build.yml'
+  - local: '.arm-ci/stages/test.yml'
+  - local: '.arm-ci/common.yml'
+ # - local: '.arm-ci/stages/publish.yml'

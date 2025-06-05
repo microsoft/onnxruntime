@@ -1,0 +1,25 @@
+#
+# SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+#
+# SPDX-License-Identifier: MIT
+#
+
+##
+## Below is an example block of code that could be used to sync remote main with internal main branch
+## and force update KFI-dev nightly
+##
+##
+stages:
+  - sync
+
+sync_main_and_rebase:
+  stage: sync
+  script:
+    - echo "Syncing internal main with external main..."
+    - git config --global user.email "ci@example.com"
+    - git config --global user.name "CI Bot"
+    - git remote add external https://github.com/microsoft/onnxruntime || true
+    - git fetch external
+    - git checkout main
+    - git reset --hard external/main
+    - git push origin main --force

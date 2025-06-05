@@ -1,0 +1,49 @@
+#
+# SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+#
+# SPDX-License-Identifier: MIT
+#
+
+test_release_ubuntu_mlas:
+  extends:
+    - .default_settings
+  stage: test
+  image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
+  needs:
+    - job: build_release_ubuntu
+      artifacts: true
+  script:
+    - cd build/Linux/Release && ./onnxruntime_mlas_test --gtest_output=xml:report.xml
+  artifacts:
+    paths:
+      - build/Linux/Release/report.xml
+    expire_in: 1h
+# Test_debug_ubuntu_20.04_docker:
+#   stage: test
+#   image: ubuntu:20.04
+#   needs:
+#     - job: build_debug_ubuntu
+#       artifacts: true
+#   script:
+#     - cd build/Linux/Debug && ./onnxruntime_mlas_test
+
+
+# Test_release_osx:
+#   stage: test
+#   tag:
+#     - mac_ci # assuming we have an agent or group of agents called mac_ci
+#   needs:
+#     - job: build_release_osx
+#       artifacts: true
+#   script:
+#     - cd build && ctest --output-on-failure
+
+# Test_debug_ubuntu_20.04_docker:
+#   stage: test
+#   tag:
+#     - mac_ci # assuming we have an agent or group of agents called mac_ci
+#   needs:
+#     - job: build_debug_osx
+#       artifacts: true
+#   script:
+#     - cd build && ctest --output-on-failure
