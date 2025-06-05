@@ -2409,7 +2409,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* valu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducer, _In_ const OrtValueInfo* value_info,
+ORT_API_STATUS_IMPL(OrtApis::GetValueProducer, _In_ const OrtValueInfo* value_info,
                     _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -2431,7 +2431,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoProducer, _In_ const OrtValueInfo* valu
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses) {
+ORT_API_STATUS_IMPL(OrtApis::GetValueNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumUses(*num_uses));
@@ -2444,7 +2444,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetValueInfoNumUses, _In_ const OrtValueInfo* value
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetValueInfoUses, _In_ const OrtValueInfo* value_info,
+ORT_API_STATUS_IMPL(OrtApis::GetValueUses, _In_ const OrtValueInfo* value_info,
                     _Out_writes_all_(max_num_uses) const OrtNode** nodes,
                     _Out_writes_all_(max_num_uses) size_t* input_indices,
                     _In_ size_t max_num_uses) {
@@ -3224,9 +3224,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
 
-    &OrtApis::GetValueInfoProducer,
-    &OrtApis::GetValueInfoNumUses,
-    &OrtApis::GetValueInfoUses,
+    &OrtApis::GetValueProducer,
+    &OrtApis::GetValueNumUses,
+    &OrtApis::GetValueUses,
     &OrtApis::Graph_Name,
     &OrtApis::Graph_NumInputs,
     &OrtApis::Graph_NumOutputs,

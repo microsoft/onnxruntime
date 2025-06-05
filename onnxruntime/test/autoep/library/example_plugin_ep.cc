@@ -2,6 +2,7 @@
 #include "onnxruntime_cxx_api.h"
 #undef ORT_API_MANUAL_INIT
 
+#include <gsl/gsl>
 #include <cassert>
 #include <cstring>
 #include <memory>
@@ -166,9 +167,10 @@ static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value
 /// Example EP that can compile a single Mul operator.
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
-  ExampleEp(ApiPtrs apis, const std::string& name, const OrtHardwareDevice& device,
+  ExampleEp(ApiPtrs apis, const std::string& name,
+            gsl::span<const OrtHardwareDevice* const> devices,
             const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, hardware_device_{device}, session_options_{session_options}, logger_{logger} {
+      : ApiPtrs(apis), name_{name}, hardware_devices_(devices.begin(), devices.end()), session_options_{session_options}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -233,8 +235,9 @@ struct ExampleEp : OrtEp, ApiPtrs {
         break;
       }
     }
-    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddSupportedNodes(graph_support_info, supported_nodes.data(),
-                                                                    supported_nodes.size(), &ep->hardware_device_));
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddFusedNodes(graph_support_info, supported_nodes.data(),
+                                                                supported_nodes.size(), ep->hardware_devices_.data(),
+                                                                ep->hardware_devices_.size()));
     return nullptr;
   }
 
@@ -282,7 +285,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
   }
 
   std::string name_;
-  const OrtHardwareDevice& hardware_device_;
+  std::vector<const OrtHardwareDevice*> hardware_devices_;
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
@@ -431,7 +434,8 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     // const OrtHardwareDevice* device = devices[0];
     // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
 
-    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *devices[0], *session_options, *logger);
+    gsl::span<const OrtHardwareDevice* const> devices_span(devices, num_devices);
+    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, devices_span, *session_options, *logger);
 
     *ep = dummy_ep.release();
     return nullptr;

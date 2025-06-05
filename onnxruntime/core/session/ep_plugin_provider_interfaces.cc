@@ -120,19 +120,40 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
-    std::unordered_set<const Node*> node_set;
-    node_set.reserve(node_grouping.nodes.size());
-    for (const EpNode* ep_node : node_grouping.nodes) {
-      node_set.insert(&ep_node->node);
-    }
+    if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
+      auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-    std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
-        graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
-        this->Type(), this->Type(), /*node_unit_map*/ nullptr);
+      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->node.Index());
+      result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
+    } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
+      std::unordered_set<const Node*> node_set;
+      node_set.reserve(node_grouping.nodes.size());
+      for (const EpNode* ep_node : node_grouping.nodes) {
+        node_set.insert(&ep_node->node);
+      }
 
-    for (auto& capability : capabilities) {
-      // capability->hardware_device = subgraph.hardware_device;  // Would allow app to query which EP+HW runs a subgraph
-      result.push_back(std::move(capability));
+      // We now require the OrtEp to only provide individual groups of supported nodes that each maps to exactly
+      // one ComputeCapability. Calling utils::CreateSupportedPartitions() may create multiple ComputeCapability
+      // instances, and if so, log an error and return.
+      std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
+          graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
+          this->Type(), this->Type(), /*node_unit_map*/ nullptr);
+
+      if (capabilities.size() > 1) {
+        LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() set nodes that cannot be fused together. "
+                            << "Please ensure that the nodes provided to EpGraphSupportInfo_AddFusedNodes() do not "
+                            << "have an unsupported node in any path between two of the supported nodes.";
+        return {};
+      }
+
+      for (auto& capability : capabilities) {
+        // capability->hardware_devices = node_grouping.hardware_devices;  // Would allow app to query which EP+HW runs a subgraph
+        result.push_back(std::move(capability));
+      }
+    } else {
+      LOGS_DEFAULT(ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "
+                          << static_cast<int>(node_grouping.kind);
+      return {};
     }
   }
 

@@ -5317,7 +5317,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
 
-  /** \brief Get the OrtNode that produces the given OrtValueInfo and the associated output index.
+  /** \brief Get the OrtNode that produces the value represented by the given OrtValueInfo.
+   * Optionally returns the associated output index.
    *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
@@ -5326,41 +5327,41 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueInfoProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+  ORT_API2_STATUS(GetValueProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
                   _Out_opt_ size_t* producer_output_index);
 
-  /** \brief Get the number of uses of the given OrtValueInfo as an input to an OrtNode instance.
+  /** \brief Get the number of uses of a value as an input to an OrtNode instance.
    *
-   * A single OrtNode may use a single OrtValueInfo for more than one input (e.g., Mul(x, x)), so the returned
-   * `num_uses` may be larger than the number of unique OrtNode instances that use the OrtValueInfo.
+   * A single OrtNode may use a single value for more than one input (e.g., Mul(x, x)), so the returned
+   * `num_uses` may be larger than the number of unique OrtNode instances that use the value.
    *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] num_uses Output parameter set to the number of uses of the OrtValueInfo as an input.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueInfoNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
+  ORT_API2_STATUS(GetValueNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
 
-  /** \brief Returns information (OrtNode and input index) for all uses of the given OrtValueInfo as an input to
+  /** \brief Returns information (OrtNode and input index) for all uses of the given value as an input to
    * an OrtNode instance.
    *
    * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
-   * Use GetValueInfoNumUses() to get the number of uses of the OrtValueInfo.
+   * Use GetValueNumUses() to get the number of uses of the value.
    *
-   * An OrtNode instance may appear multiple times if it uses the given OrtValueInfo more than once (e.g., Mul(x, x)).
+   * An OrtNode instance may appear multiple times if it uses the given value more than once (e.g., Mul(x, x)).
    *
    * \param[in] OrtValueInfo The OrtValueInfo instance.
    * \param[out] nodes Pre-allocated array of size `max_num_uses` that will be filled with OrtNode instances.
    * \param[out] input_indices Pre-allocated array of `max_num_uses` elements that will be filled
    *                           with input indices.
    * \param[in] max_num_uses The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
-   *                         Typical usage sets this to the value of GetValueInfoNumUses().
+   *                         Typical usage sets this to the value of GetValueNumUses().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueInfoUses, _In_ const OrtValueInfo* value_info,
+  ORT_API2_STATUS(GetValueUses, _In_ const OrtValueInfo* value_info,
                   _Out_writes_all_(max_num_uses) const OrtNode** nodes,
                   _Out_writes_all_(max_num_uses) size_t* input_indices,
                   _In_ size_t max_num_uses);
@@ -6345,26 +6346,42 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(EpDevice);
 
-  /** \brief Adds a set of nodes supported by an EP to a OrtEpGraphSupportInfo instance.
+  /** \brief Specify nodes that are supported by an OrtEp and should be fused into one node.
    *
-   * For compiling EPs, the provided nodes will be fused into 1 or more ONNX nodes. OrtGraph instances
-   * representing each of the fused nodes are passed to OrtEp::Compile() for compilation.
+   * Because the nodes will be fused into one "fused node", there must not exist an unsupported node in
+   * a path between two of the provided nodes. Otherwise, the graph will have a cycle after node fusion is performed.
    *
-   * Can be called multiple times.
+   * This function can be called multiple times. A subsequent call to this function will force the next set of
+   * nodes to be fused into a different node.
    *
    * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
-   * \param[in] supported_nodes Array of nodes supported by the EP.
-   * \param[in] num_supported_nodes The number of supported nodes.
-   * \param[in] hardware_device The OrtHardwareDevice that will execute the supported nodes.
+   * \param[in] nodes Array of nodes supported by the EP that should be fused/compiled.
+   * \param[in] num_nodes The number of supported nodes.
+   * \param[in] hardware_devices The OrtHardwareDevice instances that will execute the supported nodes.
+   *                             Used for reporting the specific devices that execute a graph.
+   * \param[in] num_device The number of hardware devices provided by the caller.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                  size_t num_supported_nodes,
-                  _In_ const OrtHardwareDevice* hardware_device);
+  ORT_API2_STATUS(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes,
+                  _In_ const OrtHardwareDevice* const* hardware_devices, size_t num_devices
+                  /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
+
+  /** \brief Specify a node that is supported by an OrtEp and should be run with a registered EP kernel.
+   *
+   * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported node.
+   * \param[in] node The supported OrtNode instance.
+   * \param[in] hardware_device The OrtHardwareDevice instance that will execute the supported node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_ const OrtNode* node, _In_ const OrtHardwareDevice* hardware_device);
 
   /** \brief Query a OrtNodeComputeContext for the name of the node that encapsulates the compiled/fused node.
    *

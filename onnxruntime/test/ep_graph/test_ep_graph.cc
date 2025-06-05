@@ -105,7 +105,7 @@ static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtVal
 
   const OrtNode* api_producer_node = nullptr;
   size_t api_producer_output_index = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoProducer(value_info, &api_producer_node, &api_producer_output_index));
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueProducer(value_info, &api_producer_node, &api_producer_output_index));
 
   const Node* producer_node = graph_viewer.GetProducerNode(node_arg->Name());
   if (producer_node == nullptr) {
@@ -140,12 +140,12 @@ static void CheckValueInfoUses(const GraphViewer& graph_viewer, const OrtValueIn
   GetNodeArgUses(graph_viewer, *node_arg, node_arg_uses);
 
   size_t api_num_uses = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoNumUses(value_info, &api_num_uses));
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueNumUses(value_info, &api_num_uses));
   ASSERT_EQ(api_num_uses, node_arg_uses.size());
 
   std::vector<const OrtNode*> api_node_users(api_num_uses, nullptr);
   std::vector<size_t> api_input_indices(api_num_uses, 0);
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoUses(value_info, api_node_users.data(), api_input_indices.data(), api_num_uses));
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueUses(value_info, api_node_users.data(), api_input_indices.data(), api_num_uses));
 
   for (size_t i = 0; i < api_num_uses; i++) {
     ASSERT_EQ(std::string(ort_api.Node_Name(api_node_users[i])), node_arg_uses[i].consumer_node->Name());

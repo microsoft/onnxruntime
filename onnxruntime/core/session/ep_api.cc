@@ -43,22 +43,37 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSupportedNodes, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
-                    _In_reads_(num_supported_nodes) const OrtNode* const* supported_nodes,
-                    size_t num_supported_nodes,
-                    _In_ const OrtHardwareDevice* hardware_device) {
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+                    _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes,
+                    _In_ const OrtHardwareDevice* const* hardware_devices, size_t num_devices) {
   API_IMPL_BEGIN
   if (ort_graph_support_info == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
   }
 
-  if (num_supported_nodes == 0 || supported_nodes == nullptr) {
+  if (num_nodes == 0 || nodes == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of 1 or more supported nodes");
   }
 
-  gsl::span<const OrtNode* const> nodes_span(supported_nodes,
-                                             supported_nodes + num_supported_nodes);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSupportedNodes(hardware_device, nodes_span));
+  gsl::span<const OrtNode* const> nodes_span(nodes, nodes + num_nodes);
+  gsl::span<const OrtHardwareDevice* const> devices_span(hardware_devices, hardware_devices + num_devices);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddFusedNodes(nodes_span, devices_span));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+                    _In_ const OrtNode* node, _In_ const OrtHardwareDevice* hardware_device) {
+  API_IMPL_BEGIN
+  if (ort_graph_support_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
+  }
+
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtNode");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSingleNode(node, hardware_device));
   return nullptr;
   API_IMPL_END
 }
@@ -80,7 +95,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpDevice,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSupportedNodes,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddFusedNodes,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSingleNode,
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
 };
 

@@ -21,16 +21,25 @@ struct EpNode;
 /// GetCapability() function. An OrtEp adds groups of supported nodes to the OrtEpGraphSupportInfo instance.
 /// </summary>
 struct OrtEpGraphSupportInfo {
-  // A grouping of supported nodes that are executed by a specific hardware device.
+  enum class NodeGroupingKind {
+    kInvalidGrouping = 0,
+    kSingleAssignedNode,
+    kFusedNode,
+  };
+
+  // A grouping of supported nodes that are executed by a specific hardware devices.
   struct NodeGrouping {
-    const OrtHardwareDevice* hardware_device;  // The hw device that executes the supported nodes.
-    onnxruntime::InlinedVector<const onnxruntime::EpNode*> nodes;
+    NodeGroupingKind kind = NodeGroupingKind::kInvalidGrouping;
+    onnxruntime::InlinedVector<const OrtHardwareDevice*> hardware_devices;  // The hw devices that executes the supported nodes.
+    std::vector<const onnxruntime::EpNode*> nodes;
   };
 
   explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
-  onnxruntime::Status AddSupportedNodes(const OrtHardwareDevice* hardware_device,
-                                        gsl::span<const OrtNode* const> nodes);
+
+  onnxruntime::Status AddFusedNodes(gsl::span<const OrtNode* const> nodes,
+                                    gsl::span<const OrtHardwareDevice* const> hardware_devices);
+  onnxruntime::Status AddSingleNode(const OrtNode* node, const OrtHardwareDevice* hardware_device);
 
   const onnxruntime::EpGraph& ort_graph;
-  onnxruntime::InlinedVector<NodeGrouping> node_groupings;
+  std::vector<NodeGrouping> node_groupings;
 };
