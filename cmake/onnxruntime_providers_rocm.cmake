@@ -154,7 +154,7 @@
 
   set_target_properties(onnxruntime_providers_rocm PROPERTIES LINKER_LANGUAGE CXX)
   set_target_properties(onnxruntime_providers_rocm PROPERTIES FOLDER "ONNXRuntime")
-  target_compile_definitions(onnxruntime_providers_rocm PRIVATE HIPBLAS_V2)
+  target_compile_definitions(onnxruntime_providers_rocm PRIVATE HIPBLAS)
 
   if (onnxruntime_ENABLE_TRAINING)
     target_include_directories(onnxruntime_providers_rocm PRIVATE ${ORTTRAINING_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining ${MPI_CXX_INCLUDE_DIRS})
