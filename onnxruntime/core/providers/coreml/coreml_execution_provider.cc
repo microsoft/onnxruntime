@@ -48,19 +48,16 @@ std::unordered_set<NodeIndex> GetPartitionNodesAsSet(const IndexedSubGraph& part
 // After an input node is removed from the partition, we need to update the inputs of the partition.
 // We evaluate the outputs of the input nodes
 // For each output, if its consumer node is part of the partition, we add this output to the inputs of the partition
-void UpdatePartitionInputsAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
-                                           std::vector<const Node*> nodes,
-                                           std::unordered_set<std::string>& newInputs,
-                                           const onnxruntime::GraphViewer& graph_viewer) {
-  for (const auto& node : nodes) {
-    for (const auto& output : node->OutputDefs()) {
-      for (const auto& consumer_node : graph_viewer.GetConsumerNodes(output->Name())) {
-        NodeIndex consumer_node_index = consumer_node->Index();
-        if (partition_nodes_set.find(consumer_node_index) != partition_nodes_set.end()) {
-          if (newInputs.find(output->Name()) == newInputs.end()) {
-            newInputs.insert(output->Name());
-          }
-        }
+void UpdateInputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
+                                     const Node* node,
+                                     std::unordered_set<std::string>& newInputs,
+                                     const onnxruntime::GraphViewer& graph_viewer) {
+  for (const auto& output : node->OutputDefs()) {
+    for (const auto& consumer_node : graph_viewer.GetConsumerNodes(output->Name())) {
+      NodeIndex consumer_node_index = consumer_node->Index();
+      if (partition_nodes_set.find(consumer_node_index) != partition_nodes_set.end() &&
+          newInputs.find(output->Name()) == newInputs.end()) {
+        newInputs.insert(output->Name());
       }
     }
   }
@@ -69,19 +66,124 @@ void UpdatePartitionInputsAfterNodeRemoval(std::unordered_set<NodeIndex>& partit
 // we want to add the inputs of the removed node to the outputs of the partition IF:
 // 1. the input is an output of a node that is part of the partition
 // 2. the input is not already in the outputs of the partition
-void UpdatePartitionOutputsAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
-                                            const Node* node,
-                                            std::unordered_set<std::string>& newOutputs,
-                                            const onnxruntime::GraphViewer& graph_viewer) {
+void UpdateOutputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
+                                      const Node* node,
+                                      std::unordered_set<std::string>& newOutputs,
+                                      const onnxruntime::GraphViewer& graph_viewer) {
   for (const auto& input : node->InputDefs()) {
     const Node* producer_node_for_input = graph_viewer.GetProducerNode(input->Name());
     NodeIndex producer_index = producer_node_for_input ? producer_node_for_input->Index() : NodeIndex(-1);
-    if (partition_nodes_set.find(producer_index) != partition_nodes_set.end()) {
-      if (newOutputs.find(input->Name()) == newOutputs.end()) {
-        newOutputs.insert(input->Name());
-      }
+    if (partition_nodes_set.find(producer_index) != partition_nodes_set.end() &&
+        newOutputs.find(input->Name()) == newOutputs.end()) {
+      newOutputs.insert(input->Name());
     }
   }
+}
+
+bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: GraphViewer& graph_viewer,
+                                                        std::unordered_set<NodeIndex>& partition_nodes_set,
+                                                        std::unordered_set<NodeIndex>& incompatible_nodes,
+                                                        IndexedSubGraph::MetaDef* meta_def,
+                                                        const logging::Logger& logger) const{
+  bool incompatibleInputFound = false;
+
+  std::unordered_set<std::string> newInputs;
+
+  for (const auto& input : meta_def->inputs) {
+    // step 1: get node arg type for input
+    const auto* node_arg = graph_viewer.GetNodeArg(input);
+    int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    if (!GetType(*node_arg, type, logger)) {
+      LOGS(logger, ERROR) << "NodeArg " << input << " has no type information.";
+      continue;
+    }
+
+    // step 2: check if the type is supported
+    //      if not supported:
+    //        1. Iterate through list of consumer nodes for that input
+    //        2. If consumer node is part of the partition, mark it as incompatible and remove it from the set
+    //        3. Because we have just removed an edge node from the partition, we need to update the inputs of the
+    //           partition to include the outputs of the removed node.
+    if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
+      std::vector<const Node*> consumer_nodes = graph_viewer.GetConsumerNodes(input);
+      for (const auto& node : consumer_nodes) {
+        if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
+          incompatibleInputFound = true;
+          incompatible_nodes.insert(node->Index());
+          partition_nodes_set.erase(node->Index());
+
+          UpdateInputsSetAfterNodeRemoval(partition_nodes_set, node, newInputs, graph_viewer);
+
+          LOGS(logger, VERBOSE) << "Removing node " << node->Name() << " from CoreML partition due to unsupported input type: "
+                                << ONNX_NAMESPACE::TensorProto_DataType_Name((ONNX_NAMESPACE::TensorProto_DataType)type);
+        }
+      }
+    } else {
+      newInputs.insert(input);
+    }
+  }
+
+  if (incompatibleInputFound) {
+    std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
+    meta_def->inputs = std::move(new_inputs_vector);
+  }
+
+  return incompatibleInputFound;
+}
+
+bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::GraphViewer& graph_viewer,
+                                                         std::unordered_set<NodeIndex>& partition_nodes_set,
+                                                         std::unordered_set<NodeIndex>& incompatible_nodes,
+                                                         IndexedSubGraph::MetaDef* meta_def,
+                                                         const logging::Logger& logger) const {
+  bool incompatibleOutputFound = false;
+  std::unordered_set<std::string> newOutputs;
+
+  for (const auto& output : meta_def->outputs) {
+    // step 1: get node arg type for output
+    const auto* node_arg = graph_viewer.GetNodeArg(output);
+    int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+    if (!GetType(*node_arg, type, logger)) {
+      LOGS(logger, ERROR) << "NodeArg " << output << " has no type information.";
+      continue;
+    }
+
+    // step 2: check if the type is supported
+    if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
+      const Node* node = graph_viewer.GetProducerNode(output);
+      incompatibleOutputFound = true;
+      incompatible_nodes.insert(node->Index());
+      partition_nodes_set.erase(node->Index());
+
+      UpdateOutputsSetAfterNodeRemoval(partition_nodes_set, node, newOutputs, graph_viewer);
+
+      LOGS(logger, VERBOSE) << "Removing node " << node->Name() << " from CoreML partition due to unsupported output type: "
+                            << ONNX_NAMESPACE::TensorProto_DataType_Name((ONNX_NAMESPACE::TensorProto_DataType)type);
+    } else {
+      newOutputs.insert(output);
+    }
+  }
+
+  if (incompatibleOutputFound) {
+    std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
+    meta_def->outputs = std::move(new_outputs_vector);
+  }
+
+  return incompatibleOutputFound;
+}
+
+void CoreMLExecutionProvider::UpdatePartitionNodes(IndexedSubGraph& partition,
+                                                   const std::unordered_set<NodeIndex>& partition_nodes_set) const {
+  // Create a new vector with only the nodes still in the set
+  std::vector<NodeIndex> updated_nodes;
+  updated_nodes.reserve(partition_nodes_set.size());
+
+  for (const auto& node_index : partition_nodes_set) {
+    updated_nodes.push_back(node_index);
+  }
+
+  // Replace the partition's nodes with our filtered list
+  partition.nodes = std::move(updated_nodes);
 }
 
 void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
@@ -98,85 +200,21 @@ void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSu
   while (checkForMoreIncompatibleNodes) {
     // Reset flag until we find incompatible nodes
     checkForMoreIncompatibleNodes = false;
+
     std::unordered_set<NodeIndex> incompatible_nodes;
 
     // check inputs
-    std::unordered_set<std::string> newInputs;
-
-    for (const auto& input : meta_def->inputs) {
-      // step 1: get node arg type for input
-      const auto* node_arg = graph_viewer.GetNodeArg(input);
-      int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-      if (!GetType(*node_arg, type, logger)) {
-        LOGS(logger, ERROR) << "NodeArg " << input << " has no type information.";
-        continue;
-      }
-
-      // step 2: check if the type is supported
-      //      if not supported:
-      //        1. Iterate through list of consumer nodes for that input
-      //        2. If consumer node is part of the partition, mark it as incompatible and remove it from the set
-      //        3. Because we have just removed an edge node from the partition, we need to update the inputs of the
-      //           partition to include the outputs of the removed node.
-      if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
-        std::vector<const Node*> consumer_nodes = graph_viewer.GetConsumerNodes(input);
-        for (const auto& node : consumer_nodes) {
-          if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
-            checkForMoreIncompatibleNodes = true;
-            incompatible_nodes.insert(node->Index());
-            partition_nodes_set.erase(node->Index());
-
-            UpdatePartitionInputsAfterNodeRemoval(partition_nodes_set, consumer_nodes, newInputs, graph_viewer);
-          }
-        }
-      } else {
-        newInputs.insert(input);
-      }
-    }
-
-    std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
-    meta_def->inputs = std::move(new_inputs_vector);
+    bool inputs_modified = ProcessIncompatibleInputs(
+        graph_viewer, partition_nodes_set, incompatible_nodes, meta_def, logger);
 
     // check outputs
-    std::unordered_set<std::string> newOutputs;
-
-    for (const auto& output : meta_def->outputs) {
-      // step 1: get node arg type for output
-      const auto* node_arg = graph_viewer.GetNodeArg(output);
-      int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
-      if (!GetType(*node_arg, type, logger)) {
-        LOGS(logger, ERROR) << "NodeArg " << output << " has no type information.";
-        continue;
-      }
-
-      // step 2: check if the type is supported
-      if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
-        checkForMoreIncompatibleNodes = true;
-        const Node* node = graph_viewer.GetProducerNode(output);
-        incompatible_nodes.insert(node->Index());
-        partition_nodes_set.erase(node->Index());
-
-        UpdatePartitionOutputsAfterNodeRemoval(partition_nodes_set, node, newOutputs, graph_viewer);
-      } else {
-        newOutputs.insert(output);
-      }
-    }
-
-    std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
-    meta_def->outputs = std::move(new_outputs_vector);
+    bool outputs_modified = ProcessIncompatibleOutputs(
+        graph_viewer, partition_nodes_set, incompatible_nodes, meta_def, logger);
 
     // step 3: remove the incompatible nodes from the partition
-    if (!incompatible_nodes.empty()) {
-      std::vector<NodeIndex> updated_nodes;
-      updated_nodes.reserve(partition.nodes.size() - incompatible_nodes.size());
-
-      for (const auto& node_index : partition.nodes) {
-        if (incompatible_nodes.find(node_index) == incompatible_nodes.end()) {
-          updated_nodes.push_back(node_index);
-        }
-      }
-
-      partition.nodes = std::move(updated_nodes);
+    if (inputs_modified || outputs_modified) {
+      checkForMoreIncompatibleNodes = true;
+      UpdatePartitionNodes(partition, partition_nodes_set);
     }
   }
 }
