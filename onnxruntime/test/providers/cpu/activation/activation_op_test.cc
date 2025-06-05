@@ -87,25 +87,27 @@ TEST_F(ActivationOpTest, Sigmoid) {
   // Test sigmoid using custom validator to check output range
   TestActivationOp<float>("Sigmoid", input_values, sigmoid_f32,
                           {}, {}, true, 7, kOnnxDomain,
-                          [](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-                              const auto& output = fetches[0].Get<Tensor>();
-                              const float* output_data = output.Data<float>();
-                              for (int64_t i = 0; i < output.Shape().Size(); ++i) {
-                                EXPECT_TRUE(output_data[i] >= 0.f && output_data[i] <= 1.f)
-                                    << "Output value out of range: " << output_data[i];
-                              } });
+                          [](const std::vector<OrtValue>& fetches, const std::string&) {
+                            const auto& output = fetches[0].Get<Tensor>();
+                            const float* output_data = output.Data<float>();
+                            for (int64_t i = 0; i < output.Shape().Size(); ++i) {
+                              EXPECT_TRUE(output_data[i] >= 0.f && output_data[i] <= 1.f)
+                                  << "Output value out of range: " << output_data[i];
+                            }
+                          });
   // Test sigmoid using the default validator
   TestActivationOp<double>("Sigmoid", input_values_double, sigmoid_f64);
   // Test sigmoid using custom validator to check output range
   TestActivationOp<double>("Sigmoid", input_values_double, sigmoid_f64,
                            {}, {}, true, 7, kOnnxDomain,
-                           [](const std::vector<OrtValue>& fetches, const std::string& provider_type) {
-                               const auto& output = fetches[0].Get<Tensor>();
-                               const double* output_data = output.Data<double>();
-                               for (int64_t i = 0; i < output.Shape().Size(); ++i) {
-                                 EXPECT_TRUE(output_data[i] >= 0. && output_data[i] <= 1.)
-                                     << "Output value out of range: " << output_data[i];
-                               } });
+                           [](const std::vector<OrtValue>& fetches, const std::string&) {
+                             const auto& output = fetches[0].Get<Tensor>();
+                             const double* output_data = output.Data<double>();
+                             for (int64_t i = 0; i < output.Shape().Size(); ++i) {
+                               EXPECT_TRUE(output_data[i] >= 0. && output_data[i] <= 1.)
+                                   << "Output value out of range: " << output_data[i];
+                             }
+                           });
 }
 
 TEST_F(ActivationOpTest, HardSigmoid) {
