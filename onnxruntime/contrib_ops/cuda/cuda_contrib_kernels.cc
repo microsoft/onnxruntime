@@ -42,6 +42,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, BiasAdd);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QuickGelu);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QuickGelu);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, TransposeMatMul);      // backward compatibility
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, double, TransposeMatMul);     // backward compatibility
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, TransposeMatMul);  // backward compatibility
@@ -129,6 +130,7 @@ class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipSimplifiedLayerNormalization);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipSimplifiedLayerNormalization);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SkipSimplifiedLayerNormalization);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ThresholdedRelu);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ThresholdedRelu);
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ThresholdedRelu);
@@ -256,6 +258,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, QuickGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, QuickGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, QuickGelu)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, QuickGelu)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, TransposeMatMul)>,      // backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, double, TransposeMatMul)>,     // backward compatibility
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, TransposeMatMul)>,  // backward compatibility
@@ -339,6 +342,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, SkipSimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, SkipSimplifiedLayerNormalization)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, SkipSimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, float, ThresholdedRelu)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, double, ThresholdedRelu)>,
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16, ThresholdedRelu)>,

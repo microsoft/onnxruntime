@@ -362,13 +362,31 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
   return device_info;
 }
 
+typedef HRESULT(WINAPI* PFN_DXCoreCreateAdapterFactory)(REFIID riid, void** ppvFactory);
+
 // returns LUID to DeviceInfo
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
+  // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
+  wil::unique_hmodule dxcore_lib{LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)};
+  if (!dxcore_lib) {
+    LOGS_DEFAULT(INFO) << "Failed to load dxcore.dll. Expected on older Windows version that do not support dxcore.";
+    return device_info;
+  }
+
+  auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
+      GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
+
+  if (!pfnDXCoreCreateAdapterFactory) {
+    // this isn't expected to fail so ERROR not WARNING
+    LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
+    return device_info;
+  }
+
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
-  if (FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
+  if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
     return device_info;
   }
 
@@ -448,6 +466,20 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   return device_info;
 }
+
+DeviceInfo GetDeviceInfoCPUID() {
+  DeviceInfo cpu_info{};
+  cpu_info.type = OrtHardwareDeviceType_CPU;
+
+  auto& cpuinfo = CPUIDInfo::GetCPUIDInfo();
+  cpu_info.vendor_id = cpuinfo.GetCPUVendorId();
+
+  std::string_view cpuid_vendor = cpuinfo.GetCPUVendor();
+  cpu_info.vendor = std::wstring(cpuid_vendor.begin(), cpuid_vendor.end());
+  cpu_info.description = cpu_info.vendor;
+
+  return cpu_info;
+}
 }  // namespace
 
 // Get devices from various sources and combine them into a single set of devices.
@@ -468,6 +500,22 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   std::unordered_map<uint64_t, DeviceInfo> luid_to_d3d12_info = GetDeviceInfoD3D12();
   // setupapi_info. key is vendor_id+device_id
   std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus);
+
+  // Ensure we have at least one CPU
+  bool found_cpu = false;
+  for (auto& [key, device] : setupapi_info) {
+    if (device.type == OrtHardwareDeviceType_CPU) {
+      found_cpu = true;
+      break;
+    }
+  }
+
+  // If no CPU was found via SetupApi, add one from CPUID
+  if (!found_cpu) {
+    DeviceInfo device = GetDeviceInfoCPUID();
+    uint64_t key = GetDeviceKey(device);
+    setupapi_info[key] = std::move(device);
+  }
 
   // add dxcore info for any devices that are not in d3d12.
   // d3d12 info is more complete and has a good description and metadata.

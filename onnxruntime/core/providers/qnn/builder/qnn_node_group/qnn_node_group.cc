@@ -15,6 +15,9 @@
 #include "core/providers/qnn/builder/qnn_node_group/hardsigmoid_mul_fusion.h"
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_node_group/reshape_gemm_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/scale_softmax_fusion.h"
+#include "core/providers/qnn/builder/qnn_node_group/channel_shuffle_fusion.h"
+
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
 
@@ -90,7 +93,8 @@ static std::unique_ptr<IQnnNodeGroup> TryQnnFusions(
       {"DequantizeLinear", DQQFusion::TryFusion},
       {"HardSigmoid", HardSigmoidMulFusion::TryFusion},
       {"Gemm", ReshapeGemmFusion::TryFusion},
-  };
+      {"Mul", ScaleSoftmaxFusion::TryFusion},
+      {"Transpose", ChannelShuffleFusion::TryFusion}};
 
   // For now, all fusions involve standalone node units (i.e., no wrapping DQ/Q nodes).
   if (starting_node_unit.UnitType() != NodeUnit::Type::SingleNode) {
@@ -116,7 +120,7 @@ static Status GetQnnNodeGroupsImpl(/*out*/ std::vector<std::unique_ptr<IQnnNodeG
                                    const size_t num_node_units,
                                    const logging::Logger& logger) {
   const GraphViewer& graph_viewer = qnn_model_wrapper.GetGraphViewer();
-  const std::vector<NodeIndex> sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
+  const std::vector<NodeIndex>& sorted_node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
   sorted_qnn_node_group_indices.reserve(num_node_units);
   qnn_node_groups.reserve(num_node_units);

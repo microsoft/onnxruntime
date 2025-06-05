@@ -13,7 +13,7 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import ModelRequiresCompilation
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail, ModelRequiresCompilation
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -119,6 +119,55 @@ class TestCompileApi(AutoEpTestCase):
         )
         model_compiler.compile_to_file(output_model_path)
         self.assertTrue(os.path.exists(output_model_path))
+
+    def test_compile_flags_error_if_no_compiled_nodes(self):
+        """
+        Tests specifying an additional flag (OrtCompileApiFlags.ERROR_IF_NO_NODES_COMPILED) that
+        makes compiling return an error if no compiled nodes are generated (e.g., by using CPU EP).
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled1.onnx")
+
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+            flags=onnxrt.OrtCompileApiFlags.ERROR_IF_NO_NODES_COMPILED,
+        )
+
+        # Compiling should raise a Fail exception and the output model should not be generated
+        with self.assertRaises(Fail) as context:
+            model_compiler.compile_to_file(output_model_path)
+        self.assertIn("Unable to compile any nodes", str(context.exception))
+        self.assertFalse(os.path.exists(output_model_path))
+
+    def test_compile_flags_error_if_output_file_exists(self):
+        """
+        Tests specifying an additional flag (OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS) that
+        makes compiling return an error the output model file already exists.
+        """
+        input_model_path = get_name("nhwc_resize_scales_opset18.onnx")
+        output_model_path = os.path.join(self._tmp_dir_path, "model.compiled1.onnx")
+
+        # Compile the first time (should be fine)
+        session_options = onnxrt.SessionOptions()
+        model_compiler = onnxrt.ModelCompiler(
+            session_options,
+            input_model_path,
+            embed_compiled_data_into_model=True,
+            external_initializers_file_path=None,
+            flags=onnxrt.OrtCompileApiFlags.ERROR_IF_OUTPUT_FILE_EXISTS,
+        )
+
+        model_compiler.compile_to_file(output_model_path)
+        self.assertTrue(os.path.exists(output_model_path))  # Output model was generated
+
+        # Compiling again should raise a Fail exception saying that the model already exists.
+        with self.assertRaises(Fail) as context:
+            model_compiler.compile_to_file(output_model_path)
+        self.assertIn("exists already", str(context.exception))
 
     def test_compile_to_file_with_input_model_in_buffer(self):
         """
