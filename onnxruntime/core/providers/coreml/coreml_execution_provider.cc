@@ -98,6 +98,8 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: Grap
       continue;
     }
 
+    std::vector<const Node*> consumer_nodes = graph_viewer.GetConsumerNodes(input);
+
     // step 2: check if the type is supported
     //      if not supported:
     //        1. Iterate through list of consumer nodes for that input
@@ -105,7 +107,6 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: Grap
     //        3. Because we have just removed an edge node from the partition, we need to update the inputs of the
     //           partition to include the outputs of the removed node.
     if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
-      std::vector<const Node*> consumer_nodes = graph_viewer.GetConsumerNodes(input);
       for (const auto& node : consumer_nodes) {
         if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
           incompatibleInputFound = true;
@@ -119,7 +120,15 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: Grap
         }
       }
     } else {
-      newInputs.insert(input);
+      // if the input is consumed by a node that is part of the partition, we keep it as an input of the partition
+      // we keep this check for cases like Where nodes, where the first input is a bool tensor, followed
+      // by two non-bool tensors. If we don't check that the consuming nodes are part of the partition, the
+      // two non-bool tensors will still be added as inputs of the partition, even if they are not consumed.
+      for (const auto& node : consumer_nodes) {
+        if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
+          newInputs.insert(input);
+        }
+      }
     }
   }
 
