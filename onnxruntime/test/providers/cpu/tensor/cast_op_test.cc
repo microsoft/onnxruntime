@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <optional>
 #include <type_traits>
 
 #include "boost/mp11.hpp"
@@ -54,15 +55,20 @@ template <typename SrcType,
           typename DstType>
 void TestCastOp(gsl::span<const SrcType> input,
                 gsl::span<const DstType> output,
-                const BaseTester::DimsVariant& dimensions,
+                const BaseTester::DimsVariant& input_dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "",
                 int opset = 13,
-                Saturate saturate = Saturate::None) {
+                Saturate saturate = Saturate::None,
+                std::optional<BaseTester::DimsVariant> output_dimensions_opt = std::nullopt,
+                std::optional<size_t> input_element_count_override = std::nullopt,
+                std::optional<size_t> output_element_count_override = std::nullop) {
   OpTester test("Cast", opset);
+  const BaseTester::DimsVariant& output_dimensions = output_dimensions_opt.value_or(input_dimensions);
+
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
-  test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
-  test.AddOutput<DstType>("output", dimensions, output.data(), output.size());
+  test.AddInput<SrcType>("input", input_dimensions, input.data(), input_element_count_override.value_or(input.size()));
+  test.AddOutput<DstType>("output", output_dimensions, output.data(), output_element_count_override.value_or(output.size()));
   if (saturate != Saturate::None) {
     test.AddAttribute<int64_t>("saturate", saturate == Saturate::True ? 1 : 0);
   }
@@ -205,6 +211,60 @@ TEST(CastOpTest, ToString) {
   const std::vector<std::string> int_string_data = {"0", "1", "2", "3", "4", "5", "6", "7"};
   const std::vector<int16_t> int_16_input = {0, 1, 2, 3, 4, 5, 6, 7};
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
+}
+
+TEST(CastOpTest, Int4ToFloat) {
+  // GIVEN
+  const std::vector<int64_t> input_shape{2, 2, 1};
+  const std::vector<Int4x2> int4_input = {
+      Int4x2(1, 2),   // two 4-bit int elements: lower = 1, upper = 2
+      Int4x2(-3, 4),  // lower = -3, upper = 4
+      Int4x2(2, -1),
+      Int4x2(-2, 2)
+  };
+  // There will be twice as many unpacked elements
+  const std::vector<int64_t> output_shape{2, 2, 2};
+  const std::vector<float> expected_float_output = {1.0f, 2.0f, -3.0f, 4.0f, 2.0f, -1.0f, -2.0f, 2.0f};
+
+  // WHEN, THEN
+  TestCastOp(
+    gsl::make_span(int4_input),
+    gsl::make_span(expected_float_output),
+    input_shape,
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    13,
+    Saturate::None,
+    output_shape,
+    int4_input.size(),
+    expected_float_output.size());
+}
+
+TEST(CastOpTest, UInt4ToFloat) {
+  // GIVEN
+  const std::vector<int64_t> input_shape{2, 2, 1};
+  const std::vector<UInt4x2> uint4_input = {
+      UInt4x2(1, 2),
+      UInt4x2(3, 4),
+      UInt4x2(5, 6),
+      UInt4x2(7, 8)
+  };
+  // There will be twice as many unpacked elements
+  const std::vector<int64_t> output_shape{2, 2, 2};
+  const std::vector<float> expected_float_output = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f};
+
+  // WHEN, THEN
+  TestCastOp(
+    gsl::make_span(uint4_input),
+    gsl::make_span(expected_float_output),
+    input_shape,
+    OpTester::ExpectResult::kExpectSuccess,
+    "",
+    13,
+    Saturate::None,
+    output_shape,
+    uint4_input.size(),
+    expected_float_output.size());
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
