@@ -15,6 +15,7 @@
 #include "core/providers/openvino/backends/basic_backend.h"
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
 #include "core/providers/openvino/backend_manager.h"
+#include "core/providers/openvino/ov_stateful_patch_utils.h"
 
 namespace onnxruntime {
 
@@ -29,6 +30,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                            ptr_stream_t& model_stream)
     : session_context_{session_context}, subgraph_context_{subgraph_context}, shared_context_{shared_context} {
   std::string& hw_target = session_context_.device_type;
+  bool enable_causallm = session_context_.enable_causallm;
 
   if (ValidateSubgraph(const_outputs_map_))
     return;
@@ -43,7 +45,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   // Setting OpenCL queue throttling for GPU
   EnableGPUThrottling(device_config);
 
-  // Enable streams; default=1 unless ovverriden by user config
+  // Enable streams; default=1 unless overridden by user configuration
   EnableStreams();
 
   // Set the inference_num_threads property of the CPU
@@ -76,7 +78,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     } else if (!session_context_.has_external_weights &&
                !subgraph_context_.has_dynamic_input_shape &&
                !session_context_.so_context_enable &&
-               auto_unified_compile) {
+               !enable_causallm && auto_unified_compile) {
       // Unified OV compile_model is efficient when ov model caching is enabled
       // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
       // Inputs with static dimensions
@@ -96,7 +98,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
       }
       auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
       exe_network_ = OVCore::Get()->CompileModel(
-          ov_model, hw_target, device_config, subgraph_context_.subgraph_name);
+          ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
     }
     LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
   } catch (const char* msg) {
@@ -120,7 +122,7 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
     };
   }
   inferRequestsQueue_ = std::unique_ptr<InferRequestsQueue>(new InferRequestsQueue(exe_network_, num_infer_req, std::move(initializer)));
-  bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_);
+  bindings_ = std::make_unique<OnnxToOvNetworkBindings>(exe_network_, subgraph_context_, session_context_);
 }
 
 bool BasicBackend::ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map) {
@@ -180,6 +182,15 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
 
   if (!session_context_.load_config.empty()) {
     const std::map<std::string, ov::AnyMap>& target_config = session_context_.load_config;
+
+    if ((session_context_.device_type.find("NPU") != std::string::npos) && session_context_.enable_causallm) {
+      if (target_config.find("NPU") != target_config.end()) {
+        auto npu_genai_config = target_config.at("NPU");
+        CausalLMConfig().ApplyConfig(npu_genai_config, device_config);
+      } else {
+        LOGS_DEFAULT(WARNING) << "ORT GenAI CausalLMConfig Configuration not found.";
+      }
+    }
 
     if (session_context_.device_type.find("NPU") != std::string::npos) {
       auto npuw_config = target_config.at("NPU");
@@ -246,7 +257,8 @@ void BasicBackend::PopulateConfigValue(ov::AnyMap& device_config) {
     auto set_target_properties = [&](const std::string& device, const ov::AnyMap& config_options,
                                      const std::vector<ov::PropertyName>& supported_properties) {
       for (const auto& [key, value] : config_options) {
-        if (key.find("NPUW") != std::string::npos) {
+        if ((key.find("NPUW") != std::string::npos) ||
+            ((device_config.find(key) != device_config.end()) && session_context_.enable_causallm)) {
           continue;
         }
         if (is_supported_and_mutable(key, supported_properties)) {
@@ -339,6 +351,13 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
     device_config.emplace(ov::inference_num_threads(session_context_.num_of_threads));
 }
 
+void BasicBackend::RewindKVCache(size_t index) {
+  OVInferRequestPtr infer_request;
+  infer_request = inferRequestsQueue_->getIdleRequest();
+  infer_request->RewindKVCache(index);
+  inferRequestsQueue_->putIdleRequest(std::move(infer_request));
+}
+
 // Starts an asynchronous inference request for data in slice indexed by batch_slice_idx on
 // an Infer Request indexed by infer_req_idx
 void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferRequestPtr infer_request) {
@@ -351,7 +370,7 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       size_t batch_slice_idx = 0;
       if (subgraph_context_.has_dynamic_input_shape &&
           !session_context_.disable_dynamic_shapes &&
-          cpu_or_gpu) {
+          cpu_or_gpu || (npu && session_context_.enable_causallm)) {
         auto tensor = context.GetInput(input_info.onnx_index);
         auto tensor_info = tensor.GetTensorTypeAndShapeInfo();
         auto tensor_shape = tensor_info.GetShape();
@@ -409,7 +428,8 @@ void BasicBackend::StartAsyncInference(Ort::KernelContext& context, OVInferReque
       }
     }  // Loop subgraph original input
 
-    if (npu) {
+    // For Stateful Compilation i.e. enable_causallm as True, we use the dynamic shapes path for NPU plugin as well.
+    if (npu && !session_context_.enable_causallm) {
       // Set the output blob as remote blob
       for (const auto& output_info : bindings_->network_outputs_) {
         Ort::UnownedValue tensor = context.GetOutput(output_info.onnx_index, output_info.onnx_shape);
@@ -453,19 +473,20 @@ void BasicBackend::CompleteAsyncInference(Ort::KernelContext& context, OVInferRe
 
   bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
                     session_context_.device_type.find("GPU") != std::string::npos;
-  if (cpu_or_gpu) {
+  bool npu = session_context_.device_type.find("NPU") != std::string::npos;
+  if (cpu_or_gpu || (npu && session_context_.enable_causallm)) {
     for (const auto& output_info : bindings_->network_outputs_) {
-      OVTensorPtr graph_output_blob;
-      try {
-        graph_output_blob = infer_request->GetTensor(output_info.name);
-      } catch (const char* msg) {
-        ORT_THROW(msg);
-      }
-      size_t batch_size = 1;
-      Ort::UnownedValue output_tensor =
-          GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
-      auto mem_info = output_tensor.GetTensorMemoryInfo();
-      if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
+        OVTensorPtr graph_output_blob;
+        try {
+          graph_output_blob = infer_request->GetTensor(output_info.name);
+        } catch (const char* msg) {
+          ORT_THROW(msg);
+        }
+        size_t batch_size = 1;
+        Ort::UnownedValue output_tensor =
+            GetOutputTensor(context, batch_size, infer_request, output_info.name, subgraph_context_.output_names);
+        auto mem_info = output_tensor.GetTensorMemoryInfo();
+        if (mem_info.GetAllocatorName() == OpenVINO_GPU) {
           return;
       } else {
         size_t batch_slice = 0;
@@ -538,11 +559,19 @@ void BasicBackend::Infer(OrtKernelContext* ctx) {
     try {
       StartAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      // If the inference fails (exception from ov::InferRequest::infer()),
+      // we need to put the infer_request back into the pool to avoid deadlocks
+      // and to allow the next inference request to proceed.
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at StartAsyncInference: " + e.what());
     }
     try {
       CompleteAsyncInference(context, infer_request);
     } catch (const std::runtime_error& e) {
+      // If the inference fails (exception from ov::InferRequest::infer()),
+      // we need to put the infer_request back into the pool to avoid deadlocks
+      // and to allow the next inference request to proceed.
+      inferRequestsQueue_->putIdleRequest(std::move(infer_request));
       ORT_THROW(log_tag + " Exception at CompleteAsyncInference: " + e.what());
     }
 

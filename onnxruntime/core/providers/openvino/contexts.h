@@ -97,6 +97,7 @@ struct ProviderInfo {
   bool disable_dynamic_shapes{false};      // [disable_dynamic_shapes]:  Rewrite dynamic shaped models to
                                            // static shape at runtime and execute.
   bool enable_qdq_optimizer{false};        // Enables QDQ pruning for efficient inference latency with NPU
+  bool enable_causallm{false};             // Enables Causal LM Compilation for ORT GenAI OVEP Pass
   bool so_context_enable{false};           // ORT session option
   bool so_disable_cpu_ep_fallback{false};  // ORT session option
   bool so_context_embed_mode{false};       // ORT session option

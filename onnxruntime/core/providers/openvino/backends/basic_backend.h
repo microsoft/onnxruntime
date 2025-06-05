@@ -42,11 +42,21 @@ struct OnnxToOvNetworkBindings {
   std::vector<ParameterInfo> network_outputs_;
   std::vector<ParameterInfo> network_inputs_;
 
-  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context) {
+  OnnxToOvNetworkBindings(OVExeNetwork& exec_network, SubGraphContext& subgraph_context, SessionContext& session_context) {
     auto populate = [&](auto& input_output_map, const SubGraphContext::string_index_map_t& onnx_input_map, const auto& ov_parameters) {
       for (const auto& [onnx_name, onnx_param_index] : onnx_input_map) {
         auto it = std::find_if(ov_parameters.begin(), ov_parameters.end(),
                                [&onnx_name](const auto& ov_parameter_info) { return ov_parameter_info.get_names().contains(onnx_name); });
+
+        // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
+        // However, these tensors are internally converted to a stateful representation, which removes them.
+        // To prevent runtime exceptions, we simply continue processing here.
+        if ((onnx_name.empty() || onnx_name == "beam_idx" ||
+            onnx_name.find("past_key_values") != std::string::npos ||
+            onnx_name.find("present") != std::string::npos) &&
+            session_context.enable_causallm) {
+          continue;
+        }
 
         ORT_ENFORCE(it != ov_parameters.end(), backend_utils::log_tag,
                     "Input names mismatch between OpenVINO and ONNX. ", onnx_name,
@@ -85,6 +95,7 @@ class BasicBackend : public IBackend {
   ov::CompiledModel GetOVCompiledModel() override {
     return exe_network_.Get();
   }
+  void RewindKVCache(size_t index) override;
 
  private:
   bool ValidateSubgraph(std::map<std::string, std::shared_ptr<ov::Node>>& const_outputs_map);
@@ -114,7 +125,7 @@ class InferRequestsQueue {
     OVInferRequestPtr infer_request;
     live_threads=nireq;
     for (size_t id = 0; id < nireq; id++) {
-      infer_request = std::make_shared<OVInferRequest>(net.CreateInferRequest());
+      infer_request = net.CreateInferRequest();
       initializer(infer_request);
       infer_requests_.push_back(infer_request);
     }
@@ -144,7 +155,6 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    std::cout << "get Idle Request" << live_threads << "\n";
     if(live_threads==0) {
       return nullptr;
     }

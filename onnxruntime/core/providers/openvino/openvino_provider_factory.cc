@@ -343,13 +343,20 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
     pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
+    pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
+
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
   } catch (std::string msg) {
     ORT_THROW(msg);
   }
   // Always true for NPU plugin or when passed .
   if (pi.device_type.find("NPU") != std::string::npos) {
-    pi.disable_dynamic_shapes = true;
+    // For Stateful Compilation i.e. enable_causallm as True, we use the dynamic shapes path.
+    if (pi.enable_causallm) {
+      pi.disable_dynamic_shapes = false;
+    } else {
+      pi.disable_dynamic_shapes = true;
+    }
   }
 }
 

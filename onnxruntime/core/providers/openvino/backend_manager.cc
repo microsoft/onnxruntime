@@ -44,6 +44,10 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                               shared_context_{shared_context} {
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
 
+  bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
+                    session_context_.device_type.find("GPU") != std::string::npos;
+  bool npu = session_context_.device_type.find("NPU") != std::string::npos;
+
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
     // else assume the type of the first input
@@ -105,8 +109,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    if ((session_context_.device_type.find("CPU") != std::string::npos ||
-         session_context_.device_type.find("GPU") != std::string::npos) &&
+    if (cpu_or_gpu || (npu && session_context_.enable_causallm) &&
         !session_context_.disable_dynamic_shapes) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
@@ -480,6 +483,9 @@ BackendManager::ReWriteBatchDimWithOne(const ONNX_NAMESPACE::ModelProto& model_p
 void BackendManager::Compute(OrtKernelContext* context) {
   Ort::KernelContext ctx(context);
   std::chrono::high_resolution_clock::time_point start_compute, end_compute;
+  bool cpu_or_gpu = session_context_.device_type.find("CPU") != std::string::npos ||
+                    session_context_.device_type.find("GPU") != std::string::npos;
+  bool npu = session_context_.device_type.find("NPU") != std::string::npos;
 #ifdef OPENVINO_FIL_ENABLED
   static bool fil_enabled = true;
   if (fil_enabled) {
@@ -493,8 +499,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
   // disable_dynamic_shapes is always set to true for OV NPU plugin.
   if (subgraph_context_.has_dynamic_input_shape &&
       !session_context_.disable_dynamic_shapes &&
-      (session_context_.device_type.find("CPU") != std::string::npos ||
-       session_context_.device_type.find("GPU") != std::string::npos)) {
+      (cpu_or_gpu || (npu && session_context_.enable_causallm))) {
     concrete_backend_->Infer(context);
   } else if (subgraph_context_.has_dynamic_input_shape) {
     std::vector<std::vector<int64_t>> tensor_shapes = GetInputTensorShapes(ctx);
@@ -565,6 +570,12 @@ void BackendManager::Compute(OrtKernelContext* context) {
 void BackendManager::ShutdownBackendManager() {
   backend_map_.clear();
   concrete_backend_.reset();
+}
+
+void BackendManager::RewindKVCache(size_t index) {
+  if (concrete_backend_) {
+    concrete_backend_->RewindKVCache(index);
+  }
 }
 
 }  // namespace openvino_ep
