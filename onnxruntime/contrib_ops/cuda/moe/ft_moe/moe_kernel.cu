@@ -65,7 +65,6 @@ __launch_bounds__(TPB) __global__
 
     const int thread_row_offset = blockIdx.x * num_cols;
 
-    cub::Sum sum;
     float threadData(-FLT_MAX);
 
     // Don't touch finished rows.
@@ -91,8 +90,7 @@ __launch_bounds__(TPB) __global__
         threadData += exp((static_cast<float>(input[idx]) - float_max));
     }
 
-    const auto Z = BlockReduce(tmpStorage).Reduce(threadData, sum);
-
+    const auto Z = BlockReduce(tmpStorage).Reduce(threadData, cuda::std::plus<float>());
     if (threadIdx.x == 0) {
         normalizing_factor = 1.f / Z;
     }
