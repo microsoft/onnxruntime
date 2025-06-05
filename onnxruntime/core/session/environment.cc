@@ -296,8 +296,8 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     all_fixed_size_types.insert(all_fixed_size_types.end(), all_sequence_types.begin(), all_sequence_types.end());
     all_fixed_size_types.emplace_back("seq(tensor(bfloat16))");
     all_fixed_size_types.erase(std::remove_if(all_fixed_size_types.begin(), all_fixed_size_types.end(),
-                                               [](const std::string& s) { return s.find("string") != std::string::npos; }),
-                                all_fixed_size_types.end());
+                                              [](const std::string& s) { return s.find("string") != std::string::npos; }),
+                               all_fixed_size_types.end());
 
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
