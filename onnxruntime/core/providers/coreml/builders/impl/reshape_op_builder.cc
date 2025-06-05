@@ -75,39 +75,11 @@ Status ReshapeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-// CoreML does not handle 0's in the new_shape, even though its documentation claims 0's in the new_shape will
-// match the corresponding dimension in x.shape
-// https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
-//
-// So instead, we use ReshapeHelper to populate the values from input_shape. However, input_shape may have -1's in it
-// to represent symbolic dimensions (input_shape refers to the shape info of the first input, referred to as
-// x.shape in the CoreML docs).
-//
-// CoreML would then either produce an incorrect shape or emit an error in the cases that there is more than one -1
-// in the deduced shape.
-//
-// The below method checks for these collisions. In the case that x.shape has symbolic dimensions at the locations where
-// there is a 0 in new_shape, then we move the reshape op to CPU EP.
-bool CheckNegativeOneCollision(gsl::span<const int64_t> input_shape, gsl::span<const int64_t> new_shape, const logging::Logger& logger) {
-  for (size_t i = 0; i < new_shape.size(); i++) {
-    if (new_shape[i] == 0 && input_shape[i] == -1) {
-      LOGS(logger, VERBOSE) << "CoreML does not support 0's in the new shape. New shape: " << Shape2String(new_shape);
-      return false;
-    }
-  }
-  return true;
-}
-
-// https://apple.github.io/coremltools/source/coremltools.converters.mil.mil.ops.defs.html#coremltools.converters.mil.mil.ops.defs.iOS15.tensor_transformation.reshape
 bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
                                          const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& new_shape_name = input_defs[1]->Name();
   const auto* new_shape_tensor = input_params.graph_viewer.GetConstantInitializer(new_shape_name);
-
-  NodeAttrHelper helper(node);
-  const bool allow_zero = helper.Get("allowzero", 0) == 1;
-
   if (!new_shape_tensor) {
     // ONNX has different rules around how -1 and 0 values are used/combined, and
     // we can't check if those can be translated to CoreML if the shape is unknown.
@@ -117,47 +89,37 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputP
 
   Initializer unpacked_tensor(*new_shape_tensor);
   auto new_shape = unpacked_tensor.DataAsSpan<int64_t>();
-
   if (new_shape.empty()) {
     LOGS(logger, VERBOSE) << "New shape of reshape cannot be empty";
     return false;
   }
 
-  // CoreML reshape does not support 0 as a literal dimension in new_shape
-  if (allow_zero) {
-    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
-      LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0. "
-                            << "New shape: " << Shape2String(new_shape);
-      return false;
-    }
-  }
-
   std::vector<int64_t> input_shape;
+  if (!GetStaticShape(*input_defs[0], input_shape, logger))
+    return false;
 
-  // first input must be fixed rank OR (first input has variadic rank AND shape only contains positive integers)
-  // as per docs, 0 is considered an illegal shape element if the input is variadic
-  // We do not support the second case at the moment.
-  if (!GetStaticShape(*input_defs[0], input_shape, logger)) {
-    LOGS(logger, VERBOSE) << "Unable to get shape of input -- input must have fixed rank for reshape. ";
+  if (input_shape.empty()) {
+    LOGS(logger, VERBOSE) << "Reshape does not support empty input shape";
     return false;
   }
 
-  if (std::find(input_shape.begin(), input_shape.end(), 0) != input_shape.end()) {
-    LOGS(logger, VERBOSE) << "Input shape must not have any 0's in it.";
-  }
-
+  // CoreML reshape doesn't support new shape with more than 5 dimensions.
   if (new_shape.size() > 5) {
-    LOGS(logger, VERBOSE) << "Reshape does not support new shape with more than 5 dimensions. "
-                             "Input shape: "
+    LOGS(logger, VERBOSE) << "Reshape does not support new shape with rank greater than 5. Input shape: "
                           << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
     return false;
   }
 
-  // CoreML docs claim that 0 in new_shape will have the same behavior as in ONNX spec when allow_zero is false
-  // In practice, CoreML does not handle 0's in new_shape. CheckNegativeOneCollision has a more detailed comment on
-  // why this check is necessary.
-  if (!allow_zero && !CheckNegativeOneCollision(input_shape, new_shape, logger)) {
-    return false;
+  // CoreML reshape does not support 0 as dimension
+  NodeAttrHelper helper(node);
+  const bool allow_zero = helper.Get("allowzero", 0) == 1;
+  if (allow_zero) {
+    if (std::find(new_shape.begin(), new_shape.end(), int64_t{0}) != new_shape.end()) {
+      LOGS(logger, VERBOSE) << "Reshape does not support new shape with 0 as dimension when allowzero is enabled. "
+                               "Input shape: "
+                            << Shape2String(input_shape) << ", new shape: " << Shape2String(new_shape);
+      return false;
+    }
   }
 
   return true;

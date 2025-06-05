@@ -7,7 +7,6 @@
 #include "core/providers/coreml/builders/impl/base_op_builder.h"
 #include "core/providers/coreml/builders/model_builder.h"
 #include "core/providers/coreml/model/host_utils.h"
-#include "core/providers/coreml/shape_utils.h"
 #include "core/providers/shared/utils/utils.h"
 
 using namespace CoreML::Specification;
@@ -115,11 +114,13 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
+#if CAN_BUILD_COREML6_OR_LATER
   // only MLProgram support FP16 and INT64
   if (input_params.create_mlprogram && (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                                         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
     return true;
   }
+#endif
 
   LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
   return false;
