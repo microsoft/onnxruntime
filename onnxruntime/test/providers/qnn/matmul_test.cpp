@@ -340,6 +340,60 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   }
 }
 
+#ifndef __linux__
+// Tests MatMul with two uint16 (quantized) inputs with weight as static.
+// This exercises a workaround in QNN EP that inserts a QNN Convert op before input[1] (converts from uint16 to sint16).
+// This workaround prevents a validation error for this specific MatMul configuration.
+// Got specific shapes and input ranges (quant params) from customer model.
+TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_static_weight) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  // Test with rank 4 inputs
+  {
+    std::vector<int64_t> shape_0 = {1, 12, 512, 96};
+    TestInputDef<float> input0_def(
+        {1, 12, 512, 96}, false,
+        GetFloatDataInRange(-5.087f, 4.992f,
+                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+    std::vector<int64_t> shape_1 = {1, 12, 96, 512};
+    TestInputDef<float> input1_def(
+        shape_1, true,
+        GetFloatDataInRange(-6.772f, 7.258f,
+                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+
+    TestQDQModelAccuracy(
+        BuildMatMulOpTestCase(input0_def, input1_def),
+        BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
+        provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
+  }
+
+  // Test with input[1] as rank 1
+  {
+    std::vector<int64_t> shape_0 = {1, 12, 512, 96};
+    TestInputDef<float> input0_def(
+        {1, 12, 512, 96}, false,
+        GetFloatDataInRange(-5.087f, 4.992f,
+                            static_cast<size_t>(std::accumulate(shape_0.begin(), shape_0.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+    std::vector<int64_t> shape_1 = {96};
+    TestInputDef<float> input1_def(
+        shape_1, true,
+        GetFloatDataInRange(-6.772f, 7.258f,
+                            static_cast<size_t>(std::accumulate(shape_1.begin(), shape_1.end(), static_cast<int64_t>(1),
+                                                                std::multiplies<int64_t>()))));
+
+    TestQDQModelAccuracy(
+        BuildMatMulOpTestCase(input0_def, input1_def),
+        BuildMatMulOpQDQTestCase<uint16_t, uint16_t, uint16_t>(input0_def, input1_def, false),
+        provider_options, 21, ExpectedEPNodeAssignment::All, QDQTolerance());
+  }
+}
+#endif
+
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test
