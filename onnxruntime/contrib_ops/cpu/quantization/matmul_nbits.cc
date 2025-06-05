@@ -459,34 +459,35 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
   auto tmp_b_data_ptr = IAllocator::MakeUniquePtr<float>(allocator, SafeInt<size_t>(K_) * N_, true);
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<float>())) {
-      if (nbits_ == 4) {
-          MlasDequantizeBlockwise<float, 4>(
-              tmp_b_data_ptr.get(),                           // dequantized output
-              b_data,                                         // quantized input
-              scales_data,                                    // quantization scales
-              static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-              static_cast<int32_t>(block_size_),              // quantization block size
-              column_wise_quant_,                             // columnwise quantization or row-wise
-              static_cast<int32_t>(K_),                       // number of rows in quantized input
-              static_cast<int32_t>(N_),                       // number of columns in quantized input
-              thread_pool);
-      } else {  // If it isn't 4bit, it has to be 8-bit quantization
-        MlasDequantizeBlockwise<float, 8>(
-            tmp_b_data_ptr.get(),                           // dequantized output
-            b_data,                                         // quantized input
-            scales_data,                                    // quantization scales
-            static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
-            static_cast<int32_t>(block_size_),              // quantization block size
-            column_wise_quant_,                             // columnwise quantization or row-wise
-            static_cast<int32_t>(K_),                       // number of rows in quantized input
-            static_cast<int32_t>(N_),                       // number of columns in quantized input
-            thread_pool);
-      } 
+    if (nbits_ == 4) {
+      MlasDequantizeBlockwise<float, 4>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      MlasDequantizeBlockwise<float, 8>(
+          tmp_b_data_ptr.get(),                           // dequantized output
+          b_data,                                         // quantized input
+          scales_data,                                    // quantization scales
+          static_cast<const uint8_t*>(zero_points_data),  // quantization zero points
+          static_cast<int32_t>(block_size_),              // quantization block size
+          column_wise_quant_,                             // columnwise quantization or row-wise
+          static_cast<int32_t>(K_),                       // number of rows in quantized input
+          static_cast<int32_t>(N_),                       // number of columns in quantized input
+          thread_pool);
+    }
   } else {
     // Hitting any of the below is very rare
     ORT_ENFORCE(column_wise_quant_, "Row-wise quantization is not supported for now");
-    ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute using "
-                             "non-MLAS de-quantization for now");
+    ORT_ENFORCE(nbits_ == 4,
+                "Only 4b quantization is supported for unpacked compute using "
+                "non-MLAS de-quantization for now");
 
     // !!!!!!!!!!!!!! naive implementation, need to be optimized !!!!!!!!!!!!!!
     if (zero_points && zero_points->IsDataType<float>()) {
