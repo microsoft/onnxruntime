@@ -80,7 +80,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
   CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
-  // CreateWhereOpBuilder("Where", op_registrations);
+  CreateWhereOpBuilder("Where", op_registrations);
 
   return op_registrations;
 }
