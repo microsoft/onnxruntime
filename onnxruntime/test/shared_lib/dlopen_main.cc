@@ -21,9 +21,7 @@
 #include <crtdbg.h>
 #endif
 
-// BEGIN: Copied from debug_heap.cpp from public Windows SDK (or similar CRT source)
-// This is a workaround if the full definition isn't available from crtdbg.h in your specific environment.
-// Ensure this matches the structure layout used by your CRT version's debug heap.
+// BEGIN: Copied from debug_heap.cpp from public Windows SDK
 #ifdef _DEBUG  // This structure is only relevant for debug builds
 static size_t const no_mans_land_size = 4;
 
@@ -258,6 +256,7 @@ int main() {
     if (heap_debug_initialized) {
       std::cout << "HEAP_DEBUG: Taking memory checkpoint (s_before_unload) before FreeLibrary." << std::endl;
       _CrtMemCheckpoint(&s_before_unload);
+      // TODO: currently this information is not used.
     }
 #endif
 
@@ -286,10 +285,7 @@ int main() {
         if (s3_diff_final.lCounts[_NORMAL_BLOCK] > 0 || s3_diff_final.lSizes[_NORMAL_BLOCK] > 0) {
           std::cout << "\nHEAP_DEBUG: s3_diff_final indicates an increase in _NORMAL_BLOCKs." << std::endl;
 
-          std::cout << "\nHEAP_DEBUG: Dumping _NORMAL_BLOCKs from s_before_unload (DLL symbols should be more reliable):" << std::endl;
-          DumpCurrentlyAllocatedNormalBlocks(&s_before_unload, "s_before_unload");
-
-          std::cout << "\nHEAP_DEBUG: Dumping _NORMAL_BLOCKs from s2 (after FreeLibrary - DLL symbols may be less reliable):" << std::endl;
+          std::cout << "\nHEAP_DEBUG: Dumping _NORMAL_BLOCKs from s2 (after FreeLibrary - miss DLL symbols):" << std::endl;
           DumpCurrentlyAllocatedNormalBlocks(&s2, "s2 (After Unload)");
         } else {
           std::cout << "\nHEAP_DEBUG: s3_diff_final did not show a net increase in _NORMAL_BLOCKs." << std::endl;
