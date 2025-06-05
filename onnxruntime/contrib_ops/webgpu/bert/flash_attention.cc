@@ -137,13 +137,18 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << "const qkv_head_size: u32 = " << qkv_head_size_ << ";\n"
                                     << "const num_heads: u32 =" << qkv_num_heads_ << ";\n";
 
+  if (is_fp16_) {
+    shader.AdditionalImplementation() << "const min_value : q_element_t = q_element_t(-65504.0);\n";
+  } else {
+    shader.AdditionalImplementation() << "const min_value = f32(-3.402823e+38f);\n";
+  }
+
   shader.AdditionalImplementation() << R"HELPER_FN(
   // For max performance max_k_step should be the same as sg_size, however we might run out of registers
   // for qk_1, qk_2 .. qk_(sg_size). So we cap it at max_k_step (16).
   const max_k_step: u32 = 16u;
   const vec_factor: u32 = 4u;
   const qkv_head_size_vec: u32 = qkv_head_size / vec_factor;
-  const min_value = f32(-3.402823e+38f);;
 
   // Default SHM usage limit is 16KB in Dawn.
   // vec4<f16> * qkv_head_size_vec * max_k_step = 8 * (128/4) * 16 = 4KB. 128 is head_size for phi4.
@@ -152,7 +157,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   // Private memory per lane.
   var<private> q_tile : array<q_value_t, qkv_head_size_vec>;
-  fn loadq(q_idx_global : u32, head_idx: u32)
+  fn loadq(q_idx_global : u32, head_idx: u32, alpha: q_element_t)
   {
       // Stored as float16[batch_size,sequence_length,3072] the inputs as per onnx MHA
       // This is the layout if TransferBSDToBNSH has not been run.
@@ -161,7 +166,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       //let offset = head_idx * uniforms.new_sequence_length * qkv_head_size_vec + q_idx_global * qkv_head_size_vec;
       for (var idx:u32 = 0; idx < qkv_head_size_vec; idx++)
       {
-          q_tile[idx] = q[idx+offset];
+          q_tile[idx] = q[idx+offset] * alpha;
       }
   }
   fn loadk(k_start : u32, head_idx: u32, local_idx: u32, k_step: u32)
@@ -195,32 +200,32 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // Move half of o_tile from private memory into workgroup memory to reduce register pressure.
   // Note that register spill was observed on Qualcomm if whole o_tile is on private memory.
   // vec4<f16> * half_qkv_head_size_vec * workgroup_size_x = 8 * (128/4/2) * 64 = 8KB.
-  var<workgroup> o_tile_r : array<array<vec4<f32>, half_qkv_head_size_vec>, workgroup_size_x>;
+  var<workgroup> o_tile_r : array<array<q_value_t, half_qkv_head_size_vec>, workgroup_size_x>;
 
   // Private memory per lane.
-  var<private> o_tile : array<vec4<f32>, half_qkv_head_size_vec>;
+  var<private> o_tile : array<q_value_t, half_qkv_head_size_vec>;
   fn writeo(o_idx_global: u32, head_idx: u32, local_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072]
       let offset = o_idx_global * num_heads * qkv_head_size_vec + head_idx * qkv_head_size_vec;
       for (var idx:u32 = 0; idx < half_qkv_head_size_vec; idx ++)
       {
-          output[offset+idx] = q_value_t(o_tile[idx]);
-          output[offset+idx+half_qkv_head_size_vec] = q_value_t(o_tile_r[local_idx][idx]);
+          output[offset+idx] = o_tile[idx];
+          output[offset+idx+half_qkv_head_size_vec] = o_tile_r[local_idx][idx];
       }
   }
     )HELPER_FN";
   } else {
     shader.AdditionalImplementation() << R"HELPER_FN(
   // Private memory per lane.
-  var<private> o_tile : array<vec4<f32>, qkv_head_size_vec>;
+  var<private> o_tile : array<q_value_t, qkv_head_size_vec>;
   fn writeo(o_idx_global: u32, head_idx: u32)
   {
       // Stored as float16[batch_size,sequence_length,3072]
       let offset = o_idx_global * num_heads * qkv_head_size_vec + head_idx * qkv_head_size_vec;
       for (var idx:u32 = 0; idx < qkv_head_size_vec; idx ++)
       {
-          output[offset+idx] = q_value_t(o_tile[idx]);
+          output[offset+idx] = o_tile[idx];
       }
   }
     )HELPER_FN";
@@ -265,11 +270,11 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   let valid_q = q_idx_global < uniforms.new_sequence_length;
   if (valid_q)
   {
-    loadq(q_idx_global, head_idx);
+    loadq(q_idx_global, head_idx, q_element_t(uniforms.alpha));
   }
 
-  var previous_max : f32 = min_value;
-  var previous_denom : f32 = 0;
+  var previous_max : q_element_t = min_value;
+  var previous_denom : q_element_t = 0;
 
   for(var k_start = 0u; k_start < uniforms.total_sequence_length; k_start+=capped_sg_size)
   {
@@ -279,16 +284,16 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     workgroupBarrier();
 
     // Compute QKt
-    var qk_1:vec4<f32>;
-    var qk_2:vec4<f32>;
-    var qk_3:vec4<f32>;
-    var qk_4:vec4<f32>;
+    var qk_1:vec4<q_element_t>;
+    var qk_2:vec4<q_element_t>;
+    var qk_3:vec4<q_element_t>;
+    var qk_4:vec4<q_element_t>;
     if (sg_size > 8)
     {
       for (var i:u32 = 0u; i < qkv_head_size_vec; i++)
       {
-        var k_local = vec4<f32>(k_tile[capped_sg_id][i]);
-        var q_own = vec4<f32>(q_tile[i]);
+        var k_local = k_tile[capped_sg_id][i];
+        var q_own = q_tile[i];
         qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
         qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
         qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
@@ -311,8 +316,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0u; i < qkv_head_size_vec; i++)
       {
-        var k_local = vec4<f32>(k_tile[capped_sg_id][i]);
-        var q_own = vec4<f32>(q_tile[i]);
+        var k_local = k_tile[capped_sg_id][i];
+        var q_own = q_tile[i];
         qk_1[0] += dot(q_own, subgroupShuffle(k_local, 0));
         qk_1[1] += dot(q_own, subgroupShuffle(k_local, 1));
         qk_1[2] += dot(q_own, subgroupShuffle(k_local, 2));
@@ -324,12 +329,12 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
       }
     }
 
-    qk_1 = qk_1 * uniforms.alpha + vec4<f32>(loadAttentionBias(q_idx_global, k_start, head_idx));
-    qk_2 = qk_2 * uniforms.alpha + vec4<f32>(loadAttentionBias(q_idx_global, k_start+4, head_idx));
+    qk_1 = qk_1 + loadAttentionBias(q_idx_global, k_start, head_idx);
+    qk_2 = qk_2 + loadAttentionBias(q_idx_global, k_start+4, head_idx);
     if (sg_size > 8)
     {
-      qk_3 = qk_3 * uniforms.alpha + vec4<f32>(loadAttentionBias(q_idx_global, k_start+8, head_idx));
-      qk_4 = qk_4 * uniforms.alpha + vec4<f32>(loadAttentionBias(q_idx_global, k_start+12, head_idx));
+      qk_3 = qk_3 + loadAttentionBias(q_idx_global, k_start+8, head_idx);
+      qk_4 = qk_4 + loadAttentionBias(q_idx_global, k_start+12, head_idx);
     }
 
     let seq_causal_length = select(uniforms.total_sequence_length, uniforms.past_sequence_length + q_idx_global + 1, uniforms.is_gqa > 0);
@@ -386,11 +391,11 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
     let local_max = max(max(local_max_temp.x, local_max_temp.y),max(local_max_temp.z, local_max_temp.w));
     let new_max = max(previous_max, local_max);
-    qk_1 = exp(qk_1 - new_max);
-    qk_2 = exp(qk_2 - new_max);
+    qk_1 = q_value_t(exp(vec4<f32>(qk_1) - f32(new_max)));
+    qk_2 = q_value_t(exp(vec4<f32>(qk_2) - f32(new_max)));
     if (sg_size > 8) {
-      qk_3 = exp(qk_3 - new_max);
-      qk_4 = exp(qk_4 - new_max);
+      qk_3 = q_value_t(exp(vec4<f32>(qk_3) - f32(new_max)));
+      qk_4 = q_value_t(exp(vec4<f32>(qk_4) - f32(new_max)));
     }
     let sum_vec = qk_1 + qk_2 + qk_3 + qk_4;
     let sum = sum_vec.x + sum_vec.y + sum_vec.z + sum_vec.w;
@@ -398,7 +403,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     // Compute lhs term of update di prime and the compute di prime.
     let dleft = previous_denom * exp(previous_max-new_max);
     var d = dleft + sum;
-    d = select(d,f32(0.0000001),d==0);
+    d = select(d,q_element_t(0.0000001),d==0);
     qk_1 = qk_1 / d;
     qk_2 = qk_2 / d;
     if (sg_size > 8) {
@@ -416,7 +421,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
-          var val = vec4<f32>(v_tile[capped_sg_id][i]);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -435,7 +440,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           sum += subgroupShuffle(val, 15) * qk_4[3];
           o_tile[i] = o_tile[i] * o_ratio + sum;
 
-          val = vec4<f32>(v_tile[capped_sg_id][half_qkv_head_size_vec + i]);
+          val = v_tile[capped_sg_id][half_qkv_head_size_vec + i];
           sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -459,7 +464,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0; i < half_qkv_head_size_vec; i++)
       {
-          var val = vec4<f32>(v_tile[capped_sg_id][i]);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -470,7 +475,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
           sum += subgroupShuffle(val, 7) * qk_2[3];
           o_tile[i] = o_tile[i] * o_ratio + sum;
 
-          val = vec4<f32>(v_tile[capped_sg_id][half_qkv_head_size_vec + i]);
+          val = v_tile[capped_sg_id][half_qkv_head_size_vec + i];
           sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -493,7 +498,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     if (sg_size > 8) {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = vec4<f32>(v_tile[capped_sg_id][i]);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -517,7 +522,7 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
     {
       for (var i:u32 = 0; i < qkv_head_size_vec; i++)
       {
-          var val = vec4<f32>(v_tile[capped_sg_id][i]);
+          var val = v_tile[capped_sg_id][i];
           var sum = subgroupShuffle(val, 0) * qk_1[0];
           sum += subgroupShuffle(val, 1) * qk_1[1];
           sum += subgroupShuffle(val, 2) * qk_1[2];
@@ -891,7 +896,8 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     const uint32_t tile_size = 64;
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
-    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, parameters.head_size_, parameters.num_heads_};
+    bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
+    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, is_fp16, parameters.head_size_, parameters.num_heads_};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
