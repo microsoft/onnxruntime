@@ -47,14 +47,14 @@ struct OrtValueInfo {
   };
   virtual onnxruntime::Status GetProducerInfo(ProducerInfo& producer_info) const = 0;
 
-  struct UseInfo {
-    UseInfo() = default;
-    UseInfo(const OrtNode* node, size_t input_index) : node(node), input_index(input_index) {}
+  struct ConsumerInfo {
+    ConsumerInfo() = default;
+    ConsumerInfo(const OrtNode* node, size_t input_index) : node(node), input_index(input_index) {}
     const OrtNode* node = nullptr;
-    size_t input_index = 0;
+    int64_t input_index = 0;  // Negative if it is an implicit input to a node that contains a subgraph (e.g., If).
   };
-  virtual onnxruntime::Status GetUses(std::vector<UseInfo>& uses) const = 0;
-  virtual onnxruntime::Status GetNumUses(size_t& num_consumers) const = 0;
+  virtual onnxruntime::Status GetConsumers(std::vector<ConsumerInfo>& uses) const = 0;
+  virtual onnxruntime::Status GetNumConsumers(size_t& num_consumers) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };

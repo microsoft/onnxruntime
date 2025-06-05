@@ -36,19 +36,44 @@ Status EpNode::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
 }
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-static Status GetInputOrOutputIndices(gsl::span<const EpValueInfo* const> value_infos,
-                                      const std::string& value_info_name,
-                                      /*out*/ std::vector<size_t>& indices) {
-  indices.reserve(value_infos.size());
-
+static Status GetInputIndices(const EpNode& consumer_node,
+                              const std::string& value_info_name,
+                              /*out*/ std::vector<int64_t>& indices) {
   bool found = false;
-  for (size_t i = 0; i < value_infos.size(); i++) {
-    if (value_infos[i]->Name() == value_info_name) {
-      indices.push_back(i);
+  auto add_input_indices =
+      [&found, &value_info_name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs) -> void {
+    for (size_t i = 0; i < input_defs.size(); i++) {
+      if (input_defs[i]->Name() == value_info_name) {
+        indices.push_back(static_cast<int64_t>(i));
+        found = true;
+      }
+    }
+  };
+
+  const auto node_input_defs = consumer_node.node.InputDefs();
+  indices.reserve(node_input_defs.size());
+  add_input_indices(node_input_defs);
+
+  if (!found) {
+    // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
+    // that are consumed by nodes within their subgraph.
+    add_input_indices(consumer_node.node.ImplicitInputDefs());
+  }
+
+  ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
+  return Status::OK();
+}
+
+static Status GetOutputIndex(const EpNode& producer_node,
+                             const std::string& value_info_name,
+                             /*out*/ size_t& index) {
+  bool found = false;
+  for (size_t i = 0; i < producer_node.outputs.size(); i++) {
+    if (producer_node.outputs[i]->name == value_info_name) {
+      index = i;
       found = true;
     }
   }
-
   ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
   return Status::OK();
 }
@@ -74,13 +99,12 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
     return Status::OK();  // Node is not in this GraphViewer
   }
 
-  const EpNode* ep_node = it->second;
-  std::vector<size_t> output_indices;
-  ORT_RETURN_IF_ERROR(GetInputOrOutputIndices(ep_node->outputs, name, output_indices));
-  assert(output_indices.size() == 1);  // An output can only come from one node.
+  const EpNode& ep_node = *it->second;
+  size_t output_index;
+  ORT_RETURN_IF_ERROR(GetOutputIndex(ep_node, name, output_index));
 
-  producer_info.node = ep_node->ToExternal();
-  producer_info.output_index = output_indices[0];
+  producer_info.node = ep_node.ToExternal();
+  producer_info.output_index = output_index;
   return Status::OK();
 #else
   ORT_UNUSED_PARAMETER(producer_info);
@@ -89,7 +113,7 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
-Status EpValueInfo::GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const {
+Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (graph == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get uses of OrtValueInfo '", name,
@@ -101,21 +125,21 @@ Status EpValueInfo::GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const {
     return Status::OK();
   }
 
-  ORT_RETURN_IF_NOT(uses.empty(), "Internal error: uses should be empty in GetUses()");
-  uses.reserve(nodes.size());
+  ORT_RETURN_IF_NOT(consumer_infos.empty(), "Internal error: consumer_infos should be empty in GetUses()");
+  consumer_infos.reserve(nodes.size());
   for (const Node* node : nodes) {
     auto it = graph->index_to_node.find(node->Index());
     if (it == graph->index_to_node.end()) {
       continue;  // Node is not in this GraphViewer
     }
 
-    const EpNode* ep_node = it->second;
-    std::vector<size_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputOrOutputIndices(ep_node->inputs, name, input_indices));
+    const EpNode& ep_node = *it->second;
+    std::vector<int64_t> input_indices;
+    ORT_RETURN_IF_ERROR(GetInputIndices(ep_node, name, input_indices));
 
     for (size_t input_index : input_indices) {
-      OrtValueInfo::UseInfo use_info(ep_node->ToExternal(), input_index);
-      uses.push_back(use_info);
+      OrtValueInfo::ConsumerInfo use_info(ep_node.ToExternal(), input_index);
+      consumer_infos.push_back(use_info);
     }
   }
 
@@ -127,9 +151,9 @@ Status EpValueInfo::GetUses(std::vector<OrtValueInfo::UseInfo>& uses) const {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
-Status EpValueInfo::GetNumUses(size_t& num_uses) const {
+Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  num_uses = 0;
+  num_consumers = 0;
 
   if (graph == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get number of uses of OrtValueInfo '", name,
@@ -147,16 +171,16 @@ Status EpValueInfo::GetNumUses(size_t& num_uses) const {
       continue;  // Node is not in this GraphViewer
     }
 
-    const EpNode* ep_node = it->second;
-    std::vector<size_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputOrOutputIndices(ep_node->inputs, name, input_indices));
+    const EpNode& ep_node = *it->second;
+    std::vector<int64_t> input_indices;
+    ORT_RETURN_IF_ERROR(GetInputIndices(ep_node, name, input_indices));
 
-    num_uses += input_indices.size();  // A single OrtNode can use an OrtValueInfo as an input more than once.
+    num_consumers += input_indices.size();  // A single OrtNode can use an OrtValueInfo as an input more than once.
   }
 
   return Status::OK();
 #else
-  ORT_UNUSED_PARAMETER(num_uses);
+  ORT_UNUSED_PARAMETER(num_consumers);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting uses of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)

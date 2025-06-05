@@ -139,19 +139,20 @@ static void CheckValueInfoUses(const GraphViewer& graph_viewer, const OrtValueIn
   std::vector<NodeArgUse> node_arg_uses;
   GetNodeArgUses(graph_viewer, *node_arg, node_arg_uses);
 
-  size_t api_num_uses = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueNumUses(value_info, &api_num_uses));
-  ASSERT_EQ(api_num_uses, node_arg_uses.size());
+  size_t api_num_consumers = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueNumConsumers(value_info, &api_num_consumers));
+  ASSERT_EQ(api_num_consumers, node_arg_uses.size());
 
-  std::vector<const OrtNode*> api_node_users(api_num_uses, nullptr);
-  std::vector<size_t> api_input_indices(api_num_uses, 0);
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueUses(value_info, api_node_users.data(), api_input_indices.data(), api_num_uses));
+  std::vector<const OrtNode*> api_node_consumers(api_num_consumers, nullptr);
+  std::vector<int64_t> api_input_indices(api_num_consumers, 0);
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueConsumers(value_info, api_node_consumers.data(), api_input_indices.data(),
+                                                api_num_consumers));
 
-  for (size_t i = 0; i < api_num_uses; i++) {
-    ASSERT_EQ(std::string(ort_api.Node_Name(api_node_users[i])), node_arg_uses[i].consumer_node->Name());
-    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node_users[i])), node_arg_uses[i].consumer_node->OpType());
-    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node_users[i])), node_arg_uses[i].consumer_node->Domain());
-    ASSERT_EQ(api_input_indices[i], node_arg_uses[i].input_index);
+  for (size_t i = 0; i < api_num_consumers; i++) {
+    ASSERT_EQ(std::string(ort_api.Node_Name(api_node_consumers[i])), node_arg_uses[i].consumer_node->Name());
+    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node_consumers[i])), node_arg_uses[i].consumer_node->OpType());
+    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node_consumers[i])), node_arg_uses[i].consumer_node->Domain());
+    ASSERT_EQ(api_input_indices[i], static_cast<int64_t>(node_arg_uses[i].input_index));
   }
 }
 

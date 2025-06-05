@@ -5330,41 +5330,44 @@ struct OrtApi {
   ORT_API2_STATUS(GetValueProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
                   _Out_opt_ size_t* producer_output_index);
 
-  /** \brief Get the number of uses of a value as an input to an OrtNode instance.
+  /** \brief Get the number of consumers of a value as a node input.
    *
    * A single OrtNode may use a single value for more than one input (e.g., Mul(x, x)), so the returned
-   * `num_uses` may be larger than the number of unique OrtNode instances that use the value.
+   * `num_consumers` may be larger than the number of unique OrtNode instances that consume the value.
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] num_uses Output parameter set to the number of uses of the OrtValueInfo as an input.
+   * \param[out] num_consumers Output parameter set to the number of consumers of the value.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueNumUses, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_uses);
+  ORT_API2_STATUS(GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
 
-  /** \brief Returns information (OrtNode and input index) for all uses of the given value as an input to
-   * an OrtNode instance.
+  /** \brief Returns information (OrtNode and input index) for all consumer nodes that use the value as an input.
    *
    * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
-   * Use GetValueNumUses() to get the number of uses of the value.
+   * Use GetValueNumConsumers() to get the number of consumers of the value.
    *
-   * An OrtNode instance may appear multiple times if it uses the given value more than once (e.g., Mul(x, x)).
+   * An OrtNode instance may appear multiple times if it uses the given value more than once.
+   * Example: For a node MulNode(x, x) that consumes the value 'x' twice, the following is returned:
+   *   - nodes: [MulNode, MulNode]
+   *   - input_indices: [0, 1]
    *
    * \param[in] OrtValueInfo The OrtValueInfo instance.
-   * \param[out] nodes Pre-allocated array of size `max_num_uses` that will be filled with OrtNode instances.
-   * \param[out] input_indices Pre-allocated array of `max_num_uses` elements that will be filled
-   *                           with input indices.
-   * \param[in] max_num_uses The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
-   *                         Typical usage sets this to the value of GetValueNumUses().
+   * \param[out] nodes Pre-allocated array of size `max_num_consumers` that will be filled with OrtNode instances.
+   * \param[out] input_indices Pre-allocated array of `max_num_consumers` elements that will be filled
+   *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
+   *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
+   * \param[in] max_num_consumers The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
+   *                              Typical usage sets this to the value of GetValueNumConsumers().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueUses, _In_ const OrtValueInfo* value_info,
-                  _Out_writes_all_(max_num_uses) const OrtNode** nodes,
-                  _Out_writes_all_(max_num_uses) size_t* input_indices,
-                  _In_ size_t max_num_uses);
+  ORT_API2_STATUS(GetValueConsumers, _In_ const OrtValueInfo* value_info,
+                  _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
+                  _Out_writes_all_(max_num_consumers) int64_t* input_indices,
+                  _In_ size_t max_num_consumers);
 
   /** \brief Returns the name of a OrtGraph instance.
    *
