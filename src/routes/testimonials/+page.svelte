@@ -13,6 +13,7 @@
 	import clearbladeLogo from '../../images/logos/clearblade-logo.png';
 	import deezerLogo from '../../images/logos/deezer-logo.png';
 	import goodnotesLogo from '../../images/logos/goodnotes-logo.png';
+	import graiphicLogo from '../../images/logos/graiphic-logo.png'
 	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
 	import hypefactorsLogo from '../../images/logos/hypefactors-logo.png';
 	import infarmLogo from '../../images/logos/infarm-logo.png';
@@ -134,6 +135,14 @@
 			author: 'Pedro Gómez, Senior Software Engineer, Goodnotes',
 			imgsrc: goodnotesLogo,
 			imgalt: 'Goodnotes logo'
+		},
+		{
+			title: 'Graiphic',
+			quote:
+				"With SOTA, we have developed the first complete ecosystem fully based on ONNX and ONNX Runtime. More than just supporting AI workloads, SOTA orchestrates graph-based computation at its core, enabling modular, scalable, and transparent execution across AI and non-AI domains alike. We believe ONNX is not just a format, it is the foundation for the future of graph-native computation.",
+			author: 'Youssef Menjour, CTO and Co-founder, Graiphic',
+			imgsrc: graiphicLogo,
+			imgalt: 'Graiphic logo'
 		},
 		{
 			title: 'Hugging Face',
