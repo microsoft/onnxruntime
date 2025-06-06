@@ -31,7 +31,7 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -39,7 +39,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -124,6 +124,21 @@ CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
+inline void CastToString(Int4x2 value, std::string& out) {
+  // Int4x2 contains two 4-bit signed integers
+  // Show both values as [first,second]
+  auto val0 = value.GetElem(0);  // First 4-bit value
+  auto val1 = value.GetElem(1);  // Second 4-bit value
+  out = "[" + std::to_string(static_cast<int>(val0)) + "," + std::to_string(static_cast<int>(val1)) + "]";
+}
+
+inline void CastToString(UInt4x2 value, std::string& out) {
+  // UInt4x2 contains two 4-bit unsigned integers
+  auto val0 = value.GetElem(0);  // First 4-bit value
+  auto val1 = value.GetElem(1);  // Second 4-bit value
+  out = "[" + std::to_string(static_cast<unsigned>(val0)) + "," + std::to_string(static_cast<unsigned>(val1)) + "]";
+}
+
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
@@ -146,6 +161,66 @@ CastFromString(const std::string& input, DstType& output) {
   static_assert(sizeof(DstType) <= sizeof(long long),
                 "largest supported signed integral type is long long");
   output = gsl::narrow_cast<DstType>(std::stoll(input));
+}
+
+inline void CastFromString(const std::string& in, Int4x2& out) {
+  // Parse string format: "[-3,7]" or "-3,7" or just "-3" (single value)
+  std::string trimmed = in;
+
+  // Remove brackets if present
+  if (!trimmed.empty() && trimmed.front() == '[') {
+    trimmed = trimmed.substr(1);
+  }
+  if (!trimmed.empty() && trimmed.back() == ']') {
+    trimmed = trimmed.substr(0, trimmed.length() - 1);
+  }
+
+  // Find comma separator
+  size_t comma_pos = trimmed.find(',');
+  int8_t val0 = 0, val1 = 0;
+  if (comma_pos != std::string::npos) {
+    // Two values: "val0,val1"
+    std::string val0_str = trimmed.substr(0, comma_pos);
+    std::string val1_str = trimmed.substr(comma_pos + 1);
+
+    val0 = static_cast<int8_t>(std::clamp(std::stoi(val0_str), -8, 7));
+    val1 = static_cast<int8_t>(std::clamp(std::stoi(val1_str), -8, 7));
+  } else {
+    // Single value - use for both elements
+    val0 = val1 = static_cast<int8_t>(std::clamp(std::stoi(trimmed), -8, 7));
+  }
+
+  out = Int4x2(val0, val1);
+}
+
+inline void CastFromString(const std::string& in, UInt4x2& out) {
+  // Parse string format: "[5,12]" or "5,12" or just "5" (single value)
+  std::string trimmed = in;
+
+  // Remove brackets if present
+  if (!trimmed.empty() && trimmed.front() == '[') {
+    trimmed = trimmed.substr(1);
+  }
+  if (!trimmed.empty() && trimmed.back() == ']') {
+    trimmed = trimmed.substr(0, trimmed.length() - 1);
+  }
+
+  // Find comma separator
+  size_t comma_pos = trimmed.find(',');
+  uint8_t val0 = 0, val1 = 0;
+  if (comma_pos != std::string::npos) {
+    // Two values: "val0,val1"
+    std::string val0_str = trimmed.substr(0, comma_pos);
+    std::string val1_str = trimmed.substr(comma_pos + 1);
+
+    val0 = static_cast<uint8_t>(std::clamp(std::stoi(val0_str), 0, 15));
+    val1 = static_cast<uint8_t>(std::clamp(std::stoi(val1_str), 0, 15));
+  } else {
+    // Single value - use for both elements
+    val0 = val1 = static_cast<uint8_t>(std::clamp(std::stoi(trimmed), 0, 15));
+  }
+
+  out = UInt4x2(val0, val1);
 }
 
 template <typename DstType>
@@ -234,6 +309,21 @@ struct TensorCasterNoSat {
   }
 };
 
+// TensorCasterNoSat should never be instantiated for Int4x2/UInt4x2
+template <typename DstType>
+struct TensorCasterNoSat<Int4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("Int4x2 should never use TensorCasterNoSat");
+  }
+};
+
+template <typename DstType>
+struct TensorCasterNoSat<UInt4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("UInt4x2 should never use TensorCasterNoSat");
+  }
+};
+
 // tensor string -> float 8
 template <typename DstType>
 struct TensorCasterNoSat<std::string, DstType> {
@@ -259,6 +349,58 @@ struct TensorCaster<MLFloat16, float> {
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBufferInParallel(in_data, out_data, shape_size, ctx.GetOperatorThreadPool());
+  }
+};
+
+// tensor Int4x2 -> float
+template <>
+struct TensorCaster<Int4x2, float> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<float>();
+
+    // Confirm we can unpack the int4
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size,
+                "The Int4x2 tensor size is invalid for casting to float.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+
+      // Extract signed high and low nibble
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
+      out_data[2 * i] = static_cast<float>(low_nibble);
+      out_data[2 * i + 1] = static_cast<float>(high_nibble);
+    }
+  }
+};
+
+// tensor UInt4x2 -> float
+template <>
+struct TensorCaster<UInt4x2, float> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<float>();
+
+    // Confirm we can unpack the uint4
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size,
+                "The UInt4x2 tensor size is invalid for casting to float.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+
+      // Extract unsigned high and low nibble
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+
+      out_data[2 * i] = static_cast<float>(low_nibble);
+      out_data[2 * i + 1] = static_cast<float>(high_nibble);
+    }
   }
 };
 
