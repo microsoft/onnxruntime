@@ -313,14 +313,7 @@ struct Int4ElementConverter<Float8E5M2FNUZ> {
     return Float8E5M2FNUZ(static_cast<float>(val), true);
   }
 };
-
 #endif
-
-// For unsigned int4 elements, we use the same converter but with uint8_t input
-template <typename DstType>
-static DstType ConvertUInt4Element(uint8_t val) {
-  return Int4ElementConverter<DstType>::Convert(static_cast<int8_t>(val));
-}
 
 // Helper struct for converting from any type to Int4/UInt4 elements
 template <typename SrcType>
@@ -459,6 +452,109 @@ struct ToInt4ElementConverter<std::string> {
 };
 }  // anonymous namespace
 
+#define DEFINE_INT4X2_TO_TYPE_CASTER(TYPE)                                                             \
+  template <>                                                                                          \
+  struct TensorCaster<Int4x2, TYPE, void> {                                                            \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const auto* in_data = in.Data<Int4x2>();                                                         \
+      auto* out_data = out.MutableData<TYPE>();                                                        \
+                                                                                                       \
+      const size_t shape_size = narrow<size_t>(shape.Size());                                          \
+      const size_t in_shape_size = narrow<size_t>(in.Shape().Size());                                  \
+      ORT_ENFORCE(in_shape_size * 2 == shape_size,                                                     \
+                  "The Int4x2 tensor size is invalid for casting.");                                   \
+                                                                                                       \
+      for (size_t i = 0; i < in_shape_size; ++i) {                                                     \
+        const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);                                 \
+                                                                                                       \
+        int8_t high_nibble = static_cast<int8_t>(packed) >> 4;                                         \
+        int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;                                     \
+                                                                                                       \
+        out_data[2 * i] = Int4ElementConverter<TYPE>::Convert(low_nibble);                             \
+        out_data[2 * i + 1] = Int4ElementConverter<TYPE>::Convert(high_nibble);                        \
+      }                                                                                                \
+    }                                                                                                  \
+  };
+
+// Define a macro to generate full specializations for UInt4x2 to specific types
+#define DEFINE_UINT4X2_TO_TYPE_CASTER(TYPE)                                                            \
+  template <>                                                                                          \
+  struct TensorCaster<UInt4x2, TYPE, void> {                                                           \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const auto* in_data = in.Data<UInt4x2>();                                                        \
+      auto* out_data = out.MutableData<TYPE>();                                                        \
+                                                                                                       \
+      const size_t shape_size = narrow<size_t>(shape.Size());                                          \
+      const size_t in_shape_size = narrow<size_t>(in.Shape().Size());                                  \
+      ORT_ENFORCE(in_shape_size * 2 == shape_size,                                                     \
+                  "The UInt4x2 tensor size is invalid for casting.");                                  \
+                                                                                                       \
+      for (size_t i = 0; i < in_shape_size; ++i) {                                                     \
+        const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);                                 \
+                                                                                                       \
+        uint8_t high_nibble = (packed >> 4) & 0x0F;                                                    \
+        uint8_t low_nibble = packed & 0x0F;                                                            \
+                                                                                                       \
+        out_data[2 * i] = Int4ElementConverter<TYPE>::Convert(low_nibble);                             \
+        out_data[2 * i + 1] = Int4ElementConverter<TYPE>::Convert(high_nibble);                        \
+      }                                                                                                \
+    }                                                                                                  \
+  };
+
+// Define a macro to generate full specializations for type to Int4x2
+#define DEFINE_TYPE_TO_INT4X2_CASTER(TYPE)                                                             \
+  template <>                                                                                          \
+  struct TensorCaster<TYPE, Int4x2, void> {                                                            \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const auto* in_data = in.Data<TYPE>();                                                           \
+      auto* out_data = out.MutableData<Int4x2>();                                                      \
+                                                                                                       \
+      const size_t in_shape_size = narrow<size_t>(shape.Size());                                       \
+      const size_t out_shape_size = narrow<size_t>(out.Shape().Size());                                \
+      ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,                                                 \
+                  "The output Int4x2 tensor size is invalid for casting from ", typeid(TYPE).name());  \
+                                                                                                       \
+      size_t i = 0;                                                                                    \
+      for (; i < in_shape_size - 1; i += 2) {                                                          \
+        int8_t low_val = ToInt4ElementConverter<TYPE>::ConvertToInt4(in_data[i]);                      \
+        int8_t high_val = ToInt4ElementConverter<TYPE>::ConvertToInt4(in_data[i + 1]);                 \
+        out_data[i / 2] = Int4x2(low_val, high_val);                                                   \
+      }                                                                                                \
+                                                                                                       \
+      if (i < in_shape_size) {                                                                         \
+        int8_t low_val = ToInt4ElementConverter<TYPE>::ConvertToInt4(in_data[i]);                      \
+        out_data[i / 2] = Int4x2(low_val, 0);                                                          \
+      }                                                                                                \
+    }                                                                                                  \
+  };
+
+// Define a macro to generate full specializations for type to UInt4x2
+#define DEFINE_TYPE_TO_UINT4X2_CASTER(TYPE)                                                            \
+  template <>                                                                                          \
+  struct TensorCaster<TYPE, UInt4x2, void> {                                                           \
+    void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const { \
+      const auto* in_data = in.Data<TYPE>();                                                           \
+      auto* out_data = out.MutableData<UInt4x2>();                                                     \
+                                                                                                       \
+      const size_t in_shape_size = narrow<size_t>(shape.Size());                                       \
+      const size_t out_shape_size = narrow<size_t>(out.Shape().Size());                                \
+      ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,                                                 \
+                  "The output UInt4x2 tensor size is invalid for casting from ", typeid(TYPE).name()); \
+                                                                                                       \
+      size_t i = 0;                                                                                    \
+      for (; i < in_shape_size - 1; i += 2) {                                                          \
+        uint8_t low_val = ToInt4ElementConverter<TYPE>::ConvertToUInt4(in_data[i]);                    \
+        uint8_t high_val = ToInt4ElementConverter<TYPE>::ConvertToUInt4(in_data[i + 1]);               \
+        out_data[i / 2] = UInt4x2(low_val, high_val);                                                  \
+      }                                                                                                \
+                                                                                                       \
+      if (i < in_shape_size) {                                                                         \
+        uint8_t low_val = ToInt4ElementConverter<TYPE>::ConvertToUInt4(in_data[i]);                    \
+        out_data[i / 2] = UInt4x2(low_val, 0);                                                         \
+      }                                                                                                \
+    }                                                                                                  \
+  };
+
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
@@ -563,120 +659,90 @@ struct TensorCaster<UInt4x2, float, void> {
     }
   }
 };
+// Generate all the required specializations
+// Int4x2/UInt4x2 to various types
+DEFINE_INT4X2_TO_TYPE_CASTER(int8_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(uint8_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(int16_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(uint16_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(int32_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(uint32_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(int64_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(uint64_t)
+DEFINE_INT4X2_TO_TYPE_CASTER(double)
+DEFINE_INT4X2_TO_TYPE_CASTER(bool)
+DEFINE_INT4X2_TO_TYPE_CASTER(MLFloat16)
+DEFINE_INT4X2_TO_TYPE_CASTER(BFloat16)
+DEFINE_INT4X2_TO_TYPE_CASTER(std::string)
+#if !defined(DISABLE_FLOAT8_TYPES)
+DEFINE_INT4X2_TO_TYPE_CASTER(Float8E4M3FN)
+DEFINE_INT4X2_TO_TYPE_CASTER(Float8E4M3FNUZ)
+DEFINE_INT4X2_TO_TYPE_CASTER(Float8E5M2)
+DEFINE_INT4X2_TO_TYPE_CASTER(Float8E5M2FNUZ)
+#endif
 
-// Specialization for Int4x2 to any non-float type
-template <typename DstType>
-struct TensorCaster<Int4x2, DstType,
-                    typename std::enable_if<!std::is_same<DstType, float>::value>::type> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<Int4x2>();
-    auto* out_data = out.MutableData<DstType>();
+DEFINE_UINT4X2_TO_TYPE_CASTER(int8_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(uint8_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(int16_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(uint16_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(int32_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(uint32_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(int64_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(uint64_t)
+DEFINE_UINT4X2_TO_TYPE_CASTER(double)
+DEFINE_UINT4X2_TO_TYPE_CASTER(bool)
+DEFINE_UINT4X2_TO_TYPE_CASTER(MLFloat16)
+DEFINE_UINT4X2_TO_TYPE_CASTER(BFloat16)
+DEFINE_UINT4X2_TO_TYPE_CASTER(std::string)
+#if !defined(DISABLE_FLOAT8_TYPES)
+DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E4M3FN)
+DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E4M3FNUZ)
+DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E5M2)
+DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E5M2FNUZ)
+#endif
 
-    // Confirm we can unpack the int4
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
-    ORT_ENFORCE(in_shape_size * 2 == shape_size,
-                "The Int4x2 tensor size is invalid for casting.");
+// Various types to Int4x2/UInt4x2
+DEFINE_TYPE_TO_INT4X2_CASTER(int8_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(uint8_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(int16_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(uint16_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(int32_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(uint32_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(int64_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(uint64_t)
+DEFINE_TYPE_TO_INT4X2_CASTER(float)
+DEFINE_TYPE_TO_INT4X2_CASTER(double)
+DEFINE_TYPE_TO_INT4X2_CASTER(bool)
+DEFINE_TYPE_TO_INT4X2_CASTER(MLFloat16)
+DEFINE_TYPE_TO_INT4X2_CASTER(BFloat16)
+DEFINE_TYPE_TO_INT4X2_CASTER(std::string)
+#if !defined(DISABLE_FLOAT8_TYPES)
+DEFINE_TYPE_TO_INT4X2_CASTER(Float8E4M3FN)
+DEFINE_TYPE_TO_INT4X2_CASTER(Float8E4M3FNUZ)
+DEFINE_TYPE_TO_INT4X2_CASTER(Float8E5M2)
+DEFINE_TYPE_TO_INT4X2_CASTER(Float8E5M2FNUZ)
+#endif
 
-    for (size_t i = 0; i < in_shape_size; ++i) {
-      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
-
-      // Extract signed high and low nibble
-      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
-      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
-
-      // Low nibble first, then high nibble
-      out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
-      out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
-    }
-  }
-};
-
-// Specialization for UInt4x2 to any non-float type
-template <typename DstType>
-struct TensorCaster<UInt4x2, DstType,
-                    typename std::enable_if<!std::is_same<DstType, float>::value>::type> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<UInt4x2>();
-    auto* out_data = out.MutableData<DstType>();
-
-    // Confirm we can unpack the uint4
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
-    ORT_ENFORCE(in_shape_size * 2 == shape_size,
-                "The UInt4x2 tensor size is invalid for casting.");
-
-    for (size_t i = 0; i < in_shape_size; ++i) {
-      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
-
-      // Extract unsigned high and low nibble
-      uint8_t high_nibble = (packed >> 4) & 0x0F;
-      uint8_t low_nibble = packed & 0x0F;
-
-      // Low nibble first, then high nibble
-      out_data[2 * i] = ConvertUInt4Element<DstType>(low_nibble);
-      out_data[2 * i + 1] = ConvertUInt4Element<DstType>(high_nibble);
-    }
-  }
-};
-
-// Tensor any type to Int4x2
-template <typename SrcType>
-struct TensorCaster<SrcType, Int4x2, void> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<Int4x2>();
-
-    // Confirm we can pack to int4x2
-    const size_t in_shape_size = narrow<size_t>(shape.Size());
-    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
-    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
-                "The output Int4x2 tensor size is invalid for casting from ", typeid(SrcType).name());
-
-    // Process pairs of elements, packing them into Int4x2
-    size_t i = 0;
-    for (; i < in_shape_size - 1; i += 2) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      int8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
-      out_data[i / 2] = Int4x2(low_val, high_val);
-    }
-
-    // Handle odd number of elements by padding with 0
-    if (i < in_shape_size) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      out_data[i / 2] = Int4x2(low_val, 0);
-    }
-  }
-};
-
-// Tensor any type to UInt4x2
-template <typename SrcType>
-struct TensorCaster<SrcType, UInt4x2, void> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<UInt4x2>();
-
-    // Confirm we can pack to uint4x2
-    const size_t in_shape_size = narrow<size_t>(shape.Size());
-    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
-    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
-                "The output UInt4x2 tensor size is invalid for casting from ", typeid(SrcType).name());
-
-    // Process pairs of elements, packing them into UInt4x2
-    size_t i = 0;
-    for (; i < in_shape_size - 1; i += 2) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      uint8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
-      out_data[i / 2] = UInt4x2(low_val, high_val);
-    }
-
-    // Handle odd number of elements by padding with 0
-    if (i < in_shape_size) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      out_data[i / 2] = UInt4x2(low_val, 0);
-    }
-  }
-};
+DEFINE_TYPE_TO_UINT4X2_CASTER(int8_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(uint8_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(int16_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(uint16_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(int32_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(uint32_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(int64_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(uint64_t)
+DEFINE_TYPE_TO_UINT4X2_CASTER(float)
+DEFINE_TYPE_TO_UINT4X2_CASTER(double)
+DEFINE_TYPE_TO_UINT4X2_CASTER(bool)
+DEFINE_TYPE_TO_UINT4X2_CASTER(MLFloat16)
+DEFINE_TYPE_TO_UINT4X2_CASTER(BFloat16)
+DEFINE_TYPE_TO_UINT4X2_CASTER(std::string)
+#if !defined(DISABLE_FLOAT8_TYPES)
+DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E4M3FN)
+DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E4M3FNUZ)
+DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E5M2)
+DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E5M2FNUZ)
+#endif
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
