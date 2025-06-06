@@ -234,6 +234,16 @@ struct TensorCasterNoSat {
   }
 };
 
+// Specialization to ensure TensorCasterNoSat is only used for Float8 destination types
+template <typename SrcType, typename DstType>
+struct TensorCasterNoSat<SrcType, DstType, 
+    typename std::enable_if<!IsOrtFloat8Type<DstType>::value>::type> {
+  void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    // For non-Float8 destination types, use the regular TensorCaster
+    TensorCaster<SrcType, DstType>{}.Cast(context, shape, in, out);
+  }
+};
+
 // tensor string -> float 8
 template <typename DstType>
 struct TensorCasterNoSat<std::string, DstType> {
