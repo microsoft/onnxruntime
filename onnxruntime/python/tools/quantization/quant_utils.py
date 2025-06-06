@@ -971,6 +971,51 @@ def model_has_infer_metadata(model: ModelProto) -> bool:
     return False
 
 
+def get_opset_version(model: ModelProto) -> int:
+    ai_onnx_domain = [opset for opset in model.opset_import if not opset.domain or opset.domain == "ai.onnx"]
+    if len(ai_onnx_domain) != 1:
+        raise ValueError("Failed to find proper ai.onnx domain")
+    opset_version = ai_onnx_domain[0].version
+
+    return opset_version
+
+
+def update_opset_version(model: ModelProto, weight_type: QuantType) -> ModelProto:
+    opset_version = get_opset_version(model)
+    target_opset_version = opset_version
+    weight_quant_type = getattr(weight_type, "tensor_type", weight_type)
+
+    if opset_version < 19 and weight_quant_type == onnx.TensorProto.FLOAT8E4M3FN:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support quantization to float 8. "
+            "Please update the model to opset >= 19. Automatically update the model to opset 19. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 19
+
+    elif opset_version == 10:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support node fusions. "
+            "Please update the model to opset >= 11 for better performance."
+        )
+
+    elif opset_version < 10:
+        logging.warning(
+            f"The original model opset version is {opset_version}, which does not support quantization. "
+            "Please update the model to opset >= 11. Automatically update the model to opset 11. "
+            "Please verify the quantized model."
+        )
+        target_opset_version = 11
+
+    if target_opset_version != opset_version:
+        model = onnx.version_converter.convert_version(model, target_opset_version)
+        # Additional nodes may be added to the model during the opset version conversion. Run shape inference
+        # to ensure all nodes are included in model.graph.value_info.
+        model = save_and_reload_model_with_shape_infer(model)
+
+    return model
+
+
 def load_model_with_shape_infer(model_path: Path) -> ModelProto:
     inferred_model_path = generate_identified_filename(model_path, "-inferred")
     onnx.shape_inference.infer_shapes_path(str(model_path), str(inferred_model_path))
