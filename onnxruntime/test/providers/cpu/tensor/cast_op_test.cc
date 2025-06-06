@@ -62,7 +62,7 @@ void TestCastOp(gsl::span<const SrcType> input,
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
   test.AddInput<SrcType>("input", dimensions, input.data(), input.size());
-  test.AddOutput<DstType>("output", dimensions, output.data(), input.size());
+  test.AddOutput<DstType>("output", dimensions, output.data(), output.size());
   if (saturate != Saturate::None) {
     test.AddAttribute<int64_t>("saturate", saturate == Saturate::True ? 1 : 0);
   }
