@@ -15,6 +15,13 @@ namespace onnxruntime::qnn::profiling_utils {
 
 /**
  * Traces a duration while in scope and records it to the specified `ProfilingEventStore`.
+ *
+ * Example usage:
+ *   // record duration of my_api_call()
+ *   {
+ *      DurationTrace my_api_call_trace{GetProfilingEventStore(), profiling::API_EVENT, "my_api_call"};
+ *      my_api_call();
+ *   }
  */
 class DurationTrace {
  public:
