@@ -1673,6 +1673,7 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+#ifdef _WIN32
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
 
@@ -1689,6 +1690,7 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 
   return data_type_list;
 }
+#endif
 
 static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
   std::size_t hash = 0;
@@ -1711,6 +1713,7 @@ static std::size_t GetStringHash(const std::string& string, std::size_t prev_has
   return hash;
 }
 
+#ifdef _WIN32
 [[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
   std::size_t final_hash = 0;
   const std::size_t node_hash_count = TelemetrySampleCount;
@@ -1754,7 +1757,9 @@ static std::size_t GetStringHash(const std::string& string, std::size_t prev_has
   hash_stream << std::hex << final_hash;
   return hash_stream.str();
 }
+#endif
 
+#ifdef _WIN32
 [[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
   std::size_t final_hash = 0;
   const std::size_t node_hash_count = TelemetrySampleCount;
@@ -1789,6 +1794,7 @@ static std::size_t GetStringHash(const std::string& string, std::size_t prev_has
   hash_stream << std::hex << final_hash;
   return hash_stream.str();
 }
+#endif
 
 common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
   if (prepacked_weights_container == nullptr) {
@@ -1954,7 +1960,7 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
- 
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
@@ -2005,6 +2011,7 @@ common::Status InferenceSession::Initialize() {
     std::string model_weight_type, model_graph_hash, model_weight_hash;
 #ifdef ORT_CALLER_FRAMEWORK
     if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
+#ifdef _WIN32
       InitializedTensorSet initializers = graph.GetAllInitializedTensors();
       model_weight_type = ModelWeightDataType(graph);
       model_graph_hash = ComputeModelGraphHash(graph);
@@ -2012,6 +2019,7 @@ common::Status InferenceSession::Initialize() {
       SetWeightDataType(model_weight_type);
       SetGraphHash(model_graph_hash);
       SetWeightHash(model_weight_hash);
+#endif
     }
 #endif
 
