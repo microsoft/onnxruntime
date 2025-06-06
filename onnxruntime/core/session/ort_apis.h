@@ -621,6 +621,7 @@ ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph,
 ORT_API(size_t, Graph_NumNodes, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node);
 ORT_API(const char*, Node_Name, const OrtNode* node);
 ORT_API(const char*, Node_OperatorType, const OrtNode* node);
 ORT_API(const char*, Node_Domain, const OrtNode* node);
@@ -631,11 +632,11 @@ ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
 ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
-ORT_API_STATUS_IMPL(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _In_ size_t* num_implicit_inputs);
+ORT_API_STATUS_IMPL(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
 ORT_API_STATUS_IMPL(Node_GetImplicitInputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
                     _In_ size_t max_num_implicit_inputs);
-ORT_API_STATUS_IMPL(Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs);
+ORT_API_STATUS_IMPL(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
 ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,

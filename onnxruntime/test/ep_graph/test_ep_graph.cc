@@ -4,13 +4,14 @@
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
+#include <vector>
 
 #include "core/common/common.h"
 #include "core/framework/tensor_type_and_shape.h"
-#include "core/graph/ep_api_types.h"
-#include "core/graph/model.h"
+#include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
 #include "test/util/include/test_environment.h"
@@ -20,103 +21,6 @@ extern std::unique_ptr<Ort::Env> ort_env;
 
 namespace onnxruntime {
 namespace test {
-
-/// <summary>
-/// Utility that loads a model from file and provides a OrtGraph view of the model for testing the public graph APIs.
-/// </summary>
-struct TestGraph {
-  explicit TestGraph(std::shared_ptr<Model> model)
-      : model(model), graph_viewer(model->MainGraph()) {
-    api_graph = EpGraph::Create(graph_viewer);
-  }
-
-  static std::unique_ptr<TestGraph> Load(const ORTCHAR_T* model_path) {
-    std::shared_ptr<Model> model;
-    auto status = Model::Load(model_path, model, nullptr, DefaultLoggingManager().DefaultLogger());
-    if (!status.IsOK()) {
-      return nullptr;
-    }
-
-    return std::make_unique<TestGraph>(model);
-  }
-
-  const OrtGraph& GetOrtGraph() const { return *api_graph; }
-
-  std::shared_ptr<Model> model;
-  GraphViewer graph_viewer;
-  std::unique_ptr<OrtGraph> api_graph;
-};
-
-static void GetInputIndices(const Node& consumer_node,
-                            const std::string& name,
-                            /*out*/ std::vector<int64_t>& indices) {
-  bool found = false;
-  auto add_input_indices =
-      [&found, &name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs,
-                                bool is_implicit) -> void {
-    for (size_t i = 0; i < input_defs.size(); i++) {
-      if (input_defs[i]->Name() == name) {
-        indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
-        found = true;
-      }
-    }
-  };
-
-  const auto node_input_defs = consumer_node.InputDefs();
-  indices.reserve(node_input_defs.size());
-  add_input_indices(node_input_defs, false);
-
-  if (!found) {
-    // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
-    // that are consumed by nodes within their subgraph.
-    add_input_indices(consumer_node.ImplicitInputDefs(), true);
-  }
-
-  ASSERT_TRUE(found) << "Did not find input index of NodeArg " << name;
-}
-
-static void GetOutputIndex(const Node& producer_node, const std::string& name, /*out*/ size_t& index) {
-  const auto outputs = producer_node.OutputDefs();
-
-  bool found = false;
-  for (size_t i = 0; i < outputs.size(); i++) {
-    if (outputs[i]->Name() == name) {
-      index = i;
-      found = true;
-    }
-  }
-  ASSERT_TRUE(found) << "Did not find output index of NodeArg " << name;
-}
-
-struct NodeArgUse {
-  NodeArgUse(const Node* node, int64_t index) : consumer_node(node), input_index(index) {}
-  const Node* consumer_node = nullptr;
-  int64_t input_index = -1;
-};
-
-// Returns "uses" (i.e., consumer node + input index) of a NodeArg from the original graph.
-static void GetNodeArgUses(const GraphViewer& graph_viewer, const NodeArg& node_arg, std::vector<NodeArgUse>& uses) {
-  std::vector<const Node*> nodes = graph_viewer.GetConsumerNodes(node_arg.Name());
-  if (nodes.empty()) {
-    return;
-  }
-
-  uses.reserve(nodes.size());
-  for (const Node* node : nodes) {
-    bool within_graph_viewer = node != nullptr && graph_viewer.GetNode(node->Index()) != nullptr;
-    if (!within_graph_viewer) {
-      continue;  // Node is not in this GraphViewer
-    }
-
-    std::vector<int64_t> input_indices;
-    GetInputIndices(*node, node_arg.Name(), input_indices);
-
-    for (int64_t input_index : input_indices) {
-      NodeArgUse use_info(node, input_index);
-      uses.push_back(use_info);
-    }
-  }
-}
 
 // Checks that the producer of a OrtValueInfo obtained from the public C API is valid.
 static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtValueInfo* value_info,
@@ -144,27 +48,27 @@ static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtVal
       ASSERT_EQ(std::string(ort_api.Node_Domain(api_producer_node)), producer_node->Domain());
 
       size_t output_index = 0;
-      GetOutputIndex(*producer_node, node_arg->Name(), output_index);
+      ASSERT_STATUS_OK(GetOutputIndex(*producer_node, node_arg->Name(), output_index));
       ASSERT_EQ(api_producer_output_index, output_index);
     }
   }
 }
 
-// Checks that "uses" of a OrtValueInfo obtained from the public C API are valid by comparing to the original graph.
-static void CheckValueInfoUses(const GraphViewer& graph_viewer, const OrtValueInfo* value_info,
-                               const NodeArg* node_arg) {
+// Checks that consumers of a OrtValueInfo obtained from the public C API are valid by comparing to the original graph.
+static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtValueInfo* value_info,
+                                    const NodeArg* node_arg) {
   const OrtApi& ort_api = Ort::GetApi();
 
   if (!node_arg->Exists()) {
     return;
   }
 
-  std::vector<NodeArgUse> node_arg_uses;
-  GetNodeArgUses(graph_viewer, *node_arg, node_arg_uses);
+  std::vector<NodeArgConsumer> node_arg_consumers;
+  ASSERT_STATUS_OK(GetNodeArgConsumers(graph_viewer, *node_arg, node_arg_consumers));
 
   size_t api_num_consumers = 0;
   ASSERT_ORTSTATUS_OK(ort_api.GetValueNumConsumers(value_info, &api_num_consumers));
-  ASSERT_EQ(api_num_consumers, node_arg_uses.size());
+  ASSERT_EQ(api_num_consumers, node_arg_consumers.size());
 
   std::vector<const OrtNode*> api_node_consumers(api_num_consumers, nullptr);
   std::vector<int64_t> api_input_indices(api_num_consumers, 0);
@@ -172,10 +76,10 @@ static void CheckValueInfoUses(const GraphViewer& graph_viewer, const OrtValueIn
                                                 api_num_consumers));
 
   for (size_t i = 0; i < api_num_consumers; i++) {
-    ASSERT_EQ(std::string(ort_api.Node_Name(api_node_consumers[i])), node_arg_uses[i].consumer_node->Name());
-    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node_consumers[i])), node_arg_uses[i].consumer_node->OpType());
-    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node_consumers[i])), node_arg_uses[i].consumer_node->Domain());
-    ASSERT_EQ(api_input_indices[i], static_cast<int64_t>(node_arg_uses[i].input_index));
+    ASSERT_EQ(std::string(ort_api.Node_Name(api_node_consumers[i])), node_arg_consumers[i].node->Name());
+    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_node_consumers[i])), node_arg_consumers[i].node->OpType());
+    ASSERT_EQ(std::string(ort_api.Node_Domain(api_node_consumers[i])), node_arg_consumers[i].node->Domain());
+    ASSERT_EQ(api_input_indices[i], static_cast<int64_t>(node_arg_consumers[i].input_index));
   }
 }
 
@@ -207,6 +111,8 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       ASSERT_EQ(api_onnx_type, node_arg_type_info->type);
 
       if (api_onnx_type == ONNX_TYPE_TENSOR) {
+        // Only validating Tensors (not checking Map, Sequence, etc.) values because these C APIs for getting
+        // type/shape information existed long before the new ORT graph IR APIs and are tested elsewhere.
         const OrtTensorTypeAndShapeInfo* api_type_shape = nullptr;
         ASSERT_ORTSTATUS_OK(ort_api.CastTypeInfoToTensorInfo(api_type_info, &api_type_shape));
         ASSERT_NE(api_type_shape, nullptr);
@@ -229,25 +135,14 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
         for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
           ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
         }
-      } else {
-        // TODO(adrianlizarraga): Check Map, Sequence, etc.
       }
 
       CheckValueInfoProducer(graph_viewer, value_info, node_arg);
-      CheckValueInfoUses(graph_viewer, value_info, node_arg);
+      CheckValueInfoConsumers(graph_viewer, value_info, node_arg);
     } else {
       ASSERT_EQ(value_info, nullptr);  // A missing optional input has a null OrtValueInfo.
     }
   }
-}
-
-static std::vector<const NodeArg*> ToVector(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
-  std::vector<const NodeArg*> result;
-  result.reserve(node_args.size());
-  for (const NodeArg* node_arg : node_args) {
-    result.push_back(node_arg);
-  }
-  return result;
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
@@ -272,6 +167,19 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   std::vector<const OrtValueInfo*> api_graph_outputs(api_num_graph_outputs, nullptr);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetOutputs(&api_graph, api_graph_outputs.data(), api_graph_outputs.size()));
   CheckValueInfosCApi(graph_viewer, api_graph_outputs, graph_output_node_args);
+
+  // Check if it has a parent node.
+  const Node* parent_node = graph_viewer.ParentNode();
+  const bool has_parent_node = parent_node != nullptr;
+  const OrtNode* api_parent_node = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetParentNode(&api_graph, &api_parent_node));
+  const bool api_has_parent_node = api_parent_node != nullptr;
+  ASSERT_EQ(api_has_parent_node, has_parent_node);
+  if (has_parent_node) {
+    ASSERT_EQ(std::string(ort_api.Node_Name(api_parent_node)), parent_node->Name());
+    ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_parent_node)), parent_node->OpType());
+    ASSERT_EQ(std::string(ort_api.Node_Domain(api_parent_node)), parent_node->Domain());
+  }
 
   // Check all nodes.
   size_t num_nodes = ort_api.Graph_NumNodes(&api_graph);
@@ -342,7 +250,7 @@ TEST(EpGraphTest, BasicCApiUse) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
-  CheckGraphCApi(test_graph->graph_viewer, test_graph->GetOrtGraph());
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
 // Traverse OrtGraph with Scan nodes, which tests handling of subgraphs, implicit inputs, and variadic I/O.
@@ -350,7 +258,7 @@ TEST(EpGraphTest, CheckModelWithSubgraphs) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
-  CheckGraphCApi(test_graph->graph_viewer, test_graph->GetOrtGraph());
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 }  // namespace test
 }  // namespace onnxruntime

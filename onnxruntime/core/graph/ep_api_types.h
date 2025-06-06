@@ -54,17 +54,12 @@ struct SubgraphState {
 /// Concrete implementation of OrtNode used in the OrtEpApi.
 /// </summary>
 struct EpNode : public OrtNode {
+ private:
+  struct PrivateTag {};  // Used to prevent use of public constructor (use static EpNode::Create())
+                         // Need to make the constructor public for std::make_unique().
+
  public:
-  EpNode(const EpGraph* ep_graph, const Node& node, InlinedVector<EpValueInfo*>&& inputs,
-         InlinedVector<EpValueInfo*>&& outputs, std::vector<EpValueInfo*>&& implicit_inputs,
-         std::vector<SubgraphState>&& subgraphs)
-      : OrtNode(OrtGraphIrApi::kEpApi),
-        ep_graph(ep_graph),
-        node(node),
-        inputs(std::move(inputs)),
-        outputs(std::move(outputs)),
-        implicit_inputs(std::move(implicit_inputs)),
-        subgraphs(std::move(subgraphs)) {}
+  EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpNode, which wraps an onnxruntime::Node.
@@ -134,9 +129,9 @@ struct EpGraph : public OrtGraph {
   };
 
  public:
-  EpGraph(const GraphViewer& graph_viewer, PrivateTag) : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer(graph_viewer) {}
+  EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag);
 
-  static std::unique_ptr<EpGraph> Create(const GraphViewer& graph_viewer);
+  static std::unique_ptr<EpGraph> Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node = nullptr);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -148,8 +143,10 @@ struct EpGraph : public OrtGraph {
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
   size_t NumNodes() const override;
   std::vector<const OrtNode*> GetNodes(int order) const override;
+  Status GetParentNode(const OrtNode*& parent_node) const override;
 
   const GraphViewer& graph_viewer;
+  const EpNode* parent_node = nullptr;
   std::vector<std::unique_ptr<EpNode>> nodes;
   IndexToEpNodeMap index_to_ep_node;
 

@@ -2539,6 +2539,16 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node) {
+  API_IMPL_BEGIN
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'node' argument is NULL");
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetParentNode(*node));
+  return nullptr;
+  API_IMPL_END
+}
+
 //
 // OrtNode
 //
@@ -2609,7 +2619,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetNumImplicitInputs, _In_ const OrtNode* node, _In_ size_t* num_implicit_inputs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs) {
   API_IMPL_BEGIN
   if (num_implicit_inputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_implicit_inputs' argument is NULL");
@@ -2639,7 +2649,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
   API_IMPL_BEGIN
   if (num_subgraphs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_subgraphs' argument is NULL");
@@ -3325,6 +3335,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetOutputs,
     &OrtApis::Graph_NumNodes,
     &OrtApis::Graph_GetNodes,
+    &OrtApis::Graph_GetParentNode,
     &OrtApis::Node_Name,
     &OrtApis::Node_OperatorType,
     &OrtApis::Node_Domain,

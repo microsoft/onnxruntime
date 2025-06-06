@@ -34,6 +34,9 @@ static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr
   return result;
 }
 
+EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
+    : OrtNode(OrtGraphIrApi::kEpApi), ep_graph(ep_graph), node(node) {}
+
 std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map) {
   auto init_ep_node_io = [&ep_graph, &value_infos_map](ConstPointerContainer<std::vector<NodeArg*>> node_args,
@@ -47,6 +50,7 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
       value_infos[i] = node_arg->Exists() ? AddValueInfo(value_infos_map, *node_arg, ep_graph) : nullptr;
     }
   };
+  auto ep_node = std::make_unique<EpNode>(ep_graph, node, PrivateTag{});
 
   auto node_inputs = node.InputDefs();
   InlinedVector<EpValueInfo*> ep_node_inputs(node_inputs.size(), nullptr);
@@ -69,13 +73,16 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
       SubgraphState subgraph_state;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      subgraph_state.ep_subgraph = EpGraph::Create(*subgraph_state.subgraph_viewer);
+      subgraph_state.ep_subgraph = EpGraph::Create(*subgraph_state.subgraph_viewer, ep_node.get());
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
     }
   }
 
-  return std::make_unique<EpNode>(ep_graph, node, std::move(ep_node_inputs), std::move(ep_node_outputs),
-                                  std::move(ep_node_implicit_inputs), std::move(ep_node_subgraphs));
+  ep_node->inputs = std::move(ep_node_inputs);
+  ep_node->outputs = std::move(ep_node_outputs);
+  ep_node->implicit_inputs = std::move(ep_node_implicit_inputs);
+  ep_node->subgraphs = std::move(ep_node_subgraphs);
+  return ep_node;
 }
 
 const std::string& EpNode::Name() const { return node.Name(); }
@@ -301,9 +308,12 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
   nodes_[i] = ep_node;
 }
 
+EpGraph::EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer(graph_viewer), parent_node(parent_node) {}
+
 // Static class function to create a std::unique_ptr<EpGraph>.
-std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, parent_ep_node, PrivateTag{});
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   InlinedVector<EpValueInfo*> graph_inputs;
@@ -382,6 +392,11 @@ std::vector<const OrtNode*> EpGraph::GetNodes(int order) const {
     result.push_back(ep_node->ToExternal());
   }
   return result;
+}
+
+Status EpGraph::GetParentNode(const OrtNode*& result) const {
+  result = parent_node != nullptr ? parent_node->ToExternal() : nullptr;
+  return Status::OK();
 }
 
 }  // namespace onnxruntime

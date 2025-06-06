@@ -141,6 +141,10 @@ struct ModelEditorGraph : public OrtGraph {
     }
     return result;
   }
+  Status GetParentNode(const OrtNode*& /*parent_node*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the parent node for OrtGraph");
+  }
 
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> inputs;
   onnxruntime::InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>> outputs;

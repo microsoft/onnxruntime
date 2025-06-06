@@ -5464,6 +5464,21 @@ struct OrtApi {
   ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, int order,
                   _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
+  /** \brief Get the parent node for the given graph, if any exists.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. This function enables
+   * access to the parent node (e.g., the If and Loop node) from a nested subgraph.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] node Output parameter that is set to the graph's parent node.
+   *                  Set to NULL if a parent node does not exists (e.g., for a top-level graph).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node);
+
   /** \brief Returns the name of an OrtNode instance.
    *
    * \param[in] node The OrtNode instance.
@@ -5569,7 +5584,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _In_ size_t* num_implicit_inputs);
+  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
 
   /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
    *
@@ -5605,7 +5620,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs);
+  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
