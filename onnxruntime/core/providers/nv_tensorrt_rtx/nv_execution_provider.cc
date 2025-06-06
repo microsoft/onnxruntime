@@ -2260,6 +2260,18 @@ common::Status NvExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>
   return Status::OK();
 }
 
+const InlinedVector<const Node*> NvExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> ep_context_nodes;
+  for (auto& model : ep_context_models_) {
+    auto& graph = model->MainGraph();
+    for (int i = 0; i < graph.MaxNodeIndex(); i++) {
+      auto node = graph.GetNode(i);
+      ep_context_nodes.push_back(node);
+    }
+  }
+  return ep_context_nodes;
+}
+
 Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& graph_body_viewer,
                                                            const Node& fused_node,
                                                            std::unordered_map<std::string, size_t>& input_map,
@@ -2543,15 +2555,16 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
         ep_cache_context_attr_ = std::filesystem::path(engine_cache_relative_path_to_context_model_dir).append(cache_file_name.string()).string();
       }
       std::string compute_capability_hw_compat = compute_capability_ + "+";
-      std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto{CreateCtxModel(graph_body_viewer,
-                                                                             ep_cache_context_attr_,
-                                                                             reinterpret_cast<char*>(serialized_engine->data()),
-                                                                             serialized_engine->size(),
-                                                                             ep_context_embed_mode_,
-                                                                             compute_capability_hw_compat,
-                                                                             model_path_,
-                                                                             GetLogger())};
-      DumpCtxModel(model_proto.get(), ctx_model_path_);
+
+      ep_context_models_.push_back(CreateCtxNode(graph_body_viewer,
+                                    ep_cache_context_attr_,
+                                    reinterpret_cast<char*>(serialized_engine->data()),
+                                    serialized_engine->size(),
+                                    ep_context_embed_mode_,
+                                    compute_capability_hw_compat,
+                                    model_path_,
+                                    GetLogger(),
+                                    fused_node.Name()));
     }
   }
 
