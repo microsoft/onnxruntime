@@ -798,6 +798,14 @@ if(onnxruntime_USE_COREML)
 
 endif()
 
+if(onnxruntime_USE_KLEIDIAI)
+  # Disable the KleidiAI tests
+  set(KLEIDIAI_BUILD_TESTS  OFF)
+
+  onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  onnxruntime_fetchcontent_makeavailable(kleidiai)
+endif()
+
 set(onnxruntime_LINK_DIRS)
 if (onnxruntime_USE_CUDA)
   find_package(CUDAToolkit REQUIRED)

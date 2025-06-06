@@ -9,6 +9,7 @@ namespace onnxruntime {
 
 bool GemmPackBFp32(AllocatorPtr& alloc,
                    const Tensor& tensor_b,
+                   bool trans_a,
                    bool trans_b,
                    IAllocatorUniquePtr<void>& packed_b,
                    size_t& packed_b_size,

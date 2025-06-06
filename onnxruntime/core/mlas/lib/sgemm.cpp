@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#include "kleidiAI/mlasi_kleidiai.h"
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1573,6 +1573,11 @@ MlasGemmBatch(
     )
 {
 
+    kai_check_if_supported(
+        ARMKleidiAI::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        return;
+    );
+
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1637,6 +1642,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1661,6 +1668,12 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
+    kai_check_if_supported(
+        return ARMKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
+    );
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1676,6 +1689,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1712,6 +1726,13 @@ Return Value:
 
 --*/
 {
+    kai_check_if_supported(
+        ARMKleidiAI::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+        return;
+    );
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+
+
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 

@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "kleidiAI/mlasi_kleidiai.h"
 
 //
 // Define the number of working buffer elements required per thread.
@@ -861,6 +862,11 @@ Return Value:
 
 --*/
 {
+    kai_check_if_supported(
+        ARMKleidiAI::MlasConv(Parameters, Input, Filter, Bias, WorkingBuffer, Output, ThreadPool);
+        return;
+    );
+
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
@@ -1094,6 +1100,13 @@ Return Value:
 
 --*/
 {
+    kai_check_if_supported(
+        ARMKleidiAI::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels, InputShape,
+                                     KernelShape, DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+                                     Activation, WorkingBufferSize, Beta, ThreadPool);
+        return;
+    );
+
     //
     // Save the convolution parameters.
     //
