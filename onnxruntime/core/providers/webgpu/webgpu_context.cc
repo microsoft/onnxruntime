@@ -149,9 +149,11 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
       device_features_.insert(supported_features.features[i]);
     }
     // cache adapter info
+#if !defined(__wasm__)
     if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
       adapter_info_.nextInChain = &subgroup_matrix_configs_;
     }
+#endif
     ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
 
     // create buffer manager

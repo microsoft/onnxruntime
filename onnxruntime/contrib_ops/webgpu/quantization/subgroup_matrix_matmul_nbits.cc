@@ -83,7 +83,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
-            let b_value = input_b[b_idx]; // input_b[b_idx+step];
+            let b_value = input_b[b_idx];
             let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
             let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
             let tile_b_base = row * tile_k + col;
@@ -111,7 +111,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
-            let b_value = input_b[b_idx+step];
+            let b_value = input_b[b_idx];
             let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(128)) * scale;
             let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(128)) * scale;
             let tile_b_base = row * tile_k + col;
