@@ -719,12 +719,12 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
     captured_commands_map_[session_id_].push_back({program_artifact.compute_pipeline,
                                                    bind_group,
                                                    {x, y, z}});
+  } else {
+    // Execute the command directly
+    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+    compute_pass_encoder.SetBindGroup(0, bind_group);
+    compute_pass_encoder.DispatchWorkgroups(x, y, z);
   }
-
-  // Execute the command directly
-  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-  compute_pass_encoder.SetBindGroup(0, bind_group);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
 }
 
 void WebGpuContext::CaptureBegin(uint32_t session_id) {
