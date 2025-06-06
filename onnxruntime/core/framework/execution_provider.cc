@@ -133,9 +133,9 @@ void ExecutionProviders::LogProviderOptions(const std::string& provider_id,
         TraceLoggingBool(captureState, "isCaptureState"));
   }
 #else
-      ORT_UNUSED_PARAMETER(provider_id);
-      ORT_UNUSED_PARAMETER(providerOptions);
-      ORT_UNUSED_PARAMETER(captureState);
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(providerOptions);
+  ORT_UNUSED_PARAMETER(captureState);
 #endif
 }
 
