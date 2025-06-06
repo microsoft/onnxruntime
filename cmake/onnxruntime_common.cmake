@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
@@ -100,6 +102,14 @@ if(WIN32)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
 endif()
+
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set_source_files_properties(
+      ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+      PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+    )
+endif()
+
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
@@ -157,10 +167,6 @@ endif()
 
 if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
-endif()
-
-if(MSVC)
-  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
 endif()
 
 if(MSVC)

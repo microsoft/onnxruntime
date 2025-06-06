@@ -224,36 +224,6 @@ void CpuTensorConsoleDumper::Print(const char* name, const OrtValue& value) cons
   Print(name, tensor);
 }
 
-void CpuTensorConsoleDumper::Print(const char* name, int index, bool end_line) const {
-  if (!is_enabled_)
-    return;
-
-  std::unique_lock<std::mutex> lock(s_mutex);
-  std::cout << std::string(name) << "[" << index << "]";
-
-  if (end_line) {
-    std::cout << std::endl;
-  }
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const std::string& value, bool end_line) const {
-  if (!is_enabled_)
-    return;
-
-  std::unique_lock<std::mutex> lock(s_mutex);
-  std::cout << std::string(name) << "=" << value;
-
-  if (end_line) {
-    std::cout << std::endl;
-  }
-}
-
-void CpuTensorConsoleDumper::Print(const char* name, const size_t* tensor, int dim0, int dim1) const {
-  if (!is_enabled_)
-    return;
-  DumpCpuTensor<size_t>(name, tensor, dim0, dim1);
-}
-
 #define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                                     \
   void CpuTensorConsoleDumper::Print(const char* name, const dtype* tensor, int dim0, int dim1) const {                     \
     if (is_enabled_)                                                                                                        \
@@ -294,15 +264,6 @@ void CpuTensorConsoleDumper::Print(const char*, const Tensor&) const {
 }
 
 void CpuTensorConsoleDumper::Print(const char*, const OrtValue&) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, int, bool) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const std::string&, bool) const {
-}
-
-void CpuTensorConsoleDumper::Print(const char*, const size_t*, int, int) const {
 }
 
 #define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                            \
