@@ -60,6 +60,9 @@
 #endif
 #include "core/providers/cpu/controlflow/utils.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
+#ifdef USE_QNN
+#include "core/optimizer/if_to_where_transformer.h"
+#endif
 #ifdef USE_DML  // TODO: This is necessary for the workaround in TransformGraph
 #include "core/providers/dml/DmlExecutionProvider/src/DmlGraphFusionTransformer.h"
 #include "core/providers/dml/DmlExecutionProvider/src/DmlRuntimeGraphFusionTransformer.h"
@@ -1907,6 +1910,16 @@ common::Status InferenceSession::Initialize() {
                                                                minimal_build_optimization_handling,
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
+
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+      const IExecutionProvider* qnnExecutionProvider = execution_providers_.Get(kQnnExecutionProvider);
+      if (qnnExecutionProvider) {
+        const InlinedHashSet<std::string_view> qnn_ep = {onnxruntime::kQnnExecutionProvider};
+        auto dynamicQuantizeConvInteger_transformer = std::make_unique<IfToWhereTransformer>(qnn_ep);
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dynamicQuantizeConvInteger_transformer),
+                                                                       onnxruntime::TransformerLevel::Level1));
+      }
+#endif
 
 #ifdef USE_DML
       const IExecutionProvider* dmlExecutionProvider = execution_providers_.Get(kDmlExecutionProvider);

@@ -7,8 +7,6 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 
-using namespace ONNX_NAMESPACE;
-using namespace onnxruntime::common;
 namespace onnxruntime {
 
 static Status InlineSubgraph(
@@ -69,8 +67,7 @@ static Status InlineSubgraph(
       }
       if (!mapped_input) {
         LOGS(logger, ERROR) << "Node input '" << input_arg->Name() << "' not found in main graph for node '" << node.Name() << "'";
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Node input '", input_arg->Name(), "' not found in main graph for node '", node.Name(), "'");
+        continue;
       }
       inputs.push_back(mapped_input);
     }
@@ -100,8 +97,8 @@ static Status InlineSubgraph(
     auto it = name_to_nodearg.find(output->Name());
     NodeArg* mapped_output = (it != name_to_nodearg.end()) ? it->second : main_graph.GetNodeArg(output->Name());
     if (!mapped_output) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                             "Missing output: ", output->Name(), " in main graph after inlining.");
+      LOGS(logger, VERBOSE) << "Skipping inlining: Missing output: ", output->Name(), " in main graph after inlining.";
+      return Status::OK();  // Skip Transformation
     }
     subgraph_outputs.push_back(mapped_output);
   }
@@ -124,6 +121,11 @@ static bool CanTransformIfToWhere(const Node& if_node) {
     if (type_proto->value_case() != onnx::TypeProto::kTensorType) {
       return false;
     }
+
+    // Sequence type is not supported by Where Op
+    if (type_proto->value_case() == onnx::TypeProto::kSequenceType) {
+      return false;
+    }
   }
   return true;
 }
@@ -139,11 +141,6 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     if (if_node.OpType() != "If")
       continue;
 
-    if (!graph_utils::IsSupportedProvider(if_node, GetCompatibleExecutionProviders())) {
-      // If not Qnn Execution Provider
-      continue;
-    }
-
     if (!CanTransformIfToWhere(if_node)) {
       LOGS(logger, VERBOSE) << "Skipping IfToWhere transformation for node " << if_node.Name()
                             << " due to optional or unsupported output types.";
@@ -151,8 +148,6 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     }
 
     const NodeArg* cond_arg = if_node.InputDefs()[0];
-    if (!cond_arg)
-      continue;
     const onnx::TypeProto* type_proto = cond_arg->TypeAsProto();
     if (type_proto && type_proto->has_tensor_type()) {
       if (type_proto->tensor_type().elem_type() != ONNX_NAMESPACE::TensorProto_DataType_BOOL) {
@@ -165,11 +160,11 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     // Extract the two subgraph branches
     Graph* then_sub = if_node.GetMutableGraphAttribute("then_branch");
     Graph* else_sub = if_node.GetMutableGraphAttribute("else_branch");
-    if (!then_sub || !else_sub) {
-      LOGS(logger, INFO) << "If node missing subgraphs!";
+
+    if (then_sub->GetOutputs().size() != else_sub->GetOutputs().size() || then_sub->GetOutputs().size() != if_node.OutputDefs().size()) {
+      LOGS(logger, INFO) << "Mismatch in output sizes between then/else branches and If node.";
       continue;
     }
-
     std::unordered_map<std::string, NodeArg*> then_map, else_map;
     std::vector<NodeArg*> then_outputs, else_outputs;
     ORT_RETURN_IF_ERROR(InlineSubgraph(graph, *then_sub, then_map, then_outputs, logger));
@@ -178,11 +173,6 @@ Status IfToWhereTransformer::ApplyImpl(Graph& graph,
     // Build one Where node per original If output
     const auto& if_outputs = if_node.MutableOutputDefs();
     size_t num_outputs = if_outputs.size();
-
-    if (then_outputs.size() != else_outputs.size() || then_outputs.size() != if_outputs.size()) {
-      LOGS(logger, INFO) << "Mismatch in output sizes between then/else branches and If node.";
-      continue;
-    }
 
     for (size_t i = 0; i < num_outputs; ++i) {
       NodeArg* out_arg = if_outputs[i];
