@@ -1,10 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
 #include <cassert>
 #include <cstring>
 #include <functional>
 #include <mutex>
+#include <vector>
 #include <sstream>
 
 #include "core/common/common.h"
@@ -2386,16 +2388,306 @@ ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoName, _In_ const OrtValueInfo* value_info,
                     _Out_ const char** name) {
   API_IMPL_BEGIN
-  *name = value_info->name.c_str();
+  *name = value_info->Name().c_str();
   return nullptr;
   API_IMPL_END
 }
 ORT_API_STATUS_IMPL(OrtApis::GetValueInfoTypeInfo, _In_ const OrtValueInfo* value_info,
                     _Outptr_ const OrtTypeInfo** type_info) {
   API_IMPL_BEGIN
+  *type_info = nullptr;
 
-  *type_info = value_info->type_info.get();
+  const OrtTypeInfo* type_info_internal = value_info->TypeInfo();
+  if (type_info_internal == nullptr) {
+    std::ostringstream oss;
+    oss << "OrtValueInfo '" << value_info->Name() << "' does not have valid type information";
+    return OrtApis::CreateStatus(ORT_FAIL, oss.str().c_str());
+  }
 
+  *type_info = type_info_internal;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueProducer, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  OrtValueInfo::ProducerInfo producer_info;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetProducerInfo(producer_info));
+
+  *producer_node = producer_info.node;
+  if (producer_output_index != nullptr) {
+    *producer_output_index = producer_info.output_index;
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(producer_node);
+  ORT_UNUSED_PARAMETER(producer_output_index);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoProducerInfo() is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumers(*num_consumers));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(num_consumers);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoNumUses() is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetValueConsumers, _In_ const OrtValueInfo* value_info,
+                    _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
+                    _Out_writes_all_(max_num_consumers) int64_t* input_indices,
+                    _In_ size_t max_num_consumers) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumers(consumer_infos));
+  size_t num_uses = std::min(max_num_consumers, consumer_infos.size());
+
+  for (size_t i = 0; i < num_uses; ++i) {
+    nodes[i] = consumer_infos[i].node;
+    input_indices[i] = consumer_infos[i].input_index;
+  }
+
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(value_info);
+  ORT_UNUSED_PARAMETER(nodes);
+  ORT_UNUSED_PARAMETER(input_indices);
+  ORT_UNUSED_PARAMETER(max_num_consumers);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "GetValueInfoUses() is not supported in this build.");
+#endif
+  API_IMPL_END
+}
+
+//
+// OrtGraph
+//
+
+ORT_API(const char*, OrtApis::Graph_Name, _In_ const OrtGraph* graph) {
+  return graph->Name().c_str();
+}
+
+ORT_API(size_t, OrtApis::Graph_NumInputs, _In_ const OrtGraph* graph) {
+  return graph->NumInputs();
+}
+
+ORT_API(size_t, OrtApis::Graph_NumOutputs, _In_ const OrtGraph* graph) {
+  return graph->NumOutputs();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> graph_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(graph_inputs));
+
+  size_t num_inputs = std::min(max_num_inputs, graph_inputs.size());
+  for (size_t i = 0; i < num_inputs; i++) {
+    inputs[i] = graph_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
+  API_IMPL_BEGIN
+  onnxruntime::InlinedVector<const OrtValueInfo*> graph_outputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOutputs(graph_outputs));
+
+  size_t num_outputs = std::min(max_num_outputs, graph_outputs.size());
+  for (size_t i = 0; i < num_outputs; i++) {
+    outputs[i] = graph_outputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(size_t, OrtApis::Graph_NumNodes, _In_ const OrtGraph* graph) {
+  return graph->NumNodes();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
+                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
+  API_IMPL_BEGIN
+  // TODO: make order an enum value.
+  if (order < 0 || order > 2) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid `order` value passed to OrtGraph_GetNodes(); only accepts values "
+                                 "0, 1, or 2.");
+  }
+
+  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes(order);
+  size_t num_nodes = std::min(max_num_nodes, sorted_nodes.size());
+
+  for (size_t i = 0; i < num_nodes; i++) {
+    nodes[i] = sorted_nodes[i];
+  }
+
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node) {
+  API_IMPL_BEGIN
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'node' argument is NULL");
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetParentNode(*node));
+  return nullptr;
+  API_IMPL_END
+}
+
+//
+// OrtNode
+//
+
+ORT_API(const char*, OrtApis::Node_Name, const OrtNode* node) {
+  return node->Name().c_str();
+}
+
+ORT_API(const char*, OrtApis::Node_OperatorType, const OrtNode* node) {
+  return node->OpType().c_str();
+}
+
+ORT_API(const char*, OrtApis::Node_Domain, const OrtNode* node) {
+  return node->Domain().c_str();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version) {
+  API_IMPL_BEGIN
+  if (since_version == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'since_version' argument is NULL");
+  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSinceVersion(*since_version));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(size_t, OrtApis::Node_NumInputs, const OrtNode* node) {
+  return node->NumInputs();
+}
+
+ORT_API(size_t, OrtApis::Node_NumOutputs, const OrtNode* node) {
+  return node->NumOutputs();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
+  API_IMPL_BEGIN
+  if (inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'inputs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(node_inputs));
+
+  size_t num_inputs = std::min(max_num_inputs, node_inputs.size());
+  for (size_t i = 0; i < num_inputs; i++) {
+    inputs[i] = node_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
+  API_IMPL_BEGIN
+  if (outputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'outputs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_outputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(node_outputs));
+
+  size_t num_outputs = std::min(max_num_outputs, node_outputs.size());
+  for (size_t i = 0; i < num_outputs; i++) {
+    outputs[i] = node_outputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs) {
+  API_IMPL_BEGIN
+  if (num_implicit_inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_implicit_inputs' argument is NULL");
+  }
+  *num_implicit_inputs = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumImplicitInputs(*num_implicit_inputs));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                    _In_ size_t max_num_implicit_inputs) {
+  API_IMPL_BEGIN
+  if (implicit_inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'implicit_inputs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_implicit_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetImplicitInputs(node_implicit_inputs));
+
+  size_t num_implicit_inputs = std::min(max_num_implicit_inputs, node_implicit_inputs.size());
+  for (size_t i = 0; i < num_implicit_inputs; i++) {
+    implicit_inputs[i] = node_implicit_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
+  API_IMPL_BEGIN
+  if (num_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_subgraphs' argument is NULL");
+  }
+  *num_subgraphs = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumSubgraphs(*num_subgraphs));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs,
+                    _In_ size_t max_num_subgraphs) {
+  API_IMPL_BEGIN
+  if (subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'subgraphs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtGraph*> node_subgraphs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(node_subgraphs));
+
+  size_t num_subgraphs = std::min(max_num_subgraphs, node_subgraphs.size());
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    subgraphs[i] = node_subgraphs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetParentGraph, _In_ const OrtNode* node,
+                    _Outptr_result_maybenull_ const OrtGraph** parent_graph) {
+  API_IMPL_BEGIN
+  if (parent_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'parent_graph' argument is NULL");
+  }
+
+  *parent_graph = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetParentGraph(*parent_graph));
   return nullptr;
   API_IMPL_END
 }
@@ -3029,8 +3321,34 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetEpApi,
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
+
+    &OrtApis::GetValueProducer,
+    &OrtApis::GetValueNumConsumers,
+    &OrtApis::GetValueConsumers,
+    &OrtApis::Graph_Name,
+    &OrtApis::Graph_NumInputs,
+    &OrtApis::Graph_NumOutputs,
+    &OrtApis::Graph_GetInputs,
+    &OrtApis::Graph_GetOutputs,
+    &OrtApis::Graph_NumNodes,
+    &OrtApis::Graph_GetNodes,
+    &OrtApis::Graph_GetParentNode,
+    &OrtApis::Node_Name,
+    &OrtApis::Node_OperatorType,
+    &OrtApis::Node_Domain,
+    &OrtApis::Node_GetSinceVersion,
+    &OrtApis::Node_NumInputs,
+    &OrtApis::Node_NumOutputs,
+    &OrtApis::Node_GetInputs,
+    &OrtApis::Node_GetOutputs,
+    &OrtApis::Node_GetNumImplicitInputs,
+    &OrtApis::Node_GetImplicitInputs,
+    &OrtApis::Node_GetNumSubgraphs,
+    &OrtApis::Node_GetSubgraphs,
+    &OrtApis::Node_GetParentGraph,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

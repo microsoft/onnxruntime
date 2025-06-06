@@ -753,6 +753,9 @@ typedef struct OrtCompileApi OrtCompileApi;
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
 
+struct OrtNodeComputeInfo;
+typedef struct OrtNodeComputeInfo OrtNodeComputeInfo;
+
 /** \brief The helper interface to get the right version of OrtApi
  *
  * Get a pointer to this structure through ::OrtGetApiBase
@@ -5313,6 +5316,345 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Get the OrtNode that produces the value represented by the given OrtValueInfo.
+   * Optionally returns the associated output index.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
+   * \param[out] output_index Optional output parameter set to the OrtNode instance's output index
+   *                          that produces the value. Ignored if set to NULL.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
+                  _Out_opt_ size_t* producer_output_index);
+
+  /** \brief Get the number of consumers of a value as a node input.
+   *
+   * A single OrtNode may use a single value for more than one input (e.g., Mul(x, x)), so the returned
+   * `num_consumers` may be larger than the number of unique OrtNode instances that consume the value.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] num_consumers Output parameter set to the number of consumers of the value.
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
+
+  /** \brief Returns information (OrtNode and input index) for all consumer nodes that use the value as an input.
+   *
+   * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
+   * Use GetValueNumConsumers() to get the number of consumers of the value.
+   *
+   * An OrtNode instance may appear multiple times if it uses the given value more than once.
+   * Example: For a node MulNode(x, x) that consumes the value 'x' twice, the following is returned:
+   *   - nodes: [MulNode, MulNode]
+   *   - input_indices: [0, 1]
+   *
+   * \param[in] OrtValueInfo The OrtValueInfo instance.
+   * \param[out] nodes Pre-allocated array of size `max_num_consumers` that will be filled with OrtNode instances.
+   * \param[out] input_indices Pre-allocated array of `max_num_consumers` elements that will be filled
+   *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
+   *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
+   * \param[in] max_num_consumers The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
+   *                              Typical usage sets this to the value of GetValueNumConsumers().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetValueConsumers, _In_ const OrtValueInfo* value_info,
+                  _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
+                  _Out_writes_all_(max_num_consumers) int64_t* input_indices,
+                  _In_ size_t max_num_consumers);
+
+  /** \brief Returns the name of a OrtGraph instance.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The OrtGraph instance's name.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Graph_Name)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns the number of inputs for the OrtGraph instance.
+   *
+   * Counts initializers that are also graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of inputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Graph_NumInputs)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns the number of outputs for the OrtGraph instance.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of outputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Graph_NumOutputs)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns the input OrtValueInfo instances for an OrtGraph.
+   *
+   * Includes initializers that are also graph inputs.
+   *
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Graph_NumInputs() to get the
+   * number of inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+   *                           Typical usage sets this to the value of Graph_NumInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
+                  _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+
+  /** \brief Returns the output OrtValueInfo instances for an OrtGraph.
+   *
+   * Caller provides a pre-allocated array that will be filled with the outputs. Use Graph_NumOutputs() to get the
+   * number of outputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] inputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_outputs The maximum size of the `outputs` array.
+   *                            Typical usage sets this to the value of Graph_NumOutputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
+                  _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+
+  /** \brief Returns the number of nodes in the OrtGraph instance.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of nodes.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Graph_NumNodes)(_In_ const OrtGraph* graph);
+
+  /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
+   *
+   * Caller provides a pre-allocated array that will be filled with the nodes. Use OrtGraph_NumNodes() to get the
+   * number of nodes in the graph. The nodes are sorted according to the `order` argument.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[in] order The ordering of the nodes:
+   *                  0 means the nodes are sorted in topological order.
+   *                  1 means the nodes are sorted in topological order with priority.
+   *                  2 means the nodes are sorted in memory efficient topological order.
+   * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode pointers.
+   * \param[in] max_num_nodes The maximum size of the nodes array.
+   *                          Typical usage sets this to the value of OrtGraph_NumNodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, int order,
+                  _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+
+  /** \brief Get the parent node for the given graph, if any exists.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. This function enables
+   * access to the parent node (e.g., the If and Loop node) from a nested subgraph.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] node Output parameter that is set to the graph's parent node.
+   *                  Set to NULL if a parent node does not exists (e.g., for a top-level graph).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node);
+
+  /** \brief Returns the name of an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The node's name.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Node_Name)(_In_ const OrtNode* node);
+
+  /** \brief Returns the ONNX operator type (e.g., "Conv") of an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The node's operator type.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Node_OperatorType)(_In_ const OrtNode* node);
+
+  /** \brief Returns the domain for an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The node's domain.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* Node_Domain)(_In_ const OrtNode* node);
+
+  /** \brief Get the opset version in which the node's operator type was first defined.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] since_version The opset version in which the node's operator type was first defined.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
+
+  /** \brief Returns the number of inputs for an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The number of inputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Node_NumInputs)(_In_ const OrtNode* node);
+
+  /** \brief Returns the number of outputs for an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The number of outputs.
+   *
+   * \since Version 1.23.
+   */
+  size_t(ORT_API_CALL* Node_NumOutputs)(_In_ const OrtNode* node);
+
+  /** \brief Returns the input OrtValueInfo instances for an OrtNode.
+   *
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Node_NumInputs() to get the
+   * number of inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
+   *                    Any optional input that does not have a value is set to NULL in the `inputs` array.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+   *                           Typical usage sets this to the value of Node_NumInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+
+  /** \brief Returns the output OrtValueInfo instances for an OrtNode.
+   *
+   * Caller provides a pre-allocated array that will be filled with the outputs. Use Node_NumOutputs() to get the
+   * number of outputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] outputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   *                     Any optional output that does not have a value is set to NULL in the `outputs` array.
+   * \param[in] max_num_outputs The maximum size of the `outputs` array.
+   *                            Typical usage sets this to the value of Node_NumOutputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+
+  /** \brief Get the number of implicit inputs that are used within the given node's subgraphs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_implicit_inputs Output parameter set the to number of implicit inputs to the node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
+
+  /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * Caller provides a pre-allocated array that will be filled with the implicit inputs. Use Node_GetNumImplicitInputs()
+   * to get the number of implicit inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] implicit_inputs Pre-allocated array of `max_num_implicit_inputs` elements that will be filled
+                                 with OrtValueInfo*.
+   * \param[in] max_num_implicit_inputs The maximum size of the `implicit_inputs` array.
+   *                                    Typical usage sets this to the value of Node_GetNumImplicitInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                  _In_ size_t max_num_implicit_inputs);
+
+  /** \brief Returns the number of subgraphs contained by a node.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_subgraphs Output parameter set the to number of subgraphs contained by the node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
+
+  /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * Caller provides a pre-allocated array that will be filled with the subgraphs. Use Node_GetNumSubgraphs() to get the
+   * number of subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] subgraphs Pre-allocated array of `max_num_subgraphs` elements that will be filled with OrtGraph*.
+   * \param[in] max_num_subgraphs The maximum size of the `subgraphs` array.
+   *                              Typical usage sets this to the value of Node_GetNumSubgraphs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
+
+  /** \brief Get the node's parent OrtGraph instance.
+   *
+   * Can return NULL if the OrtNode was created without an owning graph.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] parent_graph Output parameter set to the node's parent OrtGraph. Can be set to NULL
+   *                          if the node is not currently contained by a graph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
+                  _Outptr_result_maybenull_ const OrtGraph** parent_graph);
 };
 
 /*
@@ -6042,6 +6384,59 @@ struct OrtCompileApi {
 
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
+ORT_RUNTIME_CLASS(EpGraphSupportInfo);
+ORT_RUNTIME_CLASS(NodeComputeContext);
+
+/**
+ * \brief The OrtNodeComputeInfo struct provides functions that an OrtEp implements to specify the compute
+ * function for a compiled OrtGraph instance.
+ * \since Version 1.23.
+ */
+struct OrtNodeComputeInfo {
+  /** \brief The ONNX Runtime version the OrtNodeComputeInfo was compiled with.
+   *
+   * Implementation should set to ORT_API_VERSION.
+   * ORT will use this to ensure it does not call functions that were not available when the library was compiled.
+   *
+   * \since Version 1.23.
+   */
+  uint32_t ort_version_supported;
+
+  /** \brief Creates an opaque computation state object that is then passed to the Compute() function during inference.
+   * \param[in] this_ptr The OrtNodeComputeInfo instance.
+   * \param[in] compute_context OrtNodeComputeContext instance that contains compiled/fused node's name and host
+   *                            memory allocation functions. Can optionally be used to build the compute state.
+   * \param[out] compute_state Output parameter that is assigned the opaque computation state.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* CreateComputeState)(_In_ OrtNodeComputeInfo* this_ptr,
+                                               _In_ OrtNodeComputeContext* compute_context,
+                                               _Outptr_ void** compute_state);
+
+  /** \brief Computation function called to execute the fused node compiled by an OrtEp instance.
+   * \param[in] this_ptr The OrtNodeComputeInfo instance.
+   * \param[in] compute_state The opaque computation state returned by CreateComputeState().
+   * \param[in] api The OrtApi instance.
+   * \param[in] kernel_context The OrtKernelContext instance used to access inputs/outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* Compute)(_In_ OrtNodeComputeInfo* this_ptr, _In_ void* compute_state,
+                                    _In_ const OrtApi* api, _In_ OrtKernelContext* kernel_context);
+
+  /** \brief Releases the compute state returned by CreateComputeState().
+   * \param[in] this_ptr The OrtNodeComputeInfo instance.
+   * \param[inout] compute_state The opaque computation state returned by CreateComputeState().
+   *
+   * \since Version 1.23.
+   */
+  void(ORT_API_CALL* DestroyComputeState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
+};
 
 struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
@@ -6064,6 +6459,51 @@ struct OrtEpApi {
                   _Out_ OrtEpDevice** ep_device);
 
   ORT_CLASS_RELEASE(EpDevice);
+
+  /** \brief Specify nodes that are supported by an OrtEp and should be fused into one node.
+   *
+   * Because the nodes will be fused into one "fused node", there must not exist an unsupported node in
+   * a path between two of the provided nodes. Otherwise, the graph will have a cycle after node fusion is performed.
+   *
+   * This function can be called multiple times. A subsequent call to this function will force the next set of
+   * nodes to be fused into a different node.
+   *
+   * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
+   * \param[in] nodes Array of nodes supported by the EP that should be fused/compiled.
+   * \param[in] num_nodes The number of supported nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes
+                  /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
+
+  /** \brief Specify a node that is supported by an OrtEp and should be run with a registered EP kernel.
+   *
+   * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported node.
+   * \param[in] node The supported OrtNode instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                  _In_ const OrtNode* node);
+
+  /** \brief Query a OrtNodeComputeContext for the name of the node that encapsulates the compiled/fused node.
+   *
+   * Used in OrtNodeComputeInfo::CreateComputeState().
+   *
+   * \param[in] context The OrtNodeComputeContext instance to query.
+   * \return The node's name.
+   *
+   * \note Returned string is owned by ORT and valid only while OrtNodeComputeInfo::CreateComputeState() is called.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* NodeComputeContext_NodeName)(_In_ const OrtNodeComputeContext* context);
 };
 
 /**
@@ -6089,16 +6529,58 @@ struct OrtEp {
    *
    * \since Version 1.22.
    */
-  const char*(ORT_API_CALL* GetName)(const OrtEp* this_ptr);
+  const char*(ORT_API_CALL* GetName)(_In_ const OrtEp* this_ptr);
 
-  // OrtStatus* GetCapability(OrtEp* ep, const OrtGraph* graph,
-  //                          size_t* num_supported_subgraphs,
-  //                          OrtIndexedSubgraph** supported_subgraphs, OrtAllocator* allocator);
+  /** \brief Get information about the nodes/subgraphs supported by the OrtEp instance.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph The top-level OrtGraph instance containing all nodes in the graph.
+   * \param[inout] graph_support_info OrtEpGraphSupportInfo instance that the implementer must fill out in order to
+   *                                  specify the supported nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* GetCapability)(_In_ OrtEp* this_ptr, _In_ const OrtGraph* graph,
+                                          _Inout_ OrtEpGraphSupportInfo* graph_support_info);
 
-  // OrtStatus* Compile(OrtEp* ep, const OrtGraph** graphs, OrtNode** fused_graph_nodes,
-  //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
+  /** \brief Compile OrtGraph instances assigned to the OrtEp. Implementer must set a OrtNodeComputeInfo instance
+   * for each OrtGraph in order to define its computation function.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graphs Array of `count` OrtGraph instances to be compiled.
+   * \param[in] fused_nodes Array of `count` fused nodes that will replace the compiled graphs.
+   *                        Each fused node is an OrtNode initialized with the the intended fused node name and
+   *                        input/output information.
+   * \param[in] count The number of OrtGraph instances to compile.
+   * \param[inout] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
+   *                                  computation function. The implementer allocates the OrtNodeComputeInfo instances.
+   *                                  ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \note Do NOT cache the provided OrtGraph instances in any of the OrtNodeComputeInfo functions because the
+   *       graphs are only valid for the duration of the call to Compile. Any graph/node/input/output
+   *       names that are needed by the OrtNodeComputeInfo functions must be copied and stored by the OrtEp.
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                    _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos);
 
-  // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
+  /** \brief Release OrtNodeComputeInfo instances.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[inout] node_compute_infos The OrtNodeComputeInfo instances to release.
+   * \param[in] num_node_compute_infos The number of OrtNodeComputeInfo instances.
+   *
+   * \since Version 1.23.
+   */
+  void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
+                                              OrtNodeComputeInfo** node_compute_infos,
+                                              _In_ size_t num_node_compute_infos);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
