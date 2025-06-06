@@ -631,4 +631,9 @@ ORT_API_STATUS_IMPL(Node_GetInputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
 ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+ORT_API_STATUS_IMPL(Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs);
+ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
+ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,
+                    _Outptr_result_maybenull_ const OrtGraph** parent_graph);
 }  // namespace OrtApis

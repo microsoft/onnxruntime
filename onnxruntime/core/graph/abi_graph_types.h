@@ -81,6 +81,9 @@ struct OrtNode {
   virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
+  virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
+  virtual onnxruntime::Status GetSubgraphs(onnxruntime::InlinedVector<const OrtGraph*>& subgraphs) const = 0;
+  virtual onnxruntime::Status GetParentGraph(const OrtGraph*& parent_graph) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };

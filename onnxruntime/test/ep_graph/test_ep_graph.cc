@@ -47,27 +47,50 @@ struct TestGraph {
   std::unique_ptr<OrtGraph> api_graph;
 };
 
-// Gets the input or output index of a NodeArg by name.
-static void GetInputOrOutputIndices(ConstPointerContainer<std::vector<NodeArg*>> node_args,
-                                    const std::string& name,
-                                    /*out*/ std::vector<size_t>& indices) {
-  indices.reserve(node_args.size());
+static void GetInputIndices(const Node& consumer_node,
+                            const std::string& name,
+                            /*out*/ std::vector<int64_t>& indices) {
+  bool found = false;
+  auto add_input_indices =
+      [&found, &name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs) -> void {
+    for (size_t i = 0; i < input_defs.size(); i++) {
+      if (input_defs[i]->Name() == name) {
+        indices.push_back(static_cast<int64_t>(i));
+        found = true;
+      }
+    }
+  };
+
+  const auto node_input_defs = consumer_node.InputDefs();
+  indices.reserve(node_input_defs.size());
+  add_input_indices(node_input_defs);
+
+  if (!found) {
+    // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
+    // that are consumed by nodes within their subgraph.
+    add_input_indices(consumer_node.ImplicitInputDefs());
+  }
+
+  ASSERT_TRUE(found) << "Did not find input index of NodeArg " << name;
+}
+
+static void GetOutputIndex(const Node& producer_node, const std::string& name, /*out*/ size_t& index) {
+  const auto outputs = producer_node.OutputDefs();
 
   bool found = false;
-  for (size_t i = 0; i < node_args.size(); i++) {
-    if (node_args[i]->Name() == name) {
-      indices.push_back(i);
+  for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs[i]->Name() == name) {
+      index = i;
       found = true;
     }
   }
-
-  ASSERT_TRUE(found) << "Did not find NodeArg's index";
+  ASSERT_TRUE(found) << "Did not find output index of NodeArg " << name;
 }
 
 struct NodeArgUse {
-  NodeArgUse(const Node* node, size_t index) : consumer_node(node), input_index(index) {}
+  NodeArgUse(const Node* node, int64_t index) : consumer_node(node), input_index(index) {}
   const Node* consumer_node = nullptr;
-  size_t input_index = 0;
+  int64_t input_index = -1;
 };
 
 // Returns "uses" (i.e., consumer node + input index) of a NodeArg from the original graph.
@@ -84,10 +107,10 @@ static void GetNodeArgUses(const GraphViewer& graph_viewer, const NodeArg& node_
       continue;  // Node is not in this GraphViewer
     }
 
-    std::vector<size_t> input_indices;
-    GetInputOrOutputIndices(node->InputDefs(), node_arg.Name(), input_indices);
+    std::vector<int64_t> input_indices;
+    GetInputIndices(*node, node_arg.Name(), input_indices);
 
-    for (size_t input_index : input_indices) {
+    for (int64_t input_index : input_indices) {
       NodeArgUse use_info(node, input_index);
       uses.push_back(use_info);
     }
@@ -119,10 +142,9 @@ static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtVal
       ASSERT_EQ(std::string(ort_api.Node_OperatorType(api_producer_node)), producer_node->OpType());
       ASSERT_EQ(std::string(ort_api.Node_Domain(api_producer_node)), producer_node->Domain());
 
-      std::vector<size_t> indices;
-      GetInputOrOutputIndices(producer_node->OutputDefs(), node_arg->Name(), indices);
-      ASSERT_EQ(indices.size(), 1);
-      ASSERT_EQ(api_producer_output_index, indices[0]);
+      size_t output_index = 0;
+      GetOutputIndex(*producer_node, node_arg->Name(), output_index);
+      ASSERT_EQ(api_producer_output_index, output_index);
     }
   }
 }
@@ -279,6 +301,20 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     std::vector<const OrtValueInfo*> api_outputs(num_outputs, nullptr);
     ASSERT_ORTSTATUS_OK(ort_api.Node_GetOutputs(api_node, api_outputs.data(), api_outputs.size()));
     CheckValueInfosCApi(graph_viewer, api_outputs, ToVector(output_node_args));
+
+    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
+    size_t api_num_subgraphs = 0;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_subgraphs));
+    ASSERT_EQ(api_num_subgraphs, node_subgraphs.size());
+
+    if (api_num_subgraphs > 0) {
+      std::vector<const OrtGraph*> api_node_subgraphs(api_num_subgraphs, nullptr);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
+      for (size_t subgraph_idx = 0; subgraph_idx < api_num_subgraphs; subgraph_idx++) {
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*node_subgraphs[subgraph_idx]);
+        CheckGraphCApi(*subgraph_viewer, *api_node_subgraphs[subgraph_idx]);
+      }
+    }
   }
 }
 
@@ -286,6 +322,13 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 // by traversing the OrtGraph and checking validity of nodes and value infos.
 TEST(EpGraphTest, BasicCApiUse) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->graph_viewer, test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, CheckModelWithSubgraphs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->graph_viewer, test_graph->GetOrtGraph());

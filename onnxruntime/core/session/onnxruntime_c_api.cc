@@ -2576,6 +2576,10 @@ ORT_API(size_t, OrtApis::Node_NumOutputs, const OrtNode* node) {
 ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
   API_IMPL_BEGIN
+  if (inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'inputs' argument is NULL");
+  }
+
   onnxruntime::InlinedVector<const OrtValueInfo*> node_inputs;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(node_inputs));
 
@@ -2590,6 +2594,10 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node,
 ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
   API_IMPL_BEGIN
+  if (outputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'outputs' argument is NULL");
+  }
+
   onnxruntime::InlinedVector<const OrtValueInfo*> node_outputs;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(node_outputs));
 
@@ -2597,6 +2605,49 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
   for (size_t i = 0; i < num_outputs; i++) {
     outputs[i] = node_outputs[i];
   }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs) {
+  API_IMPL_BEGIN
+  if (num_subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_subgraphs' argument is NULL");
+  }
+  *num_subgraphs = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumSubgraphs(*num_subgraphs));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs,
+                    _In_ size_t max_num_subgraphs) {
+  API_IMPL_BEGIN
+  if (subgraphs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'subgraphs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtGraph*> node_subgraphs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(node_subgraphs));
+
+  size_t num_subgraphs = std::min(max_num_subgraphs, node_subgraphs.size());
+  for (size_t i = 0; i < num_subgraphs; i++) {
+    subgraphs[i] = node_subgraphs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetParentGraph, _In_ const OrtNode* node,
+                    _Outptr_result_maybenull_ const OrtGraph** parent_graph) {
+  API_IMPL_BEGIN
+  if (parent_graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'parent_graph' argument is NULL");
+  }
+
+  *parent_graph = nullptr;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetParentGraph(*parent_graph));
   return nullptr;
   API_IMPL_END
 }
@@ -3252,6 +3303,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_NumOutputs,
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
+    &OrtApis::Node_GetNumSubgraphs,
+    &OrtApis::Node_GetSubgraphs,
+    &OrtApis::Node_GetParentGraph,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

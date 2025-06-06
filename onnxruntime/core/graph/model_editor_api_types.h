@@ -72,6 +72,18 @@ struct ModelEditorNode : public OrtNode {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
+  Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the number of subgraphs for OrtNode");
+  }
+  Status GetSubgraphs(InlinedVector<const OrtGraph*>& /*subgraphs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
+  }
+  Status GetParentGraph(const OrtGraph*& /*parent_graph*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the parent graph for OrtNode");
+  }
 
   std::string operator_name;
   std::string domain_name;

@@ -15,6 +15,61 @@
 #include "core/graph/graph.h"
 
 namespace onnxruntime {
+
+static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
+                                 const NodeArg& node_arg, const EpGraph* ep_graph) {
+  auto it = value_infos.find(node_arg.Name());
+  if (it != value_infos.end()) {
+    return it->second.get();
+  }
+
+  const auto* type_proto = node_arg.TypeAsProto();
+  std::unique_ptr<OrtTypeInfo> type_info = type_proto != nullptr ? OrtTypeInfo::FromTypeProto(*type_proto)
+                                                                 : nullptr;
+  auto ep_value_info = std::make_unique<EpValueInfo>(ep_graph, node_arg.Name(), std::move(type_info));
+  EpValueInfo* result = ep_value_info.get();
+  value_infos[node_arg.Name()] = std::move(ep_value_info);
+  return result;
+}
+
+std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
+                                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map) {
+  auto init_ep_node_io = [&ep_graph, &value_infos_map](ConstPointerContainer<std::vector<NodeArg*>> node_args,
+                                                       InlinedVector<EpValueInfo*>& value_infos) {
+    value_infos.reserve(node_args.size());
+    for (const NodeArg* node_arg : node_args) {
+      assert(node_arg != nullptr);
+
+      if (node_arg->Exists()) {
+        value_infos.push_back(AddValueInfo(value_infos_map, *node_arg, ep_graph));
+      } else {
+        value_infos.push_back(nullptr);  // A missing optional input/output has a null OrtValueInfo
+      }
+    }
+  };
+
+  InlinedVector<EpValueInfo*> ep_node_inputs;
+  init_ep_node_io(node.InputDefs(), ep_node_inputs);
+
+  InlinedVector<EpValueInfo*> ep_node_outputs;
+  init_ep_node_io(node.OutputDefs(), ep_node_outputs);
+
+  InlinedVector<SubgraphState> ep_node_subgraphs;
+  if (node.ContainsSubgraph()) {
+    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
+    ep_node_subgraphs.reserve(node_subgraphs.size());
+    for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
+      SubgraphState subgraph_state;
+      subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
+      subgraph_state.ep_subgraph = EpGraph::Create(*subgraph_state.subgraph_viewer);
+      ep_node_subgraphs.emplace_back(std::move(subgraph_state));
+    }
+  }
+
+  return std::make_unique<EpNode>(ep_graph, node, std::move(ep_node_inputs), std::move(ep_node_outputs),
+                                  std::move(ep_node_subgraphs));
+}
+
 const std::string& EpNode::Name() const { return node.Name(); }
 const std::string& EpNode::OpType() const { return node.OpType(); }
 const std::string& EpNode::Domain() const { return node.Domain(); }
@@ -22,7 +77,6 @@ Status EpNode::GetSinceVersion(int& since_version) const {
   since_version = node.SinceVersion();
   return Status::OK();
 }
-
 Status EpNode::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
   result.resize(inputs.size());
   for (size_t i = 0; i < inputs.size(); i++) {
@@ -36,6 +90,24 @@ Status EpNode::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
   for (size_t i = 0; i < outputs.size(); i++) {
     result[i] = outputs[i];
   }
+  return Status::OK();
+}
+
+Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
+  num_subgraphs = subgraphs.size();
+  return Status::OK();
+}
+
+Status EpNode::GetSubgraphs(InlinedVector<const OrtGraph*>& result) const {
+  result.resize(subgraphs.size());
+  for (size_t i = 0; i < subgraphs.size(); i++) {
+    result[i] = subgraphs[i].ep_subgraph->ToExternal();
+  }
+  return Status::OK();
+}
+
+Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
+  parent_graph = ep_graph->ToExternal();
   return Status::OK();
 }
 
@@ -149,7 +221,7 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
 
   return Status::OK();
 #else
-  ORT_UNUSED_PARAMETER(uses);
+  ORT_UNUSED_PARAMETER(consumer_infos);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting uses of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -188,53 +260,6 @@ Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting uses of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-}
-
-static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
-                                 const NodeArg& node_arg, const EpGraph* ep_graph) {
-  auto it = value_infos.find(node_arg.Name());
-  if (it != value_infos.end()) {
-    return it->second.get();
-  }
-
-  const auto* type_proto = node_arg.TypeAsProto();
-  std::unique_ptr<OrtTypeInfo> type_info = type_proto != nullptr ? OrtTypeInfo::FromTypeProto(*type_proto)
-                                                                 : nullptr;
-  auto ep_value_info = std::make_unique<EpValueInfo>(ep_graph, node_arg.Name(), std::move(type_info));
-  EpValueInfo* result = ep_value_info.get();
-  value_infos[node_arg.Name()] = std::move(ep_value_info);
-  return result;
-}
-
-std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
-                                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos) {
-  InlinedVector<EpValueInfo*> node_inputs;
-  node_inputs.reserve(node.InputDefs().size());
-
-  for (const NodeArg* input : node.InputDefs()) {
-    assert(input != nullptr);
-
-    if (input->Exists()) {
-      node_inputs.push_back(AddValueInfo(value_infos, *input, ep_graph));
-    } else {
-      node_inputs.push_back(nullptr);  // A missing optional input has a null OrtValueInfo
-    }
-  }
-
-  InlinedVector<EpValueInfo*> node_outputs;
-  node_outputs.reserve(node.OutputDefs().size());
-
-  for (const NodeArg* output : node.OutputDefs()) {
-    assert(output != nullptr);
-
-    if (output->Exists()) {
-      node_outputs.push_back(AddValueInfo(value_infos, *output, ep_graph));
-    } else {
-      node_outputs.push_back(nullptr);  // A missing optional output has a null OrtValueInfo
-    }
-  }
-
-  return std::make_unique<EpNode>(node, std::move(node_inputs), std::move(node_outputs));
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.

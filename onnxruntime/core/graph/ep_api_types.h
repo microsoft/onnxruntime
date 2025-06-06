@@ -13,10 +13,9 @@
 #include "core/common/inlined_containers.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
+#include "core/graph/graph_viewer.h"
 
 namespace onnxruntime {
-class Node;
-class GraphViewer;
 struct EpGraph;
 
 /// <summary>
@@ -44,13 +43,26 @@ struct EpValueInfo : public OrtValueInfo {
   std::unique_ptr<OrtTypeInfo> type_info;
 };
 
+struct SubgraphState {
+  SubgraphState() = default;
+  SubgraphState(SubgraphState&& other) = default;
+  std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
+  std::unique_ptr<EpGraph> ep_subgraph;
+};
+
 /// <summary>
 /// Concrete implementation of OrtNode used in the OrtEpApi.
 /// </summary>
 struct EpNode : public OrtNode {
  public:
-  EpNode(const Node& node, InlinedVector<EpValueInfo*>&& inputs, InlinedVector<EpValueInfo*>&& outputs)
-      : OrtNode(OrtGraphIrApi::kEpApi), node(node), inputs(std::move(inputs)), outputs(std::move(outputs)) {}
+  EpNode(const EpGraph* ep_graph, const Node& node, InlinedVector<EpValueInfo*>&& inputs,
+         InlinedVector<EpValueInfo*>&& outputs, InlinedVector<SubgraphState>&& subgraphs)
+      : OrtNode(OrtGraphIrApi::kEpApi),
+        ep_graph(ep_graph),
+        node(node),
+        inputs(std::move(inputs)),
+        outputs(std::move(outputs)),
+        subgraphs(std::move(subgraphs)) {}
 
   /// <summary>
   /// Creates an instance of EpNode, which wraps an onnxruntime::Node.
@@ -75,10 +87,18 @@ struct EpNode : public OrtNode {
   size_t NumOutputs() const override { return outputs.size(); }
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+  Status GetNumSubgraphs(size_t& num_subgraphs) const override;
+  Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
+  Status GetParentGraph(const OrtGraph*& parent_graph) const override;
 
+  // Back pointer to containing graph. Useful when traversing through nested subgraphs.
+  // Will be nullptr if the EpNode was created without an owning graph.
+  // (e.g., OrtNode instances created for fused nodes in OrtEp::Compile()).
+  const EpGraph* ep_graph = nullptr;
   const Node& node;
   InlinedVector<EpValueInfo*> inputs;
   InlinedVector<EpValueInfo*> outputs;
+  InlinedVector<SubgraphState> subgraphs;
 };
 
 /// <summary>

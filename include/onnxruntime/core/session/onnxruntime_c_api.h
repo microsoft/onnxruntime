@@ -5555,6 +5555,53 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
                   _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+
+  /** \brief Returns the number of subgraphs contained by a node.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_subgraphs Output parameter set the to number of subgraphs contained by the node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs);
+
+  /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * Caller provides a pre-allocated array that will be filled with the subgraphs. Use Node_GetNumSubgraphs() to get the
+   * number of subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] subgraphs Pre-allocated array of `max_num_subgraphs` elements that will be filled with OrtGraph*.
+   * \param[in] max_num_subgraphs The maximum size of the `subgraphs` array.
+   *                              Typical usage sets this to the value of Node_GetNumSubgraphs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
+
+  /** \brief Get the node's parent OrtGraph instance.
+   *
+   * Can return NULL if the OrtNode was created without an owning graph.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] parent_graph Output parameter set to the node's parent OrtGraph. Can be set to NULL
+   *                          if the node is not currently contained by a graph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
+                  _Outptr_result_maybenull_ const OrtGraph** parent_graph);
 };
 
 /*
