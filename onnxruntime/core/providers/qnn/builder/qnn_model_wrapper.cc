@@ -601,13 +601,14 @@ Status QnnModelWrapper::AddTransposeNode(NodeIndex node_index,
   ORT_RETURN_IF_NOT(AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add tensor.");
   const static std::string qnn_node_type = "Transpose";
 
-  CreateQnnNode(output_name,
-                QNN_OP_PACKAGE_NAME_QTI_AISW,
-                qnn_node_type,
-                {input_name},
-                {output_name},
-                {param_tensor_name},
-                do_op_validation);
+  ORT_RETURN_IF_NOT(CreateQnnNode(output_name,
+                                  QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                  qnn_node_type,
+                                  {input_name},
+                                  {output_name},
+                                  {param_tensor_name},
+                                  do_op_validation),
+                    "QNN EP: Failed to create manually inserted Qnn Transpose node.");
 
   return Status::OK();
 }
