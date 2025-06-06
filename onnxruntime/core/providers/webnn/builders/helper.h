@@ -194,6 +194,8 @@ inline bool TensorExists(const ConstPointerContainer<std::vector<NodeArg*>>& def
 bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_name,
                             const logging::Logger& logger, bool allow_empty_input = false);
 
+bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger);
+
 // Get a set of nodes supported by WebNN EP.
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                   const emscripten::val& wnn_builder,
