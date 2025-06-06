@@ -372,8 +372,8 @@ struct TensorCaster<Int4x2, float> {
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
 
-      out_data[2 * i] = static_cast<float>(high_nibble);
-      out_data[2 * i + 1] = static_cast<float>(low_nibble);
+      out_data[2 * i] = static_cast<float>(low_nibble);
+      out_data[2 * i + 1] = static_cast<float>(high_nibble);
     }
   }
 };
@@ -398,8 +398,8 @@ struct TensorCaster<UInt4x2, float> {
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
 
-      out_data[2 * i] = static_cast<float>(high_nibble);
-      out_data[2 * i + 1] = static_cast<float>(low_nibble);
+      out_data[2 * i] = static_cast<float>(low_nibble);
+      out_data[2 * i + 1] = static_cast<float>(high_nibble);
     }
   }
 };
