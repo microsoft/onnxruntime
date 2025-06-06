@@ -268,6 +268,16 @@ class TaskLibrary:
             )
         )
 
+    @public_task("Run the source linter")
+    @depends(["create_venv"])
+    def lint(self, plan: Plan) -> str:
+        return plan.add_step(RunLinterTask(self.__venv_path))
+
+    @public_task("Run the source linter and fix any issues automatically")
+    @depends(["create_venv"])
+    def lint_and_fix(self, plan: Plan) -> str:
+        return plan.add_step(RunLinterTask(self.__venv_path, auto_fix=True))
+
     @public_task("Print a list of commonly used tasks; see also --task=list_all.")
     @depends(["list_public"])
     def list(self, plan: Plan) -> str:
@@ -280,11 +290,6 @@ class TaskLibrary:
     @task
     def list_public(self, plan: Plan) -> str:
         return plan.add_step(ListTasksTask(PUBLIC_TASKS))
-
-    @public_task("Run the source linter")
-    @depends(["create_venv"])
-    def run_linter(self, plan: Plan) -> str:
-        return plan.add_step(RunLinterTask(self.__venv_path))
 
     @public_task("Test ONNX Runtime")
     @depends(

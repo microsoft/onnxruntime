@@ -90,23 +90,23 @@ class CreateVenvTask(CompositeTask):
 
 
 class RunLinterTask(CompositeTask):
-    def __init__(self, venv_path: Path) -> None:
+    def __init__(self, venv_path: Path, auto_fix: bool = False) -> None:
+        lintrunner_cmd = [
+            "lintrunner",
+            "--configs",
+            f"{REPO_ROOT}/.lintrunner.toml",
+            "--force-color",
+            "--all-files",
+            "-v",
+        ] + (["-a"] if auto_fix else [])
+
         super().__init__(
             group_name="Run source linter",
             tasks=[
                 RunExecutablesWithVenvTask(
                     group_name=None,
                     venv=venv_path,
-                    executables_and_args=[
-                        [
-                            "lintrunner",
-                            "--configs",
-                            f"{REPO_ROOT}/.lintrunner.toml",
-                            "--force-color",
-                            "--all-files",
-                            "-v",
-                        ]
-                    ],
+                    executables_and_args=[lintrunner_cmd],
                 )
             ],
         )
