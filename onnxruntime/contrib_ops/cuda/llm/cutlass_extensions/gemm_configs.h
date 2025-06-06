@@ -376,24 +376,19 @@ struct CutlassGemmConfig {
 };
 
 inline std::ostream& operator<<(std::ostream& out, CutlassGemmConfig const& config) {
-  // clang-format off
-    if (config.is_tma_warp_specialized)
-    {
-        out << "tile_config_sm90_enum: " << config.getTileConfigAsInt()
-            << ", mainloop_schedule_enum: " << int(config.mainloop_schedule)
-            << ", epilogue_schedule_enum: " << int(config.epilogue_schedule)
-            << ", cluster_shape_enum: " << int(config.cluster_shape)
-            << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false");
-    }
-    else
-    {
-        out << "tile_config_enum: " << config.getTileConfigAsInt()
-            << ", split_k_style_enum: " << int(config.split_k_style)
-            << ", split_k_factor: " << config.split_k_factor
-            << ", stages: " << config.stages
-            << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false");
-    }
-  // clang-format on
+  if (config.is_tma_warp_specialized) {
+    out << "tile_config_sm90_enum: " << config.getTileConfigAsInt()
+        << ", mainloop_schedule_enum: " << int(config.mainloop_schedule)
+        << ", epilogue_schedule_enum: " << int(config.epilogue_schedule)
+        << ", cluster_shape_enum: " << int(config.cluster_shape)
+        << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false");
+  } else {
+    out << "tile_config_enum: " << config.getTileConfigAsInt()
+        << ", split_k_style_enum: " << int(config.split_k_style)
+        << ", split_k_factor: " << config.split_k_factor
+        << ", stages: " << config.stages
+        << ", enable_cuda_kernel: " << (config.enableCudaKernel ? "true" : "false");
+  }
   return out;
 }
 

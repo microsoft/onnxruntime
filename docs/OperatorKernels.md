@@ -298,6 +298,7 @@ Do not modify directly.*
 |||[19, 20]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e4m3fnuz), tensor(float8e5m2), tensor(float8e5m2fnuz), tensor(int8), tensor(uint8)|
 |||[13, 18]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
 |||[10, 12]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
+|RMSNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**|23+|**T** = tensor(double), tensor(float), tensor(float16)<br/> **V** = tensor(double), tensor(float), tensor(float16)|
 |RNN|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**|22+|**T** = tensor(float)<br/> **T1** = tensor(int32)|
 |||[14, 21]|**T** = tensor(float)<br/> **T1** = tensor(int32)|
 |||[7, 13]|**T** = tensor(float)<br/> **T1** = tensor(int32)|
@@ -782,6 +783,7 @@ Do not modify directly.*
 |||[19, 20]|**T1** = tensor(float), tensor(float16)<br/> **T2** = tensor(float8e4m3fn), tensor(float8e5m2), tensor(int8), tensor(uint8)|
 |||[13, 18]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
 |||[10, 12]|**T1** = tensor(float)<br/> **T2** = tensor(int8), tensor(uint8)|
+|RMSNormalization|*in* X:**T**<br> *in* scale:**V**<br> *out* Y:**V**|23+|**T** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)<br/> **V** = tensor(bfloat16), tensor(double), tensor(float), tensor(float16)|
 |RNN|*in* X:**T**<br> *in* W:**T**<br> *in* R:**T**<br> *in* B:**T**<br> *in* sequence_lens:**T1**<br> *in* initial_h:**T**<br> *out* Y:**T**<br> *out* Y_h:**T**|14+|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |||[7, 13]|**T** = tensor(double), tensor(float), tensor(float16)<br/> **T1** = tensor(int32)|
 |RandomNormal|*out* output:**T**|1+|**T** = tensor(double), tensor(float), tensor(float16)|
