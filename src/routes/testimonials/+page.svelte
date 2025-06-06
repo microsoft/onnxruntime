@@ -13,7 +13,7 @@
 	import clearbladeLogo from '../../images/logos/clearblade-logo.png';
 	import deezerLogo from '../../images/logos/deezer-logo.png';
 	import goodnotesLogo from '../../images/logos/goodnotes-logo.png';
-	import graiphicLogo from '../../images/logo/graiphic-logo.png'
+	import graiphicLogo from '../../images/logos/graiphic-logo.png'
 	import huggingfaceLogo from '../../images/logos/huggingface-logo.png';
 	import hypefactorsLogo from '../../images/logos/hypefactors-logo.png';
 	import infarmLogo from '../../images/logos/infarm-logo.png';
