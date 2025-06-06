@@ -3580,7 +3580,15 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
-  5. For uint8 data, the `gather_axis` must be 0.
+  5. For uint8 data, the `gather_axis` must be 0, and the `quantize_axis` must be the last dimension.
+
+  For example, assume that K is multiple of `block_size`, typical input and output shapes are like the following:
+     * data has shape (N, K) for 8 bits, or (N, K / 2) for 4 bits.
+     * scales has shape (N, k_blocks), where k_blocks = (K / block_size).
+     * zero_points has shape (N, k_blocks) for 8 bits, (N, (k_blocks + 1) / 2) for 4 bits.
+     * output will have shape (..., K), where ... is the shape of `indices`.
+
+  The gather_axis and quantize_axis shall not be the same axis.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
@@ -3599,6 +3607,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
             "(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.",
             AttributeProto::INT,
             static_cast<int64_t>(128))
+      .Attr("bits",
+            "Number of bits used for weight quantization. Must be either 4 or 8. ",
+            AttributeProto::INT,
+            static_cast<int64_t>(4))
       .Input(0, "data", "Tensor of rank r >= 1. Block-wise quantized.", "T1")
       .Input(1,
              "indices",
@@ -3614,22 +3626,25 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
         // Type inference
         propagateElemTypeFromInputToOutput(ctx, 2, 0);
-        // Shape inference
+
+        // The first 3 inputs must have shape.
         if (!hasNInputShapes(ctx, 3)) {
           return;
         }
         const TensorShapeProto& data_shape = ctx.getInputType(0)->tensor_type().shape();
         const TensorShapeProto& indices_shape = ctx.getInputType(1)->tensor_type().shape();
         const TensorShapeProto& scales_shape = ctx.getInputType(2)->tensor_type().shape();
-        int r = data_shape.dim_size();
 
-        if (r < 1) {
-          fail_shape_inference("data tensor must have rank >= 1");
+        int r = data_shape.dim_size();
+        if (r <= 1) {
+          fail_shape_inference("data tensor must have rank > 1");
         }
 
         int gather_axis = static_cast<int>(getAttribute(ctx, "gather_axis", 0));
         int quantize_axis = static_cast<int>(getAttribute(ctx, "quantize_axis", 1));
+        int bits = static_cast<int>(getAttribute(ctx, "bits", 4));
         auto block_size = getAttribute(ctx, "block_size", 128);
+
         if (gather_axis < -r || gather_axis >= r) {
           fail_shape_inference("gather_axis must be in [-r, r-1]");
         }
@@ -3643,8 +3658,13 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
-        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
-          fail_shape_inference("gather_axis must be 0, for uint8 data");
+        if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+          if (gather_axis != 0) {
+            fail_shape_inference("gather_axis must be 0, for uint8 data");
+          }
+          if (quantize_axis != r - 1) {
+            fail_shape_inference("gather_axis must be the last dimension for uint8 data");
+          }
         }
 
         if (scales_shape.dim_size() != r) {
@@ -3663,10 +3683,6 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         // validate zero point shape
         if (ctx.hasInput(3)) {
-          if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
-            fail_type_inference("zero_points are not supported for uint8_t data type");
-          }
-
           if (!hasInputShape(ctx, 3)) {
             fail_shape_inference("zero_points shape must be known");
           }
@@ -3679,6 +3695,12 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           for (int i = 0; i < r; ++i) {
             if (!zp_shape.dim(i).has_dim_value() ||
                 zp_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value()) {
+              if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 &&
+                  bits == 4 &&
+                  i == quantize_axis &&
+                  zp_shape.dim(i).dim_value() == (scales_shape.dim(i).dim_value() + 1) / 2) {
+                continue;
+              }
               fail_shape_inference("zero points shape and scales shape do not match");
             }
           }
