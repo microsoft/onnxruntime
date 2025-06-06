@@ -124,6 +124,21 @@ CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
+inline void CastToString(Int4x2 value, std::string& out) {
+  // Int4x2 contains two 4-bit signed integers
+  // Show both values as [first,second]
+  auto val0 = value.GetElem(0);  // First 4-bit value
+  auto val1 = value.GetElem(1);  // Second 4-bit value
+  out = "[" + std::to_string(static_cast<int>(val0)) + "," + std::to_string(static_cast<int>(val1)) + "]";
+}
+
+inline void CastToString(UInt4x2 value, std::string& out) {
+  // UInt4x2 contains two 4-bit unsigned integers
+  auto val0 = value.GetElem(0);  // First 4-bit value
+  auto val1 = value.GetElem(1);  // Second 4-bit value
+  out = "[" + std::to_string(static_cast<unsigned>(val0)) + "," + std::to_string(static_cast<unsigned>(val1)) + "]";
+}
+
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
@@ -146,6 +161,66 @@ CastFromString(const std::string& input, DstType& output) {
   static_assert(sizeof(DstType) <= sizeof(long long),
                 "largest supported signed integral type is long long");
   output = gsl::narrow_cast<DstType>(std::stoll(input));
+}
+
+inline void CastFromString(const std::string& in, Int4x2& out) {
+  // Parse string format: "[-3,7]" or "-3,7" or just "-3" (single value)
+  std::string trimmed = in;
+
+  // Remove brackets if present
+  if (!trimmed.empty() && trimmed.front() == '[') {
+    trimmed = trimmed.substr(1);
+  }
+  if (!trimmed.empty() && trimmed.back() == ']') {
+    trimmed = trimmed.substr(0, trimmed.length() - 1);
+  }
+
+  // Find comma separator
+  size_t comma_pos = trimmed.find(',');
+  int8_t val0 = 0, val1 = 0;
+  if (comma_pos != std::string::npos) {
+    // Two values: "val0,val1"
+    std::string val0_str = trimmed.substr(0, comma_pos);
+    std::string val1_str = trimmed.substr(comma_pos + 1);
+
+    val0 = static_cast<int8_t>(std::clamp(std::stoi(val0_str), -8, 7));
+    val1 = static_cast<int8_t>(std::clamp(std::stoi(val1_str), -8, 7));
+  } else {
+    // Single value - use for both elements
+    val0 = val1 = static_cast<int8_t>(std::clamp(std::stoi(trimmed), -8, 7));
+  }
+
+  out = Int4x2(val0, val1);
+}
+
+inline void CastFromString(const std::string& in, UInt4x2& out) {
+  // Parse string format: "[5,12]" or "5,12" or just "5" (single value)
+  std::string trimmed = in;
+
+  // Remove brackets if present
+  if (!trimmed.empty() && trimmed.front() == '[') {
+    trimmed = trimmed.substr(1);
+  }
+  if (!trimmed.empty() && trimmed.back() == ']') {
+    trimmed = trimmed.substr(0, trimmed.length() - 1);
+  }
+
+  // Find comma separator
+  size_t comma_pos = trimmed.find(',');
+  uint8_t val0 = 0, val1 = 0;
+  if (comma_pos != std::string::npos) {
+    // Two values: "val0,val1"
+    std::string val0_str = trimmed.substr(0, comma_pos);
+    std::string val1_str = trimmed.substr(comma_pos + 1);
+
+    val0 = static_cast<uint8_t>(std::clamp(std::stoi(val0_str), 0, 15));
+    val1 = static_cast<uint8_t>(std::clamp(std::stoi(val1_str), 0, 15));
+  } else {
+    // Single value - use for both elements
+    val0 = val1 = static_cast<uint8_t>(std::clamp(std::stoi(trimmed), 0, 15));
+  }
+
+  out = UInt4x2(val0, val1);
 }
 
 template <typename DstType>
@@ -231,6 +306,21 @@ struct TensorCasterNoSat {
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
       out_data[i] = DstType(static_cast<float>(in_data[i]), false);
     }
+  }
+};
+
+// TensorCasterNoSat should never be instantiated for Int4x2/UInt4x2
+template <typename DstType>
+struct TensorCasterNoSat<Int4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("Int4x2 should never use TensorCasterNoSat");
+  }
+};
+
+template <typename DstType>
+struct TensorCasterNoSat<UInt4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("UInt4x2 should never use TensorCasterNoSat");
   }
 };
 
