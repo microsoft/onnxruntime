@@ -74,17 +74,6 @@ bool IsInputSupported(const Node& node, const NodeArg& input, const OpBuilderInp
   }
 
   for (const auto dim : shape) {
-    // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
-    // input has dimension > 16384
-    // See this issue, https://github.com/apple/coremltools/issues/1003
-    // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
-    // root cause.
-    if (dim > 16384) {
-      LOGS(logger, WARNING) << "CoreML does not support input dim > 16384. Input:" << input_name
-                            << ", shape: " << Shape2String(shape);
-      return false;
-    }
-
     if (dim == 0 && !allow_empty_input) {
       LOGS(logger, WARNING) << "CoreML does not support shapes with dimension values of 0. Input:" << input_name
                             << ", shape: " << Shape2String(shape);
@@ -171,6 +160,23 @@ bool HasNeuralEngine() {
 #endif  // #ifdef __APPLE__
 
   return has_neural_engine;
+}
+
+bool CheckShapeForConvMemoryLimit(gsl::span<const int64_t> shape, const logging::Logger& logger) {
+  // For some undocumented reason, Apple CoreML framework will fail loading the model if the model
+  // input has dimension > 16384
+  // See this issue, https://github.com/apple/coremltools/issues/1003
+  // https://developer.apple.com/metal/Metal-Feature-Set-Tables.pdf has maximum texture widths which may be the
+  // root cause.
+  // Only seems to apply to convolution networks -- limit comes from the size of the texture memory
+  for (auto dim : shape) {
+    if (dim > 16384) {
+      LOGS(logger, VERBOSE) << "Input shape: " << Shape2String(shape)
+                            << " exceeds CoreML convolution memory limit of 16384";
+      return false;
+    }
+  }
+  return true;
 }
 
 }  // namespace coreml

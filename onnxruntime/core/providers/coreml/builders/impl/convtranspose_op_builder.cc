@@ -137,6 +137,10 @@ bool ConvTransposeOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilder
     return false;
   }
 
+  if (!CheckShapeForConvMemoryLimit(weight_shape, logger) || !CheckShapeForConvMemoryLimit(input_shape, logger)) {
+    return false;
+  }
+
   int64_t num_spatial_dims = narrow<int64_t>(weight_shape.size()) - 2;
 
   NodeAttrHelper helper(node);
