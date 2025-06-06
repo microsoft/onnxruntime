@@ -257,9 +257,9 @@ ONNX_NAMESPACE::TensorProto Initializer::ToBFloat16(const std::string& name) con
 
 ONNX_NAMESPACE::TensorProto Initializer::ToFloat32(const std::string& name, onnxruntime::concurrency::ThreadPool* thread_pool) const {
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_.Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT, tensor_proto);
-  utils::MLTypeCallDispatcher<float, double, BFloat16, MLFloat16> t_disp(data_.GetElementType());
-  t_disp.Invoke<TensorToProtoFloat32>(data_, tensor_proto, thread_pool);
+  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT, tensor_proto);
+  utils::MLTypeCallDispatcher<float, double, BFloat16, MLFloat16> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToProtoFloat32>(*data_, tensor_proto, thread_pool);
   return tensor_proto;
 }
 
