@@ -139,7 +139,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
-                      bool need_load_system_lib, bool share_ep_contexts);
+                      bool need_load_system_lib, bool share_ep_contexts,
+                      bool enable_vtcm_backup_buffer_sharing,
+                      const std::unordered_set<std::string>& context_bin_list);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -197,7 +199,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ParseLoraConfig(std::string lora_config);
 
-  QnnSerializerConfig* GetQnnSerializerConfig();
+  // Adds a new QNN context.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
+  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
   Status LoadBackend();
@@ -214,7 +218,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext(bool enable_htp_weight_sharing);
+  Status CreateContext(bool enable_htp_weight_sharing, bool enable_vtcm_backup_buffer_sharing,
+                       const std::unordered_set<std::string>& context_bin_list);
 
   Status ReleaseContext();
 
@@ -298,10 +303,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       const std::string& eventLevel,
       const char* eventIdentifier);
 #endif
-
-  // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
-  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
