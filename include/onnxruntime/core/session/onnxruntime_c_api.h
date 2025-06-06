@@ -6418,31 +6418,26 @@ struct OrtEpApi {
    * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
    * \param[in] nodes Array of nodes supported by the EP that should be fused/compiled.
    * \param[in] num_nodes The number of supported nodes.
-   * \param[in] hardware_devices The OrtHardwareDevice instances that will execute the supported nodes.
-   *                             Used for reporting the specific devices that execute a graph.
-   * \param[in] num_device The number of hardware devices provided by the caller.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes,
-                  _In_ const OrtHardwareDevice* const* hardware_devices, size_t num_devices
+                  _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes
                   /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
 
   /** \brief Specify a node that is supported by an OrtEp and should be run with a registered EP kernel.
    *
    * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported node.
    * \param[in] node The supported OrtNode instance.
-   * \param[in] hardware_device The OrtHardwareDevice instance that will execute the supported node.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_ const OrtNode* node, _In_ const OrtHardwareDevice* hardware_device);
+                  _In_ const OrtNode* node);
 
   /** \brief Query a OrtNodeComputeContext for the name of the node that encapsulates the compiled/fused node.
    *

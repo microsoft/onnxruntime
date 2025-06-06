@@ -214,7 +214,7 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
     std::vector<int64_t> input_indices;
     ORT_RETURN_IF_ERROR(GetInputIndices(ep_node, name, input_indices));
 
-    for (size_t input_index : input_indices) {
+    for (int64_t input_index : input_indices) {
       OrtValueInfo::ConsumerInfo use_info(ep_node.ToExternal(), input_index);
       consumer_infos.push_back(use_info);
     }

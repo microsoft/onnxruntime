@@ -147,7 +147,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       }
 
       for (auto& capability : capabilities) {
-        // capability->hardware_devices = node_grouping.hardware_devices;  // Would allow app to query which EP+HW runs a subgraph
         result.push_back(std::move(capability));
       }
     } else {

@@ -167,10 +167,8 @@ static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value
 /// Example EP that can compile a single Mul operator.
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
-  ExampleEp(ApiPtrs apis, const std::string& name,
-            gsl::span<const OrtHardwareDevice* const> devices,
-            const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, hardware_devices_(devices.begin(), devices.end()), session_options_{session_options}, logger_{logger} {
+  ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
+      : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -236,8 +234,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
       }
     }
     RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddFusedNodes(graph_support_info, supported_nodes.data(),
-                                                                supported_nodes.size(), ep->hardware_devices_.data(),
-                                                                ep->hardware_devices_.size()));
+                                                                supported_nodes.size()));
     return nullptr;
   }
 
@@ -408,7 +405,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   }
 
   static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
-                                              _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                              _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
                                               _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
                                               _In_ size_t num_devices,
                                               _In_ const OrtSessionOptions* session_options,
@@ -434,8 +431,7 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     // const OrtHardwareDevice* device = devices[0];
     // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
 
-    gsl::span<const OrtHardwareDevice* const> devices_span(devices, num_devices);
-    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, devices_span, *session_options, *logger);
+    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *session_options, *logger);
 
     *ep = dummy_ep.release();
     return nullptr;

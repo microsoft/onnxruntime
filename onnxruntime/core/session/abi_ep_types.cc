@@ -8,8 +8,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddFusedNodes(gsl::span<const OrtNode* const> nodes,
-                                                         gsl::span<const OrtHardwareDevice* const> hardware_devices) {
+onnxruntime::Status OrtEpGraphSupportInfo::AddFusedNodes(gsl::span<const OrtNode* const> nodes) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.reserve(nodes.size());
   for (const OrtNode* node : nodes) {
@@ -18,20 +17,14 @@ onnxruntime::Status OrtEpGraphSupportInfo::AddFusedNodes(gsl::span<const OrtNode
     ep_nodes.push_back(ep_node);
   }
 
-  onnxruntime::InlinedVector<const OrtHardwareDevice*> devices(hardware_devices.begin(), hardware_devices.end());
-  node_groupings.push_back(NodeGrouping{NodeGroupingKind::kFusedNode, devices, ep_nodes});
-
+  node_groupings.emplace_back(NodeGroupingKind::kFusedNode, std::move(ep_nodes));
   return onnxruntime::Status::OK();
 }
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddSingleNode(const OrtNode* node, const OrtHardwareDevice* hardware_device) {
+onnxruntime::Status OrtEpGraphSupportInfo::AddSingleNode(const OrtNode* node) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.push_back(onnxruntime::EpNode::ToInternal(node));
-
-  onnxruntime::InlinedVector<const OrtHardwareDevice*> devices;
-  devices.push_back(hardware_device);
-
-  node_groupings.push_back(NodeGrouping{NodeGroupingKind::kSingleAssignedNode, devices, ep_nodes});
+  node_groupings.emplace_back(NodeGroupingKind::kSingleAssignedNode, std::move(ep_nodes));
 
   return onnxruntime::Status::OK();
 }

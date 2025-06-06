@@ -29,16 +29,17 @@ struct OrtEpGraphSupportInfo {
 
   // A grouping of supported nodes that are executed by a specific hardware devices.
   struct NodeGrouping {
+    NodeGrouping(NodeGroupingKind kind, std::vector<const onnxruntime::EpNode*>&& nodes)
+        : kind(kind), nodes(std::move(nodes)) {}
+
     NodeGroupingKind kind = NodeGroupingKind::kInvalidGrouping;
-    onnxruntime::InlinedVector<const OrtHardwareDevice*> hardware_devices;  // The hw devices that executes the supported nodes.
     std::vector<const onnxruntime::EpNode*> nodes;
   };
 
   explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
 
-  onnxruntime::Status AddFusedNodes(gsl::span<const OrtNode* const> nodes,
-                                    gsl::span<const OrtHardwareDevice* const> hardware_devices);
-  onnxruntime::Status AddSingleNode(const OrtNode* node, const OrtHardwareDevice* hardware_device);
+  onnxruntime::Status AddFusedNodes(gsl::span<const OrtNode* const> nodes);
+  onnxruntime::Status AddSingleNode(const OrtNode* node);
 
   const onnxruntime::EpGraph& ort_graph;
   std::vector<NodeGrouping> node_groupings;
