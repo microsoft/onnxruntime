@@ -117,6 +117,22 @@ struct EpGraph : public OrtGraph {
   struct PrivateTag {};  // Used to prevent use of public constructor (use static EpGraph::Create())
                          // Need to make the constructor public for std::make_unique().
 
+  // Class that maps a NodeIndex to an EpNode* using a std::vector.
+  // This is used a lot and should be more efficient than using an unordered_map.
+  struct IndexToEpNodeMap {
+   public:
+    IndexToEpNodeMap() = default;
+    IndexToEpNodeMap(IndexToEpNodeMap&& other) = default;
+    IndexToEpNodeMap& operator=(IndexToEpNodeMap&& other) = default;
+    void Resize(NodeIndex min_node_index, NodeIndex max_node_index);
+    EpNode* GetEpNode(NodeIndex node_index) const;
+    void SetEpNode(NodeIndex node_index, EpNode* ep_node);
+
+   private:
+    NodeIndex min_node_index_ = 0;
+    std::vector<EpNode*> nodes_;
+  };
+
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag) : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer(graph_viewer) {}
 
@@ -135,7 +151,7 @@ struct EpGraph : public OrtGraph {
 
   const GraphViewer& graph_viewer;
   std::vector<std::unique_ptr<EpNode>> nodes;
-  std::unordered_map<NodeIndex, EpNode*> index_to_node;
+  IndexToEpNodeMap index_to_ep_node;
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   InlinedVector<EpValueInfo*> inputs;

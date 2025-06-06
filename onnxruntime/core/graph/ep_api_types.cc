@@ -3,8 +3,10 @@
 
 #include "core/graph/ep_api_types.h"
 
+#include <algorithm>
 #include <cassert>
 #include <memory>
+#include <limits>
 #include <string>
 #include <unordered_map>
 #include <utility>
@@ -190,16 +192,15 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
     return Status::OK();
   }
 
-  auto it = graph->index_to_node.find(node->Index());
-  if (it == graph->index_to_node.end()) {
+  const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+  if (ep_node == nullptr) {
     return Status::OK();  // Node is not in this GraphViewer
   }
 
-  const EpNode& ep_node = *it->second;
   size_t output_index = 0;
-  ORT_RETURN_IF_ERROR(GetOutputIndex(ep_node, name, output_index));
+  ORT_RETURN_IF_ERROR(GetOutputIndex(*ep_node, name, output_index));
 
-  producer_info.node = ep_node.ToExternal();
+  producer_info.node = ep_node->ToExternal();
   producer_info.output_index = output_index;
   return Status::OK();
 #else
@@ -224,17 +225,16 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
   ORT_RETURN_IF_NOT(consumer_infos.empty(), "Internal error: consumer_infos should be empty in GetUses()");
   consumer_infos.reserve(nodes.size());
   for (const Node* node : nodes) {
-    auto it = graph->index_to_node.find(node->Index());
-    if (it == graph->index_to_node.end()) {
+    const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+    if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
 
-    const EpNode& ep_node = *it->second;
     std::vector<int64_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputIndices(ep_node, name, input_indices));
+    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name, input_indices));
 
     for (int64_t input_index : input_indices) {
-      OrtValueInfo::ConsumerInfo use_info(ep_node.ToExternal(), input_index);
+      OrtValueInfo::ConsumerInfo use_info(ep_node->ToExternal(), input_index);
       consumer_infos.push_back(use_info);
     }
   }
@@ -262,14 +262,13 @@ Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
   }
 
   for (const Node* node : nodes) {
-    auto it = graph->index_to_node.find(node->Index());
-    if (it == graph->index_to_node.end()) {
+    const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+    if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
 
-    const EpNode& ep_node = *it->second;
     std::vector<int64_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputIndices(ep_node, name, input_indices));
+    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name, input_indices));
 
     num_consumers += input_indices.size();  // A single OrtNode can use an OrtValueInfo as an input more than once.
   }
@@ -280,6 +279,26 @@ Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting uses of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+}
+
+void EpGraph::IndexToEpNodeMap::Resize(NodeIndex min_node_index, NodeIndex max_node_index) {
+  assert(max_node_index >= min_node_index);
+  size_t num_elems = (max_node_index - min_node_index) + 1;
+
+  min_node_index_ = min_node_index;
+  nodes_.resize(num_elems, nullptr);
+}
+
+EpNode* EpGraph::IndexToEpNodeMap::GetEpNode(NodeIndex node_index) const {
+  size_t i = node_index - min_node_index_;
+  assert(i < nodes_.size());
+  return nodes_[i];
+}
+
+void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node) {
+  size_t i = node_index - min_node_index_;
+  assert(i < nodes_.size());
+  nodes_[i] = ep_node;
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.
@@ -303,20 +322,25 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer) {
     graph_outputs.push_back(AddValueInfo(value_infos, *graph_output_node_arg, ep_graph.get()));
   }
 
-  std::vector<std::unique_ptr<EpNode>> nodes;
-  std::unordered_map<NodeIndex, EpNode*> index_to_node;
+  std::vector<std::unique_ptr<EpNode>> ep_nodes;
+  IndexToEpNodeMap index_to_ep_node;
+  NodeIndex min_node_index = std::numeric_limits<NodeIndex>::max();
+  NodeIndex max_node_index = std::numeric_limits<NodeIndex>::lowest();
 
-  nodes.reserve(graph_viewer.NumberOfNodes());
-  index_to_node.reserve(graph_viewer.NumberOfNodes());
-
+  ep_nodes.reserve(graph_viewer.NumberOfNodes());
   for (const Node& node : graph_viewer.Nodes()) {
-    auto ep_node = EpNode::Create(node, ep_graph.get(), value_infos);
-    nodes.push_back(std::move(ep_node));
-    index_to_node[node.Index()] = nodes.back().get();
+    ep_nodes.push_back(EpNode::Create(node, ep_graph.get(), value_infos));
+    min_node_index = std::min(min_node_index, node.Index());
+    max_node_index = std::max(max_node_index, node.Index());
   }
 
-  ep_graph->nodes = std::move(nodes);
-  ep_graph->index_to_node = std::move(index_to_node);
+  index_to_ep_node.Resize(min_node_index, max_node_index);
+  for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
+    index_to_ep_node.SetEpNode(ep_node->node.Index(), ep_node.get());
+  }
+
+  ep_graph->nodes = std::move(ep_nodes);
+  ep_graph->index_to_ep_node = std::move(index_to_ep_node);
   ep_graph->value_infos = std::move(value_infos);
   ep_graph->inputs = std::move(graph_inputs);
   ep_graph->outputs = std::move(graph_outputs);
@@ -353,9 +377,9 @@ std::vector<const OrtNode*> EpGraph::GetNodes(int order) const {
   result.reserve(NumNodes());
 
   for (NodeIndex node_idx : node_indices) {
-    auto node_it = index_to_node.find(node_idx);
-    ORT_ENFORCE(node_it != index_to_node.end());
-    result.push_back(node_it->second->ToExternal());
+    const EpNode* ep_node = index_to_ep_node.GetEpNode(node_idx);
+    assert(ep_node != nullptr);
+    result.push_back(ep_node->ToExternal());
   }
   return result;
 }
