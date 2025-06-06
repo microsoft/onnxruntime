@@ -215,7 +215,7 @@ Status T5DecoderSubgraph::CreateInitialFeeds(
     } else {
       size_t total_size = static_cast<size_t>(sequence_length) * static_cast<size_t>(batch_beam_size);
       size_t total_size_bytes = total_size * sizeof(int);
-      AllocatorPtr buffer_allocator = std::make_shared<onnxruntime::CPUAllocator>();
+      AllocatorPtr buffer_allocator = CPUAllocator::DefaultInstance();
       // TODO: not need extra buffer. Copy directly to input_ids_data instead like the user_cuda above.
       auto seq_copy = IAllocator::MakeUniquePtr<int>(buffer_allocator, total_size_bytes, false, stream);
       int* seq_copy_ptr = seq_copy.get();

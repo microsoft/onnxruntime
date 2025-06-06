@@ -57,8 +57,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& execution_provider /*required by constant folding*/,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
-    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
@@ -89,8 +88,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const IExecutionProvider& cpu_execution_provider,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable = {},
-    concurrency::ThreadPool* intra_op_thread_pool = nullptr,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors = nullptr);
+    concurrency::ThreadPool* intra_op_thread_pool = nullptr);
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 

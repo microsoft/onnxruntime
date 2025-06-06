@@ -5,7 +5,9 @@
 #include "core/common/logging/logging.h"
 #include "core/framework/kernel_registry_manager.h"
 #include "core/framework/execution_providers.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/utils.h"
+#include "core/graph/graph_utils.h"
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
@@ -371,26 +373,31 @@ bool TransformerMemcpyImpl::ProcessInitializers(const KernelRegistryManager& ker
                                                 const InitializedTensorSet& initializers_consumed,
                                                 const logging::Logger& logger) {
   std::map<const onnxruntime::NodeArg*, onnxruntime::NodeArg*> replacements;
-  for (const auto& pair : initializers_consumed) {
-    const auto& name = pair.first;
+  for (const auto& [name, tensor_proto] : initializers_consumed) {
     const onnxruntime::NodeArg* provider_def = FindNodeArg(provider_input_defs_, name);
     const onnxruntime::NodeArg* non_provider_def = FindNodeArg(non_provider_input_defs_, name);
     if (provider_def != nullptr && non_provider_def != nullptr) {
       std::string new_def_name = graph_.GenerateNodeArgName(name);
       auto& new_def = graph_.GetOrCreateNodeArg(new_def_name, provider_def->TypeAsProto());
 
-      // We make a copy of the initializer that is to be consumed by the provider Node so that
-      // session state initializer can copy it over to the provider device during its operation
-      // TODO: The copy being made is possibly redundant if this occurs in a subgraph
-      // When multiple subgraphs consume the same initializer as an implicit input,
-      // multiple copies of the initializer will be made into the provider device
-      // This should not directly affect runtime performance as the copies occur during initialization
-      // but overuse of the provider device's memory is definitely inefficient
-      // In future, we need to "statefully" make the copy only once and use it in all subgraphs referencing the initializer
-      const TensorProto* tensor_proto = pair.second;
       TensorProto new_tensor_proto = *tensor_proto;
       *(new_tensor_proto.mutable_name()) = new_def_name;
-      graph_.AddInitializedTensor(new_tensor_proto);
+
+      // Query any OrtValue existing for the original initializer
+      // We are checking outer scope because GetInitializer is called with true, therefore, we potentially
+      // have references to parent graphs.
+      // We are doing this so the same OrtValue is re-used in subgraphs and no copies made for big items.
+      constexpr const bool check_outer_scope_true = true;
+      OrtValue ort_value;
+      // The initializer can be in memory with OrtValue or it can be a flatbuffer mapped.
+      if (utils::HasExternalDataInMemory(new_tensor_proto) &&
+          graph_.GetOrtValueInitializer(name, ort_value, check_outer_scope_true)) {
+        // Re-use the same ort_value and proto that points to the same buffer
+        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializerWithExternalData(graph_, new_tensor_proto,
+                                                                            std::move(ort_value)));
+      } else {
+        ORT_IGNORE_RETURN_VALUE(graph_utils::AddInitializer(graph_, new_tensor_proto));
+      }
 
       replacements.insert(std::make_pair(provider_def, &new_def));
     }

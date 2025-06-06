@@ -7,7 +7,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
 #include "core/common/status.h"
-#include "core/framework/callback.h"
 #include "core/framework/data_transfer_manager.h"
 #include "core/framework/data_types.h"
 #include "core/framework/fuse_nodes_funcs.h"
@@ -37,7 +36,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func),
       logger_(logger) {
-  allocator_ptr_ = std::make_shared<CPUAllocator>();
+  allocator_ptr_ = CPUAllocator::DefaultInstance();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));
@@ -86,7 +85,7 @@ OptimizerExecutionFrame::Info::Info(const std::vector<const Node*>& nodes,
     : execution_provider_(execution_provider),
       is_sparse_initializer_func_(is_sparse_initializer_func),
       logger_(logger) {
-  allocator_ptr_ = std::make_shared<CPUAllocator>();
+  allocator_ptr_ = CPUAllocator::DefaultInstance();
   ORT_ENFORCE(allocator_ptr_, "Failed to get allocator for optimizer");
 
   ORT_THROW_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::make_unique<CPUDataTransfer>()));

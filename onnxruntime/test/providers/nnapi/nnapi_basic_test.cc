@@ -52,7 +52,7 @@ TEST(NnapiExecutionProviderTest, ReshapeFlattenTest) {
   std::vector<int64_t> dims_mul_y = {3, 2, 2};
   std::vector<float> values_mul_y = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
@@ -80,7 +80,7 @@ TEST(NnapiExecutionProviderTest, SigmoidSupportedInputRankTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
 
   OrtValue ml_value_x;
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(std::move(cpu_allocator), dims_mul_x, values_mul_x,
                        &ml_value_x);
   NameMLValMap feeds;
@@ -107,7 +107,7 @@ TEST(NnapiExecutionProviderTest, DynamicGraphInputTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 4, 4};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f, 1.0f, 2.0f, 3.0f, 4.0f};
   OrtValue ml_value_x;
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(std::move(cpu_allocator), dims_mul_x, values_mul_x,
                        &ml_value_x);
 
@@ -138,7 +138,7 @@ TEST(NnapiExecutionProviderTest, InternalUint8SupportTest) {
   std::vector<int64_t> dims_x = {1, 1, 1, 3};
   std::vector<float> values_x = {0.0f, 256.0f, 512.0f};
   OrtValue ml_value_x;
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(std::move(cpu_allocator), dims_x, values_x,
                        &ml_value_x);
   NameMLValMap feeds;
@@ -195,7 +195,7 @@ TEST(NnapiExecutionProviderTest, FunctionTest) {
   std::vector<int64_t> dims_mul_x = {1, 1, 3, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(cpu_allocator, dims_mul_x, values_mul_x,
                        &ml_value_x);
   OrtValue ml_value_y;
@@ -522,7 +522,7 @@ TEST(NnapiExecutionProviderTest, SharedInitializersDoNotGetSkipped) {
   constexpr auto* model_file_name = ORT_TSTR("testdata/clip_div_shared_initializer.onnx");
 
 #if defined(__ANDROID__)
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   std::vector<int64_t> x_dims{3, 2};
   std::vector<float> x_values(3.0f, 3 * 2);

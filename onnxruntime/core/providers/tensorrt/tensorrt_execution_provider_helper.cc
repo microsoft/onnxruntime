@@ -71,7 +71,7 @@ bool TensorrtExecutionProvider::IsLocalValue(const Graph& graph,
  * and save those information in subgraph context data structure. It's useful for building a valid graph and
  * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
  */
-void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
+void TensorrtExecutionProvider::BuildSubGraphContext(Graph& graph) const {
   // Iterate all the nodes and recurse into inner most subgraph first
   for (int i = 0; i < graph.MaxNodeIndex(); ++i) {
     auto node = graph.GetNode(i);
@@ -79,9 +79,9 @@ void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
       continue;
     }
 
-    auto subgraph_map = node->GetAttributeNameToSubgraphMap();
+    auto& subgraph_map = node->GetAttributeNameToMutableSubgraphMap();
     for (auto& entry : subgraph_map) {
-      const Graph* subgraph = entry.second;
+      Graph* subgraph = entry.second;
       BuildSubGraphContext(*subgraph);
     }
   }
@@ -121,6 +121,7 @@ void TensorrtExecutionProvider::BuildSubGraphContext(const Graph& graph) const {
       }
       // This input arg is not the output of another node so must come from either a graph input or an initializer.
       context->inputs_and_initializers[input->Name()] = input;
+      ORT_THROW_IF_ERROR(graph_utils::ConvertInMemoryDataToInline(graph, input->Name()));
     }
   }
 }

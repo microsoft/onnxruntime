@@ -52,7 +52,7 @@ void CompareOrtValuesToTensorProtoValues(
   ASSERT_EQ(name_to_ort_value.size(), name_to_tensor_proto.size());
 
   NameMLValMap name_to_ort_value_from_tensor_proto{};
-  AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr tmp_allocator = CPUAllocator::DefaultInstance();
 
   for (const auto& name_and_tensor_proto : name_to_tensor_proto) {
     const auto& name = name_and_tensor_proto.first;

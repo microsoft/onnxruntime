@@ -204,8 +204,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
     const IExecutionProvider& cpu_execution_provider, /*required by constant folding*/
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool disable_quant_qdq =
       session_options.config_options.GetConfigOrDefault(kOrtSessionOptionsDisableQuantQDQ, "0") == "1";
@@ -217,7 +216,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
                                                         onnxruntime::kAclExecutionProvider};
 #endif
   const InlinedHashSet<std::string_view> dml_ep = {onnxruntime::kDmlExecutionProvider};
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   switch (level) {
     case TransformerLevel::Level1: {
@@ -348,8 +347,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformers(
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  SatApplyContextVariant{},
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool,
-                                                                                 p_buffered_tensors));
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<GemmActivationFusion>(cpu_ep));
@@ -471,8 +469,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
     const IExecutionProvider& cpu_execution_provider,
     const logging::Logger& logger,
     const InlinedHashSet<std::string>& rules_and_transformers_to_disable,
-    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    [[maybe_unused]] concurrency::ThreadPool* intra_op_thread_pool) {
   InlinedVector<std::unique_ptr<GraphTransformer>> transformers;
   const bool saving = std::holds_alternative<SatRuntimeOptimizationSaveContext>(apply_context);
 
@@ -497,8 +494,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
         transformers.emplace_back(std::make_unique<QDQSelectorActionTransformer>(qdq_is_int8_allowed,
                                                                                  apply_context,
                                                                                  qdq_matmulnbits_accuracy_level,
-                                                                                 intra_op_thread_pool,
-                                                                                 p_buffered_tensors));
+                                                                                 intra_op_thread_pool));
       }
 
       transformers.emplace_back(std::make_unique<ConvActivationFusion>(cpu_ep, apply_context));
@@ -521,7 +517,7 @@ InlinedVector<std::unique_ptr<GraphTransformer>> GenerateTransformersForMinimalB
       // currently the only level 3 optimizer is the NhwcTransformer which is fully supported at runtime
       if (!saving) {
 #ifndef DISABLE_CONTRIB_OPS
-        AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+        AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
         auto cpu_registry = cpu_execution_provider.GetKernelRegistry();
         auto nhwc_transformer = std::make_unique<NhwcTransformer>(std::move(cpu_allocator), std::move(cpu_registry),
                                                                   logger);

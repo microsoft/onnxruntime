@@ -395,7 +395,7 @@ static Status DoTransposeInt4(const gsl::span<const size_t>& permutations, const
                     "Expected to transpose int4 tensor");
 
   // Convert to Tensor<Int8Type>, transpose, and then repack back to Tensor<Int4Type>.
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   Tensor input_unpacked;
   Tensor output_unpacked(DataTypeImpl::GetType<Int8Type>(), output.Shape(), cpu_allocator);
 

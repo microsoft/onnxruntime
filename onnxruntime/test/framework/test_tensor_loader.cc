@@ -80,7 +80,7 @@ TEST(CApiTensorTest, load_simple_float_tensor_allocator) {
   // save it to a buffer
   ASSERT_TRUE(p.SerializeToString(&s));
   // deserialize it
-  AllocatorPtr tmp_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr tmp_allocator = CPUAllocator::DefaultInstance();
   OrtValue value;
 
   ASSERT_STATUS_OK(utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p, tmp_allocator, value));

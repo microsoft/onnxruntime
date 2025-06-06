@@ -583,21 +583,19 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfoGetAttribute_tensor, _In_ const OrtKernel
     onnxruntime::TensorShape tensor_shape = onnxruntime::utils::GetTensorShapeFromTensorProto(tensor_proto);
     const auto* type = onnxruntime::DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
     onnxruntime::AllocatorPtr alloc_ptr = std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
-    auto tensorp = std::make_unique<onnxruntime::Tensor>(type, tensor_shape, std::move(alloc_ptr));
+    auto tensor = onnxruntime::Tensor{type, tensor_shape, std::move(alloc_ptr)};
 
     // Deserialize TensorProto into pre-allocated, empty Tensor.
     // TODO: here the TensorProto loses model path information, so it cannot be an external tensor.
     status = onnxruntime::utils::TensorProtoToTensor(onnxruntime::Env::Default(), std::filesystem::path(),
-                                                     tensor_proto, *tensorp);
+                                                     tensor_proto, tensor);
     if (!status.IsOK()) {
       return onnxruntime::ToOrtStatus(status);
     }
 
     // Initialize OrtValue from Tensor.
-    auto ml_tensor = onnxruntime::DataTypeImpl::GetType<onnxruntime::Tensor>();
     auto value = std::make_unique<OrtValue>();
-    value->Init(tensorp.release(), ml_tensor, ml_tensor->GetDeleteFunc());
-
+    onnxruntime::Tensor::InitOrtValue(std::move(tensor), *value);
     *out = value.release();
     return nullptr;
   });

@@ -15,40 +15,82 @@
 
 namespace onnxruntime {
 
+static inline Tensor* GetTensor(OrtValue& ort_value) {
+  return ort_value.GetMutable<Tensor>();
+}
+
 Initializer::Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
                          std::string_view name,
-                         gsl::span<const int64_t> dims)
-    : name_(name),
-      data_(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
-            std::make_shared<CPUAllocator>()) {
-  if (!data_.IsDataTypeString()) {
-    memset(data_.MutableDataRaw(), 0, data_.SizeInBytes());
+                         gsl::span<const int64_t> dims) : name_(name) {
+  auto tensor = Tensor(DataTypeImpl::TensorTypeFromONNXEnum(data_type)->GetElementType(), dims,
+                       CPUAllocator::DefaultInstance());
+
+  if (!tensor.IsDataTypeString()) {
+    memset(tensor.MutableDataRaw(), 0, tensor.SizeInBytes());
   }
+
+  Tensor::InitOrtValue(std::move(tensor), ort_value_);
+  data_ = GetTensor(ort_value_);
 }
 
 Initializer::Initializer(const ONNX_NAMESPACE::TensorProto& tensor_proto, const std::filesystem::path& model_path) {
-  ORT_ENFORCE(utils::HasDataType(tensor_proto), "Initializer must have a datatype");
+  ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
+  name_ = tensor_proto.name();
+
 #if !defined(__wasm__)
   // using full filepath is required by utils::TensorProtoToTensor(). One exception is WebAssembly platform, where
   // external data is not loaded from real file system.
-  if (utils::HasExternalData(tensor_proto)) {
+  if (utils::HasExternalData(tensor_proto) && !utils::HasExternalDataInMemory(tensor_proto)) {
     ORT_ENFORCE(!model_path.empty(),
                 "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
   }
 #endif
 
-  auto proto_data_type = tensor_proto.data_type();
-  if (utils::HasName(tensor_proto)) {
-    name_ = tensor_proto.name();
+  Tensor tensor;
+  // This creates copy of the data so clients can mutate
+  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), model_path, tensor_proto, tensor));
+  Tensor::InitOrtValue(std::move(tensor), ort_value_);
+  data_ = GetTensor(ort_value_);
+}
+
+Initializer::Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                         const std::filesystem::path& model_path, bool check_outer_scope) {
+  ORT_ENFORCE(utils::HasName(tensor_proto), "Initializer must have a name");
+  name_ = tensor_proto.name();
+
+  // Check if the data is in memory. This does not mean, though, that the data is in the ort_value
+  if (utils::HasExternalDataInMemory(tensor_proto)) {
+    OrtValue ort_value;
+    if (graph.GetOrtValueInitializer(name_, ort_value, check_outer_scope)) {
+      const auto& src_tensor = ort_value.Get<Tensor>();
+      // We need to make a copy of the data to ensure that the original data is not mutated
+      // This is generally inline with TensorProtoToTensor() behavior which copies data from
+      // TensorProto to Tensor.
+      Tensor initializer{src_tensor.DataType(), src_tensor.Shape(), CPUAllocator::DefaultInstance()};
+      utils::MakeCpuTensorCopy(src_tensor, initializer);
+      Tensor::InitOrtValue(std::move(initializer), ort_value_);
+      data_ = GetTensor(ort_value_);
+      return;
+    }
+#if !defined(__wasm__)
+    ORT_ENFORCE(!model_path.empty(),
+                "model_path must not be empty. Ensure that a path is provided when the model is created or loaded.");
+#endif
   }
 
-  auto proto_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  Tensor tensor;
+  // Creates a copy of the data from tensor_proto
+  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), model_path, tensor_proto, tensor));
+  Tensor::InitOrtValue(std::move(tensor), ort_value_);
+  data_ = GetTensor(ort_value_);
+}
 
-  // This must be pre-allocated
-  Tensor w(DataTypeImpl::TensorTypeFromONNXEnum(proto_data_type)->GetElementType(), proto_shape,
-           std::make_shared<CPUAllocator>());
-  ORT_THROW_IF_ERROR(utils::TensorProtoToTensor(Env::Default(), model_path, tensor_proto, w));
-  data_ = std::move(w);
+Initializer::~Initializer() = default;
+
+void Initializer::ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const {
+  constexpr const bool use_tensor_buffer_true = true;
+  tensor_proto = utils::TensorToTensorProto(*data_, name_, use_tensor_buffer_true);
+  ort_value = ort_value_;
 }
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
@@ -199,25 +241,25 @@ inline void SetNameDims(const std::string& name,
 
 ONNX_NAMESPACE::TensorProto Initializer::ToFP16(const std::string& name) const {
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_.Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, tensor_proto);
-  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(data_.GetElementType());
-  t_disp.Invoke<TensorToProtoFP16>(data_, tensor_proto);
+  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT16, tensor_proto);
+  utils::MLTypeCallDispatcher<MLFloat16, float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToProtoFP16>(*data_, tensor_proto);
   return tensor_proto;
 }
 
 ONNX_NAMESPACE::TensorProto Initializer::ToBFloat16(const std::string& name) const {
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_.Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, tensor_proto);
-  utils::MLTypeCallDispatcher<BFloat16, float, double> t_disp(data_.GetElementType());
-  t_disp.Invoke<TensorToProtoBFloat16>(data_, tensor_proto);
+  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_BFLOAT16, tensor_proto);
+  utils::MLTypeCallDispatcher<BFloat16, float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToProtoBFloat16>(*data_, tensor_proto);
   return tensor_proto;
 }
 
 ONNX_NAMESPACE::TensorProto Initializer::ToFloat32(const std::string& name, onnxruntime::concurrency::ThreadPool* thread_pool) const {
   ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_.Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT, tensor_proto);
-  utils::MLTypeCallDispatcher<float, double, BFloat16, MLFloat16> t_disp(data_.GetElementType());
-  t_disp.Invoke<TensorToProtoFloat32>(data_, tensor_proto, thread_pool);
+  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT, tensor_proto);
+  utils::MLTypeCallDispatcher<float, double, BFloat16, MLFloat16> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToProtoFloat32>(*data_, tensor_proto, thread_pool);
   return tensor_proto;
 }
 
@@ -314,46 +356,46 @@ struct ElementWiseDiv : OpElementWise<T, std::divides<typename ToNumeric<T>::typ
 }  // namespace
 
 Initializer& Initializer::add(float value) {
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_.GetElementType());
-  t_disp.Invoke<ScalarAdd>(data_, value);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<ScalarAdd>(*data_, value);
   return *this;
 }
 
 Initializer& Initializer::add(const Initializer& other) {
   ORT_ENFORCE(data_type() == other.data_type(), "Expecting the same data type");
   ORT_ENFORCE(size() == other.size(), "Expecting the same size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ElementWiseAdd>(data_, other.data_);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_->GetElementType());
+  t_disp.Invoke<ElementWiseAdd>(*data_, *other.data_);
   return *this;
 }
 
 Initializer& Initializer::sub(const Initializer& other) {
   ORT_ENFORCE(data_type() == other.data_type(), "Expecting the same data type");
   ORT_ENFORCE(size() == other.size(), "Expecting the same size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ElementWiseSub>(data_, other.data_);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_->GetElementType());
+  t_disp.Invoke<ElementWiseSub>(*data_, *other.data_);
   return *this;
 }
 
 Initializer& Initializer::mul(const Initializer& other) {
   ORT_ENFORCE(data_type() == other.data_type(), "Expecting the same data type");
   ORT_ENFORCE(size() == other.size(), "Expecting the same size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ElementWiseMul>(data_, other.data_);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_->GetElementType());
+  t_disp.Invoke<ElementWiseMul>(*data_, *other.data_);
   return *this;
 }
 
 Initializer& Initializer::div(const Initializer& other) {
   ORT_ENFORCE(data_type() == other.data_type(), "Expecting the same data type");
   ORT_ENFORCE(size() == other.size(), "Expecting the same size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ElementWiseDiv>(data_, other.data_);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_->GetElementType());
+  t_disp.Invoke<ElementWiseDiv>(*data_, *other.data_);
   return *this;
 }
 
 Initializer& Initializer::sqrt() {
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_.GetElementType());
-  t_disp.Invoke<Sqrt>(data_);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<Sqrt>(*data_);
   return *this;
 }
 
@@ -395,13 +437,13 @@ struct ScaleByAxis {
 
 void Initializer::scale_by_axis(const Initializer& scalers, int axis, bool column_major) {
   ORT_ENFORCE(axis >= 0, "Axis must be non-negative");
-  const size_t block_size = narrow<size_t>(data_.Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
+  const size_t block_size = narrow<size_t>(data_->Shape().SizeFromDimension(gsl::narrow_cast<size_t>(axis)));
   const size_t num_blocks = size() / block_size;
   ORT_ENFORCE(scalers.size() == 1 ||
                   (column_major ? scalers.size() == block_size : scalers.size() == num_blocks),
               "Invalid other(scalers) size");
-  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_.GetElementType());
-  t_disp.Invoke<ScaleByAxis>(data_, scalers.data_, block_size, num_blocks, column_major);
+  utils::MLTypeCallDispatcher<MLFloat16, BFloat16, float, double, int32_t, int64_t> t_disp(data_->GetElementType());
+  t_disp.Invoke<ScaleByAxis>(*data_, *scalers.data_, block_size, num_blocks, column_major);
 }
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
 }  // namespace onnxruntime

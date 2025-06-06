@@ -73,7 +73,7 @@ struct NonTensorTypeConverter<ExperimentalType> {
 
     // Create and populate Tensor
     TensorShape shape({1});
-    std::shared_ptr<IAllocator> allocator = std::make_shared<CPUAllocator>();
+    std::shared_ptr<IAllocator> allocator = CPUAllocator::DefaultInstance();
     std::unique_ptr<Tensor> tp(new Tensor(DataTypeImpl::GetType<std::string>(), shape, allocator));
     *tp->MutableData<std::string>() = input.Get<ExperimentalType>().str_;
 

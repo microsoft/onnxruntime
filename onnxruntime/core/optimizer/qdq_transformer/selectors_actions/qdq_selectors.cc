@@ -173,12 +173,13 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
 
   if (!allow_nonpositive_scale_) {
     // IsQDQPairSupported will check that the scale is the same between q_node and dq_node.
-    if (!IsQOrDQScalePositiveConstantScalar(q_node, get_const_initializer, graph_viewer.ModelPath())) {
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), q_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
       return false;
     }
   }
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -345,7 +346,7 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     }
 
     if (req_equal_quant_params_ &&
-        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
+        !IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
       return false;
     }
   }
@@ -761,7 +762,7 @@ bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool CumSumNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

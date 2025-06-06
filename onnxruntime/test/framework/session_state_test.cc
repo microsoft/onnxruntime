@@ -275,7 +275,7 @@ TEST_P(SessionStateTestP, TestInitializerProcessing) {
           graph, session_state.GetMutableFuncMgr(),
           [](Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
              const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-            AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+            AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
             return layout_transformation::TransformLayoutForEP(
                 graph, modified, execution_provider, std::move(cpu_allocator), debug_graph_fn);
           },
@@ -319,7 +319,7 @@ TEST(SessionStateTest, TestInitializerMemoryAllocatedUsingNonArenaMemory) {
     GTEST_SKIP() << "CPU allocator does not support arena usage.";
   }
 
-  AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
   // Part 1: Feature turned ON (i.e.) allocate from non-arena memory
   {
     std::basic_ostringstream<ORTCHAR_T> oss;

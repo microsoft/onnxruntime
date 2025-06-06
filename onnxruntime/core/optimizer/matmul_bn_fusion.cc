@@ -193,11 +193,11 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
    * temp = scale / sqrt(var + epsilon)
    * output = (temp * Input) - ((temp * mean) + bias)
    */
-  Initializer scale(*scale_tensor, graph.ModelPath());
-  Initializer bias(*bias_tensor, graph.ModelPath());
-  Initializer mean(*mean_tensor, graph.ModelPath());
-  Initializer var(*var_tensor, graph.ModelPath());
-  Initializer matmul_b(*matmul_b_tensor, graph.ModelPath());
+  Initializer scale(graph, *scale_tensor, graph.ModelPath());
+  Initializer bias(graph, *bias_tensor, graph.ModelPath());
+  Initializer mean(graph, *mean_tensor, graph.ModelPath());
+  Initializer var(graph, *var_tensor, graph.ModelPath());
+  Initializer matmul_b(graph, *matmul_b_tensor, graph.ModelPath());
 
   var.add(epsilon);
   var.sqrt();
@@ -208,18 +208,18 @@ Status MatmulBNFusion::Apply(Graph& graph, Node& matmul_node, RewriteRuleEffect&
   bias.sub(mean);
 
   // create B tensorProto for new Gemm node from <matmulB> initializer.
-  ONNX_NAMESPACE::TensorProto new_gemm_b_tensor(*matmul_b_tensor);
+  ONNX_NAMESPACE::TensorProto new_gemm_b_tensor;
   matmul_b.ToProto(new_gemm_b_tensor);
   const std::string new_gemm_b_name = graph.GenerateNodeArgName("MatMulBnFusion_GemmB_" + matmul_b_tensor->name());
   new_gemm_b_tensor.set_name(new_gemm_b_name);
-  NodeArg& new_gemm_b_node_arg = graph_utils::AddInitializer(graph, new_gemm_b_tensor);
+  NodeArg& new_gemm_b_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_gemm_b_tensor);
 
   // create bias tensorProto for new Gemm node from <bias> initializer.
-  ONNX_NAMESPACE::TensorProto new_gemm_bias_tensor(*bias_tensor);
+  ONNX_NAMESPACE::TensorProto new_gemm_bias_tensor;
   bias.ToProto(new_gemm_bias_tensor);
   const std::string new_gemm_bias_name = graph.GenerateNodeArgName("MatMulBnFusion_GemmBias");
   new_gemm_bias_tensor.set_name(new_gemm_bias_name);
-  NodeArg& new_gemm_bias_node_arg = graph_utils::AddInitializer(graph, new_gemm_bias_tensor);
+  NodeArg& new_gemm_bias_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_gemm_bias_tensor);
 
   Node& gemm_node = graph.AddNode(
       graph.GenerateNodeArgName("MatMulBnFusion_Gemm"),
