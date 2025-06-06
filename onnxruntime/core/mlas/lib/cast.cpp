@@ -43,6 +43,12 @@ MlasConvertHalfToFloatBufferInParallel(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+#if defined(BUILD_MLAS_NO_ONNXRUNTIME)
+    MLAS_UNREFERENCED_PARAMETER(ThreadPool);
+
+    // If the ThreadPool is not available, use the single-threaded version.
+    MlasConvertHalfToFloatBuffer(Source, Destination, Count);
+#else
     // Check if the Tensor is long enough to use threads.
     // Check if the Thread Pool is available.
     // If not, execute single threaded conversion of half to float
@@ -78,6 +84,7 @@ MlasConvertHalfToFloatBufferInParallel(
             }
         );
     }
+#endif // BUILD_MLAS_NO_ONNXRUNTIME
 }
 
 void
