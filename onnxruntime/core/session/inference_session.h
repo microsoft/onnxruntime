@@ -608,7 +608,6 @@ class InferenceSession {
     return weight_data_type_;
   }
 
-  
   void SetGraphHash(const std::string& hash) {
     graph_hash_ = hash;
   }
@@ -909,9 +908,9 @@ class InferenceSession {
 
   struct Telemetry {
     Telemetry() : time_sent_last_() {}
-    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
     std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report

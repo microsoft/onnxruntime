@@ -1673,7 +1673,7 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
-#ifdef _WIN32
+#if !defined(ORT_MINIMAL_BUILD)
 [[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
   std::string data_type_list;
 
@@ -2013,12 +2013,14 @@ common::Status InferenceSession::Initialize() {
     std::string model_weight_type, model_graph_hash, model_weight_hash;
 #ifdef ORT_CALLER_FRAMEWORK
     if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
-#ifdef _WIN32
       InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+#if !defined(ORT_MINIMAL_BUILD)
       model_weight_type = ModelWeightDataType(graph);
+      SetWeightDataType(model_weight_type);
+#endif
+#ifdef _WIN32
       model_graph_hash = ComputeModelGraphHash(graph);
       model_weight_hash = ComputeModelWeightHash(initializers);
-      SetWeightDataType(model_weight_type);
       SetGraphHash(model_graph_hash);
       SetWeightHash(model_weight_hash);
 #endif
@@ -2989,7 +2991,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
     const Tensor& tensor = feed.Get<Tensor>();
     const TensorShape& shape = tensor.Shape();
     if (shape.NumDimensions() > 0) {
-      batch_size = shape[0];    // Extract batch size
+      batch_size = shape[0];  // Extract batch size
     }
     // Exit the loop after finding the first tensor since subsequent feeds will have the same batch size.
     break;
