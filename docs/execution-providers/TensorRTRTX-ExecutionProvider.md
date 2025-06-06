@@ -29,7 +29,7 @@ Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Sup
 Please select the Nvidia TensorRT RTX version of Onnx Runtime: https://onnxruntime.ai/docs/install. (TODO!)
 
 ## Build from source
-See [Build instructions](../build/eps.md#tensorrtrtx). (TODO!)
+See [Build instructions](../build/eps.md#TensorRT-RTX).
 
 ## Requirements
 
@@ -207,7 +207,7 @@ TensorRT RTX configurations can be set by execution provider options. It's usefu
   * The format of the profile shapes is `input_tensor_1:dim_1xdim_2x...,input_tensor_2:dim_3xdim_4x...,...`
     * These three flags should all be provided in order to enable explicit profile shapes feature.
   * Note that multiple TensorRT RTX profiles can be enabled by passing multiple shapes for the same input tensor.
-  * Check [Explicit shape range for dynamic shape input](#explicit-shape-range-for-dynamic-shape-input) and TRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
+  * Check TensorRT doc [optimization profiles](https://docs.nvidia.com/deeplearning/tensorrt/developer-guide/index.html#opt_profiles) for more details.
 
 ## NV TensorRT RTX EP Caches
 There are two major TRT RTX EP caches:
