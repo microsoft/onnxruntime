@@ -3465,6 +3465,9 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
     ORT_RETURN_IF_NOT(proto_shape == tensor.Shape(), "Shape mismatch with ortvalue_initializer");
 
     ortvalue_initializers_.insert_or_assign(tensor_proto.name(), ortvalue_initializer);
+  } else {
+    ORT_ENFORCE(ortvalue_initializers_.count(tensor_proto.name()) == 0,
+                "Stray leftover ort_value for a small initializer being inserted.");
   }
 
   SetGraphResolveNeeded();

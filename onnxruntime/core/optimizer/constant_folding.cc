@@ -329,7 +329,12 @@ Status ConstantFolding::ApplyImpl(Graph& graph, bool& modified, int graph_level,
           }
 
           constant_arg_out->SetShape(result_shape);
-          ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(out_tensorproto, ort_value));
+          // The data is too small and has been inlined.
+          if (!utils::HasExternalData(out_tensorproto)) {
+            ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(out_tensorproto, OrtValue()));
+          } else {
+            ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(out_tensorproto, ort_value));
+          }
         }
       }
     }
