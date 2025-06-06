@@ -333,8 +333,7 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   if (zp_arg) {
     // zero point is optional, one can have a NodeArg for a missing optional
     // if the name is an empty string, and the below would not return ptr to a proto.
-    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto),
-        "Missing required zero point: ", zp_arg->Name(), " for node: ", dq_node->Name();
+    graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
   }
 
   auto K = weight_arg->Shape()->dim(0).dim_value();
