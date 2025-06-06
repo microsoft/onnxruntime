@@ -13,13 +13,15 @@
 
 namespace onnxruntime::qnn {
 
+class ProfilingEventStore;
+
 // This class manages QNN mem handles (Qnn_MemHandle_t) associated with a QNN context (Qnn_ContextHandle_t).
 // In particular, it handles the registration and deregistration of mem handles.
 // The associated QNN context is expected to be in scope for the lifetime of the QnnContextMemHandleManager.
 class QnnContextMemHandleManager {
  public:
   QnnContextMemHandleManager(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ContextHandle_t qnn_context,
-                             const logging::Logger& logger);
+                             const logging::Logger& logger, ProfilingEventStore* profiling_event_store);
 
   ~QnnContextMemHandleManager();
 
@@ -38,6 +40,7 @@ class QnnContextMemHandleManager {
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
   Qnn_ContextHandle_t context_;
   const logging::Logger& logger_;
+  ProfilingEventStore* profiling_event_store_;
 
   // assume Qnn_MemHandle_t is a pointer and able to be wrapped with std::unique_ptr
   static_assert(std::is_pointer_v<Qnn_MemHandle_t>);
