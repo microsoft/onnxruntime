@@ -133,7 +133,9 @@ export const initializeWebAssemblyAndOrtRuntime = async (): Promise<void> => {
             message.in!.wasm.wasmPaths = {
               wasm: !BUILD_DEFS.DISABLE_JSEP
                 ? new URL('ort-wasm-simd-threaded.jsep.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
-                : new URL('ort-wasm-simd-threaded.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href,
+                : !BUILD_DEFS.DISABLE_WEBGPU
+                  ? new URL('ort-wasm-simd-threaded.asyncify.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href
+                  : new URL('ort-wasm-simd-threaded.wasm', BUILD_DEFS.ESM_IMPORT_META_URL).href,
             };
           }
           proxyWorker.postMessage(message);
