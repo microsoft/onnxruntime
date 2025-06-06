@@ -207,10 +207,10 @@ TEST(CastOpTest, ToString) {
   TestCastOp(gsl::make_span(int_16_input), gsl::make_span(int_string_data), shape);
 }
 
-TEST(CastOpTest, Int4ToFloat) {
+TEST(CastOpTest, Int4x2ToFloat) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<Int4x2> int4_input = {
+  const std::vector<Int4x2> int4x2_input = {
       Int4x2(1, 2), // two 4-bit int elements: lower = 1, upper = 2
       Int4x2(-3, -4),
       Int4x2(5, -6),
@@ -220,13 +220,13 @@ TEST(CastOpTest, Int4ToFloat) {
   const std::vector<float> expected_float_output = {1.0f, 2.0f, -3.0f, -4.0f, 5.0f, -6.0f, -8.0f, 7.0f};
 
   // WHEN, THEN
-  TestCastOp(gsl::make_span(int4_input), gsl::make_span(expected_float_output), shape);
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_float_output), shape);
 }
 
-TEST(CastOpTest, UInt4ToFloat) {
+TEST(CastOpTest, UInt4x2ToFloat) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<UInt4x2> uint4_input = {
+  const std::vector<UInt4x2> uint4x2_input = {
       UInt4x2(0, 1),
       UInt4x2(2, 3),
       UInt4x2(7, 8),
@@ -236,7 +236,7 @@ TEST(CastOpTest, UInt4ToFloat) {
   const std::vector<float> expected_float_output = {0.0f, 1.0f, 2.0f, 3.0f, 7.0f, 8.0f, 14.0f, 15.0f};
 
   // WHEN, THEN
-  TestCastOp(gsl::make_span(uint4_input), gsl::make_span(expected_float_output), shape);
+  TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_float_output), shape);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
