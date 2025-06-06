@@ -5323,7 +5323,7 @@ struct OrtApi {
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
    * \param[out] output_index Optional output parameter set to the OrtNode instance's output index
-   *                          that produces the OrtValueInfo. Ignored if set to NULL.
+   *                          that produces the value. Ignored if set to NULL.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */

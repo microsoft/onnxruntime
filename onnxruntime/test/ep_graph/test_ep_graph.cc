@@ -345,6 +345,7 @@ TEST(EpGraphTest, BasicCApiUse) {
   CheckGraphCApi(test_graph->graph_viewer, test_graph->GetOrtGraph());
 }
 
+// Traverse OrtGraph with Scan nodes, which tests handling of subgraphs, implicit inputs, and variadic I/O.
 TEST(EpGraphTest, CheckModelWithSubgraphs) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";

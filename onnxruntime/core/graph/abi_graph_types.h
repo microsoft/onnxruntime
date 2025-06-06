@@ -53,7 +53,7 @@ struct OrtValueInfo {
     const OrtNode* node = nullptr;
     int64_t input_index = 0;  // Negative if it is an implicit input to a node that contains a subgraph (e.g., If).
   };
-  virtual onnxruntime::Status GetConsumers(std::vector<ConsumerInfo>& uses) const = 0;
+  virtual onnxruntime::Status GetConsumers(std::vector<ConsumerInfo>& consumer_infos) const = 0;
   virtual onnxruntime::Status GetNumConsumers(size_t& num_consumers) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
