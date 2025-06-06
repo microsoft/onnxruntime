@@ -261,7 +261,7 @@ export const importWasmModule = async (
       //    env.wasm.wasmPaths = { wasm: /* URL of the .wasm file */ };
       //    ```
       //
-      if (isWasmOverridden) {
+      if (isWasmOverridden && !isMultiThreaded) {
         useEmbeddedModule = true;
       } else {
         throw new Error('cannot determine the script source URL.');
