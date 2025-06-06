@@ -26,7 +26,7 @@ In addition to using the in-box version of WinML, WinML can also be installed as
 
 ## Windows OS integration
 
-ONNX Runtime is available in Windows 10 versions >= 1809 and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
+ONNX Runtime is available in Windows 10 versions >= 20H1(10.0.19041.0) and all versions of Windows 11. It is embedded inside Windows.AI.MachineLearning.dll and exposed via the WinRT API (WinML for short). It includes the CPU execution provider and the [DirectML execution provider](../execution-providers/DirectML-ExecutionProvider) for GPU support.
 
 The high level design looks like this:
 
