@@ -237,6 +237,71 @@ TEST(CastOpTest, UInt4x2ToFloat) {
   TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_float_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToInt32) {
+  // Test casting Int4x2 to int32_t to verify specialized template works
+  const std::vector<int64_t> shape{2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(3, -1),   // 3 in low nibble, -1 in high nibble
+      Int4x2(-8, 7)};  // -8 in low nibble (min value), 7 in high nibble (max value)
+  // Expected output: low nibble first, then high nibble
+  const std::vector<int32_t> expected_output = {3, -1, -8, 7};
+
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_output), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToUInt32) {
+  // Test casting UInt4x2 to uint32_t to verify specialized template works
+  const std::vector<int64_t> shape{2, 2};
+  const std::vector<UInt4x2> uint4x2_input = {
+      UInt4x2(5, 12),  // 5 in low nibble, 12 in high nibble  
+      UInt4x2(0, 15)}; // 0 in low nibble (min value), 15 in high nibble (max value)
+  // Expected output: low nibble first, then high nibble
+  const std::vector<uint32_t> expected_output = {5, 12, 0, 15};
+
+  TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_output), shape);
+}
+
+TEST(CastOpTest, Int4x2ToMLFloat16) {
+  // Test casting Int4x2 to MLFloat16 to verify explicit float conversion
+  const std::vector<int64_t> shape{2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(2, -5),
+      Int4x2(7, -8)};
+  // Expected output: low nibble first, then high nibble, converted through float
+  const std::vector<MLFloat16> expected_output = {
+      MLFloat16(2.0f), MLFloat16(-5.0f), MLFloat16(7.0f), MLFloat16(-8.0f)};
+
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_output), shape);
+}
+
+TEST(CastOpTest, FloatToInt4x2) {
+  // Test reverse casting from float to Int4x2 to verify packing works correctly
+  const std::vector<int64_t> input_shape{2, 4};  // 8 elements
+  const std::vector<int64_t> output_shape{2, 2}; // 4 packed pairs
+  const std::vector<float> float_input = {
+      1.0f, 3.0f, -2.0f, 7.0f,  // Should pack to Int4x2(1, 3) and Int4x2(-2, 7)
+      -8.0f, 0.0f, 5.0f, -1.0f}; // Should pack to Int4x2(-8, 0) and Int4x2(5, -1)
+  const std::vector<Int4x2> expected_output = {
+      Int4x2(1, 3), Int4x2(-2, 7), Int4x2(-8, 0), Int4x2(5, -1)};
+
+  TestCastOp(gsl::make_span(float_input), gsl::make_span(expected_output), 
+            input_shape, OpTester::ExpectResult::kExpectSuccess, "", 13);
+}
+
+TEST(CastOpTest, UInt4x2ToInt4x2) {
+  // Test casting between UInt4x2 and Int4x2
+  const std::vector<int64_t> shape{2, 2};
+  const std::vector<UInt4x2> uint4x2_input = {
+      UInt4x2(3, 7),   // Values within signed range
+      UInt4x2(15, 8)}; // Raw bit patterns will be reinterpreted
+  const std::vector<Int4x2> expected_output = {
+      Int4x2(3, 7),    // 3 and 7 fit in signed 4-bit range
+      Int4x2(-1, -8)}; // 15 as 4-bit unsigned is 1111, as signed it's -1
+                       // 8 as 4-bit unsigned is 1000, as signed it's -8
+
+  TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_output), shape);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename F8>
