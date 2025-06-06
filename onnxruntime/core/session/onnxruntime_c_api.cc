@@ -2609,6 +2609,36 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumImplicitInputs, _In_ const OrtNode* node, _In_ size_t* num_implicit_inputs) {
+  API_IMPL_BEGIN
+  if (num_implicit_inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_implicit_inputs' argument is NULL");
+  }
+  *num_implicit_inputs = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumImplicitInputs(*num_implicit_inputs));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                    _In_ size_t max_num_implicit_inputs) {
+  API_IMPL_BEGIN
+  if (implicit_inputs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'implicit_inputs' argument is NULL");
+  }
+
+  onnxruntime::InlinedVector<const OrtValueInfo*> node_implicit_inputs;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetImplicitInputs(node_implicit_inputs));
+
+  size_t num_implicit_inputs = std::min(max_num_implicit_inputs, node_implicit_inputs.size());
+  for (size_t i = 0; i < num_implicit_inputs; i++) {
+    implicit_inputs[i] = node_implicit_inputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _In_ size_t* num_subgraphs) {
   API_IMPL_BEGIN
   if (num_subgraphs == nullptr) {
@@ -3303,6 +3333,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_NumOutputs,
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
+    &OrtApis::Node_GetNumImplicitInputs,
+    &OrtApis::Node_GetImplicitInputs,
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,

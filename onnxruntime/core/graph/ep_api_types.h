@@ -56,12 +56,14 @@ struct SubgraphState {
 struct EpNode : public OrtNode {
  public:
   EpNode(const EpGraph* ep_graph, const Node& node, InlinedVector<EpValueInfo*>&& inputs,
-         InlinedVector<EpValueInfo*>&& outputs, InlinedVector<SubgraphState>&& subgraphs)
+         InlinedVector<EpValueInfo*>&& outputs, std::vector<EpValueInfo*>&& implicit_inputs,
+         std::vector<SubgraphState>&& subgraphs)
       : OrtNode(OrtGraphIrApi::kEpApi),
         ep_graph(ep_graph),
         node(node),
         inputs(std::move(inputs)),
         outputs(std::move(outputs)),
+        implicit_inputs(std::move(implicit_inputs)),
         subgraphs(std::move(subgraphs)) {}
 
   /// <summary>
@@ -87,6 +89,8 @@ struct EpNode : public OrtNode {
   size_t NumOutputs() const override { return outputs.size(); }
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+  Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
+  Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
   Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
@@ -98,7 +102,11 @@ struct EpNode : public OrtNode {
   const Node& node;
   InlinedVector<EpValueInfo*> inputs;
   InlinedVector<EpValueInfo*> outputs;
-  InlinedVector<SubgraphState> subgraphs;
+
+  // Storing data related to implicit inputs and subgraphs in std::vector instead of InlinedVector
+  // because sizeof(InlinedVector) > sizeof(std::vector) and most nodes will *NOT* have this data.
+  std::vector<EpValueInfo*> implicit_inputs;
+  std::vector<SubgraphState> subgraphs;
 };
 
 /// <summary>

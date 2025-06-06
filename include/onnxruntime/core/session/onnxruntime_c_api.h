@@ -5556,6 +5556,44 @@ struct OrtApi {
   ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
                   _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
 
+  /** \brief Get the number of implicit inputs that are used within the given node's subgraphs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_implicit_inputs Output parameter set the to number of implicit inputs to the node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _In_ size_t* num_implicit_inputs);
+
+  /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * Caller provides a pre-allocated array that will be filled with the implicit inputs. Use Node_GetNumImplicitInputs()
+   * to get the number of implicit inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] implicit_inputs Pre-allocated array of `max_num_implicit_inputs` elements that will be filled
+                                 with OrtValueInfo*.
+   * \param[in] max_num_implicit_inputs The maximum size of the `implicit_inputs` array.
+   *                                    Typical usage sets this to the value of Node_GetNumImplicitInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                  _In_ size_t max_num_implicit_inputs);
+
   /** \brief Returns the number of subgraphs contained by a node.
    *
    * Certain operator types (e.g., If and Loop) contain nested subgraphs.

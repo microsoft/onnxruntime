@@ -222,6 +222,13 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
         std::vector<int64_t> api_dims(api_num_dims, 0);
         ASSERT_ORTSTATUS_OK(ort_api.GetDimensions(api_type_shape, api_dims.data(), api_dims.size()));
         ASSERT_EQ(gsl::span<const int64_t>(api_dims), node_arg_type_info->tensor_type_info->shape.GetDims());
+
+        std::vector<const char*> api_dim_syms(api_num_dims, nullptr);
+        ASSERT_ORTSTATUS_OK(ort_api.GetSymbolicDimensions(api_type_shape, api_dim_syms.data(), api_dim_syms.size()));
+        const std::vector<std::string>& dim_syms = node_arg_type_info->tensor_type_info->dim_params;
+        for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
+          ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
+        }
       } else {
         // TODO(adrianlizarraga): Check Map, Sequence, etc.
       }
@@ -309,6 +316,16 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     ASSERT_EQ(api_num_subgraphs, node_subgraphs.size());
 
     if (api_num_subgraphs > 0) {
+      const auto implicit_input_node_args = node->ImplicitInputDefs();
+      size_t api_num_implicit_inputs = 0;
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumImplicitInputs(api_node, &api_num_implicit_inputs));
+      ASSERT_EQ(api_num_implicit_inputs, implicit_input_node_args.size());
+
+      std::vector<const OrtValueInfo*> api_implicit_inputs(api_num_implicit_inputs, nullptr);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetImplicitInputs(api_node, api_implicit_inputs.data(),
+                                                         api_implicit_inputs.size()));
+      CheckValueInfosCApi(graph_viewer, api_implicit_inputs, ToVector(implicit_input_node_args));
+
       std::vector<const OrtGraph*> api_node_subgraphs(api_num_subgraphs, nullptr);
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
       for (size_t subgraph_idx = 0; subgraph_idx < api_num_subgraphs; subgraph_idx++) {

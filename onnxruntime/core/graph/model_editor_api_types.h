@@ -72,6 +72,14 @@ struct ModelEditorNode : public OrtNode {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
+  Status GetNumImplicitInputs(size_t& /*num_implicit_inputs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the number of implicit inputs for OrtNode");
+  }
+  Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& /*inputs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
+  }
   Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the number of subgraphs for OrtNode");

@@ -49,7 +49,7 @@ struct OrtValueInfo {
 
   struct ConsumerInfo {
     ConsumerInfo() = default;
-    ConsumerInfo(const OrtNode* node, size_t input_index) : node(node), input_index(input_index) {}
+    ConsumerInfo(const OrtNode* node, int64_t input_index) : node(node), input_index(input_index) {}
     const OrtNode* node = nullptr;
     int64_t input_index = 0;  // Negative if it is an implicit input to a node that contains a subgraph (e.g., If).
   };
@@ -81,6 +81,8 @@ struct OrtNode {
   virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
+  virtual onnxruntime::Status GetNumImplicitInputs(size_t& num_implicit_inputs) const = 0;
+  virtual onnxruntime::Status GetImplicitInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
   virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
   virtual onnxruntime::Status GetSubgraphs(onnxruntime::InlinedVector<const OrtGraph*>& subgraphs) const = 0;
   virtual onnxruntime::Status GetParentGraph(const OrtGraph*& parent_graph) const = 0;

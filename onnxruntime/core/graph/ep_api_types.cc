@@ -35,27 +35,33 @@ static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr
 std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map) {
   auto init_ep_node_io = [&ep_graph, &value_infos_map](ConstPointerContainer<std::vector<NodeArg*>> node_args,
-                                                       InlinedVector<EpValueInfo*>& value_infos) {
-    value_infos.reserve(node_args.size());
-    for (const NodeArg* node_arg : node_args) {
+                                                       gsl::span<EpValueInfo*> value_infos) {
+    assert(node_args.size() == value_infos.size());
+    for (size_t i = 0; i < node_args.size(); i++) {
+      const NodeArg* node_arg = node_args[i];
       assert(node_arg != nullptr);
 
-      if (node_arg->Exists()) {
-        value_infos.push_back(AddValueInfo(value_infos_map, *node_arg, ep_graph));
-      } else {
-        value_infos.push_back(nullptr);  // A missing optional input/output has a null OrtValueInfo
-      }
+      // Note that a missing optional input/output is assigned a null OrtValueInfo.
+      value_infos[i] = node_arg->Exists() ? AddValueInfo(value_infos_map, *node_arg, ep_graph) : nullptr;
     }
   };
 
-  InlinedVector<EpValueInfo*> ep_node_inputs;
-  init_ep_node_io(node.InputDefs(), ep_node_inputs);
+  auto node_inputs = node.InputDefs();
+  InlinedVector<EpValueInfo*> ep_node_inputs(node_inputs.size(), nullptr);
+  init_ep_node_io(node_inputs, ep_node_inputs);
 
-  InlinedVector<EpValueInfo*> ep_node_outputs;
-  init_ep_node_io(node.OutputDefs(), ep_node_outputs);
+  auto node_outputs = node.OutputDefs();
+  InlinedVector<EpValueInfo*> ep_node_outputs(node_outputs.size(), nullptr);
+  init_ep_node_io(node_outputs, ep_node_outputs);
 
-  InlinedVector<SubgraphState> ep_node_subgraphs;
+  std::vector<SubgraphState> ep_node_subgraphs;
+  std::vector<EpValueInfo*> ep_node_implicit_inputs;
+
   if (node.ContainsSubgraph()) {
+    auto node_implicit_inputs = node.ImplicitInputDefs();
+    ep_node_implicit_inputs.resize(node_implicit_inputs.size(), nullptr);
+    init_ep_node_io(node_implicit_inputs, ep_node_implicit_inputs);
+
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
     ep_node_subgraphs.reserve(node_subgraphs.size());
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
@@ -67,7 +73,7 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
   }
 
   return std::make_unique<EpNode>(ep_graph, node, std::move(ep_node_inputs), std::move(ep_node_outputs),
-                                  std::move(ep_node_subgraphs));
+                                  std::move(ep_node_implicit_inputs), std::move(ep_node_subgraphs));
 }
 
 const std::string& EpNode::Name() const { return node.Name(); }
@@ -89,6 +95,19 @@ Status EpNode::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
   result.resize(outputs.size());
   for (size_t i = 0; i < outputs.size(); i++) {
     result[i] = outputs[i];
+  }
+  return Status::OK();
+}
+
+Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
+  num_implicit_inputs = implicit_inputs.size();
+  return Status::OK();
+}
+
+Status EpNode::GetImplicitInputs(InlinedVector<const OrtValueInfo*>& result) const {
+  result.resize(implicit_inputs.size());
+  for (size_t i = 0; i < implicit_inputs.size(); i++) {
+    result[i] = implicit_inputs[i];
   }
   return Status::OK();
 }

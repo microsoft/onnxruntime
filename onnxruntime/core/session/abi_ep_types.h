@@ -27,7 +27,7 @@ struct OrtEpGraphSupportInfo {
     kFusedNode,
   };
 
-  // A grouping of supported nodes that are executed by a specific hardware devices.
+  // A grouping of supported nodes that should be handled in a single ComputeCapability.
   struct NodeGrouping {
     NodeGrouping(NodeGroupingKind kind, std::vector<const onnxruntime::EpNode*>&& nodes)
         : kind(kind), nodes(std::move(nodes)) {}
