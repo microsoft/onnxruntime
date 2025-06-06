@@ -120,6 +120,7 @@ void ExecutionProviders::EtwProvidersCallback(LPCGUID /* SourceId */,
 void ExecutionProviders::LogProviderOptions(const std::string& provider_id,
                                             const ProviderOptions& providerOptions,
                                             bool captureState) {
+#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   for (const auto& config_pair : providerOptions) {
     TraceLoggingWrite(
         telemetry_provider_handle,
@@ -131,6 +132,11 @@ void ExecutionProviders::LogProviderOptions(const std::string& provider_id,
         TraceLoggingString(config_pair.second.c_str(), "Value"),
         TraceLoggingBool(captureState, "isCaptureState"));
   }
+#else
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(providerOptions);
+  ORT_UNUSED_PARAMETER(captureState);
+#endif
 }
 
 #endif
