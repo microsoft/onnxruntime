@@ -355,7 +355,7 @@ struct TensorCaster<MLFloat16, float> {
 // tensor Int4x2 -> float
 template <>
 struct TensorCaster<Int4x2, float> {
-  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<float>();
 
@@ -381,7 +381,7 @@ struct TensorCaster<Int4x2, float> {
 // tensor UInt4x2 -> float
 template <>
 struct TensorCaster<UInt4x2, float> {
-  void Cast(const OpKernelContext& ctx, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<float>();
 
