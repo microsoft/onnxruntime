@@ -5315,22 +5315,31 @@ struct OrtApi {
                   _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                   _Outptr_ OrtMemoryInfo** out);
 
-  // Create a shared allocator for the OrtEpDevice in the OrtEnv
+  // Create a shared allocator for the OrtEpDevice in the OrtEnv.
   //
   // OrtEpDevice maps to the EP factory, and the factory provides the allocator implementation.
   //
   // OrtDeviceMemoryTypeDefault is always supported for non-CPU based devices.
   // OrtDeviceMemoryTypeShared is optional and dependent on the device as to whether it's required/supported.
   //
+  // Returns the allocator but the session owns it and will cleanup.
+  // If the shared allocator was already created for the OrtEpDevice it will be returned.
+  // ReleaseSharedAllocator allows a user to free the shared allocator. It is based on the OrtEpDevice as the user is
+  // not required to track the shared allocator (usage of it is optional), only the OrtEnv and OrtEpDevice.
+  //
   // TODO: Does the user need to be able to discover if OrtMemTypeCPU is supported or they should explicitly know that?
   //       Start with explicit knowledge required.
   //
   // For custom allocators, use RegisterAllocator with the custom OrtAllocator and memory info.
 
+  // Error if shared allocator from RegisterAllocator exists. This needs to be removed with UnregisterAllocator if you
+  // and to use the shared allocator from the EP.
   //
-  // Error if shared allocator already exists
+  // If a shared allocator for the same OrtMemoryInfo* from the OrtEpDevice already exists it is returned.
+  // As we use the OrtMemoryInfo pointer in the lookup and not the values it's guaranteed to be from the same EP.
   ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
-                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options);
+                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_opt_ const OrtAllocator** allocator);
 
   // free a shared allocator from the OrtEnv
   ORT_API2_STATUS(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
@@ -6187,6 +6196,8 @@ struct OrtEpApi {
   const OrtMemoryDevice*(ORT_API_CALL* OrtMemoryInfo_GetMemoryDevice)(_In_ const OrtMemoryInfo* memory_info)NO_EXCEPTION;
 
   // need to return status as OrtValue may not contain an allocated Tensor
+  // There's an existing GetTensorMemoryInfo but a) that won't support sparse tensor in the future and
+  // b) would require calls to GetTensorMemoryInfo + OrtMemroyInfo_GetMemoryDevice
   ORT_API2_STATUS(OrtValue_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
 
   bool(ORT_API_CALL* OrtMemoryDevice_AreEqual)(_In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
@@ -6258,6 +6269,44 @@ struct OrtEp {
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
+
+  // Design choice:
+  //   - have a create/release pair for individual OrtMemoryInfo* values
+  //     - alternative: CreatePreferredAllocators style where EP returns new instance for all allocators
+  //     - this allows finer grained control in the future so we only create an allocator when needed.
+  //       logic: check the shared allocators from the Environment first before creating any per-session allocators.
+  //   - the create/release lets us use a unique_ptr with automatic cleanup
+  //   - the signature for CreateAllocator/ReleaseAllocator is the same for OrtEpFactory as OrtEp (with the obvious
+  //     exception of the `this_ptr` type, so that a common implementation can be used.
+  //     EP library is free to return a single allocator instance for both as it controls the create/release logic.
+  //   - we pass through all the EP options as allocator_options
+  //     - if there's an arena involved, ORT will look for the AllocatorInfo options in this set when adding the
+  //       BFCArena wrapper on the ORT side.
+  //   - we internally pass through the OrtMemoryInfo*'s from the OrtEpDevice instances to the
+  //     IExecutionProvider EP wrapper on the ORT side to enable this approach.
+
+  ORT_API2_STATUS(CreateAllocator, _In_ OrtEp* this_ptr,
+                  _In_ const OrtMemoryInfo* memory_info,
+                  _In_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_ OrtAllocator** allocator);
+  void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEp* this_ptr, _In_ OrtAllocator* allocator) NO_EXCEPTION;
+
+  // Design choice:
+  //   - technically we expect the IDataTransfer to be a global thing, but we only want to add IDataTransfer instances
+  //     to a session for the EPs that are enabled so that we minimize the cost to find the correct IDataTransfer
+  //     instance for a copy that the session needs to do. If we accumulate them in the Environment and pass the that
+  //     to the session we will call CanCopy on instances that are not used in the session.
+  //   - if we put them in the EP interface it's simple to only add the required instances to a session
+  //   - the EP implementation can return a shared instance in CreateDataTransfer and treat the ReleaseDataTransfer as
+  //     a no-op.
+  //   - given the EP implementation to use a shared instance is relatively simple and the example implementation will
+  //     demonstrate this, it's not worth adding complexity to ORT to put the instance in the Environment and try and
+  //     filter the global list to relevant ones when creating the inference session.
+
+  // get the OrtDataTransfer for the library.
+  // if a data transfer implementation is not required set data_transfer to nullptr.
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEp* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
+  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEp* this_ptr, _In_ OrtDataTransferImpl* data_transfer) NO_EXCEPTION;
 
   // create stream if required for the memory_device. set `stream` to nullptr if it's not.
   // ORT will register the stream if created with the session, so it's not passed in here currently
@@ -6399,16 +6448,12 @@ struct OrtEpFactory {
 
   // Create an allocator for the OrtMemoryInfo*.
   // The pointer should match a value set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
+  // An allocator created by a call to OrtEpFactory will be shared across inference sessions.
   ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryInfo* memory_info,
                   _In_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_ OrtAllocator** allocator);
   void(ORT_API_CALL* ReleaseAllocator)(_In_ OrtEpFactory* this_ptr, _In_ OrtAllocator* allocator) NO_EXCEPTION;
-
-  // get the OrtDataTransfer for the library.
-  // if a data transfer implementation is not required set data_transfer to nullptr.
-  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
-  void(ORT_API_CALL* ReleaseDataTransfer)(_In_ OrtEpFactory* this_ptr, _In_ OrtDataTransferImpl* data_transfer) NO_EXCEPTION;
 };
 
 /*

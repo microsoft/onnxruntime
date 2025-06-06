@@ -24,9 +24,6 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   CreateAllocator = CreateAllocatorImpl;
   ReleaseAllocator = ReleaseAllocatorImpl;
 
-  CreateDataTransfer = CreateDataTransferImpl;
-  ReleaseDataTransfer = ReleaseDataTransferImpl;
-
   // for the sake of this example we specify a CPU allocator with no arena and 1K alignment (arbitrary)
   // as well as GPU and GPU shared memory. the actual EP implementation would typically define two at most for a
   // device (one for device memory and one for shared memory for data transfer between device and CPU)
@@ -64,6 +61,15 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
                                        &mem_info);
   assert(status == nullptr);  // should never fail.
   pinned_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+
+  // if we were to use GPU we'd create it like this
+  data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(
+      apis,
+      ep_api.OrtMemoryInfo_GetMemoryDevice(default_gpu_memory_info_.get()),  // device memory
+      ep_api.OrtMemoryInfo_GetMemoryDevice(pinned_gpu_memory_info_.get())    // shared memory
+  );
+
+  data_transfer_impl_.reset();  // but we're CPU only so we return nullptr for the IDataTransfer.
 }
 
 /*static*/
@@ -133,12 +139,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
-                                                       _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
-                                                       _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                                       _In_ size_t num_devices,
-                                                       _In_ const OrtSessionOptions* session_options,
-                                                       _In_ const OrtLogger* logger,
-                                                       _Out_ OrtEp** ep) {
+                                                       const OrtHardwareDevice* const* /*devices*/,
+                                                       const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                                       size_t num_devices,
+                                                       const OrtSessionOptions* session_options,
+                                                       const OrtLogger* logger,
+                                                       OrtEp** ep) {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
   *ep = nullptr;
 
@@ -172,12 +178,12 @@ void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, Or
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(_In_ OrtEpFactory* this_ptr,
-                                                              _In_ const OrtMemoryInfo* memory_info,
-                                                              _In_ const OrtKeyValuePairs* /*allocator_options*/,
-                                                              _Outptr_ OrtAllocator** allocator) noexcept {
-  *allocator = nullptr;
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                              const OrtMemoryInfo* memory_info,
+                                                              const OrtKeyValuePairs* /*allocator_options*/,
+                                                              OrtAllocator** allocator) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  *allocator = nullptr;
 
   // NOTE: If OrtMemoryInfo has allocator type (call MemoryInfoGetType) of OrtArenaAllocator, an ORT BFCArena
   //       will be added to wrap the returned OrtAllocator. The EP is free to implement its own arena, and if it
@@ -206,37 +212,6 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(_In_ OrtEpFactory*
 }
 
 /*static*/
-void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(_In_ OrtEpFactory* /*this*/, _In_ OrtAllocator* allocator) noexcept {
+void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept {
   delete static_cast<CustomAllocator*>(allocator);
-}
-
-/*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(_In_ OrtEpFactory* this_ptr,
-                                                                 _Outptr_ OrtDataTransferImpl** data_transfer) noexcept {
-  auto& impl = *static_cast<ExampleEpFactory*>(this_ptr);
-  const OrtMemoryDevice* device_memory = nullptr;
-  const OrtMemoryDevice* host_accessible_memory = nullptr;
-
-  if (impl.default_gpu_memory_info_) {
-    device_memory = impl.ep_api.OrtMemoryInfo_GetMemoryDevice(impl.default_gpu_memory_info_.get());
-  }
-
-  if (impl.pinned_gpu_memory_info_) {
-    host_accessible_memory = impl.ep_api.OrtMemoryInfo_GetMemoryDevice(impl.pinned_gpu_memory_info_.get());
-  }
-
-  auto transfer = std::make_unique<ExampleDataTransfer>(impl,  // ApiPtrs
-                                                        device_memory,
-                                                        host_accessible_memory);
-
-  // if this EP actually used GPU we would set `data_tranfer` here. as it doesn't we return a nullptr
-  // *data_transfer = transfer.release();
-  *data_transfer = nullptr;
-  return nullptr;
-}
-
-/*static*/
-void ORT_API_CALL ExampleEpFactory::ReleaseDataTransferImpl(_In_ OrtEpFactory* /*this_ptr*/,
-                                                            _In_ OrtDataTransferImpl* data_transfer) noexcept {
-  delete static_cast<ExampleDataTransfer*>(data_transfer);
 }

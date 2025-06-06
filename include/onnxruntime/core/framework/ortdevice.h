@@ -107,6 +107,7 @@ struct OrtDevice {
     ostr << "Device:["
          << "DeviceType:" << static_cast<int>(device_type)
          << " MemoryType:" << static_cast<int>(memory_type)
+         << " VendorId:" << vendor_id
          << " DeviceId:" << device_id
          << " Alignment:" << alignment
          << "]";

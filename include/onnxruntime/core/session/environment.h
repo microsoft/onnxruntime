@@ -12,7 +12,6 @@
 #include "core/common/logging/logging.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
-#include "core/framework/data_transfer_manager.h"
 #include "core/framework/execution_provider.h"
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
@@ -124,7 +123,7 @@ class Environment {
   }
 
   Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
-                               const OrtKeyValuePairs* allocator_options);
+                               const OrtKeyValuePairs* allocator_options, const OrtAllocator** allocator);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
                                 bool error_if_not_found = true);
 
@@ -144,7 +143,6 @@ class Environment {
   bool create_global_thread_pools_{false};
 
   std::vector<AllocatorPtr> shared_allocators_;
-  DataTransferManager data_transfer_manager_;
 
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
   // map of the plugin EP shared allocators created with CreateSharedAllocator

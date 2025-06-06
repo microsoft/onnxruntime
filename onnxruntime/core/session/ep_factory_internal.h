@@ -74,7 +74,7 @@ class EpFactoryInternal : public OrtEpFactory {
 // IExecutionProviderFactory for EpFactoryInternal that is required for SessionOptionsAppendExecutionProvider_V2
 struct InternalExecutionProviderFactory : public IExecutionProviderFactory {
  public:
-  InternalExecutionProviderFactory(EpFactoryInternal& ep_factory, const std::vector<const OrtEpDevice*>& ep_devices);
+  InternalExecutionProviderFactory(EpFactoryInternal& ep_factory, gsl::span<const OrtEpDevice* const> ep_devices);
 
   std::unique_ptr<IExecutionProvider> CreateProvider(const OrtSessionOptions& session_options,
                                                      const OrtLogger& session_logger) override;

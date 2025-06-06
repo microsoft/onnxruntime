@@ -7,6 +7,7 @@
 #include "core/session/onnxruntime_c_api.h"
 
 // OrtSyncStream is an alias in the C API for onnxruntime::Stream
+// OrtSyncNotification is an alias in the C API for onnxruntime::synchronize::Notification
 struct OrtSyncStream : public onnxruntime::Stream {};
 struct OrtSyncNotification : onnxruntime::synchronize::Notification {};
 

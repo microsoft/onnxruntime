@@ -17,17 +17,17 @@ struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
     CopyTensors = CopyTensorsImpl;
   }
 
-  static bool ORT_API_CALL CanCopyImpl(_In_ void* this_ptr,
-                                       _In_ const OrtMemoryDevice* src_memory_device,
-                                       _In_ const OrtMemoryDevice* dst_memory_device) noexcept;
+  static bool ORT_API_CALL CanCopyImpl(void* this_ptr,
+                                       const OrtMemoryDevice* src_memory_device,
+                                       const OrtMemoryDevice* dst_memory_device) noexcept;
 
   // function to copy one or more tensors.
   // implementation can optionally use async copy if a stream is available for the input.
-  static OrtStatus* ORT_API_CALL CopyTensorsImpl(_In_ void* this_ptr,
-                                                 _In_reads_(num_tensors) const OrtValue** src_tensors_ptr,
-                                                 _In_reads_(num_tensors) OrtValue** dst_tensors_ptr,
-                                                 _In_reads_(num_tensors) OrtSyncStream** streams_ptr,
-                                                 _In_ size_t num_tensors) noexcept;
+  static OrtStatus* ORT_API_CALL CopyTensorsImpl(void* this_ptr,
+                                                 const OrtValue** src_tensors_ptr,
+                                                 OrtValue** dst_tensors_ptr,
+                                                 OrtSyncStream** streams_ptr,
+                                                 size_t num_tensors) noexcept;
 
  private:
   const OrtMemoryDevice* device_mem_info;

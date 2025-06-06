@@ -4,9 +4,11 @@
 #pragma once
 
 #include "onnxruntime_c_api.h"
+#include "ep_data_transfer.h"
 #include "utils.h"
 
-struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
+class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
+ public:
   ExampleEpFactory(const char* ep_name, ApiPtrs apis);
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr);
@@ -21,27 +23,26 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
                                                          size_t* p_num_ep_devices);
 
   static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
-                                              _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
-                                              _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
-                                              _In_ size_t num_devices,
-                                              _In_ const OrtSessionOptions* session_options,
-                                              _In_ const OrtLogger* logger,
-                                              _Out_ OrtEp** ep);
+                                              const OrtHardwareDevice* const* /*devices*/,
+                                              const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                              size_t num_devices,
+                                              const OrtSessionOptions* session_options,
+                                              const OrtLogger* logger,
+                                              OrtEp** ep);
 
   static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep);
 
-  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(_In_ OrtEpFactory* this_ptr,
-                                                     _In_ const OrtMemoryInfo* memory_info,
-                                                     _In_ const OrtKeyValuePairs* /*allocator_options*/,
-                                                     _Outptr_ OrtAllocator** allocator) noexcept;
+  static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
+                                                     const OrtMemoryInfo* memory_info,
+                                                     const OrtKeyValuePairs* /*allocator_options*/,
+                                                     OrtAllocator** allocator) noexcept;
 
-  static void ORT_API_CALL ReleaseAllocatorImpl(_In_ OrtEpFactory* /*this*/, _In_ OrtAllocator* allocator) noexcept;
+  static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept;
 
-  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(_In_ OrtEpFactory* this_ptr,
-                                                        _Outptr_ OrtDataTransferImpl** data_transfer) noexcept;
-
-  static void ORT_API_CALL ReleaseDataTransferImpl(_In_ OrtEpFactory* /*this_ptr*/,
-                                                   _In_ OrtDataTransferImpl* data_transfer) noexcept;
+  // get the shared OrtDataTransferImpl instance.
+  const OrtDataTransferImpl* GetDataTransferImpl() noexcept {
+    return data_transfer_impl_.get();
+  }
 
   const std::string ep_name_;            // EP name
   const std::string vendor_{"Contoso"};  // EP vendor name
@@ -55,4 +56,6 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
   // OrtMemoryInfo instance required for that.
   MemoryInfoUniquePtr default_gpu_memory_info_;
   MemoryInfoUniquePtr pinned_gpu_memory_info_;
+
+  std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };

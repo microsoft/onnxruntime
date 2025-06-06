@@ -6,25 +6,14 @@
 #include "onnxruntime_c_api.h"
 #include "utils.h"
 
+class ExampleEpFactory;
+
 class ExampleEp : public OrtEp, public ApiPtrs {
  public:
-  ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
-    // Initialize the execution provider's function table
-    GetName = GetNameImpl;
-    CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
+  ExampleEp(ExampleEpFactory& factory, const std::string& name,
+            const OrtSessionOptions& session_options, const OrtLogger& logger);
 
-    auto status = ort_api.Logger_LogMessage(&logger_,
-                                            OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                            ("ExampleEp has been created with name " + name_).c_str(),
-                                            ORT_FILE, __LINE__, __FUNCTION__);
-    // ignore status for now
-    (void)status;
-  }
-
-  ~ExampleEp() {
-    // Clean up the execution provider
-  }
+  ~ExampleEp() = default;
 
  private:
   static const char* GetNameImpl(const OrtEp* this_ptr);
@@ -32,6 +21,15 @@ class ExampleEp : public OrtEp, public ApiPtrs {
                                                   const OrtMemoryDevice* memory_device,
                                                   OrtSyncStream** stream);
 
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEp* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept;
+
+  static void ORT_API_CALL ReleaseDataTransferImpl(OrtEp* /*this_ptr*/,
+                                                   OrtDataTransferImpl* /*data_transfer*/) noexcept {
+    // no-op. the factory owns the instance
+  }
+
+  ExampleEpFactory& factory_;
   std::string name_;
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;

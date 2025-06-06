@@ -400,11 +400,6 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       internal_ep_factories_.insert(internal_factory);
     }
 
-    for (auto& data_transfer : ep_info->owned_data_transfer_instances) {
-      ep_info->data_transfer_instances.push_back(data_transfer.get());  // save pointer for unregister
-      ORT_RETURN_IF_ERROR(data_transfer_manager_.RegisterDataTransfer(std::move(data_transfer)));
-    }
-
     ep_libraries_[registration_name] = std::move(ep_info);
   }
   ORT_CATCH(const std::exception& ex) {
@@ -475,11 +470,6 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
       }
     }
 
-    // remove any data transfer implementations
-    for (auto* data_transfer : ep_info->data_transfer_instances) {
-      ORT_RETURN_IF_ERROR(data_transfer_manager_.UnregisterDataTransfer(data_transfer));
-    }
-
     ep_info.reset();
   }
   ORT_CATCH(const std::exception& ex) {
@@ -492,17 +482,31 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
 }
 
 Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
-                                          const OrtKeyValuePairs* allocator_options) {
+                                          const OrtKeyValuePairs* allocator_options,
+                                          const OrtAllocator** allocator_out) {
   auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info : ep_device.shared_memory_info;
   if (memory_info == nullptr) {
     return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
   }
 
   if (FindExistingAllocator(shared_allocators_, *memory_info) != shared_allocators_.end()) {
+    // see if it's an OrtEpDevice based allocator that we can return
+    auto it = ep_shared_allocators_map_.find(memory_info);
+    if (it != ep_shared_allocators_map_.end()) {
+      if (allocator_out != nullptr) {
+        *allocator_out = it->second.get();
+      }
+
+      return Status::OK();
+    }
+
     return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT,
-                  "Shared allocator for this OrtEpDevice has already been registered. "
-                  "Use ReleaseSharedAllocator to re-create.");
+                  "An external allocator has already been registered using RegisterAllocator. "
+                  "Use UnregisterAllocator to remove prior to calling CreateSharedAllocator.");
   }
+
+  ORT_ENFORCE(ep_shared_allocators_map_.find(memory_info) == ep_shared_allocators_map_.end(),
+              "Internal error: ep_shared_allocators_map_ was not in sync with shared_allocators_.");
 
   OrtAllocator* allocator = nullptr;
   auto* ort_status = ep_device.ep_factory->CreateAllocator(ep_device.ep_factory, memory_info, allocator_options,
@@ -515,9 +519,9 @@ Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDevic
                                              [&ep_device](OrtAllocator* allocator) {
                                                ep_device.ep_factory->ReleaseAllocator(ep_device.ep_factory, allocator);
                                              });
-
-  // should never happen that there's no entry in shared_allocators_ but there is one in the map
-  assert(ep_shared_allocators_map_.find(memory_info) == ep_shared_allocators_map_.end());
+  if (allocator_out != nullptr) {
+    *allocator_out = ort_allocator.get();
+  }
 
   ep_shared_allocators_map_[memory_info] = std::move(ort_allocator);
 
@@ -604,14 +608,6 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
         instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
-
-    OrtDataTransferImpl* data_transfer = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatus(factory.CreateDataTransfer(&factory, &data_transfer)));
-    if (data_transfer != nullptr) {
-      instance.owned_data_transfer_instances.push_back(std::make_unique<plugin_ep::DataTransfer>(*data_transfer));
-    }
-
-    instance.data_transfer_instances.reserve(instance.owned_data_transfer_instances.size());
   }
 
   return Status::OK();

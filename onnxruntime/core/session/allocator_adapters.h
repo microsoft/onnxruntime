@@ -23,11 +23,10 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   ~OrtAllocatorImplWrappingIAllocator() override = default;
 
   void* Alloc(size_t size);
-
   void Free(void* p);
+  void* Reserve(size_t size);
 
   const OrtMemoryInfo* Info() const;
-  void* Reserve(size_t size);
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(OrtAllocatorImplWrappingIAllocator);
 
@@ -37,21 +36,26 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   onnxruntime::AllocatorPtr i_allocator_;
 };
 
+using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
+
 class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
  public:
+  // ctor for OrtAllocator we do not own
   explicit IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator);
 
-  ~IAllocatorImplWrappingOrtAllocator() override = default;
+  // ctor for OrtAllocator we own.
+  explicit IAllocatorImplWrappingOrtAllocator(OrtAllocatorUniquePtr ort_allocator);
+
+  // ~IAllocatorImplWrappingOrtAllocator() override = default;
 
   void* Alloc(size_t size) override;
-  void* Reserve(size_t size) override;
-
   void Free(void* p) override;
+  void* Reserve(size_t size) override;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(IAllocatorImplWrappingOrtAllocator);
 
  private:
-  OrtAllocator* ort_allocator_ = nullptr;
+  OrtAllocatorUniquePtr ort_allocator_ = nullptr;
 };
 
 }  // namespace onnxruntime
