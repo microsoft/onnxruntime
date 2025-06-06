@@ -8,9 +8,9 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "core/framework/compute_capability.h"
+
 #include "core/framework/error_code_helper.h"
-#include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_logger.h"
 #include "core/session/allocator_adapters.h"
@@ -105,6 +105,38 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   }
 
   return allocators;
+}
+
+//
+void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& registry,
+                                                     AllocatorMap& /*allocators*/) const {
+  // TODO: The CUDA implementation uses the pinned memory allocator for the stream and gets that from AllocatorMap.
+  // Assumption: It can have an internal or shared pinned memory allocator in the EP Factory that is used for all
+  // pinnned memory usage across session. A pointer to this can be returned from OrtEpFactory::CreateAllocator and
+  // OrtEp::CreateAllocator, so there's no requirement to pass in an AllocatorMap here.
+  // i.e. ORT should not need to care about that implementation detail.
+  for (const auto* mem_info : allocator_mem_infos_) {
+    if (mem_info->device.Type() == OrtDevice::CPU) {
+      // CPU memory does not need a stream
+      continue;
+    }
+
+    OrtSyncStreamImpl* stream = nullptr;
+    const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+    auto* status = plugin_ep_->CreateSyncStreamForDevice(plugin_ep_.get(), memory_device, &stream);
+    ORT_ENFORCE(status == nullptr, "Error creating sync stream for device: ", ToStatus(status).ToString());
+
+    if (stream != nullptr) {
+      registry.RegisterCreateStreamFn(mem_info->device.Type(),
+                                      [memory_device, stream](const OrtDevice& device) {
+                                        return std::make_unique<plugin_ep::Stream>(device, *stream);
+                                      });
+
+      auto device_type = mem_info->device.Type();
+      registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
+      registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
+    }
+  }
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {

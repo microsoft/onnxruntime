@@ -66,13 +66,18 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
-  // create per-session allocators.
+  // create per-session allocators
+  // TODO: longer term we should prefer shared allocators in Environment and only create per-session allocators as
+  // needed based on matching against allocator_mem_infos_.
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
 
  private:
   UniqueOrtEp plugin_ep_;
 
   // store the individual OrtMemoryInfo instances so we can create the specific allocators required
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
+  std::vector<std::unique_ptr<plugin_ep::Stream>> streams_;
 };
 }  // namespace onnxruntime

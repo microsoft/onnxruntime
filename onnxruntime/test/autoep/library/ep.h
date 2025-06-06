@@ -19,7 +19,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   static const char* GetNameImpl(const OrtEp* this_ptr);
   static OrtStatus* CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
                                                   const OrtMemoryDevice* memory_device,
-                                                  OrtSyncStream** stream);
+                                                  OrtSyncStreamImpl** stream);
 
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEp* this_ptr,
                                                         OrtDataTransferImpl** data_transfer) noexcept;

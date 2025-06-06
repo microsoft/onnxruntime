@@ -6211,8 +6211,8 @@ struct OrtEpApi {
   // We implement a derived class on the ORT side and plugin the virtual functions via OrtSyncStreamImpl.
   //
 
-  ORT_API2_STATUS(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
-                  _Outptr_ OrtSyncStream** stream);
+  //ORT_API2_STATUS(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
+  //                _Outptr_ OrtSyncStream** stream);
 
   // returns the OrtSyncStreamImpl. used in the notification wait function
   OrtSyncStreamImpl*(ORT_API_CALL* SyncStream_GetStreamImpl)(_In_ OrtSyncStream* stream);
@@ -6313,7 +6313,7 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* CreateSyncStreamForDevice)(_In_ OrtEp* this_ptr,
                                                       /// _In_ const OrtSession* session,
                                                       _In_ const OrtMemoryDevice* memory_device,
-                                                      _Outptr_ OrtSyncStream** stream);
+                                                      _Outptr_ OrtSyncStreamImpl** stream);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

@@ -100,15 +100,15 @@ ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemory
                                                                  : OrtDeviceMemoryType_HOST_ACCESSIBLE;
 }
 
-ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
-                    _Outptr_ OrtSyncStream** stream) {
-  auto plugin_stream = std::make_unique<plugin_ep::Stream>(*device, *impl);
-
-  // go from derived class to onnxruntime::Stream to OrtSyncStream alias
-  *stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(plugin_stream.release()));
-
-  return nullptr;
-}
+// ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
+//                     _Outptr_ OrtSyncStream** stream) {
+//   auto plugin_stream = std::make_unique<plugin_ep::Stream>(*device, *impl);
+//
+//   // go from derived class to onnxruntime::Stream to OrtSyncStream alias
+//   *stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(plugin_stream.release()));
+//
+//   return nullptr;
+// }
 
 ORT_API(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream) {
   // go from OrtSyncStream alias to onnxruntime::Stream to derived class
@@ -161,7 +161,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OrtMemoryDevice_GetDeviceType,
     &OrtExecutionProviderApi::OrtMemoryDevice_GetMemoryType,
 
-    &OrtExecutionProviderApi::CreateSyncStream,
+    //&OrtExecutionProviderApi::CreateSyncStream,
     &OrtExecutionProviderApi::SyncStream_GetStreamImpl,
     &OrtExecutionProviderApi::SyncStream_GetMemoryDevice,
     &OrtExecutionProviderApi::ReleaseSyncStream,

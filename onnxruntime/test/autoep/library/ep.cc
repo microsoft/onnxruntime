@@ -32,11 +32,17 @@ const char* ExampleEp ::GetNameImpl(const OrtEp* this_ptr) {
 /*static*/
 OrtStatus* ExampleEp::CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
                                                     const OrtMemoryDevice* memory_device,
-                                                    OrtSyncStream** stream) {
+                                                    OrtSyncStreamImpl** stream) {
   auto& ep = *static_cast<ExampleEp*>(this_ptr);
+  *stream = nullptr;
 
-  auto sync_stream = std::make_unique<StreamImpl>(ep);
-  return ep.ep_api.CreateSyncStream(memory_device, sync_stream.get(), stream);
+  // we only need stream synchronization on the device stream
+  if (ep.ep_api.OrtMemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
+    auto sync_stream = std::make_unique<StreamImpl>(ep);
+    *stream = sync_stream.release();
+  }
+
+  return nullptr;
 }
 
 /*static*/
