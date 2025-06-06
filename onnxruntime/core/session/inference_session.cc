@@ -1692,7 +1692,8 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 }
 #endif
 
-static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
+#ifdef _WIN32
+[[maybe_unused]] static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
   std::size_t hash = 0;
   std::hash<std::string> hasher;
   const uint64_t golden_ratio = 0x9e3779b9;
@@ -1712,6 +1713,7 @@ static std::size_t GetStringHash(const std::string& string, std::size_t prev_has
   hash = hasher(string) + golden_ratio + (prev_hash << 6) + (prev_hash >> 2);
   return hash;
 }
+#endif
 
 #ifdef _WIN32
 [[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
