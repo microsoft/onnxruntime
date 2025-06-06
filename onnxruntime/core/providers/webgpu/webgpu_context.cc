@@ -140,8 +140,6 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
 
     // cache device queue
     device_queue_ = device_.GetQueue();
-    // cache adapter info
-    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
     // cache device limits
     ORT_ENFORCE(Device().GetLimits(&device_limits_));
     // cache device features
@@ -150,6 +148,13 @@ void WebGpuContext::Initialize(const WebGpuBufferCacheConfig& buffer_cache_confi
     for (size_t i = 0; i < supported_features.featureCount; i++) {
       device_features_.insert(supported_features.features[i]);
     }
+    // cache adapter info
+#if !defined(__wasm__)
+    if (DeviceHasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
+      adapter_info_.nextInChain = &subgroup_matrix_configs_;
+    }
+#endif
+    ORT_ENFORCE(Device().GetAdapterInfo(&adapter_info_));
 
     // create buffer manager
     buffer_mgr_ = BufferManagerFactory::Create(*this,
@@ -452,6 +457,9 @@ std::vector<const char*> WebGpuContext::GetEnabledAdapterToggles() const {
   constexpr const char* toggles[] = {
       "use_dxc",
       "allow_unsafe_apis",
+#if defined(DAWN_ENABLE_VULKAN)
+      "use_vulkan_memory_model",
+#endif
   };
   return std::vector<const char*>(std::begin(toggles), std::end(toggles));
 }
