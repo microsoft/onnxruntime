@@ -8,16 +8,20 @@
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/profiling_event_store.h"
+#include "core/providers/qnn/profiling_utils.h"
 #include "core/providers/qnn/qnn_allocator.h"
 
 namespace onnxruntime::qnn {
 
 QnnContextMemHandleManager::QnnContextMemHandleManager(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                                        Qnn_ContextHandle_t context,
-                                                       const logging::Logger& logger)
+                                                       const logging::Logger& logger,
+                                                       ProfilingEventStore* profiling_event_store)
     : qnn_interface_{qnn_interface},
       context_{context},
-      logger_{logger} {
+      logger_{logger},
+      profiling_event_store_{profiling_event_store} {
 }
 
 QnnContextMemHandleManager::~QnnContextMemHandleManager() {
@@ -79,7 +83,12 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
                            << ")";
 
     Qnn_MemHandle_t raw_mem_handle{};
-    const auto register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
+    Qnn_ErrorHandle_t register_result{};
+    {
+      profiling_utils::DurationTrace register_trace{profiling_event_store_,
+                                                    profiling::API_EVENT, "qnn_interface.memRegister"};
+      register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
+    }
     ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
                       "qnn_interface.memRegister() failed: ",
                       utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
@@ -90,15 +99,23 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     // by the time we need to unregister all memory handles. This happens when this->logger_ is a session logger:
     //   ~InferenceSession() -> ~Logger() -> ~QnnExecutionProvider() -> ~QnnBackendManager() ->
     //   ~QnnContextMemHandleManager() -> unregister_mem_handle() segfault
-    const auto unregister_mem_handle = [&qnn_interface = this->qnn_interface_](Qnn_MemHandle_t raw_mem_handle) {
-      LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
+    const auto unregister_mem_handle =
+        [&qnn_interface = this->qnn_interface_,
+         profiling_event_store = profiling_event_store_](
+            Qnn_MemHandle_t raw_mem_handle) {
+          LOGS_DEFAULT(VERBOSE) << "Unregistering QNN mem handle. mem_handle: " << raw_mem_handle;
 
-      const auto unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
-      if (unregister_result != QNN_SUCCESS) {
-        LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
-                            << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
-      }
-    };
+          Qnn_ErrorHandle_t unregister_result{};
+          {
+            profiling_utils::DurationTrace register_trace{profiling_event_store,
+                                                          profiling::API_EVENT, "qnn_interface.memDeRegister"};
+            unregister_result = qnn_interface.memDeRegister(&raw_mem_handle, 1);
+          }
+          if (unregister_result != QNN_SUCCESS) {
+            LOGS_DEFAULT(ERROR) << "qnn_interface.memDeRegister() failed: "
+                                << utils::GetVerboseQnnErrorMessage(qnn_interface, unregister_result);
+          }
+        };
 
     UniqueQnnMemHandle mem_handle(raw_mem_handle, unregister_mem_handle);
     MemHandleRecord mem_handle_record{qnn_tensor_data_size, std::move(mem_handle)};

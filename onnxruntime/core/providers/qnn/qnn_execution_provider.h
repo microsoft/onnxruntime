@@ -53,6 +53,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
 
+  std::unique_ptr<profiling::EpProfiler> GetProfiler() override;
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -75,6 +77,9 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool IsHtpSharedMemoryAllocatorAvailable() const { return rpcmem_library_ != nullptr; }
 
  private:
+  // Note: The ProfilingEventStore may be shared between this, QnnBackendManager, and QnnProfiler.
+  std::shared_ptr<qnn::ProfilingEventStore> profiling_event_store_ = std::make_shared<qnn::ProfilingEventStore>();
+
   qnn::HtpGraphFinalizationOptimizationMode htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   // Note: Using shared_ptr<QnnBackendManager> so that we can refer to it with a weak_ptr from a
   // HtpSharedMemoryAllocator allocation cleanup callback.
