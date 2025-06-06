@@ -98,7 +98,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRank) {
   test.AddInput<int64_t>("shape", {4}, {2, 3, 3, 4}, true);
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankOneZero) {
@@ -108,7 +108,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankOneZero) {
   test.AddInput<int64_t>("shape", {4}, {0, 3, 3, 4}, true);
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankTwoZeroes) {
@@ -118,7 +118,7 @@ TEST(TensorOpTest, Reshape_WithOutAllowZeroToDiffRankTwoZeroes) {
   test.AddInput<int64_t>("shape", {4}, {0, 0, 3, 4}, true);
   test.AddAttribute<int64_t>("allowzero", 0);
   test.AddOutput<float>("reshaped", {2, 3, 3, 4}, std::vector<float>(72, 1.0f));
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider});
+  test.Run();
 }
 
 TEST(TensorOpTest, Reshape_WithAllowZero) {
