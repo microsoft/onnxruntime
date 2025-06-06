@@ -117,10 +117,11 @@ static Status GetInputIndices(const EpNode& consumer_node,
                               /*out*/ std::vector<int64_t>& indices) {
   bool found = false;
   auto add_input_indices =
-      [&found, &value_info_name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs) -> void {
+      [&found, &value_info_name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs,
+                                           bool is_implicit) -> void {
     for (size_t i = 0; i < input_defs.size(); i++) {
       if (input_defs[i]->Name() == value_info_name) {
-        indices.push_back(static_cast<int64_t>(i));
+        indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
       }
     }
@@ -128,12 +129,12 @@ static Status GetInputIndices(const EpNode& consumer_node,
 
   const auto node_input_defs = consumer_node.node.InputDefs();
   indices.reserve(node_input_defs.size());
-  add_input_indices(node_input_defs);
+  add_input_indices(node_input_defs, false);
 
   if (!found) {
     // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
     // that are consumed by nodes within their subgraph.
-    add_input_indices(consumer_node.node.ImplicitInputDefs());
+    add_input_indices(consumer_node.node.ImplicitInputDefs(), true);
   }
 
   ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
@@ -176,7 +177,7 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   }
 
   const EpNode& ep_node = *it->second;
-  size_t output_index;
+  size_t output_index = 0;
   ORT_RETURN_IF_ERROR(GetOutputIndex(ep_node, name, output_index));
 
   producer_info.node = ep_node.ToExternal();

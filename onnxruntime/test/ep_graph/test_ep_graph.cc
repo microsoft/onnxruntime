@@ -52,10 +52,11 @@ static void GetInputIndices(const Node& consumer_node,
                             /*out*/ std::vector<int64_t>& indices) {
   bool found = false;
   auto add_input_indices =
-      [&found, &name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs) -> void {
+      [&found, &name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs,
+                                bool is_implicit) -> void {
     for (size_t i = 0; i < input_defs.size(); i++) {
       if (input_defs[i]->Name() == name) {
-        indices.push_back(static_cast<int64_t>(i));
+        indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
       }
     }
@@ -63,12 +64,12 @@ static void GetInputIndices(const Node& consumer_node,
 
   const auto node_input_defs = consumer_node.InputDefs();
   indices.reserve(node_input_defs.size());
-  add_input_indices(node_input_defs);
+  add_input_indices(node_input_defs, false);
 
   if (!found) {
     // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
     // that are consumed by nodes within their subgraph.
-    add_input_indices(consumer_node.ImplicitInputDefs());
+    add_input_indices(consumer_node.ImplicitInputDefs(), true);
   }
 
   ASSERT_TRUE(found) << "Did not find input index of NodeArg " << name;
