@@ -6,6 +6,8 @@
 #include "core/common/logging/logging.h"
 #include "core/common/span_utils.h"
 #include "core/framework/utils.h"
+#include "core/session/allocator_adapters.h"
+#include "core/session/environment.h"
 #include "core/session/inference_session.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
@@ -262,8 +264,9 @@ TEST(InternalTestingEP, TestReplaceAllocatorDoesntBreakDueToLocalAllocatorStorag
   OrtMemoryInfo mem_info("Replacement", OrtAllocatorType::OrtDeviceAllocator);
   AllocatorPtr replacement_alloc = std::make_shared<CPUAllocator>(mem_info);
   OrtEnv& env = *(OrtEnv*)(*ort_env);
+  OrtAllocatorImplWrappingIAllocator allocator_ptr(std::move(replacement_alloc));
 
-  ASSERT_STATUS_OK(env.RegisterAllocator(replacement_alloc));
+  ASSERT_STATUS_OK(env.GetEnvironment().RegisterAllocator(&allocator_ptr));
 
   SessionOptions so;
   ASSERT_STATUS_OK(so.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));

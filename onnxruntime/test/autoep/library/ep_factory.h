@@ -11,16 +11,21 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
   ExampleEpFactory(const char* ep_name, ApiPtrs apis);
 
-  static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr);
+  OrtDataTransferImpl* GetDataTransfer() const {
+    return data_transfer_impl_.get();
+  }
 
-  static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* this_ptr);
+ private:
+  static const char* ORT_API_CALL GetNameImpl(const OrtEpFactory* this_ptr) noexcept;
+
+  static const char* ORT_API_CALL GetVendorImpl(const OrtEpFactory* this_ptr) noexcept;
 
   static OrtStatus* ORT_API_CALL GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                          const OrtHardwareDevice* const* devices,
                                                          size_t num_devices,
                                                          OrtEpDevice** ep_devices,
                                                          size_t max_ep_devices,
-                                                         size_t* p_num_ep_devices);
+                                                         size_t* p_num_ep_devices) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateEpImpl(OrtEpFactory* this_ptr,
                                               const OrtHardwareDevice* const* /*devices*/,
@@ -28,9 +33,9 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
                                               size_t num_devices,
                                               const OrtSessionOptions* session_options,
                                               const OrtLogger* logger,
-                                              OrtEp** ep);
+                                              OrtEp** ep) noexcept;
 
-  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep);
+  static void ORT_API_CALL ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* memory_info,
@@ -39,15 +44,14 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static void ORT_API_CALL ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept;
 
-  // get the shared OrtDataTransferImpl instance.
-  const OrtDataTransferImpl* GetDataTransferImpl() noexcept {
-    return data_transfer_impl_.get();
-  }
+  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                        OrtDataTransferImpl** data_transfer) noexcept;
+  static void ORT_API_CALL ReleaseDataTransferImpl(OrtEpFactory* this_ptr,
+                                                   OrtDataTransferImpl* data_transfer) noexcept;
 
   const std::string ep_name_;            // EP name
   const std::string vendor_{"Contoso"};  // EP vendor name
 
- private:
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
   MemoryInfoUniquePtr cpu_memory_info_;

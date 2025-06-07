@@ -38,8 +38,8 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
       ep_allocator_mem_infos_.push_back(ep_device->device_memory_info);
     }
 
-    if (ep_device->shared_memory_info != nullptr) {
-      ep_allocator_mem_infos_.push_back(ep_device->shared_memory_info);
+    if (ep_device->host_accessible_memory_info != nullptr) {
+      ep_allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
     }
   }
 }

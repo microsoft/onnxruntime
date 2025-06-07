@@ -606,9 +606,13 @@ ORT_API_STATUS_IMPL(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMem
                     _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                     _Outptr_ OrtMemoryInfo** out);
 
+ORT_API(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device);
+
 ORT_API_STATUS_IMPL(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
                     _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
-                    _Outptr_opt_ const OrtAllocator** allocator);
+                    _In_opt_ const OrtArenaCfg* arena_cfg,
+                    _Outptr_opt_ OrtAllocator** allocator);
+ORT_API(OrtAllocator*, GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
 ORT_API_STATUS_IMPL(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
                     _In_ OrtDeviceMemoryType mem_type);
 }  // namespace OrtApis

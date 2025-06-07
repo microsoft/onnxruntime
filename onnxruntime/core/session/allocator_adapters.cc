@@ -52,6 +52,7 @@ onnxruntime::AllocatorPtr OrtAllocatorImplWrappingIAllocator::GetWrappedIAllocat
 
 IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAllocator* ort_allocator)
     : IAllocator(*ort_allocator->Info(ort_allocator)), ort_allocator_(ort_allocator) {
+  // TODO: Validate we don't need to explicitly setup the deleter
   // ort_allocator_ = OrtAllocatorUniquePtr(ort_allocator, [](OrtAllocator*) {
   //   // no-op
   // });
@@ -94,11 +95,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAllocator, const OrtSession* sess,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* ort_env,
                     _In_ const OrtMemoryInfo* mem_info,
                     _In_ const OrtArenaCfg* arena_cfg) {
   using namespace onnxruntime;
-  if (!env) {
+  if (!ort_env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
   }
 
@@ -106,7 +107,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
   }
 
-  auto st = env->CreateAndRegisterAllocator(*mem_info, arena_cfg);
+  auto& env = ort_env->GetEnvironment();
+  auto st = env.CreateAndRegisterAllocator(*mem_info, arena_cfg);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
@@ -114,10 +116,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocator, _Inout_ OrtEnv* env,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* ort_env,
                     _In_ OrtAllocator* allocator) {
   using namespace onnxruntime;
-  if (!env) {
+  if (!ort_env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
   }
 
@@ -133,10 +135,8 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
                                  "allocators only.");
   }
 
-  std::shared_ptr<IAllocator> i_alloc_ptr =
-      std::make_shared<onnxruntime::IAllocatorImplWrappingOrtAllocator>(allocator);
-
-  auto st = env->RegisterAllocator(i_alloc_ptr);
+  auto& env = ort_env->GetEnvironment();
+  auto st = env.RegisterAllocator(allocator);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
@@ -144,10 +144,10 @@ ORT_API_STATUS_IMPL(OrtApis::RegisterAllocator, _Inout_ OrtEnv* env,
   return nullptr;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env,
+ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* ort_env,
                     _In_ const OrtMemoryInfo* mem_info) {
   using namespace onnxruntime;
-  if (!env) {
+  if (!ort_env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
   }
 
@@ -155,7 +155,8 @@ ORT_API_STATUS_IMPL(OrtApis::UnregisterAllocator, _Inout_ OrtEnv* env,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provided OrtMemoryInfo is null");
   }
 
-  auto st = env->UnregisterAllocator(*mem_info);
+  auto& env = ort_env->GetEnvironment();
+  auto st = env.UnregisterAllocator(*mem_info);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
@@ -167,7 +168,7 @@ ORT_API(void, OrtApis::ReleaseAllocator, _Frees_ptr_opt_ OrtAllocator* allocator
   delete static_cast<onnxruntime::OrtAllocatorImpl*>(allocator);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type,
+ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* ort_env, _In_ const char* provider_type,
                     _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                     _In_reads_(num_keys) const char* const* provider_options_keys,
                     _In_reads_(num_keys) const char* const* provider_options_values,
@@ -188,7 +189,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, 
     options[provider_options_keys[i]] = provider_options_values[i];
   }
 
-  if (!env) {
+  if (!ort_env) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Env is null");
   }
 
@@ -196,7 +197,8 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtMemoryInfo is null");
   }
 
-  auto st = env->CreateAndRegisterAllocatorV2(provider_type, *mem_info, options, arena_cfg);
+  auto& env = ort_env->GetEnvironment();
+  auto st = env.CreateAndRegisterAllocatorV2(provider_type, *mem_info, options, arena_cfg);
 
   if (!st.IsOK()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
@@ -204,15 +206,26 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, 
   return nullptr;
 }
 
+ORT_API(OrtAllocator*, OrtApis::GetSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtMemoryInfo* mem_info) {
+  if (ort_env == nullptr || mem_info == nullptr) {
+    return nullptr;
+  }
+
+  auto& env = ort_env->GetEnvironment();
+  return env.GetSharedAllocator(*mem_info);
+}
+
 ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
                     _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
-                    _Outptr_opt_ const OrtAllocator** allocator) {
+                    _In_opt_ const OrtArenaCfg* arena_cfg,
+                    _Outptr_opt_ OrtAllocator** allocator) {
   if (ort_env == nullptr || ep_device == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
   }
 
   auto& env = ort_env->GetEnvironment();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_options, allocator));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_options, arena_cfg,
+                                                            allocator));
 
   return nullptr;
 }

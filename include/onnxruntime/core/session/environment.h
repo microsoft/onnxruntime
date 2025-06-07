@@ -76,7 +76,7 @@ class Environment {
    * Registers an allocator for sharing between multiple sessions.
    * Return an error if an allocator with the same OrtMemoryInfo is already registered.
    */
-  Status RegisterAllocator(AllocatorPtr allocator);
+  Status RegisterAllocator(OrtAllocator* allocator);
 
   /**
    * Creates and registers an allocator for sharing between multiple sessions.
@@ -122,10 +122,14 @@ class Environment {
     return execution_devices_;
   }
 
+  // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
+  OrtAllocator* GetSharedAllocator(const OrtMemoryInfo& mem_info);
+
   Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
-                               const OrtKeyValuePairs* allocator_options, const OrtAllocator** allocator);
-  Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
-                                bool error_if_not_found = true);
+                               const OrtKeyValuePairs* allocator_options, const OrtArenaCfg* arena_cfg,
+                               OrtAllocator** allocator,
+                               bool error_if_found = true);
+  Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
   ~Environment();
@@ -137,17 +141,27 @@ class Environment {
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
+  Status RegisterAllocatorImpl(AllocatorPtr allocator);
+
   std::unique_ptr<logging::LoggingManager> logging_manager_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> intra_op_thread_pool_;
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
+  std::mutex mutex_;
+
+  // shared allocators from various sources.
+  // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT
+  // RegisterAllocator: IAllocatorImplWrappingOrtAllocator custom allocators registered by the user.
+  //                    TODO: How can we detect registration of an allocator from an InferenceSession?
+  // OrtEpDevice: We create a default shared IAllocatorImplWrappingOrtAllocator for each OrtEpDevice memory info.
   std::vector<AllocatorPtr> shared_allocators_;
 
+  // RegisterAllocator and CreateSharedAllocator pointers. Used for GetAllocator.
+  // Every instance here is also in shared_allocators_.
+  std::unordered_set<OrtAllocator*> shared_ort_allocators_;
+
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
-  // map of the plugin EP shared allocators created with CreateSharedAllocator
-  // the OrtMemoryInfo* matches the value in the OrtEpDevice to disambiguate which factory created it.
-  std::unordered_map<const OrtMemoryInfo*, OrtAllocatorUniquePtr> ep_shared_allocators_map_;
 
 #if !defined(ORT_MINIMAL_BUILD)
   // register EPs that are built into the ORT binary so they can take part in AutoEP selection

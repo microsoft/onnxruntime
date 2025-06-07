@@ -24,7 +24,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name,
 }
 
 /*static*/
-const char* ExampleEp ::GetNameImpl(const OrtEp* this_ptr) {
+const char* ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const ExampleEp*>(this_ptr);
   return ep->name_.c_str();
 }
@@ -32,7 +32,7 @@ const char* ExampleEp ::GetNameImpl(const OrtEp* this_ptr) {
 /*static*/
 OrtStatus* ExampleEp::CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
                                                     const OrtMemoryDevice* memory_device,
-                                                    OrtSyncStreamImpl** stream) {
+                                                    OrtSyncStreamImpl** stream) noexcept {
   auto& ep = *static_cast<ExampleEp*>(this_ptr);
   *stream = nullptr;
 
@@ -54,6 +54,6 @@ OrtStatus* ORT_API_CALL ExampleEp::CreateDataTransferImpl(OrtEp* this_ptr,
   // the ownership semantics clear.
   // ORT can't assume the instance is shared and needs a non-const instance to call ReleaseDataTransfer with.
   // due to this we const_cast here and implement ReleaseDataTransferImpl as a no-op.
-  *data_transfer = const_cast<OrtDataTransferImpl*>(ep.factory_.GetDataTransferImpl());
+  *data_transfer = const_cast<OrtDataTransferImpl*>(ep.factory_.GetDataTransfer());
   return nullptr;
 }

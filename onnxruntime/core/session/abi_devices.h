@@ -67,5 +67,5 @@ struct OrtEpDevice {
 
   OrtEpFactory* ep_factory;
   const OrtMemoryInfo* device_memory_info{nullptr};
-  const OrtMemoryInfo* shared_memory_info{nullptr};
+  const OrtMemoryInfo* host_accessible_memory_info{nullptr};
 };

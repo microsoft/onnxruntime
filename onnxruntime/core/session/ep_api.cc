@@ -49,7 +49,7 @@ ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
   if (info.MemType() == OrtDevice::MemType::DEFAULT) {
     ep_device->device_memory_info = allocator_memory_info;
   } else {
-    ep_device->shared_memory_info = allocator_memory_info;
+    ep_device->host_accessible_memory_info = allocator_memory_info;
   }
 
   return nullptr;

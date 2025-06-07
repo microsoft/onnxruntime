@@ -44,6 +44,7 @@
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #endif
+#include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -2751,8 +2752,8 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
-  st = env->RegisterAllocator(allocator_ptr);
+  OrtAllocatorImplWrappingIAllocator allocator_ptr(CreateAllocator(device_info));
+  st = env->RegisterAllocator(&allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
@@ -2770,7 +2771,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
 
   // This line ensures the allocator in the session is the same as that in the env
   ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
-            allocator_ptr.get());
+            allocator_ptr.GetWrappedIAllocator().get());
 
   // This line ensures the underlying IAllocator* is the same across 2 sessions.
   ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
@@ -2799,8 +2800,8 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
-  st = env->RegisterAllocator(allocator_ptr);
+  OrtAllocatorImplWrappingIAllocator allocator_ptr(CreateAllocator(device_info));
+  st = env->RegisterAllocator(&allocator_ptr);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
@@ -2818,7 +2819,7 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
 
   // This line ensures the allocator in the session is the same as that in the env
   ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
-            allocator_ptr.get());
+            allocator_ptr.GetWrappedIAllocator().get());
 
   // This line ensures the underlying OrtAllocator* is the same across 2 sessions.
   ASSERT_NE(sess1.GetSessionState().GetAllocator(mem_info).get(),

@@ -24,6 +24,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   CreateAllocator = CreateAllocatorImpl;
   ReleaseAllocator = ReleaseAllocatorImpl;
 
+  CreateDataTransfer = CreateDataTransferImpl;
+  ReleaseDataTransfer = ReleaseDataTransferImpl;
+
   // for the sake of this example we specify a CPU allocator with no arena and 1K alignment (arbitrary)
   // as well as GPU and GPU shared memory. the actual EP implementation would typically define two at most for a
   // device (one for device memory and one for shared memory for data transfer between device and CPU)
@@ -73,13 +76,13 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
 }
 
 /*static*/
-const char* ORT_API_CALL ExampleEpFactory::GetNameImpl(const OrtEpFactory* this_ptr) {
+const char* ORT_API_CALL ExampleEpFactory::GetNameImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->ep_name_.c_str();
 }
 
 /*static*/
-const char* ORT_API_CALL ExampleEpFactory::GetVendorImpl(const OrtEpFactory* this_ptr) {
+const char* ORT_API_CALL ExampleEpFactory::GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
   const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
   return factory->vendor_.c_str();
 }
@@ -90,7 +93,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
                                                                   size_t num_devices,
                                                                   OrtEpDevice** ep_devices,
                                                                   size_t max_ep_devices,
-                                                                  size_t* p_num_ep_devices) {
+                                                                  size_t* p_num_ep_devices) noexcept {
   size_t& num_ep_devices = *p_num_ep_devices;
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
 
@@ -107,6 +110,11 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       // random example using made up values
       factory->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
+
+      // EP is stream aware. CreateSyncStreamForDevice will return a stream an not nullptr.
+      // We use this info in ORT when wrapping an allocator with an arena. If the EP is stream aware we use
+      // a different arena.
+      factory->ort_api.AddKeyValuePair(ep_metadata, "stream_aware", "1");
 
       // OrtEpDevice copies ep_metadata and ep_options.
       auto* status = factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, ep_metadata, ep_options,
@@ -144,7 +152,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
                                                        size_t num_devices,
                                                        const OrtSessionOptions* session_options,
                                                        const OrtLogger* logger,
-                                                       OrtEp** ep) {
+                                                       OrtEp** ep) noexcept {
   auto* factory = static_cast<ExampleEpFactory*>(this_ptr);
   *ep = nullptr;
 
@@ -172,7 +180,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
 }
 
 /*static*/
-void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
   ExampleEp* dummy_ep = static_cast<ExampleEp*>(ep);
   delete dummy_ep;
 }
@@ -214,4 +222,19 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
 /*static*/
 void ORT_API_CALL ExampleEpFactory::ReleaseAllocatorImpl(OrtEpFactory* /*this*/, OrtAllocator* allocator) noexcept {
   delete static_cast<CustomAllocator*>(allocator);
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* this_ptr,
+                                                                 OrtDataTransferImpl** data_transfer) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  *data_transfer = factory.data_transfer_impl_.get();
+
+  return nullptr;
+}
+
+/*static*/
+void ORT_API_CALL ExampleEpFactory::ReleaseDataTransferImpl(OrtEpFactory* /*this_ptr*/,
+                                                            OrtDataTransferImpl* /*data_transfer*/) noexcept {
+  // no-op as we use a shared OrtDataTransferImpl instance
 }

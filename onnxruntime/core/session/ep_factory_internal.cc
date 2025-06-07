@@ -33,7 +33,7 @@ OrtStatus* EpFactoryInternal::GetSupportedDevices(const OrtHardwareDevice* const
                                                   size_t num_devices,
                                                   OrtEpDevice** ep_devices,
                                                   size_t max_ep_devices,
-                                                  size_t* num_ep_devices) {
+                                                  size_t* num_ep_devices) noexcept {
   return get_supported_func_(this, devices, num_devices, ep_devices, max_ep_devices, num_ep_devices);
 }
 

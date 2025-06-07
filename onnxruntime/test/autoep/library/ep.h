@@ -16,10 +16,10 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   ~ExampleEp() = default;
 
  private:
-  static const char* GetNameImpl(const OrtEp* this_ptr);
+  static const char* GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
                                                   const OrtMemoryDevice* memory_device,
-                                                  OrtSyncStreamImpl** stream);
+                                                  OrtSyncStreamImpl** stream) noexcept;
 
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEp* this_ptr,
                                                         OrtDataTransferImpl** data_transfer) noexcept;

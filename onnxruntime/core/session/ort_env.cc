@@ -104,21 +104,21 @@ void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingMana
   value_->SetLoggingManager(std::move(logging_manager));
 }
 
-onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
-  auto status = value_->RegisterAllocator(allocator);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
-                                                               const OrtArenaCfg* arena_cfg) {
-  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
-  return value_->UnregisterAllocator(mem_info);
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
-  return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
-}
+//onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
+//  auto status = value_->RegisterAllocator(allocator);
+//  return status;
+//}
+//
+//onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
+//                                                               const OrtArenaCfg* arena_cfg) {
+//  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
+//  return status;
+//}
+//
+//onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
+//  return value_->UnregisterAllocator(mem_info);
+//}
+//
+//onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
+//  return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+//}

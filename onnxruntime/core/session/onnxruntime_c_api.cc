@@ -2230,6 +2230,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
   cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
   cfg->max_dead_bytes_per_chunk = -1L;
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
+  }
+
   *out = cfg.release();
   return nullptr;
   API_IMPL_END
@@ -2259,6 +2264,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 
       return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
     }
+  }
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
   }
 
   *out = cfg.release();
@@ -2592,6 +2601,10 @@ ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpOptions, _In_ const OrtEpDe
 
 ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevice* ep_device) {
   return ep_device->device;
+}
+
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->device_memory_info;
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -3026,7 +3039,10 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::GetTensorSizeInBytes,
 
     &OrtApis::CreateMemoryInfo_V2,
+    &OrtApis::EpDevice_MemoryInfo,
+
     &OrtApis::CreateSharedAllocator,
+    &OrtApis::GetSharedAllocator,
     &OrtApis::ReleaseSharedAllocator,
 };
 
