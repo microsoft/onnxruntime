@@ -91,7 +91,9 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       "./compiled_model.mxr",
       1,
       "./compiled_model.mxr",
-      1};
+      1,
+      SIZE_MAX,
+      0};
   return MIGraphXProviderFactoryCreator::Create(&params)->CreateProvider();
 #else
   return nullptr;
