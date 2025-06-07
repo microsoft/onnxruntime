@@ -322,6 +322,7 @@ std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const Con
 #ifdef USE_WEBGPU
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(config_options);
   return nullptr;
 #endif
 }

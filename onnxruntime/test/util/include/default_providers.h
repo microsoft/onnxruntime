@@ -5,6 +5,7 @@
 #include "core/common/optional.h"
 #include "core/providers/providers.h"
 #include "core/providers/provider_factory_creators.h"
+#include "core/framework/config_options.h"
 #include "core/framework/execution_provider.h"
 
 namespace onnxruntime {
