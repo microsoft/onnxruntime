@@ -659,90 +659,927 @@ struct TensorCaster<UInt4x2, float, void> {
     }
   }
 };
-// Generate all the required specializations
-// Int4x2/UInt4x2 to various types
-DEFINE_INT4X2_TO_TYPE_CASTER(int8_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(uint8_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(int16_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(uint16_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(int32_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(uint32_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(int64_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(uint64_t)
-DEFINE_INT4X2_TO_TYPE_CASTER(double)
-DEFINE_INT4X2_TO_TYPE_CASTER(bool)
-DEFINE_INT4X2_TO_TYPE_CASTER(MLFloat16)
-DEFINE_INT4X2_TO_TYPE_CASTER(BFloat16)
-DEFINE_INT4X2_TO_TYPE_CASTER(std::string)
+
+template <>
+struct TensorCaster<Int4x2, int8_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<int8_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<int8_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int8_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, uint8_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<uint8_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<uint8_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint8_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, int16_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<int16_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<int16_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int16_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, uint16_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<uint16_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<uint16_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint16_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, int32_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<int32_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<int32_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int32_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, uint32_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<uint32_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<uint32_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint32_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, int64_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<int64_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<int64_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int64_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, uint64_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<uint64_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<uint64_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint64_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, double, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<double>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<double>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<double>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, bool, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<bool>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<bool>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<bool>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, MLFloat16, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<MLFloat16>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<MLFloat16>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<MLFloat16>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, BFloat16, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<BFloat16>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<BFloat16>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<BFloat16>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, std::string, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<std::string>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<std::string>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<std::string>::Convert(high_nibble);
+    }
+  }
+};
+
 #if !defined(DISABLE_FLOAT8_TYPES)
-DEFINE_INT4X2_TO_TYPE_CASTER(Float8E4M3FN)
-DEFINE_INT4X2_TO_TYPE_CASTER(Float8E4M3FNUZ)
-DEFINE_INT4X2_TO_TYPE_CASTER(Float8E5M2)
-DEFINE_INT4X2_TO_TYPE_CASTER(Float8E5M2FNUZ)
+
+template <>
+struct TensorCaster<Int4x2, Float8E4M3FN, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<Float8E4M3FN>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<Float8E4M3FN>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E4M3FN>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, Float8E4M3FNUZ, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<Float8E4M3FNUZ>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<Float8E4M3FNUZ>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E4M3FNUZ>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, Float8E5M2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<Float8E5M2>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<Float8E5M2>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E5M2>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, Float8E5M2FNUZ, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<Float8E5M2FNUZ>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The Int4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+      out_data[2 * i] = Int4ElementConverter<Float8E5M2FNUZ>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E5M2FNUZ>::Convert(high_nibble);
+    }
+  }
+};
+
 #endif
 
-DEFINE_UINT4X2_TO_TYPE_CASTER(int8_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(uint8_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(int16_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(uint16_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(int32_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(uint32_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(int64_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(uint64_t)
-DEFINE_UINT4X2_TO_TYPE_CASTER(double)
-DEFINE_UINT4X2_TO_TYPE_CASTER(bool)
-DEFINE_UINT4X2_TO_TYPE_CASTER(MLFloat16)
-DEFINE_UINT4X2_TO_TYPE_CASTER(BFloat16)
-DEFINE_UINT4X2_TO_TYPE_CASTER(std::string)
+template <>
+struct TensorCaster<UInt4x2, int8_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<int8_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<int8_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int8_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, uint8_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<uint8_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<uint8_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint8_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, int16_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<int16_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<int16_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int16_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, uint16_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<uint16_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<uint16_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint16_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, int32_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<int32_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<int32_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int32_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, uint32_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<uint32_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<uint32_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint32_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, int64_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<int64_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<int64_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<int64_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, uint64_t, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<uint64_t>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<uint64_t>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<uint64_t>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, bool, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<bool>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<bool>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<bool>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, double, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<double>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<double>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<double>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, MLFloat16, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<MLFloat16>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<MLFloat16>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<MLFloat16>::Convert(high_nibble);
+    }
+  }
+};
+
 #if !defined(DISABLE_FLOAT8_TYPES)
-DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E4M3FN)
-DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E4M3FNUZ)
-DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E5M2)
-DEFINE_UINT4X2_TO_TYPE_CASTER(Float8E5M2FNUZ)
+template <>
+struct TensorCaster<UInt4x2, Float8E4M3FN, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Float8E4M3FN>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<Float8E4M3FN>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E4M3FN>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, Float8E4M3FNUZ, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Float8E4M3FNUZ>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<Float8E4M3FNUZ>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E4M3FNUZ>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, Float8E5M2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Float8E5M2>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<Float8E5M2>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E5M2>::Convert(high_nibble);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, Float8E5M2FNUZ, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Float8E5M2FNUZ>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    const size_t in_shape_size = narrow<size_t>(in.Shape().Size());
+    ORT_ENFORCE(in_shape_size * 2 == shape_size, "The UInt4x2 tensor size is invalid for casting.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+      out_data[2 * i] = Int4ElementConverter<Float8E5M2FNUZ>::Convert(low_nibble);
+      out_data[2 * i + 1] = Int4ElementConverter<Float8E5M2FNUZ>::Convert(high_nibble);
+    }
+  }
+};
 #endif
 
-// Various types to Int4x2/UInt4x2
-DEFINE_TYPE_TO_INT4X2_CASTER(int8_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(uint8_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(int16_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(uint16_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(int32_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(uint32_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(int64_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(uint64_t)
-DEFINE_TYPE_TO_INT4X2_CASTER(float)
-DEFINE_TYPE_TO_INT4X2_CASTER(double)
-DEFINE_TYPE_TO_INT4X2_CASTER(bool)
-DEFINE_TYPE_TO_INT4X2_CASTER(MLFloat16)
-DEFINE_TYPE_TO_INT4X2_CASTER(BFloat16)
-DEFINE_TYPE_TO_INT4X2_CASTER(std::string)
-#if !defined(DISABLE_FLOAT8_TYPES)
-DEFINE_TYPE_TO_INT4X2_CASTER(Float8E4M3FN)
-DEFINE_TYPE_TO_INT4X2_CASTER(Float8E4M3FNUZ)
-DEFINE_TYPE_TO_INT4X2_CASTER(Float8E5M2)
-DEFINE_TYPE_TO_INT4X2_CASTER(Float8E5M2FNUZ)
-#endif
+template <>
+struct TensorCaster<float, Int4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<float>();
+    auto* out_data = out.MutableData<Int4x2>();
 
-DEFINE_TYPE_TO_UINT4X2_CASTER(int8_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(uint8_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(int16_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(uint16_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(int32_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(uint32_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(int64_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(uint64_t)
-DEFINE_TYPE_TO_UINT4X2_CASTER(float)
-DEFINE_TYPE_TO_UINT4X2_CASTER(double)
-DEFINE_TYPE_TO_UINT4X2_CASTER(bool)
-DEFINE_TYPE_TO_UINT4X2_CASTER(MLFloat16)
-DEFINE_TYPE_TO_UINT4X2_CASTER(BFloat16)
-DEFINE_TYPE_TO_UINT4X2_CASTER(std::string)
-#if !defined(DISABLE_FLOAT8_TYPES)
-DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E4M3FN)
-DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E4M3FNUZ)
-DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E5M2)
-DEFINE_TYPE_TO_UINT4X2_CASTER(Float8E5M2FNUZ)
-#endif
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output Int4x2 tensor size is invalid for casting from float.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<float>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<float>::ConvertToInt4(in_data[i + 1]);
+      out_data[i / 2] = Int4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      int8_t low_val = ToInt4ElementConverter<float>::ConvertToInt4(in_data[i]);
+      out_data[i / 2] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<float, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<float>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from float.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<float>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<float>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<float>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<int32_t, Int4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<int32_t>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output Int4x2 tensor size is invalid for casting from int32_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<int32_t>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<int32_t>::ConvertToInt4(in_data[i + 1]);
+      out_data[i / 2] = Int4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      int8_t low_val = ToInt4ElementConverter<int32_t>::ConvertToInt4(in_data[i]);
+      out_data[i / 2] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<int8_t, Int4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<int8_t>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output Int4x2 tensor size is invalid for casting from int8_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<int8_t>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<int8_t>::ConvertToInt4(in_data[i + 1]);
+      out_data[i / 2] = Int4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      int8_t low_val = ToInt4ElementConverter<int8_t>::ConvertToInt4(in_data[i]);
+      out_data[i / 2] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<BFloat16, Int4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<BFloat16>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output Int4x2 tensor size is invalid for casting from BFloat16.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i + 1]);
+      out_data[i / 2] = Int4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      int8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i]);
+      out_data[i / 2] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<MLFloat16, Int4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<MLFloat16>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output Int4x2 tensor size is invalid for casting from MLFloat16.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<MLFloat16>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<MLFloat16>::ConvertToInt4(in_data[i + 1]);
+      out_data[i / 2] = Int4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      int8_t low_val = ToInt4ElementConverter<MLFloat16>::ConvertToInt4(in_data[i]);
+      out_data[i / 2] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<int32_t, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<int32_t>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from int32_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<int32_t>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<int32_t>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<int32_t>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<uint8_t, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<uint8_t>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from uint8_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<uint8_t>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<uint8_t>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<uint8_t>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<uint16_t, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<uint16_t>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from uint16_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<uint16_t>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<uint16_t>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<uint16_t>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<uint32_t, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<uint32_t>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from uint32_t.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<uint32_t>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<uint32_t>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<uint32_t>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<double, UInt4x2, void> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<double>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
+                "The output UInt4x2 tensor size is invalid for casting from double.");
+
+    size_t i = 0;
+    for (; i < in_shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<double>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<double>::ConvertToUInt4(in_data[i + 1]);
+      out_data[i / 2] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < in_shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<double>::ConvertToUInt4(in_data[i]);
+      out_data[i / 2] = UInt4x2(low_val, 0);
+    }
+  }
+};
 
 #if defined(_M_AMD64) && !defined(_M_ARM64EC)
 // specializations to use optimized and Windows x64-specific
