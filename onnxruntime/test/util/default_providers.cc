@@ -318,6 +318,15 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> WebGpuExecutionProviderWithOptions(const ConfigOptions& config_options) {
+#ifdef USE_WEBGPU
+  return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
+#else
+  ORT_UNUSED_PARAMETER(config_options);
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultCannExecutionProvider() {
 #ifdef USE_CANN
   OrtCANNProviderOptions provider_options{};
