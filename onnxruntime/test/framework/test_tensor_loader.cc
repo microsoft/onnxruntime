@@ -204,7 +204,7 @@ TEST(CApiTensorTest, load_huge_tensor_with_external_data) {
   // deserialize it
   std::vector<int> output(total_ele_count);
   OrtValue value;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   ASSERT_STATUS_OK(
       utils::TensorProtoToOrtValue(Env::Default(), std::filesystem::path(), p,
                                    MemBuffer(output.data(), output.size() * sizeof(int), cpu_memory_info), value));
