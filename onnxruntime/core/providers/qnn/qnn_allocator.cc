@@ -114,8 +114,9 @@ AllocationTracker& GlobalAllocationTracker() {
 
 OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
-                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, /* device_id */ 0},
-                       /* id */ 0, OrtMemTypeDefault};
+                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::QNN_HTP_SHARED, OrtDevice::VendorIds::QUALCOMM,
+                                 /*device_id*/ 0},
+                       OrtMemTypeDefault};
 }
 
 HtpSharedMemoryAllocator::HtpSharedMemoryAllocator(std::shared_ptr<RpcMemLibrary> rpcmem_lib,

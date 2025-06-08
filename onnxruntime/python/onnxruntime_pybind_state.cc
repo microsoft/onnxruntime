@@ -1905,7 +1905,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
              } else if (type == OrtDevice::GPU) {
 #if USE_CUDA
                vendor = OrtDevice::VendorIds::NVIDIA;
-#elsif USE_ROCM
+#elif USE_ROCM
                vendor = OrtDevice::VendorIds::AMD;
 #endif
              }

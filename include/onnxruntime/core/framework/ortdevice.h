@@ -7,6 +7,12 @@
 #include "core/common/common.h"
 #include "core/common/hash_combine.h"
 
+// fix clash with INTEL that is defined in
+// MacOSX14.2.sdk/System/Library/Frameworks/Security.framework/Headers/oidsbase.h
+#if defined(__APPLE__)
+#undef INTEL
+#endif
+
 // Struct to represent a physical device.
 struct OrtDevice {
   using DeviceType = int8_t;

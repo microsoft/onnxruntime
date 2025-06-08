@@ -27,7 +27,7 @@ void CUDAAllocator::SetDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    int allocator_device_id = Info().id;
+    int allocator_device_id = Info().device.Id();
     if (current_device != allocator_device_id) {
       cuda_err = cudaSetDevice(allocator_device_id);
     }
