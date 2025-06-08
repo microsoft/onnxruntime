@@ -90,7 +90,8 @@ void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
 
   if (p == nullptr) {
     ORT_THROW_EX(std::bad_alloc);
-  } else return p;
+  } else
+    return p;
 }
 
 void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
