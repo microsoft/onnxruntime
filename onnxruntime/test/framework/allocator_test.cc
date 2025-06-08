@@ -14,7 +14,7 @@ TEST(AllocatorTest, CPUAllocatorTest) {
   auto cpu_arena = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
 
   ASSERT_STREQ(cpu_arena->Info().name, CPU);
-  EXPECT_EQ(cpu_arena->Info().id, 0);
+  EXPECT_EQ(cpu_arena->Info().device.Id(), 0);
 
   const auto expected_allocator_type = DoesCpuAllocatorSupportArenaUsage()
                                            ? OrtAllocatorType::OrtArenaAllocator

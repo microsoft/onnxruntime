@@ -229,6 +229,7 @@ class InferenceSession {
    * @return OK if success.
    */
   [[nodiscard]] common::Status RegisterExecutionProvider(const std::shared_ptr<IExecutionProvider>& p_exec_provider);
+  // const OrtEpDevice* autoep = nullptr);
 
 #if !defined(ORT_MINIMAL_BUILD)
   /**

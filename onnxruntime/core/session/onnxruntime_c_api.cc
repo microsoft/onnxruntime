@@ -3031,6 +3031,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
+    &OrtApis::CreateMemoryInfo_V2,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -98,7 +98,7 @@ common::Status NPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
                                             static_cast<aclrtStream>(stream.GetHandle())));
     }
   } else {
-    if (src_device.MemType() == OrtDevice::MemType::CANN_PINNED) {
+    if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived
       CANN_RETURN_IF_ERROR(aclrtSynchronizeStream(static_cast<aclrtStream>(stream.GetHandle())));
     }

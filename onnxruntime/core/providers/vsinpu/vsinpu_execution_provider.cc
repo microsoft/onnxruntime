@@ -41,7 +41,7 @@ namespace onnxruntime {
 VSINPUExecutionProvider::VSINPUExecutionProvider(const VSINPUExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kVSINPUExecutionProvider,
                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
-                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID, OrtDevice::VendorIds::NONE,
                                    kAlloc4KAlignment)},
       device_id_(info.device_id) {
 }
@@ -279,9 +279,8 @@ std::vector<AllocatorPtr> VSINPUExecutionProvider::CreatePreferredAllocators() {
         return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(
                 onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
-                          device_id,
-                          kAlloc4KAlignment)));
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
+                          device_id, kAlloc4KAlignment)));
       },
       device_id_, use_arena_false};
 

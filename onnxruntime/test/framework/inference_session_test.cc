@@ -2217,7 +2217,8 @@ TEST(InferenceSessionTests, TestArenaShrinkageAfterRun) {
   ASSERT_STATUS_OK(session_object.Initialize());
 
   // Fetch the CUDA allocator to analyze its stats
-  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info(CUDA, OrtArenaAllocator,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0));
   auto cuda_alloc = session_object.GetAllocator(mem_info);
 
   AllocatorStats alloc_stats;

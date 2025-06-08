@@ -1891,10 +1891,33 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("CPU", OrtMemTypeCPU)
       .value("DEFAULT", OrtMemTypeDefault);
 
-  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
-  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
+  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device information.)pbdoc");
+  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::VendorId, OrtDevice::DeviceId>())
+      .def(py::init([](OrtDevice::DeviceType type,
+                       OrtDevice::MemoryType mem_type,
+                       OrtDevice::DeviceId device_id) {
+             // backwards compatibility. generally there's only one GPU EP in the python package, with the exception
+             // of a build with CUDA and DML.
+             OrtDevice::VendorId vendor = OrtDevice::VendorIds::NONE;
+#if USE_DML
+             if (type == OrtDevice::DML) {
+               type = OrtDevice::GPU;
+               vendor = OrtDevice::VendorIds::MICROSOFT;
+             }
+#endif
+#if USE_CUDA
+             vendor = OrtDevice::VendorIds::NVIDIA;
+#endif
+#if USE_ROCM
+             vendor = OrtDevice::VendorIds::AMD;
+#endif
+
+             return OrtDevice(type, mem_type, vendor, device_id);
+           }),
+           R"pbdoc(Constructor with vendor_id defaulted to 0 for backward compatibility.)pbdoc")
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
+      .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("cann", []() { return OrtDevice::NPU; })
@@ -2019,15 +2042,19 @@ for model inference.)pbdoc");
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
     if (strcmp(name, onnxruntime::CPU) == 0) {
-      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
+      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
+          onnxruntime::CUDA, type,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
           mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
-          id, mem_type);
+          onnxruntime::CUDA_PINNED, type,
+          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
+          mem_type);
     } else {
       throw std::runtime_error("Specified device is not supported.");
     }

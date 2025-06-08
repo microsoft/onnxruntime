@@ -1041,7 +1041,7 @@ NvExecutionProvider::PerThreadContext& NvExecutionProvider::GetPerThreadContext(
 
 NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNvTensorRTRTXExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
@@ -3260,8 +3260,11 @@ void NvExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& s
 }
 
 OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     0 /*CPU device id always be 0*/);
   return default_device_;
 }
 
