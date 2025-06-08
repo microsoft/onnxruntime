@@ -82,7 +82,7 @@ void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
 
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
   if (size == 0) return nullptr;
-  
+
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
 
   // Use the nothrow version to get a nullptr on failure.
