@@ -1911,13 +1911,12 @@ common::Status InferenceSession::Initialize() {
                                                                record_runtime_optimization_produced_op_schema,
                                                                *session_logger_));
 
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+#ifdef USE_QNN
       const IExecutionProvider* qnnExecutionProvider = execution_providers_.Get(kQnnExecutionProvider);
       if (qnnExecutionProvider) {
-        const InlinedHashSet<std::string_view> qnn_ep = {onnxruntime::kQnnExecutionProvider};
-        auto dynamicQuantizeConvInteger_transformer = std::make_unique<IfToWhereTransformer>(qnn_ep);
-        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dynamicQuantizeConvInteger_transformer),
-                                                                       onnxruntime::TransformerLevel::Level1));
+        auto IfToWhere_transformer = std::make_unique<IfToWhereTransformer>();
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(IfToWhere_transformer),
+          onnxruntime::TransformerLevel::Level1));
       }
 #endif
 

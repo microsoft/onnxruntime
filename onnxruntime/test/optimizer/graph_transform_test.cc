@@ -664,10 +664,10 @@ TEST_F(GraphTransformationTests, IfToWhereTransformer_NonQnnEP) {
   for (auto& node : graph.Nodes()) {
     node.SetExecutionProviderType("CPUExecutionProvider");  // Not QNN
   }
-
+  const InlinedHashSet<std::string_view> cpu_eps = {onnxruntime::kCpuExecutionProvider};
   onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
   ASSERT_STATUS_OK(graph_transformation_mgr.Register(
-      std::make_unique<IfToWhereTransformer>(), TransformerLevel::Level1));
+      std::make_unique<IfToWhereTransformer>(cpu_eps), TransformerLevel::Level1));
 
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
