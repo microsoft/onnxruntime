@@ -16,9 +16,9 @@ namespace webnn {
 class WebNNTensorAllocator : public IAllocator {
  public:
   WebNNTensorAllocator()
-    : IAllocator(OrtMemoryInfo(WEBNN_TENSOR, OrtAllocatorType::OrtDeviceAllocator,
-                               OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
-                               OrtMemTypeDefault)) {}
+      : IAllocator(OrtMemoryInfo(WEBNN_TENSOR, OrtAllocatorType::OrtDeviceAllocator,
+                                 OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
+                                 OrtMemTypeDefault)) {}
 
   void* Alloc(size_t size) override;
 

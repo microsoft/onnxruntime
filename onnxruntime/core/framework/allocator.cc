@@ -190,8 +190,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CUDA_PINNED) == 0) {
     *out = new OrtMemoryInfo(
-        name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                               device_id),
+        name1, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::HIP_PINNED) == 0) {
     *out = new OrtMemoryInfo(

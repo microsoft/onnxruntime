@@ -108,7 +108,7 @@ MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProv
     : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider,
                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
                                    info.device_id)},
-                         info_(info) {
+      info_(info) {
   InitProviderOrtApi();
   get_flags_from_session_info(info);
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();

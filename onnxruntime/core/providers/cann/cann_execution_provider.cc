@@ -1031,7 +1031,7 @@ CANNExecutionProvider::CANNExecutionProvider(const CANNExecutionProviderInfo& in
     : IExecutionProvider{onnxruntime::kCannExecutionProvider,
                          OrtDevice(OrtDevice::NPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::HUAWEI,
                                    info.device_id)},
-                         info_{info} {
+      info_{info} {
   InitProviderOrtApi();
 
   CANN_CALL_THROW(aclrtSetDevice(info_.device_id));

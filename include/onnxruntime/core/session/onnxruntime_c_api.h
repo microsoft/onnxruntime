@@ -5329,22 +5329,6 @@ struct OrtApi {
    */
   ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
 
-  /** \brief Copy tensors from one OrtValue array to another
-   *
-   * Copies the contents of the source tensors to the destination tensors.
-   * The source and destination tensors must have the same shape and data type.
-   * The number of tensors must match between the source and destination arrays.
-   *
-   * To create the destination tensor use GetSharedAllocator and CreateTensorAsOrtValue.
-   *
-   * \param[in] src_tensors Array of source OrtValue pointers
-   * \param[in] dst_tensors Array of destination OrtValue pointers
-   * \param[in] num_tensors Number of tensors in the arrays
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23
-   */
   /** \brief Create an ::OrtMemoryInfo
    *
    * \param[in] name Arbitrary name.

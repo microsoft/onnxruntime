@@ -38,7 +38,7 @@ struct OrtDevice {
     static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
   };
 
-  // PCI vendor ids we explicitly use to map legacy values.
+  // PCI vendor ids
   enum VendorIds : VendorId {
     // No vendor ID. Valid for DeviceType::CPU + MemType::DEFAULT or for generic allocators like WebGPU.
     NONE = 0x0000,
@@ -69,10 +69,6 @@ struct OrtDevice {
     }
   }
 
-  //// backwards compatibility with no vendor_id or alignment
-  // constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, DeviceId device_id_) noexcept
-  //     : OrtDevice(device_type_, memory_type_, VendorIds::NONE, device_id_, /*alignment*/ 0) {
-  // }
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_,
                       DeviceId device_id_) noexcept
       : OrtDevice(device_type_, memory_type_, vendor_id_, device_id_, /*alignment*/ 0) {}

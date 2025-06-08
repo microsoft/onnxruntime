@@ -1899,18 +1899,16 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
              // backwards compatibility. generally there's only one GPU EP in the python package, with the exception
              // of a build with CUDA and DML.
              OrtDevice::VendorId vendor = OrtDevice::VendorIds::NONE;
-#if USE_DML
              if (type == OrtDevice::DML) {
                type = OrtDevice::GPU;
                vendor = OrtDevice::VendorIds::MICROSOFT;
-             }
-#endif
+             } else if (type == OrtDevice::GPU) {
 #if USE_CUDA
-             vendor = OrtDevice::VendorIds::NVIDIA;
+               vendor = OrtDevice::VendorIds::NVIDIA;
+#elsif USE_ROCM
+               vendor = OrtDevice::VendorIds::AMD;
 #endif
-#if USE_ROCM
-             vendor = OrtDevice::VendorIds::AMD;
-#endif
+             }
 
              return OrtDevice(type, mem_type, vendor, device_id);
            }),
