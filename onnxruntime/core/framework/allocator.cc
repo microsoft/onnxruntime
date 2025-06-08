@@ -85,13 +85,7 @@ void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
 
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
 
-  // Use the nothrow version to get a nullptr on failure.
-  void* p = ::operator new(size, std::align_val_t{alignment}, std::nothrow);
-
-  if (p == nullptr) {
-    ORT_THROW_EX(std::bad_alloc);
-  } else
-    return p;
+  return ::operator new(size, std::align_val_t{alignment});
 }
 
 void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
