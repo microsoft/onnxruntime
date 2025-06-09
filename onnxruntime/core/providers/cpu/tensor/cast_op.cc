@@ -500,6 +500,7 @@ struct TensorCaster<Int4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -519,8 +520,6 @@ struct TensorCaster<Int4x2, DstType,
 
     for (size_t i = 0; i < in_shape_size; ++i) {
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
-
-      // Extract signed high and low nibble
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
 
@@ -546,6 +545,7 @@ struct TensorCaster<Int4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -568,6 +568,7 @@ struct TensorCaster<Int4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -589,8 +590,57 @@ struct TensorCaster<Int4x2, bool, void> {
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
       int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
       out_data[2 * i] = low_nibble != 0;
       out_data[2 * i + 1] = high_nibble != 0;
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(in_shape_size == out_shape_size,
+                "The output UInt4x2 tensor size doesn't match input Int4x2 tensor size.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      int8_t high_nibble = static_cast<int8_t>(packed) >> 4;
+      int8_t low_nibble = static_cast<int8_t>(packed << 4) >> 4;
+
+      // Convert to unsigned by clamping at 0
+      uint8_t high_unsigned = static_cast<uint8_t>(std::max(0, static_cast<int>(high_nibble)) & 0x0F);
+      uint8_t low_unsigned = static_cast<uint8_t>(std::max(0, static_cast<int>(low_nibble)) & 0x0F);
+      out_data[i] = UInt4x2(low_unsigned, high_unsigned);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t in_shape_size = narrow<size_t>(shape.Size());
+    const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
+    ORT_ENFORCE(in_shape_size == out_shape_size,
+                "The output Int4x2 tensor size doesn't match input UInt4x2 tensor size.");
+
+    for (size_t i = 0; i < in_shape_size; ++i) {
+      const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
+      uint8_t high_nibble = (packed >> 4) & 0x0F;
+      uint8_t low_nibble = packed & 0x0F;
+
+      // Convert to signed by clamping to int4 range (-8 to 7)
+      int8_t high_signed = std::clamp(static_cast<int8_t>(high_nibble), static_cast<int8_t>(-8), static_cast<int8_t>(7));
+      int8_t low_signed = std::clamp(static_cast<int8_t>(low_nibble), static_cast<int8_t>(-8), static_cast<int8_t>(7));
+      out_data[i] = Int4x2(low_signed, high_signed);
     }
   }
 };
@@ -610,6 +660,7 @@ struct TensorCaster<UInt4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -631,8 +682,6 @@ struct TensorCaster<UInt4x2, DstType,
 
     for (size_t i = 0; i < in_shape_size; ++i) {
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
-
-      // Extract unsigned high and low nibble
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
 
@@ -658,6 +707,7 @@ struct TensorCaster<UInt4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -680,6 +730,7 @@ struct TensorCaster<UInt4x2, DstType,
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
+
       out_data[2 * i] = Int4ElementConverter<DstType>::Convert(low_nibble);
       out_data[2 * i + 1] = Int4ElementConverter<DstType>::Convert(high_nibble);
     }
@@ -688,7 +739,7 @@ struct TensorCaster<UInt4x2, DstType,
 #endif
 
 template <>
-struct TensorCaster<UInt4x2, bool, void> {
+struct TensorCaster<UInt4x2, bool> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<bool>();
@@ -701,6 +752,7 @@ struct TensorCaster<UInt4x2, bool, void> {
       const uint8_t packed = static_cast<uint8_t>(in_data[i].bits_);
       uint8_t high_nibble = (packed >> 4) & 0x0F;
       uint8_t low_nibble = packed & 0x0F;
+
       out_data[2 * i] = low_nibble != 0;
       out_data[2 * i + 1] = high_nibble != 0;
     }
@@ -836,7 +888,6 @@ struct TensorCaster<SrcType, Int4x2,
   }
 };
 #endif
-
 
 template <typename SrcType>
 struct TensorCaster<SrcType, UInt4x2,
