@@ -80,11 +80,11 @@ void UpdateOutputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_n
   }
 }
 
-bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: GraphViewer& graph_viewer,
+bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime::GraphViewer& graph_viewer,
                                                         std::unordered_set<NodeIndex>& partition_nodes_set,
                                                         std::unordered_set<NodeIndex>& incompatible_nodes,
                                                         IndexedSubGraph::MetaDef* meta_def,
-                                                        const logging::Logger& logger) const{
+                                                        const logging::Logger& logger) const {
   bool incompatibleInputFound = false;
 
   std::unordered_set<std::string> newInputs;
@@ -96,6 +96,10 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: Grap
     if (!GetType(*node_arg, type, logger)) {
       LOGS(logger, ERROR) << "NodeArg " << input << " has no type information.";
       continue;
+    }
+
+    if (input.find("Where_1") != std::string::npos) {
+      LOGS(logger, VERBOSE) << "Where_1 found";
     }
 
     std::vector<const Node*> consumer_nodes = graph_viewer.GetConsumerNodes(input);
@@ -132,10 +136,8 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime:: Grap
     }
   }
 
-  if (incompatibleInputFound) {
-    std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
-    meta_def->inputs = std::move(new_inputs_vector);
-  }
+  std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
+  meta_def->inputs = std::move(new_inputs_vector);
 
   return incompatibleInputFound;
 }
@@ -157,6 +159,10 @@ bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::Grap
       continue;
     }
 
+    if (output.find("Where_1") != std::string::npos) {
+      LOGS(logger, VERBOSE) << "Where_1 found";
+    }
+
     // step 2: check if the type is supported
     if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
       const Node* node = graph_viewer.GetProducerNode(output);
@@ -169,14 +175,15 @@ bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::Grap
       LOGS(logger, VERBOSE) << "Removing node " << node->Name() << " from CoreML partition due to unsupported output type: "
                             << ONNX_NAMESPACE::TensorProto_DataType_Name((ONNX_NAMESPACE::TensorProto_DataType)type);
     } else {
-      newOutputs.insert(output);
+      const Node* node = graph_viewer.GetProducerNode(output);
+      if (node && partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
+        newOutputs.insert(output);
+      }
     }
   }
 
-  if (incompatibleOutputFound) {
-    std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
-    meta_def->outputs = std::move(new_outputs_vector);
-  }
+  std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
+  meta_def->outputs = std::move(new_outputs_vector);
 
   return incompatibleOutputFound;
 }

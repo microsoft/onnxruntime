@@ -48,16 +48,16 @@ class CoreMLExecutionProvider : public IExecutionProvider {
                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT64};
 
   bool ProcessIncompatibleInputs(const onnxruntime::GraphViewer& graph_viewer,
-                               std::unordered_set<NodeIndex>& partition_nodes_set,
-                               std::unordered_set<NodeIndex>& incompatible_nodes,
-                               IndexedSubGraph::MetaDef* meta_def,
-                               const logging::Logger& logger) const;
+                                 std::unordered_set<NodeIndex>& partition_nodes_set,
+                                 std::unordered_set<NodeIndex>& incompatible_nodes,
+                                 IndexedSubGraph::MetaDef* meta_def,
+                                 const logging::Logger& logger) const;
 
   bool ProcessIncompatibleOutputs(const onnxruntime::GraphViewer& graph_viewer,
-                                std::unordered_set<NodeIndex>& partition_nodes_set,
-                                std::unordered_set<NodeIndex>& incompatible_nodes,
-                                IndexedSubGraph::MetaDef* meta_def,
-                                const logging::Logger& logger) const;
+                                  std::unordered_set<NodeIndex>& partition_nodes_set,
+                                  std::unordered_set<NodeIndex>& incompatible_nodes,
+                                  IndexedSubGraph::MetaDef* meta_def,
+                                  const logging::Logger& logger) const;
 
   void UpdatePartitionNodes(IndexedSubGraph& partition, const std::unordered_set<NodeIndex>& partition_nodes_set) const;
 
