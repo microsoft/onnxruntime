@@ -31,7 +31,7 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -39,7 +39,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -299,6 +299,225 @@ struct TensorCaster<MLFloat16, std::string> {
 };
 #endif
 
+// Helper functions for Int4x2/UInt4x2 conversions
+namespace {
+
+// Convert from Int4x2/UInt4x2 to other types
+template <bool Signed, typename DstType>
+DstType ConvertFromInt4x2(const Int4x2Base<Signed>& int4_pair, size_t index) {
+  return static_cast<DstType>(int4_pair.GetElem(index));
+}
+
+// Specialized conversion from Int4x2/UInt4x2 to float
+template <bool Signed>
+float ConvertFromInt4x2ToFloat(const Int4x2Base<Signed>& int4_pair, size_t index) {
+  return static_cast<float>(int4_pair.GetElem(index));
+}
+
+// Convert to Int4x2/UInt4x2 from other types with clamping
+template <bool Signed, typename SrcType>
+typename Int4x2Base<Signed>::UnpackedType ConvertToInt4x2(SrcType src_val) {
+  using UnpackedType = typename Int4x2Base<Signed>::UnpackedType;
+  constexpr auto min_val = Int4x2Base<Signed>::min_val;
+  constexpr auto max_val = Int4x2Base<Signed>::max_val;
+  
+  if (src_val < static_cast<SrcType>(min_val)) {
+    return min_val;
+  } else if (src_val > static_cast<SrcType>(max_val)) {
+    return max_val;
+  } else {
+    return static_cast<UnpackedType>(src_val);
+  }
+}
+
+}  // namespace
+
+// TensorCaster specializations for Int4x2/UInt4x2
+
+// Int4x2 -> float
+template <>
+struct TensorCaster<Int4x2, float> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<float>();
+    
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      const size_t pair_index = i / 2;
+      const size_t elem_index = i % 2;
+      out_data[i] = ConvertFromInt4x2ToFloat<true>(in_data[pair_index], elem_index);
+    }
+  }
+};
+
+// UInt4x2 -> float
+template <>
+struct TensorCaster<UInt4x2, float> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<float>();
+    
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      const size_t pair_index = i / 2;
+      const size_t elem_index = i % 2;
+      out_data[i] = ConvertFromInt4x2ToFloat<false>(in_data[pair_index], elem_index);
+    }
+  }
+};
+
+// float -> Int4x2
+template <>
+struct TensorCaster<float, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<float>();
+    auto* out_data = out.MutableData<Int4x2>();
+    
+    const size_t num_int4_pairs = Int4x2::CalcNumInt4Pairs(shape_size);
+    
+    for (size_t pair_idx = 0; pair_idx < num_int4_pairs; ++pair_idx) {
+      const size_t first_elem_idx = pair_idx * 2;
+      const size_t second_elem_idx = first_elem_idx + 1;
+      
+      auto first_val = ConvertToInt4x2<true>(in_data[first_elem_idx]);
+      auto second_val = (second_elem_idx < static_cast<size_t>(shape_size)) ? 
+                        ConvertToInt4x2<true>(in_data[second_elem_idx]) : 
+                        int8_t{0};  // Pad with zero for odd-sized tensors
+      
+      out_data[pair_idx] = Int4x2(first_val, second_val);
+    }
+  }
+};
+
+// float -> UInt4x2
+template <>
+struct TensorCaster<float, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<float>();
+    auto* out_data = out.MutableData<UInt4x2>();
+    
+    const size_t num_int4_pairs = UInt4x2::CalcNumInt4Pairs(shape_size);
+    
+    for (size_t pair_idx = 0; pair_idx < num_int4_pairs; ++pair_idx) {
+      const size_t first_elem_idx = pair_idx * 2;
+      const size_t second_elem_idx = first_elem_idx + 1;
+      
+      auto first_val = ConvertToInt4x2<false>(in_data[first_elem_idx]);
+      auto second_val = (second_elem_idx < static_cast<size_t>(shape_size)) ? 
+                        ConvertToInt4x2<false>(in_data[second_elem_idx]) : 
+                        uint8_t{0};  // Pad with zero for odd-sized tensors
+      
+      out_data[pair_idx] = UInt4x2(first_val, second_val);
+    }
+  }
+};
+
+// Generic converter template to avoid code duplication for other types
+template <bool Signed, typename DstType>
+struct Int4x2ToCaster {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<Int4x2Base<Signed>>();
+    auto* out_data = out.MutableData<DstType>();
+    
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      const size_t pair_index = i / 2;
+      const size_t elem_index = i % 2;
+      out_data[i] = ConvertFromInt4x2<Signed, DstType>(in_data[pair_index], elem_index);
+    }
+  }
+};
+
+template <bool Signed, typename SrcType>
+struct CasterToInt4x2 {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<Int4x2Base<Signed>>();
+    
+    const size_t num_int4_pairs = Int4x2Base<Signed>::CalcNumInt4Pairs(shape_size);
+    
+    for (size_t pair_idx = 0; pair_idx < num_int4_pairs; ++pair_idx) {
+      const size_t first_elem_idx = pair_idx * 2;
+      const size_t second_elem_idx = first_elem_idx + 1;
+      
+      auto first_val = ConvertToInt4x2<Signed>(in_data[first_elem_idx]);
+      auto second_val = (second_elem_idx < static_cast<size_t>(shape_size)) ? 
+                        ConvertToInt4x2<Signed>(in_data[second_elem_idx]) : 
+                        typename Int4x2Base<Signed>::UnpackedType{0};  // Pad with zero for odd-sized tensors
+      
+      out_data[pair_idx] = Int4x2Base<Signed>(first_val, second_val);
+    }
+  }
+};
+
+// Specializations for other common types
+// Int4x2 -> double
+template <>
+struct TensorCaster<Int4x2, double> : Int4x2ToCaster<true, double> {};
+
+// Int4x2 -> int8_t
+template <>
+struct TensorCaster<Int4x2, int8_t> : Int4x2ToCaster<true, int8_t> {};
+
+// Int4x2 -> uint8_t
+template <>
+struct TensorCaster<Int4x2, uint8_t> : Int4x2ToCaster<true, uint8_t> {};
+
+// Int4x2 -> MLFloat16
+template <>
+struct TensorCaster<Int4x2, MLFloat16> : Int4x2ToCaster<true, MLFloat16> {};
+
+// UInt4x2 -> double
+template <>
+struct TensorCaster<UInt4x2, double> : Int4x2ToCaster<false, double> {};
+
+// UInt4x2 -> int8_t
+template <>
+struct TensorCaster<UInt4x2, int8_t> : Int4x2ToCaster<false, int8_t> {};
+
+// UInt4x2 -> uint8_t
+template <>
+struct TensorCaster<UInt4x2, uint8_t> : Int4x2ToCaster<false, uint8_t> {};
+
+// UInt4x2 -> MLFloat16
+template <>
+struct TensorCaster<UInt4x2, MLFloat16> : Int4x2ToCaster<false, MLFloat16> {};
+
+// double -> Int4x2
+template <>
+struct TensorCaster<double, Int4x2> : CasterToInt4x2<true, double> {};
+
+// int8_t -> Int4x2
+template <>
+struct TensorCaster<int8_t, Int4x2> : CasterToInt4x2<true, int8_t> {};
+
+// uint8_t -> Int4x2
+template <>
+struct TensorCaster<uint8_t, Int4x2> : CasterToInt4x2<true, uint8_t> {};
+
+// MLFloat16 -> Int4x2
+template <>
+struct TensorCaster<MLFloat16, Int4x2> : CasterToInt4x2<true, MLFloat16> {};
+
+// double -> UInt4x2
+template <>
+struct TensorCaster<double, UInt4x2> : CasterToInt4x2<false, double> {};
+
+// int8_t -> UInt4x2
+template <>
+struct TensorCaster<int8_t, UInt4x2> : CasterToInt4x2<false, int8_t> {};
+
+// uint8_t -> UInt4x2
+template <>
+struct TensorCaster<uint8_t, UInt4x2> : CasterToInt4x2<false, uint8_t> {};
+
+// MLFloat16 -> UInt4x2
+template <>
+struct TensorCaster<MLFloat16, UInt4x2> : CasterToInt4x2<false, MLFloat16> {};
+
 class Cast final : public OpKernel {
  public:
   Cast(const OpKernelInfo& info) : OpKernel(info) {
@@ -442,7 +661,7 @@ ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
         .MayInplace(0, 0),  // allocation planner will check input and output sizes match before inplacing
     Cast);
 
-// TODO(adrianlizarraga): Implement support for int4 and uint4.
+// Int4x2 and UInt4x2 support has been implemented above.
 ONNX_CPU_OPERATOR_VERSIONED_KERNEL(
     Cast,
     21,
