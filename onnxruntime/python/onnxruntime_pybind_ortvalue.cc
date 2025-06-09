@@ -113,13 +113,13 @@ void addOrtValueMethods(pybind11::module& m) {
             CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
           } else
 #endif
-if USE_MIGRAPHX
+#if USE_MIGRAPHX
               if (device.Vendor() == OrtDevice::VendorIds::AMD) {
-        // InputDeflist is null because OrtValue creation is not tied to a specific model
-        // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-        // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in MIGraphX
-        CreateGenericMLValue(nullptr, GetMIGraphXAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToMIGraphXMemCpy);
-      } else
+            // InputDeflist is null because OrtValue creation is not tied to a specific model
+            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in MIGraphX
+            CreateGenericMLValue(nullptr, GetMIGraphXAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToMIGraphXMemCpy);
+          } else
 #endif
           {
             throw std::runtime_error(
