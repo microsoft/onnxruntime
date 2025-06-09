@@ -518,6 +518,59 @@ struct TensorCaster<uint8_t, UInt4x2> : CasterToInt4x2<false, uint8_t> {};
 template <>
 struct TensorCaster<MLFloat16, UInt4x2> : CasterToInt4x2<false, MLFloat16> {};
 
+// Additional type support for comprehensive coverage
+// Int4x2 -> int16_t, int32_t, int64_t, BFloat16
+template <>
+struct TensorCaster<Int4x2, int16_t> : Int4x2ToCaster<true, int16_t> {};
+
+template <>
+struct TensorCaster<Int4x2, int32_t> : Int4x2ToCaster<true, int32_t> {};
+
+template <>
+struct TensorCaster<Int4x2, int64_t> : Int4x2ToCaster<true, int64_t> {};
+
+template <>
+struct TensorCaster<Int4x2, BFloat16> : Int4x2ToCaster<true, BFloat16> {};
+
+// UInt4x2 -> int16_t, int32_t, int64_t, BFloat16
+template <>
+struct TensorCaster<UInt4x2, int16_t> : Int4x2ToCaster<false, int16_t> {};
+
+template <>
+struct TensorCaster<UInt4x2, int32_t> : Int4x2ToCaster<false, int32_t> {};
+
+template <>
+struct TensorCaster<UInt4x2, int64_t> : Int4x2ToCaster<false, int64_t> {};
+
+template <>
+struct TensorCaster<UInt4x2, BFloat16> : Int4x2ToCaster<false, BFloat16> {};
+
+// int16_t, int32_t, int64_t, BFloat16 -> Int4x2
+template <>
+struct TensorCaster<int16_t, Int4x2> : CasterToInt4x2<true, int16_t> {};
+
+template <>
+struct TensorCaster<int32_t, Int4x2> : CasterToInt4x2<true, int32_t> {};
+
+template <>
+struct TensorCaster<int64_t, Int4x2> : CasterToInt4x2<true, int64_t> {};
+
+template <>
+struct TensorCaster<BFloat16, Int4x2> : CasterToInt4x2<true, BFloat16> {};
+
+// int16_t, int32_t, int64_t, BFloat16 -> UInt4x2
+template <>
+struct TensorCaster<int16_t, UInt4x2> : CasterToInt4x2<false, int16_t> {};
+
+template <>
+struct TensorCaster<int32_t, UInt4x2> : CasterToInt4x2<false, int32_t> {};
+
+template <>
+struct TensorCaster<int64_t, UInt4x2> : CasterToInt4x2<false, int64_t> {};
+
+template <>
+struct TensorCaster<BFloat16, UInt4x2> : CasterToInt4x2<false, BFloat16> {};
+
 class Cast final : public OpKernel {
  public:
   Cast(const OpKernelInfo& info) : OpKernel(info) {
