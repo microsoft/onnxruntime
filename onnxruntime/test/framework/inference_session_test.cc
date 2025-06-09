@@ -1224,7 +1224,7 @@ TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
 }
 
 TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
-  OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0);
+  OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
 
   TestBindHelper("TestBindCudaPreallocateOutputOnCuda",
                  kGpuExecutionProvider,
