@@ -12,6 +12,7 @@ namespace onnxruntime {
 
 namespace {
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
+constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -27,16 +28,18 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
   }
-  OrtAllocator::GetStats =
-      [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
-    API_IMPL_BEGIN
-    auto kvp = std::make_unique<OrtKeyValuePairs>();
-    auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-    kvp->Copy(stats_map);
-    *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
-    return nullptr;
-    API_IMPL_END
-  };
+  if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
+    OrtAllocator::GetStats =
+        [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+      API_IMPL_BEGIN
+      auto kvp = std::make_unique<OrtKeyValuePairs>();
+      auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      kvp->Copy(stats_map);
+      *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
+      return nullptr;
+      API_IMPL_END
+    };
+  }
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
