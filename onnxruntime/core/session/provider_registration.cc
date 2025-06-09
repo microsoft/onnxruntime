@@ -135,7 +135,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return status;
   }
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   for (const auto& config_pair : provider_options) {
     TraceLoggingWrite(
         telemetry_provider_handle,

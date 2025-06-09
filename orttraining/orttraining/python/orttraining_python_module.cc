@@ -123,13 +123,17 @@ bool GetProviderInstanceHash(const std::string& type,
   return false;
 }
 
-ORTTrainingPythonEnv::ORTTrainingPythonEnv() : ort_env_(GetEnv()) {
+ORTTrainingPythonEnv::ORTTrainingPythonEnv(std::unique_ptr<OrtEnv> ort_env) : ort_env_(std::move(ort_env)) {
   const auto& builtinEPs = GetAvailableExecutionProviderNames();
   available_training_eps_.assign(builtinEPs.begin(), builtinEPs.end());
 }
 
-std::shared_ptr<Environment> ORTTrainingPythonEnv::GetORTEnv() const {
-  return ort_env_;
+const OrtEnv& ORTTrainingPythonEnv::GetORTEnv() const {
+  return *ort_env_;
+}
+
+OrtEnv& ORTTrainingPythonEnv::GetORTEnv() {
+  return *ort_env_;
 }
 
 std::shared_ptr<IExecutionProvider> ORTTrainingPythonEnv::GetExecutionProviderInstance(const std::string& provider_type,
@@ -168,75 +172,33 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
   execution_provider_instances_map_.clear();
 }
 
-namespace {
+static ORTTrainingPythonEnv* ort_training_env = nullptr;
 
-// This class provides a static shell for on-demand and thread-safe construction
-// of ORTTrainingPythonEnv object for both Inference and Training python layers.
-// ORTTrainingPythonEnv class contains instances of execution providers that have been
-// instantiated for training purposes. It depends on the Environment singleton to which it
-// holds a shared_ptr instance.
-//
-// 1) we make this class a singleton that is a function local static. The function local statics
-//    are constructed when the function is called the very first time. This fact has several important
-//    properties.
-//    - First, it is constructed before it is first needed possibly by another static object
-//      and destroyed after that object is destroyed.
-//    - Second, it is constructed in a thread safe manner.
-//    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
-//      to the static objects that are simply declared in order in a single unit, but their lifespan is
-//      unconnected to that of in other compilation units. This is achieved automatically by run-time
-//      by execution atexit() to build a chain.
-// 2) This ORTTrainingPythonEnv is currently owned by a unique_ptr unlike the Environment singleton. This is
-//    because we currently do not see a need to refer to it by any of the Python objects or by other singletons.
-//    With this change this singleton is properly destroyed after python module is unloaded, but before the Environment.
-//    HOWEVER, because it holds instances of execution providers, we want to make sure that those instances are destroyed
-//    before those depended EP DLLs are unloaded so EP destructor can run.
-//    This static is destroyed when this compilation unit is unloaded and it generally happens
-//    AFTER EP dlls are unloaded. To mitigate that, we clear EP instances using python `atexit` (different from C atexit())
-//    mechanism which takes place after all python objects are GCed but before any DLLs are unloaded or
-//    runtime starts destroying globals.
-// 3) We guard against singleton resurrection attempts to detect code that runs when it should not
-//    and make necessary adjustments.
-//    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
-class TrainingEnvInitialzer {
- public:
-  static ORTTrainingPythonEnv& Instance() {
-    // Guard against attempts to resurrect the singleton
-    if (TrainingEnvInitialzer::destroyed) {
-      ORT_THROW("Detected an attempt to resurrect destroyed Training Environment");
-    }
+OrtEnv* GetOrtEnv() {
+  return &ort_training_env->GetORTEnv();
+}
+onnxruntime::Environment& GetEnv() {
+  return ort_training_env->GetORTEnv().GetEnvironment();
+}
 
-    static TrainingEnvInitialzer training_env_holder;
-
-    return training_env_holder.Get();
+static Status CreateOrtEnv() {
+  Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
+  OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
+  Status status;
+  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status));
+  if (!status.IsOK()) return status;
+#if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
+  if (!InitProvidersSharedLibrary()) {
+    const logging::Logger& default_logger = ort_env->GetLoggingManager()->DefaultLogger();
+    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
   }
-
- private:
-  TrainingEnvInitialzer() {
-    ORT_ENFORCE(InitArray());
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    ort_training_env_ = std::make_unique<ORTTrainingPythonEnv>();
-  }
-
-  ~TrainingEnvInitialzer() {
-    destroyed = true;
-  }
-
-  ORTTrainingPythonEnv& Get() noexcept {
-    return *ort_training_env_;
-  }
-
-  std::unique_ptr<ORTTrainingPythonEnv> ort_training_env_;
-
-  static bool destroyed;
-};
-
-bool TrainingEnvInitialzer::destroyed = false;
-
-}  // namespace
+#endif
+  ort_training_env = new ORTTrainingPythonEnv(std::move(ort_env));
+  return Status::OK();
+}
 
 ORTTrainingPythonEnv& GetTrainingEnv() {
-  return TrainingEnvInitialzer::Instance();
+  return *ort_training_env;
 }
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
@@ -306,29 +268,29 @@ void ORTTrainingRegisterExecutionProviders(InferenceSession* sess, const std::ve
   }
 }
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+Status CreateTrainingPybindStateModule(py::module& m) {
   m.doc() = "pybind11 stateful interface to ORTTraining";
   RegisterExceptions(m);
+  if (!InitArray()) {
+    return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::FAIL, "import numpy failed");
+  }
+  ORT_RETURN_IF_ERROR(CreateOrtEnv());
 
-  // Instantiate singletons
-  GetTrainingEnv();
   addGlobalMethods(m);
   addObjectMethods(m, ORTTrainingRegisterExecutionProviders);
   addOrtValueMethods(m);
   addSparseTensorMethods(m);
   addIoBindingMethods(m);
   addAdapterFormatMethods(m);
-
-#if !defined(__APPLE__) && \
-    (!defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS))
-  Ort::SessionOptions tmp_options;
-  if (!InitProvidersSharedLibrary()) {
-    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
-    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
-  }
-#endif
-
   addObjectMethodsForTraining(m);
+
+  return Status::OK();
+}
+
+PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+  auto st = CreateTrainingPybindStateModule(m);
+  if (!st.IsOK())
+    throw pybind11::import_error(st.ErrorMessage());
 
 #ifdef ENABLE_LAZY_TENSOR
   addObjectMethodsForLazyTensor(m);
@@ -357,13 +319,6 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
       "Clean the execution provider instances used in ort training module.");
 
   m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
-
-  // See documentation for class TrainingEnvInitialzer earlier in this module
-  // for an explanation as to why this is needed.
-  auto atexit = py::module_::import("atexit");
-  atexit.attr("register")(py::cpp_function([]() {
-    GetTrainingEnv().ClearExecutionProviderInstances();
-  }));
 }
 
 }  // namespace python

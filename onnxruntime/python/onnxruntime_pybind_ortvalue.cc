@@ -105,6 +105,12 @@ void addOrtValueMethods(pybind11::module& m) {
       // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
       // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in MIGraphX
       CreateGenericMLValue(nullptr, GetMIGraphXAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToMIGraphXMemCpy);
+#elif USE_DML
+      // InputDeflist is null because OrtValue creation is not tied to a specific model
+      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+      CreateGenericMLValue(
+        nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
 #else
           throw std::runtime_error(
               "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
@@ -185,6 +191,12 @@ void addOrtValueMethods(pybind11::module& m) {
               values_type,
               *(ml_value->GetMutable<Tensor>()),
               CpuToMIGraphXMemCpy);
+#elif USE_DML
+          onnxruntime::python::CopyDataToTensor(
+              py_values,
+              values_type,
+              *(ml_value->GetMutable<Tensor>()),
+              CpuToDmlMemCpy);
 #else
           throw std::runtime_error(
               "Unsupported GPU device: Cannot find the supported GPU device.");
