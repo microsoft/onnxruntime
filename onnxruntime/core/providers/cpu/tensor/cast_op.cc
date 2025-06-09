@@ -278,55 +278,19 @@ namespace {
 template <typename DstType>
 struct Int4ElementConverter {
   static DstType Convert(int8_t val) {
-    // Default implementation for most numeric types
-    return static_cast<DstType>(val);
-  }
-};
-
-template <>
-struct Int4ElementConverter<MLFloat16> {
-  static MLFloat16 Convert(int8_t val) {
-    return MLFloat16(static_cast<float>(val));
-  }
-};
-
-template <>
-struct Int4ElementConverter<BFloat16> {
-  static BFloat16 Convert(int8_t val) {
-    return BFloat16(static_cast<float>(val));
-  }
-};
-
+    if constexpr (IsOrtFloat16Type<DstType>::value) {
+      return DstType(static_cast<float>(val));
+    }
 #if !defined(DISABLE_FLOAT8_TYPES)
-
-template <>
-struct Int4ElementConverter<Float8E4M3FN> {
-  static Float8E4M3FN Convert(int8_t val) {
-    return Float8E4M3FN(static_cast<float>(val), true);
-  }
-};
-
-template <>
-struct Int4ElementConverter<Float8E4M3FNUZ> {
-  static Float8E4M3FNUZ Convert(int8_t val) {
-    return Float8E4M3FNUZ(static_cast<float>(val), true);
-  }
-};
-
-template <>
-struct Int4ElementConverter<Float8E5M2> {
-  static Float8E5M2 Convert(int8_t val) {
-    return Float8E5M2(static_cast<float>(val), true);
-  }
-};
-
-template <>
-struct Int4ElementConverter<Float8E5M2FNUZ> {
-  static Float8E5M2FNUZ Convert(int8_t val) {
-    return Float8E5M2FNUZ(static_cast<float>(val), true);
-  }
-};
+    else if constexpr (IsOrtFloat8Type<DstType>::value) {
+      return DstType(static_cast<float>(val), true);
+    }
 #endif
+    else {
+      return static_cast<DstType>(val);
+    }
+  }
+};
 
 // Helper struct for converting from any type to Int4/UInt4 elements
 template <typename SrcType>
