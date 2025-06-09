@@ -6505,7 +6505,6 @@ struct OrtNodeComputeInfo {
   /** \brief Computation function called to execute the fused node compiled by an OrtEp instance.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
    * \param[in] compute_state The opaque computation state returned by CreateComputeState().
-   * \param[in] api The OrtApi instance.
    * \param[in] kernel_context The OrtKernelContext instance used to access inputs/outputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -6513,7 +6512,7 @@ struct OrtNodeComputeInfo {
    * \since Version 1.23.
    */
   OrtStatus*(ORT_API_CALL* Compute)(_In_ OrtNodeComputeInfo* this_ptr, _In_ void* compute_state,
-                                    _In_ const OrtApi* api, _In_ OrtKernelContext* kernel_context);
+                                    _In_ OrtKernelContext* kernel_context);
 
   /** \brief Releases the compute state returned by CreateComputeState().
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
@@ -6637,7 +6636,7 @@ struct OrtEp {
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graphs Array of `count` OrtGraph instances to be compiled.
    * \param[in] fused_nodes Array of `count` fused nodes that will replace the compiled graphs.
-   *                        Each fused node is an OrtNode initialized with the the intended fused node name and
+   *                        Each fused node is an OrtNode initialized with the intended fused node name and
    *                        input/output information.
    * \param[in] count The number of OrtGraph instances to compile.
    * \param[inout] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's

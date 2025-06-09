@@ -3,6 +3,8 @@
 
 #include "core/session/abi_ep_types.h"
 
+#include <utility>
+#include <vector>
 #include "core/common/common.h"
 #include "core/common/inlined_containers.h"
 #include "core/graph/ep_api_types.h"

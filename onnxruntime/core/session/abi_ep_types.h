@@ -5,6 +5,7 @@
 
 #include <gsl/gsl>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "core/common/inlined_containers_fwd.h"

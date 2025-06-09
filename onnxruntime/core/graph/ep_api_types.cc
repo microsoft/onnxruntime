@@ -228,7 +228,7 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 #else
   ORT_UNUSED_PARAMETER(producer_info);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Getting producers from OrtValueInfo is not supported in this build");
+                         "Getting the producer of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
@@ -264,9 +264,9 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& re
   result = std::move(consumer_infos);
   return Status::OK();
 #else
-  ORT_UNUSED_PARAMETER(consumer_infos);
+  ORT_UNUSED_PARAMETER(result);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Getting uses of an OrtValueInfo is not supported in this build");
+                         "Getting the consumers of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
@@ -300,7 +300,7 @@ Status EpValueInfo::GetNumConsumerInfos(size_t& num_consumers) const {
 #else
   ORT_UNUSED_PARAMETER(num_consumers);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                         "Getting uses of an OrtValueInfo is not supported in this build");
+                         "Getting the consumers of an OrtValueInfo is not supported in this build");
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 

@@ -127,7 +127,7 @@ struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
                                                         OrtNodeComputeContext* compute_context,
                                                         void** compute_state);
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
-                                             const OrtApi* api, OrtKernelContext* kernel_context);
+                                             OrtKernelContext* kernel_context);
   static void ORT_API_CALL DestroyComputeStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state);
 
   ExampleEp& ep;
@@ -317,7 +317,7 @@ OrtStatus* ExampleNodeComputeInfo::CreateComputeStateImpl(OrtNodeComputeInfo* th
 }
 
 OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
-                                               const OrtApi* /*ort_api*/, OrtKernelContext* kernel_context) {
+                                               OrtKernelContext* kernel_context) {
   (void)this_ptr;
   MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
   return kernel.Compute(kernel_context);

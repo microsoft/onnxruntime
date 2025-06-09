@@ -235,9 +235,9 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     };
 
     compute_info.compute_func = [api_node_compute_info](FunctionState compute_state,
-                                                        const OrtApi* c_api,
+                                                        const OrtApi* /*c_api*/,
                                                         OrtKernelContext* kernel_context) -> Status {
-      return ToStatus(api_node_compute_info->Compute(api_node_compute_info, compute_state, c_api, kernel_context));
+      return ToStatus(api_node_compute_info->Compute(api_node_compute_info, compute_state, kernel_context));
     };
 
     node_compute_infos.push_back(std::move(compute_info));
