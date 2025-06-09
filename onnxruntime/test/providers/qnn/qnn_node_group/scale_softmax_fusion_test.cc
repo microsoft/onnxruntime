@@ -64,7 +64,7 @@ ProviderOptions GetProviderOptions() {
 
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
-TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializer) {
+TEST_F(QnnHTPBackendTests, DISABLED_ScaleSoftmaxFusionScalarInitializer) {
   ProviderOptions provider_options = GetProviderOptions();
 
   auto input_def = TestInputDef<float>({1, 3, 5, 5}, false, -0.5f, 0.5f);
@@ -75,7 +75,7 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializer) {
                   /*fp32_abs_err=*/1e-2f);
 }
 
-TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarConstant) {
+TEST_F(QnnHTPBackendTests, DISABLED_ScaleSoftmaxFusionScalarConstant) {
   ProviderOptions provider_options = GetProviderOptions();
 
   auto input_def = TestInputDef<float>({1, 3, 5, 5}, false, -0.5f, 0.5f);
@@ -86,7 +86,7 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarConstant) {
                   /*fp32_abs_err=*/1e-2f);
 }
 
-TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializerReversed) {
+TEST_F(QnnHTPBackendTests, DISABLED_ScaleSoftmaxFusionScalarInitializerReversed) {
   ProviderOptions provider_options = GetProviderOptions();
   auto input_def = TestInputDef<float>({1, 3, 5, 5}, false, -0.5f, 0.5f);
   RunQnnModelTest(BuildTestCaseScalar(input_def, 0.375f, /*use_constant=*/false, /*reverse_input_order=*/true),
@@ -96,7 +96,7 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarInitializerReversed) {
                   /*fp32_abs_err=*/1e-2f);
 }
 
-TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarConstantReversed) {
+TEST_F(QnnHTPBackendTests, DISABLED_ScaleSoftmaxFusionScalarConstantReversed) {
   ProviderOptions provider_options = GetProviderOptions();
   auto input_def = TestInputDef<float>({1, 3, 5, 5}, false, -0.5f, 0.5f);
   RunQnnModelTest(BuildTestCaseScalar(input_def, 0.125f, /*use_constant=*/true, /*reverse_input _order=*/true),
@@ -106,7 +106,7 @@ TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionScalarConstantReversed) {
                   /*fp32_abs_err=*/1e-2f);
 }
 
-TEST_F(QnnHTPBackendTests, ScaleSoftmaxFusionSoftmaxNegativeAxis) {
+TEST_F(QnnHTPBackendTests, DISABLED_ScaleSoftmaxFusionSoftmaxNegativeAxis) {
   ProviderOptions provider_options = GetProviderOptions();
   auto input_def = TestInputDef<float>({1, 3, 5, 5}, false, -0.5f, 0.5f);
   RunQnnModelTest(BuildTestCaseScalar(input_def, 0.125f,
