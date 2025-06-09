@@ -20,9 +20,7 @@ static const std::string COMPUTE_CAPABILITY = "hardware_architecture";
 static const std::string ONNX_MODEL_FILENAME = "onnx_model_filename";
 static const std::string EPCONTEXT_OP_DOMAIN = "com.microsoft";
 static const std::string EPCONTEXT_WARNING =
-    "It's suggested to set the ORT graph optimization level to 0 and  \
-                                              make \"embed_mode\" to 0 (\"ep_cache_context\" is the cache path)\
-                                              for the best model loading time";
+    "It's suggested to set the ORT graph optimization level to 0 for the best performance";
 
 bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
