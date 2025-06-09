@@ -23,8 +23,21 @@ struct EpGraph;
 /// </summary>
 struct EpValueInfo : public OrtValueInfo {
  public:
-  EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info)
-      : OrtValueInfo(OrtGraphIrApi::kEpApi), graph(graph), name(name), type_info(std::move(type_info)) {}
+  enum Flags {
+    kFlagNone = 0,
+    kIsGraphInput = 1 << 0,
+    kIsGraphOutput = 1 << 1,
+    kIsInitializer = 1 << 2,
+    kIsOuterScope = 1 << 3,
+  };
+
+  EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info,
+              size_t flags)
+      : OrtValueInfo(OrtGraphIrApi::kEpApi),
+        graph(graph),
+        name(name),
+        type_info(std::move(type_info)),
+        flags(flags) {}
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and EpValueInfo.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, EpValueInfo, OrtGraphIrApi::kEpApi)
@@ -34,13 +47,29 @@ struct EpValueInfo : public OrtValueInfo {
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
   Status GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
   Status GetNumConsumers(size_t& num_consumers) const override;
+  bool IsGraphInput() const override {
+    return IsFlagSet(kIsGraphInput);
+  }
+  bool IsGraphOutput() const override {
+    return IsFlagSet(kIsGraphOutput);
+  }
+  bool IsInitializer() const override {
+    return IsFlagSet(kIsInitializer);
+  }
+  bool IsFromOuterScope() const override {
+    return IsFlagSet(kIsOuterScope);
+  }
+
+  void SetFlag(EpValueInfo::Flags flag) { flags |= flag; }
+  bool IsFlagSet(EpValueInfo::Flags flag) const { return flags & flag; }
 
   // Back pointer to parent graph. If not null, enables retrieval of consumer and producer nodes.
   // Is null if the EpValueInfo was created without an owning EpGraph
   // (e.g., OrtValueInfo instances created for fused nodes in OrtEp::Compile()).
-  const EpGraph* graph;
+  const EpGraph* graph = nullptr;
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
+  size_t flags = 0;
 };
 
 struct SubgraphState {
@@ -137,6 +166,7 @@ struct EpGraph : public OrtGraph {
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
 
   const std::string& Name() const override;
+  int64_t OnnxIRVersion() const override;
   size_t NumInputs() const override;
   size_t NumOutputs() const override;
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;

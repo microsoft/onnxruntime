@@ -38,9 +38,23 @@ struct ModelEditorValueInfo : public OrtValueInfo {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the number of consumers for a OrtValueInfo");
   }
+  bool IsGraphInput() const override {
+    return is_graph_input;
+  }
+  bool IsGraphOutput() const override {
+    return is_graph_output;
+  }
+  bool IsInitializer() const override {
+    return false;  // ModelEditorApi doesn't currently create OrtValueInfo objects for initializers.
+  }
+  bool IsFromOuterScope() const override {
+    return false;  // ModelEditorApi doesn't currently create subgraphs.
+  }
 
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
+  bool is_graph_input = false;
+  bool is_graph_output = false;
 };
 
 /// <summary>
@@ -116,6 +130,9 @@ struct ModelEditorGraph : public OrtGraph {
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and ModelEditorGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
   const std::string& Name() const override { return name; }
+  int64_t OnnxIRVersion() const override {
+    return ONNX_NAMESPACE::Version::IR_VERSION;
+  }
   size_t NumInputs() const override { return inputs.size(); }
   size_t NumOutputs() const override { return outputs.size(); }
   Status GetInputs(InlinedVector<const OrtValueInfo*>& result) const override {

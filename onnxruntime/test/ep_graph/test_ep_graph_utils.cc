@@ -94,14 +94,5 @@ Status GetNodeArgConsumers(const GraphViewer& graph_viewer, const NodeArg& node_
   }
   return Status::OK();
 }
-
-std::vector<const NodeArg*> ToVector(ConstPointerContainer<std::vector<NodeArg*>> node_args) {
-  std::vector<const NodeArg*> result;
-  result.reserve(node_args.size());
-  for (const NodeArg* node_arg : node_args) {
-    result.push_back(node_arg);
-  }
-  return result;
-}
 }  // namespace test
 }  // namespace onnxruntime

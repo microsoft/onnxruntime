@@ -56,6 +56,11 @@ struct OrtValueInfo {
   virtual onnxruntime::Status GetConsumers(std::vector<ConsumerInfo>& consumer_infos) const = 0;
   virtual onnxruntime::Status GetNumConsumers(size_t& num_consumers) const = 0;
 
+  virtual bool IsGraphInput() const = 0;
+  virtual bool IsGraphOutput() const = 0;
+  virtual bool IsInitializer() const = 0;
+  virtual bool IsFromOuterScope() const = 0;
+
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
 
@@ -98,6 +103,7 @@ struct OrtGraph {
   virtual ~OrtGraph() = default;
 
   virtual const std::string& Name() const = 0;
+  virtual int64_t OnnxIRVersion() const = 0;
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;

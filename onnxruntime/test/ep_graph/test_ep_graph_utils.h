@@ -46,9 +46,5 @@ Status GetNodeArgConsumers(const GraphViewer& graph_viewer, const NodeArg& node_
 
 // Get output index for the given NodeArg name. Returns error if the node does not produce that node arg as an output.
 Status GetOutputIndex(const Node& producer_node, const std::string& name, /*out*/ size_t& index);
-
-// Converts the output of Node::GetInputDefs() or Node::GetOutputDefs() to a normal std::vector
-// so that it can be easily converted into a gsl::span.
-std::vector<const NodeArg*> ToVector(ConstPointerContainer<std::vector<NodeArg*>> node_args);
 }  // namespace test
 }  // namespace onnxruntime

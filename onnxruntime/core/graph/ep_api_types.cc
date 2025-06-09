@@ -18,55 +18,73 @@
 
 namespace onnxruntime {
 
-static EpValueInfo* AddValueInfo(std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
-                                 const NodeArg& node_arg, const EpGraph* ep_graph) {
-  auto it = value_infos.find(node_arg.Name());
-  if (it != value_infos.end()) {
-    return it->second.get();
-  }
-
+// Create an EpValueInfo from a NodeArg.
+static std::unique_ptr<EpValueInfo> CreateValueInfo(const NodeArg& node_arg, const EpGraph* ep_graph, size_t flags) {
   const auto* type_proto = node_arg.TypeAsProto();
   std::unique_ptr<OrtTypeInfo> type_info = type_proto != nullptr ? OrtTypeInfo::FromTypeProto(*type_proto)
                                                                  : nullptr;
-  auto ep_value_info = std::make_unique<EpValueInfo>(ep_graph, node_arg.Name(), std::move(type_info));
-  EpValueInfo* result = ep_value_info.get();
-  value_infos[node_arg.Name()] = std::move(ep_value_info);
-  return result;
+  return std::make_unique<EpValueInfo>(ep_graph, node_arg.Name(), std::move(type_info), flags);
 }
+
+// Convert an array of NodeArgs to an array of EpValueInfos. The value_infos array should be the same size as the
+// array of NodeArgs before calling this function.
+static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
+                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map,
+                                        gsl::span<const NodeArg* const> node_args, gsl::span<EpValueInfo*> value_infos,
+                                        EpValueInfo::Flags value_flag) {
+  assert(node_args.size() == value_infos.size());
+
+  for (size_t i = 0; i < node_args.size(); ++i) {
+    gsl::not_null<const NodeArg*> node_arg = node_args[i];
+    const std::string& value_name = node_arg->Name();
+
+    if (!node_arg->Exists()) {
+      // A missing optional input/output has a null OrtValueInfo.
+      value_infos[i] = nullptr;
+      continue;
+    }
+
+    auto value_info_iter = value_infos_map.find(value_name);
+
+    if (value_info_iter != value_infos_map.end()) {
+      EpValueInfo* value_info = value_info_iter->second.get();
+      value_info->SetFlag(value_flag);
+      value_infos[i] = value_info;
+    } else {
+      std::unique_ptr<EpValueInfo> value_info = CreateValueInfo(*node_arg, ep_graph, value_flag);
+      value_infos[i] = value_info.get();
+      value_infos_map.emplace(value_name, std::move(value_info));
+    }
+  }
+}
+
+//
+// EpNode
+//
 
 EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
     : OrtNode(OrtGraphIrApi::kEpApi), ep_graph(ep_graph), node(node) {}
 
 std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map) {
-  auto init_ep_node_io = [&ep_graph, &value_infos_map](ConstPointerContainer<std::vector<NodeArg*>> node_args,
-                                                       gsl::span<EpValueInfo*> value_infos) {
-    assert(node_args.size() == value_infos.size());
-    for (size_t i = 0; i < node_args.size(); i++) {
-      const NodeArg* node_arg = node_args[i];
-      assert(node_arg != nullptr);
-
-      // Note that a missing optional input/output is assigned a null OrtValueInfo.
-      value_infos[i] = node_arg->Exists() ? AddValueInfo(value_infos_map, *node_arg, ep_graph) : nullptr;
-    }
-  };
   auto ep_node = std::make_unique<EpNode>(ep_graph, node, PrivateTag{});
 
   auto node_inputs = node.InputDefs();
   InlinedVector<EpValueInfo*> ep_node_inputs(node_inputs.size(), nullptr);
-  init_ep_node_io(node_inputs, ep_node_inputs);
+  ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_inputs, ep_node_inputs, EpValueInfo::kFlagNone);
 
   auto node_outputs = node.OutputDefs();
   InlinedVector<EpValueInfo*> ep_node_outputs(node_outputs.size(), nullptr);
-  init_ep_node_io(node_outputs, ep_node_outputs);
+  ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_outputs, ep_node_outputs, EpValueInfo::kFlagNone);
 
   std::vector<SubgraphState> ep_node_subgraphs;
   std::vector<EpValueInfo*> ep_node_implicit_inputs;
 
   if (node.ContainsSubgraph()) {
-    auto node_implicit_inputs = node.ImplicitInputDefs();
+    const auto node_implicit_inputs = node.ImplicitInputDefs();
     ep_node_implicit_inputs.resize(node_implicit_inputs.size(), nullptr);
-    init_ep_node_io(node_implicit_inputs, ep_node_implicit_inputs);
+    ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_implicit_inputs, ep_node_implicit_inputs,
+                                EpValueInfo::kFlagNone);
 
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
     ep_node_subgraphs.reserve(node_subgraphs.size());
@@ -138,6 +156,10 @@ Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
   parent_graph = ep_graph->ToExternal();
   return Status::OK();
 }
+
+//
+// EpValueInfo
+//
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetInputIndices(const EpNode& consumer_node,
@@ -288,6 +310,10 @@ Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
+//
+// EpGraph
+//
+
 void EpGraph::IndexToEpNodeMap::Resize(NodeIndex min_node_index, NodeIndex max_node_index) {
   assert(max_node_index >= min_node_index);
   size_t num_elems = (max_node_index - min_node_index) + 1;
@@ -311,39 +337,81 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
 EpGraph::EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer(graph_viewer), parent_node(parent_node) {}
 
+static ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor) {
+  ONNX_NAMESPACE::TypeProto t;
+  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
+  auto shape = t.mutable_tensor_type()->mutable_shape();
+  for (auto dim : tensor.dims())
+    shape->add_dim()->set_dim_value(dim);
+
+  return t;
+}
+
 // Static class function to create a std::unique_ptr<EpGraph>.
 std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, parent_ep_node, PrivateTag{});
 
-  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
-  InlinedVector<EpValueInfo*> graph_inputs;
-  InlinedVector<EpValueInfo*> graph_outputs;
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
-  graph_inputs.reserve(graph_viewer.GetInputs().size());
-  graph_outputs.reserve(graph_viewer.GetOutputs().size());
+  // Process graph inputs.
+  const std::vector<const NodeArg*>& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
+  InlinedVector<EpValueInfo*> graph_input_value_infos(graph_input_node_args.size(), nullptr);
+  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_input_node_args, graph_input_value_infos,
+                              EpValueInfo::kIsGraphInput);
 
-  for (const NodeArg* graph_input_node_arg : graph_viewer.GetInputsIncludingInitializers()) {
-    assert(graph_input_node_arg != nullptr);
-    graph_inputs.push_back(AddValueInfo(value_infos, *graph_input_node_arg, ep_graph.get()));
+  // Process graph outputs.
+  const std::vector<const NodeArg*>& graph_output_node_args = graph_viewer.GetOutputs();
+  InlinedVector<EpValueInfo*> graph_output_value_infos(graph_output_node_args.size(), nullptr);
+  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_output_node_args, graph_output_value_infos,
+                              EpValueInfo::kIsGraphOutput);
+
+  // If this is a subgraph (has parent node), add the value infos that come from the outer scope.
+  if (parent_ep_node != nullptr) {
+    const auto parent_implicit_inputs = parent_ep_node->node.ImplicitInputDefs();
+    for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_implicit_inputs) {
+      assert(value_infos_map.count(implicit_node_arg->Name()) == 0);  // Should not have added these yet.
+      value_infos_map.emplace(implicit_node_arg->Name(),
+                              CreateValueInfo(*implicit_node_arg, ep_graph.get(), EpValueInfo::kIsOuterScope));
+    }
   }
 
-  for (const NodeArg* graph_output_node_arg : graph_viewer.GetOutputs()) {
-    assert(graph_output_node_arg != nullptr);
-    graph_outputs.push_back(AddValueInfo(value_infos, *graph_output_node_arg, ep_graph.get()));
+  // Process initializers.
+  // TODO(adrianlizarraga): Add OrtValue instances for each initializer. This just adds OrtValueInfos.
+  const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
+  InlinedVector<EpValueInfo*> graph_initializer_value_infos;
+  for (const auto& [initializer_name, tensor_proto] : initializers) {
+    auto iter = value_infos_map.find(initializer_name);
+    if (iter != value_infos_map.end()) {
+      EpValueInfo* value_info = iter->second.get();
+      value_info->SetFlag(EpValueInfo::kIsInitializer);
+      graph_initializer_value_infos.push_back(value_info);
+    } else {
+      auto type_proto = TypeProtoFromTensorProto(*tensor_proto);
+      std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
+      auto value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),
+                                                      EpValueInfo::kIsInitializer);
+      graph_initializer_value_infos.push_back(value_info.get());
+      value_infos_map.emplace(initializer_name, std::move(value_info));
+    }
   }
 
+  // Process nodes in topological order, converting Node to EpNode.
   std::vector<std::unique_ptr<EpNode>> ep_nodes;
   IndexToEpNodeMap index_to_ep_node;
   NodeIndex min_node_index = std::numeric_limits<NodeIndex>::max();
   NodeIndex max_node_index = std::numeric_limits<NodeIndex>::lowest();
-
   ep_nodes.reserve(graph_viewer.NumberOfNodes());
-  for (const Node& node : graph_viewer.Nodes()) {
-    ep_nodes.push_back(EpNode::Create(node, ep_graph.get(), value_infos));
-    min_node_index = std::min(min_node_index, node.Index());
-    max_node_index = std::max(max_node_index, node.Index());
+
+  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+
+  for (NodeIndex node_index : node_indices) {
+    gsl::not_null<const Node*> node = graph_viewer.GetNode(node_index);
+    ep_nodes.push_back(EpNode::Create(*node, ep_graph.get(), value_infos_map));
+    min_node_index = std::min(min_node_index, node->Index());
+    max_node_index = std::max(max_node_index, node->Index());
   }
 
+  // Iterate through nodes again and update the map of NodeIndex to EpNode*
   index_to_ep_node.Resize(min_node_index, max_node_index);
   for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
     index_to_ep_node.SetEpNode(ep_node->node.Index(), ep_node.get());
@@ -351,13 +419,14 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const 
 
   ep_graph->nodes = std::move(ep_nodes);
   ep_graph->index_to_ep_node = std::move(index_to_ep_node);
-  ep_graph->value_infos = std::move(value_infos);
-  ep_graph->inputs = std::move(graph_inputs);
-  ep_graph->outputs = std::move(graph_outputs);
+  ep_graph->value_infos = std::move(value_infos_map);
+  ep_graph->inputs = std::move(graph_input_value_infos);
+  ep_graph->outputs = std::move(graph_output_value_infos);
   return ep_graph;
 }
 
 const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
+int64_t EpGraph::OnnxIRVersion() const { return graph_viewer.GetOnnxIRVersion(); }
 size_t EpGraph::NumInputs() const { return inputs.size(); }
 size_t EpGraph::NumOutputs() const { return outputs.size(); }
 

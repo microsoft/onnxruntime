@@ -142,6 +142,9 @@ extern "C" {
 // __VA_ARGS__ on Windows and Linux are different
 #define ORT_API(RETURN_TYPE, NAME, ...) RETURN_TYPE ORT_API_CALL NAME(__VA_ARGS__) NO_EXCEPTION
 
+#define ORT_API_T(RETURN_TYPE, NAME, ...) \
+  RETURN_TYPE(ORT_API_CALL* NAME)(__VA_ARGS__) NO_EXCEPTION
+
 #define ORT_API_STATUS(NAME, ...)                                                                   \
   _Success_(return == 0) _Check_return_ _Ret_maybenull_ OrtStatusPtr ORT_API_CALL NAME(__VA_ARGS__) \
   NO_EXCEPTION ORT_MUST_USE_RESULT
@@ -5327,8 +5330,8 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
-                  _Out_opt_ size_t* producer_output_index);
+  ORT_API2_STATUS(ValueInfo_GetValueProducer, _In_ const OrtValueInfo* value_info,
+                  _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index);
 
   /** \brief Get the number of consumers of a value as a node input.
    *
@@ -5340,34 +5343,93 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
+  ORT_API2_STATUS(ValueInfo_GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
 
   /** \brief Returns information (OrtNode and input index) for all consumer nodes that use the value as an input.
    *
    * Caller provides 2 pre-allocated arrays that will be filled with the OrtNode and input index values.
-   * Use GetValueNumConsumers() to get the number of consumers of the value.
+   * Use ValueInfo_GetValueNumConsumers() to get the number of consumers of the value.
    *
    * An OrtNode instance may appear multiple times if it uses the given value more than once.
    * Example: For a node MulNode(x, x) that consumes the value 'x' twice, the following is returned:
    *   - nodes: [MulNode, MulNode]
    *   - input_indices: [0, 1]
    *
-   * \param[in] OrtValueInfo The OrtValueInfo instance.
+   * \param[in] value_info The OrtValueInfo instance.
    * \param[out] nodes Pre-allocated array of size `max_num_consumers` that will be filled with OrtNode instances.
    * \param[out] input_indices Pre-allocated array of `max_num_consumers` elements that will be filled
    *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
    *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
    * \param[in] max_num_consumers The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
-   *                              Typical usage sets this to the value of GetValueNumConsumers().
+   *                              Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(GetValueConsumers, _In_ const OrtValueInfo* value_info,
+  ORT_API2_STATUS(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_info,
                   _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
                   _Out_writes_all_(max_num_consumers) int64_t* input_indices,
                   _In_ size_t max_num_consumers);
+
+  /** \brief Returns a boolean indicating if the given value is a graph input.
+   *
+   * Returns true for both required graph inputs and optional graph inputs.
+   *
+   * The semantics of graph inputs and initializers changed in ONNX IR version 4:
+   *   - For ONNX IR version < 4, all initializers must have a matching graph input
+   *     (even though the graph input is not allowed to override the initializer).
+   *   - For ONNX IR version >=4, initializers are not required to have a matching graph input.
+   *     An initializer without a matching graph input is considered a constant initializer.
+   *     A graph input with a matching initializer is considered an optional input with the default value
+   *     coming from the initializer if the input is not specified.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \return true if the value is a graph input.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, ValueInfo_IsGraphInput, _In_ const OrtValueInfo* value_info);
+
+  /** \brief Returns a boolean indicating if the given value is a graph output.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \return true if the value is a graph output.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, ValueInfo_IsGraphOutput, _In_ const OrtValueInfo* value_info);
+
+  /** \brief Returns a boolean indicating if the given value is an initializer.
+   *
+   * Returns true for both constant and non-constant (i.e., overridable) initializers.
+   *
+   * The semantics of graph inputs and initializers changed in ONNX IR version 4:
+   *   - For ONNX IR version < 4, all initializers must have a matching graph input
+   *     (even though the graph input is not allowed to override the initializer).
+   *   - For ONNX IR version >=4, initializers are not required to have a matching graph input.
+   *     An initializer without a matching graph input is considered a constant initializer.
+   *     A graph input with a matching initializer is considered an optional input with the default value
+   *     coming from the initializer if the input is not specified.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \return true if the value is an initializer.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, ValueInfo_IsInitializer, _In_ const OrtValueInfo* value_info);
+
+  /** \brief Returns a boolean indicating if the given value is defined in an outer scope.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. This function enables
+   * determining whether a value is defined in a parent node's graph.
+   *
+   * \param[in] value_info The OrtValueInfo instance representing the graph value.
+   * \return true if the value is defined in an outer scope.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo* value_info);
 
   /** \brief Returns the name of a OrtGraph instance.
    *
@@ -5376,7 +5438,16 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Graph_Name)(_In_ const OrtGraph* graph);
+  ORT_API_T(const char*, Graph_Name, _In_ const OrtGraph* graph);
+
+  /** \brief Returns the ONNX IR version.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The ONNX IR version.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(int64_t, Graph_OnnxIRVersion, _In_ const OrtGraph* graph);
 
   /** \brief Returns the number of inputs for the OrtGraph instance.
    *
@@ -5387,7 +5458,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Graph_NumInputs)(_In_ const OrtGraph* graph);
+  ORT_API_T(size_t, Graph_NumInputs, _In_ const OrtGraph* graph);
 
   /** \brief Returns the number of outputs for the OrtGraph instance.
    *
@@ -5396,7 +5467,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Graph_NumOutputs)(_In_ const OrtGraph* graph);
+  ORT_API_T(size_t, Graph_NumOutputs, _In_ const OrtGraph* graph);
 
   /** \brief Returns the input OrtValueInfo instances for an OrtGraph.
    *
@@ -5441,7 +5512,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Graph_NumNodes)(_In_ const OrtGraph* graph);
+  ORT_API_T(size_t, Graph_NumNodes, _In_ const OrtGraph* graph);
 
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
@@ -5471,13 +5542,13 @@ struct OrtApi {
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] node Output parameter that is set to the graph's parent node.
-   *                  Set to NULL if a parent node does not exists (e.g., for a top-level graph).
+   *                  Set to NULL if a parent node does not exist (e.g., for a top-level graph).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node);
+  ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
   /** \brief Returns the name of an OrtNode instance.
    *
@@ -5486,7 +5557,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_Name)(_In_ const OrtNode* node);
+  ORT_API_T(const char*, Node_Name, _In_ const OrtNode* node);
 
   /** \brief Returns the ONNX operator type (e.g., "Conv") of an OrtNode instance.
    *
@@ -5495,7 +5566,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_OperatorType)(_In_ const OrtNode* node);
+  ORT_API_T(const char*, Node_OperatorType, _In_ const OrtNode* node);
 
   /** \brief Returns the domain for an OrtNode instance.
    *
@@ -5504,7 +5575,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* Node_Domain)(_In_ const OrtNode* node);
+  ORT_API_T(const char*, Node_Domain, _In_ const OrtNode* node);
 
   /** \brief Get the opset version in which the node's operator type was first defined.
    *
@@ -5524,7 +5595,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Node_NumInputs)(_In_ const OrtNode* node);
+  ORT_API_T(size_t, Node_NumInputs, _In_ const OrtNode* node);
 
   /** \brief Returns the number of outputs for an OrtNode instance.
    *
@@ -5533,7 +5604,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  size_t(ORT_API_CALL* Node_NumOutputs)(_In_ const OrtNode* node);
+  ORT_API_T(size_t, Node_NumOutputs, _In_ const OrtNode* node);
 
   /** \brief Returns the input OrtValueInfo instances for an OrtNode.
    *
@@ -6503,7 +6574,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  const char*(ORT_API_CALL* NodeComputeContext_NodeName)(_In_ const OrtNodeComputeContext* context);
+  ORT_API_T(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context);
 };
 
 /**

@@ -124,6 +124,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                                    "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
     }
 
+    input->is_graph_input = true;
     graph->inputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(input));  // take ownership
     inputs[i] = nullptr;
   }
@@ -154,6 +155,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph
                                    "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
     }
 
+    output->is_graph_output = true;
     graph->outputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(output));  // take ownership
     outputs[i] = nullptr;
   }

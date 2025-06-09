@@ -604,14 +604,19 @@ ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ 
 ORT_API_STATUS_IMPL(AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out);
 
 // OrtGraph IR accessors.
-ORT_API_STATUS_IMPL(GetValueProducer, _In_ const OrtValueInfo* value_info, _Outptr_ const OrtNode** producer_node,
-                    _Out_opt_ size_t* producer_output_index);
-ORT_API_STATUS_IMPL(GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
-ORT_API_STATUS_IMPL(GetValueConsumers, _In_ const OrtValueInfo* value_info,
+ORT_API_STATUS_IMPL(ValueInfo_GetValueProducer, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtNode** producer_node, _Out_opt_ size_t* producer_output_index);
+ORT_API_STATUS_IMPL(ValueInfo_GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
+ORT_API_STATUS_IMPL(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_info,
                     _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
                     _Out_writes_all_(max_num_consumers) int64_t* input_indices,
                     _In_ size_t max_num_consumers);
+ORT_API(bool, ValueInfo_IsGraphInput, _In_ const OrtValueInfo* value_info);
+ORT_API(bool, ValueInfo_IsGraphOutput, _In_ const OrtValueInfo* value_info);
+ORT_API(bool, ValueInfo_IsInitializer, _In_ const OrtValueInfo* value_info);
+ORT_API(bool, ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo* value_info);
 ORT_API(const char*, Graph_Name, _In_ const OrtGraph* graph);
+ORT_API(int64_t, Graph_OnnxIRVersion, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumInputs, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumOutputs, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph,
@@ -621,7 +626,7 @@ ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph,
 ORT_API(size_t, Graph_NumNodes, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
-ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_ const OrtNode** node);
+ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 ORT_API(const char*, Node_Name, const OrtNode* node);
 ORT_API(const char*, Node_OperatorType, const OrtNode* node);
 ORT_API(const char*, Node_Domain, const OrtNode* node);

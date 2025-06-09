@@ -33,7 +33,7 @@ static void CheckValueInfoProducer(const GraphViewer& graph_viewer, const OrtVal
 
   const OrtNode* api_producer_node = nullptr;
   size_t api_producer_output_index = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueProducer(value_info, &api_producer_node, &api_producer_output_index));
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetValueProducer(value_info, &api_producer_node, &api_producer_output_index));
 
   const Node* producer_node = graph_viewer.GetProducerNode(node_arg->Name());
   if (producer_node == nullptr) {
@@ -67,13 +67,13 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
   ASSERT_STATUS_OK(GetNodeArgConsumers(graph_viewer, *node_arg, node_arg_consumers));
 
   size_t api_num_consumers = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueNumConsumers(value_info, &api_num_consumers));
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetValueNumConsumers(value_info, &api_num_consumers));
   ASSERT_EQ(api_num_consumers, node_arg_consumers.size());
 
   std::vector<const OrtNode*> api_node_consumers(api_num_consumers, nullptr);
   std::vector<int64_t> api_input_indices(api_num_consumers, 0);
-  ASSERT_ORTSTATUS_OK(ort_api.GetValueConsumers(value_info, api_node_consumers.data(), api_input_indices.data(),
-                                                api_num_consumers));
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetValueConsumers(value_info, api_node_consumers.data(),
+                                                          api_input_indices.data(), api_num_consumers));
 
   for (size_t i = 0; i < api_num_consumers; i++) {
     ASSERT_EQ(std::string(ort_api.Node_Name(api_node_consumers[i])), node_arg_consumers[i].node->Name());
@@ -208,7 +208,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
     std::vector<const OrtValueInfo*> api_inputs(num_inputs, nullptr);
     ASSERT_ORTSTATUS_OK(ort_api.Node_GetInputs(api_node, api_inputs.data(), api_inputs.size()));
-    CheckValueInfosCApi(graph_viewer, api_inputs, ToVector(input_node_args));
+    CheckValueInfosCApi(graph_viewer, api_inputs, input_node_args);
 
     const auto output_node_args = node->OutputDefs();
     const size_t num_outputs = ort_api.Node_NumOutputs(api_node);
@@ -216,7 +216,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
     std::vector<const OrtValueInfo*> api_outputs(num_outputs, nullptr);
     ASSERT_ORTSTATUS_OK(ort_api.Node_GetOutputs(api_node, api_outputs.data(), api_outputs.size()));
-    CheckValueInfosCApi(graph_viewer, api_outputs, ToVector(output_node_args));
+    CheckValueInfosCApi(graph_viewer, api_outputs, output_node_args);
 
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
     size_t api_num_subgraphs = 0;
@@ -232,7 +232,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       std::vector<const OrtValueInfo*> api_implicit_inputs(api_num_implicit_inputs, nullptr);
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetImplicitInputs(api_node, api_implicit_inputs.data(),
                                                          api_implicit_inputs.size()));
-      CheckValueInfosCApi(graph_viewer, api_implicit_inputs, ToVector(implicit_input_node_args));
+      CheckValueInfosCApi(graph_viewer, api_implicit_inputs, implicit_input_node_args);
 
       std::vector<const OrtGraph*> api_node_subgraphs(api_num_subgraphs, nullptr);
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));

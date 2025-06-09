@@ -780,6 +780,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
+  /** Returns the ONNX IR version for the model. */
+  Version GetOnnxIRVersion() const noexcept { return ir_version_; }
+
   /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
