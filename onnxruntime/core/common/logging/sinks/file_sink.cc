@@ -12,13 +12,13 @@ namespace logging {
 
 FileSink::FileSink(const std::filesystem::path& file_path, bool append, bool filter_user_data)
     : filter_user_data_(filter_user_data) {
-  const wchar_t* mode = append ? L"a" : L"w";
 #ifdef _WIN32
+  const wchar_t* mode = append ? L"a+" : L"w+";
   if (_wfopen_s(&file_, file_path.c_str(), mode) != 0) {
     file_ = nullptr;
   }
 #else
-  file_ = fopen(file_path.c_str(), append ? "a" : "w");
+  file_ = fopen(file_path.c_str(), append ? "a+" : "w+");
 #endif
 
   if (file_ == nullptr) {
@@ -45,6 +45,7 @@ void FileSink::SendImpl(const Timestamp& timestamp, const std::string& logger_id
 
     std::lock_guard<std::mutex> lock(mutex_);
     if (file_) {
+      // Assume the message is encoded in UTF-8 and we write it out as it is.
       fprintf(file_, "%s", message_to_log.c_str());
 
       if (flush_on_each_write_) {
