@@ -389,17 +389,6 @@ struct ToInt4ElementConverter<BFloat16> {
   }
 };
 
-template <>
-struct ToInt4ElementConverter<MLFloat16> {
-  static int8_t ConvertToInt4(const MLFloat16& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const MLFloat16& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <>
@@ -840,27 +829,26 @@ struct TensorCaster<SrcType, Int4x2,
   }
 };
 
-template <typename SrcType>
-struct TensorCaster<SrcType, Int4x2,
-                    typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type> {
+template <>
+struct TensorCaster<BFloat16, Int4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<SrcType>();
+    const auto* in_data = in.Data<BFloat16>();
     auto* out_data = out.MutableData<Int4x2>();
 
     const size_t in_shape_size = narrow<size_t>(shape.Size());
     const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
     ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
-                "The output Int4x2 tensor size is invalid for casting from ", typeid(SrcType).name());
+                "The output Int4x2 tensor size is invalid for casting from BFloat16");
 
     size_t i = 0;
     for (; i < in_shape_size - 1; i += 2) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      int8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
+      int8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i]);
+      int8_t high_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i + 1]);
       out_data[i / 2] = Int4x2(low_val, high_val);
     }
 
     if (i < in_shape_size) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToInt4(in_data[i]);
       out_data[i / 2] = Int4x2(low_val, 0);
     }
   }
@@ -997,27 +985,26 @@ struct TensorCaster<SrcType, UInt4x2,
   }
 };
 
-template <typename SrcType>
-struct TensorCaster<SrcType, UInt4x2,
-                    typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type> {
+template <>
+struct TensorCaster<BFloat16, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<SrcType>();
+    const auto* in_data = in.Data<BFloat16>();
     auto* out_data = out.MutableData<UInt4x2>();
 
     const size_t in_shape_size = narrow<size_t>(shape.Size());
     const size_t out_shape_size = narrow<size_t>(out.Shape().Size());
     ORT_ENFORCE(out_shape_size * 2 >= in_shape_size,
-                "The output UInt4x2 tensor size is invalid for casting from ", typeid(SrcType).name());
+                "The output UInt4x2 tensor size is invalid for casting from BFloat16");
 
     size_t i = 0;
     for (; i < in_shape_size - 1; i += 2) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      uint8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
+      uint8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = ToInt4ElementConverter<BFloat16>::ConvertToUInt4(in_data[i + 1]);
       out_data[i / 2] = UInt4x2(low_val, high_val);
     }
 
     if (i < in_shape_size) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t low_val = ToInt4ElementConverter<BFloat16>::ConvertToUInt4(in_data[i]);
       out_data[i / 2] = UInt4x2(low_val, 0);
     }
   }
