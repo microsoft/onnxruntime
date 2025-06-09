@@ -3,6 +3,7 @@
 
 #include "core/framework/utils.h"
 #include "core/framework/allocator.h"
+#include "core/mlas/inc/mlas.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/allocator_adapters.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -33,10 +34,10 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
   ~OrtDefaultCpuAllocator() { OrtApis::ReleaseMemoryInfo(cpu_memory_info); }
 
   void* Alloc(size_t size) {
-    return onnxruntime::utils::DefaultAlloc(size);
+    return onnxruntime::AllocatorDefaultAllocAligned(size, alignment_);
   }
   void Free(void* p) {
-    onnxruntime::utils::DefaultFree(p);
+    return onnxruntime::AllocatorDefaultFreeAligned(p, alignment_);
   }
   const OrtMemoryInfo* Info() const {
     return cpu_memory_info;
@@ -46,6 +47,7 @@ struct OrtDefaultCpuAllocator : onnxruntime::OrtAllocatorImpl {
 
  private:
   OrtMemoryInfo* cpu_memory_info;
+  const size_t alignment_ = MlasGetPreferredBufferAlignment();
 };
 
 ORT_API_STATUS_IMPL(OrtApis::GetAllocatorWithDefaultOptions, _Outptr_ OrtAllocator** out) {
