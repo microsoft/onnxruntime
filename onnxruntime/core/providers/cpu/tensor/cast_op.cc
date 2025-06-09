@@ -493,24 +493,6 @@ struct is_float8_type {
 };
 #endif
 
-// Enable if for standard integers
-template <typename T>
-using enable_if_standard_integer = typename std::enable_if<is_standard_integer<T>::value, void>::type;
-
-// Enable if for standard floats
-template <typename T>
-using enable_if_standard_float = typename std::enable_if<is_standard_float<T>::value, void>::type;
-
-// Enable if for half floats
-template <typename T>
-using enable_if_half_float = typename std::enable_if<is_half_float<T>::value, void>::type;
-
-#if !defined(DISABLE_FLOAT8_TYPES)
-// Enable if for float8 types
-template <typename T>
-using enable_if_float8_type = typename std::enable_if<is_float8_type<T>::value, void>::type;
-#endif
-
 }  // anonymous namespace
 
 // generic tensor X -> Y
