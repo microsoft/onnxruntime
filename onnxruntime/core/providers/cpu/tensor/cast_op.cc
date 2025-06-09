@@ -63,21 +63,21 @@ using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, 
 template <typename T>
 struct IsStandardIntegerType {
   static constexpr bool value =
-      std::is_same<T, int8_t>::value ||
-      std::is_same<T, uint8_t>::value ||
-      std::is_same<T, int16_t>::value ||
-      std::is_same<T, uint16_t>::value ||
-      std::is_same<T, int32_t>::value ||
-      std::is_same<T, uint32_t>::value ||
-      std::is_same<T, int64_t>::value ||
-      std::is_same<T, uint64_t>::value;
+      std::is_same_v<T, int8_t> ||
+      std::is_same_v<T, uint8_t> ||
+      std::is_same_v<T, int16_t> ||
+      std::is_same_v<T, uint16_t> ||
+      std::is_same_v<T, int32_t> ||
+      std::is_same_v<T, uint32_t> ||
+      std::is_same_v<T, int64_t> ||
+      std::is_same_v<T, uint64_t>;
 };
 
 template <typename T>
 struct IsStandardFloatType {
   static constexpr bool value =
-      std::is_same<T, float>::value ||
-      std::is_same<T, double>::value;
+      std::is_same_v<T, float> ||
+      std::is_same_v<T, double>;
 };
 
 // string cast helpers
@@ -336,11 +336,12 @@ struct ToInt4ElementConverter<double> {
 };
 
 template <typename SrcType>
-struct ToInt4ElementConverter<SrcType, std::enable_if_t<std::is_same<SrcType, BFloat16>::value
+struct ToInt4ElementConverter<SrcType,
+                              std::enable_if_t<std::is_same_v<SrcType, BFloat16>
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                        || IsOrtFloat8Type<SrcType>::value
+                                               || IsOrtFloat8Type<SrcType>::value
 #endif
-                                                        >> {
+                                               >> {
   static int8_t ConvertToInt4(const SrcType& val) {
     return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
   }
@@ -406,12 +407,12 @@ struct TensorCaster<MLFloat16, float> {
 };
 
 template <typename DstType>
-struct TensorCaster<Int4x2, DstType, typename std::enable_if_t<IsStandardIntegerType<DstType>::value
-                                                               || IsOrtFloat16Type<DstType>::value
+struct TensorCaster<Int4x2, DstType,
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                               || IsOrtFloat8Type<DstType>::value
+                                     || IsOrtFloat8Type<DstType>::value
 #endif
-                                                               >> {
+                                     >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
@@ -499,12 +500,12 @@ struct TensorCaster<Int4x2, UInt4x2> {
 };
 
 template <typename DstType>
-struct TensorCaster<UInt4x2, DstType, typename std::enable_if_t<IsStandardIntegerType<DstType>::value
-                                                                || IsOrtFloat16Type<DstType>::value
+struct TensorCaster<UInt4x2, DstType,
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                                || IsOrtFloat8Type<DstType>::value
+                                     || IsOrtFloat8Type<DstType>::value
 #endif
-                                                               >> {
+                                     >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
@@ -525,8 +526,7 @@ struct TensorCaster<UInt4x2, DstType, typename std::enable_if_t<IsStandardIntege
 };
 
 template <typename DstType>
-struct TensorCaster<UInt4x2, DstType,
-                    typename std::enable_if<IsStandardFloatType<DstType>::value>::type> {
+struct TensorCaster<UInt4x2, DstType, std::enable_if_t<IsStandardFloatType<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
@@ -548,7 +548,6 @@ struct TensorCaster<UInt4x2, DstType,
     }
   }
 };
-
 
 template <>
 struct TensorCaster<UInt4x2, bool> {
@@ -596,13 +595,12 @@ struct TensorCaster<UInt4x2, Int4x2> {
 };
 
 template <typename SrcType>
-struct TensorCaster<SrcType, Int4x2, typename std::enable_if_t<IsStandardIntegerType<SrcType>::value
-                                                               || IsStandardFloatType<SrcType>::value
-                                                               || std::is_same<BFloat16, SrcType>::value
+struct TensorCaster<SrcType, Int4x2,
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || std::is_same_v<BFloat16, SrcType>
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                               || IsOrtFloat8Type<SrcType>::value
+                                     || IsOrtFloat8Type<SrcType>::value
 #endif
-                                                               >> {
+                                     >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<Int4x2>();
@@ -652,13 +650,12 @@ struct TensorCaster<bool, Int4x2> {
 };
 
 template <typename SrcType>
-struct TensorCaster<SrcType, UInt4x2, typename std::enable_if_t<IsStandardIntegerType<SrcType>::value
-                                                                || IsStandardFloatType<SrcType>::value
-                                                                || std::is_same<BFloat16, SrcType>::value
+struct TensorCaster<SrcType, UInt4x2,
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || std::is_same_v<BFloat16, SrcType>
 #if !defined(DISABLE_FLOAT8_TYPES)
-                                                                || IsOrtFloat8Type<SrcType>::value
+                                     || IsOrtFloat8Type<SrcType>::value
 #endif
-                                                                >> {
+                                     >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<UInt4x2>();
