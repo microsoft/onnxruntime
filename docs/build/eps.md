@@ -235,6 +235,21 @@ These instructions are for the latest [JetPack SDK](https://developer.nvidia.com
 
 * For a portion of Jetson devices like the Xavier series, higher power mode involves more cores (up to 6) to compute but it consumes more resource when building ONNX Runtime. Set `--parallel 1` in the build command if OOM happens and system is hanging.
 
+## TensorRT-RTX
+
+See more information on the NV TensorRT RTX Execution Provider [here](../execution-providers/TensorRTRTX-ExecutionProvider.md).
+
+### Prerequisites
+{: .no_toc }
+
+ * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and setup environment variables.
+ * Intall TensorRT for RTX from nvidia.com (TODO: add link when available)
+
+### Build Instructions
+{: .no_toc }
+`build.bat --config Release --parallel 32 --build_dir _build --build_shared_lib --use_nv_tensorrt_rtx --tensorrt_home "C:\dev\TensorRT-RTX-1.1.0.3" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" --cmake_generator "Visual Studio 17 2022" --use_vcpkg`
+Replace the --tensorrt_home and --cuda_home with correct paths to CUDA and TensorRT-RTX installations.
+
 ## oneDNN
 
 See more information on oneDNN (formerly DNNL) [here](../execution-providers/oneDNN-ExecutionProvider.md).
