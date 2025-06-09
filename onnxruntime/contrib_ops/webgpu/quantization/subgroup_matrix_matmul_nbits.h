@@ -3,6 +3,8 @@
 
 #pragma once
 
+#include <string>
+
 #include "core/providers/webgpu/program.h"
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/program.h"

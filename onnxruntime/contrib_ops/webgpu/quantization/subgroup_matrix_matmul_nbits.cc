@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <tuple>
+
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 
 namespace onnxruntime {
