@@ -7,10 +7,36 @@
 #include <string>
 
 #include "core/framework/ortdevice.h"
+#include "core/common/hash_combine.h"
+#include "core/framework/arena_extend_strategy.h"
 #include "core/framework/provider_options.h"
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+
+// Information needed to construct MIGraphX execution providers.
+struct MIGraphXExecutionProviderExternalAllocatorInfo {
+  void* alloc{nullptr};
+  void* free{nullptr};
+  void* empty_cache{nullptr};
+
+  MIGraphXExecutionProviderExternalAllocatorInfo() {
+    alloc = nullptr;
+    free = nullptr;
+    empty_cache = nullptr;
+  }
+
+  MIGraphXExecutionProviderExternalAllocatorInfo(void* a, void* f, void* e) {
+    alloc = a;
+    free = f;
+    empty_cache = e;
+  }
+
+  bool UseExternalAllocator() const {
+    return (alloc != nullptr) && (free != nullptr);
+  }
+};
+
 // Information needed to construct trt execution providers.
 struct MIGraphXExecutionProviderInfo {
   std::string target_device;
@@ -26,8 +52,42 @@ struct MIGraphXExecutionProviderInfo {
   std::string load_model_file{"./compiled_model.mxr"};
   bool exhaustive_tune{false};
 
+  size_t mem_limit{std::numeric_limits<size_t>::max()};                             // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
+  ArenaExtendStrategy arena_extend_strategy{ArenaExtendStrategy::kNextPowerOfTwo};  // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
+
+  OrtArenaCfg* default_memory_arena_cfg{nullptr};
+  MIGraphXExecutionProviderExternalAllocatorInfo external_allocator_info{};
+
   static MIGraphXExecutionProviderInfo FromProviderOptions(const ProviderOptions& options);
   static ProviderOptions ToProviderOptions(const MIGraphXExecutionProviderInfo& info);
   static ProviderOptions ToProviderOptions(const OrtMIGraphXProviderOptions& info);
 };
 }  // namespace onnxruntime
+
+template <>
+struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
+  size_t operator()(const ::onnxruntime::MIGraphXExecutionProviderInfo& info) const {
+    size_t value{0xbc9f1d34};  // seed
+
+    // Bits: device_id (16), arena_extend_strategy (reserved 2), boolean options (1 each)
+    size_t data = static_cast<size_t>(info.device_id) ^
+                  (static_cast<size_t>(info.arena_extend_strategy) << 16) ^
+                  (static_cast<size_t>(info.fp16_enable) << 18) ^
+                  (static_cast<size_t>(info.int8_enable) << 19) ^
+                  (static_cast<size_t>(info.int8_use_native_calibration_table) << 20) ^
+                  (static_cast<size_t>(info.save_compiled_model) << 21) ^
+                  (static_cast<size_t>(info.load_compiled_model) << 22) ^
+                  (static_cast<size_t>(info.exhaustive_tune) << 23);
+    onnxruntime::HashCombine(data, value);
+
+    onnxruntime::HashCombine(info.mem_limit, value);
+
+    // Memory pointers
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.alloc), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.free), value);
+    onnxruntime::HashCombine(reinterpret_cast<size_t>(info.external_allocator_info.empty_cache), value);
+
+    // The default memory arena cfg is not used in hashing right now.
+    return value;
+  }
+};
