@@ -251,10 +251,10 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
-std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
-onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
+const std::string InferenceSession::callback_etw_provider_key_{"InferenceSessionML_ORT_provider"};
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -375,7 +375,6 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
 
   SetLoggingManager(session_options, session_env);
-
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
@@ -508,92 +507,48 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  active_sessions_[session_id_] = this;
 
-  // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
-  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
-      [](LPCGUID SourceId,
-         ULONG IsEnabled,
-         UCHAR Level,
-         ULONGLONG MatchAnyKeyword,
-         ULONGLONG MatchAllKeyword,
-         PEVENT_FILTER_DESCRIPTOR FilterData,
-         PVOID CallbackContext) {
-        (void)SourceId;
-        (void)Level;
-        (void)MatchAnyKeyword;
-        (void)MatchAllKeyword;
-        (void)FilterData;
-        (void)CallbackContext;
-        ORT_UNUSED_PARAMETER(SourceId);
-        ORT_UNUSED_PARAMETER(Level);
-        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
-        ORT_UNUSED_PARAMETER(MatchAllKeyword);
-        ORT_UNUSED_PARAMETER(FilterData);
-        ORT_UNUSED_PARAMETER(CallbackContext);
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    auto result = active_sessions_.insert_or_assign(session_id_, this);
+    ORT_ENFORCE(result.second, "active_sessions has not been cleaned up for session_id", session_id_);
+  }
 
-        // Check if this callback is for capturing state
-        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
-            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-          InferenceSession::LogAllSessions();
-        }
-      });
-  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
+  WindowsTelemetry::RegisterInternalCallback(callback_etw_provider_key_, EtwProviderCallbackLogAllSessions);
+
+  // If the __ctor does not finish for some reason, make sure that we still unregister
+  // whatever has been registered.
+  auto_etw_unregistrar_.emplace([this]() { UnregisterEtwCallbacks(); });
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
+  callback_etw_sink_key_ = "InferenceSession_Start_Stop_";
+  callback_etw_sink_key_.append(std::to_string(session_id_));
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
-  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
-      [&etwRegistrationManager, this](LPCGUID SourceId,
-                                      ULONG IsEnabled,
-                                      UCHAR Level,
-                                      ULONGLONG MatchAnyKeyword,
-                                      ULONGLONG MatchAllKeyword,
-                                      PEVENT_FILTER_DESCRIPTOR FilterData,
-                                      PVOID CallbackContext) {
-        ORT_UNUSED_PARAMETER(SourceId);
-        ORT_UNUSED_PARAMETER(Level);
-        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
-        ORT_UNUSED_PARAMETER(MatchAllKeyword);
-        ORT_UNUSED_PARAMETER(FilterData);
-        ORT_UNUSED_PARAMETER(CallbackContext);
-
-        if (logging_manager_ != nullptr) {
-          auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-
-          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
-              IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
-            LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-            logging_manager_->AddSinkOfType(
-                onnxruntime::logging::SinkType::EtwSink,
-                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
-                ortETWSeverity);
-            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
-                onnxruntime::logging::SinkType::EtwSink,
-                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
-                ortETWSeverity);
-            LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-          }
-          if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
-            LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
-            logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
-            LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
-          }
-        }
-      });
 
   // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
-
+  etwRegistrationManager.RegisterInternalCallback(callback_etw_sink_key_,
+                                                  [&etwRegistrationManager, this](
+                                                      LPCGUID SourceId,
+                                                      ULONG IsEnabled,
+                                                      UCHAR Level,
+                                                      ULONGLONG MatchAnyKeyword,
+                                                      ULONGLONG MatchAllKeyword,
+                                                      PEVENT_FILTER_DESCRIPTOR FilterData,
+                                                      PVOID CallbackContext) {
+                                                    EtwProviderSinkControlCallback(etwRegistrationManager, SourceId, IsEnabled, Level,
+                                                                                   MatchAnyKeyword, MatchAllKeyword, FilterData,
+                                                                                   CallbackContext);
+                                                  });
 #endif
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState,
+                                           const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(captureState);  // Otherwise Linux build error
 
   LOGS(logger, INFO) << session_options;
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   std::string optimized_model_filepath = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath);
   std::string profile_file_prefix = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.profile_file_prefix);
 
@@ -736,18 +691,6 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
-
-  // Unregister the session and ETW callbacks
-#ifdef _WIN32
-  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-  if (callback_ML_ORT_provider_ != nullptr) {
-    WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
-  }
-  if (callback_ETWSink_provider_ != nullptr) {
-    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
-  }
-#endif
-  active_sessions_.erase(session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1286,7 +1229,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 4. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 5. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
   // 6. insert cast nodes (required transformer).
-  // 7. insert copy nodes (required transformer).
+  // 7. run level 4 optimizations.
+  // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
+  // 9. insert copy nodes (required transformer).
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
@@ -1307,9 +1252,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
-                                   Graph& graph) {
+                                   Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
-    return transformer.Apply(graph, modified, logger);
+    auto status = transformer.Apply(graph, modified, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || modified;
+    }
+    return status;
+  };
+
+  auto apply_transformer_at_level = [](onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                       const TransformerLevel& level, const logging::Logger& logger, Graph& graph,
+                                       bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
+    graph_transformer_mgr.ClearGraphModified();
+    auto status = graph_transformer_mgr.ApplyTransformers(graph, level, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || graph_transformer_mgr.IsGraphModified();
+    }
+    return status;
   };
 
   // ensure potential QDQ node units have unique DQ nodes
@@ -1396,23 +1356,70 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
 
-  // apply Level2 and higher transformers.
-  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-  }
+  // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
+  // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
+  unsigned int graph_optimizations_loop_level = static_cast<unsigned int>(std::stoi(
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGraphOptimizationsLoopLevel, "1")));
 
-  // Insert cast node/s.
-  {
-    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
-        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
-    const KernelRegistry* cpu_regs = nullptr;
-    if (!kernel_regs.empty()) {
-      cpu_regs = kernel_regs[0];
+  // Running for an arbitrary number of time to mitigate if graph optimization is stuck in the loop.
+  // Generating warning once we have gone through this loop for more than 3 times, it can be changed in the future
+  for (int steps = 0; steps < 10; steps++) {
+    // Warning that we are running this loop too many times
+    if (steps >= 3) {
+      LOGS(*session_logger_, WARNING) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                      << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
+    } else {
+      LOGS(*session_logger_, INFO) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                   << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
     }
-    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
+
+    // Flag to check if applying optimizations should be repeated on basis of if the graph is changed.
+    // If graph is not changed it will remain false and we will exit out of this loop.
+    bool is_graph_modified = false;
+
+    // Apply Level2 and higher transformers.
+    // We do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+    // Re-Run the Level2+ optimizations. The idea behind re-running Level2 and Level3 graph transforms is that,
+    // after the fusion, the nodes are can be in a format which might be supported by other graph transforms which
+    // were skipped before. Hence, some of the transforms not applied before is now valid and can be applied to
+    // create a more optimal graph for execution.
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level2,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level3,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+
+    // Insert cast node/s.
+    {
+      const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+          kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+
+      const KernelRegistry* cpu_regs = nullptr;
+      if (!kernel_regs.empty()) {
+        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
+        //       of GetKernelRegistriesByProviderType function.
+        cpu_regs = kernel_regs[kernel_regs.size() - 1];
+      }
+
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
+                                 ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    }
+
+    // Level 4 Transforms must be run after Insert Cast Node/s
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level4,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 0) ? &is_graph_modified : nullptr)));
+
+    // Break if no more optimizations are made
+    if (!is_graph_modified) {
+      break;
+    }
   }
 
   // Insert copy node/s.
@@ -2453,7 +2460,6 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
-
       const SparseTensor& sparse_tensor = input_output_ml_value.Get<SparseTensor>();
       if (expected_type->IsSparseTensorType()) {
         auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
@@ -3459,6 +3465,32 @@ IOBinding* SessionIOBinding::Get() {
 }
 
 #ifdef _WIN32
+
+void InferenceSession::UnregisterEtwCallbacks() {
+  if (!callback_etw_sink_key_.empty()) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_etw_sink_key_);
+  }
+  WindowsTelemetry::UnregisterInternalCallback(callback_etw_provider_key_);
+  {
+    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+    active_sessions_.erase(session_id_);
+  }
+}
+
+void InferenceSession::EtwProviderCallbackLogAllSessions(LPCGUID /* SourceId */,
+                                                         ULONG IsEnabled,
+                                                         UCHAR /* Level */,
+                                                         ULONGLONG MatchAnyKeyword,
+                                                         ULONGLONG /* MatchAllKeyword */,
+                                                         PEVENT_FILTER_DESCRIPTOR /* FilterData */,
+                                                         PVOID /* CallbackContext */) {
+  // Check if this callback is for capturing state
+  if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+      ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+    InferenceSession::LogAllSessions();
+  }
+}
+
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
@@ -3472,8 +3504,8 @@ void InferenceSession::LogAllSessions() {
 
     auto model = session->model_;
     if (nullptr != model) {
-      onnxruntime::Graph& graph = model->MainGraph();
-      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      const onnxruntime::Graph& graph = model->MainGraph();
+      const bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
           graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
@@ -3483,6 +3515,34 @@ void InferenceSession::LogAllSessions() {
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
   }
 }
+
+void InferenceSession::EtwProviderSinkControlCallback(logging::EtwRegistrationManager& etwRegistrationManager,
+                                                      LPCGUID, ULONG IsEnabled, UCHAR, ULONGLONG MatchAnyKeyword,
+                                                      ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID) {
+  if (logging_manager_ != nullptr) {
+    auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+
+    if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
+        IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+      LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+      logging_manager_->AddSinkOfType(
+          onnxruntime::logging::SinkType::EtwSink,
+          []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+          ortETWSeverity);
+      onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
+          onnxruntime::logging::SinkType::EtwSink,
+          []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+          ortETWSeverity);
+      LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+    }
+    if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+      LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
+      logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
+      LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
+    }
+  }
+}
+
 #endif
 
 }  // namespace onnxruntime

@@ -4,7 +4,14 @@
 #pragma once
 
 #include <sstream>
+#include "core/common/common.h"
 #include "core/common/hash_combine.h"
+
+// fix clash with INTEL that is defined in
+// MacOSX14.2.sdk/System/Library/Frameworks/Security.framework/Headers/oidsbase.h
+#if defined(__APPLE__)
+#undef INTEL
+#endif
 
 // Struct to represent a physical device.
 struct OrtDevice {
@@ -19,66 +26,58 @@ struct OrtDevice {
   static const DeviceType GPU = 1;
   static const DeviceType FPGA = 2;
   static const DeviceType NPU = 3;
+  // this is used in the python API so we need to keep it for backward compatibility
+  // it is only used in the OrtDevice ctor, and is mapped to GPU + VendorIds::MICROSOFT
   static const DeviceType DML = 4;
 
   struct MemType {
-    // Pre-defined memory types.
     static const MemoryType DEFAULT = 0;
-    static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
 
-    // these are deprecated. use vendor_id instead
-    static const MemoryType CUDA_PINNED = 1;
-    static const MemoryType HIP_PINNED = 2;
-    static const MemoryType CANN_PINNED = 3;
-    static const MemoryType QNN_HTP_SHARED = 4;
+    // deprecated values. MemType + VendorId is used to identify the memory type.
+    enum Deprecated : MemoryType {
+      CUDA_PINNED = 1,
+      HIP_PINNED = 2,
+      CANN_PINNED = 3,
+      QNN_HTP_SHARED = 4,
+    };
+
+    static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
   };
 
-  // PCI vendor ids we explicitly use to map legacy values.
-  struct VendorIds {
-    static const VendorId NONE = 0x0000;  // No vendor ID. Valid for DeviceType::CPU with MemType::DEFAULT or for generic allocators.
-    static const VendorId AMD = 0x1002;   // AMD/ATI
-    static const VendorId NVIDIA = 0x10DE;
-    static const VendorId ARM = 0x13B5;
-    static const VendorId MICROSOFT = 0x1414;  // DML EP
-    static const VendorId HUAWEI = 0x19E5;     // CANN EP
-    static const VendorId QUALCOMM = 0x5143;
-    static const VendorId INTEL = 0x8086;
+  // PCI vendor ids
+  enum VendorIds : VendorId {
+    // No vendor ID. Valid for DeviceType::CPU + MemType::DEFAULT or for generic allocators like WebGPU.
+    NONE = 0x0000,
+    AMD = 0x1002,        // ROCm, MIGraphX EPs
+    NVIDIA = 0x10DE,     // CUDA/TensorRT
+    ARM = 0x13B5,        // ARM GPU EP
+    MICROSOFT = 0x1414,  // DML EP
+    HUAWEI = 0x19E5,     // CANN EP
+    QUALCOMM = 0x5143,   // QNN DP
+    INTEL = 0x8086,      // OpenVINO
   };
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_, DeviceId device_id_,
-                      Alignment alignment) noexcept
+                      Alignment alignment) /*noexcept*/
       : device_type(device_type_),
         memory_type(memory_type_),
         device_id(device_id_),
         vendor_id(vendor_id_),
         alignment(alignment) {
-    // infer vendor id for old values
-    // TODO: Can we remove them completely?
-    if (memory_type != MemType::DEFAULT && memory_type != MemType::HOST_ACCESSIBLE) {
-      switch (memory_type_) {
-        case MemType::CUDA_PINNED:
-          vendor_id = VendorIds::NVIDIA;
-          memory_type = MemType::HOST_ACCESSIBLE;
-          break;
-        case MemType::HIP_PINNED:
-          vendor_id = VendorIds::AMD;
-          memory_type = MemType::HOST_ACCESSIBLE;
-          break;
-        case MemType::CANN_PINNED:
-          vendor_id = VendorIds::HUAWEI;
-          memory_type = MemType::HOST_ACCESSIBLE;
-          break;
-        case MemType::QNN_HTP_SHARED:
-          vendor_id = VendorIds::QUALCOMM;
-          memory_type = MemType::HOST_ACCESSIBLE;
-          break;
-      };
+    // temporary to make sure we haven't missed any places where the deprecated values were used
+    // ctor can go back to noexcept once everything is validated and this is removed`1
+    ORT_ENFORCE(memory_type == MemType::DEFAULT || memory_type == MemType::HOST_ACCESSIBLE,
+                "Invalid memory type: ", static_cast<int>(memory_type));
+
+    if (device_type == DML) {
+      device_type = GPU;
+      vendor_id = VendorIds::MICROSOFT;
     }
   }
 
   constexpr OrtDevice(DeviceType device_type_, MemoryType memory_type_, VendorId vendor_id_,
                       DeviceId device_id_) noexcept
-      : OrtDevice(device_type_, memory_type_, vendor_id_, device_id_, 0) {}
+      : OrtDevice(device_type_, memory_type_, vendor_id_, device_id_, /*alignment*/ 0) {}
 
   constexpr OrtDevice() noexcept : OrtDevice(CPU, MemType::DEFAULT, VendorIds::NONE, 0) {}
 

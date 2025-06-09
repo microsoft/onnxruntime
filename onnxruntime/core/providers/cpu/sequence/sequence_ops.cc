@@ -339,7 +339,7 @@ ONNX_CPU_OPERATOR_KERNEL(
     11,
     KernelDefBuilder()
         .TypeConstraint("T",
-                        BuildKernelDefConstraints<float, MLFloat16, double, int32_t, int64_t, std::string>())
+                        BuildKernelDefConstraints<float, MLFloat16, double, int32_t, int64_t, bool, std::string>())
         .TypeConstraint("S", DataTypeImpl::AllSequenceTensorTypes())
         .TypeConstraint("I", BuildKernelDefConstraints<int32_t, int64_t>()),
     SplitToSequence);

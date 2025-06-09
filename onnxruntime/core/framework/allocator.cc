@@ -183,7 +183,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   } else if (strcmp(name1, onnxruntime::DML) == 0) {
     *out = new OrtMemoryInfo(
         name1, type,
-        OrtDevice(OrtDevice::DML, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, device_id),
+        OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::MICROSOFT, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::OpenVINO_RT_NPU) == 0) {
     *out = new OrtMemoryInfo(
@@ -230,11 +230,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo_V2, _In_ const char* name, _In_ en
       dt = OrtDevice::CPU;
       break;
     case OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_GPU:
-      if (vendor_id == OrtDevice::VendorIds::MICROSOFT) {
-        dt = OrtDevice::DML;  // TODO: Is mapping this to DML valid and/or required?
-      } else {
-        dt = OrtDevice::GPU;
-      }
+      dt = OrtDevice::GPU;
       break;
     case OrtMemoryInfoDeviceType::OrtMemoryInfoDeviceType_NPU:
       dt = OrtDevice::NPU;

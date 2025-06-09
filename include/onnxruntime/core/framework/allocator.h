@@ -109,7 +109,9 @@ class IAllocator {
   const OrtMemoryInfo& Info() const { return memory_info_; };
 
   // Each implementation of IAllocator can override and provide their own implementation
-  virtual void GetStats(AllocatorStats* /*stats*/) { return; }
+  virtual void GetStats(AllocatorStats* stats) {
+    *stats = {};
+  }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);

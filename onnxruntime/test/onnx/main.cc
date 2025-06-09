@@ -7,6 +7,13 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+// For memory leak detection on Windows with Visual Studio in Debug mode
+#ifdef _WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 #ifdef _WIN32
 #include "getopt.h"
 #elif defined(_AIX)
@@ -89,7 +96,7 @@ void usage() {
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
       "\t [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
-      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99. Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels. "
       "\t-f: Enable EP context cache generation.\n"
       "\t-b: Disable EP context embed mode.\n"
@@ -348,6 +355,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
               break;
             case ORT_ENABLE_EXTENDED:
               graph_optimization_level = ORT_ENABLE_EXTENDED;
+              break;
+            case ORT_ENABLE_LAYOUT:
+              graph_optimization_level = ORT_ENABLE_LAYOUT;
               break;
             case ORT_ENABLE_ALL:
               graph_optimization_level = ORT_ENABLE_ALL;
@@ -962,6 +972,16 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+#ifdef _WIN32
+#if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+  tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+  tmpFlag |= _CRTDBG_ALLOC_MEM_DF;
+  _CrtSetDbgFlag(tmpFlag);
+  std::cout << "CRT Debug Memory Leak Detection Enabled." << std::endl;
+#endif
+#endif
+
   Ort::Env env{nullptr};
   int retval = -1;
   ORT_TRY {

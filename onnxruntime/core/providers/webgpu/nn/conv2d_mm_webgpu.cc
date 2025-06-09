@@ -12,6 +12,7 @@
 #include "core/providers/webgpu/nn/conv_utils.h"
 #include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/webgpu_utils.h"
+#include "core/providers/webgpu/math/gemm_utils.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -159,7 +160,9 @@ Status Conv2dMMProgram::GenerateShaderCode(ShaderHelper& shader) const {
       << declaration_functions.str()
       << Conv2dCommonSnippet(x, w, activation_, "x_element_t", element_size_[0], element_size_[1], element_size_[2]);
   std::string data_type = "x_element_t";
-  return is_vec4_ ? MatMulProgram::MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, tile_inner_) : MatMulProgram::MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, !is_channels_last_, tile_inner_, /* split_t = */ false, 0, sequentially_access_by_threads_);
+
+  return is_vec4_ ? MakeMatMulPackedVec4Source(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /* transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, 4, tile_inner_)
+                  : MakeMatMulPackedSource(shader, elements_per_thread_, WorkgroupSizeX(), WorkgroupSizeY(), data_type, /* batch_dims = */ nullptr, /*transpose_a = */ !is_channels_last_, /* transpose_b = */ false, 1.0f, true, tile_inner_, /* split_t = */ false, 0, sequentially_access_by_threads_);
 }
 
 Conv2dMMProgram CreateConv2dMMProgram(const Activation& activation, const std::vector<const Tensor*>& inputs, const std::vector<uint32_t>& pads, const std::vector<uint32_t>& strides, const std::vector<uint32_t>& dilations, Tensor* output, uint32_t dim_a_outer, uint32_t dim_b_outer, uint32_t dim_inner, bool is_channels_last, bool sequentially_access_by_threads, const std::vector<TensorShape>& input_output_shapes) {

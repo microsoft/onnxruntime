@@ -63,7 +63,16 @@ struct OrtEnv {
   ~OrtEnv();
 
  private:
-  static std::unique_ptr<OrtEnv> p_instance_;
+  // p_instance_ holds the single, global instance of OrtEnv.
+  // This is a raw pointer to allow for intentional memory leaking when
+  // the process is shutting down (g_is_shutting_down is true).
+  // Using a smart pointer like std::unique_ptr would complicate this specific
+  // shutdown scenario, as it would attempt to deallocate the memory even if
+  // Release() hasn't been called or if a leak is desired.
+  // Management is handled by GetInstance() and Release(), with ref_count_
+  // tracking active users. It is set to nullptr when the last reference is released
+  // (and not shutting down).
+  static OrtEnv* p_instance_;
   static std::mutex m_;
   static int ref_count_;
 

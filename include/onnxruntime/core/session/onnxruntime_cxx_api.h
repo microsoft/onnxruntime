@@ -2155,6 +2155,12 @@ struct AllocatorImpl : Base<T> {
   MemoryAllocation GetAllocation(size_t size);
   void Free(void* p);
   ConstMemoryInfo GetInfo() const;
+
+  /** \brief Function that returns the statistics of the allocator.
+   *
+   * \return A pointer to a KeyValuePairs object that will be filled with the allocator statistics.
+   */
+  KeyValuePairs GetStats() const;
 };
 
 }  // namespace detail
