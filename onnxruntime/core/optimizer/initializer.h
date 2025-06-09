@@ -38,6 +38,8 @@ class Initializer final {
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string& name) const;
 
   ONNX_NAMESPACE::TensorProto ToBFloat16(const std::string& name) const;
+
+  ONNX_NAMESPACE::TensorProto ToFloat32(const std::string& name, onnxruntime::concurrency::ThreadPool* thread_pool = nullptr) const;
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
   int data_type() const {
     return data_.GetElementType();

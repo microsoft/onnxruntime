@@ -58,7 +58,7 @@ Options:
 *** Session Options ***
  -u=<...>, --optimized-model-file-path=<...>        Specify whether to dump the optimized model.
  -o=<...>, --graph-optimization-level=<...>         Specify graph optimization level.
-                                                      Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'all'.
+                                                      Default is 'all'. Valid values are 'disabled', 'basic', 'extended', 'layout', 'all'.
  -i=<...>, --io-binding=<...>  Specify the IO binding testing type. Should be one of the following:
                                  none            (default)
                                  gpu-tensor      use pre-allocated GPU tensors for inputs and outputs
@@ -195,7 +195,7 @@ export interface TestRunnerCliArgs {
   /**
    * Specify graph optimization level
    */
-  graphOptimizationLevel: 'disabled' | 'basic' | 'extended' | 'all';
+  graphOptimizationLevel: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
   cpuOptions?: InferenceSession.CpuExecutionProviderOption;
   cudaOptions?: InferenceSession.CudaExecutionProviderOption;
@@ -480,7 +480,7 @@ export function parseTestRunnerCliArgs(cmdlineArgs: string[]): TestRunnerCliArgs
   const graphOptimizationLevel = args['graph-optimization-level'] || args.o || 'all';
   if (
     typeof graphOptimizationLevel !== 'string' ||
-    ['disabled', 'basic', 'extended', 'all'].indexOf(graphOptimizationLevel) === -1
+    ['disabled', 'basic', 'extended', 'layout', 'all'].indexOf(graphOptimizationLevel) === -1
   ) {
     throw new Error(`graph optimization level is invalid: ${graphOptimizationLevel}`);
   }

@@ -1992,6 +1992,27 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cpu_allocator.GetStats();
+
+  // CPU allocator may not support arena usage.
+  // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
+  if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
+    ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+    ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+    ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+    // We don't check values of the following stats
+    ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
+  } else {
+    // If the allocator is not an arena allocator, we expect the stats to be empty.
+    ASSERT_EQ(0, stats.GetKeyValuePairs().size());
+  }
 }
 
 #ifdef USE_CUDA
@@ -2014,6 +2035,20 @@ TEST(CApiTest, get_allocator_cuda) {
   auto mem_allocation = cuda_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cuda_allocator.GetStats();
+
+  ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+  ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+  ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+  // We don't check values of the following stats
+  ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
 }
 #endif
 

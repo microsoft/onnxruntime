@@ -536,5 +536,19 @@ TEST(SequenceOpsTest, SplitToSequence_PositiveAxisDontKeepDims) {
   test.AddSeqOutput("S2", output);
   test.Run();
 }
+
+TEST(SequenceOpsTest, SplitToSequence_BoolSplit) {
+  OpTester test("SplitToSequence", 11);
+  test.AddInput<bool>("input", {4, 2}, std::initializer_list<bool>({1, 1, 1, 1, 0, 0, 0, 0}));
+  int64_t axis = 0;
+  test.AddAttribute("axis", axis);
+  SeqTensors<bool> output;
+  output.AddTensor({1, 2}, {1, 1});
+  output.AddTensor({1, 2}, {1, 1});
+  output.AddTensor({1, 2}, {0, 0});
+  output.AddTensor({1, 2}, {0, 0});
+  test.AddSeqOutput("S2", output);
+  test.Run();
+}
 }  // namespace test
 }  // namespace onnxruntime

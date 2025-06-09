@@ -12,6 +12,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/session_options.h"
 #include "core/session/environment.h"
+#include "core/session/ort_env.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
 #if defined(ENABLE_DLPACK)
@@ -133,6 +134,7 @@ struct OrtStatus {
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #endif
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -208,23 +210,37 @@ extern bool do_copy_in_default_stream;
 // TODO remove deprecated global config
 extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+namespace onnxruntime {
+namespace python {
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
 #endif
 
+#ifdef USE_MIGRAPHX
+namespace onnxruntime {
+ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
+ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+namespace python {
+extern onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+
+#endif
+
 #include "core/providers/dnnl/dnnl_provider_factory.h"
 #include "core/providers/shared_library/provider_host_api.h"
-
+#include "onnxruntime_pybind_module_functions.h"
 namespace onnxruntime {
 #if !defined(SHARED_PROVIDER) && !defined(DISABLE_SPARSE_TENSORS)
 class SparseTensor;
 #endif
 namespace python {
-
-using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
-                                                           const std::vector<std::string>&,
-                                                           const ProviderOptionsMap&)>;
 
 // TODO remove deprecated global config
 extern OrtDevice::DeviceId cuda_device_id;
@@ -248,21 +264,21 @@ struct PySessionOptions : public OrtSessionOptions {
 
 // Thin wrapper over internal C++ InferenceSession to accommodate custom op library management for the Python user
 struct PyInferenceSession {
-  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so)
-      : env_(std::move(env)), session_options_(so) {
-    sess_ = std::make_unique<InferenceSession>(so.value, *env_);
+  PyInferenceSession(OrtEnv& env, const PySessionOptions& so)
+      : session_options_(so) {
+    sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment());
   }
 
 #if !defined(ORT_MINIMAL_BUILD)
-  PyInferenceSession(std::shared_ptr<Environment> env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
-      : env_(std::move(env)), session_options_(so) {
+  PyInferenceSession(OrtEnv& env, const PySessionOptions& so, const std::string& arg, bool is_arg_file_name)
+      : session_options_(so) {
     if (is_arg_file_name) {
       // Given arg is the file path. Invoke the corresponding ctor().
-      sess_ = std::make_unique<InferenceSession>(so.value, *env_, arg);
+      sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), arg);
     } else {
       // Given arg is the model content as bytes. Invoke the corresponding ctor().
       std::istringstream buffer(arg);
-      sess_ = std::make_unique<InferenceSession>(so.value, *env_, buffer);
+      sess_ = std::make_unique<InferenceSession>(so.value, env.GetEnvironment(), buffer);
     }
   }
 #endif
@@ -290,12 +306,11 @@ struct PyInferenceSession {
   virtual ~PyInferenceSession() = default;
 
  protected:
-  PyInferenceSession(std::shared_ptr<Environment> env, std::unique_ptr<InferenceSession> sess)
-      : env_(std::move(env)), sess_(std::move(sess)) {
+  PyInferenceSession(std::unique_ptr<InferenceSession> sess)
+      : sess_(std::move(sess)) {
   }
 
  private:
-  std::shared_ptr<Environment> env_;
   std::unique_ptr<InferenceSession> sess_;
   OrtSessionOptions session_options_;
 };
@@ -422,9 +437,12 @@ class SessionObjectInitializer {
 #pragma warning(pop)
 #endif
 
-void SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options);
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options);
 bool CheckIfUsingGlobalThreadPool();
-std::shared_ptr<Environment> GetEnv();
+Environment& GetEnv();
+OrtEnv* GetOrtEnv();
+Status CreateOrtEnv();
+bool IsOrtEnvInitialized();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.

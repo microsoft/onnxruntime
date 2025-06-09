@@ -258,7 +258,6 @@ option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
 
-
 if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
   message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
 endif()
@@ -373,6 +372,7 @@ if (onnxruntime_USE_ROCM)
     if (HIPIFY_PERL_PATH-NOTFOUND)
       MESSAGE(FATAL_ERROR "hipify-perl not found")
     endif()
+    MESSAGE("HIPIFY PATH:"${HIPIFY_PERL_PATH}/hipify-perl)
     set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
@@ -859,6 +859,10 @@ set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 set(ORT_PROVIDER_FLAGS)
 
 if (onnxruntime_USE_CUDA)
+  include(cuda_configuration)
+  setup_cuda_compiler()
+  setup_cuda_architectures()
+
   enable_language(CUDA)
   message( STATUS "CMAKE_CUDA_COMPILER_VERSION: ${CMAKE_CUDA_COMPILER_VERSION}")
 
@@ -878,9 +882,6 @@ if (onnxruntime_USE_CUDA)
     set(onnxruntime_USE_FLASH_ATTENTION OFF)
   endif()
 
-  if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 11.4)
-    message( FATAL_ERROR "Failed build due to CUDA compiler version < 11.4")
-  endif()
   if (WIN32)
     message( STATUS "Lean Attention unsupported in Windows")
     set(onnxruntime_USE_LEAN_ATTENTION OFF)
@@ -1590,25 +1591,17 @@ if (onnxruntime_USE_CUDA)
     file(TO_CMAKE_PATH CUDAToolkit_ROOT ${onnxruntime_CUDA_HOME})
   endif()
   find_package(CUDAToolkit REQUIRED)
-  if (NOT CMAKE_CUDA_ARCHITECTURES)
-    # Note that we generate SASS+PTX code for specified cuda architectures by assigning "xy"
-    # To add SASS only, assign "xy-real"
-    # To add PTX only, assign "xy-virtual"
-    if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
-      # Support for Jetson/Tegra ARM devices
-      set(CMAKE_CUDA_ARCHITECTURES "53-real;62-real;72-real;87") # TX1/Nano, TX2, Xavier, Orin
-    else()
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
-        # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-        set(CMAKE_CUDA_ARCHITECTURES "37-real;50-real;52-real;60-real;70-real;75-real;80-real;86-real;89")
-      elseif (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
-        set(CMAKE_CUDA_ARCHITECTURES "52-real;60-real;70-real;75-real;80-real;86-real;89-real;90")
-      else()
-        # https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html
-        set(CMAKE_CUDA_ARCHITECTURES "all") # Supporting all, including latest Blackwell B series & RTX 50 series
-      endif()
-    endif()
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 11.8)
+    add_definitions("-DENABLE_FP8")
+    message(STATUS "CUDA Toolkit version is greater or equal than 11.8, enable -DENABLE_FP8 flag")
   endif()
+
+  if(CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
+    add_definitions("-DENABLE_FP4")
+    message(STATUS "CUDA Toolkit version is greater or equal than 12.8, enable -DENABLE_FP4 flag")
+  endif()
+
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -Xfatbin=-compress-all")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --expt-relaxed-constexpr")
   set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} --Werror default-stream-launch")

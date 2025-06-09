@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
-
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -21,9 +19,12 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+
+#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -206,28 +207,26 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 }
 
 template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
-void TestMatMul8BitsTyped() {
+void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   TestOptions8Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
   base_opts.block_size = block_size;
   base_opts.accuracy_level = accuracy_level;
 
-  if (base_opts.accuracy_level == 4) {
-    base_opts.output_abs_error = 0.1f;
-    base_opts.output_rel_error = 0.02f;
-  } else if constexpr (std::is_same<AType, MLFloat16>::value) {
-    base_opts.output_abs_error = 0.055f;
-    base_opts.output_rel_error = 0.02f;
-  }
+  base_opts.output_abs_error = abs_error;
+  base_opts.output_rel_error = rel_error;
 
   {
     TestOptions8Bits opts = base_opts;
+    opts.has_zero_point = false;
+    opts.has_bias = false;
     RunTest8Bits<AType>(opts);
   }
 
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = true;
+    opts.has_bias = false;
     RunTest8Bits<AType>(opts);
   }
 
@@ -235,6 +234,7 @@ void TestMatMul8BitsTyped() {
 #if !defined(USE_CUDA) && !defined(USE_WEBGPU)
   {
     TestOptions8Bits opts = base_opts;
+    opts.has_zero_point = false;
     opts.has_bias = true;
     RunTest8Bits<AType>(opts);
   }
@@ -249,7 +249,7 @@ void TestMatMul8BitsTyped() {
 }
 }  // namespace
 
-TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float) {
+TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 16, 4>();
@@ -285,9 +285,25 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float) {
 }
 
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
-TEST(MatMulNBits, Float32_8b_AccuracyLevel4_Float16) {
-  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>();
-  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>();
+TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
+  constexpr float abs_error = 0.055f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>(abs_error, rel_error);
+}
+#endif
+
+#if defined(USE_CUDA)
+TEST(MatMulNBits, Fp16_Int8_Cuda) {
+  constexpr float abs_error = 0.5f;
+  constexpr float rel_error = 0.05f;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 64, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 32, 512, 512, 64, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 32, 1024, 1024, 128, 4>(abs_error, rel_error);
 }
 #endif
 

@@ -20,6 +20,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -486,6 +487,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 
   if (use_float16) {
     opts.output_abs_error = fp16_abs_error;
+    opts.output_rel_error = use_float16 ? 0.001f : 0.0005f;
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -548,11 +550,8 @@ TEST(MatMulNBits, Float16Large) {
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
   float abs_error = 0.3f;
-#elif USE_WEBGPU
-  // Use absolute error of 0.1 for WebGPU with subgroup implementation
-  float abs_error = 0.1f;
 #else
-  float abs_error = 0.05f;
+  float abs_error = 0.1f;
 #endif
 
   for (auto block_size : {16, 32, 64, 128}) {
@@ -563,6 +562,53 @@ TEST(MatMulNBits, Float16Large) {
     }
   }
 }
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Fp16ZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = false;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+#endif
 
 #endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 }  // namespace test

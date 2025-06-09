@@ -724,6 +724,7 @@ endif()
 # or reduced op builds.
 if(onnxruntime_USE_QNN AND NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD)
   list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/*)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/qnn/qnn_node_group/*)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_qnn)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_qnn)
   if(NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
@@ -1278,6 +1279,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
       endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
+      if (onnxruntime_USE_CUDA OR onnxruntime_USE_NV OR onnxruntime_USE_TENSORRT)
+        target_link_libraries(onnxruntime_perf_test PRIVATE CUDA::cudart)
+      endif()
       if(WIN32)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
       endif()
@@ -1323,6 +1327,14 @@ endif()
 
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
+    if(WIN32)
+        AddTest(DYN
+                TARGET onnxruntime_shared_lib_dlopen_test
+                SOURCES ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/dlopen_main.cc
+                LIBS onnxruntime
+                DEPENDS ${all_dependencies}
+        )
+    endif()
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
     target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
