@@ -3,7 +3,15 @@
 
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/providers/cpu/cpu_provider_factory.h"
+#include "test/shared_lib/test_fixture.h"
+#include "test/util/include/test_allocator.h"
 #include <gtest/gtest.h>
+
+namespace {
+static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
+}  // namespace
+
+extern std::unique_ptr<Ort::Env> ort_env;
 
 TEST(CApiTest, allocation_info) {
   auto cpu_mem_info_1 = Ort::MemoryInfo::CreateCpu(OrtArenaAllocator, OrtMemTypeDefault);
@@ -35,4 +43,45 @@ TEST(CApiTest, DefaultAllocator) {
   // Default Allocator does not implement GetStats, we expect the stats to be empty.
   Ort::KeyValuePairs stats = default_allocator.GetStats();
   ASSERT_EQ(0, stats.GetKeyValuePairs().size());
+}
+
+TEST(CApiTest, CustomAllocator) {
+  const auto& api = Ort::GetApi();
+
+  // Case 1: Register a custom allocator.
+  {
+    MockedOrtAllocator mocked_allocator;
+    ASSERT_TRUE(api.RegisterAllocator(*ort_env, &mocked_allocator) == nullptr);
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry("session.use_env_allocators", "1");
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    Ort::Allocator allocator(session, mocked_allocator.Info());
+
+    auto stats = allocator.GetStats();
+    ASSERT_EQ(mocked_allocator.NumAllocations(), std::stoll(stats.GetValue("NumAllocs")));
+    ASSERT_EQ(mocked_allocator.NumReserveAllocations(), std::stoll(stats.GetValue("NumReserves")));
+
+    ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
+  }
+
+  // Case 2: Register a custom allocator with an older API version which does not support GetStats.
+  {
+    MockedOrtAllocator mocked_allocator;
+    mocked_allocator.version = 22;
+    ASSERT_TRUE(api.RegisterAllocator(*ort_env, &mocked_allocator) == nullptr);
+
+    Ort::SessionOptions session_options;
+    session_options.AddConfigEntry("session.use_env_allocators", "1");
+    Ort::Session session(*ort_env, MODEL_URI, session_options);
+
+    Ort::Allocator allocator(session, mocked_allocator.Info());
+
+    // Custom allocator does not implement GetStats, we expect the stats to be empty.
+    auto stats = allocator.GetStats();
+    ASSERT_EQ(0, stats.GetKeyValuePairs().size());
+
+    ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
+  }
 }
