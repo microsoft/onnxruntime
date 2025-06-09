@@ -17,6 +17,7 @@
 #ifdef __GNUC__  // Check if the compiler is GCC or Clang
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
+#pragma GCC diagnostic ignored "-Wmaybe-uninitialized" // suppress warning that tma_load_zero may be used uninitialized
 #endif  // __GNUC__
 
 #include "cutlass/epilogue/collective/default_epilogue.hpp"

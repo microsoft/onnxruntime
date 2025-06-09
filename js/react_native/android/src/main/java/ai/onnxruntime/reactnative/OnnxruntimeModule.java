@@ -326,7 +326,7 @@ public class OnnxruntimeModule extends ReactContextBaseJavaModule implements Lif
               {"disabled", SessionOptions.OptLevel.NO_OPT},
               {"basic", SessionOptions.OptLevel.BASIC_OPT},
               {"extended", SessionOptions.OptLevel.EXTENDED_OPT},
-              {"layout", SessionOptions.OptLevel.LAYOUT_OPT},
+              // {"layout", SessionOptions.OptLevel.LAYOUT_OPT},
               {"all", SessionOptions.OptLevel.ALL_OPT},
           })
           .collect(Collectors.toMap(p -> (String)p[0], p -> (SessionOptions.OptLevel)p[1]));

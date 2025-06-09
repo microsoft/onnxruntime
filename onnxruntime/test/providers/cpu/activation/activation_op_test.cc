@@ -72,19 +72,41 @@ constexpr float LeakyReluGrad(float dy, float y, float alpha) {
 #endif
 
 TEST_F(ActivationOpTest, Sigmoid) {
-  TestActivationOp<float>("Sigmoid",
-                          input_values,
-                          [](float x) {
-                            auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
-                            y = x > 0 ? y : 1 - y;
-                            return y;
+  auto sigmoid_f32 = [](float x) {
+    auto y = 1.f / (1.f + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
+  auto sigmoid_f64 = [](double x) {
+    auto y = 1. / (1. + std::exp(-std::abs(x)));  // safe sigmoid
+    y = x > 0 ? y : 1 - y;
+    return y;
+  };
+  // Test sigmoid using the default validator
+  TestActivationOp<float>("Sigmoid", input_values, sigmoid_f32);
+  // Test sigmoid using custom validator to check output range
+  TestActivationOp<float>("Sigmoid", input_values, sigmoid_f32,
+                          {}, {}, true, 7, kOnnxDomain,
+                          [](const std::vector<OrtValue>& fetches, const std::string&) {
+                            const auto& output = fetches[0].Get<Tensor>();
+                            const float* output_data = output.Data<float>();
+                            for (int64_t i = 0; i < output.Shape().Size(); ++i) {
+                              EXPECT_TRUE(output_data[i] >= 0.f && output_data[i] <= 1.f)
+                                  << "Output value out of range: " << output_data[i];
+                            }
                           });
-  TestActivationOp<double>("Sigmoid",
-                           input_values_double,
-                           [](double x) {
-                             auto y = 1. / (1. + std::exp(-std::abs(x)));  // safe sigmoid
-                             y = x > 0 ? y : 1 - y;
-                             return y;
+  // Test sigmoid using the default validator
+  TestActivationOp<double>("Sigmoid", input_values_double, sigmoid_f64);
+  // Test sigmoid using custom validator to check output range
+  TestActivationOp<double>("Sigmoid", input_values_double, sigmoid_f64,
+                           {}, {}, true, 7, kOnnxDomain,
+                           [](const std::vector<OrtValue>& fetches, const std::string&) {
+                             const auto& output = fetches[0].Get<Tensor>();
+                             const double* output_data = output.Data<double>();
+                             for (int64_t i = 0; i < output.Shape().Size(); ++i) {
+                               EXPECT_TRUE(output_data[i] >= 0. && output_data[i] <= 1.)
+                                   << "Output value out of range: " << output_data[i];
+                             }
                            });
 }
 
