@@ -30,11 +30,11 @@ struct ModelEditorValueInfo : public OrtValueInfo {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the producer for OrtValueInfo");
   }
-  Status GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& /*consumer_infos*/) const override {
+  Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& /*consumer_infos*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the consumers for a OrtValueInfo");
   }
-  Status GetNumConsumers(size_t& /*num_consumers*/) const override {
+  Status GetNumConsumerInfos(size_t& /*num_consumers*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the number of consumers for a OrtValueInfo");
   }

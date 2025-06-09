@@ -45,8 +45,8 @@ struct EpValueInfo : public OrtValueInfo {
   const std::string& Name() const override { return name; }
   const OrtTypeInfo* TypeInfo() const override { return type_info.get(); }
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
-  Status GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
-  Status GetNumConsumers(size_t& num_consumers) const override;
+  Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
+  Status GetNumConsumerInfos(size_t& num_consumers) const override;
   bool IsGraphInput() const override {
     return IsFlagSet(kIsGraphInput);
   }

@@ -2435,7 +2435,7 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetValueNumConsumers, _In_ const OrtValue
                     _Out_ size_t* num_consumers) {
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumers(*num_consumers));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetNumConsumerInfos(*num_consumers));
   return nullptr;
 #else
   ORT_UNUSED_PARAMETER(value_info);
@@ -2452,7 +2452,7 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetValueConsumers, _In_ const OrtValueInf
   API_IMPL_BEGIN
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumers(consumer_infos));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetConsumerInfos(consumer_infos));
   size_t num_uses = std::min(max_num_consumers, consumer_infos.size());
 
   for (size_t i = 0; i < num_uses; ++i) {

@@ -43,15 +43,8 @@ static Status GetInputIndices(const Node& consumer_node, const std::string& name
     }
   };
 
-  const auto node_input_defs = consumer_node.InputDefs();
-  indices.reserve(node_input_defs.size());
-  add_input_indices(node_input_defs, false);
-
-  if (!found) {
-    // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
-    // that are consumed by nodes within their subgraph.
-    add_input_indices(consumer_node.ImplicitInputDefs(), true);
-  }
+  add_input_indices(consumer_node.InputDefs(), false);
+  add_input_indices(consumer_node.ImplicitInputDefs(), true);
 
   ORT_RETURN_IF(!found, "Did not find input indices for NodeArg ", name);
   return Status::OK();

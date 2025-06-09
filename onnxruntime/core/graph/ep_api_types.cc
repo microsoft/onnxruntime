@@ -167,25 +167,18 @@ static Status GetInputIndices(const EpNode& consumer_node,
                               /*out*/ std::vector<int64_t>& indices) {
   bool found = false;
   auto add_input_indices =
-      [&found, &value_info_name, &indices](ConstPointerContainer<std::vector<NodeArg*>> input_defs,
+      [&found, &value_info_name, &indices](gsl::span<const EpValueInfo* const> input_value_infos,
                                            bool is_implicit) -> void {
-    for (size_t i = 0; i < input_defs.size(); i++) {
-      if (input_defs[i]->Name() == value_info_name) {
+    for (size_t i = 0; i < input_value_infos.size(); i++) {
+      if (input_value_infos[i]->name == value_info_name) {
         indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
       }
     }
   };
 
-  const auto node_input_defs = consumer_node.node.InputDefs();
-  indices.reserve(node_input_defs.size());
-  add_input_indices(node_input_defs, false);
-
-  if (!found) {
-    // Check implicit inputs. Nodes that contain subgraphs (e.g., If, Loop) may have implicit inputs
-    // that are consumed by nodes within their subgraph.
-    add_input_indices(consumer_node.node.ImplicitInputDefs(), true);
-  }
+  add_input_indices(consumer_node.inputs, false);
+  add_input_indices(consumer_node.implicit_inputs, true);
 
   ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
   return Status::OK();
@@ -239,7 +232,7 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
-Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const {
+Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& result) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   if (graph == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get uses of OrtValueInfo '", name,
@@ -251,7 +244,7 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
     return Status::OK();
   }
 
-  ORT_RETURN_IF_NOT(consumer_infos.empty(), "Internal error: consumer_infos should be empty in GetUses()");
+  std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
   consumer_infos.reserve(nodes.size());
   for (const Node* node : nodes) {
     const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
@@ -268,6 +261,7 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
     }
   }
 
+  result = std::move(consumer_infos);
   return Status::OK();
 #else
   ORT_UNUSED_PARAMETER(consumer_infos);
@@ -276,7 +270,7 @@ Status EpValueInfo::GetConsumers(std::vector<OrtValueInfo::ConsumerInfo>& consum
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
-Status EpValueInfo::GetNumConsumers(size_t& num_consumers) const {
+Status EpValueInfo::GetNumConsumerInfos(size_t& num_consumers) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   num_consumers = 0;
 

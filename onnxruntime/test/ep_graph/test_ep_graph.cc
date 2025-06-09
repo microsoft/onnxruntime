@@ -4,6 +4,7 @@
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
+#include <optional>
 #include <vector>
 
 #include "core/common/common.h"
@@ -89,6 +90,8 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
                                 gsl::span<const NodeArg* const> node_args) {
   ASSERT_EQ(value_infos.size(), node_args.size());
   const OrtApi& ort_api = Ort::GetApi();
+  const auto& graph_viewer_inputs = graph_viewer.GetInputsIncludingInitializers();
+  const auto& graph_viewer_outputs = graph_viewer.GetOutputs();
 
   for (size_t i = 0; i < value_infos.size(); i++) {
     const NodeArg* node_arg = node_args[i];
@@ -100,6 +103,28 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       const char* api_name = nullptr;
       ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(value_info, &api_name));
       ASSERT_EQ(std::string(api_name), node_arg->Name());
+
+      bool is_graph_input = std::any_of(graph_viewer_inputs.begin(), graph_viewer_inputs.end(),
+                                        [&node_arg](const NodeArg* graph_input) {
+                                          return node_arg->Name() == graph_input->Name();
+                                        });
+      bool api_is_graph_input = ort_api.ValueInfo_IsGraphInput(value_info);
+      ASSERT_EQ(api_is_graph_input, is_graph_input);
+
+      bool is_graph_output = std::any_of(graph_viewer_outputs.begin(), graph_viewer_outputs.end(),
+                                         [&node_arg](const NodeArg* graph_output) {
+                                           return node_arg->Name() == graph_output->Name();
+                                         });
+      bool api_is_graph_output = ort_api.ValueInfo_IsGraphOutput(value_info);
+      ASSERT_EQ(api_is_graph_output, is_graph_output);
+
+      bool is_initializer = graph_viewer.IsInitializedTensor(node_arg->Name());
+      bool api_is_initializer = ort_api.ValueInfo_IsInitializer(value_info);
+      ASSERT_EQ(api_is_initializer, is_initializer);
+
+      bool is_outer_scope = graph_viewer.GetGraph().IsOuterScopeValue(node_arg->Name());
+      bool api_is_outer_scope = ort_api.ValueInfo_IsFromOuterScope(value_info);
+      ASSERT_EQ(api_is_outer_scope, is_outer_scope);
 
       auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
       const OrtTypeInfo* api_type_info = nullptr;
