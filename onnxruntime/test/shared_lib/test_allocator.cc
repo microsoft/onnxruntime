@@ -7,10 +7,6 @@
 #include "test/util/include/test_allocator.h"
 #include <gtest/gtest.h>
 
-namespace {
-static constexpr PATH_TYPE MODEL_URI = TSTR("testdata/mul_1.onnx");
-}  // namespace
-
 extern std::unique_ptr<Ort::Env> ort_env;
 
 TEST(CApiTest, allocation_info) {
@@ -45,7 +41,10 @@ TEST(CApiTest, DefaultAllocator) {
   ASSERT_EQ(0, stats.GetKeyValuePairs().size());
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
 TEST(CApiTest, CustomAllocator) {
+  constexpr PATH_TYPE model_path = TSTR("testdata/mul_1.onnx");
+
   const auto& api = Ort::GetApi();
 
   // Case 1: Register a custom allocator.
@@ -55,7 +54,7 @@ TEST(CApiTest, CustomAllocator) {
 
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry("session.use_env_allocators", "1");
-    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    Ort::Session session(*ort_env, model_path, session_options);
 
     Ort::Allocator allocator(session, mocked_allocator.Info());
 
@@ -74,7 +73,7 @@ TEST(CApiTest, CustomAllocator) {
 
     Ort::SessionOptions session_options;
     session_options.AddConfigEntry("session.use_env_allocators", "1");
-    Ort::Session session(*ort_env, MODEL_URI, session_options);
+    Ort::Session session(*ort_env, model_path, session_options);
 
     Ort::Allocator allocator(session, mocked_allocator.Info());
 
@@ -85,3 +84,4 @@ TEST(CApiTest, CustomAllocator) {
     ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
   }
 }
+#endif
