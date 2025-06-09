@@ -53,6 +53,7 @@
 #include "core/optimizer/graph_transformer.h"
 #include "core/optimizer/identity_elimination.h"
 #include "core/optimizer/initializer.h"
+#include "core/optimizer/dynamic_quantize_convinteger_fusion.h"
 #include "core/optimizer/isinf_reducesum_fusion.h"
 #include "core/optimizer/label_encoder_fusion.h"
 #include "core/optimizer/matmul_add_fusion.h"
@@ -8102,6 +8103,29 @@ TEST_F(GraphTransformationTests, GatherToSliceFusion) {
     ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 14, *logger_, std::move(transformer),
                                           TransformerLevel::Level1, 1, pre_graph_checker, post_graph_checker));
   }
+}
+
+// Tests that a simple DynamicQuantlizeLinear + ConvInteger sequence is transformed into DequantizeLinear + Conv node
+TEST_F(GraphTransformationTests, DynamicQuantizeConvIntegerFusion_QnnEP) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "DynamicQuantizeLinear_ConvInteger_Sequence_test.onnx";
+  std::shared_ptr<Model> model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, model, nullptr, *logger_));
+  Graph& graph = model->MainGraph();
+
+  // Assign all nodes to QNN EP
+  for (auto& node : graph.Nodes()) {
+    node.SetExecutionProviderType("QNNExecutionProvider");
+  }
+
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(std::make_unique<DynamicQuantizeConvIntegerFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  EXPECT_EQ(op_to_count["DynamicQuantizeLinear"], 0);
+  EXPECT_EQ(op_to_count["ConvInteger"], 0);
+  EXPECT_EQ(op_to_count["DequantizeLinear"], 1);
+  EXPECT_EQ(op_to_count["Conv"], 1);
 }
 
 #if !defined(DISABLE_CONTRIB_OPS)
