@@ -93,8 +93,9 @@ void addOrtValueMethods(pybind11::module& m) {
             // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
             CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
           } else
-#elif USE_ROCM
-          if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+#endif
+#ifdef USE_ROCM
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
             if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
               throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
             }
@@ -104,13 +105,12 @@ void addOrtValueMethods(pybind11::module& m) {
             // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
             CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
           } else
-#else
+#endif
           {
             throw std::runtime_error(
                 "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
                 "Please use the CUDA package of OnnxRuntime to use this feature.");
           }
-#endif
         } else if (device.Type() == OrtDevice::NPU) {
 #ifdef USE_CANN
           if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
