@@ -5565,6 +5565,15 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
+  /** \brief Returns node's identifier, which is unique among all nodes in the model.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The node's identifier.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(size_t, Node_Id, _In_ const OrtNode* node);
+
   /** \brief Returns the name of an OrtNode instance.
    *
    * \param[in] node The OrtNode instance.

@@ -105,6 +105,7 @@ struct EpNode : public OrtNode {
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and EpNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, EpNode, OrtGraphIrApi::kEpApi)
 
+  size_t Id() const override;
   const std::string& Name() const override;
   const std::string& OpType() const override;
   const std::string& Domain() const override;

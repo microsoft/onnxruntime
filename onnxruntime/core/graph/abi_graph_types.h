@@ -78,6 +78,7 @@ struct OrtNode {
   explicit OrtNode(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtNode() = default;
 
+  virtual size_t Id() const = 0;
   virtual const std::string& Name() const = 0;
   virtual const std::string& OpType() const = 0;
   virtual const std::string& Domain() const = 0;

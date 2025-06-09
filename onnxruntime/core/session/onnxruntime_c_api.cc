@@ -2574,6 +2574,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
 // OrtNode
 //
 
+ORT_API(size_t, OrtApis::Node_Id, const OrtNode* node) {
+  return node->Id();
+}
+
 ORT_API(const char*, OrtApis::Node_Name, const OrtNode* node) {
   return node->Name().c_str();
 }
@@ -3362,6 +3366,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_NumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,
+    &OrtApis::Node_Id,
     &OrtApis::Node_Name,
     &OrtApis::Node_OperatorType,
     &OrtApis::Node_Domain,

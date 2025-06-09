@@ -103,6 +103,7 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
   return ep_node;
 }
 
+size_t EpNode::Id() const { return node.Index(); }
 const std::string& EpNode::Name() const { return node.Name(); }
 const std::string& EpNode::OpType() const { return node.OpType(); }
 const std::string& EpNode::Domain() const { return node.Domain(); }

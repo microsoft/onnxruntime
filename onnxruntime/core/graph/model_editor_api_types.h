@@ -66,6 +66,7 @@ struct ModelEditorNode : public OrtNode {
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and ModelEditorNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, ModelEditorNode, OrtGraphIrApi::kModelEditorApi)
 
+  size_t Id() const override { return id; }
   const std::string& Name() const override { return node_name; }
   const std::string& OpType() const override { return operator_name; }
   const std::string& Domain() const override { return domain_name; }
@@ -107,6 +108,7 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the parent graph for OrtNode");
   }
 
+  size_t id = 0;
   std::string operator_name;
   std::string domain_name;
   std::string node_name;

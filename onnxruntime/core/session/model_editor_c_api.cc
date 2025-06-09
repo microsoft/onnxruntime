@@ -223,6 +223,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
                                  "Invalid OrtNode variant for use in the OrtModelEditorApi");
   }
 
+  node->id = graph->nodes.size();
   graph->nodes.push_back(std::unique_ptr<onnxruntime::ModelEditorNode>(node));  // take ownership
   return nullptr;
   API_IMPL_END
