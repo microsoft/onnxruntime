@@ -6,6 +6,10 @@ param (
                HelpMessage = "The architecture for which to build.")]
     [string]$Arch,
 
+    [Parameter(Mandatory = $true,
+               HelpMessage = "The platform for which to build.")]
+    [string]$TargetPlatform,
+
     [Parameter(Mandatory = $false,
                HelpMessage = "Path to QAIRT SDK.")]
     [string]$QairtSdkRoot,
@@ -32,8 +36,14 @@ $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.De
 . "$RepoRoot\qcom\scripts\windows\tools.ps1"
 
 $BuildRoot = (Join-Path $RepoRoot "build")
-$BuildDir = (Join-Path $BuildRoot "windows-$Arch")
-$CMakeGenerator = "Visual Studio 17 2022"
+if ($TargetPlatform -eq "android") {
+    $TargetPlatformArch = $TargetPlatform
+    $CMakeGenerator = "Ninja"
+} else {
+    $TargetPlatformArch = "$TargetPlatform-$Arch"
+    $CMakeGenerator = "Visual Studio 17 2022"
+}
+$BuildDir = (Join-Path $BuildRoot "$TargetPlatformArch")
 $ProtocPath = (Join-Path (Join-Path $BuildDir $Config) "Google.Protobuf.Tools.3.21.12\tools\windows_x64\protoc.exe")
 $ValidArchs = "arm64", "arm64ec", "x86_64"
 
@@ -53,7 +63,11 @@ function Get-QairtSdkFilePath() {
 }
 
 function Save-QairtSdkFilePath() {
-    $QairtSdkRoot | Out-File -FilePath $(Get-QairtSdkFilePath)
+    $SdkFilePath = (Get-QairtSdkFilePath)
+    if (-Not (Test-Path "$SdkFilePath\..")) {
+        New-Item -Path "$SdkFilePath\.." -ItemType Directory | Out-Null
+    }
+    $QairtSdkRoot | Out-File -FilePath $SdkFilePath
 }
 
 function Test-QairtSdkDiffers() {
@@ -71,10 +85,18 @@ function Test-UpdateNeeded() {
         return $True
     }
 
-    $SlnPath = "$BuildDir\$Config\onnxruntime.sln"
-    if (-Not (Test-Path -Path $SlnPath)) {
-        Write-Host "VS Solution $SlnPath does not exist."
-        return $True
+    if ($CMakeGenerator -eq "Ninja") {
+        $BuildNinjaPath = "$BuildDir\$Config\build.ninja"
+        if (-Not (Test-Path -Path $BuildNinjaPath)) {
+            Write-Host "$BuildNinjaPath does not exist."
+            return $True
+        }
+    } else {
+        $SlnPath = "$BuildDir\$Config\onnxruntime.sln"
+        if (-Not (Test-Path -Path $SlnPath)) {
+            Write-Host "VS Solution $SlnPath does not exist."
+            return $True
+        }
     }
 
     if (Test-QairtSdkDiffers) {
@@ -101,70 +123,132 @@ if ($Arch -eq "x86_64")
     $ArchArg = "--$Arch"
 }
 
+if (Test-UpdateNeeded) {
+    $BuildIsDirty = $true
+    Save-QairtSdkFilePath
+} else {
+    $BuildIsDirty = $false
+}
+
+$CommonArgs = `
+    "--build_dir", $BuildDir, `
+    "--build_shared_lib", `
+    "--cmake_generator", $CmakeGenerator, `
+    "--config", $Config, `
+    "--parallel", `
+    "--path_to_protoc", $ProtocPath
+
 $Actions = @()
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
 $MakeTestArchive = $false
 
-switch ($Mode) {
-    "build" {
-        if (!(Test-Path $ProtocPath)) {
-            Write-Host "$ProtocPath does not exist"
-            $Nuget = (Join-Path (Get-PackageBinDir nuget_win) "nuget.exe")
-            & $Nuget `
-                restore "$RepoRoot\packages.config" `
-                -PackagesDirectory "$BuildDir\$Config" `
-                -ConfigFile "$RepoRoot\NuGet.config"
+switch ($TargetPlatform) {
+    "windows" {
+        switch ($Mode) {
+            "build" {
+                if ($BuildIsDirty) {
+                    $Actions += "--update"
+                }
+
+                $Actions += "--build"
+                $PlatformArgs = $ArchArg
+            }
+            "test" {
+                $Actions += "--test"
+                if ($Arch -ne "arm64") {
+                    Write-Host "Disabling QNN tests on $Arch."
+                    $QnnArgs = @()
+                }
+            }
+            "archive" {
+                $MakeTestArchive = $true
+            }
+            default {
+                throw "Unknown build mode $Mode."
+            }
+        }
+    }
+    "android" {
+        if ($BuildIsDirty -and (Test-Path "$BuildDir\$Config")) {
+            # The ORT Android build doesn't seem to support --update, but our QNN root has changed
+            # so we really want to re-run cmake. Blow away the build.
+            Write-Host "Build is dirty: blowing away $BuildDir\$Config"
+            Remove-Item -Recurse -Force "$BuildDir\$Config"
+            if (-not $?) {
+                throw "Failed to scrub $BuildDir\$Config"
+            }
         }
 
-        if (Test-UpdateNeeded) {
-            $Actions += "--update"
-            Save-QairtSdkFilePath
+        $env:Path = "$(Get-PackageBinDir java_windows_x86_64);" + $env:Path
+        $env:Path = "$(Get-PackageBinDir ccache_windows_x86_64);" + $env:Path
+
+        if ($null -ne $env:ANDROID_HOME -and $null -ne $env:ANDROID_NDK_HOME) {
+            $AndroidSdkPath = $env:ANDROID_HOME
+            $AndroidNdkPath = $env:ANDROID_NDK_HOME
+        }
+        else {
+            $AndroidSdkPath = (Get-AndroidSdkRoot)
+            $AndroidNdkPath = (Get-AndroidNdkRoot)
         }
 
-        $Actions += "--build"
-    }
-    "test" {
-        $Actions += "--test"
-        if ($Arch -ne "arm64") {
-            Write-Host "Disabling QNN tests on $Arch."
-            $QnnArgs = @()
+        $QnnArgs = "--use_qnn", "static_lib", "--qnn_home", "$QairtSdkRoot"
+        $PlatformArgs = "--use_cache", `
+            "--android_sdk_path", $AndroidSdkPath, `
+            "--android_ndk_path", $AndroidNdkPath, `
+            "--android_abi", "arm64-v8a", `
+            "--android_api", "27"
+
+        switch ($Mode) {
+            "build" {
+                $Actions += "--android"
+            }
+            "test" {
+                throw "-Mode test not supported with -TargetPlatform $TargetPlatform."
+            }
+            "archive" {
+                $MakeTestArchive = $true
+            }
+            default {
+                throw "Invalid mode '$Mode'."
+            }
         }
-    }
-    "archive" {
-        $MakeTestArchive = $true
     }
     default {
-        throw "Unknown build mode $Mode."
+        throw "Unknown target platform $TargetPlatform."
     }
 }
 
-$CmakeDir = (Get-PackageBinDir cmake_windows_x86_64)
-$env:Path = "$CmakeDir;" + $env:Path
+$CmakeBinDir = (Get-PackageBinDir cmake_windows_x86_64)
+$env:Path = "$CmakeBinDir;" + $env:Path
 
 Push-Location $RepoRoot
 
 if ($MakeTestArchive) {
-    $QdcTestRunner = (Join-Path (Resolve-Path -Path (Split-Path -Parent $MyInvocation.MyCommand.Definition)).Path run_tests.ps1)
-    Compress-Archive `
-        -Force `
-        -DestinationPath $BuildRoot\onnxruntime-tests-windows-${arch}.zip `
-        -Path `
-            $BuildDir\$Config\CTestTestfile.cmake, `
-            $BuildDir\$Config\$Config, `
-            $CmakeDir\ctest.exe, `
-            $QdcTestRunner
+    python.exe "$RepoRoot\qcom\scripts\all\archive_tests.py" `
+        "--cmake-bin-dir=$CmakeBinDir" `
+        "--config=$Config" `
+        "--qairt-sdk-root=$QairtSdkRoot" `
+        "--target-platform=$TargetPlatformArch"
 }
 else {
+    if (!(Test-Path $ProtocPath)) {
+        Write-Host "$ProtocPath does not exist"
+        $Nuget = (Join-Path (Get-PackageBinDir nuget_win) "nuget.exe")
+        & $Nuget `
+            restore "$RepoRoot\packages.config" `
+            -PackagesDirectory "$BuildDir\$Config" `
+            -ConfigFile "$RepoRoot\NuGet.config"
+    }
+
+    if ($CMakeGenerator -eq "Ninja") {
+        $env:Path = "$(Get-PackageBinDir ninja_windows_x86_64);" + $env:Path
+    }
+
     .\build.bat `
         $Actions `
-        $ArchArg `
-        --config "$Config" `
-        --build_shared_lib `
-        --parallel `
-        --cmake_generator "$CmakeGenerator" `
+        $CommonArgs `
         $QnnArgs `
-        --build_dir "$BuildDir" `
-        --path_to_protoc "$ProtocPath"
+        $PlatformArgs
 }
 
 if (-not $?) {

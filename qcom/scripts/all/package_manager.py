@@ -232,7 +232,6 @@ class PackageManager:
 
     @staticmethod
     def __parse_config(config_path: Path) -> dict[str, dict[str, Any]]:
-        logging.debug(f"Parsing config in {config_path}")
         with config_path.open() as config_file:
             return yaml.safe_load(config_file)
 

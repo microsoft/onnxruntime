@@ -15,7 +15,7 @@ function update_needed() {
       log_debug "New QAIRT SDK detected"
       echo "1"
     else
-      log_debug "No updated needed"
+      log_debug "No update needed"
     fi
   else
     log_debug "No record of previous QAIRT SDK"
@@ -27,6 +27,7 @@ function save_qairt_sdk_path() {
   echo "${1}" > "${qairt_sdk_file_path}"
 }
 
+config="Release"
 qairt_sdk_root=
 for i in "$@"; do
   case $i in
@@ -52,7 +53,6 @@ for i in "$@"; do
   esac
 done
 
-config="Release"
 cmake_generator="Ninja"
 
 build_root="${REPO_ROOT}/build"
@@ -64,7 +64,8 @@ if [ -z "${qairt_sdk_root}" ]; then
     qairt_sdk_root="$(get_qairt_contentdir)"
 fi
 
-export PATH="$(get_cmake_bindir):$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
+cmake_bindir="$(get_cmake_bindir)"
+export PATH="${cmake_bindir}:$(get_ccache_bindir):$(get_ninja_bindir):${PATH}"
 
 mkdir -p "${build_dir}/${config}"
 
@@ -136,7 +137,6 @@ case "${target_platform}" in
         ;;
       archive)
         make_test_archive=1
-        qairt_platform="aarch64-android"
         ;;
       *)
         die "Invalid mode '${mode}'."
@@ -147,47 +147,11 @@ case "${target_platform}" in
 esac
 
 if [ -n "${make_test_archive}" ]; then
-  archive_path="${build_root}/onnxruntime-tests-${target_platform}.zip"
-
-  rm -f "${archive_path}"
-
-  cd "${build_dir}"
-
-  # cmake --install and cpack omit test data so we cobble this together manually.
-  zip \
-    --recurse-paths \
-    "${archive_path}" \
-    "${config}" \
-    --exclude \
-      "*/.ninja_log" "*/build.ninja" \
-      "*/CMakeCache.txt" "*/CMakeFiles/*" \
-      "*/Testing*/" "*/_deps/*" "*/pkgconfig/*"
-
-  # Add test data from ONNX
-  zip \
-    --recurse-paths \
-    "${archive_path}" \
-    "${config}" \
-    --include \
-      "*/_deps/onnx-src/onnx/backend/test/*"
-
-  # Add the QDC test framework
-  cd "${REPO_ROOT}/qcom/scripts/linux/appium"
-  zip  \
-    --recurse-paths \
-    "${archive_path}" \
-    requirements.txt tests \
-    --exclude \
-      "*/__pycache__/*"
-
-  # Add QNN libraries
-  cd "${qairt_sdk_root}"
-  zip \
-    --recurse-paths \
-    "${archive_path}" \
-    "lib" \
-    --include "*/${qairt_platform}/*" "*/hexagon-v*/*"
-
+  python "${REPO_ROOT}/qcom/scripts/all/archive_tests.py" \
+    "--cmake-bin-dir=${cmake_bindir}" \
+    "--config=${config}" \
+    --target-platform=android \
+    "--qairt-sdk-root=${qairt_sdk_root}"
 else
   cd "${REPO_ROOT}"
   ./build.sh \
