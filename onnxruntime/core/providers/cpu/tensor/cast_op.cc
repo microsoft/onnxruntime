@@ -293,19 +293,19 @@ struct Int4ElementConverter {
 };
 
 // Helper struct for converting from any type to Int4/UInt4 elements
-template <typename SrcType>
+template <typename SrcType, typename Enable = void>
 struct ToInt4ElementConverter {
   // Default implementation for most numeric types
   static int8_t ConvertToInt4(const SrcType& val) {
     int8_t result = static_cast<int8_t>(val);
     // Clamp to int4 range (-8 to 7)
-    return std::clamp(result, static_cast<int8_t>(-8), static_cast<int8_t>(7));
+    return std::clamp(result, int8_t(-8), int8_t(7));
   }
 
   static uint8_t ConvertToUInt4(const SrcType& val) {
     uint8_t result = static_cast<uint8_t>(val);
     // Clamp to uint4 range (0 to 15)
-    return std::min(result, static_cast<uint8_t>(15));
+    return std::min(result, uint8_t(15));
   }
 };
 
@@ -335,64 +335,20 @@ struct ToInt4ElementConverter<double> {
   }
 };
 
-template <>
-struct ToInt4ElementConverter<BFloat16> {
-  static int8_t ConvertToInt4(const BFloat16& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const BFloat16& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
+template <typename SrcType>
+struct ToInt4ElementConverter<SrcType, std::enable_if_t<std::is_same<SrcType, BFloat16>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
-
-template <>
-struct ToInt4ElementConverter<Float8E4M3FN> {
-  static int8_t ConvertToInt4(const Float8E4M3FN& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const Float8E4M3FN& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
-template <>
-struct ToInt4ElementConverter<Float8E4M3FNUZ> {
-  static int8_t ConvertToInt4(const Float8E4M3FNUZ& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const Float8E4M3FNUZ& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
-template <>
-struct ToInt4ElementConverter<Float8E5M2> {
-  static int8_t ConvertToInt4(const Float8E5M2& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const Float8E5M2& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
-template <>
-struct ToInt4ElementConverter<Float8E5M2FNUZ> {
-  static int8_t ConvertToInt4(const Float8E5M2FNUZ& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
-  }
-
-  static uint8_t ConvertToUInt4(const Float8E5M2FNUZ& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
-  }
-};
-
+                                                        || IsOrtFloat8Type<SrcType>::value
 #endif
+                                                        >> {
+  static int8_t ConvertToInt4(const SrcType& val) {
+    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
+  }
+
+  static uint8_t ConvertToUInt4(const SrcType& val) {
+    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
+  }
+};
 
 }  // anonymous namespace
 
