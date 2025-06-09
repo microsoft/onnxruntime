@@ -417,7 +417,7 @@ struct TensorCaster<Int4x2, DstType,
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -434,7 +434,7 @@ struct TensorCaster<Int4x2, DstType,
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -450,7 +450,7 @@ struct TensorCaster<Int4x2, bool> {
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<bool>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -466,7 +466,7 @@ struct TensorCaster<Int4x2, UInt4x2> {
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<UInt4x2>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -489,7 +489,7 @@ struct TensorCaster<UInt4x2, DstType,
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -505,7 +505,7 @@ struct TensorCaster<UInt4x2, DstType, std::enable_if_t<IsStandardFloatType<DstTy
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -521,7 +521,7 @@ struct TensorCaster<UInt4x2, bool> {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<bool>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -537,7 +537,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<Int4x2>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); i += 2) {
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -565,12 +565,12 @@ struct TensorCaster<SrcType, Int4x2,
     for (; i < shape_size - 1; i += 2) {
       int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
       int8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
-      out_data[i / 2] = Int4x2(low_val, high_val);
+      out_data[i >> 1] = Int4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      out_data[i / 2] = Int4x2(low_val, 0);
+      out_data[i >> 1] = Int4x2(low_val, 0);
     }
   }
 };
@@ -586,12 +586,12 @@ struct TensorCaster<bool, Int4x2> {
     for (; i < shape_size - 1; i += 2) {
       int8_t low_val = in_data[i] ? 1 : 0;
       int8_t high_val = in_data[i + 1] ? 1 : 0;
-      out_data[i / 2] = Int4x2(low_val, high_val);
+      out_data[i >> 1] = Int4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       int8_t low_val = in_data[i] ? 1 : 0;
-      out_data[i / 2] = Int4x2(low_val, 0);
+      out_data[i >> 1] = Int4x2(low_val, 0);
     }
   }
 };
@@ -612,12 +612,12 @@ struct TensorCaster<SrcType, UInt4x2,
     for (; i < shape_size - 1; i += 2) {
       uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
       uint8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
-      out_data[i / 2] = UInt4x2(low_val, high_val);
+      out_data[i >> 1] = UInt4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      out_data[i / 2] = UInt4x2(low_val, 0);
+      out_data[i >> 1] = UInt4x2(low_val, 0);
     }
   }
 };
@@ -633,12 +633,12 @@ struct TensorCaster<bool, UInt4x2> {
     for (; i < shape_size - 1; i += 2) {
       uint8_t low_val = in_data[i] ? 1 : 0;
       uint8_t high_val = in_data[i + 1] ? 1 : 0;
-      out_data[i / 2] = UInt4x2(low_val, high_val);
+      out_data[i >> 1] = UInt4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
       uint8_t low_val = in_data[i] ? 1 : 0;
-      out_data[i / 2] = UInt4x2(low_val, 0);
+      out_data[i >> 1] = UInt4x2(low_val, 0);
     }
   }
 };
