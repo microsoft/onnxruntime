@@ -1,11 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_add_fusion.h"
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include <deque>
+
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <vector>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -128,7 +134,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
       // Only check and skip Attention pattern here because normally input to Attention is 4D.
-      if (attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node)) {
+      if (attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node) && preserve_attention_pattern_) {
         continue;
       }
 
