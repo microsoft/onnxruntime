@@ -2,9 +2,7 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #include <atomic>
-#include <unordered_map>
 #include <vector>
 
 #include "core/platform/telemetry.h"
@@ -35,6 +33,9 @@ class WindowsTelemetry : public Telemetry {
 
   // Get the current keyword
   UINT64 Keyword() const override;
+
+  // Get the ETW registration status
+  // static HRESULT Status();
 
   void LogProcessInfo() const override;
 
@@ -67,30 +68,21 @@ class WindowsTelemetry : public Telemetry {
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
 
-  static void RegisterInternalCallback(const std::string& callback_key, EtwInternalCallback callback);
+  static void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  static void UnregisterInternalCallback(const std::string& callback_key);
+  static void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   static std::mutex mutex_;
   static uint32_t global_register_count_;
+  static bool enabled_;
   static uint32_t projection_;
 
-  struct CallbackRecord {
-    EtwInternalCallback cb;
-    int ref = 1;
-    explicit CallbackRecord(EtwInternalCallback cb) : cb(std::move(cb)) {}
-    void IncrementRef() { ++ref; }
-    int DecrementRef() { return --ref; }
-  };
-
-  static std::unordered_map<std::string, CallbackRecord> callbacks_;
+  static std::vector<const EtwInternalCallback*> callbacks_;
   static std::mutex callbacks_mutex_;
-
-  static std::atomic_bool enabled_;
-  static std::atomic<UCHAR> level_;
-  static std::atomic<UINT64> keyword_;
   static std::mutex provider_change_mutex_;
+  static UCHAR level_;
+  static ULONGLONG keyword_;
 
   static void InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level, ULONGLONG MatchAnyKeyword,
                               ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext);

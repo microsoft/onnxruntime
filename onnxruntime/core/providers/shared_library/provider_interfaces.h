@@ -314,11 +314,10 @@ struct ProviderHost {
   virtual logging::Severity logging__EtwRegistrationManager__MapLevelToSeverity(logging::EtwRegistrationManager* p) = 0;
   virtual void logging__EtwRegistrationManager__RegisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const std::string& cb_key,
-      logging::EtwRegistrationManager_EtwInternalCallback callback) = 0;
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) = 0;
   virtual void logging__EtwRegistrationManager__UnregisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const std::string& cb_key) = 0;
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) = 0;
 #endif  // defined(_WIN32)
 
   // Env
