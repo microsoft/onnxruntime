@@ -147,7 +147,6 @@ bool CoreMLExecutionProvider::ProcessIncompatibleNodes(const onnxruntime::GraphV
   return original_partition_size != partition_nodes.size();
 }
 
-// 3. Simplify the main filtering function
 void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
                                                                        const onnxruntime::GraphViewer& graph_viewer,
                                                                        const logging::Logger& logger) const {
@@ -158,14 +157,10 @@ void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSu
   bool modified;
 
   do {
-    bool inputs_modified = ProcessIncompatibleNodes(
-        graph_viewer, partition_nodes, meta_def, true, logger);
-
-    bool outputs_modified = ProcessIncompatibleNodes(
-        graph_viewer, partition_nodes, meta_def, false, logger);
+    bool inputs_modified = ProcessIncompatibleNodes(graph_viewer, partition_nodes, meta_def, true, logger);
+    bool outputs_modified = ProcessIncompatibleNodes(graph_viewer, partition_nodes, meta_def, false, logger);
 
     modified = inputs_modified || outputs_modified;
-
     if (modified) {
       partition.nodes = std::vector<NodeIndex>(partition_nodes.begin(), partition_nodes.end());
     }

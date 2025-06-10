@@ -50,7 +50,6 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   // Helper function to check if a type is supported by CoreML
   bool IsSupportedType(int32_t type) const;
 
-  // Unified function to process incompatible nodes for both inputs and outputs
   bool ProcessIncompatibleNodes(const onnxruntime::GraphViewer& graph_viewer,
                                 std::unordered_set<NodeIndex>& partition_nodes,
                                 IndexedSubGraph::MetaDef* meta_def,
