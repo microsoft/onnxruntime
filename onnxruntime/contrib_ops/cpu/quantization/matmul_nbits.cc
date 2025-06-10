@@ -755,10 +755,10 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
 
   // TODO(hasesh): Should this logging level be warning ?
   LOGS(ctx->Logger(), INFO) << "Falling back to using unpacked compute mode for the Matmul operation "
-                               "(i.e.) the weights will be de-quantized to fp32 before invoking "
-                               "the fp32 Matmul kernel."
-                               "This is because MLAS doesn't have an optimized quantized kernel "
-                               "for the requested compute configuration.";
+                            << "(i.e.) the weights will be de-quantized to fp32 before invoking "
+                            << "the fp32 Matmul kernel."
+                            << "This is because MLAS doesn't have an optimized quantized kernel "
+                            << "for the requested compute configuration.";
 
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
