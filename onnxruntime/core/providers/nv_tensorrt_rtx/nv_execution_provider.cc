@@ -134,7 +134,6 @@ void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /
   return outputPtr;
 }
 
-
 void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
   output_shapes.clear();
   output_shapes.reserve(dims.nbDims);
