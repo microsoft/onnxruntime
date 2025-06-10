@@ -156,7 +156,7 @@ stages:
               ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
                 symbolExpiryTime: 60
               includePublicSymbolServer: true
-              symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
+              symbolsArtifactName: onnxruntime-dml-nuget-${{ parameters.BuildArch }}
               symbolsVersion: $(Build.BuildId)
               symbolProject: 'ONNX Runtime'
               subscription: 'OnnxrunTimeCodeSign_20240611'
