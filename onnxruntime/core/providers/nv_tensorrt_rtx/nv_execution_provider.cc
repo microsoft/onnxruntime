@@ -117,7 +117,6 @@ void Impl_Cast(
 }
 }  // namespace cuda
 
-#if NV_TENSORRT_MAJOR >= 10
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
@@ -134,25 +133,6 @@ void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /
   // if cudaMalloc fails, returns nullptr.
   return outputPtr;
 }
-#else
-// Only override this method when TensorRT <= 8.6
-void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
-                                        uint64_t /*alignment*/) noexcept {
-  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
-  // even for empty tensors, so allocate a dummy byte.
-  size = std::max(size, static_cast<uint64_t>(1));
-  if (size > allocated_size) {
-    cudaFree(outputPtr);
-    outputPtr = nullptr;
-    allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
-      allocated_size = size;
-    }
-  }
-  // if cudaMalloc fails, returns nullptr.
-  return outputPtr;
-}
-#endif
 
 void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
   output_shapes.clear();
@@ -2600,7 +2580,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-    size_t mem_size = trt_engine->getDeviceMemorySize();
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -2854,7 +2834,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -2986,7 +2966,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-    size_t mem_size = trt_engine->getDeviceMemorySize();
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -3168,7 +3148,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif

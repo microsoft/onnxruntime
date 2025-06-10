@@ -78,11 +78,8 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
-#if NV_TENSORRT_MAJOR >= 10
   void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
-#else
-  void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-#endif
+
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {
