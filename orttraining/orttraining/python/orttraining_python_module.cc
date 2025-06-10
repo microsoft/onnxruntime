@@ -183,7 +183,7 @@ onnxruntime::Environment& GetEnv() {
   return ort_training_env->GetORTEnv().GetEnvironment();
 }
 
-Status CreateOrtEnv() {
+static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
