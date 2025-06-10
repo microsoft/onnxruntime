@@ -47,19 +47,15 @@ class CoreMLExecutionProvider : public IExecutionProvider {
                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT32,
                                                                      ONNX_NAMESPACE::TensorProto_DataType_INT64};
 
-  bool ProcessIncompatibleInputs(const onnxruntime::GraphViewer& graph_viewer,
-                                 std::unordered_set<NodeIndex>& partition_nodes_set,
-                                 std::unordered_set<NodeIndex>& incompatible_nodes,
-                                 IndexedSubGraph::MetaDef* meta_def,
-                                 const logging::Logger& logger) const;
+  // Helper function to check if a type is supported by CoreML
+  bool IsSupportedType(int32_t type) const;
 
-  bool ProcessIncompatibleOutputs(const onnxruntime::GraphViewer& graph_viewer,
-                                  std::unordered_set<NodeIndex>& partition_nodes_set,
-                                  std::unordered_set<NodeIndex>& incompatible_nodes,
-                                  IndexedSubGraph::MetaDef* meta_def,
-                                  const logging::Logger& logger) const;
-
-  void UpdatePartitionNodes(IndexedSubGraph& partition, const std::unordered_set<NodeIndex>& partition_nodes_set) const;
+  // Unified function to process incompatible nodes for both inputs and outputs
+  bool ProcessIncompatibleNodes(const onnxruntime::GraphViewer& graph_viewer,
+                                std::unordered_set<NodeIndex>& partition_nodes,
+                                IndexedSubGraph::MetaDef* meta_def,
+                                const bool is_input,
+                                const logging::Logger& logger) const;
 
   void FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
                                                 const onnxruntime::GraphViewer& graph_viewer,

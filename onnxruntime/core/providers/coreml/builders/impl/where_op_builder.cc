@@ -56,7 +56,7 @@ bool WhereOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInp
   return true;
 }
 
-bool WhereOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+bool WhereOpBuilder::IsOpSupportedImpl(const Node& /*node*/, const OpBuilderInputParams& input_params,
                                        const logging::Logger& logger) const {
   if (!input_params.create_mlprogram) {
     LOGS(logger, VERBOSE) << "WhereOpBuilder: ML Program is required for 'Where' operator.";
