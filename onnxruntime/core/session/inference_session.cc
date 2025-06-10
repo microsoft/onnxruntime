@@ -68,6 +68,9 @@
 #include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #include "core/optimizer/stft_decomposition.h"
 #endif
+#ifdef USE_QNN  // For registering QNN-EP specific Transformations
+#include "core/providers/qnn/GraphTransformers/GraphTransformerHelpers.h"
+#endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -2024,6 +2027,14 @@ common::Status InferenceSession::Initialize() {
           auto stft_decomposition_transformer = std::make_unique<STFTDecomposition>(dml_ep);
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level1));
         }
+      }
+#endif
+
+#ifdef USE_QNN
+      // Register QNN EP specific GraphTransformers
+      auto transformers = GraphTransformerHelpers::GetGraphTransformers();
+      for (auto& transformer : transformers) {
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(transformer.first), transformer.second));
       }
 #endif
 
