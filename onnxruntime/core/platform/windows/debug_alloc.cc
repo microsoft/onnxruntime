@@ -75,41 +75,45 @@ struct SymbolHelper {
 
   SymbolHelper() = default;
 
-  bool LookupSymAndInitialize(const void* address, SYMBOL_INFO* symbol, std::ostream& message) {
-    if (SymFromAddr(process_handle_, reinterpret_cast<ULONG_PTR>(address), 0, symbol) != TRUE) {
+  static constexpr size_t kInitialBufferSize = sizeof(SYMBOL_INFO) + MAX_SYM_NAME;
+
+  bool LoookupSymAndInitialize(const ULONG_PTR address, char* buffer, size_t buffer_size, SYMBOL_INFO* symbol) {
+    if (SymFromAddr(process_handle_, address, 0, symbol) != TRUE) {
       if (GetLastError() == ERROR_INVALID_HANDLE) {
         // Try to initialize first
-        if (!InitializeWhenNeeded() ||
-            SymFromAddr(process_handle_, reinterpret_cast<ULONG_PTR>(address), 0, symbol) != TRUE) {
-          message << "0x" << address << " (Unknown symbol)";
+        if (!InitializeWhenNeeded() || SymFromAddr(process_handle_, address, 0, symbol) != TRUE) {
+          _snprintf_s(buffer, buffer_size, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
           return false;
         }
       } else {
-        message << "0x" << address << " (Unknown symbol)";
+        _snprintf_s(buffer, buffer_size, _TRUNCATE, "0x%08IX (Unknown symbol)", address);
         return false;
       }
     }
     return true;
   }
 
-  void Lookup(const void* address, std::ostream& message) {
-    SYMBOL_INFO_PACKAGE symbol_info_package{};
-    SYMBOL_INFO* symbol = &symbol_info_package.si;
+  void Lookup(std::string& string, const ULONG_PTR address) {
+    alignas(SYMBOL_INFO) char buffer[kInitialBufferSize] = {0};
+    SYMBOL_INFO* symbol = reinterpret_cast<SYMBOL_INFO*>(buffer);
     symbol->SizeOfStruct = sizeof(SYMBOL_INFO);
-    symbol->MaxNameLen = std::size(symbol_info_package.name);
+    symbol->MaxNameLen = MAX_SYM_NAME;
 
-    if (!LookupSymAndInitialize(address, symbol, message)) {
+    if (!LoookupSymAndInitialize(address, buffer, kInitialBufferSize, symbol)) {
+      string.append(buffer);
       return;
     }
 
     Line line;
     DWORD displacement;
-    if (SymGetLineFromAddr(process_handle_, reinterpret_cast<ULONG_PTR>(address), &displacement, &line) == false) {
-      message << "(unknown file & line number): " << symbol->Name;
+    if (SymGetLineFromAddr(process_handle_, address, &displacement, &line) == false) {
+      _snprintf_s(buffer, _TRUNCATE, "(unknown file & line number): %s", symbol->Name);
+      string.append(buffer);
       return;
     }
 
-    message << line.FileName << "(" << line.LineNumber << "): " << symbol->Name;
+    _snprintf_s(buffer, _TRUNCATE, "%s(%d): %s", line.FileName, static_cast<int>(line.LineNumber), symbol->Name);
+    string.append(buffer);
   }
 
   struct Line : IMAGEHLP_LINE {
@@ -217,16 +221,16 @@ Memory_LeakCheck::~Memory_LeakCheck() {
     const MemoryBlock& block = *static_cast<const MemoryBlock*>(entry.lpData);
     const BYTE* pBlock = static_cast<const BYTE*>(entry.lpData) + sizeof(MemoryBlock);
 
-    std::ostringstream message;
-    message << (entry.cbData - sizeof(MemoryBlock)) << " bytes at location 0x" << static_cast<const void*>(pBlock)
-            << "\n";
+    std::string string;
+    char buffer[1024];
+    _snprintf_s(buffer, _TRUNCATE, "%Iu bytes at location 0x%08IX\n", entry.cbData - sizeof(MemoryBlock),
+                UINT_PTR(pBlock));
+    string.append(buffer);
     for (auto& p : block.m_pTraces) {
       if (!p) break;
-      symbols.Lookup(p, message);
-      message << "\n";
+      symbols.Lookup(string, reinterpret_cast<ULONG_PTR>(p));
+      string.push_back('\n');
     }
-
-    const std::string string = message.str();
 
     // Google test has memory leaks that they haven't fixed. One such issue is tracked here: https://github.com/google/googletest/issues/692
     //
@@ -267,8 +271,12 @@ Memory_LeakCheck::~Memory_LeakCheck() {
   if (leaked_bytes) {
     DebugPrint("-----Ending Heap Trace-----\n\n");
 
-    std::cout << "\n----- MEMORY LEAKS: " << leaked_bytes << " bytes of memory leaked in "
-              << leak_count << " allocations\n";
+    std::string string;
+    char buffer[1024];
+    _snprintf_s(buffer, _TRUNCATE, "%d bytes of memory leaked in %d allocations", static_cast<int>(leaked_bytes), static_cast<int>(leak_count));
+    string.append(buffer);
+
+    std::cout << "\n----- MEMORY LEAKS: " << string.c_str() << "\n";
     if (!IsDebuggerPresent()) {
       exit(-1);
     }
