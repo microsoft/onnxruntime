@@ -192,7 +192,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       uint32_t output_size = static_cast<uint32_t>(output_shape.Size() / components / output_number);
       const size_t output_rank = matmul_output_shape.NumDimensions();
       TensorShape outer_dims = output_rank > 2 ? matmul_output_shape.Slice(0, output_rank - 2) : TensorShape({});
-      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias);
+      MatMulNaiveProgram program(activation_, output_rank, output_number, has_bias, is_channels_last);
       program
           .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
           .AddInputs({{matmul_inputs[0], ProgramTensorMetadataDependency::TypeAndRank, ReduceShapeByComponents(matmul_input_reshapes[0], a_components), int(a_components)},
