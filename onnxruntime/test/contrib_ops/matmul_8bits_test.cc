@@ -289,6 +289,8 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
   constexpr float abs_error = 0.055f;
   constexpr float rel_error = 0.02f;
   TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>(abs_error, rel_error);
 }
 #endif
