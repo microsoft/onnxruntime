@@ -931,7 +931,7 @@ TEST(CastOpTest, StringToInt4x2) {
       "6", "2"    // positive values
   };
 
-  const std::vector<Int4x2> expected_output {
+  const std::vector<Int4x2> expected_output{
       Int4x2(-8, 7),
       Int4x2(0, -1),
       Int4x2(3, -5),
@@ -973,7 +973,7 @@ TEST(CastOpTest, String2UInt4x2BoundaryValuesClamping) {
 
   // Each pair of strings becomes one UInt4x2
   // Values should be clamped to uint4 range (0-15)
-  const std::vector<UInt4x2> expected_output {
+  const std::vector<UInt4x2> expected_output{
       UInt4x2(0, 15),   // -5 clamped to 0, 20 clamped to 15
       UInt4x2(15, 15),  // 16 clamped to 15, 100 clamped to 15
       UInt4x2(0, 15)    // 0 and 15 already in range
