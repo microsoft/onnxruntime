@@ -3642,23 +3642,6 @@ Status Graph::ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initi
   return Status::OK();
 }
 
-Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  ORT_RETURN_IF(utils::HasExternalData(new_initializer),
-                "tensor_proto expected to contain data inline");
-
-  Tensor tensor;
-  ORT_RETURN_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), ModelPath(), new_initializer, tensor));
-  auto tensor_proto_external = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
-
-  OrtValue ort_value;
-  // Check for external data is cheaper here than for ExternalDataInMemory
-  if (utils::HasExternalData(tensor_proto_external)) {
-    Tensor::InitOrtValue(std::move(tensor), ort_value);
-  }
-
-  return ReplaceInitializedTensorImpl(std::move(tensor_proto_external), std::move(ort_value), false);
-}
-
 common::Status Graph::ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer,
                                                const OrtValue& ort_value) {
   return ReplaceInitializedTensorImpl(new_initializer, ort_value, false);

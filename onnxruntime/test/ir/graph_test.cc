@@ -25,18 +25,6 @@
 
 using namespace ONNX_NAMESPACE;
 namespace onnxruntime {
-
-// Life hack to support testing
-struct PopulateImplicitDefs {
-  std::vector<NodeArg*> implicit_defs;
-};
-
-template <>
-void Node::TestMethod(PopulateImplicitDefs& p) {
-  std::copy(p.implicit_defs.cbegin(), p.implicit_defs.cend(),
-            std::back_inserter(definitions_.implicit_input_defs));
-}
-
 namespace test {
 
 static bool RegisterCustomSchemas() {
@@ -1710,7 +1698,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_name = original;
     bad_name.set_name("invalid");
 
-    status = graph.ReplaceInitializedTensor(bad_name);
+    status = graph.ReplaceInitializedTensor(bad_name, OrtValue());
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1718,7 +1706,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     ONNX_NAMESPACE::TensorProto bad_type = original;
     bad_type.set_data_type(TensorProto_DataType_FLOAT16);
 
-    status = graph.ReplaceInitializedTensor(bad_type);
+    status = graph.ReplaceInitializedTensor(bad_type, OrtValue());
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1728,7 +1716,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     bad_dims.add_dims(2);
     bad_dims.add_dims(1);
 
-    status = graph.ReplaceInitializedTensor(bad_dims);
+    status = graph.ReplaceInitializedTensor(bad_dims, OrtValue());
     ASSERT_FALSE(status.IsOK());
   }
 
@@ -1738,7 +1726,7 @@ TEST_F(GraphTest, ReplaceInitializedTensor) {
     valid_replacement.add_int32_data(3);
     valid_replacement.add_int32_data(4);
 
-    status = graph.ReplaceInitializedTensor(valid_replacement);
+    status = graph.ReplaceInitializedTensor(valid_replacement, OrtValue());
     ASSERT_TRUE(status.IsOK()) << status.ErrorMessage();
 
     auto tensor_data_matches = [](const Graph& graph, const ONNX_NAMESPACE::TensorProto& a,
@@ -2193,6 +2181,16 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsFalseForNonExistentInitializer) {
   EXPECT_FALSE(graph.GetOrtValueInitializer("does_not_exist", retrieved, false));
 }
 
+namespace {
+// Casing only, do not add members
+class NodeWrapper : public Node {
+ public:
+  Node::Definitions& MutableDefinitions() {
+    return Node::MutableDefinitions();
+  }
+};
+}  // namespace
+
 TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueFromOuterScope) {
   // Create parent graph with initializer
   Model parent_model("ParentModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {}, {},
@@ -2218,13 +2216,14 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueFromOuterScope) {
 
   // Create parent node with a subgraph attribute
   auto& parent_node = parent_graph.AddNode("parent_node", "If", "parent node with subgraph", inputs, outputs);
-
   // Add the initializer name to the parent node's implicit input defs
   NodeArg* outer_init_nodearg = parent_graph.GetNodeArg(outer_init_name);
   ASSERT_NE(outer_init_nodearg, nullptr);
-  PopulateImplicitDefs defs;
-  defs.implicit_defs.push_back(outer_init_nodearg);
-  parent_node.TestMethod(defs);
+  {
+    // Test hack to tweak an internal structure.
+    auto& node_wrapper = static_cast<NodeWrapper&>(parent_node);
+    node_wrapper.MutableDefinitions().implicit_input_defs.push_back(outer_init_nodearg);
+  }
 
   // Create subgraph
   GraphProto subgraph_proto;

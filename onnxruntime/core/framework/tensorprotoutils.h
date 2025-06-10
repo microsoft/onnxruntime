@@ -159,8 +159,11 @@ common::Status CreateTensorFromTensorProto(const Env& env, const std::filesystem
 /// and TensorProto will contain a kTensorProtoMemoryAddressTag reference as a result of
 /// TensorToTensorProto() below. This is because shape inferencing code in onnx for
 /// like Reshape parses weights data and it needs to be in the TensorProto.
-/// The value of 127 was chosen empirically to be the smallest value that that is required
-/// for onnx shape inference to work correctly.
+/// The value of 127 was chosen empirically to be the smallest value that is required
+/// for onnx shape inference to work correctly. The value also takes into account the overhead
+/// imposed by having external data. The external data requires location/offset/filename so for
+/// small values it is better to keep the data inline in the TensorProto, even if they are not used
+/// in shape inferencing, it is cheaper to inline them.
 constexpr const size_t kSmallTensorExternalDataThreshold = 127;  // 127 bytes
 
 /**

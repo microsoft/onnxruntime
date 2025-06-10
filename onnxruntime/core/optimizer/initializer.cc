@@ -133,6 +133,26 @@ struct TensorToProtoFP16 {
 };
 
 template <typename T>
+struct TensorToFP16 {
+  void operator()(const Tensor& data, Tensor& dst) const {
+    ToFp16<T> to_fp16;
+    auto span = data.DataAsSpan<T>();
+    auto* dst_data = dst.MutableData<MLFloat16>();
+    for (const auto& v : span) {
+      *dst_data++ = MLFloat16::FromBits(to_fp16(v));
+    }
+  }
+};
+
+template <>
+struct TensorToFP16<float> {
+  void operator()(const Tensor& data, Tensor& dst) const {
+    const auto count = narrow<size_t>(data.Shape().Size());
+    MlasConvertFloatToHalfBuffer(data.Data<float>(), dst.MutableData<MLFloat16>(), count);
+  }
+};
+
+template <typename T>
 struct ToBFloat16;
 
 template <>
@@ -170,6 +190,18 @@ struct TensorToProtoBFloat16 {
 };
 
 template <typename T>
+struct TensorToBFloat16 {
+  void operator()(const Tensor& data, Tensor& dst) const {
+    ToBFloat16<T> to_bfloat16;
+    auto span = data.DataAsSpan<T>();
+    auto* dst_data = dst.MutableData<BFloat16>();
+    for (const auto& v : span) {
+      *dst_data++ = BFloat16::FromBits(to_bfloat16(v));
+    }
+  }
+};
+
+template <typename T>
 struct ToFloat32;
 
 template <>
@@ -201,27 +233,24 @@ struct ToFloat32<MLFloat16> {
 };
 
 template <typename T>
-struct TensorToProtoFloat32 {
-  void operator()(const Tensor& data, ONNX_NAMESPACE::TensorProto& proto, onnxruntime::concurrency::ThreadPool* /*thread_pool*/) const {
-    auto span = data.DataAsSpan<T>();
+struct TensorToFloat32 {
+  void operator()(const Tensor& src, Tensor& dst, onnxruntime::concurrency::ThreadPool* /*thread_pool*/) const {
+    auto src_span = src.DataAsSpan<T>();
+    auto* dst_data = dst.MutableData<float>();
     ToFloat32<T> to_float32;
-    for (const auto& v : span) {
-      proto.add_float_data(to_float32(v));
+    for (const auto& v : src_span) {
+      *dst_data++ = to_float32(v);
     }
   }
 };
 
 template <>
-struct TensorToProtoFloat32<MLFloat16> {
+struct TensorToFloat32<MLFloat16> {
   void operator()(const Tensor& data,
-                  ONNX_NAMESPACE::TensorProto& proto,
+                  Tensor& dst,
                   onnxruntime::concurrency::ThreadPool* thread_pool) const {
-    auto source = reinterpret_cast<const MLFloat16*>(data.DataRaw());
-    auto count = size_t(data.SizeInBytes() / sizeof(MLFloat16));
-    auto destination_mem = std::make_unique<float[]>(count);
-    auto destination = destination_mem.get();
-    MlasConvertHalfToFloatBufferInParallel(source, destination, count, thread_pool);
-    utils::SetRawDataInTensorProto(proto, destination, count * sizeof(float));
+    const auto count = narrow<size_t>(data.Shape().Size());
+    MlasConvertHalfToFloatBufferInParallel(data.Data<MLFloat16>(), dst.MutableData<float>(), count, thread_pool);
   }
 };
 
@@ -255,12 +284,40 @@ ONNX_NAMESPACE::TensorProto Initializer::ToBFloat16(const std::string& name) con
   return tensor_proto;
 }
 
-ONNX_NAMESPACE::TensorProto Initializer::ToFloat32(const std::string& name, onnxruntime::concurrency::ThreadPool* thread_pool) const {
-  ONNX_NAMESPACE::TensorProto tensor_proto;
-  SetNameDims(name, data_->Shape().GetDims(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT, tensor_proto);
-  utils::MLTypeCallDispatcher<float, double, BFloat16, MLFloat16> t_disp(data_->GetElementType());
-  t_disp.Invoke<TensorToProtoFloat32>(*data_, tensor_proto, thread_pool);
-  return tensor_proto;
+OrtValue onnxruntime::Initializer::ToFP16() const {
+  if (data_->IsDataType<MLFloat16>()) {
+    return ort_value_;
+  }
+  OrtValue result;
+  auto tensor = Tensor(DataTypeImpl::GetType<MLFloat16>(), data_->Shape().GetDims(), CPUAllocator::DefaultInstance());
+  Tensor::InitOrtValue(std::move(tensor), result);
+  utils::MLTypeCallDispatcher<float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToFP16>(*data_, *result.GetMutable<Tensor>());
+  return result;
+}
+
+OrtValue Initializer::ToBFloat16() const {
+  if (data_->IsDataType<BFloat16>()) {
+    return ort_value_;
+  }
+  OrtValue result;
+  auto tensor = Tensor(DataTypeImpl::GetType<BFloat16>(), data_->Shape().GetDims(), CPUAllocator::DefaultInstance());
+  Tensor::InitOrtValue(std::move(tensor), result);
+  utils::MLTypeCallDispatcher<float, double> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToBFloat16>(*data_, *result.GetMutable<Tensor>());
+  return result;
+}
+
+OrtValue Initializer::ToFloat32(onnxruntime::concurrency::ThreadPool* thread_pool) const {
+  if (data_->IsDataType<float>()) {
+    return ort_value_;
+  }
+  OrtValue result;
+  auto tensor = Tensor(DataTypeImpl::GetType<float>(), data_->Shape().GetDims(), CPUAllocator::DefaultInstance());
+  Tensor::InitOrtValue(std::move(tensor), result);
+  utils::MLTypeCallDispatcher<double, BFloat16, MLFloat16> t_disp(data_->GetElementType());
+  t_disp.Invoke<TensorToFloat32>(*data_, *result.GetMutable<Tensor>(), thread_pool);
+  return result;
 }
 
 namespace {

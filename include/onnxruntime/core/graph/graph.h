@@ -567,8 +567,12 @@ class Node {
   friend class Graph;
   Node(NodeIndex index, Graph& graph) : index_(index), graph_(&graph), can_be_saved_(true) {}
 
-  template <class X>
-  void TestMethod(X&);
+ protected:
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
+  // made protected to facilitate testing
+  Definitions& MutableDefinitions() noexcept;
+#endif
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Node);
@@ -591,9 +595,6 @@ class Node {
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  // internal only method to allow selected classes to directly alter the input/output definitions and arg counts
-  Definitions& MutableDefinitions() noexcept;
-
   // internal only method to allow selected classes to directly alter the links between nodes.
   Relationships& MutableRelationships() noexcept;
 
@@ -721,14 +722,6 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   /** Gets the Graph description. */
   void SetDescription(const std::string& description);
-
-  /** Replaces the initializer tensor with the same name as the given initializer tensor.
-  The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
-
-  Note: This currently has linear time complexity. There is room for improvement but it would likely require changes to
-  how initializer tensors are stored and tracked.
-  */
-  common::Status ReplaceInitializedTensor(const ONNX_NAMESPACE::TensorProto& new_initializer);
 
   /** Replaces the initializer tensor with the same name as the given initializer tensor.
   The replacement initializer tensor must have the same type and shape as the existing initializer tensor.
@@ -1670,7 +1663,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   common::Status SetOuterScopeNodeArgs(const std::unordered_set<std::string>& outer_scope_node_args);
 
   /// <summary>
-  /// Replace intializers with new_initializer.
+  /// Replace initializer with new_initializer.
   /// </summary>
   /// <param name="new_initializer"></param>
   /// <param name="ort_value">ort_value with data, may be empty</param>

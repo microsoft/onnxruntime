@@ -53,11 +53,14 @@ class Initializer final {
   void ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const;
 
 #if !defined(ORT_EXTENDED_MINIMAL_BUILD)
+  // XXX: Below two used only in training, convert to OrtValue result
   ONNX_NAMESPACE::TensorProto ToFP16(const std::string& name) const;
-
   ONNX_NAMESPACE::TensorProto ToBFloat16(const std::string& name) const;
 
-  ONNX_NAMESPACE::TensorProto ToFloat32(const std::string& name, onnxruntime::concurrency::ThreadPool* thread_pool = nullptr) const;
+  OrtValue ToFP16() const;
+  OrtValue ToBFloat16() const;
+  OrtValue ToFloat32(onnxruntime::concurrency::ThreadPool* thread_pool = nullptr) const;
+
 #endif  // ORT_EXTENDED_MINIMAL_BUILD
   int data_type() const {
     return data_->GetElementType();
