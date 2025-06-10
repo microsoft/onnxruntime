@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#if !defined(__wasm__)
 #include <tuple>
+#endif
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 
@@ -9,8 +11,40 @@ namespace onnxruntime {
 namespace contrib {
 namespace webgpu {
 
-// The elements' sequence must match the enum class SubgroupMatrixComponentType in webgpu_cpp.h
+#if !defined(__wasm__)
 constexpr std::string_view ComponentTypeName[] = {"unknown", "f32", "f16", "u32", "i32"};
+template <std::size_t N>
+constexpr bool ValidateComponentTypeName(const std::array<wgpu::SubgroupMatrixComponentType, N>& component_type) {
+  bool matched = true;
+  for (auto type : component_type) {
+    switch (type) {
+      case wgpu::SubgroupMatrixComponentType::F32:
+        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::F32)] == "f32";
+        break;
+      case wgpu::SubgroupMatrixComponentType::F16:
+        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::F16)] == "f16";
+        break;
+      case wgpu::SubgroupMatrixComponentType::U32:
+        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::U32)] == "u32";
+        break;
+      case wgpu::SubgroupMatrixComponentType::I32:
+        matched = ComponentTypeName[static_cast<uint32_t>(wgpu::SubgroupMatrixComponentType::I32)] == "i32";
+        break;
+      default:
+        return false;
+    }
+
+    if (!matched) {
+      return matched;
+    }
+  }
+
+  return matched;
+}
+static_assert(ValidateComponentTypeName<4>({wgpu::SubgroupMatrixComponentType::F32,
+                                            wgpu::SubgroupMatrixComponentType::F16, wgpu::SubgroupMatrixComponentType::U32,
+                                            wgpu::SubgroupMatrixComponentType::I32}),
+              "The elements' sequence of ComponentTypeName array do not match wgpu::SubgroupMatrixComponentType");
 
 // std::tuple<architecture, backendType, componentType, resultComponentType, M, N, K, subgroupMinSize, subgroupMaxSize>
 static const std::tuple<std::string_view, wgpu::BackendType, wgpu::SubgroupMatrixComponentType, wgpu::SubgroupMatrixComponentType,
@@ -180,6 +214,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
 
   return Status::OK();
 }
+#endif
 
 Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits) {
   // tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
@@ -382,9 +417,13 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 
   if (!vendor_.compare("apple")) {
     return GenerateShaderCodeOnApple(shader, nbits_);
-  } else if (!vendor_.compare("intel")) {
+  }
+#if !defined(__wasm__)
+  else if (!vendor_.compare("intel")) {
     return GenerateShaderCodeOnIntel(shader, nbits_, config_index_);
-  } else {
+  }
+#endif
+  else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
   }
@@ -404,10 +443,12 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
   SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor};
+#if !defined(__wasm__)
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     tile_size_a = 64;
     work_group_size = 256;
   }
+#endif
   mul_program.SetWorkgroupSize(work_group_size);
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
@@ -445,9 +486,12 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
       // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
       // FP32 is around 7s.
       subgroup_matrix_config_matched = accuracy_level == 4;
-    } else if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+    }
+#if !defined(__wasm__)
+    else if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
       subgroup_matrix_config_matched = IsSubgroupMatrixConfigSupportedOnIntel(context, config_index);
     }
+#endif
   }
 
   return subgroup_matrix_config_matched &&
