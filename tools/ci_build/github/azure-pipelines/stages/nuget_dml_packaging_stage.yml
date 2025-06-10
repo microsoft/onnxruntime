@@ -10,7 +10,6 @@ stages:
 - stage: NuGet_Packaging_DML
   dependsOn:
   - Windows_CI_GPU_DML_Dev
-  - Windows_CI_GPU_DML_Dev_x86
   - Windows_CI_GPU_DML_Dev_arm64
   condition: succeeded()
   jobs:
@@ -50,16 +49,7 @@ stages:
                 rename %%~ni.nupkg %%~ni.zip
                 unzip %%~ni.zip -d %%~ni
                 del /Q %%~ni.zip
-
-                unzip win-dml-x86.zip -d win-x86
-                mkdir %%~ni\runtimes\win-x86
-                mkdir %%~ni\runtimes\win-x86\native
-
-                move win-x86\runtimes\win-x86\native\onnxruntime.dll %%~ni\runtimes\win-x86\native\onnxruntime.dll
-                move win-x86\runtimes\win-x86\native\onnxruntime.lib %%~ni\runtimes\win-x86\native\onnxruntime.lib
-                move win-x86\runtimes\win-x86\native\onnxruntime.pdb %%~ni\runtimes\win-x86\native\onnxruntime.pdb
-                move win-x86\runtimes\win-x86\native\onnxruntime_providers_shared.dll %%~ni\runtimes\win-x86\native\onnxruntime_providers_shared.dll
-
+        
                 unzip win-dml-arm64.zip -d win-arm64
                 mkdir %%~ni\runtimes\win-arm64
                 mkdir %%~ni\runtimes\win-arm64\native
@@ -91,7 +81,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.DirectML*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,win-arm64'
+        PlatformsSupported: 'win-x64,win-arm64'
         VerifyNugetSigning: ${{ parameters.DoEsrp }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
 
