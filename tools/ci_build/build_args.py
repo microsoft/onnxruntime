@@ -424,7 +424,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
         action="store_true",
         help="[Windows cross-compiling] Create ARM64X Binary.",
     )
-    
+
     parser.add_argument(
         "--enable_pix_capture", action="store_true", help="Enable Pix support for GPU debugging (requires D3D12)."
     )
