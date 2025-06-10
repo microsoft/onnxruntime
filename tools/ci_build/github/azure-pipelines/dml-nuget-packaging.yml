@@ -16,11 +16,6 @@ parameters:
   type: boolean
   default: false
 
-- name: IsReleaseBuild
-  displayName: Is a release build? Set it to true if you are doing an ONNX Runtime release.
-  type: boolean
-  default: false
-
 - name: PreReleaseVersionSuffixString
   displayName: Suffix added to pre-release package version. Only used if IsReleaseBuild is true. Denotes the type of pre-release package.
   type: string
