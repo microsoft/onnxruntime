@@ -1056,49 +1056,15 @@ MlasComputeTanh(
 // Transpose routines.
 //
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
+    const DataType* Input,
+    DataType* Output,
     size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const int8_t* Input,
-    int8_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -1451,6 +1417,17 @@ MlasConvertHalfToFloatBuffer(
     const MLAS_FP16* Source,
     float* Destination,
     size_t Count
+);
+
+#define MLAS_MIN_TENSOR_SIZE_FOR_HALF_TO_FLOAT_CONVERSION_IN_PARALLEL 128000
+
+void
+MLASCALL
+MlasConvertHalfToFloatBufferInParallel(
+    const MLAS_FP16* Source,
+    float* Destination,
+    size_t Count,
+    MLAS_THREADPOOL* ThreadPool
 );
 
 void
@@ -1940,20 +1917,22 @@ MlasConvDepthwise(
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     );
 
-
 inline
 void
 MlasTranspose(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MlasTranspose(
         reinterpret_cast<const uint16_t*>(Input),
         reinterpret_cast<uint16_t*>(Output),
-        M, N);
+        M,
+        N,
+        ThreadPool);
 }
 
 

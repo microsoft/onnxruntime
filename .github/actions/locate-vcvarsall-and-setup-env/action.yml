@@ -14,10 +14,10 @@ runs:
   steps:
 
     - name: Setup VCPKG
-      uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+      uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
       with:
-        vcpkg-version: '2025.03.19'
-        vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+        vcpkg-version: '2025.04.09'
+        vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
         cmake-version: '3.31.6'
         cmake-hash: '0f1584e8666cf4a65ec514bd02afe281caabf1d45d2c963f3151c41484f457386aa03273ab25776a670be02725354ce0b46f3a5121857416da37366342a833a0'
         add-cmake-to-path: 'true'

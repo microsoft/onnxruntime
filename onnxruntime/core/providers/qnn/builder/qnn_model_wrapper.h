@@ -30,6 +30,7 @@ struct TensorInfo {
 
 struct ModelSettings {
   bool offload_graph_io_quantization = false;
+  bool htp_shared_memory = false;
 };
 
 class QnnModelWrapper {
@@ -278,7 +279,7 @@ class QnnModelWrapper {
                                    std::vector<Qnn_Tensor_t>& tensor_wrappers,
                                    bool do_op_validation = false);
 
-  bool IsQnnParamExit(const std::string& param_tensor_name) const;
+  bool QnnParamExists(const std::string& param_tensor_name) const;
 
   bool CreateQnnParamTensors(const std::string& qnn_node_name,
                              const std::vector<std::string>& param_tensor_names,

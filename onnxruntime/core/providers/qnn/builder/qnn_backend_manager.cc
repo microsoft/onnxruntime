@@ -1,3 +1,4 @@
+//
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
@@ -8,14 +9,16 @@
 #include <string>
 #include "QnnOpDef.h"
 #include "CPU/QnnCpuCommon.h"
-// TODO: not exist for Windows yet
-// #include "GPU/QnnGpuCommon.h"
+#include "GPU/QnnGpuCommon.h"
 #include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
 #include "HTP/QnnHtpSystemContext.h"
+#include "IR/QnnIrCommon.h"
+#include "IR/QnnIrGraph.h"
 #include "Saver/QnnSaver.h"
+#include "Saver/QnnSaverCommon.h"
 #include <gsl/gsl>
 
 #include "core/providers/qnn/ort_api.h"
@@ -50,6 +53,93 @@ static const char* DlError() {
 #else
   return ::dlerror();
 #endif
+}
+
+// Workaround for a missing comma in QNN_IR_GRAPH_CUSTOM_CONFIG_INIT.
+static QnnIrGraph_CustomConfig_t EmptyIrGraphConfig() {
+  return {
+      QNN_IR_GRAPH_CONFIG_OPTION_SERIALIZATION, {QNN_IR_GRAPH_SERIALIZATION_TYPE_FLAT_BUFFER, ""}};
+}
+
+class QnnIrConfig : public QnnSerializerConfig {
+ public:
+  QnnIrConfig(std::string backend_path, std::string dlc_dir)
+      : QnnSerializerConfig(std::move(backend_path)), dlc_dir_(std::move(dlc_dir)), configs_builder_(MakeConfigsBuilder()) {
+  }
+
+  const QnnGraph_Config_t** Configure() override {
+    auto configs_builder = MakeConfigsBuilder();
+
+    std::filesystem::path dlc_path = (dlc_dir_ / (GetGraphName() + ".dlc"));
+    std::string dlc_path_str = dlc_path.string();
+    gsl::not_null<QnnIrGraph_CustomConfig_t*> dlc_path_config = configs_builder.PushCustomConfig();
+    dlc_path_config->option = QNN_IR_GRAPH_CONFIG_OPTION_SERIALIZATION;
+    dlc_path_config->serializationOption.serializationType = QNN_IR_GRAPH_SERIALIZATION_TYPE_FLAT_BUFFER;
+    dlc_path_config->serializationOption.outputPath = dlc_path_str.c_str();
+
+    gsl::not_null<QnnGraph_Config_t*> dlc_path_custom_config = configs_builder.PushConfig();
+    dlc_path_custom_config->option = QNN_GRAPH_CONFIG_OPTION_CUSTOM;
+    dlc_path_custom_config->customConfig = dlc_path_config;
+
+    std::filesystem::create_directories(dlc_path);
+
+    // Keep the pointer to dlc_path_str's null-terminated string alive.
+    std::swap(dlc_path_str, dlc_path_str_);
+
+    std::swap(configs_builder, configs_builder_);
+    return configs_builder_.GetQnnConfigs();
+  }
+
+  bool SupportsArbitraryGraphConfigs() const override {
+    return false;
+  }
+
+ private:
+  static QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t> MakeConfigsBuilder() {
+    return QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t>(QNN_GRAPH_CONFIG_INIT, EmptyIrGraphConfig());
+  }
+
+  std::filesystem::path dlc_dir_;
+  std::string dlc_path_str_;
+  QnnConfigsBuilder<QnnGraph_Config_t, QnnIrGraph_CustomConfig_t> configs_builder_;
+};
+
+class QnnSaverConfig : public QnnSerializerConfig {
+ public:
+  QnnSaverConfig(std::string backend_path) : QnnSerializerConfig(std::move(backend_path)) {}
+
+  const QnnGraph_Config_t** Configure() override {
+    return nullptr;
+  }
+
+  bool SupportsArbitraryGraphConfigs() const override {
+    return true;
+  }
+};
+
+QnnSerializerConfig::~QnnSerializerConfig() = default;
+
+QnnSerializerConfig::QnnSerializerConfig(std::string backend_path)
+    : backend_path_(std::move(backend_path)) {}
+
+std::unique_ptr<QnnSerializerConfig> QnnSerializerConfig::CreateIr(std::string backend_path, std::string dlc_dir) {
+  return std::make_unique<QnnIrConfig>(std::move(backend_path), std::move(dlc_dir));
+}
+
+std::unique_ptr<QnnSerializerConfig> QnnSerializerConfig::CreateSaver(std::string backend_path) {
+  return std::make_unique<QnnSaverConfig>(std::move(backend_path));
+}
+
+const std::string& QnnSerializerConfig::GetBackendPath() const {
+  return backend_path_;
+}
+
+const std::string& QnnSerializerConfig::GetGraphName() const {
+  return graph_name_;
+}
+
+void QnnSerializerConfig::SetGraphName(std::string graph_name) {
+  graph_name_ = std::move(graph_name);
 }
 
 Status ReadBinaryFromFile(const std::string& file_path, uint8_t* buffer, size_t buffer_size) {
@@ -171,15 +261,18 @@ void QnnBackendManager::SetQnnBackendType(uint32_t backend_id) {
     case QNN_BACKEND_ID_CPU:
       qnn_backend_type_ = QnnBackendType::CPU;
       break;
-      // TODO: update once it's ready for Widows
-      // case QNN_BACKEND_ID_GPU:
-      //  qnn_backend_type_ = QnnBackendType::GPU;
-      //  break;
+    case QNN_BACKEND_ID_GPU:
+      qnn_backend_type_ = QnnBackendType::GPU;
+      break;
     case QNN_BACKEND_ID_DSP:
       qnn_backend_type_ = QnnBackendType::DSP;
       break;
     case QNN_BACKEND_ID_HTP:
       qnn_backend_type_ = QnnBackendType::HTP;
+      break;
+    case QNN_BACKEND_ID_IR:
+    case QNN_BACKEND_ID_SAVER:
+      qnn_backend_type_ = QnnBackendType::SERIALIZER;
       break;
     default:
       qnn_backend_type_ = QnnBackendType::CPU;
@@ -211,13 +304,19 @@ Status QnnBackendManager::LoadBackend() {
   return Status::OK();
 }
 
+QnnSerializerConfig* QnnBackendManager::GetQnnSerializerConfig() {
+  return qnn_serializer_config_.get();
+}
+
 // Loads the intended backend (e.g., HTP, CPU, etc) to get its type, and then
-// sets QNN Saver as the active backend. QNN op builders will still see the intended backend (e.g., HTP)
-// as the backend type to ensure they emit the expected QNN API calls.
+// sets QnnSaver or QnnIr as the active backend. QNN op builders will still see the intended backend
+// (e.g., HTP) as the backend type to ensure they emit the expected QNN API calls. Note, however, that
+// calls to QnnBackend_validateOpConfig will be to the saver backend, not the "intended" one.
 //
-// QNN Saver is a "debugging" backend that serializes all QNN API calls (and weights) into local files.
+// QnnSaver and QnnIr are "debugging" backends that serializes all QNN API calls (and weights) into
+// local files: Saver dumps to C++ sources and Ir to .dlc archives.
 // This information can be used to debug issues by replaying QNN API calls with another backend.
-Status QnnBackendManager::LoadQnnSaverBackend() {
+Status QnnBackendManager::LoadQnnSerializerBackend() {
   void* backend_lib_handle = nullptr;
 
   // Helper that unloads the intended backend library handle when the `unload_backend_lib` variable
@@ -247,25 +346,25 @@ Status QnnBackendManager::LoadQnnSaverBackend() {
   auto backend_id = backend_interface_provider->backendId;
   SetQnnBackendType(backend_id);
 
-  // Load the QNN Saver backend and set it as the activate backend.
-  QnnInterface_t* saver_interface_provider{nullptr};
+  // Load the serializer backend and set it as the activate backend.
+  QnnInterface_t* serializer_interface_provider{nullptr};
   auto saver_rt = GetQnnInterfaceProvider<QnnInterfaceGetProvidersFn_t,
-                                          QnnInterface_t>(qnn_saver_path_.c_str(),
+                                          QnnInterface_t>(qnn_serializer_config_->GetBackendPath().c_str(),
                                                           "QnnInterface_getProviders",
-                                                          &backend_lib_handle_,  // NOTE: QNN Saver library handle is set
+                                                          &backend_lib_handle_,  // NOTE: QnnSaver/Ir library handle is set
                                                           {QNN_API_VERSION_MAJOR,
                                                            QNN_API_VERSION_MINOR,
                                                            QNN_API_VERSION_PATCH},
-                                                          &saver_interface_provider);
+                                                          &serializer_interface_provider);
   ORT_RETURN_IF_ERROR(saver_rt);
-  qnn_interface_ = saver_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QNN Saver will provide the interfaces
+  qnn_interface_ = serializer_interface_provider->QNN_INTERFACE_VER_NAME;  // NOTE: QnnSaver/Ir will provide the interfaces
 
   Qnn_Version_t backend_interface_version = GetQnnInterfaceApiVersion(backend_interface_provider);
-  Qnn_Version_t saver_interface_version = GetQnnInterfaceApiVersion(saver_interface_provider);
+  Qnn_Version_t serializer_interface_version = GetQnnInterfaceApiVersion(serializer_interface_provider);
 
-  LOGS_DEFAULT(INFO) << "Using QNN Saver version: " << saver_interface_version.major << "."
-                     << saver_interface_version.minor << "." << saver_interface_version.patch
-                     << " provider name : " << saver_interface_provider->providerName;
+  LOGS_DEFAULT(INFO) << "Using QnnSaver/Ir version: " << serializer_interface_version.major << "."
+                     << serializer_interface_version.minor << "." << serializer_interface_version.patch
+                     << " provider name : " << serializer_interface_provider->providerName;
 
   LOGS_DEFAULT(INFO) << "Intended backend provider name: " << backend_interface_provider->providerName
                      << " backend id: " << backend_id
@@ -371,8 +470,16 @@ Status QnnBackendManager::InitializeQnnLog(const logging::Logger& logger) {
 QnnLog_Level_t QnnBackendManager::MapOrtSeverityToQNNLogLevel(logging::Severity ort_log_level) {
   // Map ORT log severity to Qnn log level
   switch (ort_log_level) {
-    case logging::Severity::kVERBOSE:
-      return QNN_LOG_LEVEL_VERBOSE;
+    case logging::Severity::kVERBOSE: {
+      switch ((GetQnnBackendType())) {
+        case QnnBackendType::GPU:
+          // Currently GPU needs this log level to work.
+          // This switch will be removed once this is resolved.
+          return QNN_LOG_LEVEL_DEBUG;
+        default:
+          return QNN_LOG_LEVEL_VERBOSE;
+      }
+    }
     case logging::Severity::kINFO:
       return QNN_LOG_LEVEL_INFO;
     case logging::Severity::kWARNING:
@@ -617,16 +724,36 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
 
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
+
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
                                                       nullptr};
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
-  bool is_npu_backend = IsNpuBackend(GetQnnBackendType());
+
+  const QnnContext_Config_t** configs = nullptr;
+  switch (GetQnnBackendType()) {
+    case QnnBackendType::HTP:
+    case QnnBackendType::DSP:
+      configs = npu_context_configs;
+      break;
+    case QnnBackendType::GPU:
+    case QnnBackendType::SERIALIZER:
+      configs = nullptr;
+      break;
+    default:
+      configs = empty_context_configs;
+      break;
+  }
+
+  // Not all serialization backends allow for hardware configs to be applied.
+  if (qnn_serializer_config_ && !qnn_serializer_config_->SupportsArbitraryGraphConfigs()) {
+    configs = nullptr;
+  }
 
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = qnn_interface_.contextCreate(backend_handle_,
                                                           device_handle_,
-                                                          is_npu_backend ? npu_context_configs : empty_context_configs,
+                                                          configs,
                                                           &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result));
@@ -883,10 +1010,10 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   }
 
   Status status = Status::OK();
-  if (qnn_saver_path_.empty()) {
+  if (!qnn_serializer_config_) {
     status = LoadBackend();
   } else {
-    status = LoadQnnSaverBackend();
+    status = LoadQnnSerializerBackend();
   }
   if (status.IsOK()) {
     LOGS(logger, VERBOSE) << "LoadBackend succeed.";
@@ -1259,14 +1386,14 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
   }
 
   ORT_RETURN_IF(!tracelogging_provider_ep_enabled && profiling_file_path_.empty(),
-                "Need to specify a cvs file via provider option profiling_file_path if ETW not enabled.");
+                "Need to specify a CSV file via provider option profiling_file_path if ETW not enabled.");
 
   ORT_RETURN_IF(nullptr == profile_backend_handle_, "Backend profile handle not valid.");
 
   const QnnProfile_EventId_t* profile_events{nullptr};
   uint32_t num_events{0};
   Qnn_ErrorHandle_t result = qnn_interface_.profileGetEvents(profile_backend_handle_, &profile_events, &num_events);
-  if (!qnn_saver_path_.empty()) {  // Using QNN Saver backend
+  if (qnn_serializer_config_) {  // Using QNN Saver or IR backend
     // QNN SDK 2.28.2 returns QNN_SAVER_ERROR_DUMMY_RETVALUE, but previous QNN versions return QNN_PROFILE_NO_ERROR.
     // We accept both values.
     ORT_RETURN_IF(QNN_PROFILE_NO_ERROR != result && QNN_SAVER_ERROR_DUMMY_RETVALUE != result,
@@ -1290,7 +1417,7 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
     }
 
     std::ofstream outfile;
-    if (!tracelogging_provider_ep_enabled) {
+    if (!profiling_file_path_.empty()) {
       // Write to CSV in append mode
       std::ifstream infile(profiling_file_path_.c_str());
       bool exists = infile.good();
@@ -1313,10 +1440,11 @@ Status QnnBackendManager::ExtractBackendProfilingInfo() {
                                     tracelogging_provider_ep_enabled));
     }
 
-    if (!tracelogging_provider_ep_enabled) {
-      outfile.close();
-      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to qnn-profiling-data.csv";
-    } else {
+    if (outfile) {
+      LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to file ("
+                              << profiling_file_path_ << ")";
+    }
+    if (tracelogging_provider_ep_enabled) {
       LOGS(*logger_, VERBOSE) << "Wrote QNN profiling events (" << num_events << ") to ETW";
     }
   }
@@ -1378,11 +1506,7 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
   std::string message = GetEventTypeString(event_data.type);
   std::string unit = GetUnitString(event_data.unit);
 
-#ifndef _WIN32
-  tracelogging_provider_ep_enabled = false;
-#endif
-
-  if (!tracelogging_provider_ep_enabled) {
+  if (outfile) {
     outfile << "UNKNOWN"
             << ","
             << message << ","
@@ -1392,7 +1516,9 @@ Status QnnBackendManager::ExtractProfilingEventBasic(
             << ","
             << eventLevel << ","
             << (event_data.identifier ? event_data.identifier : "NULL") << "\n";
-  } else {
+  }
+
+  if (tracelogging_provider_ep_enabled) {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         (uint64_t)0,
@@ -1422,11 +1548,7 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
   std::string message = GetEventTypeString(event_data_extended.v1.type);
   std::string unit = GetUnitString(event_data_extended.v1.unit);
 
-#ifndef _WIN32
-  tracelogging_provider_ep_enabled = false;
-#endif
-
-  if (!tracelogging_provider_ep_enabled) {
+  if (outfile) {
     if (event_data_extended.version == QNN_PROFILE_DATA_VERSION_1) {
       outfile << event_data_extended.v1.timestamp << ","
               << message << ","
@@ -1437,7 +1559,9 @@ Status QnnBackendManager::ExtractProfilingEventExtended(
               << eventLevel << ","
               << (event_data_extended.v1.identifier ? event_data_extended.v1.identifier : "NULL") << "\n";
     }
-  } else {
+  }
+
+  if (tracelogging_provider_ep_enabled) {
 #ifdef _WIN32
     LogQnnProfileEventAsTraceLogging(
         event_data_extended.v1.timestamp,
@@ -1691,13 +1815,9 @@ Status QnnBackendManager::UnloadLib(void* handle) {
 #ifdef _WIN32
   HMODULE mod = static_cast<HMODULE>(handle);
 
-// TODO: QNN SDK 2.17 crashes for some models/tests on Windows x64 when unloading library.
-// Example: ReductionOpTest.ArgMax
-#if !defined(_M_AMD64)
   if (FreeLibrary(mod) == 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to free library.");
   }
-#endif  // !defined(_M_AMD64)
   mod_handles_.erase(mod);
 #else
   auto rt = ::dlclose(handle);
@@ -1829,9 +1949,10 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
   if (did_register) {
     HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
         [&logger = *logger_,
+         shared_memory_address,
          weak_backend_manager = weak_from_this(),
          weak_context_handle_record = std::weak_ptr{context_handle_record}](
-            void* shared_memory_address) {
+            void* /* allocation_base_address */) {
           // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
           auto backend_manager = weak_backend_manager.lock();
           if (!backend_manager) {

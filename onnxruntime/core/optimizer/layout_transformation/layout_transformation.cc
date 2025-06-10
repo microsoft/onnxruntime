@@ -90,13 +90,28 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
   }
 #endif
 
-#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
+// TODO: We don't need to check USE_CUDA || USE_CUDA_PROVIDER_INTERFACE in this function because we're already
+// checking if the node is assigned to the desired EP (e.g., CUDA EP). We should only need to check
+// ENABLE_CUDA_NHWC_OPS.
+#if (defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)) && ENABLE_CUDA_NHWC_OPS
   if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
     if (layout_sensitive_ops.count(node.OpType())) {
       const auto& cuda_nhwc_ops = GetCUDALayoutSensitiveOps();
       if (!cuda_nhwc_ops.count(node.OpType())) {
         return false;
       }
+    }
+  }
+#endif
+
+// TODO: We don't really need EP pre-processor macros in this function because we're already checking if the
+// node is assigned to the desired EP (e.g., QNN EP). There's nothing about this code that absolutely requires
+// conditional compilation.
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+  if (node.GetExecutionProviderType() == kQnnExecutionProvider) {
+    if (node.OpType() == "Upsample") {
+      // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
+      return true;
     }
   }
 #endif

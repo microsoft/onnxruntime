@@ -420,6 +420,7 @@ interface MLContext {
 
 interface MLOpSupportLimits {
   input: MLSupportLimits;
+  output: MLSupportLimits;
 }
 
 interface MLSupportLimits {

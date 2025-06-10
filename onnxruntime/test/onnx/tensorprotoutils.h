@@ -36,6 +36,8 @@ common::Status GetSizeInBytesFromTensorProto(const onnx::TensorProto& tensor_pro
 common::Status TensorProtoToMLValue(const onnx::TensorProto& input, const MemBuffer& m, /* out */ Ort::Value& value,
                                     OrtCallback& deleter);
 
+common::Status MLValueToTensorProto(Ort::Value& value, /* out */ onnx::TensorProto& tensor_proto);
+
 template <typename T>
 void UnpackTensor(const onnx::TensorProto& tensor, const void* raw_data, size_t raw_data_len,
                   /*out*/ T* p_data, size_t expected_size);

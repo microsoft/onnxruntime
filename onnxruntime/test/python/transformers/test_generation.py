@@ -86,9 +86,9 @@ class TestBeamSearchGpt(unittest.TestCase):
             arguments = extra_arguments.split()
 
         if is_greedy:
-            arguments.extend("--num_beams 1 --num_return_sequences 1".split())
+            arguments.extend(["--num_beams", "1", "--num_return_sequences", "1"])
         else:
-            arguments.extend("--output_sequences_score".split())
+            arguments.extend(["--output_sequences_score"])
 
         # Test CPU
         result = run(arguments, sentences=self.sentences if sentences is None else sentences)

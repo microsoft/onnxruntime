@@ -422,6 +422,10 @@ Status SessionState::PrepackConstantInitializedTensors(
   auto prepacked_constant_weights = [this, &constant_initializers_use_count, &initializers_to_share_map](
                                         bool should_cache_prepacked_weights_for_shared_initializers) -> Status {
     for (auto& node : GetGraphViewer().Nodes()) {
+      if (sess_options_.IsLoadCancellationFlagSet()) {
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                               "Weight pre-packing was canceled due to user request.");
+      }
       auto kernel = GetMutableKernel(node.Index());
       int input_idx = 0;
       for (auto& input_def : node.InputDefs()) {
@@ -1540,6 +1544,11 @@ Status SessionState::FinalizeSessionStateImpl(const std::basic_string<PATH_CHAR_
                                               Logger(),
                                               p_seq_exec_plan_);
   ORT_RETURN_IF_ERROR(status);
+
+  if (session_options.IsLoadCancellationFlagSet()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                           "SessionState finalize is canceled due to user request");
+  }
 
   // Record the allocation plan
 

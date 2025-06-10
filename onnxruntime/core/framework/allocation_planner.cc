@@ -8,6 +8,7 @@
 #include <sstream>
 #include <ctime>
 #include <iomanip>
+#include <iterator>
 #include "core/common/exceptions.h"
 #include "core/common/inlined_containers.h"
 #include "core/common/safeint.h"
@@ -139,7 +140,7 @@ class PlannerImpl {
               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan,
-              const logging::Logger& logger)
+              [[maybe_unused]] const logging::Logger& logger)
       : context_(&context),
         plan_(plan),
         parent_node_(parent_node),
@@ -149,8 +150,13 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map),
+        ort_value_name_idx_map_(ort_value_name_idx_map)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+        ,
         logger_(logger) {
+#else
+  {
+#endif
   }
 
   Status CreatePlan(
@@ -186,10 +192,9 @@ class PlannerImpl {
   InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
 
   // logger_ is not currently used in a minimal build
-#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-  [[maybe_unused]]
-#endif
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const logging::Logger& logger_;
+#endif
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
@@ -725,6 +730,25 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
+    // If the suggested_device is also CPU and default mem type, then
+    // we check which one has higher alignment and use that one if it is so.
+    // If the suggested device is CPU, but not the default mem type, then
+    // it is a CPU accessible memory device allocator. They typically have a page aligment
+    // so that would satisfy the alignment requirement of any other CPU consumers.
+    // If one device is not on CPU, we default on the one that is CPU.
+    auto determine_device = [](const OrtDevice& output_device, const OrtDevice& suggested_device) -> OrtDevice {
+      if (output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) {
+        if (output_device.MemType() == OrtDevice::MemType::DEFAULT &&
+            suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+          return (output_device.GetAlignment() >= suggested_device.GetAlignment()) ? output_device : suggested_device;
+        } else {
+          return (output_device.MemType() != OrtDevice::MemType::DEFAULT) ? output_device : suggested_device;
+        }
+      } else {
+        return (output_device.Type() == OrtDevice::CPU) ? output_device : suggested_device;
+      }
+    };
+
     InlinedHashSet<OrtValueIndex> set_node_arg_has_explicit_consumer;
 
     InlinedHashMap<OrtValueIndex, const IExecutionProvider*> map_implicitly_consumed_node_arg_to_ep;
@@ -756,6 +780,7 @@ class PlannerImpl {
         // Add location information if applicable for the provided input def
         auto process_input = [&graph_inputs, &exec_provider, &p_kernel_def, &is_implicit_input,
                               &set_node_arg_has_explicit_consumer,
+                              &determine_device,
                               &map_implicitly_consumed_node_arg_to_ep,
                               &set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers,
                               this](const NodeArg& input, size_t arg_idx) {
@@ -856,9 +881,12 @@ class PlannerImpl {
                     // we have seen
                     plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
                   } else {
-                    // Default the location to CPU
-                    plan_.SetLocation(static_cast<size_t>(index),
-                                      execution_providers_.Get(CPU)->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    // We want to minimize the amount of copies, so we want at least one
+                    // device to match or match both if they are CPU based.
+                    OrtDevice result = determine_device(
+                        already_seen_ep_for_node_arg->second->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault),
+                        exec_provider->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeDefault));
+                    plan_.SetLocation(static_cast<size_t>(index), result);
                     set_implicitly_consumed_node_arg_has_heterogenous_ep_consumers.insert(index);
                   }
                 }
@@ -881,7 +909,37 @@ class PlannerImpl {
           if (!node_output->Exists()) continue;
           OrtValueIndex index = Index(node_output->Name());
           ProcessDef(index, node_output);
-          plan_.SetLocation(static_cast<size_t>(index), exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i)));
+          OrtDevice output_device = exec_provider->GetOrtDeviceByMemType(p_kernel_def->OutputMemoryType(i));
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+          // Downstream nodes of certain providers may require a CPU accessible location override
+          // to make sure the EP does not incur an unnecessary copy.
+          // We only do it for CPU based EPs. We are not likely to encounter
+          // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
+          // However, we still ignore them.
+          if (output_device.Type() == OrtDevice::CPU &&
+              output_device.MemType() == OrtDevice::MemType::DEFAULT) {
+            const auto& output_name = node_output->Name();
+            const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
+            for (const auto* consumer : consumers) {
+              if (consumer != nullptr) {
+                const auto& ep_type = consumer->GetExecutionProviderType();
+                auto suggested_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
+                    OrtMemType::OrtMemTypeCPUInput);
+                if (suggested_device.Type() == OrtDevice::CPU &&
+                    suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+                  output_device = determine_device(output_device, suggested_device);
+                } else if (suggested_device.Type() == OrtDevice::CPU) {
+                  // Edge case: there are more than one downstream nodes that suggest their own CPU accessible
+                  // memory. In that case, we can not win them all, but the chosen device would still make it run
+                  // and reduce a number of copies for some.
+                  output_device = suggested_device;
+                  break;
+                }
+              }
+            }
+          }
+#endif
+          plan_.SetLocation(static_cast<size_t>(index), output_device);
         }
       }
     }

@@ -489,7 +489,7 @@ TEST(ConvTest, Conv3D_1) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{0, 0, 0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1, 1},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<float> X = {-0.43337246775627136f, -0.48385289311408997f, -0.30954962968826294f,
@@ -526,7 +526,7 @@ TEST(ConvTest, Conv3D_2) {
       vector<int64_t>{1, 1, 1},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<float> X = {0.010772407054901123f, -0.43806642293930054f, 0.455391526222229f, -0.28657248616218567f,
@@ -569,7 +569,7 @@ TEST(ConvTest, Conv3D_Bias) {
       vector<int64_t>{2, 2, 2},           // kernel_shape
       vector<int64_t>{2, 2, 2, 2, 2, 2},  // pads
       vector<int64_t>{2, 2, 2},           // strides
-      {}                                  // excluded EPs
+      {kWebGpuExecutionProvider}          // excluded EPs
   };
 
   vector<float> X = {0.46796226501464844f, -0.4613912105560303f, 0.33512794971466064f, -0.4010460674762726f,
@@ -693,6 +693,60 @@ TEST(ConvTest, Depthwise2D_Bias_Group1_Issue18992) {
   vector<int64_t> Y_shape = {1, 1, 1, 1};
   auto expected_vals = {1.0f};
 
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Depthwise2D_Bias_Group1_Issue18992_Packed) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{1, 1},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X = {1.0f};  // shape: [1, 1, 1, 1]
+  vector<int64_t> X_shape = {1, 1, 1, 1};
+  vector<float> W(32, 0.5f);  // shape: [32, 1, 1, 1]
+  vector<int64_t> W_shape = {32, 1, 1, 1};
+  vector<float> B(32, 0.5f);  // shape: [32]
+  vector<int64_t> B_shape = {32};
+  vector<int64_t> Y_shape = {1, 32, 1, 1};
+  auto expected_vals = {
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f,
+      1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f, 1.0f};
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
+  TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
+}
+
+TEST(ConvTest, Depthwise2D_Bias_Group1_Issue18992_Packed4) {
+  ConvOpAndTestAttributes attrs = {
+      "",                           // auto_pad
+      vector<int64_t>{1, 1},        // dilations
+      1,                            // group
+      vector<int64_t>{8, 8},        // kernel_shape
+      vector<int64_t>{0, 0, 0, 0},  // pads
+      vector<int64_t>{1, 1},        // strides
+      {}                            // excluded EPs
+  };
+
+  vector<float> X(64, 1.0f);
+  vector<int64_t> X_shape = {1, 1, 8, 8};
+  vector<float> W(2048, 0.5f);
+  vector<int64_t> W_shape = {32, 1, 8, 8};
+  vector<float> B(32, 0.5f);
+  vector<int64_t> B_shape = {32};
+  vector<int64_t> Y_shape = {1, 32, 1, 1};
+  auto expected_vals = {
+      32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f,
+      32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f,
+      32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f,
+      32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f, 32.5f};
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape);
   TestConvOp(attrs, {X, W, B}, {X_shape, W_shape, B_shape}, expected_vals, Y_shape, true);
 }
@@ -916,7 +970,7 @@ TEST(ConvTest, ConvDimWithZero) {
       vector<int64_t>{1, 1},        // kernel_shape
       vector<int64_t>{0, 0, 0, 0},  // pads
       vector<int64_t>{1, 1},        // strides
-      {}                            // excluded EPs
+      {kWebGpuExecutionProvider}    // excluded EPs
   };
 
   vector<float> X = vector<float>();

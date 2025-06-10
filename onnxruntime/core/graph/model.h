@@ -11,6 +11,7 @@
 
 #include "core/common/flatbuffers.h"
 
+#include "core/framework/session_options.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/ort_format_load_options.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -37,6 +38,14 @@ struct ModelOptions {
   // warnings will be logged but processing will continue and no error will
   // be returned.
   bool strict_shape_type_inference;
+
+  CheckLoadCancellationFn check_load_cancellation_fn;
+
+  ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference,
+               CheckLoadCancellationFn check_load_cancellation_fn)
+      : allow_released_opsets_only(allow_released_opsets_only),
+        strict_shape_type_inference(strict_shape_type_inference),
+        check_load_cancellation_fn(std::move(check_load_cancellation_fn)) {}
 
   ModelOptions(bool allow_released_opsets_only, bool strict_shape_type_inference)
       : allow_released_opsets_only(allow_released_opsets_only),
@@ -101,6 +110,11 @@ class Model {
                  const ModelOptions& options = {});
 
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // Check for load cancellation.
+  bool IsLoadCancellationFlagSet() const noexcept {
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
+  }
 
 #if !defined(ORT_MINIMAL_BUILD)
   // Get model's IR version.
@@ -343,5 +357,7 @@ class Model {
 
   // Main graph of the model.
   std::unique_ptr<Graph> graph_;
+
+  CheckLoadCancellationFn check_load_cancellation_fn_;
 };
 }  // namespace onnxruntime

@@ -41,7 +41,9 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                 tile_A[row * tile_k + col + col_offset] = compute_precision(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
             }
         }
-
+    )ADDNL_FN";
+  if (nbits_ == 4) {
+    shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
             let b_global = tile_base + row;
             if (b_global >= uniforms.N) {
@@ -69,7 +71,40 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
                 tile_B[tile_b_base + 7] = b_value_upper[3];
             }
         }
-
+    )ADDNL_FN";
+  } else {
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
+    shader.AdditionalImplementation() << R"ADDNL_FN(
+        fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
+            let b_global = tile_base + row;
+            if (b_global >= uniforms.N) {
+                return;
+            }
+            // Each call loads 16 columns, starting at col.
+            var col = c_idx * 16;
+            // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
+            // Stored in column major fashion.
+            let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
+            let scale   = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+            for (var step:u32 = 0; step < 2; step++)
+            {
+                var b_value = input_b[b_idx+step];
+                var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(128)) * scale;
+                var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(128)) * scale;
+                let tile_b_base = row * tile_k + col + step * 8;
+                tile_B[tile_b_base]     = b_value0[0];
+                tile_B[tile_b_base + 1] = b_value0[1];
+                tile_B[tile_b_base + 2] = b_value0[2];
+                tile_B[tile_b_base + 3] = b_value0[3];
+                tile_B[tile_b_base + 4] = b_value1[0];
+                tile_B[tile_b_base + 5] = b_value1[1];
+                tile_B[tile_b_base + 6] = b_value1[2];
+                tile_B[tile_b_base + 7] = b_value1[3];
+            }
+        }
+    )ADDNL_FN";
+  }
+  shader.AdditionalImplementation() << R"ADDNL_FN(
         fn storeOutput(offset:u32, row: u32, col:u32, src_slot:u32, row_limit:i32) {
             if (row_limit > 0 && row < u32(row_limit))
             {
@@ -174,24 +209,26 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                                       uint32_t M,
                                       uint32_t N,
                                       uint32_t K,
+                                      uint32_t nbits,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
   constexpr uint32_t kTileSizeA = 32;
   constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
-  SubgroupMatrixMatMulNBitsProgram mul_program;
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits};
   mul_program.SetWorkgroupSize(128);
   mul_program.SetDispatchGroupSize(
       (N + kTileSizeB - 1) / kTileSizeB,
       (M + kTileSizeA - 1) / kTileSizeA, 1);
   mul_program.AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, 1},
-                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kU32Components)},
+                         {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(nbits == 4 ? kU32Components : 2 * kU32Components)},
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
                             {static_cast<uint32_t>(K)}})
-      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1});
+      .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
+      .CacheHint(nbits);
   return context.RunProgram(mul_program);
 }
 
@@ -203,7 +240,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t K,
                                        bool has_zero_points) {
 #if !defined(__wasm__)
-  const bool has_subgroup_matrix = context.Device().HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
+  const bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
 #else
   const bool has_subgroup_matrix = false;
 #endif
@@ -211,8 +248,8 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
   // some precision issues with subgroupMatrixMultiplyAccumulate. It is possible to support higher accuracy
   // by setting compute_precision to Fp32, but that will be slower. For 1K token prefill FP16 Phi 3.5 is around 5s,
   // FP322 is around 7s.
-  return context.AdapterInfo().backendType == wgpu::BackendType::Metal &&
-         has_subgroup_matrix &&
+  return has_subgroup_matrix &&
+         context.AdapterInfo().vendor == std::string_view{"apple"} &&
          accuracy_level == 4 &&
          block_size == 32 &&
          batch_count == 1 &&

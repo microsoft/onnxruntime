@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.32.0.250228
+  default: 2.34.0.250424
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -91,7 +91,7 @@ jobs:
         --use_qnn
         --qnn_home $(QnnSDKRootDir)
         --enable_pybind
-        --parallel --update --arm64ec
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update --arm64ec
         $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
       workingDirectory: '$(Build.BinariesDirectory)'
 

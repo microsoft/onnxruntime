@@ -349,7 +349,7 @@ static constexpr OrtModelEditorApi ort_model_editor_api = {
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
 static_assert(offsetof(OrtModelEditorApi, FinalizeModelEditorSession) / sizeof(void*) == 19,
-              "Size of version 21 API cannot change");  // initial version in ORT 1.21
+              "Size of version 22 API cannot change");  // initial version in ORT 1.22
 
 ORT_API(const OrtModelEditorApi*, OrtModelEditorAPI::GetModelEditorApi) {
   return &ort_model_editor_api;

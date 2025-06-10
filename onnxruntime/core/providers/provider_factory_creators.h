@@ -54,7 +54,7 @@
 #include "core/providers/js/js_provider_factory_creator.h"
 #endif
 
-#if defined(USE_OPENVINO)
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory_creator.h"
 #endif
 
@@ -66,7 +66,7 @@
 #include "core/providers/rocm/rocm_provider_factory_creator.h"
 #endif
 
-#if defined(USE_QNN)
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
 #include "core/providers/qnn/qnn_provider_factory_creator.h"
 #endif
 
@@ -74,11 +74,15 @@
 #include "core/providers/snpe/snpe_provider_factory_creator.h"
 #endif
 
-#if defined(USE_TENSORRT)
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 #include "core/providers/tensorrt/tensorrt_provider_factory_creator.h"
 #endif
 
-#if defined(USE_VITISAI)
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_factory_creator.h"
+#endif
+
+#if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
 #include "core/providers/vitisai/vitisai_provider_factory_creator.h"
 #endif
 

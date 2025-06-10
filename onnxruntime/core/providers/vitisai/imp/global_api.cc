@@ -268,10 +268,10 @@ void initialize_vitisai_ep() {
 }
 
 void deinitialize_vitisai_ep() {
+  vaip::deregister_xir_ops(s_domains_vitisaiep);
   if (s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep) {
     s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep();
   }
-  vaip::deregister_xir_ops(s_domains_vitisaiep);
   // kernel registry would be repopulated, no need to delete kernel registry
   s_domains_vitisaiep.clear();
 
@@ -360,10 +360,19 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   };
   the_global_api.graph_nodes_unsafe = [](const Graph& graph) -> auto { return vaip_core::DllSafe(graph.Nodes()); };
   the_global_api.graph_get_name = [](const Graph& graph) -> const std::string& { return graph.Name(); };
+  the_global_api.graph_set_name = [](Graph& graph, const char* name) -> void { return graph.SetName(std::string(name)); };
   the_global_api.graph_reverse_dfs_from = [](const Graph& graph, gsl::span<const Node* const> from,
                                              const auto& enter, const auto& leave, const auto& stop) {
     graph.ReverseDFSFrom(from, enter, leave, nullptr, stop);
   };
+
+  the_global_api.graph_infer_shapes_from_filepath = [](const std::string& m, const std::string& save_path) -> auto { return Provider_GetHost()->InferShapes(m, save_path); };
+  the_global_api.graph_to_graph_proto = [](const Graph& graph) -> ONNX_NAMESPACE::GraphProto* {
+    return graph.ToGraphProto().release();
+  };
+  the_global_api.graph_proto_delete = [](ONNX_NAMESPACE::GraphProto* p) { delete p; };
+  the_global_api.graph_infer_shapes = [](ONNX_NAMESPACE::ModelProto& m) -> auto { return Provider_GetHost()->InferShapes(m); };
+
   // node
   the_global_api.node_get_inputs_unsafe = vaip::node_get_inputs;
   the_global_api.node_get_output_node_args_unsafe = vaip::node_get_output_node_args;
@@ -503,7 +512,7 @@ vaip_core::OrtApiForVaip* create_org_api_hook() {
   the_global_api.session_option_configuration = [](
                                                     void* mmap, void* session_options, void (*push)(void* mmap, const char* name, const char* value)) {
     auto options = reinterpret_cast<OrtSessionOptions*>(session_options);
-    auto option_list = options->GetConfigOptions();
+    auto option_list = options->GetConfigOptionsMap();
     // option_list.GetConfigEntry
     for (const auto& option : option_list) {
       push(mmap, option.first.c_str(), option.second.c_str());

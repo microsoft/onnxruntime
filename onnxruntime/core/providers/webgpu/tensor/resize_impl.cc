@@ -122,7 +122,7 @@ void CalcNearestPixel(std::ostream& os, ResizeNearestMode mode) {
       body = "select(i32(round(x_original)), i32(floor(x_original)), x_original == f32(i32(x_original)) + 0.5)";
       break;
     case ResizeNearestMode::ROUND_PREFER_CEIL:
-      body = "i32(round(x_original))";
+      body = "select(i32(round(x_original)), i32(ceil(x_original)), x_original == f32(i32(x_original)) + 0.5)";
       break;
     case ResizeNearestMode::FLOOR:
       body = "i32(floor(x_original))";

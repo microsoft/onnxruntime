@@ -18,6 +18,13 @@ static size_t NormalizeAxis(int64_t axis, size_t tensor_rank) {
   return onnxruntime::narrow<size_t>(axis < 0 ? axis + rank : axis);
 }
 
+// Get a dummy override shape to bypass the program's check of shape and components for inputs and outputs. It's okay,
+// as 'LayerNormProgram' doesn't actually use the override shape.
+static TensorShape GetOverrideShape(const TensorShape& shape, int components) {
+  TensorShape override_shape{shape.Size() / components};
+  return override_shape;
+}
+
 Status LayerNormProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& x = shader.AddInput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("scale", ShaderUsage::UseUniform);
@@ -111,11 +118,11 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
 
   LayerNormProgram program{bias != nullptr, is_fp16, simplified, mean != nullptr, inv_std_dev != nullptr};
 
-  program
-      .CacheHint(simplified)
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, components}})
-      .AddInputs({{scale, ProgramTensorMetadataDependency::Type, components}})
-      .AddOutputs({{y, ProgramTensorMetadataDependency::None, components}})
+  program.CacheHint(components, simplified)
+      .AddInputs({{x, ProgramTensorMetadataDependency::Type, GetOverrideShape(x->Shape(), components), components}})
+      .AddInputs(
+          {{scale, ProgramTensorMetadataDependency::Type, GetOverrideShape(scale->Shape(), components), components}})
+      .AddOutputs({{y, ProgramTensorMetadataDependency::None, GetOverrideShape(y->Shape(), components), components}})
       .SetDispatchGroupSize((norm_count + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
           {static_cast<uint32_t>(norm_count)},
@@ -131,7 +138,8 @@ Status LayerNorm<simplified>::ComputeInternal(onnxruntime::webgpu::ComputeContex
       });
 
   if (bias != nullptr) {
-    program.AddInput({bias, ProgramTensorMetadataDependency::Type, components});
+    program.AddInput(
+        {bias, ProgramTensorMetadataDependency::Type, GetOverrideShape(bias->Shape(), components), components});
   }
 
   if (mean != nullptr) {

@@ -132,6 +132,9 @@ if(NOT ONNX_CUSTOM_PROTOC_EXECUTABLE AND NOT onnxruntime_USE_VCPKG)
       elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "x86")
         onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_win32} URL_HASH SHA1=${DEP_SHA1_protoc_win32} EXCLUDE_FROM_ALL)
         FetchContent_Populate(protoc_binary)
+      elseif(CMAKE_HOST_SYSTEM_PROCESSOR STREQUAL "ARM64")
+        onnxruntime_fetchcontent_declare(protoc_binary URL ${DEP_URL_protoc_win64} URL_HASH SHA1=${DEP_SHA1_protoc_win64} EXCLUDE_FROM_ALL)
+        FetchContent_Populate(protoc_binary)
       endif()
 
       if(protoc_binary_SOURCE_DIR)
@@ -179,7 +182,8 @@ endif()
 #   for cross-compiling
 #2. if ONNX_CUSTOM_PROTOC_EXECUTABLE is not set, Compile everything(including protoc) from source code.
 if(Patch_FOUND)
-  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch)
+  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_cmake.patch &&
+                                         ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/protobuf/protobuf_android_log.patch)
 else()
  set(ONNXRUNTIME_PROTOBUF_PATCH_COMMAND "")
 endif()
@@ -287,15 +291,16 @@ if(NOT TARGET Boost::mp11)
      EXCLUDE_FROM_ALL
      FIND_PACKAGE_ARGS NAMES Boost
     )
-    onnxruntime_fetchcontent_makeavailable(mp11)
+    FetchContent_Populate(mp11)
     if(NOT TARGET Boost::mp11)
-      add_library(Boost::mp11 ALIAS Boost::headers)
+      add_library(Boost::mp11 IMPORTED INTERFACE)
+      target_include_directories(Boost::mp11 INTERFACE $<BUILD_INTERFACE:${mp11_SOURCE_DIR}/include>)
     endif()
   endif()
 endif()
 
 set(JSON_BuildTests OFF CACHE INTERNAL "")
-set(JSON_Install OFF CACHE INTERNAL "")
+set(JSON_Install ON CACHE INTERNAL "")
 
 onnxruntime_fetchcontent_declare(
     nlohmann_json
@@ -407,6 +412,13 @@ set(GSL_TARGET "Microsoft.GSL::GSL")
 set(GSL_INCLUDE_DIR "$<TARGET_PROPERTY:${GSL_TARGET},INTERFACE_INCLUDE_DIRECTORIES>")
 onnxruntime_fetchcontent_makeavailable(GSL)
 
+if (NOT GSL_FOUND AND NOT onnxruntime_BUILD_SHARED_LIB)
+  install(TARGETS GSL EXPORT ${PROJECT_NAME}Targets
+  ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
+  RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
+endif()
+
 find_path(safeint_SOURCE_DIR NAMES "SafeInt.hpp")
 if(NOT safeint_SOURCE_DIR)
   unset(safeint_SOURCE_DIR)
@@ -420,7 +432,7 @@ if(NOT safeint_SOURCE_DIR)
   # use fetch content rather than makeavailable because safeint only includes unconditional test targets
   FetchContent_Populate(safeint)
 endif()
-add_library(safeint_interface INTERFACE)
+add_library(safeint_interface IMPORTED INTERFACE)
 target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})
 
 
@@ -433,7 +445,7 @@ if (CMAKE_SYSTEM_NAME STREQUAL "iOS" OR CMAKE_SYSTEM_NAME STREQUAL "Android" OR 
   set(FLATBUFFERS_BUILD_FLATC OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATC" FORCE)
 endif()
 set(FLATBUFFERS_BUILD_TESTS OFF CACHE BOOL "FLATBUFFERS_BUILD_TESTS" FORCE)
-set(FLATBUFFERS_INSTALL OFF CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
+set(FLATBUFFERS_INSTALL ON CACHE BOOL "FLATBUFFERS_INSTALL" FORCE)
 set(FLATBUFFERS_BUILD_FLATHASH OFF CACHE BOOL "FLATBUFFERS_BUILD_FLATHASH" FORCE)
 set(FLATBUFFERS_BUILD_FLATLIB ON CACHE BOOL "FLATBUFFERS_BUILD_FLATLIB" FORCE)
 if(Patch_FOUND)
@@ -516,11 +528,8 @@ onnxruntime_fetchcontent_declare(
   EXCLUDE_FROM_ALL
   FIND_PACKAGE_ARGS NAMES ONNX onnx
 )
-if (NOT onnxruntime_MINIMAL_BUILD)
-  onnxruntime_fetchcontent_makeavailable(onnx)
-else()
-  include(onnx_minimal)
-endif()
+
+onnxruntime_fetchcontent_makeavailable(onnx)
 
 if(TARGET ONNX::onnx AND NOT TARGET onnx)
   message(STATUS "Aliasing ONNX::onnx to onnx")
@@ -619,113 +628,143 @@ endif()
 
 
 if (onnxruntime_USE_WEBGPU)
-  set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
-  set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
-  set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
-  set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
-    if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
-      set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
-      set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
-
-      if (onnxruntime_USE_EXTERNAL_DAWN)
-        message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
-      endif()
-    else()
-      # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
-      set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
-      set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
-    endif()
-
-    if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
-      set(DAWN_ENABLE_DESKTOP_GL ON CACHE BOOL "" FORCE)
-      set(DAWN_ENABLE_OPENGLES ON CACHE BOOL "" FORCE)
-      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING ON CACHE BOOL "" FORCE)
-      set(DAWN_USE_GLFW ON CACHE BOOL "" FORCE)
-      set(DAWN_USE_WINDOWS_UI ON CACHE BOOL "" FORCE)
-      set(TINT_BUILD_GLSL_WRITER ON CACHE BOOL "" FORCE)
-      set(TINT_BUILD_GLSL_VALIDATOR ON CACHE BOOL "" FORCE)
-    else()
-      set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
-      set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
-      set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
-      set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
-      set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
-      set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
-      set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
-    endif()
-
-    # disable things we don't use
-    set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
-    set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
-
-    set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
-    set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
-    set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
-    set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
-    set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
-
-    # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
-    set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
-
-    if (WIN32)
-      # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
-      set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
-      set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
-
-      if ((NOT onnxruntime_ENABLE_DAWN_BACKEND_VULKAN) AND (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12))
-        message(FATAL_ERROR "At least one of onnxruntime_ENABLE_DAWN_BACKEND_VULKAN or onnxruntime_ENABLE_DAWN_BACKEND_D3D12 must be enabled when using Dawn on Windows.")
-      endif()
-      if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
-        set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
-        set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
-      else()
-        set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
-      endif()
-      if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-        set(DAWN_ENABLE_D3D12 ON CACHE BOOL "" FORCE)
-      else()
-        set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
-      endif()
-      # We are currently always using the D3D12 backend.
-      set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
-    endif()
-  endif()
-  if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
-    # use the custom dawn source path if provided
-    #
-    # specified as:
-    # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
-    onnxruntime_fetchcontent_declare(
-      dawn
-      SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
-      EXCLUDE_FROM_ALL
-    )
+  # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+  # until we figure out how to resolve the packaging pipeline failures
+  #
+  # if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+  if (FALSE)
+    # vcpkg does not support Emscripten yet
+    find_package(dawn REQUIRED)
   else()
-    onnxruntime_fetchcontent_declare(
-      dawn
-      URL ${DEP_URL_dawn}
-      URL_HASH SHA1=${DEP_SHA1_dawn}
-      # # All previous patches are merged into the upstream dawn project. We don't need to apply any patches right now.
-      # # if we need to apply patches in the future, we can uncomment the following line.
-      #
-      # The dawn.patch contains the following changes:
-      #
-      # - (private) Allow WGPUBufferImpl class to destroy the buffer in the destructor
-      #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
-      #   in emwgpu implementation, the buffer destroy won't happen. This change adds a destructor to the buffer class
-      #   to destroy the buffer when the refcount is 0 for non-external buffers.
-      #
-      # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
-      #   https://github.com/microsoft/onnxruntime/pull/23729
-      #
-      #
-      PATCH_COMMAND ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch
-      EXCLUDE_FROM_ALL
-    )
-  endif()
+    #
+    # Please keep the following in sync with cmake/vcpkg-ports/dawn/portfile.cmake
+    #
+    set(DAWN_BUILD_SAMPLES OFF CACHE BOOL "" FORCE)
+    set(DAWN_ENABLE_NULL OFF CACHE BOOL "" FORCE)
+    set(DAWN_FETCH_DEPENDENCIES ON CACHE BOOL "" FORCE)
+    set(DAWN_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+    if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+        set(DAWN_BUILD_MONOLITHIC_LIBRARY ON CACHE BOOL "" FORCE)
+        set(DAWN_ENABLE_INSTALL ON CACHE BOOL "" FORCE)
 
-  onnxruntime_fetchcontent_makeavailable(dawn)
+        if (onnxruntime_USE_EXTERNAL_DAWN)
+          message(FATAL_ERROR "onnxruntime_USE_EXTERNAL_DAWN and onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY cannot be enabled at the same time.")
+        endif()
+      else()
+        # use dawn::dawn_native and dawn::dawn_proc instead of the monolithic dawn::webgpu_dawn to minimize binary size
+        set(DAWN_BUILD_MONOLITHIC_LIBRARY OFF CACHE BOOL "" FORCE)
+        set(DAWN_ENABLE_INSTALL OFF CACHE BOOL "" FORCE)
+      endif()
+
+      if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+        set(DAWN_ENABLE_DESKTOP_GL ON CACHE BOOL "" FORCE)
+        set(DAWN_ENABLE_OPENGLES ON CACHE BOOL "" FORCE)
+        set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING ON CACHE BOOL "" FORCE)
+        set(DAWN_USE_GLFW ON CACHE BOOL "" FORCE)
+        set(DAWN_USE_WINDOWS_UI ON CACHE BOOL "" FORCE)
+        set(TINT_BUILD_GLSL_WRITER ON CACHE BOOL "" FORCE)
+        set(TINT_BUILD_GLSL_VALIDATOR ON CACHE BOOL "" FORCE)
+      else()
+        set(DAWN_ENABLE_DESKTOP_GL OFF CACHE BOOL "" FORCE)
+        set(DAWN_ENABLE_OPENGLES OFF CACHE BOOL "" FORCE)
+        set(DAWN_SUPPORTS_GLFW_FOR_WINDOWING OFF CACHE BOOL "" FORCE)
+        set(DAWN_USE_GLFW OFF CACHE BOOL "" FORCE)
+        set(DAWN_USE_WINDOWS_UI OFF CACHE BOOL "" FORCE)
+        set(TINT_BUILD_GLSL_WRITER OFF CACHE BOOL "" FORCE)
+        set(TINT_BUILD_GLSL_VALIDATOR OFF CACHE BOOL "" FORCE)
+      endif()
+
+      # disable things we don't use
+      set(DAWN_DXC_ENABLE_ASSERTS_IN_NDEBUG OFF)
+      set(DAWN_USE_X11 OFF CACHE BOOL "" FORCE)
+
+      set(TINT_BUILD_TESTS OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_CMD_TOOLS OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_IR_BINARY OFF CACHE BOOL "" FORCE)
+      set(TINT_BUILD_SPV_READER OFF CACHE BOOL "" FORCE)  # don't need. disabling is a large binary size saving
+      set(TINT_BUILD_WGSL_WRITER ON CACHE BOOL "" FORCE)  # needed to create cache key. runtime error if not enabled.
+
+      # SPIR-V validation shouldn't be required given we're using Tint to create the SPIR-V.
+      set(DAWN_ENABLE_SPIRV_VALIDATION OFF CACHE BOOL "" FORCE)
+
+      if (WIN32)
+        # building this requires the HLSL writer to be enabled in Tint. TBD if that we need either of these to be ON.
+        set(DAWN_USE_BUILT_DXC ON CACHE BOOL "" FORCE)
+        set(TINT_BUILD_HLSL_WRITER ON CACHE BOOL "" FORCE)
+
+        if ((NOT onnxruntime_ENABLE_DAWN_BACKEND_VULKAN) AND (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12))
+          message(FATAL_ERROR "At least one of onnxruntime_ENABLE_DAWN_BACKEND_VULKAN or onnxruntime_ENABLE_DAWN_BACKEND_D3D12 must be enabled when using Dawn on Windows.")
+        endif()
+        if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+          set(DAWN_ENABLE_VULKAN ON CACHE BOOL "" FORCE)
+          set(TINT_BUILD_SPV_WRITER ON CACHE BOOL "" FORCE)
+        else()
+          set(DAWN_ENABLE_VULKAN OFF CACHE BOOL "" FORCE)
+        endif()
+        if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+          set(DAWN_ENABLE_D3D12 ON CACHE BOOL "" FORCE)
+        else()
+          set(DAWN_ENABLE_D3D12 OFF CACHE BOOL "" FORCE)
+        endif()
+        # We are currently always using the D3D12 backend.
+        set(DAWN_ENABLE_D3D11 OFF CACHE BOOL "" FORCE)
+      endif()
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      # use the custom dawn source path if provided
+      #
+      # specified as:
+      # build.py --use_webgpu --cmake_extra_defines "onnxruntime_CUSTOM_DAWN_SRC_PATH=<PATH_TO_DAWN_SRC_ROOT>"
+      onnxruntime_fetchcontent_declare(
+        dawn
+        SOURCE_DIR ${onnxruntime_CUSTOM_DAWN_SRC_PATH}
+        EXCLUDE_FROM_ALL
+      )
+    else()
+      set(ONNXRUNTIME_Dawn_PATCH_COMMAND
+          # The dawn.patch contains the following changes:
+          #
+          # - (private) Allow WGPUBufferImpl class to destroy the buffer in the destructor
+          #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
+          #   in emwgpu implementation, the buffer destroy won't happen. This change adds a destructor to the buffer class
+          #   to destroy the buffer when the refcount is 0 for non-external buffers.
+          #
+          # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
+          #   https://github.com/microsoft/onnxruntime/pull/23729
+          #
+          # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
+          #   https://github.com/microsoft/onnxruntime/pull/24308
+          #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
+          #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
+          #   usage when compiling the code, making the build process cleaner and faster.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch &&
+
+          # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
+          #
+          # - (private) Force enable f16 support for NVIDIA Vulkan
+          #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
+          #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
+
+          # The dawn_fix_copy_dxil_dll.patch contains the following changes:
+          #
+          # - (private) Fix copy of dxil.dll in Dawn
+          #   The patch ensures the copy of dxil.dll to be done after the build step of `dxcompiler` target.
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_fix_copy_dxil_dll.patch)
+
+      onnxruntime_fetchcontent_declare(
+        dawn
+        URL ${DEP_URL_dawn}
+        URL_HASH SHA1=${DEP_SHA1_dawn}
+        PATCH_COMMAND ${ONNXRUNTIME_Dawn_PATCH_COMMAND}
+        EXCLUDE_FROM_ALL
+      )
+    endif()
+
+    onnxruntime_fetchcontent_makeavailable(dawn)
+  endif()
 
   if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)

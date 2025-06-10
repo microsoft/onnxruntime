@@ -5,6 +5,7 @@
 #include <vector>
 
 #include "core/util/math.h"
+#include "core/providers/webgpu/string_macros.h"
 #include "core/providers/webgpu/tensor/pad.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
@@ -38,38 +39,47 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string lower_pads_str = GetElementAt("uniforms.lower_pads", "dim", rank);
   std::string data_shape_str = "i32(" + GetElementAt("uniforms.data_shape", "dim", rank) + ")";
   std::string data_stride_str = rank == 1 ? "" : " * " + GetElementAt("uniforms.data_stride", "dim", rank - 1);
-  std::string begin_axis_statement = "in_coord = ";
-  std::string end_axis_statement = "in_coord = ";
-  std::string in_axis_statement = "in_coord = " + output_indices_str + " - " + lower_pads_str + ";\n";
+  SS(axis_body_ss, 1024);
   switch (mode_) {
     case Mode::Constant:
-      begin_axis_statement = "use_pad_value = true;\n";
-      end_axis_statement = "use_pad_value = true;\n";
+      axis_body_ss << "    if (" << output_indices_str << " < " << lower_pads_str << " || " << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
+                   << "      use_pad_value = true;\n";
       break;
     case Mode::Edge:
-      begin_axis_statement += "0;\n";
-      end_axis_statement += data_shape_str + " - 1;\n";
+      axis_body_ss << "    if (" << output_indices_str << " < " << lower_pads_str << ") {\n"
+                   << "      in_coord = 0;\n"
+                   << "    } else if (" << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
+                   << "      in_coord = " << data_shape_str + " - 1;\n";
       break;
     case Mode::Reflect:
-      begin_axis_statement += lower_pads_str + " - " + output_indices_str + ";\n";
-      end_axis_statement += data_shape_str + " - 2 - (" + output_indices_str +
-                            " - (" + lower_pads_str + " + " + data_shape_str + "));\n";
+      axis_body_ss << "    if (" << output_indices_str << " < " << lower_pads_str << " || " << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
+                   << "      in_coord = " << output_indices_str << " - " << lower_pads_str << ";\n"
+                   << "      if (in_coord < 0) {\n"
+                   << "        in_coord = -in_coord;\n"
+                   << "       }\n"
+                   << "       {\n"
+                   << "         let _2n_1 = 2 * (" << data_shape_str << " - 1);\n"
+                   << "        in_coord = in_coord % _2n_1;\n"
+                   << "        if(in_coord >= " << data_shape_str << ") {\n"
+                   << "          in_coord = _2n_1 - in_coord;\n"
+                   << "        }\n"
+                   << "      }\n";
       break;
     case Mode::Wrap:
-      begin_axis_statement += data_shape_str + " + " + output_indices_str + " - " + lower_pads_str + ";\n";
-      end_axis_statement += output_indices_str + " - " + lower_pads_str + " - " + data_shape_str + ";\n";
+      axis_body_ss << "    if (" << output_indices_str << " < " << lower_pads_str << ") {\n"
+                   << "      in_coord = " << data_shape_str << " + " << output_indices_str << " - " << lower_pads_str + ";\n"
+                   << "    } else if (" << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
+                   << "      in_coord = " << output_indices_str << " - " << lower_pads_str << " - " << data_shape_str << ";\n";
       break;
     default:
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported mode type: ", static_cast<int>(mode_));
   }
+  axis_body_ss << "    } else {\n"
+               << "      " << "in_coord = " << output_indices_str << " - " << lower_pads_str << ";\n"
+               << "    }\n";
 
   shader.MainFunctionBody() << "  for (var dim = 0; dim < " << rank << " && !use_pad_value; dim++) {\n"
-                            << "    if (" << output_indices_str << " < " << lower_pads_str << ") {\n"
-                            << "      " << begin_axis_statement << "    }\n"
-                            << "    else if (" << output_indices_str << " >= " << lower_pads_str << " + " << data_shape_str << ") {\n"
-                            << "      " << end_axis_statement << "    }\n"
-                            << "    else {\n"
-                            << "      " << in_axis_statement << "    }\n"
+                            << SS_GET(axis_body_ss)
                             << "    input_index += select(u32(in_coord)" << data_stride_str << ", u32(in_coord), dim == " << rank - 1 << ");\n"
                             << "  }\n"
                             << "  " << constant_value_str
@@ -168,9 +178,9 @@ Status Pad::ComputeInternal(ComputeContext& context) const {
 
   PadProgram program{mode_, dim_value_zero, is_float16};
   if (!dim_value_zero) {
-    program.AddInput({input_tensor, ProgramTensorMetadataDependency::TypeAndRank});
+    program.AddInput({input_tensor, ProgramTensorMetadataDependency::Rank});
   }
-  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Rank})
+  program.AddOutput({output_tensor, ProgramTensorMetadataDependency::TypeAndRank})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .CacheHint(std::to_string(static_cast<int>(mode_)), dim_value_zero)
       .AddUniformVariables({{gsl::span<const int32_t>(lower_pads.data(), lower_pads.size())}, {output_size}, {value_uint32}});

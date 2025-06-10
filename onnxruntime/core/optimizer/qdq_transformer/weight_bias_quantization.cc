@@ -43,6 +43,14 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       continue;
     }
 
+    // Require that the node's output is consumed by a single QuantizeLinear node.
+    // Otherwise, if only the inputs are quantized, but not the output, then this node group would not
+    // be considered a QDQ node unit anyway.
+    std::vector<const Node*> children_nodes = graph.GetConsumerNodes(node.OutputDefs()[0]->Name());
+    if (children_nodes.size() != 1 || children_nodes[0]->OpType() != QDQ::QOpName) {
+      continue;
+    }
+
     Node& dq_0 = *graph.GetNode(parent_node_0->Index());
     Node* dq_1 = nullptr;
     const ONNX_NAMESPACE::TensorProto* weight_proto = nullptr;
@@ -81,7 +89,9 @@ Status WeightBiasQuantization::ApplyImpl(Graph& graph, bool& modified, int graph
       }
 
       const auto& dq_attrs = dq_1->GetAttributes();
-      if (dq_attrs.find("block_size") != dq_attrs.end()) {
+      auto attr_it = dq_attrs.find("block_size");
+      // Default value of block_size=0 has no significance. Don't skip weight_bias_quantization.
+      if (attr_it != dq_attrs.end() && attr_it->second.i() != 0) {
         continue;
       }
 

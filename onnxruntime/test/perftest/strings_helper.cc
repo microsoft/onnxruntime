@@ -41,7 +41,7 @@ void ParseSessionConfigs(const std::string& configs_string,
         available_keys_str += ", ";
       }
       ORT_THROW("[ERROR] wrong key type entered : `", key,
-                "`. The following runtime key options are avaible: [", available_keys_str, "]");
+                "`. The following runtime key options are available: [", available_keys_str, "]");
     }
 
     auto it = session_configs.find(key);

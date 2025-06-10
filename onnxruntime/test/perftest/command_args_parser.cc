@@ -40,7 +40,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
+      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -56,11 +56,12 @@ namespace perftest {
       "\t-F [free_dimension_override]: Specifies a free dimension by denotation to override to a specific value for performance optimization. "
       "Syntax is [dimension_denotation:override_value]. override_value must > 0\n"
       "\t-P: Use parallel executor instead of sequential executor.\n"
-      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 99 (all).\n"
+      "\t-o [optimization level]: Default is 99 (all). Valid values are 0 (disable), 1 (basic), 2 (extended), 3 (layout), 99 (all).\n"
       "\t\tPlease see onnxruntime_c_api.h (enum GraphOptimizationLevel) for the full list of all optimization levels.\n"
       "\t-u [optimized_model_path]: Specify the optimized model path for saving.\n"
       "\t-d [CUDA only][cudnn_conv_algorithm]: Specify CUDNN convolution algorithms: 0(benchmark), 1(heuristic), 2(default). \n"
       "\t-q [CUDA only] use separate stream for copy. \n"
+      "\t-g [TensorRT RTX | TensorRT | CUDA] Enable tensor input and output bindings on CUDA before session run \n"
       "\t-z: Set denormal as zero. When turning on this option reduces latency dramatically, a model may have denormals.\n"
       "\t-C: Specify session configuration entries as key-value pairs: -C \"<key1>|<value1> <key2>|<value2>\" \n"
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
@@ -160,6 +161,9 @@ namespace perftest {
       "\t-n [Exit after session creation]: allow user to measure session creation time to measure impact of enabling any initialization optimizations.\n"
       "\t-l Provide file as binary in memory by using fopen before session creation.\n"
       "\t-R [Register custom op]: allow user to register custom op by .so or .dll file.\n"
+      "\t-X [Enable onnxruntime-extensions custom ops]: Registers custom ops from onnxruntime-extensions. "
+      "onnxruntime-extensions must have been built in to onnxruntime. This can be done with the build.py "
+      "'--use_extensions' option.\n"
       "\t-h: help\n");
 }
 #ifdef _WIN32
@@ -189,7 +193,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
 
 /*static*/ bool CommandLineParser::ParseArguments(PerformanceTestConfig& test_config, int argc, ORTCHAR_T* argv[]) {
   int ch;
-  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlR:"))) != -1) {
+  while ((ch = getopt(argc, argv, ORT_TSTR("m:e:r:t:p:x:y:c:d:o:u:i:f:F:S:T:C:AMPIDZvhsqznlgR:X"))) != -1) {
     switch (ch) {
       case 'f': {
         std::basic_string<ORTCHAR_T> dim_name;
@@ -264,6 +268,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
         } else {
           return false;
         }
@@ -326,6 +332,9 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           case ORT_ENABLE_EXTENDED:
             test_config.run_config.optimization_level = ORT_ENABLE_EXTENDED;
             break;
+          case ORT_ENABLE_LAYOUT:
+            test_config.run_config.optimization_level = ORT_ENABLE_LAYOUT;
+            break;
           case ORT_ENABLE_ALL:
             test_config.run_config.optimization_level = ORT_ENABLE_ALL;
             break;
@@ -386,6 +395,12 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         break;
       case 'R':
         test_config.run_config.register_custom_op_path = optarg;
+        break;
+      case 'g':
+        test_config.run_config.enable_cuda_io_binding = true;
+        break;
+      case 'X':
+        test_config.run_config.use_extensions = true;
         break;
       case '?':
       case 'h':

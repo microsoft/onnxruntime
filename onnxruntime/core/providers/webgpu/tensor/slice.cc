@@ -138,12 +138,13 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   auto steps_raw = steps_tensor == nullptr ? gsl::make_span(steps_default) : steps_tensor->DataAsSpan<int64_t>();
 
   // PROCESS INPUTS
-  std::vector<uint32_t> axes;
+  std::vector<uint32_t> axes, axes_fixed;
   for (unsigned int i = 0; i < axes_raw.size(); i++) {
     int64_t val = axes_raw[i];
     if (val < 0) {
       val += input_rank;
     }
+    axes_fixed.push_back(static_cast<int32_t>(val));
     axes.push_back(static_cast<int32_t>(val));
   }
 
@@ -190,8 +191,8 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
   if (static_cast<int64_t>(axes.size()) != input_rank) {
     for (uint32_t i = 0; i < input_rank; i++) {
       int idx = -1;
-      for (unsigned int j = 0; j < axes_raw.size(); j++) {
-        if (axes_raw[j] == i) {
+      for (unsigned int j = 0; j < axes_fixed.size(); j++) {
+        if (axes_fixed[j] == i) {
           idx = j;
           break;
         }
@@ -232,24 +233,23 @@ Status Slice::ComputeInternal(ComputeContext& context) const {
 
   // Reorder inputs in order of axis
   std::vector<int32_t> signs_reordered;
-  std::vector<uint32_t> steps_reordered, starts_reordered;
-  for (unsigned int i = 0; i < axes.size(); i++) {
-    signs_reordered.push_back(0);
-    steps_reordered.push_back(0);
-    starts_reordered.push_back(0);
-  }
-  for (unsigned int i = 0; i < axes.size(); i++) {
+  std::vector<uint32_t> steps_reordered, starts_reordered, ends_reordered;
+  signs_reordered.resize(static_cast<size_t>(input_rank), 0);
+  steps_reordered.resize(static_cast<size_t>(input_rank), 1);
+  starts_reordered.resize(static_cast<size_t>(input_rank), 0);
+  ends_reordered.resize(static_cast<size_t>(input_rank), 0);
+  for (unsigned int i = 0; i < input_rank; i++) {
     int32_t dim = axes[i];
     signs_reordered[dim] = signs[i];
     steps_reordered[dim] = steps[i];
     starts_reordered[dim] = starts[i];
+    ends_reordered[dim] = ends[i];
   }
 
   // calculate output dims
   std::vector<int64_t> output_dims;
-  for (unsigned int i = 0; i < axes.size(); i++) {
-    int32_t dim = axes[i];
-    float tmp = ceil((static_cast<float>(ends[dim]) - static_cast<float>(starts[dim])) / static_cast<float>(steps[dim]));
+  for (unsigned int i = 0; i < input_rank; i++) {
+    float tmp = ceil((static_cast<float>(ends_reordered[i]) - static_cast<float>(starts_reordered[i])) / static_cast<float>(steps_reordered[i]));
     if (tmp < 0)
       output_dims.push_back(0);
     else

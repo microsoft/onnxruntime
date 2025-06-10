@@ -87,8 +87,8 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   ONNX_NAMESPACE::DataType input_data_type = input_0.node_arg.Type();
-  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
-  ORT_RETURN_IF(!is_npu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
+  bool is_cpu_backend = IsCpuBackend(qnn_model_wrapper.GetQnnBackendType());
+  ORT_RETURN_IF(is_cpu_backend && input_data_type != ONNX_NAMESPACE::Utils::DataTypeUtils::ToType("float"),
                 "QNN EP: Data type ", input_data_type->c_str(),
                 " is not supported for Conv operator in CPU backend.");
 
@@ -112,6 +112,7 @@ Status ConvOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   }
 
   // Validate that weight is signed type for per-channel quantization (required by QNN docs).
+  bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
   if (is_npu_backend) {
     const auto& input_1 = inputs[1];  // weight
     bool is_per_axis_quant = false;
@@ -279,6 +280,50 @@ Status ConvOpBuilder::ProcessConv2D3DInputs(QnnModelWrapper& qnn_model_wrapper,
                                          std::move(input_info.quant_param),
                                          std::move(actual_shape), std::move(unpacked_tensor));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
+
+    // Workaround that inserts a QNN Convert op before input[1] (converts from quantized uint16 to signed symmetric int16)
+    // to avoid a QNN validation failure.
+    //
+    // QNN graph WITHOUT workaround (fails validation):
+    //     input_0_uint16 ---> Conv ---> output_uint16
+    //                         ^
+    //                         |
+    //     input_1_uint16 -----+
+    //
+    // QNN graph WITH workaround (passes validation):
+    //     input_0_uint16 ----------------------> Conv ---> output_uint16
+    //                                            ^
+    //                                            |
+    //     input_1_uint16 --> Convert(to int16) --+
+
+    std::string weight_input_name = input_names.back();
+    const auto& weight_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(weight_input_name);
+
+    if (weight_tensor_wrapper.GetTensorDataType() == QNN_DATATYPE_UFIXED_POINT_16) {
+      const auto& quant_param_wrapper = weight_tensor_wrapper.GetQnnQuantParams();
+      const Qnn_QuantizeParams_t& quant_param = quant_param_wrapper.Get();
+      const auto& transformed_input1_shape = weight_tensor_wrapper.GetTensorDims();
+
+      ORT_RETURN_IF_NOT(quant_param_wrapper.IsPerTensor(),
+                        "Conv's INT16 weight inputs only support INT16 per-tensor quantization");
+
+      // Pop Conv weight. Insert Convert op after Weight
+      input_names.pop_back();
+      const std::string& conv_output_name = node_unit.Outputs()[0].node_arg.Name();
+      std::string convert_output_name = weight_input_name + "_convert_" + conv_output_name;
+
+      ORT_RETURN_IF_ERROR(utils::InsertConvertOp(qnn_model_wrapper,
+                                                 weight_input_name,
+                                                 convert_output_name,
+                                                 QNN_DATATYPE_UFIXED_POINT_16,
+                                                 QNN_DATATYPE_SFIXED_POINT_16,
+                                                 quant_param.scaleOffsetEncoding.offset,
+                                                 quant_param.scaleOffsetEncoding.scale,
+                                                 transformed_input1_shape,
+                                                 true,  // Symmetric
+                                                 do_op_validation));
+      input_names.push_back(convert_output_name);
+    }
   }
 
   //

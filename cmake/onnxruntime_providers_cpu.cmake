@@ -206,7 +206,7 @@ if (onnxruntime_ENABLE_TRAINING)
     onnxruntime_add_include_to_target(onnxruntime_providers Python::Module)
   endif()
 
-  if (onnxruntime_USE_NCCL OR onnxruntime_USE_MPI)
+  if (onnxruntime_USE_NCCL)
     target_include_directories(onnxruntime_providers PUBLIC ${MPI_CXX_INCLUDE_DIRS})
   endif()
 endif()
@@ -267,7 +267,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-  install(TARGETS onnxruntime_providers
+  install(TARGETS onnxruntime_providers EXPORT ${PROJECT_NAME}Targets
           ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
           RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

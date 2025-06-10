@@ -12,13 +12,16 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
   webgpu_build_x64_RelWithDebInfo:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Win2022-GPU-A10"]
     timeout-minutes: 300
+    strategy:
+      matrix:
+        vcpkg_option: [novcpkg, vcpkg]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -107,7 +110,23 @@ jobs:
       - name: Build and Test
         shell: pwsh
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config RelWithDebInfo --build_dir ${{ github.workspace }} --skip_submodule_sync --build_csharp --parallel  --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_nodejs --use_webgpu --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py `
+            --config RelWithDebInfo `
+            --build_dir ${{ github.workspace }} `
+            --skip_submodule_sync `
+            --build_csharp `
+            --parallel `
+            --use_binskim_compliant_compile_flags `
+            --cmake_generator "Visual Studio 17 2022" `
+            --build_shared_lib `
+            --enable_onnx_tests `
+            --build_nodejs `
+            --build_java `
+            --use_webgpu `
+            ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
+            --cmake_extra_defines `
+            onnxruntime_BUILD_UNIT_TESTS=ON `
+            onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=ON
           if ($lastExitCode -ne 0) {
             exit $lastExitCode
           }
@@ -126,7 +145,6 @@ jobs:
           dir ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log
 
       - name: Validate shader keys
-        continue-on-error: true
         uses: ./.github/actions/webgpu-validate-shader-key
         with:
           log_file_path: ${{ github.workspace }}\RelWithDebInfo\RelWithDebInfo\onnxruntime_test_all_stderr.log

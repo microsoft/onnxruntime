@@ -71,9 +71,36 @@ void CopyRawDataToRepeatedField(const ONNX_NAMESPACE::TensorProto& tensor_proto,
   }
 }
 
+template <>
+void CopyRawDataToRepeatedField<int64_t, int32_t>(const ONNX_NAMESPACE::TensorProto& tensor_proto,
+                                                  google::protobuf::RepeatedField<int32_t>& repeated_field) {
+  const auto& raw_data = tensor_proto.raw_data();
+  const int64_t* data = reinterpret_cast<const int64_t*>(raw_data.data());
+  const size_t element_count = raw_data.size() / sizeof(int64_t);
+
+  // Reserve space to avoid multiple reallocations
+  repeated_field.Reserve(narrow<int>(element_count));
+
+  // Use std::transform with proper iterators
+  std::transform(data, data + element_count,
+                 google::protobuf::RepeatedFieldBackInserter(&repeated_field),
+                 [](int64_t v) {
+                   return narrow<int32_t>(v);
+                 });
+}
+
+void CopyInt64DataToInt32(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
+  const int num_entries = tensor_proto.int64_data_size();
+  auto& int32_out = *tensor_value.mutable_ints()->mutable_values();
+  int32_out.Reserve(num_entries);
+  for (int i = 0; i < num_entries; ++i) {
+    int32_out.AddAlreadyReserved(narrow<int32_t>(tensor_proto.int64_data(i)));
+  }
+}
+
 // copy T data from the TensorProto.int32_t field to TensorValue.bytes
 template <typename T>
-void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
+void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
   const int num_entries = tensor_proto.int32_data_size();
   std::string& bytes = *tensor_value.mutable_bytes()->mutable_values();
   bytes.resize(num_entries * sizeof(T));
@@ -87,7 +114,7 @@ void CopyInt32DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSp
 
 // copy T data from the TensorProto.uint64_data field to TensorValue.bytes
 template <typename T>
-void CopyUInt64DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue tensor_value) {
+void CopyUInt64DataToBytes(const ONNX_NAMESPACE::TensorProto& tensor_proto, MILSpec::TensorValue& tensor_value) {
   const int num_entries = tensor_proto.uint64_data_size();
   std::string& bytes = *tensor_value.mutable_bytes()->mutable_values();
   bytes.resize(num_entries * sizeof(T));
@@ -143,18 +170,16 @@ void CopyOnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tensor_prot
       break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_INT64: {
-      // enable when this is proven to not be the case
-      ORT_THROW(
-          "INT64 is unexpected as CoreML uses 32-bit int for indices. "
-          "Most likely an initializer that should have been skipped was not.");
-      //// from: int64_data/raw, to: longints
-      // if (has_raw_data) {
-      //   CopyRawDataToRepeatedField<int64_t>(tensor_proto, *tensor_value.mutable_longints()->mutable_values());
+      // from: int64_data/raw, to: ints (use narrow to convert to int32)
+      // CoreML tensors have a longints field, but the CoreML op definitions only use int32,
+      // so we convert any int64 to int32
+      if (has_raw_data) {
+        CopyRawDataToRepeatedField<int64_t, int32_t>(tensor_proto, *tensor_value.mutable_ints()->mutable_values());
 
-      //} else {
-      //  tensor_value.mutable_longints()->mutable_values()->CopyFrom(tensor_proto.int64_data());
-      //}
-      // break;
+      } else {
+        CopyInt64DataToInt32(tensor_proto, tensor_value);
+      }
+      break;
     }
     case ONNX_NAMESPACE::TensorProto_DataType_FLOAT16: {
       // from: int32_data/raw, to: bytes
@@ -356,7 +381,8 @@ MILSpec::Value OnnxTensorToCoreMLTensor(const ONNX_NAMESPACE::TensorProto& tenso
   // populate ValueType with tensor data type, dims and rank
   MILSpec::ValueType& value_type = *value.mutable_type();
   MILSpec::TensorType& tensor_type = *value_type.mutable_tensortype();
-  tensor_type.set_datatype(OnnxDataTypeToMILSpec(tensor_proto.data_type()));
+  MILSpec::DataType data_type = OnnxDataTypeToMILSpec(tensor_proto.data_type());
+  tensor_type.set_datatype(data_type);
 
   tensor_type.set_rank(tensor_proto.dims().size());
   for (const auto& dim : tensor_proto.dims()) {
@@ -902,11 +928,9 @@ Status ModelBuilder::RegisterModelInputOutput(const NodeArg& node_arg, bool is_i
       // the model inputs need to be wired up as args to the 'main' function.
       auto tensor_value_type = CreateNamedTensorValueType(node_arg, /*convert_scalar*/ true);
 
-      // we need to convert int64 to int32 here as well
-      if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-        tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
-            OnnxDataTypeToMILSpec(ONNX_NAMESPACE::TensorProto_DataType_INT32));
-      }
+      // Handle conversion from int64 to int32
+      tensor_value_type.mutable_type()->mutable_tensortype()->set_datatype(
+          OnnxDataTypeToMILSpec(data_type));
 
       tensor_value_type.set_name(name);
 

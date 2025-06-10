@@ -18,11 +18,17 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   list(APPEND onnxruntime_session_srcs ${training_api_srcs})
 endif()
 
-
+# disable for all minimal builds. enabling this pulls in all the provider bridge stuff,
+# which is not enabled for any minimal builds.
 if (onnxruntime_MINIMAL_BUILD)
+  file(GLOB autoep_srcs
+    "${ONNXRUNTIME_ROOT}/core/session/ep_*.*"
+  )
+
   set(onnxruntime_session_src_exclude
     "${ONNXRUNTIME_ROOT}/core/session/provider_bridge_ort.cc"
     "${ONNXRUNTIME_ROOT}/core/session/model_builder_c_api.cc"
+    ${autoep_srcs}
   )
 
   list(REMOVE_ITEM onnxruntime_session_srcs ${onnxruntime_session_src_exclude})
@@ -63,7 +69,7 @@ endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-    install(TARGETS onnxruntime_session
+    install(TARGETS onnxruntime_session EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

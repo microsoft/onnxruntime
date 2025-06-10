@@ -15,6 +15,7 @@ class ExecutionProviders;
 class KernelRegistryManager;
 class Model;
 struct ConfigOptions;
+struct EpContextModelGenerationOptions;
 
 class GraphPartitioner {
  public:
@@ -33,13 +34,28 @@ class GraphPartitioner {
         graph_optimizer_registry_(std::move(graph_optimizer_registry)) {
   }
 
+  GraphPartitioner(KernelRegistryManager& kernel_registry_mgr,
+                   const ExecutionProviders& providers,
+                   std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry,
+                   CheckLoadCancellationFn check_load_cancellation_fn)
+      : kernel_registry_mgr_(kernel_registry_mgr),
+        providers_(providers),
+        graph_optimizer_registry_(std::move(graph_optimizer_registry)),
+        check_load_cancellation_fn_(std::move(check_load_cancellation_fn)) {
+  }
+
   // Run partitioning.
   Status Partition(Graph& graph, FuncManager& func_mgr,
                    const layout_transformation::TransformLayoutFunction& transform_layout_function,
                    const ConfigOptions& config_options,
                    const logging::Logger& logger,
                    Mode mode = Mode::kNormal,
+                   const EpContextModelGenerationOptions& ep_context_gen_options = {},
                    const layout_transformation::DebugGraphFn& debug_graph_fn = {}) const;
+
+  bool IsLoadCancellationFlagSet() const {
+    return check_load_cancellation_fn_ && check_load_cancellation_fn_();
+  }
 
 #ifndef ORT_MINIMAL_BUILD
   /// <summary>
@@ -69,6 +85,7 @@ class GraphPartitioner {
   KernelRegistryManager& kernel_registry_mgr_;
   const ExecutionProviders& providers_;
   std::unique_ptr<GraphOptimizerRegistry> graph_optimizer_registry_;
+  CheckLoadCancellationFn check_load_cancellation_fn_;
 };
 
 }  // namespace onnxruntime

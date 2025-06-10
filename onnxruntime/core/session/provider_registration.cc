@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <algorithm>
+#include <array>
+#include <sstream>
 #include <string>
 
 #include "core/common/common.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options.h"
+#include "core/graph/constants.h"
 #include "core/providers/provider_factory_creators.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -22,7 +26,18 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
+#endif
 using namespace onnxruntime;
+
+namespace onnxruntime {
+// Constants for the maximum string lengths of provider options keys and values. The maximum lengths are related
+// to the limits for session config options because we add provider options to the session configs map.
+static constexpr size_t kMaxSessionConfigsEpPrefixLength = 64;  // prefix for new key would be "ep.<EP_NAME>."
+static constexpr size_t kMaxProviderOptionKeyLength = ConfigOptions::kMaxKeyLength - kMaxSessionConfigsEpPrefixLength;
+static constexpr size_t kMaxProviderOptionValueLength = ConfigOptions::kMaxValueLength;
+}  // namespace onnxruntime
 
 namespace {
 
@@ -36,12 +51,21 @@ OrtStatus* ParseProviderOptions(_In_reads_(num_keys) const char* const* provider
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Provider options key/value cannot be empty");
     }
 
-    // arbitrary length to validate the key/value. adjust if/when needed.
-    // TODO: are any other input validation checks required here (and in the other functions that process
-    // provider options)?
-    if (strlen(provider_options_keys[i]) > 1024 || strlen(provider_options_values[i]) > 1024) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Maximum string length for a provider options key/value is 1024.");
+    // Check that provider options keys and values are within the allowed maximum lengths.
+    const size_t key_length = strlen(provider_options_keys[i]);
+    if (key_length > kMaxProviderOptionKeyLength) {
+      std::ostringstream error_builder;
+      error_builder << "Provider option key length is " << key_length << " but the limit is "
+                    << kMaxProviderOptionKeyLength << ". Provider option key: " << provider_options_keys[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
+    }
+
+    const size_t value_length = strlen(provider_options_values[i]);
+    if (value_length > kMaxProviderOptionValueLength) {
+      std::ostringstream error_builder;
+      error_builder << "Provider option value length is " << value_length << " but the limit is "
+                    << kMaxProviderOptionValueLength << ". Provider option key: " << provider_options_keys[i];
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, error_builder.str().c_str());
     }
 
     provider_options[provider_options_keys[i]] = provider_options_values[i];
@@ -63,6 +87,42 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                     _In_reads_(num_keys) const char* const* provider_options_values,
                     _In_ size_t num_keys) {
   API_IMPL_BEGIN
+  enum class EpID {
+    INVALID = 0,
+    DML,
+    QNN,
+    OpenVINO,
+    SNPE,  // TODO(adrianlizarraga): Remove SNPE entirely because it has been replaced by QNN EP.
+    XNNPACK,
+    WEBNN,
+    WebGPU,
+    AZURE,
+    JS,
+    VitisAI,
+    CoreML,
+    NvTensorRtRtx,  // TensorRt EP for RTX GPUs.
+  };
+
+  struct EpToAppend {
+    EpID id = EpID::INVALID;
+    const char* short_name = nullptr;
+    const char* canonical_name = nullptr;
+  };
+
+  static std::array<EpToAppend, 12> supported_eps = {
+      EpToAppend{EpID::DML, "DML", kDmlExecutionProvider},
+      EpToAppend{EpID::QNN, "QNN", kQnnExecutionProvider},
+      EpToAppend{EpID::OpenVINO, "OpenVINO", kOpenVINOExecutionProvider},
+      EpToAppend{EpID::SNPE, "SNPE", kSnpeExecutionProvider},
+      EpToAppend{EpID::XNNPACK, "XNNPACK", kXnnpackExecutionProvider},
+      EpToAppend{EpID::WEBNN, "WEBNN", kWebNNExecutionProvider},
+      EpToAppend{EpID::WebGPU, "WebGPU", kWebGpuExecutionProvider},
+      EpToAppend{EpID::AZURE, "AZURE", kAzureExecutionProvider},
+      EpToAppend{EpID::JS, "JS", kJsExecutionProvider},
+      EpToAppend{EpID::VitisAI, "VitisAI", kVitisAIExecutionProvider},
+      EpToAppend{EpID::CoreML, "CoreML", kCoreMLExecutionProvider},
+      EpToAppend{EpID::NvTensorRtRtx, "NvTensorRtRtx", kNvTensorRTRTXExecutionProvider}};
+
   ProviderOptions provider_options;
   OrtStatus* status = ParseProviderOptions(provider_options_keys,
                                            provider_options_values,
@@ -72,7 +132,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return status;
   }
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   for (const auto& config_pair : provider_options) {
     TraceLoggingWrite(
         telemetry_provider_handle,
@@ -90,86 +150,172 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
   };
 
-  for (const auto& config_pair : provider_options) {
-    ORT_THROW_IF_ERROR(options->value.config_options.AddConfigEntry((std::string(provider_name) + ":" + config_pair.first).c_str(), config_pair.second.c_str()));
+  auto create_failed_to_load_provider_status = [&provider_name]() {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 (std::string("Failed to load provider ") + provider_name).c_str());
+  };
+
+  auto create_unknown_provider_status = [&provider_name](gsl::span<const EpToAppend> supported_eps) -> OrtStatus* {
+    std::ostringstream str_builder;
+    str_builder << "Unknown provider name '" << provider_name << "'. "
+                << "Currently supported values are ";
+    const size_t num_eps = supported_eps.size();
+    for (size_t i = 0; i < num_eps; ++i) {
+      const EpToAppend& ep_info = supported_eps[i];
+
+      str_builder << "'" << ep_info.short_name << "'/'" << ep_info.canonical_name << "'";
+      if (num_eps >= 2 && i == num_eps - 2) {
+        str_builder << ", and ";
+      } else if (i == num_eps - 1) {
+        str_builder << ".";
+      } else {
+        str_builder << ", ";
+      }
+    }
+
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, str_builder.str().c_str());
+  };
+
+  auto ep_to_append_iter = std::find_if(supported_eps.begin(), supported_eps.end(),
+                                        [&provider_name](const EpToAppend& elem) -> bool {
+                                          return (strcmp(provider_name, elem.short_name) == 0) ||
+                                                 (strcmp(provider_name, elem.canonical_name) == 0);
+                                        });
+
+  if (ep_to_append_iter == supported_eps.end()) {
+    return create_unknown_provider_status(supported_eps);
   }
 
-  if (strcmp(provider_name, "DML") == 0) {
+  const EpToAppend& ep_to_append = *ep_to_append_iter;
+  ORT_ENFORCE(ep_to_append.id != EpID::INVALID);
+
+  // Add provider options to the session config options.
+  // Use a new key with the format: "ep.<lower_case_ep_name>.<PROVIDER_OPTION_KEY>"
+  ORT_API_RETURN_IF_STATUS_NOT_OK(options->AddProviderOptionsToConfigOptions(provider_options,
+                                                                             ep_to_append.canonical_name));
+
+  switch (ep_to_append.id) {
+    case EpID::DML: {
 #if defined(USE_DML)
-    options->provider_factories.push_back(DMLProviderFactoryCreator::CreateFromProviderOptions(options->value.config_options, provider_options));
+      options->provider_factories.push_back(
+          DMLProviderFactoryCreator::CreateFromProviderOptions(options->value.config_options, provider_options));
 #else
-    status = create_not_supported_status();
+      status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "QNN") == 0) {
-#if defined(USE_QNN)
-    options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "OpenVINO") == 0) {
-#if defined(USE_OPENVINO)
-    options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "SNPE") == 0) {
-#if defined(USE_SNPE)
-    options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "XNNPACK") == 0) {
-#if defined(USE_XNNPACK)
-    options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "WEBNN") == 0) {
-#if defined(USE_WEBNN)
-    std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
-    provider_options["deviceType"] = deviceType;
-    options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "WebGPU") == 0) {
-#if defined(USE_WEBGPU)
-    options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "AZURE") == 0) {
-#if defined(USE_AZURE)
-    options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
-#else
-    status = create_not_supported_status();
-#endif
-  } else if (strcmp(provider_name, "JS") == 0) {
-#if defined(USE_JSEP)
-    std::string preferred_layout;
-    if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
-      provider_options["preferred_layout"] = preferred_layout;
+      break;
     }
-    options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
+    case EpID::QNN: {
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+      if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
-    status = create_not_supported_status();
+      status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "VitisAI") == 0) {
-#ifdef USE_VITISAI
-    status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys, provider_options_values, num_keys);
+      break;
+    }
+    case EpID::OpenVINO: {
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
+      if (auto ep_factory = OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
-    status = create_not_supported_status();
+      status = create_not_supported_status();
 #endif
-  } else if (strcmp(provider_name, "CoreML") == 0) {
+      break;
+    }
+    case EpID::SNPE: {
+#if defined(USE_SNPE)
+      options->provider_factories.push_back(SNPEProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::XNNPACK: {
+#if defined(USE_XNNPACK)
+      options->provider_factories.push_back(XnnpackProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::WEBNN: {
+#if defined(USE_WEBNN)
+      std::string deviceType = options->value.config_options.GetConfigOrDefault("deviceType", "cpu");
+      provider_options["deviceType"] = deviceType;
+      options->provider_factories.push_back(WebNNProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::WebGPU: {
+#if defined(USE_WEBGPU)
+      options->provider_factories.push_back(WebGpuProviderFactoryCreator::Create(options->value.config_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::AZURE: {
+#if defined(USE_AZURE)
+      options->provider_factories.push_back(AzureProviderFactoryCreator::Create(provider_options));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::JS: {
+#if defined(USE_JSEP)
+      std::string preferred_layout;
+      if (options->value.config_options.TryGetConfigEntry("preferredLayout", preferred_layout)) {
+        provider_options["preferred_layout"] = preferred_layout;
+      }
+      options->provider_factories.push_back(JsProviderFactoryCreator::Create(provider_options, &(options->value)));
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::VitisAI: {
+#if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
+      status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys,
+                                                                      provider_options_values, num_keys);
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    case EpID::CoreML: {
 #if defined(USE_COREML)
-    options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
+      options->provider_factories.push_back(CoreMLProviderFactoryCreator::Create(provider_options));
 #else
-    status = create_not_supported_status();
+      status = create_not_supported_status();
 #endif
-  } else {
-    ORT_UNUSED_PARAMETER(options);
-    status = OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "Unknown provider name. Currently supported values are 'OPENVINO', 'SNPE', 'XNNPACK', 'QNN', 'WEBNN' ,'CoreML', and 'AZURE'");
+      break;
+    }
+    case EpID::NvTensorRtRtx: {
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
+      if (factory) {
+        options->provider_factories.push_back(factory);
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
+#else
+      status = create_not_supported_status();
+#endif
+      break;
+    }
+    default:
+      ORT_UNUSED_PARAMETER(options);
+      ORT_UNUSED_PARAMETER(create_failed_to_load_provider_status);
+      status = create_unknown_provider_status(supported_eps);
   }
 
   return status;

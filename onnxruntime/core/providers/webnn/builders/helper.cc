@@ -99,6 +99,72 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
   return true;
 }
 
+// Check if all input tensor ranks of the given node are supported by WebNN.
+bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limits, const logging::Logger& logger) {
+  const std::string_view op_type = node.OpType();
+  const auto it = op_inputs_map.find(op_type);
+  if (it == op_inputs_map.end()) {
+    LOGS(logger, VERBOSE) << "Operator type: [" << op_type << "] is not found in the op inputs map.";
+    return false;
+  }
+
+  const auto& input_defs = node.InputDefs();
+  const std::string_view webnn_op_type = it->second.opType;
+  const std::string webnn_op_type_str(webnn_op_type);
+
+  for (const auto& input : it->second.inputs) {
+    if (static_cast<size_t>(input.index) >= input_defs.size() || input_defs[input.index] == nullptr) {
+      LOGS(logger, VERBOSE) << "Input index [" << input.index
+                            << "] for operator type [" << op_type
+                            << "], corresponding WebNN op type [" << webnn_op_type
+                            << "], WebNN input name [" << input.name
+                            << "] is invalid.";
+      return false;
+    }
+
+    std::vector<int64_t> input_shape;
+    if (!GetShape(*input_defs[input.index], input_shape, logger)) {
+      return false;
+    }
+
+    const std::string input_name_str(input.name);
+    if (wnn_limits[webnn_op_type_str].isUndefined() ||
+        wnn_limits[webnn_op_type_str][input_name_str].isUndefined()) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name " << input.name
+                            << " is not defined in wnn_limits.";
+      return false;
+    }
+
+    const auto& input_limits = wnn_limits[webnn_op_type_str][input_name_str];
+    if (input_limits["rankRange"].isUndefined()) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name " << input.name
+                            << "'s rankRange is not defined.";
+      return false;
+    }
+
+    int input_dim_size = static_cast<int>(input_shape.size());
+    int min_rank = input_limits["rankRange"]["min"].as<int>();
+    int max_rank = input_limits["rankRange"]["max"].as<int>();
+
+    if (input_dim_size < min_rank || input_dim_size > max_rank) {
+      LOGS(logger, VERBOSE) << "Operator type: [" << op_type
+                            << "], input index: [" << input.index
+                            << "], corresponding WebNN op type: " << webnn_op_type
+                            << ", WebNN input name: " << input.name
+                            << ", input size " << input_dim_size
+                            << " is not in supported range [" << min_rank << ", " << max_rank << "]";
+      return false;
+    }
+  }
+  return true;
+}
+
 std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                   const emscripten::val& wnn_builder,
                                                   const WebnnDeviceType device_type,
@@ -121,15 +187,15 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
   return supported_nodes;
 }
 
-bool AreInputDataTypesSame(const std::string_view op_type,
-                           gsl::span<const int32_t> input_types,
-                           const logging::Logger& logger) {
-  for (size_t i = 1; i < input_types.size(); i++) {
-    if (input_types[0] != input_types[i]) {
+bool AreDataTypesSame(const std::string_view op_type,
+                      gsl::span<const int32_t> data_types,
+                      const logging::Logger& logger) {
+  for (size_t i = 1; i < data_types.size(); i++) {
+    if (data_types[0] != data_types[i]) {
       LOGS(logger, VERBOSE) << "[" << op_type
-                            << "] Input data types should be the same, but ["
-                            << input_types[0] << "] does not match "
-                            << input_types[i] << "].";
+                            << "] data types should be the same, but ["
+                            << data_types[0] << "] does not match "
+                            << data_types[i] << "].";
       return false;
     }
   }
@@ -272,22 +338,23 @@ bool IsMLTensorSupported() {
   return is_supported;
 }
 
-// Convert int8 to uint4/int4 (stored as uint8)
-uint8_t PackInt8ToUint8AsNibble(int8_t value, const int32_t& data_type) {
-  uint8_t result = 0;
+// Convert int8 to uint4/int4 (stored as uint8), used for creating WebNN Constant
+// with same value in both high and low nibbles for uint4/int4 data type.
+uint8_t PackInt8ToUint8DoubledNibbles(int8_t value, const int32_t& data_type) {
   if (data_type == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     if (value < 0 || value > 15) {
       ORT_THROW("Value cannot be safely converted to uint4.");
     }
-    result |= (static_cast<uint8_t>(value) << 4);
   } else {
     if (value < -8 || value > 7) {
       ORT_THROW("Value cannot be safely converted to int4.");
     }
-    result |= (value << 4);
   }
 
-  return result;
+  // Explicit conversion + truncate to lower 4 bits
+  const uint8_t result = static_cast<uint8_t>(value) & 0x0F;
+  // Duplicate the 4-bit value to both high and low nibbles
+  return (result << 4) | result;
 }
 
 // Convert float32 to float16 (stored as uint16)

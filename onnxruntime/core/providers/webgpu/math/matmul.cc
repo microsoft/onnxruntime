@@ -6,8 +6,9 @@
 #include "core/providers/cpu/tensor/utils.h"
 #include "core/providers/webgpu/shader_helper.h"
 #include "core/providers/webgpu/webgpu_supported_types.h"
-
+#include "core/providers/webgpu/nn/fuse_utils.h"
 #include "core/providers/webgpu/data_transfer.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -54,11 +55,12 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   std::string process_bias;
   if (has_bias_) {
     shader.AddInput("bias", ShaderUsage::UseUniform);
-    process_bias = "value += output_value_t(bias[row + i]);";
+    process_bias = is_channels_last_ ? "value += output_value_t(bias[col]);" : "value += output_value_t(bias[row + i]);";
   }
 
+  std::string apply_activation = GetActivationSnippet(activation_, "output_value_t", "output_element_t");
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform |
-                                                      ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
+                                                      ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   const auto& batch_dims = shader.AddIndices("batch_dims");
 
   int a_components = a.NumComponents();
@@ -90,6 +92,7 @@ Status MatMulNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "for (var i = 0u; i < " << output_number_ << "u; i++) {\n"
                             << "  var value = values[i];\n"
                             << process_bias << "\n"
+                            << apply_activation << "\n"
                             << "  let cur_indices = output_indices_t(batch, row + i, col/ " << components << ");\n"
                             << "  let offset = " << output.IndicesToOffset("cur_indices") << ";\n"
                             << output.SetByOffset("offset", "value")
@@ -127,7 +130,7 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     const int64_t a_rows = a->Shape().NumDimensions() > 1 ? a->Shape()[a->Shape().NumDimensions() - 2] : 1;
     TensorShape output_shape_shader({batch_size, a_rows, helper.N() / components});
 
-    MatMulNaiveProgram program{output_rank, output_number, has_bias};
+    MatMulNaiveProgram program{Activation(), output_rank, output_number, has_bias};
 
     program
         .CacheHint(std::to_string(components), std::to_string(a_components), std::to_string(output_number))
@@ -147,11 +150,32 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
     return context.RunProgram(program);
   }
 
-  int64_t batchA = a->Shape().SizeToDimension(a->Shape().NumDimensions() - 2);
-  int64_t batchB = b->Shape().SizeToDimension(b->Shape().NumDimensions() - 2);
+  std::vector<const Tensor*> inputs(has_bias ? 3 : 2);
+  inputs[0] = a;
+  inputs[1] = b;
+  if (has_bias) {
+    const auto* bias = context.Input(2);
+    inputs.push_back(bias);
+  }
+  auto program = CreateMatMulProgram(Activation(), inputs, output_tensor, false);
 
-  TensorShape a_shape = a->Shape();
-  TensorShape b_shape = b->Shape();
+  return context.RunProgram(program);
+}
+
+MatMulProgram CreateMatMulProgram(const Activation& activation, std::vector<const Tensor*>& inputs, Tensor* output_tensor, bool is_channels_last,
+                                  const TensorShape& input_a_reshape,
+                                  const TensorShape& input_b_reshape) {
+  const auto* a = inputs[0];
+  const auto* b = inputs[1];
+  bool has_bias = inputs.size() > 2;
+  TensorShape a_shape = input_a_reshape.NumDimensions() > 0 ? input_a_reshape : a->Shape();
+  TensorShape b_shape = input_b_reshape.NumDimensions() > 0 ? input_b_reshape : b->Shape();
+
+  MatMulComputeHelper helper;
+  ORT_THROW_IF_ERROR(helper.Compute(a_shape, b_shape));
+  int64_t batchA = a_shape.SizeToDimension(a_shape.NumDimensions() - 2);
+  int64_t batchB = b_shape.SizeToDimension(b_shape.NumDimensions() - 2);
+
   TensorShape output_shape = helper.OutputShape();
 
   const int64_t dim_output_outer = output_shape[output_shape.NumDimensions() - 2];
@@ -184,9 +208,9 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
   const int64_t batch_size = outer_dims.Size();
 
   // Get dimensions for matrix multiplication from TensorShape
-  const int32_t dim_a_outer = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
-  const int32_t dim_inner = narrow<int32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
-  const int32_t dim_b_outer = narrow<int32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
+  const uint32_t dim_a_outer = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 2]);  // left matrix second dimension
+  const uint32_t dim_inner = narrow<uint32_t>(a_shape[a_shape.NumDimensions() - 1]);    // left matrix first dimension
+  const uint32_t dim_b_outer = narrow<uint32_t>(b_shape[b_shape.NumDimensions() - 1]);  // right matrix first dimension
 
   const bool is_vec4 = dim_inner % 4 == 0 && dim_b_outer % 4 == 0;
 
@@ -194,34 +218,36 @@ Status MatMul::ComputeInternal(ComputeContext& context) const {
                                                    ? InlinedVector<int64_t>({4, 1, 1})
                                                    : InlinedVector<int64_t>({4, 4, 1});
 
-  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
-  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
-  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
-                                               (MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
+  const uint32_t dispatch_x = narrow<uint32_t>((dim_b_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X * elements_per_thread[0]));
+  const uint32_t dispatch_y = narrow<uint32_t>((dim_a_outer + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y * elements_per_thread[1]));
+  const uint32_t dispatch_z = narrow<uint32_t>((static_cast<uint32_t>(batch_size) + MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2] - 1) /
+                                               (MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z * elements_per_thread[2]));
 
   const int components = is_vec4 ? 4 : 1;
   const TensorShape a_shape_temp = CreateMatMulIntermediateShape(outer_dims_a, dim_a_outer, dim_inner, components);
   const TensorShape b_shape_temp = CreateMatMulIntermediateShape(outer_dims_b, dim_inner, dim_b_outer, components);
   const TensorShape output_shape_temp = TensorShape({batch_size, dim_a_outer, dim_b_outer / components});
 
-  MatMulProgram program{has_bias, is_vec4, elements_per_thread};
+  MatMulProgram program{activation, has_bias, is_vec4, elements_per_thread, is_channels_last};
   program
-      .CacheHint(absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4))
+      .CacheHint(activation.ToString(), absl::StrJoin(elements_per_thread, "-"), std::to_string(is_vec4), components, is_channels_last)
       .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, a_shape_temp, components},
                   {b, ProgramTensorMetadataDependency::TypeAndRank, b_shape_temp, components}})
       .AddOutputs({{output_tensor, ProgramTensorMetadataDependency::Rank, output_shape_temp, components}})
       .AddUniformVariables({{dim_a_outer}, {dim_b_outer}, {dim_inner}})
       .AddIndices(outer_dims)
       .SetDispatchGroupSize(dispatch_x, dispatch_y, dispatch_z)
-      .SetWorkgroupSize(MATMUL_PACKED_WORKGROUP_SIZE_X, MATMUL_PACKED_WORKGROUP_SIZE_Y, MATMUL_PACKED_WORKGROUP_SIZE_Z);
+      .SetWorkgroupSize(MatMul::MATMUL_PACKED_WORKGROUP_SIZE_X, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Y, MatMul::MATMUL_PACKED_WORKGROUP_SIZE_Z);
 
   if (has_bias) {
-    const auto* bias = context.Input(2);
-    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, 1});
+    auto bias_components = is_channels_last ? components : 1;
+    const auto* bias = inputs[2];
+    TensorShape reduced_bias_shape = ReduceShapeByComponents(bias->Shape(), bias_components);
+    program.AddInput({bias, ProgramTensorMetadataDependency::Rank, reduced_bias_shape, bias_components});
   }
-  return context.RunProgram(program);
+  return program;
 }
 
 }  // namespace webgpu

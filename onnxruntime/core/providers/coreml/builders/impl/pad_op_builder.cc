@@ -150,6 +150,14 @@ bool PadOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParam
       LOGS(logger, VERBOSE) << "constant_value must be a constant initializer.";
       return false;
     }
+
+    int32_t constant_value_type;
+    GetType(*input_defs[2], constant_value_type, logger);
+
+    if (constant_value_type != ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
+      LOGS(logger, VERBOSE) << "Only float constant_value is supported, got type: " << constant_value_type;
+      return false;
+    }
   }
 
   {

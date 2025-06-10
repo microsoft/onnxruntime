@@ -48,10 +48,12 @@ parameters:
   type: string
   default: ''
 
+# Do not update this to a version that does not exist for the qnn-runtime Maven package:
+# https://mvnrepository.com/artifact/com.qualcomm.qti/qnn-runtime
 - name: QnnSDKVersion
   displayName: QNN SDK Version
   type: string
-  default: '2.32.0.250228'
+  default: '2.34.0.250424'
 
 - name: is1ES
   displayName: Is 1ES pipeline

@@ -549,4 +549,57 @@ ORT_API_STATUS_IMPL(CreateTensorWithDataAndDeleterAsOrtValue, _In_ OrtAllocator*
                     ONNXTensorElementDataType type,
                     _Outptr_ OrtValue** out);
 
+ORT_API_STATUS_IMPL(SessionOptionsSetLoadCancellationFlag, _Inout_ OrtSessionOptions* options,
+                    _In_ bool is_cancel);
+
+ORT_API(const OrtCompileApi*, GetCompileApi);
+
+ORT_API(void, CreateKeyValuePairs, _Outptr_ OrtKeyValuePairs** out);
+ORT_API(void, AddKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key, _In_ const char* value);
+ORT_API(const char*, GetKeyValue, _In_ const OrtKeyValuePairs* kvps, _In_ const char* key);
+ORT_API(void, GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
+        _Outptr_ const char* const** keys, _Outptr_ const char* const** values, _Out_ size_t* num_entries);
+ORT_API(void, RemoveKeyValuePair, _In_ OrtKeyValuePairs* kvps, _In_ const char* key);
+ORT_API(void, ReleaseKeyValuePairs, _Frees_ptr_opt_ OrtKeyValuePairs*);
+
+ORT_API_STATUS_IMPL(RegisterExecutionProviderLibrary, _In_ OrtEnv* env, const char* registration_name,
+                    const ORTCHAR_T* path);
+ORT_API_STATUS_IMPL(UnregisterExecutionProviderLibrary, _In_ OrtEnv* env, _In_ const char* registration_name);
+
+ORT_API_STATUS_IMPL(GetEpDevices, _In_ const OrtEnv* env,
+                    _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
+
+ORT_API_STATUS_IMPL(SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtEnv* env,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* ep_devices, _In_ size_t num_ep_devices,
+                    _In_reads_(num_op_options) const char* const* ep_option_keys,
+                    _In_reads_(num_op_options) const char* const* ep_option_vals,
+                    size_t num_ep_options);
+
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* sess_options,
+                    _In_ OrtExecutionProviderDevicePolicy policy);
+
+ORT_API_STATUS_IMPL(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* sess_options,
+                    _In_ EpSelectionDelegate delegate,
+                    _In_opt_ void* state);
+
+// OrtHardwareDevice accessors.
+ORT_API(OrtHardwareDeviceType, HardwareDevice_Type, _In_ const OrtHardwareDevice* device);
+ORT_API(uint32_t, HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device);
+ORT_API(const char*, HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device);
+ORT_API(uint32_t, HardwareDevice_DeviceId, _In_ const OrtHardwareDevice* device);
+ORT_API(const OrtKeyValuePairs*, HardwareDevice_Metadata, _In_ const OrtHardwareDevice* device);
+
+// OrtEpDevice accessors
+ORT_API(const char*, EpDevice_EpName, _In_ const OrtEpDevice* ep_device);
+ORT_API(const char*, EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device);
+ORT_API(const OrtKeyValuePairs*, EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device);
+ORT_API(const OrtKeyValuePairs*, EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device);
+ORT_API(const OrtHardwareDevice*, EpDevice_Device, _In_ const OrtEpDevice* ep_device);
+
+ORT_API(const OrtEpApi*, GetEpApi);
+
+ORT_API_STATUS_IMPL(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+ORT_API_STATUS_IMPL(AllocatorGetStats, _In_ const OrtAllocator* ptr, _Outptr_ OrtKeyValuePairs** out);
 }  // namespace OrtApis

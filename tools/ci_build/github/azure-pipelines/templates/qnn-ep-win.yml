@@ -1,14 +1,11 @@
 parameters:
-  QnnSdk: '2.32.0.250228'
+  QnnSdk: '2.34.0.250424'
   build_config: 'RelWithDebInfo'
   IsReleaseBuild: false
   DoEsrp: false
   qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
   ArtifactName: 'drop-nuget-qnn'
-  buildParameter: ''
   OrtNugetPackageId: 'Microsoft.ML.OnnxRuntime.QNN'
-  buildPlatform: 'x64'
-  buildArch: 'x64'
   StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
   PublishArchive: false
 
@@ -17,17 +14,13 @@ stages:
   dependsOn: []
   jobs:
   - job: ${{ parameters.StageName }}
-    timeoutInMinutes: 120
+    timeoutInMinutes: 300
 
     pool:
       name: ${{ parameters.qnn_ep_build_pool_name }}
     variables:
-      ${{ if eq(parameters.buildArch, 'ARM64') }}:
-        targetArchitecture: 'arm64'
-      ${{ else }}:
-        targetArchitecture: ${{ parameters.buildArch }}
       OrtPackageId: ${{ parameters.OrtNugetPackageId }}
-      commonBuildArgs: '--update --compile_no_warning_as_error --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_binskim_compliant_compile_flags ${{ parameters.buildParameter }} '
+      commonBuildArgs: '--compile_no_warning_as_error --skip_submodule_sync --build_shared_lib --cmake_generator "Visual Studio 17 2022" --config ${{ parameters.build_config }} --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags '
 
     steps:
     - template: set-version-number-variables-step.yml
@@ -42,58 +35,16 @@ stages:
         QnnSDKVersion: ${{ parameters.QnnSdk }}
 
     - task: PythonScript@0
-      displayName: 'Generate project'
+      displayName: 'Build arm64x project - generate the def & lib file for next build'
       inputs:
         scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-        arguments: '--use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
-
-    - task: VSBuild@1
-      displayName: 'Build onnxruntime'
+        arguments: ' --arm64 --buildasx --build_dir $(Build.BinariesDirectory)\arm64x --use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
+        
+    - task: PythonScript@0
+      displayName: 'Build arm64ecx project - the real arm64x'
       inputs:
-        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime.vcxproj'
-        platform: ${{ parameters.buildPlatform }}
-        configuration: ${{ parameters.build_config }}
-        msbuildArchitecture: ${{ parameters.buildArch }}
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-        createLogFile: true
-
-    - task: VSBuild@1
-      displayName: 'Build onnx_test_runner'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnx_test_runner.vcxproj'
-        platform: ${{ parameters.buildPlatform }}
-        configuration: ${{ parameters.build_config }}
-        msbuildArchitecture: ${{ parameters.buildArch }}
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-        createLogFile: true
-
-    - task: VSBuild@1
-      displayName: 'Build onnxruntime_perf_test'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_perf_test.vcxproj'
-        platform: ${{ parameters.buildPlatform }}
-        configuration: ${{ parameters.build_config }}
-        msbuildArchitecture: ${{ parameters.buildArch }}
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-        createLogFile: true
-
-    - task: VSBuild@1
-      displayName: 'Build onnxruntime_test_all (to copy Qnn libs)'
-      inputs:
-        solution: '$(Build.BinariesDirectory)\${{ parameters.build_config }}\onnxruntime_test_all.vcxproj'
-        platform: ${{ parameters.buildPlatform }}
-        configuration: ${{ parameters.build_config }}
-        msbuildArchitecture: ${{ parameters.buildArch }}
-        maximumCpuCount: true
-        logProjectEvents: true
-        workingFolder: '$(Build.BinariesDirectory)\${{ parameters.build_config }}'
-        createLogFile: true
+        scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+        arguments: ' --arm64ec --buildasx --build_dir $(Build.BinariesDirectory) --use_qnn --qnn_home $(QnnSDKRootDir) $(commonBuildArgs)'
 
     - task: CmdLine@2
       displayName: 'Print contents of binaries directory'
@@ -112,8 +63,8 @@ stages:
       - template: c-api-artifacts-package-and-publish-steps-windows.yml
         parameters:
           buildConfig: ${{ parameters.build_config }}
-          artifactName: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
-          artifactNameNoVersionString: 'onnxruntime-win-${{ parameters.buildPlatform }}-qnn'
+          artifactName: 'onnxruntime-win-arm64x-qnn'
+          artifactNameNoVersionString: 'onnxruntime-win-arm64x-qnn'
           DoEsrp: ${{ parameters.DoEsrp }}
 
     - task: MSBuild@1
@@ -147,7 +98,7 @@ stages:
         solution: '$(Build.SourcesDirectory)\csharp\OnnxRuntime.CSharp.proj'
         platform: 'Any CPU'
         configuration: ${{ parameters.build_config }}
-        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=$(targetArchitecture)'
+        msbuildArguments: '-t:CreatePackage -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId) -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }} -p:TargetArchitecture=arm64'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - task: CopyFiles@2
@@ -164,8 +115,14 @@ stages:
         Contents: '*.snupkg'
         TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
+    - template: ../templates/esrp_nuget.yml
+      parameters:
+        DisplayName: 'ESRP - sign NuGet package'
+        FolderPath: '$(Build.ArtifactStagingDirectory)'
+        DoEsrp: ${{ parameters.DoEsrp }}
+
     - task: 1ES.PublishPipelineArtifact@1
-      displayName: 'Publish Pipeline x64 NuGet Artifact'
+      displayName: 'Publish Pipeline Qnn NuGet Artifact'
       inputs:
-        artifactName: ${{ parameters.ArtifactName }}
+        artifactName: 'drop-signed-nuget-qnn'
         targetPath: '$(Build.ArtifactStagingDirectory)'

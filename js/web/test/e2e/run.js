@@ -83,6 +83,12 @@ async function main() {
     await testExportsMain(PRESERVE, PACKAGES_TO_INSTALL);
   }
 
+  // perform type (typescript related) testing
+  {
+    const testTypeMain = require(path.join(TEST_E2E_RUN_FOLDER, './type/main'));
+    await testTypeMain(PRESERVE, PACKAGES_TO_INSTALL);
+  }
+
   // prepare .wasm files for path override testing
   prepareWasmPathOverrideFiles();
 

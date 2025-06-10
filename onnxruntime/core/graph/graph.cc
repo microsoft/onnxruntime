@@ -41,6 +41,7 @@
 #include "core/graph/function_impl.h"
 #include "core/graph/schema_registry.h"
 #include "onnx/checker.h"
+#include "onnx/defs/parser.h"
 using namespace ONNX_NAMESPACE::checker;
 #endif
 
@@ -1268,6 +1269,10 @@ Graph::Graph(const Model& owning_model,
 #endif
   }
 
+  if (owning_model_.IsLoadCancellationFlagSet()) {
+    ORT_THROW_WITH_CATEGORY_AND_CODE(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
+  }
+
   // Remove constant nodes as they're replaced with initializers above.
   const gsl::not_null<RepeatedPtrField<NodeProto>*> graph_mutable_nodes{graph_proto_->mutable_node()};
   graph_mutable_nodes->erase(
@@ -1363,6 +1368,10 @@ Graph::Graph(const Model& owning_model,
                                << "or with the tool onnxruntime/tools/python/remove_initializer_from_input.py.";
       }
     }
+  }
+
+  if (owning_model_.IsLoadCancellationFlagSet()) {
+    ORT_THROW_WITH_CATEGORY_AND_CODE(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph loading canceled due to user request.");
   }
 
   for (auto& graph_output : graph_proto_->output()) {

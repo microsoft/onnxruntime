@@ -43,6 +43,7 @@
 #include "core/optimizer/qdq_transformer/selectors_actions/shared/utils.h"
 #include "core/providers/common.h"
 #include "core/providers/partitioning_utils.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #else
 // Includes when building QNN EP as a shared library
@@ -150,6 +151,7 @@ class NodeAttrHelper {
   std::vector<int64_t> Get(const std::string& key, const std::vector<int64_t>& def_val) const;
 
   const std::string& Get(const std::string& key, const std::string& def_val) const;
+  std::vector<std::string> Get(const std::string& key, const std::vector<std::string>& def_val) const;
 
   // Convert the i() or ints() of the attribute from int64_t to int32_t
   int32_t Get(const std::string& key, int32_t def_val) const;

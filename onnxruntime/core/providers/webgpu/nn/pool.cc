@@ -95,6 +95,9 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     var_decl_code = SS_GET(var_decl_ss);
 
     sampling_code = "      value = max(value, x_val);\n";
+    if (are_small_output_big_kernel_) {
+      downsampling_code = "  sum_or_max_shared[local_idx] = value;\n";
+    }
   } else {
     SS(var_decl_ss, kStringInitialSize);
     var_decl_ss << "  var value = " << (is_float16_ ? "f16(0)" : "f32(0)") << ";\n";
@@ -113,7 +116,12 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
     sampling_code = SS_GET(sampling_ss);
 
     SS(downsampling_ss, kStringInitialSize);
-    downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") << "(count);\n";
+    if (are_small_output_big_kernel_) {
+      downsampling_ss << "  sum_or_max_shared[local_idx] = value;\n"
+                      << "  count_shared[local_idx] = count;\n";
+    } else {
+      downsampling_ss << "  value /= " << (is_float16_ ? "f16" : "f32") << "(count);\n";
+    }
     downsampling_code = SS_GET(downsampling_ss);
   }
 
@@ -125,13 +133,54 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
   auto data_dim_end = input.Rank();
   data_dim_end = is_nhwc_ ? data_dim_end - 1 : data_dim_end;
 
+  std::string sum_or_max_shared;
+  if (are_small_output_big_kernel_) {
+    shader.AdditionalImplementation()
+        << "var<workgroup> sum_or_max_shared : array<" << (is_float16_ ? "f16" : "f32") << ",workgroup_size_x >;\n"
+        << (!is_max_pool_ ? "var<workgroup> count_shared : array<u32, workgroup_size_x>;\n" : "");
+
+    SS(shared_ss, 512);
+    std::string sum_or_max_shared_op;
+    std::string count_shared_op;
+    if (is_max_pool_) {
+      sum_or_max_shared_op = "sum_or_max_shared[local_idx] = max(sum_or_max_shared[local_idx], sum_or_max_shared[local_idx + reduce_size]);\n";
+    } else {
+      sum_or_max_shared_op = "sum_or_max_shared[local_idx] += sum_or_max_shared[local_idx + reduce_size];\n";
+      count_shared_op = "count_shared[local_idx] += count_shared[local_idx + reduce_size];\n";
+    }
+
+    shared_ss << "  workgroupBarrier();\n"
+              << "  var reduce_size : u32 = workgroup_size_x;\n"
+              << "  for (var curr_size = reduce_size >> 1;  curr_size > 0; curr_size = reduce_size >> 1) {\n"
+              << "    reduce_size = curr_size + (reduce_size & 1);\n"
+              << "    if (local_idx < curr_size) {\n"
+              << "      " << sum_or_max_shared_op
+              << "      " << count_shared_op
+              << "    }\n"
+              << "    workgroupBarrier();\n"
+              << "  }\n";
+    sum_or_max_shared = SS_GET(shared_ss);
+  }
+  std::string kernel_loop_decl_code = are_small_output_big_kernel_ ? "  for (var i: u32 = local_idx; i < uniforms.kernel_size; i += workgroup_size_x) {\n" : "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n";
+
+  SS(output_ss, kStringInitialSize);
+  if (are_small_output_big_kernel_) {
+    output_ss << "  if (local_idx == 0) {\n"
+              << "    value = sum_or_max_shared[0]" << (!is_max_pool_ ? (is_float16_ ? " / f16(count_shared[0])" : " / f32(count_shared[0])") : "") << ";\n"
+              << "    " << output.SetByOffset("workgroup_idx", "value") << ";\n"
+              << "  }\n";
+  } else {
+    output_ss << "  " << output.SetByOffset("global_idx", "value") << ";\n";
+  }
+  std::string output_code = SS_GET(output_ss);
+
   auto& body = shader.MainFunctionBody();
-  body << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-       << "  let y_indices = " << output.OffsetToIndices("global_idx") << ";\n"
+  body << (are_small_output_big_kernel_ ? "" : shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size"))
+       << "  let y_indices = " << output.OffsetToIndices((are_small_output_big_kernel_ ? "workgroup_idx" : "global_idx")) << ";\n"
        << "  var x_indices = y_indices;\n"
        << "  var k_indices: array<u32, " << kernel_rank << ">;\n"
        << var_decl_code
-       << "  for (var i: u32 = 0; i < uniforms.kernel_size; i++) {\n"
+       << kernel_loop_decl_code
        << "    var offset = i;\n"
        // ---- Compute offset to indices in pooling window.
        << "    for (var j = 0; j < " << kernel_rank << "; j++) {\n"
@@ -162,7 +211,8 @@ Status PoolProgram::GenerateShaderCode(ShaderHelper& shader) const {
        << "    }\n"
        << "  }\n"
        << downsampling_code
-       << "  " << output.SetByOffset("global_idx", "value") << ";\n";
+       << sum_or_max_shared
+       << output_code;
 
   return Status::OK();
 }
@@ -225,7 +275,6 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   }
   bool is_float16 = X->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16;
   bool count_include_pad = pool_attrs_.count_include_pad;
-  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad};
 
   // Number of elements
   uint32_t output_size = gsl::narrow_cast<uint32_t>(Y->Shape().Size());
@@ -235,15 +284,24 @@ Status Pool<PoolType, is_nhwc>::ComputeInternal(ComputeContext& context) const {
   const auto strides_u32 = NarrowToU32(strides);
   const auto dilations_u32 = NarrowToU32(dilations);
 
-  program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad)
+  bool are_small_output_big_kernel = output_size <= 128 && kernel_size >= 128;
+  PoolProgram program{is_max_pool, is_nhwc, kernel_shape, is_float16, count_include_pad, are_small_output_big_kernel};
+
+  program.CacheHint(kernel_shape.size(), is_max_pool, is_nhwc, is_float16, count_include_pad, are_small_output_big_kernel)
       .AddInputs({{X, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutputs({{Y}})
-      .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({output_size, kernel_size,
                             gsl::span<const uint32_t>(kernel_strides.data(), kernel_strides.size()),
                             gsl::span<const uint32_t>(pads_u32.data(), pads_u32.size()),
                             gsl::span<const uint32_t>(strides_u32.data(), strides_u32.size()),
                             gsl::span<const uint32_t>(dilations_u32.data(), dilations_u32.size())});
+
+  if (are_small_output_big_kernel) {
+    program.SetWorkgroupSize(128)
+        .SetDispatchGroupSize(output_size);
+  } else {
+    program.SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE);
+  }
 
   return context.RunProgram(program);
 }

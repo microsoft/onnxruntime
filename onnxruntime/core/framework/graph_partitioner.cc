@@ -56,6 +56,7 @@ namespace {
 // contains some common parameters used by the partitioning helper functions
 struct PartitionParams {
   std::reference_wrapper<Graph> graph;
+  std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   std::reference_wrapper<FuncManager> func_mgr;
   std::reference_wrapper<KernelRegistry> fused_kernel_registry;
@@ -143,6 +144,7 @@ struct GetCapabilityForEPParams {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   IResourceAccountant* resource_accountant;
   std::reference_wrapper<const GraphOptimizerRegistry> graph_optimizer_registry;
+  std::reference_wrapper<const CheckLoadCancellationFn> check_load_cancellation_fn;
 };
 
 auto get_capabilities = [](const IExecutionProvider& ep,
@@ -188,7 +190,12 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
 
   {
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+                                    graph_optimizer_registry);
+    if (params.check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Graph partitioning was canceled by user request");
+    }
 
     if (capabilities.empty()) {
       return Status::OK();
@@ -209,6 +216,10 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     // Perform layout transformation on the specific EP assigned graph
     bool modified = false;
     ORT_RETURN_IF_ERROR(params.transform_layout(graph, modified, current_ep, params.debug_graph_fn));
+    if (params.check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "GetCapabilities was canceled by user request");
+    }
 
     // It is possible some new nodes are introduced during transformation. These nodes can be either existing nodes
     // which are reconstructed to update domain or completely new nodes which are necessary for layout transformation.
@@ -226,7 +237,12 @@ static Status GetCapabilityForEP(const GetCapabilityForEPParams& params, const l
     capabilities.clear();
 
     const GraphViewer graph_viewer(graph);
-    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant, graph_optimizer_registry);
+    capabilities = get_capabilities(current_ep, graph_viewer, kernel_lookup, params.resource_accountant,
+                                    graph_optimizer_registry);
+    if (params.check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "GetCapabilities was canceled by user request");
+    }
 
     // all nodes with an index >= first_new_node with domain of kMSInternalNHWCDomain should be in the capabilities
     InlinedHashSet<NodeIndex> new_nodes_in_capabilities;
@@ -405,8 +421,10 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
                                            int& fused_node_unique_id,
                                            const layout_transformation::TransformLayoutFunction& transform_layout_fn,
                                            const layout_transformation::DebugGraphFn& debug_graph_fn,
+                                           const CheckLoadCancellationFn& check_load_cancellation_fn,
                                            const logging::Logger& logger, IResourceAccountant* resource_accountant,
-                                           const GraphOptimizerRegistry& graph_optimizer_registry) {
+                                           const GraphOptimizerRegistry& graph_optimizer_registry,
+                                           bool disable_model_compile) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
   // doing it here saves all providers checking for this in GetCapability
   if (graph.NumberOfNodes() == 0) {
@@ -420,7 +438,10 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       // we pass through the FuncManager from the top level graph
       ORT_RETURN_IF_ERROR(PartitionOnnxFormatModelImpl(*subgraph, func_mgr, kernel_registry_mgr,
                                                        fused_kernel_registry, current_ep, mode, fused_node_unique_id,
-                                                       transform_layout_fn, debug_graph_fn, logger, resource_accountant, graph_optimizer_registry));
+                                                       transform_layout_fn, debug_graph_fn,
+                                                       check_load_cancellation_fn,
+                                                       logger, resource_accountant,
+                                                       graph_optimizer_registry, disable_model_compile));
     }
   }
 
@@ -445,7 +466,8 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       std::cref(transform_layout_fn),
       std::cref(debug_graph_fn),
       resource_accountant,
-      std::ref(graph_optimizer_registry)};
+      std::ref(graph_optimizer_registry),
+      std::cref(check_load_cancellation_fn)};
 
   ORT_RETURN_IF_ERROR(GetCapabilityForEP(get_capability_params, logger));
   if (capabilities.empty()) {
@@ -508,6 +530,16 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
     }
   }
 
+  // Helper function that returns true if any of the nodes assigned to a compiling EP is not already compiled.
+  auto graph_viewer_has_non_compiled_node = [](const GraphViewer& graph_viewer) -> bool {
+    for (const auto& node : graph_viewer.Nodes()) {
+      if (node.OpType() != "EPContext") {
+        return true;
+      }
+    }
+    return false;
+  };
+
   // NOTE: if mode_ is kAssignOnly, nodes_to_compile will be empty at this point due to logic in PlaceNode
   // even with single node, EP might still want to compile it.
   // for example, it want to JIT an optimized kernel for LSTM with a given shape.
@@ -527,11 +559,20 @@ static Status PartitionOnnxFormatModelImpl(Graph& graph, FuncManager& func_mgr,
       for (size_t j = 0, end = nodes_to_compile.size(); j < end; j++) {
         auto* node = nodes_to_compile[j];
         const auto& cur_capability = *capabilities_to_compile[j];
-        viewers.push_back(std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph));
+        auto graph_viewer = std::make_unique<GraphViewer>(graph, *cur_capability.sub_graph);
+
+        if (disable_model_compile && graph_viewer_has_non_compiled_node(*graph_viewer)) {
+          return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_REQUIRES_COMPILATION, "User disabled EP compilation but EP '",
+                                 type, "' needs to compile one or more nodes.");
+        }
+
+        viewers.push_back(std::move(graph_viewer));
         nodes_and_viewers.push_back(IExecutionProvider::FusedNodeAndGraph{*node, *viewers.back()});
       }
 
       ORT_RETURN_IF_ERROR(current_ep.Compile(nodes_and_viewers, node_compute_funcs));
+      ORT_RETURN_IF(check_load_cancellation_fn(),
+                    "Graph partitioning is canceled due to user request.");
 
       if (node_compute_funcs.size() != nodes_to_compile.size()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, type, " did not return correct number of compiled functions");
@@ -633,6 +674,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                      Graph& graph,
                                      const GraphOptimizerRegistry& graph_optimizer_registry,
                                      const logging::Logger& logger,
+                                     const CheckLoadCancellationFn& check_load_cancellation_fn,
                                      InlinedHashSet<std::string>& not_inlined,
                                      size_t& inlined_count) {
   // handle testing edge case where optimizers or constant lifting results in graph with no nodes.
@@ -650,6 +692,7 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
                                                  *subgraph,
                                                  graph_optimizer_registry,
                                                  logger,
+                                                 check_load_cancellation_fn,
                                                  not_inlined,
                                                  inlined_count));
     }
@@ -673,8 +716,13 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
   InlinedHashSet<NodeIndex> claimed_by_ep;
   for (const auto& ep : execution_providers) {
     std::vector<std::unique_ptr<ComputeCapability>> capabilities;
-    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep, graph_optimizer_registry, logger,
+    ORT_RETURN_IF_ERROR(GetCapabilityForEPForAotInlining(graph_viewer, kernel_registry_mgr, *ep,
+                                                         graph_optimizer_registry, logger,
                                                          capabilities));
+    if (check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
+    }
+
     for (auto& capability : capabilities) {
       const auto& nodes = capability->sub_graph->nodes;
       if (nodes.size() == 1) {
@@ -707,6 +755,9 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
         ORT_IGNORE_RETURN_VALUE(not_inlined.insert(std::move(function_id)));
       }
     }
+    if (check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "AOT inlining is canceled due to user request.");
+    }
   }
 
   return Status::OK();
@@ -715,10 +766,11 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 // Validate the ep_context_path to make sure it is file path and check whether the file exist already
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
-                                        std::filesystem::path& context_cache_path) {
+                                        std::filesystem::path& context_cache_path,
+                                        bool error_if_output_file_exists = true) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
-    if (!context_cache_path.has_filename()) {
+    if (!(context_cache_path.has_filename() && context_cache_path.extension() != "")) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
@@ -732,9 +784,9 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
-  if (std::filesystem::exists(context_cache_path)) {
+  if (std::filesystem::exists(context_cache_path) && error_if_output_file_exists) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
+                           context_cache_path, "' exists already. Please remove the EP context model if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -742,8 +794,7 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
 
 static Status CreateEpContextModel(const ExecutionProviders& execution_providers,
                                    const Graph& graph,
-                                   const std::filesystem::path& ep_context_path,
-                                   const std::filesystem::path& ep_context_ext_ini_path,
+                                   const EpContextModelGenerationOptions& ep_context_gen_options,
                                    const logging::Logger& logger) {
   InlinedVector<const Node*> all_ep_context_nodes;
   for (const auto& ep : execution_providers) {
@@ -752,7 +803,25 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   if (all_ep_context_nodes.size() < 1) {
-    return Status::OK();
+    auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
+
+    ORT_RETURN_IF(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError,
+                  "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
+                  "at least one subgraph in the model.");
+
+    if (action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
+      LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
+                               "Either the session EPs do not support compilation or the model is already compiled.";
+      // Note: this path is only taken if a model is compiled with the original compilation approach that uses
+      // session options configs only. The explicit compile API instead only chooses between
+      // kReturnError and kGenerateModel.
+      return Status::OK();
+    }
+
+    // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
+    assert(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel);
+    LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
+                          "Either the session EPs do not support compilation or the model is already compiled.";
   }
 
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
@@ -764,8 +833,29 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     return std::make_pair(false, static_cast<const Node*>(nullptr));
   };
 
+  bool saving_to_buffer = ep_context_gen_options.output_model_buffer_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_size_ptr != nullptr &&
+                          ep_context_gen_options.output_model_buffer_allocator != nullptr;
+
   std::filesystem::path context_cache_path;
-  ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
+  if (!saving_to_buffer || !graph.ModelPath().empty()) {
+    ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
+                                                  graph.ModelPath(),
+                                                  context_cache_path,
+                                                  ep_context_gen_options.error_if_output_file_exists));
+  }
+
+  // Utility function to detect a fused node with an unsupported domain.
+  // Ex: when compiling an already compiled model, an EPContext node in the input model would be wrapped
+  // into a fused node with a domain like "QNN". Such fused nodes do not pass ONNX correctness checks, so
+  // we should detect them here and return a better error message. Otherwise, an ORT_INVALID_GRAPH error is raised
+  // with a confusing error message *after* the invalid model has been saved/generated.
+  // Note: This only applies to the explicit compile API. The original compilation approach (via session options),
+  // early exits above (without error) if the model is already compiled.
+  auto is_invalid_fused_node = [&graph](const Node& node) {
+    const std::unordered_map<std::string, int>& supported_domains = graph.DomainToVersionMap();
+    return (node.NodeType() == Node::Type::Fused) && (supported_domains.find(node.Domain()) == supported_domains.end());
+  };
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -803,6 +893,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     // Use EpContext node created by the EPs if name matched, otherwise use node from original model
     if (ep_context_node.first) {
       ep_graph.AddNode(*ep_context_node.second);
+    } else if (is_invalid_fused_node(node)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Encountered an invalid node while compiling a model. ",
+                             "Please ensure the input model is not already compiled.");
     } else {
       ep_graph.AddNode(node);
     }
@@ -815,20 +908,37 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     }
   }
 
-  size_t ini_size_threshold = 0;
-  std::filesystem::path external_ini_path;
-  if (ep_context_ext_ini_path.empty()) {
+  size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
+  std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
+  if (external_ini_path.empty()) {
     // Set the threshold to the max so all initializers are forced into the Onnx file
     ini_size_threshold = SIZE_MAX;
     external_ini_path = "./model_ext_ini.bin";
-  } else {
-    // Set the theshold to 0 so all initializers are forced into the external file
-    ini_size_threshold = 0;
-    external_ini_path = ep_context_ext_ini_path;
   }
+
   ModelSavingOptions model_saving_options{ini_size_threshold};
-  ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                          external_ini_path, model_saving_options));
+
+  if (saving_to_buffer) {
+    ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
+    // TODO(adrianlizarraga): Investigate if we can make this more memory efficient.
+    // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
+    ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
+                                                                                                   context_cache_path,
+                                                                                                   model_saving_options);
+    size_t buffer_size = model_proto.ByteSizeLong();
+    ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
+                  "Cannot serialize ONNX ModelProto larger than 2GB");
+
+    AllocatorPtr allocator = ep_context_gen_options.output_model_buffer_allocator;
+    IAllocatorUniquePtr<void> buffer = IAllocator::MakeUniquePtr<void>(allocator, buffer_size);
+    model_proto.SerializeToArray(buffer.get(), static_cast<int>(buffer_size));
+
+    *ep_context_gen_options.output_model_buffer_size_ptr = buffer_size;
+    *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
+  } else {
+    ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
+                                                            external_ini_path, model_saving_options));
+  }
 
   return Status::OK();
 }
@@ -838,7 +948,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                        KernelRegistryManager& kernel_registry_manager,
                                        const std::optional<ResourceAccountantMap>& acc_map,
                                        const GraphOptimizerRegistry& graph_optimizer_registry,
-                                       const logging::Logger& logger) {
+                                       const logging::Logger& logger, bool disable_model_compile) {
   bool modified_graph = false;
 
   auto& graph = partition_params.graph.get();
@@ -846,6 +956,7 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
   auto& fused_kernel_registry = partition_params.fused_kernel_registry.get();
   auto& fused_node_unique_id = partition_params.fused_node_unique_id.get();
   const auto& transform_layout_function = partition_params.transform_layout_function;
+  const CheckLoadCancellationFn& check_load_cancellation_fn = partition_params.check_load_cancellation_fn;
 
   do {
     // process full graph with each EP
@@ -861,7 +972,9 @@ static Status PartitionOnnxFormatModel(const PartitionParams& partition_params, 
                                                        fused_kernel_registry, *ep, mode, fused_node_unique_id,
                                                        transform_layout_function,
                                                        partition_params.debug_graph_fn,
-                                                       logger, resource_accountant, graph_optimizer_registry));
+                                                       check_load_cancellation_fn,
+                                                       logger, resource_accountant, graph_optimizer_registry,
+                                                       disable_model_compile));
     }
 
     // expand any nodes that have an ONNX function definition but no matching ORT kernel.
@@ -915,7 +1028,8 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
       std::cref(partition_params.debug_graph_fn),
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
       nullptr,
-      std::ref(graph_optimizer_registry)
+      std::ref(graph_optimizer_registry),
+      partition_params.check_load_cancellation_fn
   };
   // clang-format on
 
@@ -972,6 +1086,9 @@ static Status PartitionOrtFormatModelImpl(const PartitionParams& partition_param
     std::vector<NodeComputeInfo> single_node_compute_func;
     ORT_RETURN_IF_ERROR(current_ep.Compile({IExecutionProvider::FusedNodeAndGraph{node, *compilation_entry.viewer}},
                                            single_node_compute_func));
+    if (partition_params.check_load_cancellation_fn()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED, "Graph partitioning is canceled due to user request.");
+    }
 
     ORT_RETURN_IF(single_node_compute_func.empty(), "single_node_compute_func should have 1 element.");
     auto& func_mgr = partition_params.func_mgr.get();
@@ -1032,6 +1149,8 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
     return Status::OK();
   }
 
+  auto check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+
   auto& graph = model.MainGraph();
   InlinedHashSet<std::string> not_inlined;
   do {
@@ -1041,13 +1160,13 @@ Status GraphPartitioner::InlineFunctionsAOT(Model& model,
                                                graph,
                                                *graph_optimizer_registry_,
                                                logger,
+                                               check_load_cancellation_fn,
                                                not_inlined,
                                                inlined_count));
 
     if (inlined_count == 0) {
       break;
     }
-
     ORT_RETURN_IF_ERROR(graph.Resolve());
   } while (true);
 
@@ -1069,6 +1188,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
                                    const ConfigOptions& config_options,
                                    const logging::Logger& logger,
                                    Mode mode,
+                                   const EpContextModelGenerationOptions& ep_context_gen_options,
                                    const layout_transformation::DebugGraphFn& debug_graph_fn) const {
   // It is a greedy partitioning algorithm per provider preferences user provided when calling ONNX RUNTIME right now.
   // 1. Execution providers' capabilities are checked one by one.
@@ -1082,6 +1202,8 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "No provider specified.");
   }
 
+  CheckLoadCancellationFn check_load_cancellation_fn = [this]() -> bool { return IsLoadCancellationFlagSet(); };
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   // fused_kernel_registry is preparing the kernels created on the fly for fused sub graph.
   // It is only visible for current session.
@@ -1092,6 +1214,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
 
   PartitionParams partition_params{
       std::ref(graph),
+      std::cref(check_load_cancellation_fn),
       std::ref(func_mgr),
       std::ref(*fused_kernel_registry),
       std::ref(fused_node_unique_id),
@@ -1105,18 +1228,19 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
   ORT_UNUSED_PARAMETER(debug_graph_fn);
   PartitionParams partition_params{
       std::ref(graph),
+      std::cref(check_load_cancellation_fn),
   };
 
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
   if (mode == Mode::kNormal || mode == Mode::kAssignOnly) {
 #if !defined(ORT_MINIMAL_BUILD)
-    bool ep_context_enabled = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0") == "1";
-    if (ep_context_enabled) {
-      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
+    if (ep_context_gen_options.enable && ep_context_gen_options.output_model_buffer_ptr == nullptr) {
       // Check before EP compile graphs
       std::filesystem::path context_cache_path;
-      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_path, graph.ModelPath(), context_cache_path));
+      ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
+                                                    context_cache_path,
+                                                    ep_context_gen_options.error_if_output_file_exists));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs
@@ -1124,18 +1248,18 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
     std::optional<ResourceAccountantMap> ep_acc_map;
     ORT_RETURN_IF_ERROR(NodeStatsRecorder::CreateAccountants(config_options, graph.ModelPath(), ep_acc_map));
 
+    bool disable_model_compile = config_options.GetConfigOrDefault(kOrtSessionOptionsDisableModelCompile, "0") == "1";
     ORT_RETURN_IF_ERROR(PartitionOnnxFormatModel(partition_params, mode, providers_, kernel_registry_mgr_,
-                                                 ep_acc_map, *graph_optimizer_registry_, logger));
+                                                 ep_acc_map, *graph_optimizer_registry_, logger,
+                                                 disable_model_compile));
 
-    if (ep_context_enabled) {
-      std::string ep_context_path = config_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
-      std::string external_ini_file_name = config_options.GetConfigOrDefault(
-          kOrtSessionOptionsEpContextModelExternalInitializersFileName, "");
-      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_path, external_ini_file_name, logger));
+    if (ep_context_gen_options.enable) {
+      ORT_RETURN_IF_ERROR(CreateEpContextModel(providers_, graph, ep_context_gen_options, logger));
     }
 #else
     ORT_UNUSED_PARAMETER(config_options);
     ORT_UNUSED_PARAMETER(logger);
+    ORT_UNUSED_PARAMETER(ep_context_gen_options);
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "ONNX models are not supported in this build.");
 #endif  //! defined(ORT_MINIMAL_BUILD)
   } else {

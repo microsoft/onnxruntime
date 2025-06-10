@@ -15,6 +15,14 @@ on:
         required: false
         type: boolean
         default: false
+      use_vcpkg:
+        required: false
+        type: boolean
+        default: true
+      enable_wasm_threads:
+        required: false
+        type: boolean
+        default: true
       build_jsep:
         required: false
         type: boolean
@@ -29,7 +37,7 @@ jobs:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     env:
       buildArch: x64
-      common_build_args: --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ inputs.extra_build_args }}
+      common_build_args: --parallel ${{ inputs.use_vcpkg == true && '--use_vcpkg --use_vcpkg_ms_internal_asset_cache' || '' }} --config ${{ inputs.build_config }} --skip_submodule_sync --build_wasm --enable_wasm_simd ${{ inputs.enable_wasm_threads == true && '--enable_wasm_threads' || '' }} ${{ inputs.extra_build_args }}
 
     steps:
       - name: Checkout code
@@ -42,7 +50,7 @@ jobs:
         with:
           python-version: "3.12"
           architecture: ${{ env.buildArch }}
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.5
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
           vcpkg-version: '2025.03.19'
           vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
@@ -57,29 +65,17 @@ jobs:
             core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
             core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
 
-      - name: Install EMSDK
+      - name: Build (simd + threads)
         run: |
-          set -ex
-          cd ${{ github.workspace }}/cmake/external/emsdk
-          ./emsdk install 4.0.4
-          ./emsdk activate 4.0.4
-
-      - name: Build and test (browser) (simd + threads)
-        run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing \
-            --wasm_run_tests_in_browser
+            --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Build (simd + threads + JSEP)
         if: ${{ inputs.build_jsep == true }}
         run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_jsep \
@@ -87,13 +83,11 @@ jobs:
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Build (simd + threads + WebGPU experimental)
         if: ${{ inputs.build_webgpu == true }}
         run: |
-          set -e -x
-          source ${{ github.workspace }}/cmake/external/emsdk/emsdk_env.sh
-          cd '${{ github.workspace }}'
           python ./tools/ci_build/build.py \
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
@@ -102,6 +96,7 @@ jobs:
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
+        working-directory: ${{ github.workspace }}
 
       - name: Create Artifacts
         if: ${{ inputs.skip_publish != true }}
@@ -134,6 +129,28 @@ jobs:
         with:
           name: ${{ inputs.build_config }}_wasm_webgpu
           path: ${{ github.workspace }}/artifacts/wasm_webgpu
+
+      - name: Test (Node.js) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --test
+        working-directory: ${{ github.workspace }}
+
+      - name: Test (browser) (simd + threads)
+        # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
+        if: ${{ inputs.build_config == 'Debug' }}
+        run: |
+          python ./tools/ci_build/build.py \
+            ${{ env.common_build_args }} \
+            --build_dir ${{ github.workspace }}/build/wasm_inferencing \
+            --wasm_run_tests_in_browser \
+            --target onnxruntime_test_all \
+            --update --build --test
+        working-directory: ${{ github.workspace }}
 
       - name: Publish test results
         if: ${{ always() && inputs.build_config == 'Debug' }}

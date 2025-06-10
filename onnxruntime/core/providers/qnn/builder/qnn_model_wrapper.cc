@@ -53,7 +53,7 @@ bool QnnModelWrapper::IsQnnTensorWrapperExist(const std::string& name) const {
   return model_tensors_map_.find(name) != model_tensors_map_.end();
 }
 
-bool QnnModelWrapper::IsQnnParamExit(const std::string& param_tensor_name) const {
+bool QnnModelWrapper::QnnParamExists(const std::string& param_tensor_name) const {
   return model_params_map_.find(param_tensor_name) != model_params_map_.end();
 }
 
@@ -68,9 +68,13 @@ Status QnnModelWrapper::MakeTensorWrapper(const NodeUnitIODef& tensor, QnnTensor
     ORT_RETURN_IF_ERROR(UnpackInitializerData(*tensor_info.initializer_tensor, unpacked_tensor));
   }
 
+  Qnn_TensorMemType_t mem_type = QNN_TENSORMEMTYPE_RAW;
+  if (true == model_settings_.htp_shared_memory && (IsGraphInput(tensor_name) || IsGraphOutput(tensor_name))) {
+    mem_type = QNN_TENSORMEMTYPE_MEMHANDLE;
+  }
   tensor_wrapper = QnnTensorWrapper(tensor_name, GetTensorType(tensor_name), tensor_info.qnn_data_type,
                                     std::move(tensor_info.quant_param), std::move(tensor_info.shape),
-                                    std::move(unpacked_tensor));
+                                    std::move(unpacked_tensor), mem_type);
   return Status::OK();
 }
 
@@ -117,14 +121,14 @@ bool QnnModelWrapper::AddTensorWrapper(QnnTensorWrapper&& tensor_wrapper) {
 }
 
 bool QnnModelWrapper::AddParamWrapper(QnnParamWrapper&& param_wrapper) {
-  // Keep a copy of tensor name sine it will be moved with the wrapper into model_params_map_
+  // Keep a copy of tensor name since it will be moved with the wrapper into model_params_map_
   std::string param_tensor_name = param_wrapper.GetParamTensorName();
   if (param_tensor_name.length() == 0) {
     LOGS(logger_, ERROR) << "Invalid parameter encountered empty name.";
     return false;
   }
 
-  if (IsQnnParamExit(param_tensor_name) == true) {
+  if (QnnParamExists(param_tensor_name) == true) {
     return true;
   }
 
@@ -155,7 +159,7 @@ bool QnnModelWrapper::CreateQnnInputOutputTensors(const std::string& qnn_node_na
     }
 
     // During graph patitioning, we only need to do op validation, it's not required to create Qnn graph tensor
-    // We only need to creat the Qnn graph tensor during Compile to create Qnn graph
+    // We only need to create the Qnn graph tensor during Compile to create Qnn graph
     if (!do_op_validation) {
       std::string error_string;
       auto rt = it->second.CreateQnnGraphTensor(qnn_interface_, graph_, qnn_node_name, tensor_created_map_, error_string);

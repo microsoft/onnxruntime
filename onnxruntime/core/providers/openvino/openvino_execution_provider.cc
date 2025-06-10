@@ -58,43 +58,6 @@ OpenVINOExecutionProvider::OpenVINOExecutionProvider(const ProviderInfo& info, s
       shared_context_{shared_context},
       ep_ctx_handle_{session_context_.openvino_sdk_version, *GetLogger()} {
   InitProviderOrtApi();
-
-  // to check if target device is available
-  // using OVCore capability GetAvailableDevices to fetch list of devices plugged in
-  if (info.cache_dir.empty()) {
-    bool device_found = false;
-    std::vector<std::string> available_devices = OVCore::Get()->GetAvailableDevices();
-    // Checking for device_type configuration
-    if (info.device_type != "") {
-      if (info.device_type.find("HETERO") != std::string::npos ||
-          info.device_type.find("MULTI") != std::string::npos ||
-          info.device_type.find("AUTO") != std::string::npos) {
-        device_found = true;
-      } else {
-        for (const std::string& device : available_devices) {
-          if (device.rfind(info.device_type, 0) == 0) {
-            if (info.device_type.find("GPU") != std::string::npos && (info.precision == "FP32" ||
-                                                                      info.precision == "FP16" ||
-                                                                      info.precision == "ACCURACY")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type == "CPU" && (info.precision == "FP32")) {
-              device_found = true;
-              break;
-            }
-            if (info.device_type.find("NPU") != std::string::npos) {
-              device_found = true;
-              break;
-            }
-          }
-        }
-      }
-    }
-    if (!device_found) {
-      ORT_THROW("[ERROR] [OpenVINO] Specified device - " + info.device_type + " is not available");
-    }
-  }
 }
 
 OpenVINOExecutionProvider::~OpenVINOExecutionProvider() {

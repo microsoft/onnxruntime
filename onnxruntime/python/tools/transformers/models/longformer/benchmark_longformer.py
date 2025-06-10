@@ -692,10 +692,10 @@ def output_summary(results, csv_filename, data_field="average_latency_ms"):
             row = {}
 
             sum_latency = {}
-            sum_latency.update({k: 0 for k in data_names})
+            sum_latency.update(dict.fromkeys(data_names, 0))
 
             count_latency = {}
-            count_latency.update({k: 0 for k in data_names})
+            count_latency.update(dict.fromkeys(data_names, 0))
 
             for result in results:
                 if result["description"] == description and result[data_field]:

@@ -15,6 +15,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/providers/cpu/math/matmul_helper.h"
 #include "core/providers/common.h"
+#include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -111,8 +112,8 @@ class MatMulNBits final : public OpKernel {
       has_unquantized_zero_point_ = type != ONNX_NAMESPACE::TensorProto_DataType_UINT8;
     }
 
-    ORT_ENFORCE(nbits_ == 4,
-                "Only 4b quantization is supported for MatMulNBits op, additional bits support is planned.");
+    ORT_ENFORCE(nbits_ == 4 || nbits_ == 8,
+                "Only 4b and 8b quantization is supported for MatMulNBits op, additional bits support is planned.");
     const Tensor* tensor_zero_point = nullptr;
     has_zp_input_ = info.TryGetConstantInput(InputIndex::zero_points, &tensor_zero_point);
   }
@@ -439,6 +440,8 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
                                             AllocatorPtr& allocator,
                                             concurrency::ThreadPool* thread_pool,
                                             const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute.");
+
   const auto* a_data = a->Data<float>();
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<float>();
@@ -547,6 +550,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
                                                 AllocatorPtr& allocator,
                                                 concurrency::ThreadPool* thread_pool,
                                                 const MatMulComputeHelper& helper) const {
+  ORT_ENFORCE(nbits_ == 4, "Only 4b quantization is supported for unpacked compute.");
   const auto* a_data = a->Data<MLFloat16>();
   const uint8_t* b_data = b->Data<uint8_t>();
   const auto* scales_data = scales->Data<MLFloat16>();
@@ -674,10 +678,16 @@ template <typename T1>
 Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   concurrency::ThreadPool* thread_pool = ctx->GetOperatorThreadPool();
   const Tensor* a = ctx->Input<Tensor>(InputIndex::A);
+  // If B is prepacked, B would have been removed from the context
+  const bool is_b_prepacked = packed_b_size_ > 0;
+  const Tensor* b = is_b_prepacked ? nullptr : ctx->Input<Tensor>(InputIndex::B);
   const Tensor* scales = scales_are_packed_ ? nullptr : ctx->Input<Tensor>(InputIndex::scales);
   const Tensor* zero_points = ctx->Input<Tensor>(InputIndex::zero_points);
   const Tensor* reorder_idx = ctx->Input<Tensor>(InputIndex::g_idx);
   const Tensor* bias = ctx->Input<Tensor>(InputIndex::bias);
+
+  ORT_RETURN_IF_ERROR(matmul_nbits_helper::CheckInputs<Tensor>(
+      a, b, scales, zero_points, reorder_idx, bias, N_, K_, block_size_, nbits_));
 
   TensorShape b_shape({static_cast<int64_t>(N_), static_cast<int64_t>(K_)});
   MatMulComputeHelper helper;
@@ -710,25 +720,22 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
     }
   }
 
-  // If B is prepacked, B would have been removed from the context
-  const Tensor* b = ctx->Input<Tensor>(InputIndex::B);
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
 
-#define REGISTER_MatMulNBits(T1)                                            \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                            \
-      MatMulNBits,                                                          \
-      kMSDomain,                                                            \
-      1,                                                                    \
-      T1,                                                                   \
-      kCpuExecutionProvider,                                                \
-      KernelDefBuilder()                                                    \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())          \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())     \
-          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(),    \
-                                 DataTypeImpl::GetTensorType<float>(),      \
-                                 DataTypeImpl::GetTensorType<MLFloat16>()}) \
-          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()),    \
+#define REGISTER_MatMulNBits(T1)                                         \
+  ONNX_OPERATOR_TYPED_KERNEL_EX(                                         \
+      MatMulNBits,                                                       \
+      kMSDomain,                                                         \
+      1,                                                                 \
+      T1,                                                                \
+      kCpuExecutionProvider,                                             \
+      KernelDefBuilder()                                                 \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T1>())       \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())  \
+          .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), \
+                                 DataTypeImpl::GetTensorType<T1>()})     \
+          .TypeConstraint("T4", DataTypeImpl::GetTensorType<int32_t>()), \
       MatMulNBits<T1>);
 
 REGISTER_MatMulNBits(float);

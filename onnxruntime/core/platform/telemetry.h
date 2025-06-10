@@ -69,6 +69,10 @@ class Telemetry {
 
   virtual void LogExecutionProviderEvent(LUID* adapterLuid) const;
 
+  virtual void LogDriverInfoEvent(const std::string_view device_class,
+                                  const std::wstring_view& driver_names,
+                                  const std::wstring_view& driver_versions) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };

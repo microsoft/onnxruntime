@@ -18317,7 +18317,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -18333,7 +18333,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -18349,7 +18349,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -18663,7 +18663,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -18679,7 +18679,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -18695,7 +18695,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -20167,7 +20167,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -20185,7 +20185,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -20203,7 +20203,7 @@ public final class OnnxMl {
      * For float and complex64 values
      * Complex64 tensors are encoded as a single array of floats,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -20621,7 +20621,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -20639,7 +20639,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -20657,7 +20657,7 @@ public final class OnnxMl {
      * For double
      * Complex128 tensors are encoded as a single array of doubles,
      * with the real components appearing in odd numbered positions,
-     * and the corresponding imaginary component apparing in the
+     * and the corresponding imaginary component appearing in the
      * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
      * is encoded as [1.0, 2.0 ,3.0 ,4.0]
      * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -21732,7 +21732,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21750,7 +21750,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21768,7 +21768,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21786,7 +21786,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21807,7 +21807,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21828,7 +21828,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -21849,7 +21849,7 @@ public final class OnnxMl {
        * For float and complex64 values
        * Complex64 tensors are encoded as a single array of floats,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be FLOAT or COMPLEX64.
@@ -23107,7 +23107,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23125,7 +23125,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23143,7 +23143,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23161,7 +23161,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23182,7 +23182,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23203,7 +23203,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128
@@ -23224,7 +23224,7 @@ public final class OnnxMl {
        * For double
        * Complex128 tensors are encoded as a single array of doubles,
        * with the real components appearing in odd numbered positions,
-       * and the corresponding imaginary component apparing in the
+       * and the corresponding imaginary component appearing in the
        * subsequent even numbered position. (e.g., [1.0 + 2.0i, 3.0 + 4.0i]
        * is encoded as [1.0, 2.0 ,3.0 ,4.0]
        * When this field is present, the data_type field MUST be DOUBLE or COMPLEX128

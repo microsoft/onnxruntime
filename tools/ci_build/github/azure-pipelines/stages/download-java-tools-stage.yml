@@ -15,7 +15,7 @@ stages:
           mkdir -p java-tools
           pushd java-tools
           wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/org/junit/platform/junit-platform-console-standalone/1.6.2/junit-platform-console-standalone-1.6.2.jar -P ./
-          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.21.7/protobuf-java-3.21.7.jar -P ./
+          wget --tries=3 https://oss.sonatype.org/service/local/repositories/releases/content/com/google/protobuf/protobuf-java/3.25.5/protobuf-java-3.25.5.jar -P ./
           popd
         workingDirectory: '$(Agent.TempDirectory)'
 

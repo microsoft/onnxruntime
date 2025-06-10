@@ -71,6 +71,7 @@ export declare namespace JSEP {
         ensureTensor: EnsureTensorFunction,
         uploadTensor: UploadTensorFunction,
         downloadTensor: DownloadTensorFunction,
+        enableTraceEvent: boolean,
       ],
     ): void;
   }
@@ -288,6 +289,19 @@ export declare namespace JSEP {
      */
     webnnIsGraphInput: (sessionId: number, inputName: string) => boolean;
     /**
+     * [exported from pre-jsep.js] Register a WebNN graph output.
+     * @param outputName - specify the output name.
+     */
+    webnnRegisterGraphOutput: (outputName: string) => void;
+    /**
+     * [exported from pre-jsep.js] Check if a graph output is a WebNN graph output.
+     * @param sessionId - specify the session ID.
+     * @param outputName - specify the output name.
+     * @returns whether the output is a WebNN graph output.
+     */
+    webnnIsGraphOutput: (sessionId: number, outputName: string) => boolean;
+
+    /**
      * [exported from pre-jsep.js] Create a temporary MLTensor for a session.
      * @param sessionId - specify the session ID.
      * @param dataType - specify the data type.
@@ -296,11 +310,14 @@ export declare namespace JSEP {
      */
     webnnCreateTemporaryTensor: (sessionId: number, dataType: DataType, shape: readonly number[]) => Promise<number>;
     /**
-     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports int64.
+     * [exported from pre-jsep.js] Check if a session's associated WebNN Context supports given data type as its graph
+     * input/output.
      * @param sessionId - specify the session ID.
-     * @returns whether the WebNN Context supports int64.
+     * @param type - specify the graph input/output data type.
+     * @param isInput - specify whether the data type is for graph input.
+     * @returns whether the graph input/output of WebNN Context supports the given data type.
      */
-    webnnIsInt64Supported: (sessionId: number) => boolean;
+    webnnIsGraphInputOutputTypeSupported: (sessionId: number, type: Tensor.Type, isInput: boolean) => boolean;
   }
 }
 

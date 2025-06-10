@@ -86,7 +86,7 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& no
     if (!GetType(*input_defs[1], input1_type, logger))
       return false;
     std::array<int32_t, 2> input_types{input0_type, input1_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }

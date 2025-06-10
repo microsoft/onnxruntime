@@ -10,8 +10,9 @@
 #include <filesystem>
 
 // 1st-party headers/libs.
-#include "core/platform/env_var_utils.h"
 #include "core/common/exceptions.h"
+#include "core/platform/env_var_utils.h"
+#include "core/providers/qnn/ort_api.h"
 
 #include "vaip/capability.h"
 #include "vaip/global_api.h"
@@ -25,7 +26,11 @@ constexpr const char* VITISAI = "VITISAI";
 
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
-    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider}, info_(info) {
+    : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                                   DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
+                                   kAlloc4KAlignment)},
+      info_(info) {
   auto it = info_.find("ep_context_enable");
   ep_ctx_enabled_ = it != info_.end() && it->second == "1";
   it = info_.find("ep_context_embed_mode");
@@ -140,4 +145,24 @@ common::Status VitisAIExecutionProvider::SetEpDynamicOptions(gsl::span<const cha
 std::unique_ptr<profiling::EpProfiler> VitisAIExecutionProvider::GetProfiler() {
   return std::make_unique<profiling::VitisaiProfiler>();
 }
+
+std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> result;
+  // We do not want arena for this, as it would not respect alignment.
+  constexpr const bool use_arena_false = false;
+  AllocatorCreationInfo device_info_cpu_aligned_4k{
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CPUAllocator>(
+            OrtMemoryInfo(
+                onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                          device_id,
+                          kAlloc4KAlignment)));
+      },
+      DEFAULT_CPU_ALLOCATOR_DEVICE_ID, use_arena_false};
+
+  result.push_back(CreateAllocator(device_info_cpu_aligned_4k));
+  return result;
+}
+
 }  // namespace onnxruntime

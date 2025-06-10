@@ -76,6 +76,10 @@ class BaseOpBuilder : public IOpBuilder {
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
+  Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              std::vector<std::string>&& input_names,
@@ -102,6 +106,35 @@ class BaseOpBuilder : public IOpBuilder {
                           const std::string& bias_name,
                           const logging::Logger& logger,
                           std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
+  template <typename T>
+  Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeIndex& node_index,
+                      const std::string& node_name,
+                      const T& scalar,
+                      const std::string& qnn_scalar_param_name,
+                      std::vector<std::string>& param_names) const {
+    Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+    if (std::is_same<T, float>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+      qnn_scalar.floatValue = static_cast<float>(scalar);
+    } else if (std::is_same<T, uint32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+      qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+    } else if (std::is_same<T, int32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+      qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+    } else if (std::is_same<T, bool>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+      qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+    } else {
+      ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+    }
+    QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+    param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+    return Status::OK();
+  }
 
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
@@ -136,6 +169,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Less", QNN_OP_ELEMENT_WISE_LESS},
         {"LessOrEqual", QNN_OP_ELEMENT_WISE_LESS_EQUAL},
         {"Log", QNN_OP_ELEMENT_WISE_LOG},
+        {"LSTM", QNN_OP_LSTM},
         {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
         {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
         {"Neg", QNN_OP_ELEMENT_WISE_NEG},
@@ -151,6 +185,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"ReduceSum", QNN_OP_REDUCE_SUM},
         {"Round", QNN_OP_ELEMENT_WISE_ROUND},
         {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"ScatterND", QNN_OP_SCATTER_ND},
         {"Sigmoid", QNN_OP_SIGMOID},
         {"Sin", QNN_OP_ELEMENT_WISE_SIN},
         {"Slice", QNN_OP_STRIDED_SLICE},
@@ -188,12 +223,14 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
+        {"Upsample", QNN_OP_RESIZE},
         {"Flatten", QNN_OP_RESHAPE},
         {"Squeeze", QNN_OP_RESHAPE},
         {"Unsqueeze", QNN_OP_RESHAPE},
 
         {"LogSoftmax", QNN_OP_LOG_SOFTMAX},
         {"Concat", QNN_OP_CONCAT},
+        {"CumSum", QNN_OP_CUMULATIVE_SUM},
 
         {"Gemm", QNN_OP_FULLY_CONNECTED},
 

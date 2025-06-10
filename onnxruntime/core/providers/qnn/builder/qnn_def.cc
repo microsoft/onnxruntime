@@ -598,5 +598,18 @@ bool IsNpuBackend(QnnBackendType backend_type) {
   return backend_type == QnnBackendType::HTP || backend_type == QnnBackendType::DSP;
 }
 
+bool IsGpuBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::GPU;
+}
+
+bool IsCpuBackend(QnnBackendType backend_type) {
+  return backend_type == QnnBackendType::CPU;
+}
+
+// Is it Qualcomm hardware ?
+bool IsQpuBackend(QnnBackendType backend_type) {
+  return IsNpuBackend(backend_type) || IsGpuBackend(backend_type);
+}
+
 }  // namespace qnn
 }  // namespace onnxruntime

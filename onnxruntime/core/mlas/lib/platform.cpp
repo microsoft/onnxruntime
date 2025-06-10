@@ -374,6 +374,8 @@ Return Value:
 
             if (((Cpuid1[2] & 0x1000) != 0) && ((Cpuid7[1] & 0x20) != 0)) {
 
+                this->Avx2Supported_ = true;
+
                 this->GemmU8S8Dispatch = &MlasGemmU8S8DispatchAvx2;
                 this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx2;
                 this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx2;
@@ -464,6 +466,8 @@ Return Value:
                     //
 
                     if ((Cpuid7[1] & 0xC0020000) == 0xC0020000) {
+
+                        this->Avx512Supported_ = true;
 
                         this->GemmU8S8Kernel = MlasGemmU8S8KernelAvx512Core;
                         this->GemvU8S8Kernel = MlasGemvU8S8KernelAvx512Core;

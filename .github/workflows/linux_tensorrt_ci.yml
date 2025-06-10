@@ -2,12 +2,13 @@ name: Linux TensorRT CI
 
 on:
   push:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
   pull_request:
-    branches: [ main, 'rel-*']
+    branches: [main, 'rel-*']
+  workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 permissions:
@@ -47,11 +48,11 @@ jobs:
       packages: read
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4    
+        uses: actions/checkout@v4
 
       # --- Build the Docker image needed for testing ---
       - name: Build Docker Image for Testing
-        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.5
+        uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
         id: build_docker_image_step
         with:
           dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cuda
@@ -94,7 +95,7 @@ jobs:
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
       - name: Test ONNX Runtime
         id: test_step
-        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.5
+        uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
         with:
           docker_image: ${{ steps.build_docker_image_step.outputs.full-image-name }}
           build_config: Release

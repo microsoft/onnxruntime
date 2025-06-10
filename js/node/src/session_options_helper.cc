@@ -31,6 +31,7 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
     {"disabled", ORT_DISABLE_ALL},
     {"basic", ORT_ENABLE_BASIC},
     {"extended", ORT_ENABLE_EXTENDED},
+    {"layout", ORT_ENABLE_LAYOUT},
     {"all", ORT_ENABLE_ALL}};
 
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},
@@ -321,44 +322,46 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
   // external data
   if (options.Has("externalData")) {
     auto externalDataValue = options.Get("externalData");
-    ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
-                                "Invalid argument: sessionOptions.externalData must be an array.");
-    auto externalData = externalDataValue.As<Napi::Array>();
-    std::vector<std::basic_string<ORTCHAR_T>> paths;
-    std::vector<char*> buffs;
-    std::vector<size_t> sizes;
+    if (!externalDataValue.IsNull() && !externalDataValue.IsUndefined()) {
+      ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData must be an array.");
+      auto externalData = externalDataValue.As<Napi::Array>();
+      std::vector<std::basic_string<ORTCHAR_T>> paths;
+      std::vector<char*> buffs;
+      std::vector<size_t> sizes;
 
-    for (const auto& kvp : externalData) {
-      Napi::Value value = kvp.second;
-      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
-      Napi::Object obj = value.As<Napi::Object>();
-      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
+      for (const auto& kvp : externalData) {
+        Napi::Value value = kvp.second;
+        ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
+        Napi::Object obj = value.As<Napi::Object>();
+        ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
 #ifdef _WIN32
-      auto path = obj.Get("path").As<Napi::String>().Utf16Value();
-      paths.push_back(std::wstring{path.begin(), path.end()});
+        auto path = obj.Get("path").As<Napi::String>().Utf16Value();
+        paths.push_back(std::wstring{path.begin(), path.end()});
 #else
-      auto path = obj.Get("path").As<Napi::String>().Utf8Value();
-      paths.push_back(path);
+        auto path = obj.Get("path").As<Napi::String>().Utf8Value();
+        paths.push_back(path);
 #endif
-      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
-                                      !obj.Get("data").IsBuffer() ||
-                                      !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
-                                  options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
+        ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
+                                        !obj.Get("data").IsBuffer() ||
+                                        !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                    options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
 
-      auto data = obj.Get("data");
-      if (data.IsBuffer()) {
-        buffs.push_back(data.As<Napi::Buffer<char>>().Data());
-        sizes.push_back(data.As<Napi::Buffer<char>>().Length());
-      } else {
-        auto typedArray = data.As<Napi::TypedArray>();
-        buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
-        sizes.push_back(typedArray.ByteLength());
+        auto data = obj.Get("data");
+        if (data.IsBuffer()) {
+          buffs.push_back(data.As<Napi::Buffer<char>>().Data());
+          sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+        } else {
+          auto typedArray = data.As<Napi::TypedArray>();
+          buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
+          sizes.push_back(typedArray.ByteLength());
+        }
       }
+      sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
     }
-    sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
   }
 }
 

@@ -114,6 +114,12 @@ extends:
             targetFolder: $(Build.ArtifactStagingDirectory)\validation-scripts
           displayName: 'Copy validation scripts'
 
+        - script: |
+            echo "== Source Branch =="
+            echo "$(Build.SourceBranch)"
+            echo "$(Build.SourceBranch)" > $(Build.ArtifactStagingDirectory)\node-artifacts\_branch.txt
+          displayName: 'Extract Source Branch'
+
         - task: 1ES.PublishPipelineArtifact@1
           inputs:
             artifactName: 'validation_scripts'

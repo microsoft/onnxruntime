@@ -63,6 +63,7 @@ GroupQueryAttention<T>::GroupQueryAttention(const OpKernelInfo& info)
 
   if (!disable_flash_attention_) {
     zeros_ = this->GetScratchBuffer<int>(kZerosCount, nullptr);
+    CUDA_CALL_THROW(cudaMemset(zeros_.get(), 0, kZerosCount * sizeof(int)));
   }
 }
 

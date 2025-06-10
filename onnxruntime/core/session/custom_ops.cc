@@ -11,6 +11,7 @@
 #include <unordered_set>
 
 #include <gsl/gsl>
+#include "core/common/logging/logging.h"
 #include "core/framework/data_types.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/onnxruntime_typeinfo.h"
@@ -251,7 +252,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelContext_GetLogger, _In_ const OrtKernelContex
   return ExecuteIfKernelContextApiEnabled([&]() -> OrtStatusPtr {
     const auto& kernel_ctx_logger = reinterpret_cast<const onnxruntime::OpKernelContextInternal*>(context)->Logger();
 
-    *logger = reinterpret_cast<const OrtLogger*>(&kernel_ctx_logger);
+    *logger = kernel_ctx_logger.ToExternal();
     return nullptr;
   });
 }
@@ -734,7 +735,7 @@ ORT_API_STATUS_IMPL(OrtApis::KernelInfo_GetLogger, _In_ const OrtKernelInfo* inf
                                    "its execution provider");
     }
 
-    *logger = reinterpret_cast<const OrtLogger*>(ep_logger);
+    *logger = ep_logger->ToExternal();
     return nullptr;
   });
 }

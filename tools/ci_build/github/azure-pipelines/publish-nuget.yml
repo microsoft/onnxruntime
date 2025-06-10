@@ -21,9 +21,9 @@ parameters:
 variables:
 - name: ArtifactFeed
   ${{ if eq(parameters.isReleaseBuild, false) }}:
-    value: ort-cuda-11-nightly
+    value: ORT-Nightly
   ${{ else }}:
-    value: onnxruntime-cuda-11
+    value: onnxruntime-cuda-12
 extends:
   # The pipeline extends the 1ES PT which will inject different SDL and compliance tasks.
   # For non-production pipelines, use "Unofficial" as defined below.

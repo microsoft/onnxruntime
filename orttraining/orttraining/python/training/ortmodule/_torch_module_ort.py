@@ -8,6 +8,7 @@ from logging import Logger
 from typing import Optional, TypeVar
 
 import torch
+from typing_extensions import Self
 
 from . import _io, _utils
 from ._fallback import ORTModuleTorchModelException, _FallbackManager, wrap_exception
@@ -43,7 +44,7 @@ class TorchModuleORT(TorchModuleInterface):
         self._flattened_module._apply(fn)
         return self
 
-    def apply(self: T, fn: Callable[[T], None]) -> T:
+    def apply(self, fn: Callable[[Self], None]) -> Self:
         """Override original method to delegate execution to the flattened PyTorch user module"""
 
         # Delegation must happen to _flattened_module since methods depend on
@@ -54,7 +55,7 @@ class TorchModuleORT(TorchModuleInterface):
     def is_training(self):
         return self._flattened_module.training and torch.is_grad_enabled()
 
-    def train(self: T, mode: bool = True) -> T:
+    def train(self, mode: bool = True) -> Self:
         """Override original method to delegate execution to the flattened PyTorch user module"""
 
         # Delegate the task to _module.flattened_module.train which will recursively

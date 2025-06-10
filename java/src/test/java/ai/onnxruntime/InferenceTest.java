@@ -749,6 +749,12 @@ public class InferenceTest {
     runProvider(OrtProvider.QNN);
   }
 
+  @Test
+  @EnabledIfSystemProperty(named = "USE_WEBGPU", matches = "1")
+  public void testWEBGPU() throws OrtException {
+    runProvider(OrtProvider.WEBGPU);
+  }
+
   private void runProvider(OrtProvider provider) throws OrtException {
     EnumSet<OrtProvider> providers = OrtEnvironment.getAvailableProviders();
     assertTrue(providers.size() > 1);
@@ -1139,7 +1145,7 @@ public class InferenceTest {
       try (OrtSession session = env.createSession(onnxModelFileName)) {
         String testDataDirNamePattern;
         if (opset.equals("opset9") && modelName.equals("LSTM_Seq_lens_unpacked")) {
-          testDataDirNamePattern = "seq_lens"; // discrepency in data directory
+          testDataDirNamePattern = "seq_lens"; // discrepancy in data directory
         } else {
           testDataDirNamePattern = "test_data";
         }
@@ -2126,6 +2132,9 @@ public class InferenceTest {
           break;
         case QNN:
           options.addQnn(Collections.singletonMap("backend_type", "cpu"));
+          break;
+        case WEBGPU:
+          options.addWebGPU(Collections.emptyMap());
           break;
         case VITIS_AI:
         case RK_NPU:

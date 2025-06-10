@@ -14,9 +14,15 @@ import torch
 from benchmark_helper import Precision
 from fusion_options import AttentionOpType
 from onnx_model import OnnxModel
+from packaging import version
 from transformers import AutoConfig, AutoModelForCausalLM
 
-from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer
+from onnxruntime import __version__ as ort_version
+
+if version.parse(ort_version) < version.parse("1.22.0"):
+    from onnxruntime.quantization.matmul_4bits_quantizer import MatMul4BitsQuantizer as MatMulNBitsQuantizer
+else:
+    from onnxruntime.quantization.matmul_nbits_quantizer import MatMulNBitsQuantizer
 
 
 class ConvertPhi2ToONNX:
@@ -160,7 +166,7 @@ class ConvertPhi2ToONNX:
             return
         else:
             assert self.precision == Precision.INT4
-            quant = MatMul4BitsQuantizer(
+            quant = MatMulNBitsQuantizer(
                 model=optimizer.model,
                 block_size=self.block_size,
                 is_symmetric=True,
@@ -351,7 +357,7 @@ def parse_arguments():
         required=False,
         default=16,
         type=int,
-        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_4bits_quantizer.py for details.",
+        help="Block size to quantize with. See https://github.com/microsoft/onnxruntime/blob/main/onnxruntime/python/tools/quantization/matmul_nbits_quantizer.py for details.",
     )
 
     parser.add_argument(

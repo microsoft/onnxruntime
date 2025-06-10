@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.32.0.250228
+  default: 2.34.0.250424
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -123,11 +123,27 @@ stages:
             --skip_submodule_sync
             --cmake_generator "Visual Studio 17 2022"
             --enable_pybind
-            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache 
+            --enable_onnx_tests --use_vcpkg --use_vcpkg_ms_internal_asset_cache
             ${{ parameters.build_py_parameters }}
             --parallel --use_binskim_compliant_compile_flags --update --build
             $(TelemetryOption)
           workingDirectory: '$(Build.BinariesDirectory)'
+
+
+      - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+        - template: ../templates/publish-symbolrequestprod-api.yml
+          parameters:
+            ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+              symbolExpiryTime: 60
+            includePublicSymbolServer: true            
+            symbolsArtifactName: onnxruntime_cpu_win_x64_$(PythonVersion)
+            symbolsVersion: $(Build.BuildId)
+            symbolProject: 'ONNX Runtime'
+            subscription: 'OnnxrunTimeCodeSign_20240611'
+            searchPattern: |
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime.pdb
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_providers_shared.pdb
+              $(Build.BinariesDirectory)\${{ parameters.cmake_build_type }}\${{ parameters.cmake_build_type }}\onnxruntime_pybind11_state.pdb
 
       # Esrp signing
       - template: ../templates/win-esrp-dll.yml

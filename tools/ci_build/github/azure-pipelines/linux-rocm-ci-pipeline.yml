@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.3.2
+    value: 6.4
 
 jobs:
 - job: Linux_Build
@@ -101,7 +101,6 @@ jobs:
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=ON \
                 CMAKE_HIP_ARCHITECTURES=gfx90a \
-              --mpi_home /opt/ompi \
               --use_rocm \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \

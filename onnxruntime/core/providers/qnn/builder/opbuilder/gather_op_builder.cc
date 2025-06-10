@@ -257,7 +257,57 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
 
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   bool reshape_required = (qnn_output_shape.size() != target_output_shape.size());
-  std::string gather_output_name = output_name + (reshape_required ? "_ort_qnn_ep_reshape" : "");
+
+  struct CastNodeInfo {
+    std::string node_name;
+    std::string input_name;
+    std::string output_name;
+  };
+  std::vector<CastNodeInfo> cast_node_info_vec;
+
+  // Get the output info for the gather output tensor
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(gather_output, output_info));
+
+  // Check if we need to add a cast node for int64
+  bool needs_int64_cast = false;
+  if (is_graph_output) {
+    for (const auto& input_name : input_names) {
+      if (input_name.find("_cast_int32") != std::string::npos) {
+        needs_int64_cast = true;
+        break;
+      }
+    }
+  }
+
+  // If a cast to int64 is needed, add the cast node
+  if (needs_int64_cast) {
+    std::string cast_node_name = output_name + "_cast_int64";
+    std::string cast_input_name = output_name + "_cast_int64_aux";
+    std::string cast_output_name = output_name;
+
+    // Create the cast input tensor wrapper
+    QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+                                              QNN_TENSOR_TYPE_NATIVE,
+                                              output_info.qnn_data_type,
+                                              output_info.quant_param.Copy(),
+                                              std::move(qnn_output_shape));
+
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+    cast_node_info_vec.push_back({cast_node_name, cast_input_name, cast_output_name});
+    Qnn_TensorType_t cast_tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+    QnnTensorWrapper cast_output(output_name, cast_tensor_type, qnn_data_type, std::move(quantize_param),
+                                 std::move(target_output_shape));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_output)), "Failed to add tensor.");
+  }
+
+  std::string gather_output_name = output_name;
+  if (reshape_required) {
+    gather_output_name += "_ort_qnn_ep_reshape";
+  } else if (needs_int64_cast) {
+    gather_output_name += "_cast_int64_aux";
+  }
+
   Qnn_TensorType_t tensor_type = (!reshape_required && is_graph_output) ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
   QnnTensorWrapper gather_output_wrapper(gather_output_name, tensor_type, qnn_data_type, quantize_param.Copy(),
                                          std::move(qnn_output_shape));
@@ -279,14 +329,33 @@ Status GatherOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_w
                                     std::move(target_output_shape));
     ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(reshape_output)), "Failed to add tensor.");
     const static std::string qnn_node_type = "Reshape";
+    std::string node_output_name = output_name;
+
+    if (needs_int64_cast) {
+      // If needs_int64 is true, the output name should be the input name of the cast node
+      node_output_name = output_name + "_cast_int64_aux";
+    }
     ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name,
                                                       QNN_OP_PACKAGE_NAME_QTI_AISW,
                                                       qnn_node_type,
                                                       {gather_output_name},
-                                                      {output_name},
+                                                      {node_output_name},
                                                       {},
                                                       do_op_validation),
                       "Failed to add node.");
+  }
+
+  if (needs_int64_cast) {
+    for (const auto& cast_node_info : cast_node_info_vec) {
+      // Insert cast node.
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        "Cast",
+                                                        {cast_node_info.input_name},
+                                                        {cast_node_info.output_name},
+                                                        {}),
+                        " Failed to add Cast node");
+    }
   }
 
   return Status::OK();

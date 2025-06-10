@@ -46,18 +46,16 @@ MlasAlignAddress(void* addr, const size_t alignment)
     return addr;
 }
 
-template <typename T>
+template <typename T, int BlkBitWidth>
 struct PackedQuantBDataStruct {
     PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
-      // TODO: duplicate code from Q4BitGemmPackQuantBDataSize
-        constexpr size_t BlkBitWidth = 4;
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(T);
 #if defined(MLAS_TARGET_AMD64_IX86)
-        // _mm256_load_si256 requires alignment on a 32-byte boundary
-        PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 32);
+        // avx512 requires alignment on a 64-byte boundary
+        PackedQuantBData = (std::byte*)MlasAlignAddress(PackedQuantBWorkspace, 64);
 #else
         PackedQuantBData = (std::byte*)PackedQuantBWorkspace;
 #endif
@@ -104,6 +102,17 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
 
     Q4BitGemmPackQuantBDataSize_Fn* Q4BitGemmPackQuantBDataSize = nullptr;
 
+    /** Gets size of packed quantized B data containing 8-bit integers. See MlasQNBitGemmPackQuantBDataSize(). */
+    typedef size_t(Q8BitGemmPackQuantBDataSize_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        bool HasZeroPoint,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    );
+
+    Q8BitGemmPackQuantBDataSize_Fn* Q8BitGemmPackQuantBDataSize = nullptr;
+
     /** Packs quantized B data containing 4-bit integers. See MlasQNBitGemmPackQuantBData(). */
     typedef void(Q4BitGemmPackQuantBData_Fn)(
         size_t N,
@@ -127,11 +136,26 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         const float* QuantBScaleBegin,
         bool HasZeroPoint,
         const std::byte* QuantBZPBegin,
-        PackedQuantBDataStruct<float>& PackedQuantB,
+        PackedQuantBDataStruct<float, 4>& PackedQuantB,
         MLAS_THREADPOOL* ThreadPool
     );
 
     SQ4BitGemmPackQuantBDataAndSumBlk_Fn* SQ4BitGemmPackQuantBDataAndBlkSum = nullptr;
+
+    typedef void(SQ8BitGemmPackQuantBDataAndSumBlk_Fn)(
+        size_t N,
+        size_t K,
+        size_t BlkLen,
+        MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+        const std::byte* QuantBDataBegin,
+        const float* QuantBScaleBegin,
+        bool HasZeroPoint,
+        const std::byte* QuantBZPBegin,
+        PackedQuantBDataStruct<float, 8>& PackedQuantB,
+        MLAS_THREADPOOL* ThreadPool
+    );
+
+    SQ8BitGemmPackQuantBDataAndSumBlk_Fn* SQ8BitGemmPackQuantBDataAndBlkSum = nullptr;
 
     //
     // Workspace size calculation function prototypes.
@@ -148,7 +172,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
-    typedef size_t(Q4BitGemmPerGemmWorkspaceSize_Fn)(
+    typedef size_t(QNBitGemmPerGemmWorkspaceSize_Fn)(
         size_t M,
         size_t N,
         size_t K,
@@ -157,7 +181,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    Q4BitGemmPerGemmWorkspaceSize_Fn* Q4BitGemmPerGemmWorkspaceSize = nullptr;
+    QNBitGemmPerGemmWorkspaceSize_Fn* QNBitGemmPerGemmWorkspaceSize = nullptr;
 
     /**
      * @brief Gets the required byte alignment of the per-GEMM intermediate workspace.
@@ -165,12 +189,12 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   BlkLen          number of quantized values per block
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
      */
-    typedef size_t(Q4BitGemmPerGemmWorkspaceAlignment_Fn)(
+    typedef size_t(QNBitGemmPerGemmWorkspaceAlignment_Fn)(
         size_t BlkLen,
         MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
     );
 
-    Q4BitGemmPerGemmWorkspaceAlignment_Fn* Q4BitGemmPerGemmWorkspaceAlignment = nullptr;
+    QNBitGemmPerGemmWorkspaceAlignment_Fn* QNBitGemmPerGemmWorkspaceAlignment = nullptr;
 
     //
     // SQNBIT_CompFp32 kernel function prototypes.
@@ -344,6 +368,45 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
     );
 
     SQ4BitGemmKernel_BlkSum_CompInt8_Fn* SQ4BitGemmKernel_BlkSum_CompInt8 = nullptr;
+
+    /**
+     * @brief Multiply quantized 8-bit integer matrix A with quantized 8-bit integer matrix B.
+     *        A and B are block quantized and B is column major.
+     *
+     * @param       BlkLen              Number of values in a block.
+     * @param       QuantA              Supplies the quantized A matrix.
+                                        Binary data containing block quantized int8 data and scale values.
+     * @param       QuantBData          Supplies the quantized B matrix block data.
+     * @param       QuantBScale         Supplies the quantized B matrix block scale values.
+     * @param       QuantBZeroPoint     Supplies the quantized B matrix block zero point values. Optional.
+     * @param[out]  C                   Supplies the output C matrix.
+     * @param       CountN              Number of columns of B and C.
+     * @param       CountK              Number of columns of A and rows of B.
+     * @param       BlockCountK         Number of blocks between adjacent columns of the quantized B matrix.
+     * @param       Bias                Bias vector of length N.
+     * @param       ldc                 Number of elements between adjacent rows of C..
+     * @param       ABlockSum           Supplies the blksum of A.
+     * @param       QuantBBlkSum        Supplies the blksum of B.
+     */
+    typedef size_t(SQ8BitGemmKernel_BlkSum_CompInt8_Fn)(
+        size_t BlkLen,
+        const std::byte* QuantA,
+        const float* QuantAScale,
+        const std::byte* QuantBData,
+        const float* QuantBScale,
+        const std::byte* QuantBZeroPoint,
+        float* C,
+        size_t CountM,
+        size_t CountN,
+        size_t CountK,
+        size_t BlockCountK,
+        const float* Bias,
+        size_t ldc,
+        const float* ABlockSum,
+        const float* QuantBBlkSum
+    );
+
+    SQ8BitGemmKernel_BlkSum_CompInt8_Fn* SQ8BitGemmKernel_BlkSum_CompInt8 = nullptr;
 
     /**
      * @brief Multiply quantized 8-bit integer matrix A with quantized 4-bit integer matrix B.

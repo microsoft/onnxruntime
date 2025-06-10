@@ -369,7 +369,7 @@ common::Status SaveInitializedTensors(
   if (memory_profile_func)
     memory_profile_func(planner);
 
-  for (auto i : planned_initializers_memory_sizes_in_byte) {
+  for (const auto& i : planned_initializers_memory_sizes_in_byte) {
     LOGS(logger, INFO) << "[Memory] SessionStateInitializer statically allocates "
                        << i.second << " bytes for " << i.first.ToString() << std::endl;
   }
@@ -378,6 +378,12 @@ common::Status SaveInitializedTensors(
 
   // 3. create weight tensors based on weights buffer
   for (const auto& entry : id_to_initialized_tensor) {
+    // We check for cancellation for every initializer since mapping from disk can be costly
+    if (session_options.IsLoadCancellationFlagSet()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_LOAD_CANCELED,
+                             "Saving session state weights is canceled due to user request.");
+    }
+
     int ort_value_index = entry.first;
     const std::string& name = entry.second->name();
 

@@ -75,7 +75,7 @@ stages:
         inputs:
           versionSpec: '3.12'
           addToPath: true
-          architecture: ${{ parameters.BuildArch }}   
+          architecture: ${{ parameters.BuildArch }}
 
       # need to set PROCESSOR_ARCHITECTURE so the x86 SDK is installed correctly
       - task: UseDotNet@2
@@ -149,14 +149,20 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - task: PublishSymbols@2
-          displayName: 'Publish Build Symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-          inputs:
-            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-            SearchPattern: 'onnxruntime.pdb'
-            SymbolServerType: teamServices
-            SymbolExpirationInDays: 365
+
+        - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+          - template: ../../templates/publish-symbolrequestprod-api.yml
+            parameters:
+              ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+                symbolExpiryTime: 60
+              includePublicSymbolServer: true
+              symbolsArtifactName: ${{parameters.artifactNameNoVersionString}}
+              symbolsVersion: $(Build.BuildId)
+              symbolProject: 'ONNX Runtime'
+              subscription: 'OnnxrunTimeCodeSign_20240611'
+              searchPattern: |
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_*.pdb
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:
@@ -168,13 +174,13 @@ stages:
             modifyEnvironment: true
         - template: ../../templates/win-esrp-dll.yml
           parameters:
-            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64'
+            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64'
             DisplayName: 'ESRP - Sign Node.js binding binaries'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: '*.dll,*.node'
 
         - script: |
-           del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\x64\CodeSignSummary-*.*
+           del /Q $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\x64\CodeSignSummary-*.*
            call npm pack
            copy $(Build.SourcesDirectory)\js\node\onnxruntime-*.tgz $(Build.ArtifactStagingDirectory)
            xcopy /E /I $(Build.SourcesDirectory)\js\node\prebuilds $(Build.ArtifactStagingDirectory)\prebuilds
@@ -196,18 +202,18 @@ stages:
 
       - ${{ if eq(parameters.BuildNodejs, 'true') }}:
         - task: CopyFiles@2
-          displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+          displayName: 'Copy DirectML binaries to: $(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
           inputs:
             SourceFolder: '$(Build.BinariesDirectory)\$(BuildConfig)\$(BuildConfig)'
             Contents: 'DirectML.dll'
-            TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            TargetFolder: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
         - template: ../../templates/win-esrp-dll.yml
           parameters:
-            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            FolderPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
             DisplayName: 'ESRP - Sign Node.js binding binaries'
             DoEsrp: ${{ parameters.DoEsrp }}
             Pattern: '*.node'
         - task: 1ES.PublishPipelineArtifact@1
           inputs:
-            targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v3\win32\${{ parameters.sln_platform }}'
+            targetPath: '$(Build.SourcesDirectory)\js\node\bin\napi-v6\win32\${{ parameters.sln_platform }}'
             artifactName: 'drop-onnxruntime-nodejs-win-${{ parameters.sln_platform }}-dml'

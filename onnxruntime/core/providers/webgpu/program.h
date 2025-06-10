@@ -197,7 +197,13 @@ enum class ProgramVariableDataType {
   Boolx4,
   Uint8x4,
   Uint8x8,
-  Uint8x16
+  Uint8x16,
+  Int8x4,
+  Int8x8,
+  Int8x16,
+  Uint4x8,
+  Int4x8,
+  // if you add a new type here, you also need to update ProgramVariableDataTypeName
 };
 #ifndef NDEBUG
 std::ostream& operator<<(std::ostream& os, ProgramVariableDataType);
@@ -208,8 +214,15 @@ int NumberOfComponents(ProgramVariableDataType type);
 ProgramVariableDataType ToProgramVariableDataType(int32_t element_type, int component = 1);
 
 struct ProgramInput {
+ private:
+  struct FlattenTag {};
+
+ public:
+  constexpr static const FlattenTag Flatten{};
+
   ProgramInput(const Tensor* tensor);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, FlattenTag, int component = 1);
   ProgramInput(const Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   const Tensor* tensor;
@@ -220,13 +233,21 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
+ private:
+  struct AtomicTag {};
+
+ public:
+  constexpr static const AtomicTag Atomic{};
+
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
+  bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
 };

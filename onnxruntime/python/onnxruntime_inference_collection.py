@@ -172,10 +172,10 @@ class Session:
     This is the main class used to run a model.
     """
 
-    def __init__(self):
+    def __init__(self, enable_fallback: bool = True):
         # self._sess is managed by the derived class and relies on bindings from C.InferenceSession
         self._sess = None
-        self._enable_fallback = True
+        self._enable_fallback = enable_fallback
 
     def get_session_options(self) -> onnxruntime.SessionOptions:
         "Return the session options. See :class:`onnxruntime.SessionOptions`."
@@ -446,7 +446,7 @@ class InferenceSession(Session):
         means execute a node using `CUDAExecutionProvider`
         if capable, otherwise execute using `CPUExecutionProvider`.
         """
-        super().__init__()
+        super().__init__(enable_fallback=int(kwargs.get("enable_fallback", 1)) == 1)
 
         if isinstance(path_or_bytes, (str, os.PathLike)):
             self._model_path = os.fspath(path_or_bytes)
@@ -459,7 +459,6 @@ class InferenceSession(Session):
 
         self._sess_options = sess_options
         self._sess_options_initial = sess_options
-        self._enable_fallback = True
         if "read_config_from_model" in kwargs:
             self._read_config_from_model = int(kwargs["read_config_from_model"]) == 1
         else:
@@ -507,6 +506,23 @@ class InferenceSession(Session):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
+        if "NvTensorRTRTXExecutionProvider" in available_providers:
+            if (
+                providers
+                and any(
+                    provider == "CUDAExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "CUDAExecutionProvider")
+                    for provider in providers
+                )
+                and any(
+                    provider == "NvTensorRTRTXExecutionProvider"
+                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    for provider in providers
+                )
+            ):
+                self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
+            else:
+                self._fallback_providers = ["CPUExecutionProvider"]
         # MIGraphX can fall back to ROCM if it's explicitly assigned. All others fall back to CPU.
         elif "MIGraphXExecutionProvider" in available_providers:
             if providers and any(
@@ -524,6 +540,16 @@ class InferenceSession(Session):
         providers, provider_options = check_and_normalize_provider_args(
             providers, provider_options, available_providers
         )
+
+        # Print a warning if user passed providers to InferenceSession() but the SessionOptions instance
+        # already has provider information (e.g., via add_provider_for_devices()). The providers specified
+        # here will take precedence.
+        if self._sess_options is not None and (providers or provider_options) and self._sess_options.has_providers():
+            warnings.warn(
+                "Specified 'providers'/'provider_options' when creating InferenceSession but SessionOptions has "
+                "already been configured with providers. InferenceSession will only use the providers "
+                "passed to InferenceSession()."
+            )
 
         session_options = self._sess_options if self._sess_options else C.get_default_session_options()
 
@@ -581,6 +607,129 @@ class InferenceSession(Session):
                 and providers[i][0] == "TensorrtExecutionProvider"
             ):
                 C.register_tensorrt_plugins_as_custom_ops(session_options, providers[i][1])
+
+            if providers[i] in available_providers and providers[i] == "NvTensorRTRTXExecutionProvider":
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, provider_options[i])
+            elif (
+                isinstance(providers[i], tuple)
+                and providers[i][0] in available_providers
+                and providers[i][0] == "NvTensorrtRTXExecutionProvider"
+            ):
+                C.register_nv_tensorrt_rtx_plugins_as_custom_ops(session_options, providers[i][1])
+
+
+class ModelCompiler:
+    """
+    This class is used to compile an ONNX model. A compiled ONNX model has EPContext nodes that each
+    encapsulates a subgraph compiled/optimized for a specific execution provider.
+
+    Refer to the EPContext design document for more information about EPContext models:
+    https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html
+
+        ::
+
+            sess_options = onnxruntime.SessionOptions()
+            sess_options.add_provider("SomeExecutionProvider", {"option1": "value1"})
+            # Alternatively, allow ONNX Runtime to select the provider automatically given a policy:
+            # sess_options.set_provider_selection_policy(onnxrt.OrtExecutionProviderDevicePolicy.PREFER_NPU)
+
+            model_compiler = onnxruntime.ModelCompiler(sess_options, "input_model.onnx")
+            model_compiler.compile_to_file("output_model.onnx")
+    """
+
+    def __init__(
+        self,
+        sess_options: onnxruntime.SessionOptions,
+        input_model_path_or_bytes: str | os.PathLike | bytes,
+        embed_compiled_data_into_model: bool = False,
+        external_initializers_file_path: str | os.PathLike | None = None,
+        external_initializers_size_threshold: int = 1024,
+        flags: int = C.OrtCompileApiFlags.NONE,
+    ):
+        """
+        Creates a ModelCompiler instance.
+
+        :param sess_options: Session options containing the providers for which the model will be compiled.
+            Refer to SessionOptions.add_provider() and SessionOptions.set_provider_selection_policy().
+        :param input_model_path_or_bytes: The path to the input model file or bytes representing a serialized
+            ONNX model.
+        :param embed_compiled_data_into_model: Defaults to False. Set to True to embed compiled binary data into
+            EPContext nodes in the compiled model.
+        :param external_initializers_file_path: Defaults to None. Set to a path for a file that will store the
+            initializers for non-compiled nodes.
+        :param external_initializers_size_threshold: Defaults to 1024. Ignored if `external_initializers_file_path`
+            is None or empty. Initializers larger than this threshold are stored in the external initializers file.
+        :param flags: Additional boolean options to enable. Set this parameter to a bitwise OR of
+            flags in onnxruntime.OrtCompileApiFlags.
+        """
+        input_model_path: str | os.PathLike | None = None
+        input_model_bytes: bytes | None = None
+        if isinstance(input_model_path_or_bytes, (str, os.PathLike)):
+            if not input_model_path_or_bytes:
+                raise ValueError("Input model path is empty")
+            input_model_path = os.fspath(input_model_path_or_bytes)
+        elif isinstance(input_model_path_or_bytes, bytes):
+            if len(input_model_path_or_bytes) == 0:
+                raise ValueError("Input model bytes array is empty")
+            input_model_bytes = input_model_path_or_bytes
+        else:
+            raise TypeError(f"Unable to load from type '{type(input_model_path_or_bytes)}'")
+
+        if external_initializers_file_path:
+            if not isinstance(external_initializers_file_path, (str, os.PathLike)):
+                arg_type = type(external_initializers_file_path)
+                raise TypeError(f"Output external initializer filepath is of unexpected type '{arg_type}'")
+            external_initializers_file_path = os.fspath(external_initializers_file_path)
+        else:
+            external_initializers_file_path = ""
+
+        if input_model_path:
+            self._model_compiler = C.ModelCompiler(
+                sess_options,
+                input_model_path,
+                True,  # is path
+                embed_compiled_data_into_model,
+                external_initializers_file_path,
+                external_initializers_size_threshold,
+                flags,
+            )
+        else:
+            self._model_compiler = C.ModelCompiler(
+                sess_options,
+                input_model_bytes,
+                False,  # is bytes
+                embed_compiled_data_into_model,
+                external_initializers_file_path,
+                external_initializers_size_threshold,
+                flags,
+            )
+
+    def compile_to_file(self, output_model_path: str | None = None):
+        """
+        Compiles to an output file. If an output file path is not provided,
+        the output file path is generated based on the input model path by replacing
+        '.onnx' with '_ctx.onnx'. Ex: The generated output file is 'model_ctx.onnx' for
+        an input model with path 'model.onnx'.
+
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+
+        :param output_model_path: Defaults to None. The path for the output/compiled model.
+        """
+        if output_model_path:
+            if not isinstance(output_model_path, (str, os.PathLike)):
+                raise TypeError(f"Output model's filepath is of unexpected type '{type(output_model_path)}'")
+            output_model_path = os.fspath(output_model_path)
+        self._model_compiler.compile_to_file(output_model_path)
+
+    def compile_to_bytes(self) -> bytes:
+        """
+        Compiles to bytes representing the serialized compiled ONNX model.
+
+        Raises an 'InvalidArgument' exception if the compilation options are invalid.
+
+        :return: A bytes object representing the compiled ONNX model.
+        """
+        return self._model_compiler.compile_to_bytes()
 
 
 class IOBinding:
@@ -861,6 +1010,13 @@ class OrtValue:
         if the OrtValue is a tensor.
         """
         return self._ortvalue.element_type()
+
+    def tensor_size_in_bytes(self) -> int:
+        """
+        Returns the size of the data in the OrtValue in bytes
+        if the OrtValue is a tensor.
+        """
+        return self._ortvalue.tensor_size_in_bytes()
 
     def has_value(self) -> bool:
         """

@@ -76,7 +76,7 @@ namespace Microsoft.ML.OnnxRuntime
                 DOrtGetApi OrtGetApi = (DOrtGetApi)Marshal.GetDelegateForFunctionPointer(NativeMethods.OrtGetApiBase().GetApi, typeof(DOrtGetApi));
 #endif
 
-                const uint ORT_API_VERSION = 22;
+                const uint ORT_API_VERSION = 23;
 #if NETSTANDARD2_0
                 IntPtr ortApiPtr = OrtGetApi(ORT_API_VERSION);
                 api_ = (OrtApi)Marshal.PtrToStructure(ortApiPtr, typeof(OrtApi));

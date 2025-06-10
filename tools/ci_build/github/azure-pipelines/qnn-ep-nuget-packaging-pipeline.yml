@@ -2,7 +2,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.32.0.250228
+  default: 2.34.0.250424
 
 - name: build_config
   displayName: Build Configuration
@@ -53,26 +53,9 @@ extends:
         QnnSdk: ${{ parameters.QnnSdk }}
         IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
         DoEsrp: ${{ parameters.DoEsrp }}
-        ArtifactName: 'drop-nuget-qnn-x64'
-        StageName: 'OnnxRuntime_QNN_Nuget_Win_x64'
+        ArtifactName: 'drop-nuget-qnn-arm64x'
+        StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64x'
         build_config: ${{ parameters.build_config }}
-
-    - template: templates/qnn-ep-win.yml
-      parameters:
-        qnn_ep_build_pool_name: 'Onnxruntime-QNNEP-Windows-2022-CPU'
-        QnnSdk: ${{ parameters.QnnSdk }}
-        IsReleaseBuild: ${{ parameters.IsReleaseBuild }}
-        DoEsrp: ${{ parameters.DoEsrp }}
-        ArtifactName: 'drop-nuget-qnn-arm64'
-        buildParameter: '--arm64'
-        buildPlatform: 'ARM64'
-        buildArch: 'ARM64'
-        StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
-        build_config: ${{ parameters.build_config }}
-
-    - template: stages/nuget-qnn-packaging-stage.yml
-      parameters:
-        DoEsrp: ${{ parameters.DoEsrp }}
 
     - template: templates/publish-nuget-steps.yml
       parameters:

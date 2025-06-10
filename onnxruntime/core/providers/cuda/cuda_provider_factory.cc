@@ -12,6 +12,7 @@
 
 #include <gsl/gsl>
 
+#include "core/common/status.h"
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
@@ -279,6 +280,25 @@ struct CUDA_Provider : Provider {
     DeleteRegistry();
   }
 
+  Status CreateIExecutionProvider(const OrtHardwareDevice* const* /*devices*/,
+                                  const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                  size_t num_devices,
+                                  ProviderOptions& provider_options,
+                                  const OrtSessionOptions& session_options,
+                                  const OrtLogger& logger,
+                                  std::unique_ptr<IExecutionProvider>& ep) override {
+    if (num_devices != 1) {
+      return Status(common::ONNXRUNTIME, ORT_EP_FAIL, "CUDA EP only supports one device.");
+    }
+
+    OrtCUDAProviderOptionsV2 options;
+    UpdateProviderOptions(&options, provider_options);
+    auto ep_factory = CreateExecutionProviderFactory(&options);
+    ep = ep_factory->CreateProvider(session_options, logger);
+
+    return Status::OK();
+  }
+
 } g_provider;
 
 CUDA_Provider* GetProvider() {
@@ -286,3 +306,94 @@ CUDA_Provider* GetProvider() {
 }
 
 }  // namespace onnxruntime
+
+#include "core/framework/error_code_helper.h"
+
+// OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
+struct CudaEpFactory : OrtEpFactory {
+  CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
+    GetName = GetNameImpl;
+    GetVendor = GetVendorImpl;
+    GetSupportedDevices = GetSupportedDevicesImpl;
+    CreateEp = CreateEpImpl;
+    ReleaseEp = ReleaseEpImpl;
+  }
+
+  static const char* GetNameImpl(const OrtEpFactory* this_ptr) {
+    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
+    return factory->ep_name.c_str();
+  }
+
+  static const char* GetVendorImpl(const OrtEpFactory* this_ptr) {
+    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
+    return factory->vendor.c_str();
+  }
+
+  static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
+                                            const OrtHardwareDevice* const* devices,
+                                            size_t num_devices,
+                                            OrtEpDevice** ep_devices,
+                                            size_t max_ep_devices,
+                                            size_t* p_num_ep_devices) {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    auto* factory = static_cast<CudaEpFactory*>(this_ptr);
+
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (factory->ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
+          factory->ort_api.HardwareDevice_VendorId(&device) == 0x10de) {
+        ORT_API_RETURN_IF_ERROR(
+            factory->ort_api.GetEpApi()->CreateEpDevice(factory, &device, nullptr, nullptr,
+                                                        &ep_devices[num_ep_devices++]));
+      }
+    }
+
+    return nullptr;
+  }
+
+  static OrtStatus* CreateEpImpl(OrtEpFactory* /*this_ptr*/,
+                                 _In_reads_(num_devices) const OrtHardwareDevice* const* /*devices*/,
+                                 _In_reads_(num_devices) const OrtKeyValuePairs* const* /*ep_metadata*/,
+                                 _In_ size_t /*num_devices*/,
+                                 _In_ const OrtSessionOptions* /*session_options*/,
+                                 _In_ const OrtLogger* /*logger*/,
+                                 _Out_ OrtEp** /*ep*/) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "CUDA EP factory does not support this method.");
+  }
+
+  static void ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, OrtEp* /*ep*/) {
+    // no-op as we never create an EP here.
+  }
+
+  const OrtApi& ort_api;
+  const std::string ep_name{kCudaExecutionProvider};  // EP name
+  const std::string vendor{"Microsoft"};              // EP vendor name
+};
+
+extern "C" {
+//
+// Public symbols
+//
+OrtStatus* CreateEpFactories(const char* /*registration_name*/, const OrtApiBase* ort_api_base,
+                             OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
+  const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
+
+  // Factory could use registration_name or define its own EP name.
+  std::unique_ptr<OrtEpFactory> factory = std::make_unique<CudaEpFactory>(*ort_api);
+
+  if (max_factories < 1) {
+    return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Not enough space to return EP factory. Need at least one.");
+  }
+
+  factories[0] = factory.release();
+  *num_factories = 1;
+
+  return nullptr;
+}
+
+OrtStatus* ReleaseEpFactory(OrtEpFactory* factory) {
+  delete static_cast<CudaEpFactory*>(factory);
+  return nullptr;
+}
+}
