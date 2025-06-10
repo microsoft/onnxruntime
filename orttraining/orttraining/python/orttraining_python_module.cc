@@ -182,9 +182,6 @@ OrtEnv* GetOrtEnv() {
 onnxruntime::Environment& GetEnv() {
   return ort_training_env->GetORTEnv().GetEnvironment();
 }
-bool IsOrtEnvInitialized() {
-  return ort_training_env != nullptr;
-}
 
 Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
@@ -208,7 +205,7 @@ ORTTrainingPythonEnv& GetTrainingEnv() {
 
 void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options) {
   if (ort_training_env != nullptr) {
-    ORT_THROW("Global threading options can only be set before the environment is initialized.");
+    OrtPybindThrowIfError(GetEnv().SetGlobalThreadingOptions(tp_options));
   }
   global_tp_options = tp_options;
   use_global_tp = true;
@@ -290,6 +287,7 @@ Status CreateTrainingPybindStateModule(py::module& m) {
   if (!InitArray()) {
     return Status(::onnxruntime::common::ONNXRUNTIME, ::onnxruntime::common::FAIL, "import numpy failed");
   }
+  ORT_RETURN_IF_ERROR(CreateOrtEnv());
 
   addGlobalMethods(m);
   addObjectMethods(m, ORTTrainingRegisterExecutionProviders);
@@ -314,18 +312,11 @@ PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
   m.def("_register_provider_lib", [](const std::string& name,
                                      const std::string& provider_shared_lib_path,
                                      const ProviderOptions& default_options) {
-    if (!IsOrtEnvInitialized()) {
-      ORT_THROW_IF_ERROR(CreateOrtEnv());
-    }
     GetTrainingEnv().RegisterExtExecutionProviderInfo(name, provider_shared_lib_path, default_options);
   });
 
   m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& {
-        if (!IsOrtEnvInitialized()) {
-          return GetAvailableExecutionProviderNames();
-        } else {
-        return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); } },
+      "get_available_providers", []() -> const std::vector<std::string>& { return GetTrainingEnv().GetAvailableTrainingExecutionProviderTypes(); },
       "Return list of available Execution Providers in this installed version of Onnxruntime. "
       "The order of elements represents the default priority order of Execution Providers "
       "from highest to lowest.");

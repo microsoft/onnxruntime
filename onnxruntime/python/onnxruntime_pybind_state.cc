@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <mutex>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -1618,17 +1619,15 @@ static void LogDeprecationWarning(
 
 void addGlobalMethods(py::module& m) {
   m.def("set_global_thread_pool_sizes", [](int intra_op_num_threads, int inter_op_num_threads) {
+          static std::mutex global_thread_pool_mutex;
           OrtThreadingOptions to;
           to.intra_op_thread_pool_params.thread_pool_size = intra_op_num_threads;
           to.inter_op_thread_pool_params.thread_pool_size = inter_op_num_threads;
+          std::lock_guard<std::mutex> lock(global_thread_pool_mutex);
           SetGlobalThreadingOptions(std::move(to)); },
         py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
         py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
         "Set the number of threads used by the global thread pools for intra and inter op parallelism.");
-  m.def("ensure_env_initialized", []() {
-    if (!IsOrtEnvInitialized()) {
-      OrtPybindThrowIfError(CreateOrtEnv());
-    } }, "Ensure the onnxruntime environment is initialized.");
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
@@ -1641,18 +1640,12 @@ void addGlobalMethods(py::module& m) {
       "set_default_logger_severity", [](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
       "set_default_logger_verbosity", [](int vlog_level) {
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
         default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
       },
@@ -1671,9 +1664,6 @@ void addGlobalMethods(py::module& m) {
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         auto st = GetEnv().CreateAndRegisterAllocator(mem_info, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
@@ -1681,9 +1671,6 @@ void addGlobalMethods(py::module& m) {
       });
   m.def(
       "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         auto st = GetEnv().CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
@@ -1693,9 +1680,6 @@ void addGlobalMethods(py::module& m) {
       "register_execution_provider_library",
       [](const std::string& registration_name, const PathString& library_path) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         OrtPybindThrowIfError(GetEnv().RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
 #else
         ORT_UNUSED_PARAMETER(registration_name);
@@ -1719,9 +1703,6 @@ void addGlobalMethods(py::module& m) {
       "get_ep_devices",
       []() -> const std::vector<const OrtEpDevice*>& {
 #if !defined(ORT_MINIMAL_BUILD)
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         return GetEnv().GetOrtEpDevices();
 #else
         ORT_THROW("OrtEpDevices are not supported in this build");
@@ -2529,7 +2510,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("use_per_session_threads must be false when using a global thread pool");
         }
 
-        if (so.value.intra_op_param.thread_pool_size != 0 || so.value.inter_op_param.thread_pool_size != 0) {
+        if (CheckIfUsingGlobalThreadPool() && (so.value.intra_op_param.thread_pool_size != 0 || so.value.inter_op_param.thread_pool_size != 0)) {
           LOGS_DEFAULT(WARNING) << "session options intra_op_param.thread_pool_size and inter_op_param.thread_pool_size are ignored when using a global thread pool";
         }
 
@@ -2853,9 +2834,6 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                        size_t flags = OrtCompileApiFlags_NONE) {
 #if !defined(ORT_MINIMAL_BUILD)
         std::unique_ptr<PyModelCompiler> result;
-        if (!IsOrtEnvInitialized()) {
-          OrtPybindThrowIfError(CreateOrtEnv());
-        }
         OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
                                                       std::move(path_or_bytes), is_path,
                                                       embed_compiled_data_into_model,

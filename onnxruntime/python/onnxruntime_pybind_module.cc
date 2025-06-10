@@ -26,9 +26,7 @@ static bool use_global_tp = false;
 onnxruntime::Environment& GetEnv() {
   return ort_env->GetEnvironment();
 }
-bool IsOrtEnvInitialized() {
-  return ort_env != nullptr;
-}
+
 OrtEnv* GetOrtEnv() {
   return ort_env;
 }
@@ -50,7 +48,7 @@ static Status CreateOrtEnv() {
 
 void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options) {
   if (ort_env != nullptr) {
-    ORT_THROW("Global threading options can only be set before the environment is initialized.");
+    OrtPybindThrowIfError(GetEnv().SetGlobalThreadingOptions(tp_options));
   }
   global_tp_options = tp_options;
   use_global_tp = true;
@@ -80,6 +78,8 @@ Status CreateInferencePybindStateModule(py::module& m) {
   if (!InitArray()) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
   }
+
+  ORT_RETURN_IF_ERROR(CreateOrtEnv());
 
   addGlobalMethods(m);
   addObjectMethods(m, RegisterExecutionProviders);

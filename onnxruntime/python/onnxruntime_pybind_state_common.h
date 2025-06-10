@@ -441,8 +441,6 @@ void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options);
 bool CheckIfUsingGlobalThreadPool();
 Environment& GetEnv();
 OrtEnv* GetOrtEnv();
-Status CreateOrtEnv();
-bool IsOrtEnvInitialized();
 
 // Initialize an InferenceSession.
 // Any provider_options should have entries in matching order to provider_types.

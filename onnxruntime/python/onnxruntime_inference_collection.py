@@ -486,7 +486,6 @@ class InferenceSession(Session):
             raise e
 
     def _create_inference_session(self, providers, provider_options, disabled_optimizers=None):
-        C.ensure_env_initialized()
         available_providers = C.get_available_providers()
 
         # Tensorrt can fall back to CUDA if it's explicitly assigned. All others fall back to CPU.
