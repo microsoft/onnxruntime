@@ -57,7 +57,7 @@ void TestCastOp(gsl::span<const SrcType> input,
                 const BaseTester::DimsVariant& dimensions,
                 OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess,
                 const std::string& expected_failure_string = "",
-                int opset = 13,
+                int opset = 21,
                 Saturate saturate = Saturate::None) {
   OpTester test("Cast", opset);
   test.AddAttribute<int64_t>("to", utils::ToTensorProtoElementType<DstType>());
