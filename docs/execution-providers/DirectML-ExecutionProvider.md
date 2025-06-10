@@ -44,7 +44,7 @@ DirectML was introduced in Windows 10, version 1903, and in the corresponding ve
 Requirements for building the DirectML execution provider:
 
 1. Visual Studio 2017 toolchain
-2. [The Windows 10 SDK (10.0.18362.0) for Windows 10, version 1903](https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk) (or newer)
+2. [The Windows 10 SDK (10.0.17134.0) for Windows 10, version 1803](https://developer.microsoft.com/en-us/windows/downloads/sdk-archive/index-legacy) (or newer)
 
 To build onnxruntime with the DML EP included, supply the `--use_dml` flag to `build.bat`. 
 For example:
