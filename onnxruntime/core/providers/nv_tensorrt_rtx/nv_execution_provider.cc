@@ -912,6 +912,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 }
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
+  // TODO: figure out if PerThreadContext is used at all. If not, just clean it up.
   if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)(stream);
@@ -1046,8 +1047,16 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
       info_(info),
       device_id_(info.device_id) {
   InitProviderOrtApi();
+
   // TODO(maximlianm) remove this since we should be able to compile an AOT context file without GPU
-  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+
+  if (!info.has_user_compute_stream) {
+    // If the app is passing in a compute stream, it already has initialized cuda and created a context.
+    // Calling cudaSetDevice() will set the default context in the current thread
+    // which may not be compatible with the stream created by the app.
+    CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  }
+
   cudaDeviceProp prop;
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   compute_capability_ = GetComputeCapacity(prop);
@@ -1068,6 +1077,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   max_partition_iterations_ = info.max_partition_iterations;
   min_subgraph_size_ = info.min_subgraph_size;
   max_workspace_size_ = info.max_workspace_size;
+  max_shared_mem_size_ = info.max_shared_mem_size;
   dump_subgraphs_ = info.dump_subgraphs;
   weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
   onnx_model_folder_path_ = info.onnx_model_folder_path;
@@ -2294,6 +2304,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
   }
+  if (max_shared_mem_size_ > 0) {
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, max_shared_mem_size_);
+  }
   // Only set default compute capabilities if user hasn't explicitly configured them
   constexpr int kDefaultNumComputeCapabilities = 1;  // Default number of compute capabilities for Turing support
   if (trt_config->getNbComputeCapabilities() == 0) {
@@ -2923,7 +2936,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd(0);
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
@@ -3237,7 +3250,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd(0);
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
