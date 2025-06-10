@@ -731,11 +731,9 @@ void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
     // Avoid compilation unused var warning error
   }
 }
-
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
 Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(char* buffer, uint64_t buffer_length,
                                                                       Qnn_ContextHandle_t& context_handle) {
-
-#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
   QnnContext_Config_t context_config_resource_sharing = QNN_CONTEXT_CONFIG_INIT;
   QnnHtpContext_CustomConfig_t resource_sharing_custom_config;
   resource_sharing_custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES;
@@ -786,16 +784,11 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(char* buff
   // Get last added context
   auto context_idx = static_cast<int>(GetQnnContextSize() - 1);
   context_handle = GetQnnContext(context_idx);
-
-#else
-  LOGS(*logger_, ERROR) << "VTCM Backup Buffer Sharing is only supported on QNN API versions 2.26 or later.";
-  auto result = QNN_CONTEXT_ERROR_UNSUPPORTED_FEATURE;
-#endif
-
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
 
   return Status::OK();
 }
+#endif
 
 Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   if (true == context_created_) {
@@ -815,8 +808,8 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
 
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
-                                                      &context_config_resource_sharing,
                                                       nullptr};
+
   const QnnContext_Config_t* empty_context_configs[] = {nullptr};
 
   const QnnContext_Config_t** configs = nullptr;
@@ -1028,10 +1021,13 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
 
     Qnn_ContextHandle_t context = nullptr;
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
   if (vtcm_backup_buffer_sharing_enabled_) {
     auto status = CreateContextVtcmBackupBufferSharingEnabled(buffer, buffer_length, context);
     ORT_RETURN_IF(status != Status::OK(), "Failed to create context from binary. Error code: ", rt);
+
   } else {
+#endif
     QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
     ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
 
@@ -1071,7 +1067,10 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
                                                 profile_backend_handle_);
     ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
     ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
   }
+#endif
 
   if (1 == graph_count) {
     // in case the EPContext node is generated from script

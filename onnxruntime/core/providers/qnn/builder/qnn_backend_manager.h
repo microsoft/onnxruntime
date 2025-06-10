@@ -221,7 +221,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateContext(bool enable_htp_weight_sharing);
 
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
   Status CreateContextVtcmBackupBufferSharingEnabled(char* buffer, uint64_t buffer_length, Qnn_ContextHandle_t& context_handle);
+#endif
 
   Status ReleaseContext();
 
