@@ -1,5 +1,5 @@
 variables:
-  common_trt_version: '10.8.0.43'
+  common_trt_version: '10.9.0.34'
   # As for Debian installation, replace '-1.' by '-1+' when assigning trt version below
   linux_trt_version_cuda11: ${{ variables.common_trt_version }}-1.cuda11.8
   linux_trt_version_cuda12: ${{ variables.common_trt_version }}-1.cuda12.8

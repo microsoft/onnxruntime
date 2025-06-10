@@ -60,19 +60,31 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     TensorrtLogger trt_logger = GetTensorrtLogger(false);
     initLibNvInferPlugins(&trt_logger, "");
 
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
-#endif
-
     int num_plugin_creator = 0;
-    auto plugin_creators = getPluginRegistry()->getPluginCreatorList(&num_plugin_creator);
+    auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
     std::unordered_set<std::string> registered_plugin_names;
 
     for (int i = 0; i < num_plugin_creator; i++) {
       auto plugin_creator = plugin_creators[i];
-      std::string plugin_name(plugin_creator->getPluginName());
-      LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+      nvinfer1::AsciiChar const* plugin_name = nullptr;
+      if (std::strcmp(plugin_creators[i]->getInterfaceInfo().kind, "PLUGIN CREATOR_V1") == 0) {
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
+#endif
+        auto plugin_creator_v1 = static_cast<nvinfer1::IPluginCreator const*>(plugin_creator);
+        plugin_name = plugin_creator_v1->getPluginName();
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] " << plugin_name << ", version : " << plugin_creator_v1->getPluginVersion();
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
+      } else if (std::strcmp(plugin_creators[i]->getInterfaceInfo().kind, "PLUGIN CREATOR_V3ONE") == 0) {
+        auto plugin_creator_v3 = static_cast<nvinfer1::IPluginCreatorV3One const*>(plugin_creator);
+        plugin_name = plugin_creator_v3->getPluginName();
+        LOGS_DEFAULT(VERBOSE) << "[TensorRT EP][V3ONE] " << plugin_name << ", version : " << plugin_creator_v3->getPluginVersion();
+      } else {
+        ORT_THROW("Unknown plugin creator type");
+      }
 
       // plugin has different versions and we only register once
       if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
@@ -80,14 +92,10 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       }
 
       created_custom_op_list.push_back(std::make_unique<TensorRTCustomOp>(onnxruntime::kTensorrtExecutionProvider, nullptr));  // Make sure TensorRTCustomOp object won't be cleaned up
-      created_custom_op_list.back().get()->SetName(plugin_creator->getPluginName());
+      created_custom_op_list.back().get()->SetName(plugin_name);
       custom_op_domain->custom_ops_.push_back(created_custom_op_list.back().get());
       registered_plugin_names.insert(plugin_name);
     }
-
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
 
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());

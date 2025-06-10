@@ -28,17 +28,9 @@
   endif()
   set(CXX_VERSION_DEFINED TRUE)
 
-  # There is an issue when running "Debug build" TRT EP with "Release build" TRT builtin parser on Windows.
-  # We enforce following workaround for now until the real fix.
-  if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(onnxruntime_USE_TENSORRT_BUILTIN_PARSER OFF)
-    MESSAGE(STATUS "[Note] There is an issue when running \"Debug build\" TRT EP with \"Release build\" TRT built-in parser on Windows. This build will use tensorrt oss parser instead.")
-  endif()
-
   find_path(TENSORRT_INCLUDE_DIR NvInfer.h
     HINTS ${TENSORRT_ROOT}
     PATH_SUFFIXES include)
-
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
@@ -174,15 +166,23 @@
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+
+  set(onnxruntime_providers_tensorrt_all_srcs ${onnxruntime_providers_tensorrt_cc_srcs})
+  if(WIN32)
+    # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+    list(APPEND onnxruntime_providers_tensorrt_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/onnxruntime_providers_tensorrt.rc")
+  endif()
+
+  onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_all_srcs})
+  onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common)
+  target_link_libraries(onnxruntime_providers_tensorrt PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers Boost::mp11 safeint_interface ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   else()
     target_link_libraries(onnxruntime_providers_tensorrt PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
-  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${eigen_INCLUDE_DIRS}
+  target_include_directories(onnxruntime_providers_tensorrt PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
@@ -190,6 +190,12 @@
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
+
+  if(WIN32)
+    # FILE_NAME preprocessor definition is used in onnxruntime_providers_tensorrt.rc
+    target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE FILE_NAME=\"onnxruntime_providers_tensorrt.dll\")
+  endif()
+
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4456)
   endif()

@@ -92,22 +92,6 @@ init_command = [
 is_formatter = true
 
 [[linter]]
-code = 'RUSTFMT'
-include_patterns = ['**/*.rs']
-command = [
-    'python',
-    '-m',
-    'lintrunner_adapters',
-    'run',
-    'rustfmt_linter',
-    '--binary=rustfmt',
-    '--config-path=rust/rustfmt.toml',
-    '--',
-    '@{{PATHSFILE}}'
-]
-is_formatter = true
-
-[[linter]]
 code = 'CLANGFORMAT'
 include_patterns = [
     '**/*.h',

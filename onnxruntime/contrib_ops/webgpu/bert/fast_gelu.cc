@@ -50,7 +50,7 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   const auto* bias = context.Input(1);
   auto* output = context.Output(0, input->Shape());
 
-  uint32_t data_size = gsl::narrow<uint32_t>(output->Shape().Size());
+  uint32_t data_size = onnxruntime::narrow<uint32_t>(output->Shape().Size());
   if (data_size == 0) {
     return Status::OK();
   }
@@ -60,7 +60,7 @@ Status FastGelu::ComputeInternal(onnxruntime::webgpu::ComputeContext& context) c
   int bias_components = 1;
 
   if (bias != nullptr) {
-    bias_size = gsl::narrow<uint32_t>(bias->Shape().Size());
+    bias_size = onnxruntime::narrow<uint32_t>(bias->Shape().Size());
     if (bias_size % 4 == 0) {
       bias_components = 4;
       bias_size = bias_size / 4;

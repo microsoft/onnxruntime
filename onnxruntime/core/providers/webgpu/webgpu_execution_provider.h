@@ -20,6 +20,7 @@ KernelCreateInfo BuildKernelCreateInfo();
 class WebGpuContext;
 enum class BufferCacheMode;
 class WebGpuProfiler;
+class GpuBufferAllocator;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -44,10 +45,15 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>> GetCapability(
       const onnxruntime::GraphViewer& graph_viewer,
-      const IKernelLookup& /*kernel_lookup*/) const override;
+      const IKernelLookup& /*kernel_lookup*/,
+      const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+      IResourceAccountant* /* resource_accountant */) const override;
 
   std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+#if defined(__wasm__)
+  std::unique_ptr<onnxruntime::IExternalDataLoader> GetExternalDataLoader() const override;
+#endif
 
   DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
 
@@ -58,6 +64,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
+  Status OnSessionInitializationEnd() override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
   Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
@@ -83,6 +90,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+  webgpu::GpuBufferAllocator* allocator_ = nullptr;
 };
 
 }  // namespace onnxruntime

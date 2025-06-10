@@ -27,6 +27,7 @@
 #include "core/common/span_utils.h"
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
+#include "core/framework/ort_value.h"
 #include "core/framework/prepacked_weights_container.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/graph/basic_types.h"
@@ -38,6 +39,9 @@
 #include "core/graph/graph_nodes.h"
 #include "core/graph/node_arg.h"
 #include "core/graph/ort_format_load_options.h"
+
+// Type from Model Editor API in ORT C API so can't be in a namespace
+struct OrtGraph;
 
 namespace onnxruntime {
 class Graph;
@@ -763,6 +767,10 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   bool GetInitializedTensor(const std::string& tensor_name, const ONNX_NAMESPACE::TensorProto*& value) const;
 
+  /** Populate `value` if an externally allocated OrtValue exists for an initializer with the given name.
+   */
+  bool GetOrtValueInitializer(const std::string& name, OrtValue& value) const;
+
   /** Gets all the initializer tensors in this Graph. */
   const InitializedTensorSet& GetAllInitializedTensors() const noexcept { return name_to_initial_tensor_; }
 
@@ -1430,6 +1438,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
                                   const OrtFormatLoadOptions& load_options,
                                   const logging::Logger& logger, std::unique_ptr<Graph>& graph);
 
+  static Status LoadFromModelEditorApiModel(const OrtGraph& api_graph,
+                                            const Model& owning_model,
+                                            const std::unordered_map<std::string, int>& domain_to_version,
+                                            IOnnxRuntimeOpSchemaCollectionPtr schema_registry,
+                                            bool strict_shape_type_inference,
+                                            const logging::Logger& logger,
+                                            std::unique_ptr<Graph>& graph);
+
+  Status UpdateUsingModelEditorApiModel(const OrtModel& api_model);
+
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const RuntimeOptimizationRecordContainer& RuntimeOptimizations() const {
     return runtime_optimizations_;
@@ -1630,7 +1648,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // Implementation for initializer replacement
   Status ReplaceInitializedTensorImpl(ONNX_NAMESPACE::TensorProto new_initializer, bool is_external);
 
-  std::vector<NodeArg*> CreateNodeArgs(const google::protobuf::RepeatedPtrField<std::string>& names,
+  template <typename StringRange>  // range-initializer returning std::string
+  std::vector<NodeArg*> CreateNodeArgs(const StringRange& names,
                                        const ArgNameToTypeMap& name_to_type_map);
 
   void ToGraphProtoInternal(ONNX_NAMESPACE::GraphProto& graph_proto) const;
@@ -1694,6 +1713,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return nodes_[node_index].get();
   }
 
+  Status LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updating_existing_graph = false);
+
   const Model& owning_model_;
 
   // GraphProto to store name, version, initializer.
@@ -1707,6 +1728,12 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   ONNX_NAMESPACE::GraphProto deserialized_proto_data_;
 
   InitializedTensorSet name_to_initial_tensor_;
+
+  // Initializers that are external to the Graph.
+  // e.g. created from existing memory using CreateTensorWithDataAndDeleterAsOrtValue in the ORT API.
+  // As we need to convert to TensorProto for the optimizers to work and keep the deleter information we store them
+  // in the Graph instance and retrieve during session state finalization.
+  std::unordered_map<std::string, OrtValue> ortvalue_initializers_;
 
   std::unordered_set<std::reference_wrapper<const std::string>,
                      std::hash<std::string>, std::equal_to<std::string>>
@@ -1744,6 +1771,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   // in some case, a fused sub-graph will happens multiple times in one model, we use a map
   // to store reusable-schema in lookup.
   InlinedHashMap<std::string, std::reference_wrapper<ONNX_NAMESPACE::OpSchema>> reusable_fused_schema_map_;
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // Graph nodes.
@@ -1806,7 +1834,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   std::unordered_map<std::string, std::unordered_set<NodeIndex>> node_arg_to_consumer_nodes_;
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 
-  const std::unordered_map<std::string, int> domain_to_version_;
+  std::unordered_map<std::string, int> domain_to_version_;
 
   // Model IR version.
   Version ir_version_{ONNX_NAMESPACE::Version::IR_VERSION};

@@ -1,0 +1,98 @@
+# .github/actions/setup-android-ndk/action.yml
+name: 'Setup Android NDK'
+description: 'Installs and configures a specific version of the Android NDK'
+inputs:
+  ndk-version:
+    description: 'The version of the Android NDK to install (e.g., 27.2.12479018)'
+    required: true
+    default: '27.2.12479018'
+  android-sdk-root:
+    description: 'The root directory of the Android SDK'
+    required: true
+    default: '/usr/local/lib/android/sdk'
+
+runs:
+  using: "composite"  # Use a composite action for multiple shell commands
+  steps:
+    - name: Install coreutils and ninja
+      shell: bash
+      run: sudo apt-get update -y && sudo apt-get install -y coreutils ninja-build
+
+    - name: Install Android NDK
+      shell: bash
+      run: |
+        set -e
+        "${{ inputs.android-sdk-root }}/cmdline-tools/latest/bin/sdkmanager" --install "ndk;${{ inputs.ndk-version }}"
+
+        NDK_PATH="${{ inputs.android-sdk-root }}/ndk/${{ inputs.ndk-version }}"
+        if [[ ! -d "${NDK_PATH}" ]]; then
+          echo "NDK directory is not in expected location: ${NDK_PATH}"
+          exit 1
+        fi
+
+        # Use standard environment variable setting in bash and add to GITHUB_ENV
+        echo "ANDROID_NDK_HOME=${NDK_PATH}" >> $GITHUB_ENV
+        echo "ANDROID_NDK_ROOT=${NDK_PATH}" >> $GITHUB_ENV
+        echo "ANDROID_NDK_HOME: ${NDK_PATH}"
+        echo "ANDROID_NDK_ROOT: ${NDK_PATH}"
+        
+    - name: Check if emulator are installed and add to PATH
+      shell: bash
+      run: |
+          if [[ ":$PATH:" == *":${ANDROID_SDK_ROOT}/emulator:"* ]]; then
+            echo "${ANDROID_SDK_ROOT}/emulator is in PATH"
+          else
+            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "emulator"
+            echo "${ANDROID_SDK_ROOT}/emulator" >> $GITHUB_PATH
+          fi
+
+    - name: Check if platform tools are installed and add to PATH
+      shell: bash
+      run: |
+          if [[ ":$PATH:" == *":${ANDROID_SDK_ROOT}/platform-tools:"* ]]; then
+            echo "${ANDROID_SDK_ROOT}/platform-tools is in PATH"
+          else
+            ${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/sdkmanager --install "platform-tools"
+            echo "${ANDROID_SDK_ROOT}/platform-tools" >> $GITHUB_PATH
+          fi
+          ls -R "${ANDROID_SDK_ROOT}/platform-tools"
+
+    - name: Create Android Emulator
+      shell: bash
+      env:
+        ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
+      run: |
+          python3 tools/python/run_android_emulator.py \
+            --android-sdk-root "${ANDROID_SDK_ROOT}" \
+            --create-avd --system-image "system-images;android-31;default;x86_64"
+
+    - name: List Android AVDs
+      shell: bash
+      env:
+        ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
+      run: |
+          "${ANDROID_SDK_ROOT}/cmdline-tools/latest/bin/avdmanager" list avd
+
+    - name: Check emulator.pid does not exist
+      shell: bash
+      run: |
+          if test -f ./emulator.pid; then
+            echo "Emulator PID file was not expected to exist but does and has pid: `cat ./emulator.pid`"
+            exit 1
+          fi
+
+    - name: Start Android Emulator
+      shell: bash
+      env:
+        ANDROID_AVD_HOME: ${{ runner.temp }}/android-avd
+      run: |
+          set -e -x
+          python3 tools/python/run_android_emulator.py \
+            --android-sdk-root "${ANDROID_SDK_ROOT}" \
+            --start --emulator-extra-args="-partition-size 2047" \
+            --emulator-pid-file ./emulator.pid
+          echo "Emulator PID: `cat ./emulator.pid`"
+
+    - name: View Android ENVs
+      shell: bash
+      run: env | grep ANDROID

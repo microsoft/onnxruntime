@@ -73,20 +73,23 @@ bool GraphEP::Prepare() {
 }
 
 bool GraphEP::SupportedOp(const onnxruntime::GraphViewer& graph_viewer,
-                          const NodeUnit& node_unit) {
+                          const NodeUnit& node_unit,
+                          const logging::Logger& logger) {
   const auto& supported_builtins = vsi::npu::SupportedBuiltinOps();
   const auto& target_node = node_unit.GetNode();
   const auto& it = supported_builtins.find(target_node.OpType());
   if (supported_builtins.end() != it) {
     return it->second->IsSupported(graph_viewer, node_unit);
   }
-  LOGS_DEFAULT(WARNING) << "Fallback unsupported op (node_unit) " << node_unit.OpType()
+  LOGS(logger, WARNING) << "Fallback unsupported op (node_unit) " << node_unit.OpType()
                         << "  to cpu.";
   return false;
 }
 
-bool GraphEP::IsNodeSupportedInGroup(const NodeUnit& node_unit, const GraphViewer& graph_viewer) {
-  return SupportedOp(graph_viewer, node_unit);
+bool GraphEP::IsNodeSupportedInGroup(const NodeUnit& node_unit,
+                                     const GraphViewer& graph_viewer,
+                                     const logging::Logger& logger) {
+  return SupportedOp(graph_viewer, node_unit, logger);
 }
 
 const NodeUnit& GraphEP::GetNodeUnit(const Node* node) const {
@@ -151,7 +154,7 @@ bool GraphEP::BindTensors(const std::shared_ptr<NodeIOInfo>& nodeio_info) {
   if (!input_names.empty()) {
     for (auto& name : input_names) {
       if (tensors_.find(name) == tensors_.end() || tensors_[name] == nullptr) {
-        LOGS_DEFAULT(ERROR) << "Input tensor not defined or not found!";
+        LOGS(logger_, ERROR) << "Input tensor not defined or not found!";
         return false;
       }
       (*op).BindInput(tensors_[name]);
@@ -160,7 +163,7 @@ bool GraphEP::BindTensors(const std::shared_ptr<NodeIOInfo>& nodeio_info) {
   if (!output_names.empty()) {
     for (auto& name : output_names) {
       if (tensors_.find(name) == tensors_.end() || tensors_[name] == nullptr) {
-        LOGS_DEFAULT(ERROR) << "Output tensor not defined or not found!";
+        LOGS(logger_, ERROR) << "Output tensor not defined or not found!";
         return false;
       }
       (*op).BindOutput(tensors_[name]);

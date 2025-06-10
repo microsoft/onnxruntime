@@ -37,7 +37,7 @@ variables:
   - name: render
     value: 109
   - name: RocmVersion
-    value: 6.2.3
+    value: 6.4
 
 jobs:
 - job: Linux_Build
@@ -102,7 +102,6 @@ jobs:
                 CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ \
                 onnxruntime_BUILD_KERNEL_EXPLORER=OFF \
                 onnxruntime_USE_COMPOSABLE_KERNEL=OFF \
-              --mpi_home /opt/ompi \
               --use_migraphx \
               --rocm_version=$(RocmVersion) \
               --rocm_home /opt/rocm \
@@ -111,7 +110,7 @@ jobs:
               --update \
               --build_dir /build \
               --build \
-              --parallel --use_vcpkg \
+              --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache \
               --build_wheel \
               --skip_submodule_sync \
               --use_cache \

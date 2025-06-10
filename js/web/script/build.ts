@@ -27,7 +27,8 @@ const args = minimist(process.argv.slice(2));
  * --bundle-mode=node
  *   Build a single ort-web bundle for nodejs.
  */
-const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' = args['bundle-mode'] || 'prod';
+const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' =
+  process.env.npm_config_bundle_mode || args['bundle-mode'] || 'prod';
 
 /**
  * --debug
@@ -41,7 +42,21 @@ const BUNDLE_MODE: 'prod' | 'dev' | 'perf' | 'node' = args['bundle-mode'] || 'pr
  *  Enable debug mode. In this mode, esbuild metafile feature will be enabled. Full bundle analysis will be saved to a
  * file as JSON.
  */
-const DEBUG = args.debug; // boolean|'verbose'|'save'
+const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'save'
+
+/**
+ * --webgpu-ep
+ * --no-webgpu-ep (default)
+ * --webgpu-ep=runtime
+ *
+ * Enable or disable the use of WebGPU EP. If enabled, the WebGPU EP will be used. If disabled, the WebGPU backend will
+ * be used with JSEP.
+ *
+ * If set to "runtime", it will be determined at runtime based on the value of `globalThis.WEBGPU_EP`.
+ *
+ * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
+ */
+const USE_WEBGPU_EP = process.env.npm_config_webgpu_ep ?? args['webgpu-ep'] ?? false;
 
 /**
  * Root folder of the source code: `<ORT_ROOT>/js/`
@@ -57,6 +72,7 @@ const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
+  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === 'runtime' ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -123,13 +139,17 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     // ```
     // with:
     // ```
-    // new Worker(import.meta.url.startsWith('file:')
-    //              ? new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
-    //              : new URL(import.meta.url), ...
+    // new Worker((() => {
+    //                      const URL2 = URL;
+    //                      return import.meta.url > 'file:' && import.meta.url < 'file;'
+    //                        ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+    //                        : new URL(import.meta.url);
+    //                    })(), ...
     // ```
     //
     // NOTE: this is a workaround for some bundlers that does not support runtime import.meta.url.
-    // TODO: in emscripten 3.1.61+, need to update this code.
+    //
+    // Check more details in the comment of `isEsmImportMetaUrlHardcodedAsFileUri()` and `getScriptSrc()` in file `lib/wasm/wasm-utils-import.ts`.
 
     // First, check if there is exactly one occurrence of "new Worker(new URL(import.meta.url)".
     const matches = [...contents.matchAll(/new Worker\(new URL\(import\.meta\.url\),/g)];
@@ -142,7 +162,12 @@ async function minifyWasmModuleJsForBrowser(filepath: string): Promise<string> {
     // Replace the only occurrence.
     contents = contents.replace(
       /new Worker\(new URL\(import\.meta\.url\),/,
-      `new Worker(import.meta.url.startsWith('file:')?new URL(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url):new URL(import.meta.url),`,
+      `new Worker((() => {
+                            const URL2 = URL;
+                            return (import.meta.url > 'file:' && import.meta.url < 'file;')
+                              ? new URL2(BUILD_DEFS.BUNDLE_FILENAME, import.meta.url)
+                              : new URL(import.meta.url);
+                         })(),`,
     );
 
     // Use terser to minify the code with special configurations:

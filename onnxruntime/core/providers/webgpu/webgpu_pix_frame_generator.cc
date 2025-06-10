@@ -11,7 +11,7 @@
 namespace onnxruntime {
 namespace webgpu {
 
-WebGpuPIXFrameGenerator::WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Adapter adapter, wgpu::Device device) {
+WebGpuPIXFrameGenerator::WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::Device device) {
   // Trivial window size for surface texture creation and provide frame concept for PIX.
   static constexpr uint32_t kWidth = 512u;
   static constexpr uint32_t kHeight = 512u;
@@ -32,7 +32,7 @@ WebGpuPIXFrameGenerator::WebGpuPIXFrameGenerator(wgpu::Instance instance, wgpu::
 
   wgpu::TextureFormat format;
   wgpu::SurfaceCapabilities capabilities;
-  surface_.GetCapabilities(adapter, &capabilities);
+  surface_.GetCapabilities(device.GetAdapter(), &capabilities);
   format = capabilities.formats[0];
 
   wgpu::SurfaceConfiguration config;

@@ -56,11 +56,25 @@ Status SimpleOpBuilder::ExplicitOpCheck(QnnModelWrapper& qnn_model_wrapper,
                       padding_mode.c_str());
   }
 
-  // ONNX's Min and Max operators accept a variable number of inputs (i.e., variadic).
-  // However, QNN's Min and Max operators must take in exactly two inputs.
+  // To DO: Remove once QNN CPU supports ScatterND
+  const auto qnn_backend_type = qnn_model_wrapper.GetQnnBackendType();
+  if (op_type == "ScatterND") {
+    ORT_RETURN_IF_NOT(qnn_backend_type == QnnBackendType::HTP,
+                      "QNN EP only supports ScatterND op on HTP backend. Falling back to ORT CPU.");
+  }
+
+  // ONNX's Min, Max, and Sum operators accept a variable number of inputs (i.e., variadic).
+  // However, QNN's Min, Max, and Add operators must take in exactly two inputs.
   if (op_type == "Min" || op_type == "Max") {
     ORT_RETURN_IF_NOT(node_unit.Inputs().size() == 2,
-                      "QNN EP only supports Min and Max operators with exactly 2 inputs.");
+                      "QNN EP only supports ", op_type.c_str(), " operator with exactly 2 inputs.");
+  }
+
+  if (op_type == "Sum") {
+    size_t inputs_num = node_unit.Inputs().size();
+    ORT_RETURN_IF_NOT(inputs_num == 2,
+                      "QNN EP supports Sum operator with QNN_OP_ELEMENT_WISE_ADD, which takes exactly 2 inputs. Got ONNX's Sum operator with ",
+                      std::to_string(inputs_num).c_str(), " inputs.");
   }
 
   if (op_type == "DequantizeLinear") {

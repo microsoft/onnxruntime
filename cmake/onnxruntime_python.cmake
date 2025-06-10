@@ -468,8 +468,17 @@ file(GLOB onnxruntime_python_quantization_fusions_src CONFIGURE_DEPENDS
 file(GLOB onnxruntime_python_quantization_ep_qnn_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/qnn/*.py"
 )
+file(GLOB onnxruntime_python_quantization_neural_compressor_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/neural_compressor/*.py"
+)
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_torch_export_patches_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/torch_export_patches/*.py"
+)
+file(GLOB onnxruntime_python_transformers_models_torch_export_patches_patches_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/torch_export_patches/patches/*.py"
 )
 file(GLOB onnxruntime_python_transformers_models_bart_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/models/bart/*.py"
@@ -566,6 +575,8 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/sam2
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/stable_diffusion
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/patches
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/operators
@@ -573,6 +584,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
@@ -653,6 +665,9 @@ add_custom_command(
       ${onnxruntime_python_quantization_ep_qnn_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn/
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_neural_compressor_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -682,6 +697,12 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_t5_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/t5/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_torch_export_patches_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_transformers_models_torch_export_patches_patches_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/torch_export_patches/patches/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_models_whisper_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/whisper/
@@ -725,7 +746,7 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
 endif()
 
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT onnxruntime_USE_ROCM
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -914,6 +935,16 @@ if (onnxruntime_USE_TENSORRT)
   )
 endif()
 
+if (onnxruntime_USE_NV)
+  add_custom_command(
+    TARGET onnxruntime_pybind11_state POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_nv_tensorrt_rtx>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+  )
+endif()
+
 if (onnxruntime_USE_MIGRAPHX)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
@@ -1029,7 +1060,7 @@ if (onnxruntime_USE_QNN)
   add_custom_command(
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:onnxruntime_qnn_ctx_gen>
+        $<TARGET_FILE:ep_weight_sharing_ctx_gen>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
@@ -1038,6 +1069,36 @@ if (onnxruntime_USE_QNN)
       COMMAND ${CMAKE_COMMAND} -E copy
           "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+    )
+  endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU)
+  if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    if (onnxruntime_USE_VCPKG)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:Microsoft::DXIL>
+            $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    else()
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+            $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+  endif()
+  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:dawn::webgpu_dawn>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
   endif()
 endif()

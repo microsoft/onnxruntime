@@ -57,8 +57,10 @@ export const decodeTensorMetadata = (tensor: TensorMetadata): Tensor => {
 export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHandler {
   private sessionId: number;
 
-  inputNames: string[];
-  outputNames: string[];
+  inputNames: readonly string[];
+  outputNames: readonly string[];
+  inputMetadata: readonly InferenceSession.ValueMetadata[];
+  outputMetadata: readonly InferenceSession.ValueMetadata[];
 
   async fetchModelAndCopyToWasmMemory(path: string): Promise<SerializableInternalBuffer> {
     // fetch model from url and move to wasm heap.
@@ -82,7 +84,10 @@ export class OnnxruntimeWebAssemblySessionHandler implements InferenceSessionHan
       model = pathOrBuffer;
     }
 
-    [this.sessionId, this.inputNames, this.outputNames] = await createSession(model, options);
+    [this.sessionId, this.inputNames, this.outputNames, this.inputMetadata, this.outputMetadata] = await createSession(
+      model,
+      options,
+    );
     TRACE_FUNC_END();
   }
 

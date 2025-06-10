@@ -403,9 +403,6 @@ TEST(BeamSearchTest, GptBeamSearchFp16_VocabPadded) {
 }
 
 TEST(BeamSearchTest, DummyT5) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5.onnx
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5.onnx"));
@@ -419,9 +416,6 @@ TEST(BeamSearchTest, DummyT5) {
 }
 
 TEST(BeamSearchTest, DummyT5WithOuterScopeInitializers) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_with_outer_scope_initializers.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_with_outer_scope_initializers.onnx --move-initializers
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_with_outer_scope_initializers.onnx"));
@@ -448,9 +442,6 @@ TEST(BeamSearchTest, DummyT5WithSequenceInputIds) {
 }
 
 TEST(BeamSearchTest, DummyT5PointerGenerator) {
-#if defined(USE_CUDA) && defined(USE_DML)
-  SKIP_CUDA_TEST_WITH_DML;
-#endif
   // dummy_t5_pointer_generator.onnx model generated using following command:
   // python onnxruntime/test/testdata/dummy_t5_generator.py --output-path dummy_t5_pointer_generator.onnx --decoder-needs-input-ids
   ModelTester tester(CurrentTestName(), ORT_TSTR("testdata/dummy_t5_pointer_generator.onnx"));

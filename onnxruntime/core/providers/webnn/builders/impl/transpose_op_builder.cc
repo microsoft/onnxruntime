@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
 #include "core/providers/webnn/builders/model_builder.h"
@@ -41,7 +40,7 @@ Status TransposeOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   emscripten::val options = emscripten::val::object();
   options.set("label", node.Name());
-  std::vector<uint32_t> permutation = GetVecUint32FromVecInt64(perm);
+  std::vector<uint32_t> permutation = GetNarrowedIntfromInt64<uint32_t>(perm);
   options.set("permutation", emscripten::val::array(permutation));
   emscripten::val output = model_builder.GetBuilder().call<emscripten::val>("transpose", input, options);
   model_builder.AddOperand(node.OutputDefs()[0]->Name(), std::move(output));

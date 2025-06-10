@@ -2,9 +2,14 @@
 // SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
+#include <functional>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "python/onnxruntime_pybind_model_compiler.h"
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 #define PY_ARRAY_UNIQUE_SYMBOL onnxruntime_python_ARRAY_API
@@ -18,6 +23,7 @@
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/data_transfer_utils.h"
 #include "core/framework/data_types_internal.h"
+#include "core/framework/error_code_helper.h"
 #include "core/framework/provider_options_utils.h"
 #include "core/framework/random_seed.h"
 #include "core/framework/sparse_tensor.h"
@@ -26,6 +32,7 @@
 #include "core/graph/graph_viewer.h"
 #include "core/platform/env.h"
 #include "core/providers/get_execution_providers.h"
+#include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/session/IOBinding.h"
 #include "core/session/abi_session_options_impl.h"
@@ -33,6 +40,13 @@
 #include "core/session/provider_bridge_ort.h"
 
 #include "core/session/lora_adapters.h"
+
+#if !defined(ORT_MINIMAL_BUILD)
+#include "core/session/abi_devices.h"
+#include "core/session/ep_factory_internal.h"
+#include "core/session/provider_policy_context.h"
+#include "core/session/utils.h"
+#endif
 
 #ifdef ENABLE_ATEN
 #include "contrib_ops/cpu/aten_ops/aten_op_executor.h"
@@ -402,7 +416,7 @@ py::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data
   return GetPyObjFromTensor(val, data_transfer_manager, mem_cpy_to_host_functions);
 }
 
-static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
+static std::shared_ptr<onnxruntime::IExecutionProviderFactory> LoadExecutionProviderFactory(
     const std::string& ep_shared_lib_path,
     const ProviderOptions& provider_options = {},
     const std::string& entry_symbol_name = "GetProvider") {
@@ -417,11 +431,10 @@ static std::unique_ptr<onnxruntime::IExecutionProvider> LoadExecutionProvider(
   OrtPybindThrowIfError(Env::Default().GetSymbolFromLibrary(handle, entry_symbol_name, (void**)&PGetProvider));
 
   Provider* provider = PGetProvider();
-  std::shared_ptr<IExecutionProviderFactory> ep_factory = provider->CreateExecutionProviderFactory(&provider_options);
-  return ep_factory->CreateProvider();
+  return provider->CreateExecutionProviderFactory(&provider_options);
 }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 const CUDAExecutionProviderInfo GetCudaExecutionProviderInfo(ProviderInfo_CUDA* cuda_provider_info,
                                                              const ProviderOptionsMap& provider_options_map) {
   ORT_ENFORCE(cuda_provider_info);
@@ -475,7 +488,7 @@ const ROCMExecutionProviderInfo GetRocmExecutionProviderInfo(ProviderInfo_ROCM* 
 }
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
 void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
   if (auto* tensorrt_provider_info = TryGetProviderInfo_TensorRT()) {
     auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
@@ -507,16 +520,55 @@ void RegisterTensorRTPluginsAsCustomOps(PySessionOptions& so, const ProviderOpti
 }
 #endif
 
-std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+void RegisterNvTensorRTRtxPluginsAsCustomOps(PySessionOptions& so, const ProviderOptions& options) {
+  if (auto* nv_tensorrt_rtx_provider_info = TryGetProviderInfo_Nv()) {
+    auto is_already_in_domains = [&](std::string& domain_name, std::vector<OrtCustomOpDomain*>& domains) {
+      for (auto ptr : domains) {
+        if (domain_name == ptr->domain_) {
+          return true;
+        }
+      }
+      return false;
+    };
+
+    std::string extra_plugin_lib_paths = "";
+    const auto it = options.find("extra_plugin_lib_paths");
+    if (it != options.end()) {
+      extra_plugin_lib_paths = it->second;
+    }
+    std::vector<OrtCustomOpDomain*> custom_op_domains;
+    nv_tensorrt_rtx_provider_info->GetTensorRTCustomOpDomainList(custom_op_domains, extra_plugin_lib_paths);
+    for (auto ptr : custom_op_domains) {
+      if (!is_already_in_domains(ptr->domain_, so.custom_op_domains_)) {
+        so.custom_op_domains_.push_back(ptr);
+      } else {
+        LOGS_DEFAULT(WARNING) << "The custom op domain name " << ptr->domain_ << " is already in session option.";
+      }
+    }
+  } else {
+    ORT_THROW("Please install TensorRT libraries as mentioned in the GPU requirements page, make sure they're in the PATH or LD_LIBRARY_PATH, and that your GPU is supported.");
+  }
+}
+#endif
+
+/**
+ * Creates an IExecutionProviderFactory instance of the specified type.
+ * @param session_options The session options.
+ * @param type The execution provider type (e.g., CUDAExecutionProvider).
+ * @param provider_options_map A map of provider options.
+ *
+ * @return A shared_ptr with the factory instance, or null if unable to create it.
+ */
+static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactoryInstance(
     const SessionOptions& session_options,
     const std::string& type,
     const ProviderOptionsMap& provider_options_map) {
   if (type == kCpuExecutionProvider) {
     return onnxruntime::CPUProviderFactoryCreator::Create(
-               session_options.enable_cpu_mem_arena)
-        ->CreateProvider();
+        session_options.enable_cpu_mem_arena);
   } else if (type == kTensorrtExecutionProvider) {
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
     // If the environment variable 'ORT_TENSORRT_UNAVAILABLE' exists, then we do not load TensorRT. This is set by _ld_preload for the manylinux case
     // as in that case, trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
     if (Env::Default().GetEnvironmentVar("ORT_TENSORRT_UNAVAILABLE").empty()) {
@@ -526,7 +578,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // and TRT EP instance, so it won't be released.)
       std::string calibration_table, cache_path, cache_prefix, timing_cache_path, lib_path, trt_tactic_sources,
           trt_extra_plugin_lib_paths, min_profile, max_profile, opt_profile, ep_context_file_path,
-          onnx_model_folder_path;
+          onnx_model_folder_path, trt_op_types_to_exclude, preview_features;
       auto it = provider_options_map.find(type);
       if (it != provider_options_map.end()) {
         OrtTensorRTProviderOptionsV2 params;
@@ -824,16 +876,47 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_engine_hw_compatible' should be 'True' or 'False'. Default value is 'False'.\n");
             }
+          } else if (option.first == "trt_op_types_to_exclude") {
+            trt_op_types_to_exclude = option.second;
+            params.trt_op_types_to_exclude = trt_op_types_to_exclude.c_str();
+          } else if (option.first == "trt_preview_features") {
+            if (!option.second.empty()) {
+              preview_features = option.second;
+              params.trt_preview_features = preview_features.c_str();
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }
         }
         if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(&params)) {
-          return tensorrt_provider_factory->CreateProvider();
+          return tensorrt_provider_factory;
         }
       } else {
         if (std::shared_ptr<IExecutionProviderFactory> tensorrt_provider_factory = onnxruntime::TensorrtProviderFactoryCreator::Create(cuda_device_id)) {
-          return tensorrt_provider_factory->CreateProvider();
+          return tensorrt_provider_factory;
+        }
+      }
+    }
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
+#endif
+
+  } else if (type == kNvTensorRTRTXExecutionProvider) {
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+    if (Env::Default().GetEnvironmentVar("ORT_NV_TENSORRT_RTX_UNAVAILABLE").empty()) {
+      auto it = provider_options_map.find(type);
+      if (it != provider_options_map.end()) {
+        ProviderOptions info = it->second;
+        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(
+                info, &session_options)) {
+          return nv_tensorrt_rtx_provider_factory;
+        }
+      } else {
+        if (std::shared_ptr<IExecutionProviderFactory> nv_tensorrt_rtx_provider_factory = onnxruntime::NvProviderFactoryCreator::Create(cuda_device_id)) {
+          return nv_tensorrt_rtx_provider_factory;
         }
       }
     }
@@ -961,17 +1044,17 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       }
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
               onnxruntime::MIGraphXProviderFactoryCreator::Create(&params)) {
-        return migraphx_provider_factory->CreateProvider();
+        return migraphx_provider_factory;
       }
     } else {
       if (std::shared_ptr<IExecutionProviderFactory> migraphx_provider_factory =
               onnxruntime::MIGraphXProviderFactoryCreator::Create(cuda_device_id)) {
-        return migraphx_provider_factory->CreateProvider();
+        return migraphx_provider_factory;
       }
     }
 #endif
   } else if (type == kCudaExecutionProvider) {
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
     // If the environment variable 'CUDA_UNAVAILABLE' exists, then we do not load cuda.
     // This is set by _ld_preload for the manylinux case as in that case,
     // trying to load the library itself will result in a crash due to the way that auditwheel strips dependencies.
@@ -985,9 +1068,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         // hence we must try to initialize it here if we can since FromProviderOptions might contain
         // external CUDA allocator.
         external_allocator_info = info.external_allocator_info;
-        return cuda_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+        return cuda_provider_info->CreateExecutionProviderFactory(info);
       }
     }
+#if defined(USE_CUDA)
     LOGS_DEFAULT(WARNING) << "Failed to create "
                           << type
                           << ". Require cuDNN " << CUDNN_MAJOR << ".* and "
@@ -998,7 +1082,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
                           << ". Please install all dependencies as mentioned in the GPU requirements page"
                              " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
                              "make sure they're in the PATH, and that your GPU is supported.";
-#endif
+#elif defined(USE_CUDA_PROVIDER_INTERFACE)
+    // Can't include "cuda.h", so don't print version info.
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please install all dependencies as mentioned in the GPU requirements page"
+                             " (https://onnxruntime.ai/docs/execution-providers/CUDA-ExecutionProvider.html#requirements), "
+                             "make sure they're in the PATH, and that your GPU is supported.";
+#endif  // defined(USE_CUDA)
+#endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   } else if (type == kRocmExecutionProvider) {
 #ifdef USE_ROCM
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
@@ -1009,7 +1101,7 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
       // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
       // try to initialize it here if we can since FromProviderOptions might contain external ROCM allocator.
       external_allocator_info = info.external_allocator_info;
-      return rocm_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+      return rocm_provider_info->CreateExecutionProviderFactory(info);
     } else {
       if (!Env::Default().GetEnvironmentVar("ROCM_PATH").empty()) {
         ORT_THROW(
@@ -1046,10 +1138,10 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif  // !defined(DNNL_ORT_THREAD)
     dnnl_options.use_arena = session_options.enable_cpu_mem_arena;
 
-    return onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options)->CreateProvider();
+    return onnxruntime::DnnlProviderFactoryCreator::Create(&dnnl_options);
 #endif
   } else if (type == kOpenVINOExecutionProvider) {
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
     ProviderOptions OV_provider_options_map;
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
@@ -1107,6 +1199,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         } else if (option.first == "enable_qdq_optimizer") {
           OV_provider_options_map[option.first] = option.second;
           continue;
+        } else if (option.first == "enable_causallm") {
+          OV_provider_options_map[option.first] = option.second;
+          continue;
         } else {
           ORT_THROW("Invalid OpenVINO EP option: ", option.first);
         }
@@ -1114,10 +1209,9 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     }
     if (std::shared_ptr<IExecutionProviderFactory> openvino_provider_factory = onnxruntime::OpenVINOProviderFactoryCreator::Create(
             &OV_provider_options_map, &session_options)) {
-      auto p = openvino_provider_factory->CreateProvider();
       // Reset global variables config to avoid it being accidentally passed on to the next session
       openvino_device_type.clear();
-      return p;
+      return openvino_provider_factory;
     } else {
       if (!Env::Default().GetEnvironmentVar("INTEL_OPENVINO_DIR").empty()) {
         ORT_THROW("INTEL_OPENVINO_DIR is set but OpenVINO library wasn't able to be loaded. Please install a supported version of OpenVINO as mentioned in the requirements page (https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements), ensure dependency libraries are in the PATH and your hardware is supported.");
@@ -1127,14 +1221,21 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     }
 #endif
   } else if (type == kVitisAIExecutionProvider) {
-#ifdef USE_VITISAI
+#if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
     ProviderOptions info{};
     const auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       info = it->second;
     }
     info["session_options"] = std::to_string((uintptr_t)(void*)&session_options);
-    return onnxruntime::VitisAIProviderFactoryCreator::Create(info)->CreateProvider();
+    if (auto vitisai_factory = onnxruntime::VitisAIProviderFactoryCreator::Create(info); vitisai_factory) {
+      return vitisai_factory;
+    }
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/"
+                          << "Vitis-AI-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kAclExecutionProvider) {
 #ifdef USE_ACL
@@ -1156,21 +1257,18 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       }
     }
-    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math)
-        ->CreateProvider();
+    return onnxruntime::ACLProviderFactoryCreator::Create(enable_fast_math);
 #endif
   } else if (type == kArmNNExecutionProvider) {
 #ifdef USE_ARMNN
     return onnxruntime::ArmNNProviderFactoryCreator::Create(
-               session_options.enable_cpu_mem_arena)
-        ->CreateProvider();
+        session_options.enable_cpu_mem_arena);
 #endif
   } else if (type == kDmlExecutionProvider) {
 #ifdef USE_DML
     auto cit = provider_options_map.find(type);
     return onnxruntime::DMLProviderFactoryCreator::CreateFromProviderOptions(
-               session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true)
-        ->CreateProvider();
+        session_options.config_options, cit == provider_options_map.end() ? ProviderOptions{} : cit->second, true);
 #endif
   } else if (type == kNnapiExecutionProvider) {
 #if defined(USE_NNAPI)
@@ -1179,15 +1277,15 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
 #endif
     const auto partitioning_stop_ops_list = session_options.config_options.GetConfigEntry(
         kOrtSessionOptionsConfigNnapiEpPartitioningStopOps);
-    return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list)->CreateProvider();
+    return onnxruntime::NnapiProviderFactoryCreator::Create(0, partitioning_stop_ops_list);
 #endif
   } else if (type == kVSINPUExecutionProvider) {
 #ifdef USE_VSINPU
-    return onnxruntime::VSINPUProviderFactoryCreator::Create()->CreateProvider();
+    return onnxruntime::VSINPUProviderFactoryCreator::Create();
 #endif
   } else if (type == kRknpuExecutionProvider) {
 #ifdef USE_RKNPU
-    return onnxruntime::RknpuProviderFactoryCreator::Create()->CreateProvider();
+    return onnxruntime::RknpuProviderFactoryCreator::Create();
 #endif
   } else if (type == kCoreMLExecutionProvider) {
 #if defined(USE_COREML)
@@ -1218,43 +1316,49 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
         }
       } else {
         // read from provider_options
-        return onnxruntime::CoreMLProviderFactoryCreator::Create(options)->CreateProvider();
+        return onnxruntime::CoreMLProviderFactoryCreator::Create(options);
       }
     }
 
-    return onnxruntime::CoreMLProviderFactoryCreator::Create(coreml_flags)->CreateProvider();
+    return onnxruntime::CoreMLProviderFactoryCreator::Create(coreml_flags);
 #endif
   } else if (type == kXnnpackExecutionProvider) {
 #if defined(USE_XNNPACK)
     auto cit = provider_options_map.find(type);
     return onnxruntime::XnnpackProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
-        ->CreateProvider();
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
 #endif
   } else if (type == kWebGpuExecutionProvider) {
 #if defined(USE_WEBGPU)
-    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options)->CreateProvider();
+    return onnxruntime::WebGpuProviderFactoryCreator::Create(session_options.config_options);
 #endif
   } else if (type == kCannExecutionProvider) {
 #ifdef USE_CANN
     if (auto* cann_provider_info = TryGetProviderInfo_CANN()) {
       const CANNExecutionProviderInfo info = GetCannExecutionProviderInfo(cann_provider_info,
                                                                           provider_options_map);
-      return cann_provider_info->CreateExecutionProviderFactory(info)->CreateProvider();
+      return cann_provider_info->CreateExecutionProviderFactory(info);
     } else {
       ORT_THROW("create CANN ExecutionProvider fail");
     }
 #endif
   } else if (type == kAzureExecutionProvider) {
 #ifdef USE_AZURE
-    return onnxruntime::AzureProviderFactoryCreator::Create({})->CreateProvider();
+    return onnxruntime::AzureProviderFactoryCreator::Create({});
 #endif
   } else if (type == kQnnExecutionProvider) {
-#ifdef USE_QNN
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
     auto cit = provider_options_map.find(type);
-    return onnxruntime::QNNProviderFactoryCreator::Create(
-               cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options)
-        ->CreateProvider();
+    auto qnn_factory = onnxruntime::QNNProviderFactoryCreator::Create(
+        cit == provider_options_map.end() ? ProviderOptions{} : cit->second, &session_options);
+    if (qnn_factory) {
+      return qnn_factory;
+    }
+    LOGS_DEFAULT(WARNING) << "Failed to create "
+                          << type
+                          << ". Please reference "
+                          << "https://onnxruntime.ai/docs/execution-providers/QNN-ExecutionProvider.html"
+                          << " to ensure all dependencies are met.";
 #endif
   } else {
     // check whether it is a dynamic load EP:
@@ -1273,11 +1377,29 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
             provider_options.insert(option);
           }
         }
-        return LoadExecutionProvider(shared_lib_path_it->second, provider_options, entry_symbol);
+        return LoadExecutionProviderFactory(shared_lib_path_it->second, provider_options, entry_symbol);
       }
     }
     // unknown provider
     throw std::runtime_error("Unknown Provider Type: " + type);
+  }
+  return nullptr;
+}
+
+/**
+ * Create an IExecutionProvider instance of the specified type. Note: this is called by orttraining code.
+ * @param session_options The session options.
+ * @param type The execution provider type (e.g., CUDAExecutionProvider).
+ * @param provider_options_map A map of provider options.
+ *
+ * @return A unique_ptr with the execution provider instance, or null if unable to create it.
+ */
+std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const SessionOptions& session_options,
+                                                                    const std::string& type,
+                                                                    const ProviderOptionsMap& provider_options_map) {
+  auto ep_factory = CreateExecutionProviderFactoryInstance(session_options, type, provider_options_map);
+  if (ep_factory) {
+    return ep_factory->CreateProvider();
   }
   return nullptr;
 }
@@ -1287,13 +1409,33 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
                                        const ProviderOptionsMap& provider_options_map) {
-  ORT_UNUSED_PARAMETER(provider_options_map);
-
   for (const std::string& type : provider_types) {
     auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
-    if (ep)
+    if (ep) {
       OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
+    }
   }
+}
+
+/**
+ * Adds an explicit execution provider factory to the session options.
+ *
+ * @param py_sess_options The session options.
+ * @param provider_type The type of the provider to add.
+ * @param provider_options The options for the execution provider as a map of string key/value pairs.
+ *
+ * @return A Status indicating an error or success.
+ */
+static Status AddExplicitEpFactory(PySessionOptions& py_sess_options, const std::string& provider_type,
+                                   const ProviderOptions& provider_options) {
+  const ProviderOptionsMap provider_options_map = {{provider_type, provider_options}};
+  auto ep_factory = CreateExecutionProviderFactoryInstance(py_sess_options.value, provider_type, provider_options_map);
+  if (!ep_factory) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to add provider of type '",
+                           provider_type, "' to SessionOptions. Provider configuration is not supported.");
+  }
+  py_sess_options.provider_factories.push_back(std::move(ep_factory));
+  return Status::OK();
 }
 
 /**
@@ -1337,6 +1479,83 @@ static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOpt
 }
 #endif
 
+#if !defined(ORT_MINIMAL_BUILD)
+/**
+ * Add the execution provider that is responsible for the selected OrtEpDevice instances to the session options.
+ *
+ * @param py_sess_options The session options.
+ * @param provider_type The type of the provider to add.
+ * @param provider_options The options for the execution provider as a map of string key/value pairs.
+ *
+ * @return A Status indicating an error or success.
+ */
+static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
+                                        const std::vector<const OrtEpDevice*>& ep_devices,
+                                        const ProviderOptions& provider_options) {
+  std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+  const size_t num_ep_options = provider_options.size();
+  std::vector<const char*> ep_option_keys;
+  std::vector<const char*> ep_option_vals;
+
+  ep_option_keys.reserve(num_ep_options);
+  ep_option_vals.reserve(num_ep_options);
+  for (const auto& [key, val] : provider_options) {
+    ep_option_keys.push_back(key.c_str());
+    ep_option_vals.push_back(val.c_str());
+  }
+
+  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
+  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(*env,
+                                                                  py_sess_options.value,
+                                                                  ep_devices,
+                                                                  ep_option_keys,
+                                                                  ep_option_vals,
+                                                                  /*output*/ provider_factory));
+  py_sess_options.provider_factories.push_back(std::move(provider_factory));
+  return Status::OK();
+}
+
+/**
+ * Initializes the inference session using EPs specified in the session options.
+ *
+ * @param py_sess The inference session.
+ * @param disabled_optimizer_names Set of optimizers to disable.
+ * @return A Status indicating error or success.
+ */
+static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess,
+                                                     const std::unordered_set<std::string>& disabled_optimizer_names) {
+  ORT_RETURN_IF(py_sess.GetSessionHandle() == nullptr, "Invalid Python InferenceSession handle");
+  InferenceSession& sess = *py_sess.GetSessionHandle();
+
+  const logging::Logger* sess_logger = sess.GetLogger();
+  ORT_RETURN_IF(sess_logger == nullptr, "Invalid InferenceSession logger handle");
+
+  const OrtSessionOptions& ort_session_options = py_sess.GetOrtSessionOptions();
+
+  // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
+  if (ort_session_options.provider_factories.empty() && ort_session_options.value.ep_selection_policy.enable) {
+    ProviderPolicyContext context;
+    ORT_RETURN_IF_ERROR(context.SelectEpsForSession(*GetEnv(), ort_session_options, sess));
+  } else {
+    for (const auto& provider_factory : ort_session_options.provider_factories) {
+      std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
+                                                                                *(sess_logger->ToExternal()));
+      if (ep) {
+        ORT_RETURN_IF_ERROR(sess.RegisterExecutionProvider(std::move(ep)));
+      }
+    }
+  }
+
+  if (!disabled_optimizer_names.empty()) {
+    ORT_RETURN_IF_ERROR(sess.FilterEnabledOptimizers({disabled_optimizer_names.cbegin(),
+                                                      disabled_optimizer_names.cend()}));
+  }
+
+  ORT_RETURN_IF_ERROR(sess.Initialize());
+  return Status::OK();
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
 void InitializeSession(InferenceSession* sess,
                        ExecutionProviderRegistrationFn ep_registration_fn,
                        const std::vector<std::string>& provider_types,
@@ -1377,9 +1596,8 @@ bool CheckIfTensor(const std::vector<const NodeArg*>& def_list,
   return type_proto.has_tensor_type();
 }
 
-#if defined(USE_OPENVINO) || \
-    defined(USE_CUDA) ||     \
-    defined(USE_ROCM)
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE) || \
+    defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
 static void LogDeprecationWarning(
     const std::string& deprecated, const optional<std::string>& alternative = nullopt) {
   LOGS_DEFAULT(WARNING) << "This is DEPRECATED and will be removed in the future: " << deprecated;
@@ -1440,11 +1658,48 @@ void addGlobalMethods(py::module& m) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
         }
       });
+  m.def(
+      "register_execution_provider_library",
+      [](const std::string& registration_name, const PathString& library_path) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        OrtPybindThrowIfError(env->RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
+#else
+        ORT_UNUSED_PARAMETER(registration_name);
+        ORT_UNUSED_PARAMETER(library_path);
+        ORT_THROW("Execution provider libraries are not supported in this build.");
+#endif
+      },
+      R"pbdoc(Register an execution provider library with ONNX Runtime.)pbdoc");
+  m.def(
+      "unregister_execution_provider_library",
+      [](const std::string& registration_name) -> void {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        OrtPybindThrowIfError(env->UnregisterExecutionProviderLibrary(registration_name));
+#else
+        ORT_UNUSED_PARAMETER(registration_name);
+        ORT_THROW("Execution provider libraries are not supported in this build.");
+#endif
+      },
+      R"pbdoc(Unregister an execution provider library from ONNX Runtime.)pbdoc");
+  m.def(
+      "get_ep_devices",
+      []() -> const std::vector<const OrtEpDevice*>& {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+        return env->GetOrtEpDevices();
+#else
+        ORT_THROW("OrtEpDevices are not supported in this build");
+#endif
+      },
+      R"pbdoc(Get the list of available OrtEpDevice instances.)pbdoc",
+      py::return_value_policy::reference);
 
-#ifdef USE_OPENVINO
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
   m.def(
       "get_available_openvino_device_ids", []() -> std::vector<std::string> {
-        if (auto* info = GetProviderInfo_OpenVINO()) {
+        if (auto* info = TryGetProviderInfo_OpenVINO()) {
           return info->GetAvailableDevices();
         }
         return {};
@@ -1470,7 +1725,7 @@ void addGlobalMethods(py::module& m) {
       "Gets the dynamically selected OpenVINO device type for inference.");
 #endif
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE) || defined(USE_ROCM)
   /*
    * The following set_* methods are deprecated.
    *
@@ -1518,10 +1773,16 @@ void addGlobalMethods(py::module& m) {
   });
 #endif
 
-#ifdef USE_TENSORRT
+#if defined(USE_TENSORRT) || defined(USE_TENSORRT_PROVIDER_INTERFACE)
   m.def(
       "register_tensorrt_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterTensorRTPluginsAsCustomOps(so, options); },
       "Register TensorRT plugins as custom ops.");
+#endif
+
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+  m.def(
+      "register_nv_tensorrt_rtx_plugins_as_custom_ops", [](PySessionOptions& so, const ProviderOptions& options) { RegisterNvTensorRTRtxPluginsAsCustomOps(so, options); },
+      "Register NV TensorRT RTX plugins as custom ops.");
 #endif
 
 #ifdef ENABLE_ATEN
@@ -1537,6 +1798,70 @@ void addGlobalMethods(py::module& m) {
         });
 #endif
 }
+
+#if !defined(ORT_MINIMAL_BUILD)
+/**
+ * Calls the user's Python EP selection function and converts the results to a format that can be used
+ * by ORT to select OrtEpDevice instances. The user's function is set by calling
+ * SessionOptions.set_provider_selection_policy_delegate() on the Python side. The result of this wrapper
+ * function is used in core/session/provider_policy_context.cc.
+ *
+ * @param ep_devices OrtEpDevices to select from.
+ * @param num_devices Number of OrtEpDevices to select from.
+ * @param model_metadata Model's metadata.
+ * @param runtime_metadata Runtime metadata.
+ * @param selected Pre-allocated OrtEpDevice buffer to update with selected devices.
+ * @param max_selected Maximum number of entries in the pre-allocated 'selected' buffer.
+ * @param state Opaque state that holds a pointer to the user's Python function.
+ *
+ * @return nullptr OrtStatus* to indicate success.
+ */
+static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice** ep_devices,
+                                                          _In_ size_t num_devices,
+                                                          _In_ const OrtKeyValuePairs* model_metadata,
+                                                          _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                          _Inout_ const OrtEpDevice** selected,
+                                                          _In_ size_t max_selected,
+                                                          _Out_ size_t* num_selected,
+                                                          _In_ void* state) {
+  PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(state);
+  std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
+  std::unordered_map<std::string, std::string> py_model_metadata =
+      model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
+  std::unordered_map<std::string, std::string> py_runtime_metadata =
+      runtime_metadata ? runtime_metadata->entries : std::unordered_map<std::string, std::string>{};
+
+  *num_selected = 0;
+  std::vector<const OrtEpDevice*> py_selected;
+  OrtStatus* status = nullptr;
+
+  // Call the Python delegate function and convert any exceptions to a status.
+  ORT_TRY {
+    py_selected = (*actual_delegate)(py_ep_devices, py_model_metadata, py_runtime_metadata, max_selected);
+  }
+  ORT_CATCH(const std::exception& e) {
+    ORT_HANDLE_EXCEPTION([&]() {
+      status = ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, e.what()));
+    });
+  }
+
+  if (status != nullptr) {
+    return status;
+  }
+
+  if (py_selected.size() > max_selected) {
+    return ToOrtStatus(ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "selected too many EP devices (", py_selected.size(), "). ",
+                                       "The limit is ", max_selected, " EP devices."));
+  }
+
+  *num_selected = py_selected.size();
+  for (size_t i = 0; i < py_selected.size(); ++i) {
+    selected[i] = py_selected[i];
+  }
+
+  return nullptr;
+}
+#endif  // !defined(ORT_MINIMAL_BUILD)
 
 void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registration_fn) {
   py::enum_<GraphOptimizationLevel>(m, "GraphOptimizationLevel")
@@ -1577,6 +1902,75 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_static("dml", []() { return OrtDevice::DML; })
       .def_static("webgpu", []() { return OrtDevice::GPU; })
       .def_static("default_memory", []() { return OrtDevice::MemType::DEFAULT; });
+
+  py::enum_<OrtExecutionProviderDevicePolicy>(m, "OrtExecutionProviderDevicePolicy")
+      .value("DEFAULT", OrtExecutionProviderDevicePolicy_DEFAULT)
+      .value("PREFER_CPU", OrtExecutionProviderDevicePolicy_PREFER_CPU)
+      .value("PREFER_NPU", OrtExecutionProviderDevicePolicy_PREFER_NPU)
+      .value("PREFER_GPU", OrtExecutionProviderDevicePolicy_PREFER_GPU)
+      .value("MAX_PERFORMANCE", OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE)
+      .value("MAX_EFFICIENCY", OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY)
+      .value("MIN_OVERALL_POWER", OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER);
+
+  py::enum_<OrtHardwareDeviceType>(m, "OrtHardwareDeviceType")
+      .value("CPU", OrtHardwareDeviceType_CPU)
+      .value("GPU", OrtHardwareDeviceType_GPU)
+      .value("NPU", OrtHardwareDeviceType_NPU);
+
+  py::class_<OrtHardwareDevice> py_hw_device(m, "OrtHardwareDevice", R"pbdoc(ONNX Runtime hardware device information.)pbdoc");
+  py_hw_device.def_property_readonly(
+                  "type",
+                  [](OrtHardwareDevice* hw_device) -> OrtHardwareDeviceType { return hw_device->type; },
+                  R"pbdoc(Hardware device's type.)pbdoc")
+      .def_property_readonly(
+          "vendor_id",
+          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->vendor_id; },
+          R"pbdoc(Hardware device's vendor identifier.)pbdoc")
+      .def_property_readonly(
+          "vendor",
+          [](OrtHardwareDevice* hw_device) -> std::string { return hw_device->vendor; },
+          R"pbdoc(Hardware device's vendor name.)pbdoc")
+      .def_property_readonly(
+          "device_id",
+          [](OrtHardwareDevice* hw_device) -> uint32_t { return hw_device->device_id; },
+          R"pbdoc(Hardware device's unique identifier.)pbdoc")
+      .def_property_readonly(
+          "metadata",
+          [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
+            return hw_device->metadata.entries;
+          },
+          R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
+
+  py::class_<OrtEpDevice> py_ep_device(m, "OrtEpDevice",
+                                       R"pbdoc(Represents a hardware device that an execution provider supports
+for model inference.)pbdoc");
+  py_ep_device.def_property_readonly(
+                  "ep_name",
+                  [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_name; },
+                  R"pbdoc(The execution provider's name.)pbdoc")
+      .def_property_readonly(
+          "ep_vendor",
+          [](OrtEpDevice* ep_device) -> std::string { return ep_device->ep_vendor; },
+          R"pbdoc(The execution provider's vendor name.)pbdoc")
+      .def_property_readonly(
+          "ep_metadata",
+          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+            return ep_device->ep_metadata.entries;
+          },
+          R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
+      .def_property_readonly(
+          "ep_options",
+          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
+            return ep_device->ep_options.entries;
+          },
+          R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
+      .def_property_readonly(
+          "device",
+          [](OrtEpDevice* ep_device) -> const OrtHardwareDevice& {
+            return *ep_device->device;
+          },
+          R"pbdoc(The OrtHardwareDevice instance for the OrtEpDevice.)pbdoc",
+          py::return_value_policy::reference_internal);
 
   py::class_<OrtArenaCfg> ort_arena_cfg_binding(m, "OrtArenaCfg");
   // Note: Doesn't expose initial_growth_chunk_sizes_bytes/max_power_of_two_extend_bytes option.
@@ -1642,6 +2036,85 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       sess(m, "SessionOptions", R"pbdoc(Configuration information for a session.)pbdoc");
   sess
       .def(py::init())
+      .def(
+          // Equivalent to the C API's SessionOptionsAppendExecutionProvider.
+          "add_provider",
+          [](PySessionOptions* sess_options,
+             const std::string& provider_name,
+             const ProviderOptions& provider_options = {}) {
+            OrtPybindThrowIfError(AddExplicitEpFactory(*sess_options, provider_name, provider_options));
+          },
+          R"pbdoc(Adds an explicit execution provider.)pbdoc")
+      .def(
+          // Equivalent to the C API's SessionOptionsAppendExecutionProvider_V2.
+          "add_provider_for_devices",
+          [](PySessionOptions* sess_options,
+             const std::vector<const OrtEpDevice*>& ep_devices,
+             const ProviderOptions& provider_options = {}) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(AddEpFactoryFromEpDevices(*sess_options,
+                                                            ep_devices,
+                                                            provider_options));
+#else
+            ORT_UNUSED_PARAMETER(sess_options);
+            ORT_UNUSED_PARAMETER(ep_devices);
+            ORT_UNUSED_PARAMETER(provider_options);
+            ORT_THROW("OrtEpDevices are not supported in this build");
+#endif
+          },
+          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances 
+must refer to the same execution provider.)pbdoc")
+      .def(
+          // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
+          "set_provider_selection_policy",
+          [](PySessionOptions* py_sess_options,
+             OrtExecutionProviderDevicePolicy policy) {
+#if !defined(ORT_MINIMAL_BUILD)
+            py_sess_options->py_ep_selection_delegate = nullptr;
+
+            py_sess_options->value.ep_selection_policy.enable = true;
+            py_sess_options->value.ep_selection_policy.policy = policy;
+            py_sess_options->value.ep_selection_policy.delegate = nullptr;
+            py_sess_options->value.ep_selection_policy.state = nullptr;
+#else
+            ORT_UNUSED_PARAMETER(py_sess_options);
+            ORT_UNUSED_PARAMETER(policy);
+            ORT_THROW("EP selection policies are not supported in this build");
+#endif
+          },
+          R"pbdoc(Sets the execution provider selection policy for the session. Allows users to specify a
+selection policy for automatic execution provider (EP) selection.)pbdoc")
+      .def(
+          // Equivalent to the C API's SessionOptionsSetEpSelectionPolicyDelegate.
+          "set_provider_selection_policy_delegate",
+          [](PySessionOptions* py_sess_options,
+             PyEpSelectionDelegate delegate_fn) {
+#if !defined(ORT_MINIMAL_BUILD)
+            py_sess_options->py_ep_selection_delegate = delegate_fn;  // Store python callback in PySessionOptions
+
+            py_sess_options->value.ep_selection_policy.enable = true;
+            py_sess_options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+            py_sess_options->value.ep_selection_policy.delegate = PyEpSelectionPolicyWrapper;
+            py_sess_options->value.ep_selection_policy.state =
+                reinterpret_cast<void*>(&py_sess_options->py_ep_selection_delegate);
+#else
+            ORT_UNUSED_PARAMETER(py_sess_options);
+            ORT_UNUSED_PARAMETER(delegate_fn);
+            ORT_THROW("EP selection policies are not supported in this build");
+#endif
+          },
+          R"pbdoc(Sets the execution provider selection policy delegate for the session. Allows users to specify a
+custom selection policy function for automatic execution provider (EP) selection. The delegate must return a list of
+selected OrtEpDevice instances. The signature of the delegate is
+def custom_delegate(ep_devices: Sequence[OrtEpDevice], model_metadata: dict[str, str], runtime_metadata: dict[str, str],
+max_selections: int) -> Sequence[OrtEpDevice])pbdoc")
+      .def(
+          "has_providers",
+          [](PySessionOptions* sess_options) -> bool {
+            return !sess_options->provider_factories.empty() || sess_options->value.ep_selection_policy.enable;
+          },
+          R"pbdoc(Returns true if the SessionOptions has been configured with providers, OrtEpDevices, or
+policies that will run the model.)pbdoc")
       .def_property(
           "enable_cpu_mem_arena",
           [](const PySessionOptions* options) -> bool { return options->value.enable_cpu_mem_arena; },
@@ -1745,6 +2218,12 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
             options->value.execution_mode = execution_mode;
           },
           R"pbdoc(Sets the execution mode. Default is sequential.)pbdoc")
+      .def(
+          "set_load_cancellation_flag",
+          [](PySessionOptions* options, bool value) -> void {
+            options->value.SetLoadCancellationFlag(value);
+          },
+          R"pbdoc(Request inference session load cancellation)pbdoc")
       .def_property(
           "execution_order",
           [](const PySessionOptions* options) -> ExecutionOrder { return options->value.execution_order; },
@@ -2032,11 +2511,18 @@ including arg name, arg type (contains both type and shape).)pbdoc")
                                const std::vector<std::string>& provider_types = {},
                                const ProviderOptionsVector& provider_options = {},
                                const std::unordered_set<std::string>& disabled_optimizer_names = {}) {
-            InitializeSession(sess->GetSessionHandle(),
-                              ep_registration_fn,
-                              provider_types,
-                              provider_options,
-                              disabled_optimizer_names);
+            // If the user did not explicitly specify providers when creating InferenceSession and the SessionOptions
+            // has provider information (i.e., either explicit EPs or an EP selection policy), then use the information
+            // in the session options to initialize the session.
+            if (provider_types.empty() && sess->HasProvidersInSessionOptions()) {
+              OrtPybindThrowIfError(InitializeSessionEpsFromSessionOptions(*sess, disabled_optimizer_names));
+            } else {
+              InitializeSession(sess->GetSessionHandle(),
+                                ep_registration_fn,
+                                provider_types,
+                                provider_options,
+                                disabled_optimizer_names);
+            }
           },
           R"pbdoc(Load a model saved in ONNX or ORT format.)pbdoc")
       .def("run",
@@ -2295,6 +2781,66 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .value("kNextPowerOfTwo", onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo)
       .value("kSameAsRequested", onnxruntime::ArenaExtendStrategy::kSameAsRequested)
       .export_values();
+
+  py::enum_<OrtCompileApiFlags>(m, "OrtCompileApiFlags", py::arithmetic())
+      .value("NONE", OrtCompileApiFlags_NONE)
+      .value("ERROR_IF_NO_NODES_COMPILED", OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED)
+      .value("ERROR_IF_OUTPUT_FILE_EXISTS", OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS);
+
+  py::class_<PyModelCompiler>(m, "ModelCompiler",
+                              R"pbdoc(This is the class used to compile an ONNX model.)pbdoc")
+      .def(py::init([](const PySessionOptions& sess_options,
+                       std::string path_or_bytes,
+                       bool is_path,
+                       bool embed_compiled_data_into_model = false,
+                       std::string external_initializers_file_path = {},
+                       size_t external_initializers_size_threshold = 1024,
+                       size_t flags = OrtCompileApiFlags_NONE) {
+#if !defined(ORT_MINIMAL_BUILD)
+        std::unique_ptr<PyModelCompiler> result;
+        OrtPybindThrowIfError(PyModelCompiler::Create(result, GetEnv(), sess_options,
+                                                      std::move(path_or_bytes), is_path,
+                                                      embed_compiled_data_into_model,
+                                                      external_initializers_file_path,
+                                                      external_initializers_size_threshold,
+                                                      flags));
+        return result;
+#else
+        ORT_UNUSED_PARAMETER(sess_options);
+        ORT_UNUSED_PARAMETER(path_or_bytes);
+        ORT_UNUSED_PARAMETER(is_path);
+        ORT_UNUSED_PARAMETER(embed_compiled_data_into_model);
+        ORT_UNUSED_PARAMETER(external_initializers_file_path);
+        ORT_UNUSED_PARAMETER(external_initializers_size_threshold);
+        ORT_UNUSED_PARAMETER(flags);
+        ORT_THROW("Compile API is not supported in this build.");
+#endif
+      }))
+      .def(
+          "compile_to_file",
+          [](PyModelCompiler* model_compiler, std::string output_model_path = {}) {
+#if !defined(ORT_MINIMAL_BUILD)
+            OrtPybindThrowIfError(model_compiler->CompileToFile(output_model_path));
+#else
+            ORT_UNUSED_PARAMETER(model_compiler);
+            ORT_UNUSED_PARAMETER(output_model_path);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Compile an ONNX model into a file.)pbdoc")
+      .def(
+          "compile_to_bytes",
+          [](PyModelCompiler* model_compiler) -> py::bytes {
+#if !defined(ORT_MINIMAL_BUILD)
+            std::string output_bytes;
+            OrtPybindThrowIfError(model_compiler->CompileToBytes(output_bytes));
+            return py::bytes(output_bytes);
+#else
+            ORT_UNUSED_PARAMETER(model_compiler);
+            ORT_THROW("Compile API is not supported in this build.");
+#endif
+          },
+          R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
 
 bool CreateInferencePybindStateModule(py::module& m) {

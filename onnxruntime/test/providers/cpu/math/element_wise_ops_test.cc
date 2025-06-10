@@ -32,7 +32,7 @@ void TestBinaryFloat16(const char* op_name,
                        bool enable_bf16 = true) {
   {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef COREML_ENABLE_MLPROGRAM
+#ifdef USE_COREML
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -76,7 +76,7 @@ void TestUnaryFloat16(const char* op_name,
                       bool run_bf16 = true) {
   {
     std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
-#ifdef COREML_ENABLE_MLPROGRAM
+#ifdef USE_COREML
     execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #elif USE_CUDA
     execution_providers.push_back(DefaultCudaExecutionProvider());
@@ -968,8 +968,15 @@ TEST(MathOpTest, Abs) {
   test.Run();
 }
 
-#ifdef USE_DNNL
+#if defined(USE_CUDA) || defined(USE_DNNL)
 TEST(MathOpTest, Abs_bfloat16) {
+#ifdef USE_CUDA
+  int min_cuda_architecture = 530;
+  if (!HasCudaEnvironment(min_cuda_architecture)) {
+    LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
+    return;
+  }
+#endif
 #ifdef USE_DNNL
   if (!DnnlHasBF16Support()) {
     LOGS_DEFAULT(WARNING) << "Hardware does NOT support BF16";
@@ -980,9 +987,19 @@ TEST(MathOpTest, Abs_bfloat16) {
   std::vector<int64_t> dims{2, 2};
   test_bf16.AddInput<BFloat16>("X", dims, MakeBFloat16({1.0f, -2.0f, -0.0f, -10.0f}));
   test_bf16.AddOutput<BFloat16>("Y", dims, MakeBFloat16({1.0f, 2.0f, 0.0f, 10.0f}));
-  test_bf16.Run();
+
+  std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
+#if defined(USE_CUDA)
+  execution_providers.push_back(DefaultCudaExecutionProvider());
+#endif
+
+#if defined(USE_DNNL)
+  execution_providers.push_back(DefaultDnnlExecutionProvider());
+#endif
+
+  test_bf16.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
-#endif  //  USE_DNNL
+#endif  //  USE_CUDA || USE_DNNL
 
 TEST(MathOpTest, Abs_int8) {
   OpTester test("Abs");
@@ -1409,7 +1426,7 @@ TEST(MathOpTest, Pow_float16_float16) {
                     dims, {1.0f, 256.0f, 2.0f, 1.0f}, false);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
 TEST(MathOpTest, Pow_float_float16) {
   OpTester test("Pow", 12);
   std::vector<int64_t> dims{4};
@@ -1423,7 +1440,7 @@ TEST(MathOpTest, Pow_float_float16) {
   execution_providers.push_back(DefaultCudaExecutionProvider());
 #elif USE_ROCM
   execution_providers.push_back(DefaultRocmExecutionProvider());
-#elif COREML_ENABLE_MLPROGRAM
+#elif USE_COREML
   execution_providers.push_back(DefaultCoreMLExecutionProvider(true));
 #endif
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);

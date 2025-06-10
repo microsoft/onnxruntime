@@ -457,14 +457,14 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
 
     std::vector<uint32_t> scale_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[1].node_arg, scale_shape), "Cannot get shape of input 1 (scale).");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(inputs[1].node_arg.Name()),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(inputs[1].node_arg.Name()),
                       "QNN BatchNorm doesn't support dynamic scale.");
     ORT_RETURN_IF(scale_shape.size() != 1 || scale_shape[0] != num_channels,
                   "QNN BatchNorm input 1 (scale) must have 1D shape [channel].");
 
     std::vector<uint32_t> bias_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[2].node_arg, bias_shape), "Cannot get shape of input 2 (bias).");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(inputs[2].node_arg.Name()),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(inputs[2].node_arg.Name()),
                       "QNN BatchNorm doesn't support dynamic bias.");
 
     ORT_RETURN_IF(bias_shape.size() != 1 || bias_shape[0] != num_channels,
@@ -474,14 +474,14 @@ Status BatchNormOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[3].node_arg, mean_shape), "Cannot get shape of input 3 (mean).");
     ORT_RETURN_IF(mean_shape.size() != 1 || mean_shape[0] != num_channels,
                   "QNN BatchNorm input 3 (mean) must have 1D shape [channel].");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(inputs[3].node_arg.Name()),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(inputs[3].node_arg.Name()),
                       "QNN BatchNorm doesn't support dynamic mean.");
 
     std::vector<uint32_t> var_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[4].node_arg, var_shape), "Cannot get shape of input 4 (var).");
     ORT_RETURN_IF(var_shape.size() != 1 || var_shape[0] != num_channels,
                   "QNN BatchNorm input 4 (var) must have 1D shape [channel].");
-    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsInitializerInput(inputs[4].node_arg.Name()),
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.IsConstantInput(inputs[4].node_arg.Name()),
                       "QNN BatchNorm doesn't support dynamic var.");
 
     ORT_RETURN_IF(node_unit.Outputs().size() > 1, "QNN BatchNorm only support 1 output.");

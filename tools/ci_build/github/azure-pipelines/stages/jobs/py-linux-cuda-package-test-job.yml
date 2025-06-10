@@ -2,9 +2,8 @@ parameters:
   - name: CudaVersion
     displayName: 'CUDA version'
     type: string
-    default: '11.8'
+    default: '12.2'
     values:
-      - 11.8
       - 12.2
   - name: machine_pool
     type: string
@@ -114,6 +113,3 @@ jobs:
           targetType: filePath
           filePath: tools/ci_build/github/linux/run_python_dockertest.sh
           arguments: -d GPU -c ${{parameters.cmake_build_type}} -i onnxruntimecuda${{ replace(parameters.CudaVersion, '.', '') }}xtrt86buildx86_64 -u 12.2
-      - template: ../../templates/component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'

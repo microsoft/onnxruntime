@@ -55,10 +55,6 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "RelWithDebInfo" CACHE STRING "Choose build type: Debug Release RelWithDebInfo MinSizeRel." FORCE)
 endif()
 
-if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 9)
-  message(FATAL_ERROR  "GCC version must be greater than or equal to 9")
-endif()
-
 # Options
 option(onnxruntime_USE_VCPKG "Build with the vcpkg package manager" OFF)
 option(onnxruntime_RUN_ONNX_TESTS "Enable ONNX Compatibility Testing" OFF)
@@ -66,9 +62,10 @@ option(onnxruntime_GENERATE_TEST_REPORTS "Enable test report generation" OFF)
 option(onnxruntime_ENABLE_STATIC_ANALYSIS "Enable static analysis" OFF)
 option(onnxruntime_USE_CUSTOM_STATIC_ANALYSIS_RULES "Use a custom SDL Rule. It is mainly for our CI build" OFF)
 option(onnxruntime_REDIRECT_STATIC_ANALYSIS_OUTPUTS_TO_FILE "Use a custom SDL Rule. It is mainly for our CI build" OFF)
-option(onnxruntime_ENABLE_PYTHON "Enable python buildings" OFF)
+option(onnxruntime_ENABLE_PYTHON "Enable python bindings" OFF)
 # Enable it may cause LNK1169 error
 option(onnxruntime_ENABLE_MEMLEAK_CHECKER "Experimental: Enable memory leak checker in Windows debug build" OFF)
+option(onnxruntime_ENABLE_CONVSYMKERNELAVX2_SAT_CHECKER "Experimental: Enable ConvSymKernelAvx2 assembly saturation checker in build" OFF)
 option(onnxruntime_USE_CUDA "Build with CUDA support" OFF)
 # Enable ONNX Runtime CUDA EP's internal unit tests that directly access the EP's internal functions instead of through
 # OpKernels. When the option is ON, we will have two copies of GTest library in the same process. It is not a typical
@@ -87,6 +84,7 @@ option(onnxruntime_USE_SNPE "Build with SNPE support" OFF)
 option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
+option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -110,6 +108,7 @@ option(onnxruntime_ENABLE_MICROSOFT_INTERNAL "Use this option to enable/disable 
 option(onnxruntime_USE_VITISAI "Build with Vitis-AI" OFF)
 option(onnxruntime_USE_TENSORRT "Build with TensorRT support" OFF)
 option(onnxruntime_USE_TENSORRT_BUILTIN_PARSER "Use TensorRT builtin parser" OFF)
+option(onnxruntime_USE_NV "Build with TensorRT support" OFF)
 option(onnxruntime_ENABLE_LTO "Enable link time optimization" OFF)
 option(onnxruntime_CROSS_COMPILING "Cross compiling onnx runtime" OFF)
 option(onnxruntime_GCOV_COVERAGE "Compile with options necessary to run code coverage" OFF)
@@ -183,7 +182,6 @@ option(onnxruntime_ENABLE_TRAINING_OPS "Include training operators but no traini
 option(onnxruntime_ENABLE_TRAINING_E2E_TESTS "Enable training end-to-end tests." OFF)
 option(onnxruntime_ENABLE_CPU_FP16_OPS "Build with advanced instruction sets" ON)
 option(onnxruntime_USE_NCCL "Build with NCCL support" OFF)
-option(onnxruntime_USE_MPI "Build with MPI support" OFF)
 
 # WebAssembly options
 option(onnxruntime_BUILD_WEBASSEMBLY_STATIC_LIB "Enable this option to create WebAssembly static library" OFF)
@@ -196,6 +194,7 @@ option(onnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO "Enable this option to turn on 
 option(onnxruntime_ENABLE_WEBASSEMBLY_PROFILING "Enable this option to turn on WebAssembly profiling and preserve function names" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_OUTPUT_OPTIMIZED_MODEL "Enable this option to allow WebAssembly to output optimized model" OFF)
 option(onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64 "Enable this option to allow WebAssembly to use 64bit memory" OFF)
+option(onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD "Enable WebAssembly Relaxed SIMD" OFF)
 
 # Enable bitcode for iOS
 option(onnxruntime_ENABLE_BITCODE "Enable bitcode for iOS only" OFF)
@@ -253,10 +252,16 @@ option(onnxruntime_USE_LOCK_FREE_QUEUE "Build with lock-free task queue for thre
 option(onnxruntime_FORCE_GENERIC_ALGORITHMS "Disable optimized arch-specific algorithms. Use only for testing and debugging generic algorithms." OFF)
 
 option(onnxruntime_USE_TENSORRT_INTERFACE "Build ONNXRuntime shared lib which is compatible with TensorRT EP interface" OFF)
+option(onnxruntime_USE_NV_INTERFACE "Build ONNXRuntime shared lib which is compatible with NV EP interface" OFF)
 option(onnxruntime_USE_CUDA_INTERFACE "Build ONNXRuntime shared lib which is compatible with Cuda EP interface" OFF)
 option(onnxruntime_USE_OPENVINO_INTERFACE "Build ONNXRuntime shared lib which is compatible with OpenVINO EP interface" OFF)
 option(onnxruntime_USE_VITISAI_INTERFACE "Build ONNXRuntime shared lib which is compatible with Vitis-AI EP interface" OFF)
 option(onnxruntime_USE_QNN_INTERFACE "Build ONNXRuntime shared lib which is compatible with QNN EP interface" OFF)
+
+
+if("${CMAKE_C_COMPILER_ID}" STREQUAL "GNU" AND CMAKE_C_COMPILER_VERSION VERSION_LESS 11.1)
+  message(FATAL_ERROR  "GCC version must be greater than or equal to 11.1")
+endif()
 
 # ENABLE_TRAINING includes all training functionality
 # The following 2 entry points
@@ -671,16 +676,16 @@ endif()
 if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_ENABLE_PYTHON)
   if (onnxruntime_ENABLE_PYTHON)
     if (onnxruntime_REQUIRE_PYTHON_EMBED_LIB)
-      find_package(Python 3.8 COMPONENTS Interpreter Development NumPy)
+      find_package(Python 3.10 COMPONENTS Interpreter Development NumPy)
     else()
-      find_package(Python 3.8 COMPONENTS Interpreter Development.Module NumPy)
+      find_package(Python 3.10 COMPONENTS Interpreter Development.Module NumPy)
     endif()
     message("Numpy version: ${Python_NumPy_VERSION}")
     if(Python_NumPy_VERSION VERSION_LESS "2.0.0")
       message(WARNING "The build binary will not be compatible with NumPy 2.0 because the NumPy installed on this machine is too low.")
     endif()
   else()
-    find_package(Python 3.8 COMPONENTS Interpreter)
+    find_package(Python 3.10 COMPONENTS Interpreter)
   endif()
 endif()
 
@@ -734,7 +739,10 @@ if (WIN32)
     endif()
 
 else()
+  # Check for compiler flags
   check_cxx_compiler_flag(-Wambiguous-reversed-operator HAS_AMBIGUOUS_REVERSED_OPERATOR)
+  # -Winterference-size was added in GCC 13
+  check_cxx_compiler_flag(-Winterference-size HAS_INTERFERENCE_SIZE)
   check_cxx_compiler_flag(-Wbitwise-instead-of-logical HAS_BITWISE_INSTEAD_OF_LOGICAL)
   check_cxx_compiler_flag(-Wcast-function-type HAS_CAST_FUNCTION_TYPE)
   check_cxx_compiler_flag(-Wcatch-value HAS_CATCH_VALUE)
@@ -816,9 +824,29 @@ else()
     endif()
   endif()
 
+  if(HAS_INTERFERENCE_SIZE)
+    # The warning was from Eigen. Since we do not use Eigen in the public API, we can ignore it.
+    # However, it also means that part of our code was compiled based on the build machine's hardware spec.
+    # Specifically, the code was tuned based on the build machine's CPU cache line size, which can vary a lot.
+    list(APPEND ORT_WARNING_FLAGS -Wno-interference-size)
+  endif()
   # enable warning(s) that may not be on by default
   if (HAS_SHORTEN_64_TO_32)
     list(APPEND ORT_WARNING_FLAGS -Wshorten-64-to-32)
+  endif()
+endif()
+
+if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
+    (onnxruntime_target_platform STREQUAL "aarch64") OR
+    (onnxruntime_target_platform STREQUAL "ARM64") OR
+    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+  if (NOT HAS_ARM64_DOTPROD)
+    message(FATAL_ERROR  "The compiler doesn't support dotprod")
+  endif()
+  if (NOT HAS_ARM64_I8MM)
+    message(FATAL_ERROR  "The compiler doesn't support i8mm")
   endif()
 endif()
 
@@ -829,7 +857,6 @@ endif()
 set(ONNXRUNTIME_PROVIDER_NAMES cpu)
 
 set(ORT_PROVIDER_FLAGS)
-set(ORT_PROVIDER_CMAKE_FLAGS)
 
 if (onnxruntime_USE_CUDA)
   enable_language(CUDA)
@@ -864,74 +891,96 @@ else()
   set(onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION OFF)
 endif()
 
-if (onnxruntime_USE_CUDA OR onnxruntime_USE_CUDA_INTERFACE)
+if (onnxruntime_USE_CUDA)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CUDA=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cuda)
 
     if (onnxruntime_USE_FLASH_ATTENTION)
       message( STATUS "Enable flash attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_FLASH_ATTENTION=1)
-      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_FLASH_ATTENTION=1)
     endif()
 
     if (onnxruntime_USE_LEAN_ATTENTION)
       message( STATUS "Enable lean attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_LEAN_ATTENTION=1)
-      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_LEAN_ATTENTION=1)
     endif()
 
     if (onnxruntime_USE_MEMORY_EFFICIENT_ATTENTION)
       message( STATUS "Enable memory efficient attention for CUDA EP")
       list(APPEND ORT_PROVIDER_FLAGS -DUSE_MEMORY_EFFICIENT_ATTENTION=1)
-      list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MEMORY_EFFICIENT_ATTENTION=1)
     endif()
 endif()
 
-if (onnxruntime_USE_VITISAI OR onnxruntime_USE_VITISAI_INTERFACE)
+if (onnxruntime_USE_CUDA_INTERFACE AND (NOT onnxruntime_USE_CUDA))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_CUDA_PROVIDER_INTERFACE=1)
+endif()
+
+if (onnxruntime_USE_VITISAI)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_VITISAI=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES vitisai)
 endif()
+
+if (onnxruntime_USE_VITISAI_INTERFACE AND (NOT onnxruntime_USE_VITISAI))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_VITISAI_PROVIDER_INTERFACE=1)
+endif()
+
 if (onnxruntime_USE_DNNL)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_DNNL=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES dnnl)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DNNL=1)
 endif()
-if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
+
+if (onnxruntime_USE_OPENVINO)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES openvino)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_OPENVINO=1)
 endif()
-if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_TENSORRT_INTERFACE)
+
+if (onnxruntime_USE_OPENVINO_INTERFACE AND (NOT onnxruntime_USE_OPENVINO))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_OPENVINO_PROVIDER_INTERFACE=1)
+endif()
+
+if (onnxruntime_USE_TENSORRT)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT=1)
     #TODO: remove the following line and change the test code in onnxruntime_shared_lib_test to use the new EP API.
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES tensorrt)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_TENSORRT=1)
 endif()
+
+if (onnxruntime_USE_TENSORRT_INTERFACE AND (NOT onnxruntime_USE_TENSORRT))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_TENSORRT_PROVIDER_INTERFACE=1)
+endif()
+
+if (onnxruntime_USE_NV)
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV=1)
+    list(APPEND ONNXRUNTIME_PROVIDER_NAMES nv_tensorrt_rtx)
+endif()
+
+if (onnxruntime_USE_NV_INTERFACE AND (NOT onnxruntime_USE_NV))
+    list(APPEND ORT_PROVIDER_FLAGS -DUSE_NV_PROVIDER_INTERFACE=1)
+endif()
+
 if (onnxruntime_USE_RKNPU)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_RKNPU=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_RKNPU=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES rknpu)
 endif()
 if (onnxruntime_USE_VSINPU)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_VSINPU=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_VSINPU=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES vsinpu)
 endif()
 if (onnxruntime_USE_NNAPI_BUILTIN)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_NNAPI=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_NNAPI_BUILTIN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES nnapi)
 endif()
 if (onnxruntime_USE_JSEP)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_JSEP=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_JSEP=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES js)
 endif()
 if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
-    list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_QNN=1)
+
+    if(onnxruntime_USE_QNN)
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN=1)
+    else()
+        list(APPEND ORT_PROVIDER_FLAGS -DUSE_QNN_PROVIDER_INTERFACE=1)
+    endif()
+
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES qnn)
     if (NOT QNN_ARCH_ABI)
       string(TOLOWER ${onnxruntime_target_platform} GEN_PLATFORM)
@@ -957,7 +1006,7 @@ if (onnxruntime_USE_QNN OR onnxruntime_USE_QNN_INTERFACE)
       endif()
     endif()
 
-    if ((NOT onnxruntime_USE_QNN_INTERFACE) AND (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
+    if (onnxruntime_USE_QNN AND (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux"))
       file(GLOB QNN_LIB_FILES LIST_DIRECTORIES false "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libQnn*.so"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/Qnn*.dll"
                                              "${onnxruntime_QNN_HOME}/lib/${QNN_ARCH_ABI}/libHtpPrepare.so"
@@ -974,21 +1023,17 @@ endif()
 if (onnxruntime_USE_SNPE)
     list(APPEND ORT_PROVIDER_FLAGS -DUSE_SNPE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES snpe)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_SNPE=1)
 endif()
 if (onnxruntime_USE_WINML)
   list(APPEND ORT_PROVIDER_FLAGS  -DUSE_WINML=1)
-  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WINML=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES winml)
 endif()
 if (onnxruntime_USE_ACL)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ACL=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ACL=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES acl)
 endif()
 if (onnxruntime_USE_DML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_DML=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_DML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES dml)
     if(onnxruntime_ENABLE_NPU_ADAPTER_ENUMERATION)
       list(APPEND ORT_PROVIDER_FLAGS -DENABLE_NPU_ADAPTER_ENUMERATION=1)
@@ -996,38 +1041,55 @@ if (onnxruntime_USE_DML)
 endif()
 if (onnxruntime_USE_MIGRAPHX)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_MIGRAPHX=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_MIGRAPHX=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES migraphx)
 endif()
 if (onnxruntime_USE_ARMNN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ARMNN=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ARMNN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES armnn)
 endif()
 if (onnxruntime_USE_ROCM)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_ROCM=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_ROCM=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES rocm)
 endif()
 if (onnxruntime_USE_COREML)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_COREML=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_COREML=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES coreml)
 endif()
 if (onnxruntime_USE_XNNPACK)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_XNNPACK=1)
-  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_XNNPACK=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES xnnpack)
 endif()
 if (onnxruntime_USE_WEBNN)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBNN=1)
-  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WEBNN=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webnn)
 endif()
 if (onnxruntime_USE_WEBGPU)
   list(APPEND ORT_PROVIDER_FLAGS -DUSE_WEBGPU=1)
-  list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_WEBGPU=1)
   list(APPEND ONNXRUNTIME_PROVIDER_NAMES webgpu)
+
+  if (onnxruntime_USE_VCPKG AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+    if (NOT onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY=OFF")
+    endif()
+    if (onnxruntime_USE_EXTERNAL_DAWN)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_USE_EXTERNAL_DAWN=ON")
+    endif()
+    if (onnxruntime_CUSTOM_DAWN_SRC_PATH)
+      message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with a custom dawn source path")
+    endif()
+    if (WIN32)
+      if (onnxruntime_ENABLE_DAWN_BACKEND_VULKAN)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_DAWN_BACKEND_VULKAN=ON")
+      endif()
+      if (NOT onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_DAWN_BACKEND_D3D12=OFF")
+      endif()
+      if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
+        message(FATAL_ERROR "onnxruntime_USE_VCPKG is not supported with onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=ON")
+      endif()
+    endif()
+  endif()
+
   if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
     list(APPEND ORT_PROVIDER_FLAGS -DBUILD_DAWN_MONOLITHIC_LIBRARY=1)
   endif()
@@ -1051,12 +1113,10 @@ if (onnxruntime_USE_WEBGPU)
 endif()
 if (onnxruntime_USE_CANN)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_CANN=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_CANN=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES cann)
 endif()
 if (onnxruntime_USE_AZURE)
     list(APPEND ORT_PROVIDER_FLAGS  -DUSE_AZURE=1)
-    list(APPEND ORT_PROVIDER_CMAKE_FLAGS -Donnxruntime_USE_AZURE=1)
     list(APPEND ONNXRUNTIME_PROVIDER_NAMES azure)
 endif()
 if (onnxruntime_USE_LOCK_FREE_QUEUE)
@@ -1205,6 +1265,7 @@ function(onnxruntime_set_compile_flags target_name)
     foreach(ORT_FLAG ${ORT_PROVIDER_FLAGS})
       target_compile_definitions(${target_name} PRIVATE ${ORT_FLAG})
     endforeach()
+
     if (HAS_DEPRECATED_COPY)
       #too many such errors in eigen
       target_compile_options(${target_name} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options -Wno-deprecated-copy>" "$<$<COMPILE_LANGUAGE:CXX>:-Wno-deprecated-copy>")
@@ -1234,6 +1295,7 @@ function(onnxruntime_set_compile_flags target_name)
       # Unsupported by Clang 18 yet.
       list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-dangling-reference)
 
+      list(REMOVE_ITEM ORT_HIP_WARNING_FLAGS -Wno-interference-size)
       # float16.h:90:12: error: ‘tmp’ is used uninitialized
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-uninitialized)
       list(APPEND ORT_HIP_WARNING_FLAGS -Wno-deprecated-copy)
@@ -1439,7 +1501,7 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
   )
 endif()
 
-if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
+if (onnxruntime_USE_OPENVINO)
 
   add_definitions(-DUSE_OPENVINO=1)
 
@@ -1452,7 +1514,7 @@ if (onnxruntime_USE_OPENVINO OR onnxruntime_USE_OPENVINO_INTERFACE)
     add_definitions(-DOPENVINO_CONFIG_GPU=1)
   endif()
 
-  if (onnxruntime_USE_OPENVINO_CPU OR onnxruntime_USE_OPENVINO_INTERFACE) # OpenVino CPU interface is default built.
+  if (onnxruntime_USE_OPENVINO_CPU)
     add_definitions(-DOPENVINO_CONFIG_CPU=1)
   endif()
 
@@ -1514,7 +1576,6 @@ if (Git_FOUND)
   string(APPEND ORT_BUILD_INFO "git-branch=${ORT_GIT_BRANCH}, git-commit-id=${ORT_GIT_COMMIT}, ")
 endif()
 string(APPEND ORT_BUILD_INFO "build type=${CMAKE_BUILD_TYPE}")
-string(APPEND ORT_BUILD_INFO ", cmake cxx flags: ${CMAKE_CXX_FLAGS}")
 configure_file(onnxruntime_config.h.in ${CMAKE_CURRENT_BINARY_DIR}/onnxruntime_config.h)
 get_property(onnxruntime_GENERATOR_IS_MULTI_CONFIG GLOBAL PROPERTY GENERATOR_IS_MULTI_CONFIG)
 
@@ -1526,32 +1587,21 @@ if (onnxruntime_USE_CUDA)
   endif()
   find_package(CUDAToolkit REQUIRED)
   if (NOT CMAKE_CUDA_ARCHITECTURES)
+    # Note that we generate SASS+PTX code for specified cuda architectures by assigning "xy"
+    # To add SASS only, assign "xy-real"
+    # To add PTX only, assign "xy-virtual"
     if (CMAKE_LIBRARY_ARCHITECTURE STREQUAL "aarch64-linux-gnu")
       # Support for Jetson/Tegra ARM devices
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_53,code=sm_53") # TX1, Nano
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_62,code=sm_62") # TX2
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_72,code=sm_72") # AGX Xavier, NX Xavier
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_87,code=sm_87") # AGX Orin, NX Orin
+      set(CMAKE_CUDA_ARCHITECTURES "53-real;62-real;72-real;87") # TX1/Nano, TX2, Xavier, Orin
     else()
       if (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12)
         # 37, 50 still work in CUDA 11 but are marked deprecated and will be removed in future CUDA version.
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_37,code=sm_37") # K80
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_50,code=sm_50") # M series
-      endif()
-      # Note that we generate SASS code for specified cuda architectures. It does not support forward compatibility.
-      # To add PTX for future GPU architectures >= XX, append -gencode=arch=compute_XX,code=compute_XX.
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_52,code=sm_52") # M60
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_60,code=sm_60") # P series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_70,code=sm_70") # V series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_75,code=sm_75") # T series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_80,code=sm_80") # A series
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_86,code=sm_86")
-      set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_89,code=sm_89")
-      if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12)
-        set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_90,code=sm_90") # H series
-        if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
-          set(CMAKE_CUDA_FLAGS "${CMAKE_CUDA_FLAGS} -gencode=arch=compute_120,code=sm_120") # B series
-        endif()
+        set(CMAKE_CUDA_ARCHITECTURES "37-real;50-real;52-real;60-real;70-real;75-real;80-real;86-real;89")
+      elseif (CMAKE_CUDA_COMPILER_VERSION VERSION_LESS 12.8)
+        set(CMAKE_CUDA_ARCHITECTURES "52-real;60-real;70-real;75-real;80-real;86-real;89-real;90")
+      else()
+        # https://cmake.org/cmake/help/latest/prop_tgt/CUDA_ARCHITECTURES.html
+        set(CMAKE_CUDA_ARCHITECTURES "all") # Supporting all, including latest Blackwell B series & RTX 50 series
       endif()
     endif()
   endif()
@@ -1623,29 +1673,6 @@ if (onnxruntime_ENABLE_DLPACK)
 endif()
 
 if (UNIX OR onnxruntime_USE_NCCL)
-  # MPI is INDEPENDENT of NCCL for now. You can build NCLL without MPI and launch multi-GPU with your own launcher.
-  if (onnxruntime_USE_MPI)
-    if (EXISTS "${onnxruntime_MPI_HOME}")
-      set(MPI_HOME "${onnxruntime_MPI_HOME}")
-    elseif (EXISTS "/bert_ort/openmpi")
-      set(MPI_HOME "/bert_ort/openmpi")
-    endif()
-    find_package(MPI)
-
-    if (MPI_CXX_FOUND)
-      message( STATUS "MPI Version: ${MPI_CXX_VERSION}")
-      message( STATUS "MPI (include: ${MPI_CXX_INCLUDE_DIRS}, library: ${MPI_CXX_LIBRARIES})" )
-      mark_as_advanced(MPI_CXX_INCLUDE_DIRS MPI_CXX_LIBRARIES)
-      list(APPEND onnxruntime_EXTERNAL_LIBRARIES ${MPI_CXX_LIBRARIES} ${MPI_CXX_LINK_FLAGS})
-    else ()
-      message(
-            FATAL_ERROR
-            "MPI is not found. Please define onnxruntime_MPI_HOME to specify the path of MPI. Otherwise, NCCL will be disabled."
-            "or you can remove --use_mpi from build args to disable MPI."
-          )
-    endif()
-  endif()
-
   # Find NCCL
   if (onnxruntime_USE_NCCL)
     if (onnxruntime_USE_CUDA)
@@ -1715,13 +1742,9 @@ if (UNIX OR onnxruntime_USE_NCCL)
   endif()
 else()
   set(onnxruntime_USE_NCCL OFF)
-  set(onnxruntime_USE_MPI OFF)
-  message( WARNING "MPI and NCCL are disabled because build is on Windows or USE_NCCL is set to OFF." )
+  message( WARNING "NCCL is disabled because build is on Windows or USE_NCCL is set to OFF." )
 endif()
 
-if (onnxruntime_USE_MPI)
-  add_definitions(-DUSE_MPI=1)
-endif()
 
 # Default version parts for Microsoft.AI.MachineLearning.dll, onnxruntime.dll, onnxruntime_providers_openvino.dll and onnxruntime_providers_shared.dll in non-ADO pipeline local builds
 set(VERSION_MAJOR_PART   0 CACHE STRING "First part of numeric file/product version.")
@@ -1734,7 +1757,7 @@ if(VERSION_MAJOR_PART STREQUAL "0" AND VERSION_MINOR_PART STREQUAL "0" AND VERSI
     list(GET ORT_VERSION_STRING_LIST 0 VERSION_MAJOR_PART)
     list(GET ORT_VERSION_STRING_LIST 1 VERSION_MINOR_PART)
     list(GET ORT_VERSION_STRING_LIST 2 VERSION_BUILD_PART)
-    set(VERSION_STRING ORT_VERSION)
+    set(VERSION_STRING ${ORT_VERSION})
 endif()
 
 
@@ -1790,12 +1813,10 @@ if (onnxruntime_USE_WINML)
   list(APPEND ONNXRUNTIME_CMAKE_FILES winml)
 endif() # if (onnxruntime_USE_WINML)
 
-if (onnxruntime_BUILD_SHARED_LIB OR onnxruntime_BUILD_APPLE_FRAMEWORK)
-  if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS")
-    message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS.")
-  endif()
-  list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
+if (onnxruntime_BUILD_APPLE_FRAMEWORK AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS")
+  message(FATAL_ERROR "onnxruntime_BUILD_APPLE_FRAMEWORK can only be enabled for macOS or iOS or visionOS or tvOS.")
 endif()
+list(APPEND ONNXRUNTIME_CMAKE_FILES onnxruntime)
 
 if (onnxruntime_BUILD_JAVA)
   message(STATUS "Java Build is enabled")
@@ -1910,18 +1931,50 @@ if (onnxruntime_ENABLE_EXTERNAL_CUSTOM_OP_SCHEMAS)
   )
 endif()
 
-if(TARGET onnxruntime)
-# Install
-  include(GNUInstallDirs)
+if(NOT onnxruntime_BUILD_SHARED_LIB AND onnxruntime_USE_WEBGPU)
+  message(WARNING "CMake target files will not be generated for static onnxruntime builds with webgpu support")
+else()
+  # Install
   include(CMakePackageConfigHelpers)
+
   set(PROJECT_CONFIG_CONTENT "@PACKAGE_INIT@\n")
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
   string(APPEND PROJECT_CONFIG_CONTENT
-        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")")
+        "include(CMakeFindDependencyMacro)\n\
+        find_dependency(absl)\n\
+        find_dependency(date)\n\
+        find_dependency(Eigen3)\n\
+        find_dependency(nlohmann_json)\n\
+        find_dependency(ONNX)\n\
+        find_dependency(re2)\n\
+        find_dependency(flatbuffers)\n\
+        find_dependency(cpuinfo)\n\
+        find_dependency(protobuf)\n\
+        find_dependency(Boost COMPONENTS mp11)\n\
+        find_dependency(Microsoft.GSL 4.0)\n\
+        if(NOT WIN32 AND NOT CMAKE_SYSTEM_NAME STREQUAL \"Android\")\n\
+        find_dependency(Iconv)\n\
+        endif()\n\
+        if(WIN32)\n\
+        find_dependency(wil)\n\
+        endif()\n\
+        find_path(safeint_SOURCE_DIR NAMES \"SafeInt.hpp\" REQUIRED)\n\
+        add_library(safeint_interface IMPORTED INTERFACE)\n\
+        target_include_directories(safeint_interface INTERFACE ${safeint_SOURCE_DIR})\n\
+        ")
+  endif()
+
+  string(APPEND PROJECT_CONFIG_CONTENT
+        "include(\"\${CMAKE_CURRENT_LIST_DIR}/${PROJECT_NAME}Targets.cmake\")\n")
+
+
   file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_CONFIG_CONTENT})
   install(EXPORT ${PROJECT_NAME}Targets
     NAMESPACE ${PROJECT_NAME}::
     DESTINATION ${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME})
-# Create config for find_package()
+
+  # Create config for find_package()
   configure_package_config_file(
     "${CMAKE_CURRENT_BINARY_DIR}/PROJECT_CONFIG_FILE" ${PROJECT_NAME}Config.cmake
     INSTALL_DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
@@ -1936,16 +1989,16 @@ if(TARGET onnxruntime)
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake"
     "${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake"
     DESTINATION "${CMAKE_INSTALL_LIBDIR}/cmake/${PROJECT_NAME}")
-endif()
 
-if(DEFINED BUILD_AS_ARM64X)
-  set(ARM64X_TARGETS onnxruntime)
+  if(DEFINED BUILD_AS_ARM64X)
+    set(ARM64X_TARGETS onnxruntime)
 
-  # Add additional ARM64X build targets
-  if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
-    list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+    # Add additional ARM64X build targets
+    if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_shared)
+      list(APPEND ARM64X_TARGETS onnxruntime_providers_qnn)
+    endif()
+
+    include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
   endif()
-
-  include("${CMAKE_CURRENT_SOURCE_DIR}/arm64x.cmake")
 endif()

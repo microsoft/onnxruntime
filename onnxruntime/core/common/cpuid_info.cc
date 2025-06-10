@@ -42,8 +42,6 @@
 
 #include <Windows.h>
 
-#define HAS_WINDOWS_DESKTOP WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_DESKTOP)
-
 #ifndef PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE
 #define PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE 43
 #endif
@@ -107,6 +105,9 @@ void CPUIDInfo::X86Init() {
   int data[4] = {-1};
   GetCPUID(0, data);
 
+  vendor_ = GetX86Vendor(data);
+  vendor_id_ = GetVendorId(vendor_);
+
   int num_IDs = data[0];
   if (num_IDs >= 1) {
     GetCPUID(1, data);
@@ -141,7 +142,23 @@ void CPUIDInfo::X86Init() {
   }
 }
 
+std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
+  char vendor[sizeof(int32_t) * 3 + 1]{};
+  *reinterpret_cast<int*>(vendor + 0) = data[1];
+  *reinterpret_cast<int*>(vendor + 4) = data[3];
+  *reinterpret_cast<int*>(vendor + 8) = data[2];
+  return vendor;
+}
+
 #endif  // defined(CPUIDINFO_ARCH_X86)
+
+uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
+  if (vendor == "GenuineIntel") return 0x8086;
+  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
+  if (vendor.find("NV") == 0) return 0x10DE;
+  return 0;
+}
 
 #if defined(CPUIDINFO_ARCH_ARM)
 
@@ -194,21 +211,26 @@ void CPUIDInfo::ArmLinuxInit() {
 #elif defined(_WIN32)  // ^ defined(__linux__)
 
 void CPUIDInfo::ArmWindowsInit() {
-// ARM32 certainly doesn't have fp16, so we will skip the logic to avoid using RegGetValueA Windows API
-#if !defined(_M_ARM)
-#pragma region Application Family or OneCore Family
-#if WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
-  // Read MIDR from windows registry
+  // Get the ARM vendor string from the registry
+  vendor_ = GetArmWindowsVendor();
+  vendor_id_ = GetVendorId(vendor_);
+
+  // Read MIDR and ID_AA64ISAR1_EL1 register values from Windows registry
+  // There should be one per CPU
+  std::vector<uint64_t> midr_values{}, id_aa64isar1_el1_values{};
+
   // TODO!! Don't support multiple processor group yet!!
   constexpr int MAX_CORES = 64;
   constexpr int MAX_VALUE_NAME = 4096;
 
-  CHAR midrKey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
-  uint32_t lastUarch = cpuinfo_uarch_unknown;
-  for (int i = 0; i < MAX_CORES - 1; i++) {
-    snprintf(midrKey, MAX_VALUE_NAME, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\%d", i);
-    uint64_t midrVal;
-    unsigned long midrSize = sizeof(uint64_t);
+  CHAR processor_subkey[MAX_VALUE_NAME] = "";  // buffer for processor registry name
+
+  for (size_t i = 0; i < MAX_CORES - 1; i++) {
+    snprintf(processor_subkey, MAX_VALUE_NAME, "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\%d",
+             static_cast<int>(i));
+
+    uint64_t midr_value;
+    unsigned long data_size = sizeof(midr_value);
 
     /*
      * ARM lists for each coprocessor register 5 fields: op0/op1/CRn/CRm/op2.
@@ -223,48 +245,74 @@ void CPUIDInfo::ArmWindowsInit() {
      *
      * For the CP value of MIDR, op0 = 3 and the others are all = 0, so we come up with 0x4000,
      */
-    auto retCode = ::RegGetValueA(HKEY_LOCAL_MACHINE, midrKey, "CP 4000", RRF_RT_REG_QWORD, nullptr, &midrVal, &midrSize);
-    if (retCode != ERROR_SUCCESS) {
+    if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4000", RRF_RT_REG_QWORD,
+                       nullptr, &midr_value, &data_size) != ERROR_SUCCESS) {
       break;
     }
-    uint32_t uarch = cpuinfo_uarch_unknown;
-    decodeMIDR((uint32_t)midrVal, &uarch);
-    core_uarchs_.push_back(uarch);
-    if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
-        uarch == cpuinfo_uarch_cortex_a55) {
-      is_armv8_narrow_ld_.push_back(true);
-    } else {
-      is_armv8_narrow_ld_.push_back(false);
+
+    uint64_t id_aa64isar1_el1_value;
+    data_size = sizeof(id_aa64isar1_el1_value);
+
+    // CP 4031 corresponds to ID_AA64ISAR1_EL1 register
+    if (::RegGetValueA(HKEY_LOCAL_MACHINE, processor_subkey, "CP 4031", RRF_RT_REG_QWORD,
+                       nullptr, &id_aa64isar1_el1_value, &data_size) != ERROR_SUCCESS) {
+      break;
     }
 
-    if (i == 0) {
-      lastUarch = uarch;
-    } else if (lastUarch != uarch) {
-      is_hybrid_ = true;
-      lastUarch = uarch;
+    midr_values.push_back(midr_value);
+    id_aa64isar1_el1_values.push_back(id_aa64isar1_el1_value);
+  }
+
+  // process midr_values
+  {
+    uint32_t lastUarch = cpuinfo_uarch_unknown;
+    for (size_t i = 0; i < midr_values.size(); ++i) {
+      uint32_t uarch = cpuinfo_uarch_unknown;
+      decodeMIDR(static_cast<uint32_t>(midr_values[i]), &uarch);
+      core_uarchs_.push_back(uarch);
+      if (uarch == cpuinfo_uarch_cortex_a53 || uarch == cpuinfo_uarch_cortex_a55r0 ||
+          uarch == cpuinfo_uarch_cortex_a55) {
+        is_armv8_narrow_ld_.push_back(true);
+      } else {
+        is_armv8_narrow_ld_.push_back(false);
+      }
+
+      if (i == 0) {
+        lastUarch = uarch;
+      } else if (lastUarch != uarch) {
+        is_hybrid_ = true;
+        lastUarch = uarch;
+      }
     }
   }
-#endif  // WINAPI_FAMILY_PARTITION(WINAPI_PARTITION_APP | WINAPI_PARTITION_SYSTEM)
+
+  has_arm_neon_i8mm_ = std::all_of(
+      id_aa64isar1_el1_values.begin(), id_aa64isar1_el1_values.end(),
+      [](uint64_t id_aa64isar1_el1_value) {
+        // I8MM, bits [55:52]
+        return ((id_aa64isar1_el1_value >> 52) & 0xF) != 0;
+      });
 
   has_arm_neon_dot_ = (IsProcessorFeaturePresent(PF_ARM_V82_DP_INSTRUCTIONS_AVAILABLE) != 0);
-#else   // ^ !defined(_M_ARM) / v defined(_M_ARM)
-  has_arm_neon_dot_ = false;
-#endif  // defined(_M_ARM)
 
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     has_fp16_ = cpuinfo_has_arm_neon_fp16_arith();
-    has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
-    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && cpuinfo_has_arm_i8mm();
+    // cpuinfo_has_arm_i8mm() doesn't work on Windows yet. See https://github.com/pytorch/cpuinfo/issues/279.
+    // has_arm_neon_i8mm_ = cpuinfo_has_arm_i8mm();
+    has_arm_sve_i8mm_ = cpuinfo_has_arm_sve() && has_arm_neon_i8mm_;
     has_arm_neon_bf16_ = cpuinfo_has_arm_neon_bf16();
-  } else
-#endif  // defined(CPUINFO_SUPPORTED)
-  {
-    has_fp16_ = false;
-    has_arm_neon_i8mm_ = false;
-    has_arm_sve_i8mm_ = false;
-    has_arm_neon_bf16_ = false;
   }
+#endif  // defined(CPUINFO_SUPPORTED)
+}
+
+std::string CPUIDInfo::GetArmWindowsVendor() {
+  const int MAX_VALUE_NAME = 256;
+  const CHAR vendorKey[] = "HARDWARE\\DESCRIPTION\\System\\CentralProcessor\\0";
+  CHAR vendorVal[MAX_VALUE_NAME] = "";
+  unsigned long vendorSize = sizeof(char) * MAX_VALUE_NAME;
+  ::RegGetValueA(HKEY_LOCAL_MACHINE, vendorKey, "Vendor Identifier", RRF_RT_REG_SZ | RRF_ZEROONFAILURE, nullptr, &vendorVal, &vendorSize);
+  return vendorVal;
 }
 
 #elif defined(__APPLE__)  // ^ defined(_WIN32)

@@ -18,6 +18,7 @@ Abstract:
 #pragma once
 
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <functional>
 #include <limits>
@@ -301,8 +302,8 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // Define the default strides to step through slices of the input matrices.
 //
 
-#define MLAS_HGEMM_STRIDEN                          32
-#define MLAS_HGEMM_STRIDEK                          512
+#define MLAS_HGEMM_STRIDEN                          128
+#define MLAS_HGEMM_STRIDEK                          128
 #define MLAS_SGEMM_STRIDEN                          128
 #define MLAS_SGEMM_STRIDEK                          128
 #define MLAS_SGEMM_PACKED_STRIDEN                   128
@@ -319,7 +320,7 @@ static_assert(sizeof(MLAS_FP16) == FP16_SIZE);
 // the effort at this time.
 //
 
-#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             16
+#define MLAS_HGEMM_STRIDEN_THREAD_ALIGN             32
 #define MLAS_SGEMM_STRIDEN_THREAD_ALIGN             16
 #define MLAS_DGEMM_STRIDEN_THREAD_ALIGN             8
 #define MLAS_QGEMM_STRIDEN_THREAD_ALIGN             16
@@ -996,8 +997,13 @@ extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSdot;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchUmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmS8S8DispatchSmmla;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmSimd;
+extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmU8X8DispatchWasmRelaxedSimd;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemmQuantDispatchDefault;
 extern const MLAS_GEMM_QUANT_DISPATCH MlasGemm8X8DispatchPOWER10;
+
+#if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+extern bool HasUSDot();
+#endif
 
 //
 // Symmetric quantized qgemm dispatch structure
@@ -1043,7 +1049,10 @@ extern const MLAS_FPQ4GEMM_DISPATCH MlasFpQ4GemmDispatchAvx512;
 
 struct MLAS_QNBIT_GEMM_DISPATCH;
 
-extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchNeon;
+const MLAS_QNBIT_GEMM_DISPATCH&
+GetMlasQNBitGemmDispatchNeon(
+    bool InitializeWithDotSupport
+);
 
 extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx2;
 
@@ -1058,6 +1067,7 @@ extern const MLAS_QNBIT_GEMM_DISPATCH MlasSQNBitGemmDispatchAvx512vnni;
 //
 struct MLAS_ROPE_DISPATCH;
 extern const MLAS_ROPE_DISPATCH MlasRopeDispatchNeon;
+extern const MLAS_ROPE_DISPATCH MlasRopeDispatchAvx2;
 
 //
 // half gemm dispatch structure
@@ -1068,6 +1078,10 @@ extern const MLAS_HGEMM_DISPATCH MlasHGemmDispatchNeon;
 // softmax dispatch structure
 struct MLAS_SOFTMAX_DISPATCH;
 extern const MLAS_SOFTMAX_DISPATCH MlasSoftmaxDispatchNeon;
+
+// eltwise dispatch structure
+struct MLAS_ELTWISE_DISPATCH;
+extern const MLAS_ELTWISE_DISPATCH MlasEltwiseDispatchNeon;
 
 //
 // Quantized depthwise convolution kernels.
@@ -1130,6 +1144,10 @@ enum MlasCoreType { mlas_core_unknown = 0, mlas_core_little = 2, mlas_core_big =
 struct MLAS_PLATFORM {
 
     MLAS_PLATFORM(void);
+
+    // TODO: move to cpuinfo
+    bool Avx2Supported_ = false;
+    bool Avx512Supported_ = false;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
@@ -1232,6 +1250,7 @@ struct MLAS_PLATFORM {
     const MLAS_ROPE_DISPATCH* RopeDispatch{nullptr};
     const MLAS_HGEMM_DISPATCH* HGemmDispatch{nullptr};
     const MLAS_SOFTMAX_DISPATCH* SoftmaxDispatch{nullptr};
+    const MLAS_ELTWISE_DISPATCH* EltwiseDispatch{nullptr};
 };
 
 inline
@@ -1441,6 +1460,9 @@ MlasConvDepthwiseFloat_CHW(
 #endif
 #elif defined(MLAS_TARGET_WASM_SIMD)
 #define MLAS_WASM_SIMD_INTRINSICS
+#if defined(MLAS_TARGET_WASM_RELAXED_SIMD)
+#define MLAS_WASM_RELAXED_SIMD_INTRINSICS
+#endif
 #elif defined(MLAS_TARGET_LARCH64)
 #define MLAS_LSX_INTRINSICS
 #endif
@@ -2251,6 +2273,8 @@ MlasMaximumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     // Don't use vec_max to avoid undefined behavior if NAN
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector1, Vector2));
+#elif defined(MLAS_WASM_RELAXED_SIMD_INTRINSICS)
+    return wasm_f32x4_relaxed_max(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_max(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)
@@ -2271,6 +2295,8 @@ MlasMinimumFloat32x4(MLAS_FLOAT32X4 Vector1, MLAS_FLOAT32X4 Vector2)
 #elif defined(MLAS_VSX_INTRINSICS)
     // Don't use vec_min to avoid undefined behavior if NAN
     return vec_sel(Vector2, Vector1, vec_cmpgt(Vector2, Vector1));
+#elif defined(MLAS_WASM_RELAXED_SIMD_INTRINSICS)
+    return wasm_f32x4_relaxed_min(Vector1, Vector2);
 #elif defined(MLAS_WASM_SIMD_INTRINSICS)
     return wasm_f32x4_min(Vector1, Vector2);
 #elif defined(MLAS_LSX_INTRINSICS)

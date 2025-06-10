@@ -704,7 +704,7 @@ TEST(BatchNormTest, NonSpatial_Complicated) {
 }
 
 // Only CUDA and ROCm kernels have float 16 support
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML)
 TEST(BatchNormTest, BatchNorm2d_fp16) {
   vector<float> X{-0.91221f, -0.283559f, 0.937637f, 2.09818f, -0.100199f, -0.608113f, 0.444562f, -1.07505f, 0.940591f,
                   -0.922262f, 0.0931303f, 0.69611f, 1.55187f, 0.159808f, 0.914874f, -1.24856f, -1.98928f, -0.331621f,

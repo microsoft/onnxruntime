@@ -20,9 +20,9 @@ class GatherNDOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -43,7 +43,7 @@ Status GatherNDOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, con
 
 // Operator support related.
 
-bool GatherNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GatherNDOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node& node,
                                           const WebnnDeviceType /* device_type */,
                                           const logging::Logger& logger) const {
   NodeAttrHelper helper(node);
@@ -55,7 +55,7 @@ bool GatherNDOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initial
   return true;
 }
 
-bool GatherNDOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool GatherNDOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                                const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];

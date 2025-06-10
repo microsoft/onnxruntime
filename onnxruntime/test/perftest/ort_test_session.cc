@@ -1,6 +1,6 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Copyright (c) 2023 NVIDIA Corporation.
-// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
+// SPDX-FileCopyrightText: Copyright 2024-2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
 // Licensed under the MIT License.
 
 #include "ort_test_session.h"
@@ -191,6 +191,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("TensorRT is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kNvTensorRTRTXExecutionProvider) {
+#ifdef USE_NV
+    session_options.AppendExecutionProvider("NvTensorRtRtx", provider_options);
+#else
+    ORT_THROW("NV TensorRT RTX is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
@@ -199,11 +205,12 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     std::string option_string = performance_test_config.run_config.ep_runtime_config_string;
 #endif
     ParseSessionConfigs(option_string, provider_options,
-                        {"backend_path", "profiling_file_path", "profiling_level", "rpc_control_latency",
-                         "vtcm_mb", "soc_model", "device_id", "htp_performance_mode", "qnn_saver_path",
-                         "htp_graph_finalization_optimization_mode", "qnn_context_priority", "htp_arch",
-                         "enable_htp_fp16_precision", "offload_graph_io_quantization", "enable_htp_spill_fill_buffer",
-                         "enable_htp_shared_memory_allocator", "dump_json_qnn_graph", "json_qnn_graph_dir"});
+                        {"backend_type", "backend_path", "profiling_file_path", "profiling_level",
+                         "rpc_control_latency", "vtcm_mb", "soc_model", "device_id", "htp_performance_mode",
+                         "qnn_saver_path", "htp_graph_finalization_optimization_mode", "qnn_context_priority",
+                         "htp_arch", "enable_htp_fp16_precision", "offload_graph_io_quantization",
+                         "enable_htp_spill_fill_buffer", "enable_htp_shared_memory_allocator", "dump_json_qnn_graph",
+                         "json_qnn_graph_dir"});
     for (const auto& provider_option : provider_options) {
       const std::string& key = provider_option.first;
       const std::string& value = provider_option.second;
@@ -216,7 +223,8 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
         if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
           ORT_THROW("Supported profiling_level: off, basic, detailed");
         }
-      } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
+      } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
+                 key == "device_id") {
         // no validation
       } else if (key == "htp_performance_mode") {
         std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -419,12 +427,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               "Select from 'gpu', or 'npu' \n");
         }
       } else if (key == "performance_preference") {
-        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimal_power"};
+        std::set<std::string> ov_supported_values = {"default", "high_performance", "minimum_power"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
         } else {
           ORT_THROW(
               "[ERROR] [DML] You have selected a wrong configuration value for the key 'performance_preference'. "
-              "Select from 'default', 'high_performance' or 'minimal_power' \n");
+              "Select from 'default', 'high_performance' or 'minimum_power' \n");
         }
       } else if (key == "disable_metacommands") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
@@ -479,6 +487,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     bool enable_fast_math = false;
     ParseSessionConfigs(ov_string, provider_options, {"enable_fast_math"});
     for (const auto& provider_option : provider_options) {
+      const std::string& key = provider_option.first;
+      const std::string& value = provider_option.second;
       if (key == "enable_fast_math") {
         std::set<std::string> ov_supported_values = {"true", "True", "false", "False"};
         if (ov_supported_values.find(value) != ov_supported_values.end()) {
@@ -676,11 +686,11 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
           ov_options[key] = value;
         } else if (deprecated_device_types.find(value) != deprecated_device_types.end()) {
           ov_options[key] = value;
-        } else if (value.find("HETERO:") == 0) {
+        } else if (value.find("HETERO") == 0) {
           ov_options[key] = value;
-        } else if (value.find("MULTI:") == 0) {
+        } else if (value.find("MULTI") == 0) {
           ov_options[key] = value;
-        } else if (value.find("AUTO:") == 0) {
+        } else if (value.find("AUTO") == 0) {
           ov_options[key] = value;
         } else {
           ORT_THROW(
@@ -788,6 +798,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         }
       } else if (key == "device_memory_name") {
         device_memory_name_ = std::move(value);
+      } else if (key == "device_luid") {
+        ov_options[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."

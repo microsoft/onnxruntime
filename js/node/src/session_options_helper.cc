@@ -47,6 +47,9 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #ifdef USE_WEBGPU
     std::unordered_map<std::string, std::string> webgpu_options;
 #endif
+#ifdef USE_QNN
+    std::unordered_map<std::string, std::string> qnn_options;
+#endif
     if (epValue.IsString()) {
       name = epValue.As<Napi::String>().Utf8Value();
     } else if (!epValue.IsObject() || epValue.IsNull() || !epValue.As<Napi::Object>().Has("name") ||
@@ -60,19 +63,49 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
         deviceId = obj.Get("deviceId").As<Napi::Number>();
       }
 #ifdef USE_COREML
-      if (obj.Has("coreMlFlags")) {
+      if (name == "coreml" && obj.Has("coreMlFlags")) {
         coreMlFlags = obj.Get("coreMlFlags").As<Napi::Number>();
       }
 #endif
 #ifdef USE_WEBGPU
-      for (const auto& nameIter : obj.GetPropertyNames()) {
-        Napi::Value nameVar = nameIter.second;
-        std::string name = nameVar.As<Napi::String>().Utf8Value();
-        if (name != "name") {
-          Napi::Value valueVar = obj.Get(nameVar);
-          ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
-          std::string value = valueVar.As<Napi::String>().Utf8Value();
-          webgpu_options[name] = value;
+      if (name == "webgpu") {
+        for (const auto& nameIter : obj.GetPropertyNames()) {
+          Napi::Value nameVar = nameIter.second;
+          std::string name = nameVar.As<Napi::String>().Utf8Value();
+          if (name != "name") {
+            Napi::Value valueVar = obj.Get(nameVar);
+            ORT_NAPI_THROW_TYPEERROR_IF(!valueVar.IsString(), epList.Env(), "Invalid argument: sessionOptions.executionProviders must be a string or an object with property 'name'.");
+            std::string value = valueVar.As<Napi::String>().Utf8Value();
+            webgpu_options[name] = value;
+          }
+        }
+      }
+#endif
+#ifdef USE_QNN
+      if (name == "qnn") {
+        Napi::Value backend_type = obj.Get("backendType");
+        if (!backend_type.IsUndefined()) {
+          if (backend_type.IsString()) {
+            qnn_options["backend_type"] = backend_type.As<Napi::String>().Utf8Value();
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendType must be a string.");
+          }
+        }
+        Napi::Value backend_path = obj.Get("backendPath");
+        if (!backend_path.IsUndefined()) {
+          if (backend_path.IsString()) {
+            qnn_options["backend_path"] = backend_path.As<Napi::String>().Utf8Value();
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: backendPath must be a string.");
+          }
+        }
+        Napi::Value enable_htp_fp16_precision = obj.Get("enableFp16Precision");
+        if (!enable_htp_fp16_precision.IsUndefined()) {
+          if (enable_htp_fp16_precision.IsBoolean()) {
+            qnn_options["enable_htp_fp16_precision"] = enable_htp_fp16_precision.As<Napi::Boolean>().Value() ? "1" : "0";
+          } else {
+            ORT_NAPI_THROW_TYPEERROR(epList.Env(), "Invalid argument: enableFp16Precision must be a boolean.");
+          }
         }
       }
 #endif
@@ -111,9 +144,6 @@ void ParseExecutionProviders(const Napi::Array epList, Ort::SessionOptions& sess
 #endif
 #ifdef USE_QNN
     } else if (name == "qnn") {
-      std::unordered_map<std::string, std::string> qnn_options;
-      qnn_options["backend_path"] = "QnnHtp.dll";
-      qnn_options["enable_htp_fp16_precision"] = "1";
       sessionOptions.AppendExecutionProvider("QNN", qnn_options);
 #endif
     } else {
@@ -291,44 +321,46 @@ void ParseSessionOptions(const Napi::Object options, Ort::SessionOptions& sessio
   // external data
   if (options.Has("externalData")) {
     auto externalDataValue = options.Get("externalData");
-    ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
-                                "Invalid argument: sessionOptions.externalData must be an array.");
-    auto externalData = externalDataValue.As<Napi::Array>();
-    std::vector<std::basic_string<ORTCHAR_T>> paths;
-    std::vector<char*> buffs;
-    std::vector<size_t> sizes;
+    if (!externalDataValue.IsNull() && !externalDataValue.IsUndefined()) {
+      ORT_NAPI_THROW_TYPEERROR_IF(!externalDataValue.IsArray(), options.Env(),
+                                  "Invalid argument: sessionOptions.externalData must be an array.");
+      auto externalData = externalDataValue.As<Napi::Array>();
+      std::vector<std::basic_string<ORTCHAR_T>> paths;
+      std::vector<char*> buffs;
+      std::vector<size_t> sizes;
 
-    for (const auto& kvp : externalData) {
-      Napi::Value value = kvp.second;
-      ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
-      Napi::Object obj = value.As<Napi::Object>();
-      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
+      for (const auto& kvp : externalData) {
+        Napi::Value value = kvp.second;
+        ORT_NAPI_THROW_TYPEERROR_IF(!value.IsObject(), options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must be an object in Node.js binding.");
+        Napi::Object obj = value.As<Napi::Object>();
+        ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("path") || !obj.Get("path").IsString(), options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must have a 'path' property of type string in Node.js binding.");
 #ifdef _WIN32
-      auto path = obj.Get("path").As<Napi::String>().Utf16Value();
-      paths.push_back(std::wstring{path.begin(), path.end()});
+        auto path = obj.Get("path").As<Napi::String>().Utf16Value();
+        paths.push_back(std::wstring{path.begin(), path.end()});
 #else
-      auto path = obj.Get("path").As<Napi::String>().Utf8Value();
-      paths.push_back(path);
+        auto path = obj.Get("path").As<Napi::String>().Utf8Value();
+        paths.push_back(path);
 #endif
-      ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
-                                      !obj.Get("data").IsBuffer() ||
-                                      !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
-                                  options.Env(),
-                                  "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
+        ORT_NAPI_THROW_TYPEERROR_IF(!obj.Has("data") ||
+                                        !obj.Get("data").IsBuffer() ||
+                                        !(obj.Get("data").IsTypedArray() && obj.Get("data").As<Napi::TypedArray>().TypedArrayType() == napi_uint8_array),
+                                    options.Env(),
+                                    "Invalid argument: sessionOptions.externalData value must have an 'data' property of type buffer or typed array in Node.js binding.");
 
-      auto data = obj.Get("data");
-      if (data.IsBuffer()) {
-        buffs.push_back(data.As<Napi::Buffer<char>>().Data());
-        sizes.push_back(data.As<Napi::Buffer<char>>().Length());
-      } else {
-        auto typedArray = data.As<Napi::TypedArray>();
-        buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
-        sizes.push_back(typedArray.ByteLength());
+        auto data = obj.Get("data");
+        if (data.IsBuffer()) {
+          buffs.push_back(data.As<Napi::Buffer<char>>().Data());
+          sizes.push_back(data.As<Napi::Buffer<char>>().Length());
+        } else {
+          auto typedArray = data.As<Napi::TypedArray>();
+          buffs.push_back(reinterpret_cast<char*>(typedArray.ArrayBuffer().Data()) + typedArray.ByteOffset());
+          sizes.push_back(typedArray.ByteLength());
+        }
       }
+      sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
     }
-    sessionOptions.AddExternalInitializersFromFilesInMemory(paths, buffs, sizes);
   }
 }
 

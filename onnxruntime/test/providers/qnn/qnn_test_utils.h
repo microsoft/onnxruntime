@@ -1100,7 +1100,11 @@ class QnnHTPBackendTests : public ::testing::Test {
  protected:
   void SetUp() override;
 
+  // Some tests need the Ir backend, which is not always available.
+  [[nodiscard]] BackendSupport IsIRBackendSupported() const;
+
   static BackendSupport cached_htp_support_;  // Set by the first test using this fixture.
+  static BackendSupport cached_ir_support_;
 };
 
 // Testing fixture class for tests that require the QNN CPU backend. Checks if QNN CPU is available before the test
@@ -1111,6 +1115,15 @@ class QnnCPUBackendTests : public ::testing::Test {
   void SetUp() override;
 
   static BackendSupport cached_cpu_support_;  // Set by the first test using this fixture.
+};
+
+// Testing fixture class for tests that require the QNN Ir backend. Checks if QNN IR is available before the test
+// begins. The test is skipped if the IR backend is unavailable (may occur with certain QNN versions).
+class QnnIRBackendTests : public ::testing::Test {
+ protected:
+  void SetUp() override;
+
+  static BackendSupport cached_ir_support_;  // Set by the first test using this fixture.
 };
 
 /**

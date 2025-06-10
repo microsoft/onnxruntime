@@ -12,7 +12,7 @@ execute_process(COMMAND node -e "console.log(process.platform)"
                 OUTPUT_VARIABLE node_platform OUTPUT_STRIP_TRAILING_WHITESPACE)
 file(READ ${CMAKE_SOURCE_DIR}/../../VERSION_NUMBER ort_version)
 string(STRIP "${ort_version}" ort_version)
-set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v3/${node_platform}/${NODE_ARCH}/")
+set(dist_folder "${CMAKE_SOURCE_DIR}/bin/napi-v6/${node_platform}/${NODE_ARCH}/")
 
 # onnxruntime.dll dir
 if(NOT ONNXRUNTIME_BUILD_DIR)
@@ -113,12 +113,6 @@ endif()
 if (WIN32)
   file(COPY ${ONNXRUNTIME_WIN_BIN_DIR}/onnxruntime.dll
       DESTINATION ${dist_folder})
-  if (ORT_NODEJS_DLL_DEPS)
-    foreach(dll ${ORT_NODEJS_DLL_DEPS})
-      file(COPY ${dll} DESTINATION ${dist_folder})
-    endforeach()
-  endif()
-
 elseif (APPLE)
   file(COPY ${ONNXRUNTIME_BUILD_DIR}/libonnxruntime.dylib
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
@@ -127,4 +121,10 @@ elseif (UNIX)
       DESTINATION ${dist_folder} FOLLOW_SYMLINK_CHAIN)
 else()
   message(FATAL_ERROR "Platform not supported.")
+endif()
+
+if (ORT_NODEJS_DLL_DEPS)
+  foreach(dll ${ORT_NODEJS_DLL_DEPS})
+    file(COPY ${dll} DESTINATION ${dist_folder})
+  endforeach()
 endif()

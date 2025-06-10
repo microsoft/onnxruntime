@@ -15,7 +15,7 @@ using onnxruntime::webgpu::ComputeContext;
 
 class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
  public:
-  SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, uint32_t hidden_size, bool has_input_skip_bias_sum, bool is_fp16, bool simplified) : Program{"SkipLayerNorm"} {
+  SkipLayerNormProgram(bool hasBeta, bool hasBias, float epsilon, uint32_t hidden_size, bool has_input_skip_bias_sum, bool simplified, bool split_hidden_dim) : Program{"SkipLayerNorm"} {
     epsilon_ = epsilon;
     hasBeta_ = hasBeta;
     hasBias_ = hasBias;
@@ -23,7 +23,7 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
     hidden_size_ = hidden_size;
     has_input_skip_bias_sum_ = has_input_skip_bias_sum;
     simplified_ = simplified;
-    is_fp16_ = is_fp16;
+    split_hidden_dim_ = split_hidden_dim;
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -39,8 +39,8 @@ class SkipLayerNormProgram final : public Program<SkipLayerNormProgram> {
   float epsilon_;
   uint32_t hidden_size_;
   bool has_input_skip_bias_sum_;
-  bool is_fp16_;
   bool simplified_;
+  bool split_hidden_dim_;
 };
 
 template <bool simplified>

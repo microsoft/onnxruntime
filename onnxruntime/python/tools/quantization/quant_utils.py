@@ -290,7 +290,7 @@ def compute_scale_zp(rmin, rmax, qmin, qmax, symmetric=False, min_real_range=Non
     dr = numpy.array(rmax - rmin, dtype=numpy.float64)
     dq = numpy.array(qmax, dtype=numpy.float64) - numpy.array(qmin, dtype=numpy.float64)
     scale = numpy.array(dr / dq)
-    assert scale >= 0, "scale isse"
+    assert scale >= 0, "scale issue"
     if scale < numpy.finfo(rmax.dtype).tiny:
         scale = numpy.array(1.0, dtype=rmax.dtype)
         zero_point = numpy.array(0, dtype=qmin.dtype)
@@ -869,7 +869,7 @@ def write_calibration_table(calibration_cache, dir="."):
         file.write(buf)
 
     # Deserialize data (for validation)
-    if os.environ.get("QUANTIZATION_DEBUG", 0) in (1, "1"):
+    if os.environ.get("QUANTIZATION_DEBUG", "0") in (1, "1"):
         cal_table = TrtTable.TrtTable.GetRootAsTrtTable(buf, 0)
         dict_len = cal_table.DictLength()
         for i in range(dict_len):

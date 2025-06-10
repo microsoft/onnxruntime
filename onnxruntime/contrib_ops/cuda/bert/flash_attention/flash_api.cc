@@ -411,9 +411,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 }
 
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
-  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
-  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
-  return (is_sm8x || is_sm90) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
+  return (dprops.major >= 8) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
 }
 
 // This API is used when past key and value are present... since cached, these are assumed to have sequence length

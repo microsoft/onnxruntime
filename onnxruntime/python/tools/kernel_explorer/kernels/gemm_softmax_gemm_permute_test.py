@@ -13,7 +13,7 @@ import numpy as np
 import pytest
 from utils import dtype_to_suffix, matmul, softmax
 
-max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", 64))
+max_batch_size = int(os.environ.get("KERNEL_EXPLORER_BATCHED_GEMM_MAX_BATCH_SIZE", "64"))
 
 
 def multinormal_distribution(num_distribution, num_element_per_dist):

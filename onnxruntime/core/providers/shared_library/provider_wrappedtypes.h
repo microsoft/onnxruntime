@@ -518,6 +518,10 @@ struct ConfigOptions final {
     return g_host->ConfigOptions__GetConfigOrDefault(this, config_key, default_value);
   }
 
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
+    return g_host->ConfigOptions__GetConfigOptionsMap(this);
+  }
+
   PROVIDER_DISALLOW_ALL(ConfigOptions)
 };
 
@@ -526,6 +530,9 @@ struct ComputeCapability final {
   static void operator delete(void* p) { g_host->ComputeCapability__operator_delete(reinterpret_cast<ComputeCapability*>(p)); }
 
   std::unique_ptr<IndexedSubGraph>& SubGraph() { return g_host->ComputeCapability__SubGraph(this); }
+
+  void copy_optimization_func(ComputeCapability* selection_cc) { g_host->ComputeCapability__copy_optimization_func(this, selection_cc); }
+  void add_nodes_to_optimize(std::unique_ptr<ComputeCapability> optimization_cc) { g_host->ComputeCapability__add_nodes_to_optimize(this, std::move(optimization_cc)); }
 
   ComputeCapability() = delete;
   ComputeCapability(const ComputeCapability&) = delete;
@@ -581,6 +588,7 @@ struct IndexedSubGraph final {
   static std::unique_ptr<IndexedSubGraph> Create() { return g_host->IndexedSubGraph__construct(); }
   static void operator delete(void* p) { g_host->IndexedSubGraph__operator_delete(reinterpret_cast<IndexedSubGraph*>(p)); }
 
+  gsl::span<const onnxruntime::NodeIndex> Nodes() const { return g_host->IndexedSubGraph__Nodes(this); }
   std::vector<onnxruntime::NodeIndex>& Nodes() { return g_host->IndexedSubGraph__Nodes(this); }
 
   void SetMetaDef(std::unique_ptr<IndexedSubGraph_MetaDef>&& meta_def_) { return g_host->IndexedSubGraph__SetMetaDef(this, std::move(*reinterpret_cast<std::unique_ptr<IndexedSubGraph_MetaDef>*>(&meta_def_))); }
@@ -588,6 +596,12 @@ struct IndexedSubGraph final {
 
   void SetSchemaSource(IndexedSubGraph_SourceOfSchema schema_source) { return g_host->IndexedSubGraph__SetSchemaSource(this, schema_source); }
   IndexedSubGraph_SourceOfSchema GetSchemaSource() const { return g_host->IndexedSubGraph__GetSchemaSource(this); }
+  void SetAccountant(IResourceAccountant* resource_accountant) {
+    g_host->IndexedSubGraph__SetAccountant(this, resource_accountant);
+  }
+  void AppendNodeCost(const ResourceCount& resource_count) {
+    g_host->IndexedSubGraph__AppendNodeCost(this, resource_count);
+  }
 
   IndexedSubGraph() = delete;
   IndexedSubGraph(const IndexedSubGraph&) = delete;
@@ -1040,6 +1054,7 @@ struct Graph final {
   const Graph* ParentGraph() const { return g_host->Graph__ParentGraph(this); }
   Graph* MutableParentGraph() { return g_host->Graph__MutableParentGraph(this); }
   const std::string& Name() const noexcept { return g_host->Graph__Name(this); }
+  void SetName(const std::string& name) noexcept { return g_host->Graph__SetName(this, name); }
   const std::filesystem::path& ModelPath() const { return g_host->Graph__ModelPath(this); }
   const std::vector<const NodeArg*>& GetInputsIncludingInitializers() const noexcept { return g_host->Graph__GetInputsIncludingInitializers(this); }
   bool IsSubgraph() const { return g_host->Graph__IsSubgraph(this); }
@@ -1550,9 +1565,14 @@ struct OrtRunOptions final {
 };
 
 struct OrtSessionOptions final {
-  const std::unordered_map<std::string, std::string>& GetConfigOptions() const {
+  const std::unordered_map<std::string, std::string>& GetConfigOptionsMap() const {
     return onnxruntime::g_host->SessionOptions__GetConfigOptionsMap(this);
   }
+
+  const onnxruntime::ConfigOptions& GetConfigOptions() const {
+    return onnxruntime::g_host->SessionOptions__GetConfigOptions(this);
+  }
+
   bool GetEnableProfiling() const {
     return onnxruntime::g_host->SessionOptions__GetEnableProfiling(this);
   }

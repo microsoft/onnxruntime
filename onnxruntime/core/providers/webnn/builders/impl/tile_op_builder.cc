@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/optimizer/initializer.h"
 #include "core/providers/common.h"
@@ -27,7 +26,7 @@ class TileOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -66,13 +65,14 @@ Status TileOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 
 // Operator support related.
 
-bool TileOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool TileOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                       const Node& node,
                                       const WebnnDeviceType /* device_type */,
                                       const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const auto& repetitions_name = input_defs[1]->Name();
-  if (!Contains(initializers, repetitions_name)) {
+  const auto* init = graph_viewer.GetConstantInitializer(repetitions_name);
+  if (!init) {
     LOGS(logger, VERBOSE) << "Repetitions of tile must be a constant initializer";
     return false;
   }

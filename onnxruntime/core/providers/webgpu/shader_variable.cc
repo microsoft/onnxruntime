@@ -32,6 +32,11 @@ constexpr static const std::string_view STORAGE_TYPE_ARRAY[] = {
     "u32",        // Uint8x4
     "vec2<u32>",  // Uint8x8
     "vec4<u32>",  // Uint8x16
+    "u32",        // Int8x4
+    "vec2<u32>",  // Int8x8
+    "vec4<u32>",  // Int8x16
+    "u32",        // Uint4x8
+    "u32",        // Int4x8
 };
 constexpr static const auto STORAGE_TYPE = details::_to_std_array(STORAGE_TYPE_ARRAY);
 
@@ -54,6 +59,11 @@ constexpr static const std::string_view VALUE_TYPE_ARRAY[] = {
     "u32",         // Uint8x4 (u32 as 4 elements of uint8)
     "vec2<u32>",   // Uint8x8 (vec2<u32> as 2x4 elements of uint8)
     "vec4<u32>",   // Uint8x16 (vec4<u32> as 4x4 elements of uint8)
+    "u32",         // Int8x4 (u32 as 4 elements of int8)
+    "vec2<u32>",   // Int8x8 (vec2<i32> as 2x4 elements of int8)
+    "vec4<u32>",   // Int8x16 (vec4<i32> as 4x4 elements of int8)
+    "u32",         // Uint4x8
+    "u32",         // Int4x8
 };
 constexpr static const auto VALUE_TYPE = details::_to_std_array(VALUE_TYPE_ARRAY);
 
@@ -76,6 +86,11 @@ constexpr static const std::string_view ELEMENT_TYPE_ARRAY[] = {
     "u32",   // Uint8x4
     "u32",   // Uint8x8
     "u32",   // Uint8x16
+    "i32",   // Int8x4
+    "i32",   // Int8x8
+    "i32",   // Int8x16
+    "u32",   // Uint4x8
+    "i32",   // Int4x8
 };
 constexpr static const auto ELEMENT_TYPE = details::_to_std_array(ELEMENT_TYPE_ARRAY);
 
@@ -91,7 +106,7 @@ ShaderIndicesHelper::ShaderIndicesHelper(std::string_view name, ProgramVariableD
     : name_(name),
       type_(type),
       num_components_{NumberOfComponents(type)},
-      rank_{gsl::narrow<int>(dims.NumDimensions())},
+      rank_{static_cast<int>(dims.NumDimensions())},
       dims_{dims},
       usage_(usage),
       indices_type_{GetIndicesType(rank_)},

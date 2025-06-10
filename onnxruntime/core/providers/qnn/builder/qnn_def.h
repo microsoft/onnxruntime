@@ -70,10 +70,17 @@ enum class QnnBackendType : uint8_t {
   GPU,
   DSP,
   HTP,
-  HTP_FP16
+  HTP_FP16,
+  SERIALIZER,
 };
 
+bool IsCpuBackend(QnnBackendType backend_type);
+
 bool IsNpuBackend(QnnBackendType backend_type);
+
+bool IsGpuBackend(QnnBackendType backend_type);
+
+bool IsQpuBackend(QnnBackendType backend_type);
 
 // constexpr config values
 constexpr const int kSleepMinLatency = 40;
@@ -155,6 +162,24 @@ class QnnTensorWrapper {
                                                                            dimensions_(std::move(shape)),
                                                                            client_buf_(std::move(client_buf)),
                                                                            quant_params_(quantize_params) {
+    if (data_type == QNN_DATATYPE_INT_64) {
+      // QNN doesn't support int64_t, so we cast to int32_t.
+      if (tensor_type == QNN_TENSOR_TYPE_NATIVE) {
+        data_type = QNN_DATATYPE_INT_32;
+      }
+      if (client_buf_.size()) {
+        const size_t num_elems = client_buf_.size() / sizeof(int64_t);
+        std::vector<uint8_t> cast_data;
+        cast_data.resize(num_elems * sizeof(int32_t));
+        gsl::span<int64_t> origin_values{reinterpret_cast<int64_t*>(client_buf_.data()), num_elems};
+        gsl::span<int32_t> new_values(reinterpret_cast<int32_t*>(cast_data.data()), num_elems);
+        for (size_t i = 0; i < num_elems; i++) {
+          new_values[i] = static_cast<int32_t>(origin_values[i]);
+        }
+        data_type = QNN_DATATYPE_INT_32;
+        client_buf_ = std::move(cast_data);
+      }
+    }
     SetQnnTensorType(qnn_tensor_, tensor_type);
     SetQnnTensorName(qnn_tensor_, tensor_name_.c_str());
     SetQnnTensorDataType(qnn_tensor_, data_type);
@@ -162,10 +187,6 @@ class QnnTensorWrapper {
     SetQnnTensorMemType(qnn_tensor_, mem_type);
     if (QNN_TENSOR_TYPE_STATIC == tensor_type) {
       SetQnnTensorClientBuf(qnn_tensor_, client_buf_);
-    }
-
-    if (mem_type != QNN_TENSORMEMTYPE_RAW) {
-      ORT_THROW("mem_type not supported for now.");
     }
 
     SetQnnTensorQParams(qnn_tensor_, quant_params_.Get());

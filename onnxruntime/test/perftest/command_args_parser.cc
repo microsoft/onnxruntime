@@ -40,7 +40,7 @@ namespace perftest {
       "\t-I: Generate tensor input binding. Free dimensions are treated as 1 unless overridden using -f.\n"
       "\t-c [parallel runs]: Specifies the (max) number of runs to invoke simultaneously. Default:1.\n"
       "\t-e [cpu|cuda|dnnl|tensorrt|openvino|dml|acl|nnapi|coreml|qnn|snpe|rocm|migraphx|xnnpack|vitisai|webgpu]: Specifies the provider 'cpu','cuda','dnnl','tensorrt', "
-      "'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
+      "'nvtensorrtrtx', 'openvino', 'dml', 'acl', 'nnapi', 'coreml', 'qnn', 'snpe', 'rocm', 'migraphx', 'xnnpack', 'vitisai' or 'webgpu'. "
       "Default:'cpu'.\n"
       "\t-b [tf|ort]: backend to use. Default:ort\n"
       "\t-r [repeated_times]: Specifies the repeated times if running in 'times' test mode.Default:1000.\n"
@@ -82,9 +82,10 @@ namespace perftest {
       "\t    [OpenVINO only] [enable_opencl_throttling]: Enables OpenCL queue throttling for GPU device(Reduces the CPU Utilization while using GPU) \n"
       "\t    [Example] [For OpenVINO EP] -e openvino -i \"device_type|CPU num_of_threads|5 enable_opencl_throttling|true cache_dir|\"<path>\"\"\n"
       "\n"
-      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
+      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options: 'basic', 'detailed', default 'off'.\n"
-      "\t    [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
+      "\t    [QNN only] [profiling_file_path] : QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
@@ -104,7 +105,7 @@ namespace perftest {
       "\t    [QNN only] [enable_htp_spill_fill_buffer]: Enable HTP spill fill buffer, used while generating QNN context binary.\n"
       "\t    [QNN only] [enable_htp_shared_memory_allocator]: Enable the QNN HTP shared memory allocator and use it for inputs and outputs. Requires libcdsprpc.so/dll to be available.\n"
       "\t    Defaults to '0' (disabled).\n"
-      "\t    [Example] [For QNN EP] -e qnn -i \"backend_path|/folderpath/libQnnCpu.so\" \n"
+      "\t    [Example] [For QNN EP] -e qnn -i \"backend_type|cpu\" \n"
       "\n"
       "\t    [TensorRT only] [trt_max_partition_iterations]: Maximum iterations for TensorRT parser to get capability.\n"
       "\t    [TensorRT only] [trt_min_subgraph_size]: Minimum size of TensorRT subgraphs.\n"
@@ -263,6 +264,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kVitisAIExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("webgpu"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kWebGpuExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("nvtensorrtrtx"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kNvTensorRTRTXExecutionProvider;
         } else {
           return false;
         }

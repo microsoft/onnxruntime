@@ -340,7 +340,7 @@ MlasHGemmSupported(
         return dispatch &&
         dispatch->HGemmKernel_B &&
         dispatch->HPackBKernel_B &&
-        dispatch->HGemmKernel_PackedB;;
+        dispatch->HGemmKernel_PackedB;
     }
 
     return false;
@@ -366,7 +366,6 @@ HGemmOperation(
     constexpr size_t StrideM = 2;
     const auto beta_add = MLAS_FP16(1.0f);
     constexpr size_t buffer_size = MLAS_HGEMM_STRIDEN * MLAS_HGEMM_STRIDEK;
-    MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], 16 * sizeof(_mlas_fp16_));
 
     if (TransA == CblasNoTrans && TransB == CblasTrans) {
         const auto* A = DataParams->A + RangeStartM * lda;
@@ -380,7 +379,7 @@ HGemmOperation(
             // When M is small, B is visited once. The overhead of Pack(B') exceeds the benefits
             // from A x Pack(B'). Therefore directly calculate A x B'.
             // Without PackB, to utilize memory locality, iterate full K.
-            constexpr size_t StrideN = 16;
+            constexpr size_t StrideN = MLAS_HGEMM_STRIDEN_THREAD_ALIGN;
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);
                 dispatch->HGemmKernel_TransposedB(A, B, C, RangeCountM, countN, K, lda, ldb, ldc, alpha, beta);
@@ -392,8 +391,23 @@ HGemmOperation(
                 MLAS_THROW_EX(std::runtime_error, "hgemm does not have A x Transposed(B) kernels");
             }
             // 16N is the smallest pack unit.
-            const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
-            const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
+            // TODO(fajin): optimize alpha == 1
+            MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], MLAS_HGEMM_STRIDEN_THREAD_ALIGN * sizeof(_mlas_fp16_));
+            size_t StrideN = MLAS_HGEMM_STRIDEN;
+            size_t StrideK = MLAS_HGEMM_STRIDEK;
+            if (RangeCountN >= K) {
+                while (StrideK / 2 >= K) {
+                    StrideN *= 2;
+                    StrideK /= 2;
+                }
+
+            } else {
+                while (StrideN > MLAS_HGEMM_STRIDEN_THREAD_ALIGN && StrideN / 2 >= RangeCountN) {
+                    StrideK *= 2;
+                    StrideN /= 2;
+                }
+            }
+
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);
                 const MLAS_FP16* a = A;
@@ -433,6 +447,7 @@ HGemmOperation(
             // from A x Pack(B). Therefore directly calculate A x B.
             // When beta is 0 or 1, iterate full N and cache accumulators in C.
             // When beta is not 0 or 1, iterate full K, accumulat in register, max 8 accumulators.
+            // TODO(fajin): merge beta cases with alpha == 1
             dispatch->HGemmKernel_B(A, B, C, RangeCountM, RangeCountN, K, lda, ldb, ldc, alpha, beta);
         } else {
             if (!dispatch || !dispatch->HPackBKernel_B || !dispatch->HGemmKernel_PackedB) {
@@ -441,9 +456,22 @@ HGemmOperation(
             // TODO(fajin): optimize blocking for large K small N
             //  - pack along N
             //  - loop K in outer loop
-            // 16N is the smallest pack unit.
-            const size_t StrideK = std::min(K, size_t(MLAS_HGEMM_STRIDEK));
-            const size_t StrideN = buffer_size/StrideK & (~15); // >= MLAS_HGEMM_STRIDEN
+            //  - optimize alpha == 1 case
+            MLAS_DECLSPEC_ALIGN(MLAS_FP16 PackedB[buffer_size], MLAS_HGEMM_STRIDEN_THREAD_ALIGN * sizeof(_mlas_fp16_));
+            size_t StrideN = MLAS_HGEMM_STRIDEN;
+            size_t StrideK = MLAS_HGEMM_STRIDEK;
+            if (RangeCountN >= K) {
+                while (StrideK / 2 >= K) {
+                    StrideN *= 2;
+                    StrideK /= 2;
+                }
+            } else {
+                while (StrideN > MLAS_HGEMM_STRIDEN_THREAD_ALIGN && StrideN / 2 >= RangeCountN) {
+                    StrideK *= 2;
+                    StrideN /= 2;
+                }
+            }
+
             for (size_t n = 0, countN; n < RangeCountN; n += countN) {
                 countN = std::min(StrideN, RangeCountN - n);
                 const MLAS_FP16* a = A;
@@ -494,15 +522,9 @@ MlasGemmBatch(
     }
 
     const double Complexity = double(M) * double(N) * double(K) * double(BatchSize);
-    ptrdiff_t TargetThreadCount;
-
-    if (Complexity < double(MLAS_HGEMM_THREAD_COMPLEXITY) * GetMlasPlatform().MaximumThreadCount) {
-        TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
-    } else {
-        TargetThreadCount = GetMlasPlatform().MaximumThreadCount;
-    }
-
+    ptrdiff_t TargetThreadCount = ptrdiff_t(Complexity / double(MLAS_HGEMM_THREAD_COMPLEXITY)) + 1;
     ptrdiff_t MaximumThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+
     if (TargetThreadCount >= MaximumThreadCount) {
         TargetThreadCount = MaximumThreadCount;
     }

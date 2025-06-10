@@ -6,6 +6,7 @@
 #include <vector>
 #include <map>
 #include <unordered_map>
+#include <unordered_set>
 #include <string>
 #include <filesystem>
 #include <memory>
@@ -17,7 +18,12 @@ namespace openvino_ep {
 
 namespace fs = std::filesystem;
 
-struct SharedContext {
+class SharedContext : public WeakSingleton<SharedContext> {
+  // Keep the core alive as long as the shared SharedContext are alive.
+  std::shared_ptr<OVCore> OVCore_;
+
+ public:
+  SharedContext() : OVCore_(OVCore::Get()) {}
   struct SharedWeights {
     struct Metadata {
       struct Key {
@@ -96,6 +102,10 @@ struct ProviderInfo {
   bool so_context_embed_mode{false};       // ORT session option
   bool so_share_ep_contexts{false};        // ORT session option
   fs::path so_context_file_path{};         // ORT session option
+  const ConfigOptions* config_options{NULL};
+  const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
+                                                               "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
+                                                               "enable_causallm", "disable_dynamic_shapes"};
 };
 
 // Holds context applicable to the entire EP instance.

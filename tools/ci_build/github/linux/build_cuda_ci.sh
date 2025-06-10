@@ -11,6 +11,7 @@ BUILD_ARGS=('--config'
             '--build_shared_lib'
             '--parallel'
             '--use_vcpkg'
+            '--use_vcpkg_ms_internal_asset_cache'
             '--use_binskim_compliant_compile_flags'
             '--build_wheel'
             '--enable_onnx_tests'
@@ -22,7 +23,7 @@ BUILD_ARGS=('--config'
             "--enable_pybind"
             "--build_java"
             "--cmake_extra_defines"
-            "CMAKE_CUDA_ARCHITECTURES=86"
+            "CMAKE_CUDA_ARCHITECTURES=80"
             "onnxruntime_BUILD_UNIT_TESTS=ON"
             "onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON")
 if [ -x "$(command -v ninja)" ]; then

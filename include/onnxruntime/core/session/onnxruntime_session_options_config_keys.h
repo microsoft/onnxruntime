@@ -10,10 +10,10 @@
  * "[Area][.[SubArea1].[SubArea2]...].[Keyname]"
  * Such as "ep.cuda.use_arena"
  * The Config Key cannot be empty
- * The maximum length of the Config Key is 128
+ * The maximum length of the Config Key is 1024
  *
  * The string format of a SessionOptions Config Value is defined individually for each Config.
- * The maximum length of the Config Value is 1024
+ * The maximum length of the Config Value is 2048
  */
 
 // Key for disable PrePacking,
@@ -267,6 +267,34 @@ static const char* const kOrtSessionOptionsModelExternalInitializersFileFolderPa
 static const char* const kOrtSessionOptionsSavePrePackedConstantInitializers =
     "session.save_external_prepacked_constant_initializers";
 
+// Use this config when you want to collect memory stats for each node in the graph.
+// The file format is a CSV file with the following columns:
+// The file will be created if it does not exist, and will be overwritten if it does.
+//
+// The content of the file can be used to estimate memory requirements at run time including
+// the temporary allocations. This operation is preferably done on a CPU device, as the model may exceed
+// device memory limits in constrained environments. When enabling this option, it is important to disable
+// memory patterns, as they tend to allocate large blocks to avoid fragmentation and accommodate needs of multiple
+// kernels. Memory patterns may make it difficult to allocate on a device with limited memory.
+//
+// The collected stats then can be used to partition the graph among the devices in a way that only the
+// required memory is allocated on each device.
+//
+// node_name, initializers_memory, dynamic_outputs_sizes, temp_allocations_size
+//
+// - "full path to file": there is not a default for this option. If the file can not be opened for writing, an error will be returned.
+static const char* const kOrtSessionOptionsCollectNodeMemoryStatsToFile = "session.collect_node_memory_stats_to_file";
+
+/// This is a composite CSV setting formatted as "memory limit in kb,file name for collected stats"
+/// "limit > 0": enables Capacity Aware Partitioning for Cuda EP. `limit` is optional and when absent
+/// the provider may attempt to figure out the memory available automatically.
+/// The setting with no limit is expected to look like: ",file name for collected stats"
+///  The EP will place nodes on device "file name" :
+/// this file is expected to be found at the same folder with the model. The file contains
+/// pre-recorded stats collected when running with kOrtSessionOptionsCollectNodeMemoryStatsToFile enforce (see above)
+static const char* const kOrtSessionOptionsResourceCudaPartitioningSettings =
+    "session.resource_cuda_partitioning_settings";
+
 // Enable EP context feature to dump the partitioned graph which includes the EP context into Onnx file.
 // The dumped Onnx model with EP context can be used for future inference to avoid the EP graph partitioning/compile overhead.
 // "0": disable. (default)
@@ -287,11 +315,19 @@ static const char* const kOrtSessionOptionEpContextEmbedMode = "ep.context_embed
 // in case user need to merge/connect multiple EPContext nodes in one model
 static const char* const kOrtSessionOptionEpContextNodeNamePrefix = "ep.context_node_name_prefix";
 
-// Share EP related resources across EPs
+// Share EP related resources across sessions
 static const char* const kOrtSessionOptionShareEpContexts = "ep.share_ep_contexts";
 
-// Use this config when dumping EP context model with an external initializers file
-// All initializers will be inside the external data file if specified, otherwise all in Onnx file
+// Stop to share EP related resources across sessions from then on
+static const char* const kOrtSessionOptionStopShareEpContexts = "ep.stop_share_ep_contexts";
+
+// Used only for context model generation.
+// This configuration is used when some nodes are partitioned on the CPU EP and those nodes have external initializers.
+// When generating the EP context model, the new model should not rely on the old external data file used by the source ONNX model.
+// Use this setting when dumping the EP context model with an external initializers file.
+// If specified, all initializers will be placed inside the external data file.
+// Otherwise, all initializers will be embedded inside the generated ONNX file.
+// By default, this option is not set, meaning all initializers will be included within the ONNX file.
 static const char* const kOrtSessionOptionsEpContextModelExternalInitializersFileName =
     "ep.context_model_external_initializers_file_name";
 
@@ -312,3 +348,19 @@ static const char* const kOrtSessionOptionsQDQMatMulNBitsAccuracyLevel = "sessio
 // “Default”: OS determines the scheduling priority and processor performance to service this workload. [Default]
 // “Efficient”: OS treats this workload is efficiency oriented with low scheduling priority and efficient processor performance.
 static const char* const kOrtEpDynamicOptionsWorkloadType = "ep.dynamic.workload_type";
+
+// Disables model compilation during session initialization.
+//
+// If this option is set to "1", inference session creation will fail with error code ORT_MODEL_REQUIRES_COMPILATION
+// if compilation is required to run the model on any Execution Provider added to the session.
+// Only the following kinds of models are valid when this option is set to "1":
+//   - Pre-compiled models that have EPContext nodes for the compiling Execution Providers in the session.
+//   - Non-compiled models that run only on non-compiling Execution Providers, like CPU EP.
+//
+// See \href https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html for details about
+// compiled models with EPContext nodes.
+//
+// Option values:
+// - "0": EP compile is not disabled. [DEFAULT]
+// - "1": EP compile is disabled.
+static const char* const kOrtSessionOptionsDisableModelCompile = "session.disable_model_compile";

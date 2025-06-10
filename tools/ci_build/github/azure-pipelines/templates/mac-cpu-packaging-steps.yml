@@ -48,7 +48,7 @@ steps:
       - script: |
           set -e -x
           rm -rf $(Build.BinariesDirectory)/Release
-          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_vcpkg --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg
+          python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --update --build ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           cd $(Build.BinariesDirectory)/Release
           make install DESTDIR=$(Build.BinariesDirectory)/installed
         displayName: 'Build ${{ parameters.MacosArch }}'
@@ -57,7 +57,7 @@ steps:
 
 - ${{ if eq(parameters.MacosArch, 'x86_64') }}:
   - script: |
-      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg
+      python3 $(Build.SourcesDirectory)/tools/ci_build/build.py --test  ${{ parameters.AdditionalBuildFlags }} --build_dir $(Build.BinariesDirectory) --skip_submodule_sync --parallel --use_binskim_compliant_compile_flags --build_shared_lib --config Release --use_vcpkg --use_vcpkg_ms_internal_asset_cache
     displayName: 'Running Tests'
 
 - task: ShellScript@2
@@ -83,8 +83,10 @@ steps:
   displayName: 'Copy libcustom_op_library.dylib to ArtifactStagingDirectory'
   condition: and(succeeded(), eq('${{ parameters.MacosArch }}', 'x86_64'))
 
-- publish: '$(Build.ArtifactStagingDirectory)'
-  artifact: 'onnxruntime-osx-${{ parameters.MacosArch }}'
+- task: 1ES.PublishPipelineArtifact@1
+  inputs:
+    targetPath: '$(Build.ArtifactStagingDirectory)'
+    artifactName: 'onnxruntime-osx-${{ parameters.MacosArch }}'
 
 - ${{ if eq(parameters.BuildJava, true) }}:
     - template: java-api-artifacts-package-and-publish-steps-posix.yml
@@ -95,6 +97,7 @@ steps:
           version: '$(OnnxRuntimeVersion)'
           libraryName: 'libonnxruntime.dylib'
           nativeLibraryName: 'libonnxruntime4j_jni.dylib'
+          is1ES: true
 
 - ${{ if eq(parameters.BuildNodejs, true) }}:
     - template: nodejs-artifacts-package-and-publish-steps-posix.yml

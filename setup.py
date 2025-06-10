@@ -191,6 +191,17 @@ try:
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
 
+        def _rewrite_ld_preload_nv_tensorrt_rtx(self, to_preload):
+            with open("onnxruntime/capi/_ld_preload.py", "a", encoding="ascii") as f:
+                if len(to_preload) > 0:
+                    f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
+                    f.write("try:\n")
+                    for library in to_preload:
+                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.write("except OSError:\n")
+                    f.write("    import os\n")
+                    f.write('    os.environ["ORT_NV_TENSORRT_RTX_UNAVAILABLE"] = "1"\n')
+
         def run(self):
             if is_manylinux:
                 source = "onnxruntime/capi/onnxruntime_pybind11_state.so"
@@ -201,6 +212,7 @@ try:
                 to_preload = []
                 to_preload_cuda = []
                 to_preload_tensorrt = []
+                to_preload_nv_tensorrt_rtx = []
                 to_preload_cann = []
 
                 cuda_dependencies = [
@@ -268,6 +280,7 @@ try:
                 self._rewrite_ld_preload(to_preload)
                 self._rewrite_ld_preload_cuda(to_preload_cuda)
                 self._rewrite_ld_preload_tensorrt(to_preload_tensorrt)
+                self._rewrite_ld_preload_tensorrt(to_preload_nv_tensorrt_rtx)
                 self._rewrite_ld_preload(to_preload_cann)
 
             else:
@@ -303,6 +316,7 @@ class InstallCommand(InstallCommandBase):
 
 providers_cuda_or_rocm = "onnxruntime_providers_" + ("rocm" if is_rocm else "cuda")
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
+providers_nv_tensorrt_rtx = "onnxruntime_providers_nv_tensorrt_rtx"
 providers_openvino = "onnxruntime_providers_openvino"
 providers_cann = "onnxruntime_providers_cann"
 providers_qnn = "onnxruntime_providers_qnn"
@@ -316,6 +330,7 @@ if platform.system() == "Linux":
 elif platform.system() == "Windows":
     providers_cuda_or_rocm = providers_cuda_or_rocm + ".dll"
     providers_tensorrt_or_migraphx = providers_tensorrt_or_migraphx + ".dll"
+    providers_nv_tensorrt_rtx = providers_nv_tensorrt_rtx + ".dll"
     providers_openvino = providers_openvino + ".dll"
     providers_cann = providers_cann + ".dll"
     providers_qnn = providers_qnn + ".dll"
@@ -356,7 +371,7 @@ if platform.system() == "Linux" or platform.system() == "AIX":
         "libQnnSaver.so",
         "libQnnSystem.so",
         "libHtpPrepare.so",
-        "onnxruntime_qnn_ctx_gen",
+        "ep_weight_sharing_ctx_gen",
     ]
     dl_libs.extend(qnn_deps)
     if nightly_build:
@@ -384,6 +399,7 @@ else:
         "libiomp5md.dll",
         providers_cuda_or_rocm,
         providers_tensorrt_or_migraphx,
+        providers_nv_tensorrt_rtx,
         providers_cann,
         "onnxruntime.dll",
     ]
@@ -391,6 +407,7 @@ else:
     libs.extend(["onnxruntime_providers_shared.dll"])
     libs.extend(["onnxruntime_providers_dnnl.dll"])
     libs.extend(["onnxruntime_providers_tensorrt.dll"])
+    libs.extend(["onnxruntime_providers_nv_tensorrt_rtx.dll"])
     libs.extend(["onnxruntime_providers_openvino.dll"])
     libs.extend(["onnxruntime_providers_cuda.dll"])
     libs.extend(["onnxruntime_providers_vitisai.dll"])
@@ -400,6 +417,7 @@ else:
     # QNN V68/V73 dependencies
     qnn_deps = [
         "QnnCpu.dll",
+        "QnnGpu.dll",
         "QnnHtp.dll",
         "QnnSaver.dll",
         "QnnSystem.dll",
@@ -499,6 +517,7 @@ packages = [
     "onnxruntime.quantization.CalTableFlatBuffers",
     "onnxruntime.quantization.fusions",
     "onnxruntime.quantization.execution_providers.qnn",
+    "onnxruntime.quantization.neural_compressor",
     "onnxruntime.transformers",
     "onnxruntime.transformers.models.bart",
     "onnxruntime.transformers.models.bert",

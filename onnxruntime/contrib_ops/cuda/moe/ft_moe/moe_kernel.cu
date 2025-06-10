@@ -1041,7 +1041,7 @@ void initialize_moe_routing_kernelLauncher(const T *unpermuted_input, T *permute
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 template <typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T *, T *, const T *, const T *, const T *, const T *, const int *,
-                                            const int *, int, const int) {
+                                            const int *, int, int) {
     // Does not support pre-Kepler architectures
     ;
 }

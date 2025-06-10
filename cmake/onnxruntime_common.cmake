@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -67,13 +69,13 @@ if(onnxruntime_target_platform STREQUAL "ARM64EC")
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/lib/ARM64EC")
         link_directories("$ENV{VCINSTALLDIR}/Tools/MSVC/$ENV{VCToolsVersion}/ATLMFC/lib/ARM64EC")
         link_libraries(softintrin.lib)
-        add_compile_options("/bigobj")
+        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
     endif()
 endif()
 
 if(onnxruntime_target_platform STREQUAL "ARM64")
     if (MSVC)
-        add_compile_options("/bigobj")
+        add_compile_options("$<$<NOT:$<COMPILE_LANGUAGE:ASM_MARMASM>>:/bigobj>")
     endif()
 endif()
 
@@ -127,9 +129,9 @@ if (MSVC)
     endif()
 endif()
 
-onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET})
+onnxruntime_add_include_to_target(onnxruntime_common date::date ${WIL_TARGET} Eigen3::Eigen)
 target_include_directories(onnxruntime_common
-    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT} ${eigen_INCLUDE_DIRS}
+    PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT}
     # propagate include directories of dependencies that are part of public interface
     PUBLIC
         ${OPTIONAL_LITE_INCLUDE_DIR})
@@ -157,6 +159,9 @@ if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
 endif()
 
+if(MSVC)
+  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
+endif()
 
 if(MSVC)
   if(onnxruntime_target_platform STREQUAL "ARM64")
@@ -205,7 +210,6 @@ elseif(NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   endif()
 endif()
 
-
 if (RISCV64 OR ARM64 OR ARM OR X86 OR X64 OR X86_64)
     # Link cpuinfo if supported
     # Using it mainly in ARM with Android.
@@ -218,7 +222,7 @@ endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
   install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/common  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
-  install(TARGETS onnxruntime_common
+  install(TARGETS onnxruntime_common EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

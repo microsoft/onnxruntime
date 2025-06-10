@@ -158,6 +158,112 @@ std::vector<MatMulTestData<T>> GenerateTestCases() {
            // clang-format on
        })});
 
+#ifdef USE_WEBGPU
+  test_cases.push_back(
+      {"test 3D tensors with M = 1",
+       {6, 1, 8},
+       {1, 8, 3},
+       {6, 1, 3},
+       real_expected_vals({
+           // clang-format off
+            420, 448, 476,
+            1092, 1184, 1276,
+            1764, 1920, 2076,
+            2436, 2656, 2876,
+            3108, 3392, 3676,
+            3780, 4128, 4476,
+           // clang-format on
+       })});
+
+  test_cases.push_back(
+      {"test 4D tensors with M = 1",
+       {2, 3, 1, 8},
+       {1, 1, 8, 3},
+       {2, 3, 1, 3},
+       real_expected_vals({420, 448, 476, 1092, 1184, 1276, 1764, 1920, 2076, 2436, 2656, 2876, 3108, 3392, 3676, 3780, 4128, 4476})});
+
+  test_cases.push_back(
+      {"test 4D tensors",
+       {2, 3, 4, 3},
+       {2, 3, 3, 5},
+       {2, 3, 4, 5},
+       real_expected_vals({
+           // clang-format off
+          25, 28, 31, 34, 37, 70, 82, 94, 106, 118, 115, 136, 157, 178, 199, 160, 190, 220,
+          250, 280, 790, 829, 868, 907, 946, 970, 1018, 1066, 1114, 1162, 1150, 1207, 1264,
+          1321, 1378, 1330, 1396, 1462, 1528, 1594, 2635, 2710, 2785, 2860, 2935, 2950, 3034,
+          3118, 3202, 3286, 3265, 3358, 3451, 3544, 3637, 3580, 3682, 3784, 3886, 3988, 5560,
+          5671, 5782, 5893, 6004, 6010, 6130, 6250, 6370, 6490, 6460, 6589, 6718, 6847, 6976,
+          6910, 7048, 7186, 7324, 7462, 9565, 9712, 9859, 10006, 10153, 10150, 10306, 10462,
+          10618, 10774, 10735, 10900, 11065, 11230, 11395, 11320, 11494, 11668, 11842, 12016,
+          14650, 14833, 15016, 15199, 15382, 15370, 15562, 15754, 15946, 16138, 16090, 16291,
+          16492, 16693, 16894, 16810, 17020, 17230, 17440, 17650
+           // clang-format on
+       })});
+
+  // Test case: multiplies 2D broadcasted to 4D tensors
+  test_cases.push_back(
+      {"test 2D broadcasted to 4D tensors",
+       {2, 4},
+       {4, 3, 2, 4, 2},
+       {4, 3, 2, 2, 2},
+       real_expected_vals({
+           // clang-format off
+          28, 34, 76, 98, 76, 82, 252, 274, 124, 130, 428, 450, 172, 178, 604, 626,
+          220, 226, 780, 802, 268, 274, 956, 978, 316, 322, 1132, 1154, 364, 370,
+          1308, 1330, 412, 418, 1484, 1506, 460, 466, 1660, 1682, 508, 514, 1836,
+          1858, 556, 562, 2012, 2034, 604, 610, 2188, 2210, 652, 658, 2364, 2386,
+          700, 706, 2540, 2562, 748, 754, 2716, 2738, 796, 802, 2892, 2914, 844,
+          850, 3068, 3090, 892, 898, 3244, 3266, 940, 946, 3420, 3442, 988, 994,
+          3596, 3618, 1036, 1042, 3772, 3794, 1084, 1090, 3948, 3970, 1132, 1138,
+          4124, 4146
+           // clang-format on
+       })});
+
+  // Test case: multiplies 4D broadcasted to 5D tensors
+  test_cases.push_back(
+      {"test 4D broadcasted to 5D tensors",
+       {3, 1, 2, 4},
+       {4, 3, 2, 4, 2},
+       {4, 3, 2, 2, 2},
+       real_expected_vals({
+           // clang-format off
+            28, 34, 76, 98, 76, 82, 252, 274, 732, 770, 1036, 1090, 1036, 1074, 1468,
+            1522, 2460, 2530, 3020, 3106, 3020, 3090, 3708, 3794, 316, 322, 1132,
+            1154, 364, 370, 1308, 1330, 2556, 2594, 3628, 3682, 2860, 2898, 4060,
+            4114, 5820, 5890, 7148, 7234, 6380, 6450, 7836, 7922, 604, 610, 2188,
+            2210, 652, 658, 2364, 2386, 4380, 4418, 6220, 6274, 4684, 4722, 6652,
+            6706, 9180, 9250, 11276, 11362, 9740, 9810, 11964, 12050, 892, 898, 3244,
+            3266, 940, 946, 3420, 3442, 6204, 6242, 8812, 8866, 6508, 6546, 9244,
+            9298, 12540, 12610, 15404, 15490, 13100, 13170, 16092, 16178
+
+           // clang-format on
+       })});
+
+  // Test case: same ranks different broadcast small 1
+  test_cases.push_back(
+      {"test same ranks different broadcast small 1",
+       {2, 1, 2, 2},
+       {1, 2, 2, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({1, 3, 3, 13, 5, 7, 23, 33})});
+
+  // Test case: same ranks different broadcast larger 0
+  test_cases.push_back(
+      {"test same ranks different broadcast larger 0",
+       {1, 2, 2, 8},
+       {2, 1, 8, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({140, 364, 588, 812, 364, 1100, 1836, 2572})});
+
+  // Test case: same ranks different broadcast larger 1
+  test_cases.push_back(
+      {"test same ranks different broadcast larger 1",
+       {2, 1, 2, 8},
+       {1, 2, 8, 1},
+       {2, 2, 2, 1},
+       real_expected_vals({140, 364, 364, 1100, 588, 812, 1836, 2572})});
+#endif
   return test_cases;
 }
 
@@ -189,6 +295,17 @@ void RunMatMulTest(int32_t opset_version, bool is_a_constant, bool is_b_constant
       excluded_providers.insert(kNnapiExecutionProvider);
     }
 
+    // TODO:: Change MatMulNaive Shader to support these test cases webgpu
+    std::unordered_set<std::string> webgpu_excluded_test_cases{
+        "test left 1D",
+        "test right 1D",
+        "test 2D empty input"};
+
+    // if test in webgpu_excluded_test_cases, add webgpu to excluded_providers
+    if (webgpu_excluded_test_cases.find(t.name) != webgpu_excluded_test_cases.end()) {
+      excluded_providers.insert(kWebGpuExecutionProvider);
+    }
+
     test.ConfigExcludeEps(excluded_providers)
         .Config(run_with_tunable_op)
         .RunWithConfig();
@@ -210,7 +327,7 @@ TEST(MathOpTest, MatMulFloatType) {
   RunMatMulTest<float>(7, false, true);
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMulFloat16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;
@@ -234,10 +351,18 @@ TEST(MathOpTest, MatMulDoubleType) {
 }
 
 TEST(MathOpTest, MatMulInt32Type) {
+  // Webgpu does not support int32 matmul
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support int32 matmul";
+  }
   RunMatMulTest<int32_t>(9);
 }
 
 TEST(MathOpTest, MatMulUint32Type) {
+  // Webgpu does not support uint32 matmul
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support uint32 matmul";
+  }
   RunMatMulTest<uint32_t>(9);
 }
 
@@ -263,20 +388,26 @@ void RunMatMulZeroKTest() {
   // No special case is implemented.
   test.ConfigExcludeEps({kCoreMLExecutionProvider, kNnapiExecutionProvider,
                          kDmlExecutionProvider, kDnnlExecutionProvider, kQnnExecutionProvider,
-                         kOpenVINOExecutionProvider})
+                         kOpenVINOExecutionProvider, kWebGpuExecutionProvider})
       .Config(run_with_tunable_op)
       .RunWithConfig();
 }
 
 TEST(MathOpTest, MatMulZeroKFloatType) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support zero-sized tensor";
+  }
   RunMatMulZeroKTest<float>();
 }
 
 TEST(MathOpTest, MatMulZeroKInt32Type) {
+  if (DefaultWebGpuExecutionProvider().get() != nullptr) {
+    GTEST_SKIP() << "Skipping because of the following error: Webgpu does not support zero-sized tensor";
+  }
   RunMatMulZeroKTest<int32_t>();
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(COREML_ENABLE_MLPROGRAM) || defined(USE_XNNPACK)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_COREML) || defined(USE_XNNPACK)
 TEST(MathOpTest, MatMul_Float16) {
 #ifdef USE_CUDA
   int min_cuda_architecture = 530;

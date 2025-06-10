@@ -41,16 +41,22 @@ export declare namespace Env {
     numThreads?: number;
 
     /**
-     * set or get a boolean value indicating whether to enable SIMD. If set to false, SIMD will be forcely disabled.
+     * set a value indicating whether to enable SIMD.
+     *
+     * ONNX Runtime will perform feature detection based on the value of this property. Specifically, when the value is
+     * set to:
+     * - `undefined`, `true` or `"fixed"`: will check availability of Fixed-width SIMD.
+     * - `"relaxed"`: will check availability of Relaxed SIMD.
+     * - `false`: will not perform SIMD feature checking.
+     *
+     * Setting this property does not make ONNX Runtime to switch to the corresponding runtime automatically. User need
+     * to set `wasmPaths` or `wasmBinary` property to load the corresponding runtime.
      *
      * This setting is available only when WebAssembly SIMD feature is available in current context.
      *
      * @defaultValue `true`
-     *
-     * @deprecated This property is deprecated. Since SIMD is supported by all major JavaScript engines, non-SIMD
-     * build is no longer provided. This property will be removed in future release.
      */
-    simd?: boolean;
+    simd?: boolean | 'fixed' | 'relaxed';
 
     /**
      * set or get a boolean value indicating whether to enable trace.

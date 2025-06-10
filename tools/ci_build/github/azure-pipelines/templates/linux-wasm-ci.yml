@@ -39,13 +39,19 @@ parameters:
   type: boolean
   default: false
 
+- name: is1ES
+  displayName: 'Is 1ES pipeline'
+  type: boolean
+  default: false
+
 jobs:
 - job: build_WASM
   pool:
     name: ${{ parameters.PoolName }}
+    os: linux
   variables:
     buildArch: x64
-    CommonBuildArgs: '--parallel --use_vcpkg --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'
+    CommonBuildArgs: '--parallel --config ${{ parameters.BuildConfig }} --skip_submodule_sync --build_wasm --enable_wasm_simd --enable_wasm_threads ${{ parameters.ExtraBuildArgs }}'
     runCodesignValidationInjection: false
     TODAY: $[format('{0:dd}{0:MM}{0:yyyy}', pipeline.startTime)]
     ORT_CACHE_DIR: $(Agent.TempDirectory)/ort_ccache
@@ -61,15 +67,15 @@ jobs:
     displayName: 'Get commit SHA'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     export __commit__=<$(Pipeline.Workspace)/__commit.txt
-     git fetch origin +$__commit__:refs/remotes/origin/$__commit__
-     git checkout --force $__commit__
+      export __commit__=<$(Pipeline.Workspace)/__commit.txt
+      git fetch origin +$__commit__:refs/remotes/origin/$__commit__
+      git checkout --force $__commit__
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Read commit SHA and checkout'
     condition: eq('${{ parameters.CommitOverride }}', 'true')
   - script: |
-     git submodule sync --recursive
-     git submodule update --init --recursive
+      git submodule sync --recursive
+      git submodule update --init --recursive
     workingDirectory: '$(Build.SourcesDirectory)'
     displayName: 'Checkout submodules'
   - task: UsePythonVersion@0
@@ -79,19 +85,19 @@ jobs:
       architecture: $(buildArch)
 
   - ${{if eq(parameters.WithCache, true)}}:
-      - script: |
-          set -ex
-          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 4.0.3 ccache-git-emscripten-64bit
-          ./emsdk activate 4.0.3 ccache-git-emscripten-64bit
-        displayName: 'emsdk install and activate ccache for emscripten'
+    - script: |
+        set -ex
+        cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+        ./emsdk install 4.0.8 ccache-git-emscripten-64bit
+        ./emsdk activate 4.0.8 ccache-git-emscripten-64bit
+      displayName: 'emsdk install and activate ccache for emscripten'
   - ${{if eq(parameters.WithCache, false)}}:
-      - script: |
-          set -ex
-          cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
-          ./emsdk install 4.0.3
-          ./emsdk activate 4.0.3
-        displayName: 'emsdk install and activate ccache for emscripten'
+    - script: |
+        set -ex
+        cd '$(Build.SourcesDirectory)/cmake/external/emsdk'
+        ./emsdk install 4.0.8
+        ./emsdk activate 4.0.8
+      displayName: 'emsdk install and activate ccache for emscripten'
 
   - template: build-linux-wasm-step.yml
     parameters:
@@ -119,11 +125,6 @@ jobs:
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.BuildWebGPU, true) }}:
-    # This step only verifies whether the build is successful.
-    # currently, we uses EMSDK 3.1.59, which is not compatible with Dawn's changes in its Emscripten fork. Closure compiler will not work for WebGPU build.
-    # Only enables in DEBUG build.
-    #
-    # TODO: when upgrading to a newer Emscripten version, we should fix this step.
     - template: build-linux-wasm-step.yml
       parameters:
         Today: $(Today)
@@ -132,25 +133,50 @@ jobs:
         ${{ else }}:
           AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
   - ${{ if eq(parameters.SkipPublish, false) }}:
     - script: |
-        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)
-        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.mjs $(Build.ArtifactStagingDirectory)
+        mkdir -p $(Build.ArtifactStagingDirectory)/wasm/
+        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.wasm $(Build.ArtifactStagingDirectory)/wasm/
+        cp $(Build.BinariesDirectory)/wasm_inferencing/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.mjs $(Build.ArtifactStagingDirectory)/wasm/
         if [ -d $(Build.BinariesDirectory)/wasm_inferencing_jsep ]; then
-          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)
-          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)
+          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)/wasm/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_jsep/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)/wasm/
         fi
       displayName: 'Create Artifacts'
-  - ${{ if eq(parameters.SkipPublish, false) }}:
-    - task: PublishPipelineArtifact@0
-      displayName: 'Publish Pipeline Artifact'
-      inputs:
-        artifactName: '${{ parameters.BuildConfig }}_wasm'
-        targetPath: '$(Build.ArtifactStagingDirectory)'
+    - ${{ if eq(parameters.BuildWebGPU, true) }}:
+      - script: |
+          mkdir -p $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.wasm $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+          cp $(Build.BinariesDirectory)/wasm_inferencing_webgpu/${{ parameters.BuildConfig }}/ort-wasm-simd-threaded.jsep.mjs $(Build.ArtifactStagingDirectory)/wasm_webgpu/
+        displayName: 'Create Artifacts (WebGPU EP)'
+    - ${{ if eq(parameters.is1ES, false) }}:
+      - task: PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: '${{ parameters.BuildConfig }}_wasm'
+          targetPath: '$(Build.ArtifactStagingDirectory)/wasm'
+      - ${{ if eq(parameters.BuildWebGPU, true) }}:
+        - task: PublishPipelineArtifact@1
+          displayName: 'Publish Pipeline Artifact (WebGPU EP)'
+          inputs:
+            artifactName: '${{ parameters.BuildConfig }}_wasm_webgpu'
+            targetPath: '$(Build.ArtifactStagingDirectory)/wasm_webgpu'
+    - ${{ if eq(parameters.is1ES, true) }}:
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: 'Publish Pipeline Artifact'
+        inputs:
+          artifactName: '${{ parameters.BuildConfig }}_wasm'
+          targetPath: '$(Build.ArtifactStagingDirectory)/wasm'
+      - ${{ if eq(parameters.BuildWebGPU, true) }}:
+        - task: 1ES.PublishPipelineArtifact@1
+          displayName: 'Publish Pipeline Artifact (WebGPU EP)'
+          inputs:
+            artifactName: '${{ parameters.BuildConfig }}_wasm_webgpu'
+            targetPath: '$(Build.ArtifactStagingDirectory)/wasm_webgpu'
   - task: PublishTestResults@2
     displayName: 'Publish unit test results'
     inputs:
@@ -158,6 +184,3 @@ jobs:
       searchFolder: '$(Build.BinariesDirectory)'
       testRunTitle: 'Unit Test Run'
     condition: and(succeededOrFailed(), eq('${{ parameters.BuildConfig }}', 'Debug'))
-  - template: component-governance-component-detection-steps.yml
-    parameters :
-      condition : 'succeeded'

@@ -76,6 +76,10 @@ class BaseOpBuilder : public IOpBuilder {
                                std::vector<std::string>& input_names,
                                bool do_op_validation = false) const ORT_MUST_USE_RESULT;
 
+  Status ProcessInt64Tensors(QnnModelWrapper& qnn_model_wrapper,
+                             const NodeUnit& node_unit,
+                             std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
   virtual Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                              const NodeUnit& node_unit,
                                              std::vector<std::string>&& input_names,
@@ -102,6 +106,35 @@ class BaseOpBuilder : public IOpBuilder {
                           const std::string& bias_name,
                           const logging::Logger& logger,
                           std::vector<std::string>& input_names) const ORT_MUST_USE_RESULT;
+
+  template <typename T>
+  Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeIndex& node_index,
+                      const std::string& node_name,
+                      const T& scalar,
+                      const std::string& qnn_scalar_param_name,
+                      std::vector<std::string>& param_names) const {
+    Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+    if (std::is_same<T, float>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+      qnn_scalar.floatValue = static_cast<float>(scalar);
+    } else if (std::is_same<T, uint32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+      qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+    } else if (std::is_same<T, int32_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+      qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+    } else if (std::is_same<T, bool>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+      qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+    } else {
+      ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+    }
+    QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+    param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+    return Status::OK();
+  }
 
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
@@ -136,6 +169,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Less", QNN_OP_ELEMENT_WISE_LESS},
         {"LessOrEqual", QNN_OP_ELEMENT_WISE_LESS_EQUAL},
         {"Log", QNN_OP_ELEMENT_WISE_LOG},
+        {"LSTM", QNN_OP_LSTM},
         {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
         {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
         {"Neg", QNN_OP_ELEMENT_WISE_NEG},
@@ -151,6 +185,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"ReduceSum", QNN_OP_REDUCE_SUM},
         {"Round", QNN_OP_ELEMENT_WISE_ROUND},
         {"Where", QNN_OP_ELEMENT_WISE_SELECT},
+        {"ScatterND", QNN_OP_SCATTER_ND},
         {"Sigmoid", QNN_OP_SIGMOID},
         {"Sin", QNN_OP_ELEMENT_WISE_SIN},
         {"Slice", QNN_OP_STRIDED_SLICE},
@@ -158,6 +193,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Softmax", QNN_OP_SOFTMAX},
         {"Sqrt", QNN_OP_ELEMENT_WISE_SQUARE_ROOT},
         {"Sub", QNN_OP_ELEMENT_WISE_SUBTRACT},
+        {"Sum", QNN_OP_ELEMENT_WISE_ADD},
         {"Tanh", QNN_OP_TANH},
         {"Transpose", QNN_OP_TRANSPOSE},
         {"GridSample", QNN_OP_GRID_SAMPLE},
@@ -187,6 +223,7 @@ class BaseOpBuilder : public IOpBuilder {
 
         {"Reshape", QNN_OP_RESHAPE},
         {"Resize", QNN_OP_RESIZE},
+        {"Upsample", QNN_OP_RESIZE},
         {"Flatten", QNN_OP_RESHAPE},
         {"Squeeze", QNN_OP_RESHAPE},
         {"Unsqueeze", QNN_OP_RESHAPE},
@@ -213,85 +250,6 @@ class BaseOpBuilder : public IOpBuilder {
     ORT_ENFORCE(it != onnx_op_type_to_qnn_op_type.end());
     return it->second;
   }
-
-  // NCHW shape to channel last
-  template <typename T>
-  Status NchwShapeToNhwc(gsl::span<const T> nchw_shape, gsl::span<T> nhwc_shape) const {
-    ORT_RETURN_IF_NOT(nchw_shape.size() == 4, "shape should have 4 dimension NCHW.");
-    nhwc_shape[0] = nchw_shape[0];
-    nhwc_shape[1] = nchw_shape[2];
-    nhwc_shape[2] = nchw_shape[3];
-    nhwc_shape[3] = nchw_shape[1];
-
-    return Status::OK();
-  }
-
-  // NCHW shape to HWCN shape, required for Conv weight
-  template <typename T>
-  Status NchwShapeToHwcn(gsl::span<const T> nchw_shape, gsl::span<T> hwcn_shape) const {
-    if (nchw_shape.size() == 4) {
-      hwcn_shape[0] = nchw_shape[2];
-      hwcn_shape[1] = nchw_shape[3];
-      hwcn_shape[2] = nchw_shape[1];
-      hwcn_shape[3] = nchw_shape[0];
-    } else if (nchw_shape.size() == 5) {
-      hwcn_shape[0] = nchw_shape[2];
-      hwcn_shape[1] = nchw_shape[3];
-      hwcn_shape[2] = nchw_shape[4];
-      hwcn_shape[3] = nchw_shape[1];
-      hwcn_shape[4] = nchw_shape[0];
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
-    }
-
-    return Status::OK();
-  }
-
-  // CNHW shape to HWCN shape, required for Conv weight
-  template <typename T>
-  Status CnhwShapeToHwcn(gsl::span<const T> cnhw_shape, gsl::span<T> hwcn_shape) const {
-    if (cnhw_shape.size() == 4) {
-      hwcn_shape[0] = cnhw_shape[2];
-      hwcn_shape[1] = cnhw_shape[3];
-      hwcn_shape[2] = cnhw_shape[0];
-      hwcn_shape[3] = cnhw_shape[1];
-    } else if (cnhw_shape.size() == 5) {
-      hwcn_shape[0] = cnhw_shape[2];
-      hwcn_shape[1] = cnhw_shape[3];
-      hwcn_shape[2] = cnhw_shape[4];
-      hwcn_shape[3] = cnhw_shape[0];
-      hwcn_shape[4] = cnhw_shape[1];
-    } else {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported rank! only support 4 or 5.");
-    }
-
-    return Status::OK();
-  }
-
-  Status TransposeFromNchwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-                                 const onnx::TensorProto& initializer,
-                                 std::vector<uint8_t>& transposed_data,
-                                 bool is_3d = false) const;
-  Status TransposeFromNchwToHwcn(std::vector<int64_t>&& input_shape_dims,
-                                 size_t elem_byte_size,
-                                 gsl::span<const uint8_t> input_buffer,
-                                 gsl::span<uint8_t> output_buffer,
-                                 bool is_3d = false) const;
-
-  Status TransposeFromCnhwToHwcn(const QnnModelWrapper& qnn_model_wrapper,
-                                 const onnx::TensorProto& initializer,
-                                 std::vector<uint8_t>& transposed_data,
-                                 bool is_3d = false) const;
-  Status TransposeFromCnhwToHwcn(std::vector<int64_t>&& input_shape_dims,
-                                 size_t elem_byte_size,
-                                 gsl::span<const uint8_t> input_buffer,
-                                 gsl::span<uint8_t> output_buffer,
-                                 bool is_3d = false) const;
-
-  Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
-                               std::vector<uint32_t>& data_shape,
-                               const onnx::TensorProto& initializer,
-                               std::vector<uint8_t>& transposed_data) const;
 
   // Onnx Pads is [x1_begin, x2_begin, x1_end, x2_end], QNN requires [x1_begin, x1_end, x2_begin, x2_end]
   void ReArranagePads(std::vector<uint32_t>& pads) const {

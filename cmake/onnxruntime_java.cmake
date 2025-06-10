@@ -58,6 +58,15 @@ file(GLOB onnxruntime4j_native_src
 onnxruntime_add_shared_library_module(onnxruntime4j_jni ${onnxruntime4j_native_src})
 set_property(TARGET onnxruntime4j_jni PROPERTY C_STANDARD 11)
 
+if (APPLE)
+  set_target_properties(onnxruntime4j_jni PROPERTIES
+    MACOSX_RPATH TRUE
+    SKIP_BUILD_RPATH TRUE
+    INSTALL_RPATH_USE_LINK_PATH FALSE
+    BUILD_WITH_INSTALL_NAME_DIR TRUE
+    INSTALL_NAME_DIR @rpath)
+endif()
+
 # depend on java sources. if they change, the JNI should recompile
 add_dependencies(onnxruntime4j_jni onnxruntime4j)
 onnxruntime_add_include_to_target(onnxruntime4j_jni onnxruntime_session)
@@ -166,6 +175,28 @@ if (WIN32)
     if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
       add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_qnn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:onnxruntime_providers_qnn>)
     endif()
+    if (onnxruntime_USE_WEBGPU)
+      if (onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+        if (onnxruntime_USE_VCPKG)
+          add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE:Microsoft::DXIL>
+                $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+                ${JAVA_PACKAGE_LIB_DIR}/
+          )
+        else()
+          add_custom_command(
+            TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different
+                $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+                $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+                ${JAVA_PACKAGE_LIB_DIR}/
+          )
+        endif()
+      endif()
+      if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+        add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:dawn::webgpu_dawn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_FILE_NAME:dawn::webgpu_dawn>)
+      endif()
+    endif()
   endif()
 else()
   add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime>)
@@ -187,6 +218,9 @@ else()
   endif()
   if (onnxruntime_USE_QNN AND NOT onnxruntime_BUILD_QNN_EP_STATIC_LIB)
     add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:onnxruntime_providers_qnn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:onnxruntime_providers_qnn>)
+  endif()
+  if (onnxruntime_USE_WEBGPU AND onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    add_custom_command(TARGET onnxruntime4j_jni POST_BUILD COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:dawn::webgpu_dawn> ${JAVA_PACKAGE_LIB_DIR}/$<TARGET_LINKER_FILE_NAME:dawn::webgpu_dawn>)
   endif()
 endif()
 

@@ -5,6 +5,32 @@ import { Backend, InferenceSession, InferenceSessionHandler, SessionHandler } fr
 
 import { Binding, binding, initOrt } from './binding';
 
+const dataTypeStrings = [
+  undefined, // 0
+  'float32',
+  'uint8',
+  'int8',
+  'uint16',
+  'int16',
+  'int32',
+  'int64',
+  'string',
+  'bool',
+  'float16',
+  'float64',
+  'uint32',
+  'uint64',
+  undefined, // 14
+  undefined, // 15
+  undefined, // 16
+  undefined, // 17
+  undefined, // 18
+  undefined, // 19
+  undefined, // 20
+  'uint4',
+  'int4',
+] as const;
+
 class OnnxruntimeSessionHandler implements InferenceSessionHandler {
   #inferenceSession: Binding.InferenceSession;
 
@@ -17,8 +43,56 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
     } else {
       this.#inferenceSession.loadModel(pathOrBuffer.buffer, pathOrBuffer.byteOffset, pathOrBuffer.byteLength, options);
     }
-    this.inputNames = this.#inferenceSession.inputNames;
-    this.outputNames = this.#inferenceSession.outputNames;
+
+    // prepare input/output names and metadata
+    this.inputNames = [];
+    this.outputNames = [];
+    this.inputMetadata = [];
+    this.outputMetadata = [];
+
+    // this function takes raw metadata from binding and returns a tuple of the following 2 items:
+    // - an array of string representing names
+    // - an array of converted InferenceSession.ValueMetadata
+    const fillNamesAndMetadata = (
+      rawMetadata: readonly Binding.ValueMetadata[],
+    ): [names: string[], metadata: InferenceSession.ValueMetadata[]] => {
+      const names: string[] = [];
+      const metadata: InferenceSession.ValueMetadata[] = [];
+
+      for (const m of rawMetadata) {
+        names.push(m.name);
+        if (!m.isTensor) {
+          metadata.push({ name: m.name, isTensor: false });
+        } else {
+          const type = dataTypeStrings[m.type];
+          if (type === undefined) {
+            throw new Error(`Unsupported data type: ${m.type}`);
+          }
+          const shape: Array<number | string> = [];
+          for (let i = 0; i < m.shape.length; ++i) {
+            const dim = m.shape[i];
+            if (dim === -1) {
+              shape.push(m.symbolicDimensions[i]);
+            } else if (dim >= 0) {
+              shape.push(dim);
+            } else {
+              throw new Error(`Invalid dimension: ${dim}`);
+            }
+          }
+          metadata.push({
+            name: m.name,
+            isTensor: m.isTensor,
+            type,
+            shape,
+          });
+        }
+      }
+
+      return [names, metadata];
+    };
+
+    [this.inputNames, this.inputMetadata] = fillNamesAndMetadata(this.#inferenceSession.inputMetadata);
+    [this.outputNames, this.outputMetadata] = fillNamesAndMetadata(this.#inferenceSession.outputMetadata);
   }
 
   async dispose(): Promise<void> {
@@ -27,6 +101,9 @@ class OnnxruntimeSessionHandler implements InferenceSessionHandler {
 
   readonly inputNames: string[];
   readonly outputNames: string[];
+
+  readonly inputMetadata: InferenceSession.ValueMetadata[];
+  readonly outputMetadata: InferenceSession.ValueMetadata[];
 
   startProfiling(): void {
     // startProfiling is a no-op.

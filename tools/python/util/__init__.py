@@ -7,7 +7,8 @@ from .platform_helpers import is_linux, is_macOS, is_windows  # noqa: F401
 from .run import run  # noqa: F401
 from .vcpkg_helpers import (  # noqa: F401
     generate_android_triplets,
-    generate_posix_triplets,
+    generate_linux_triplets,
+    generate_macos_triplets,
     generate_vcpkg_triplets_for_emscripten,
     generate_windows_triplets,
 )

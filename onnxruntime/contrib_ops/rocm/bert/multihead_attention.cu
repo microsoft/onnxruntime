@@ -92,6 +92,8 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* past_value{};
   const Tensor* past_seq_len{};
 
+  const Tensor* cache_indirection = nullptr;
+
   if (attn_type_ == kMultiHeadAttention) {
     bias = context->Input<Tensor>(3);
     key_padding_mask = context->Input<Tensor>(4);
@@ -117,16 +119,24 @@ Status MultiHeadAttention<T>::ComputeInternal(OpKernelContext* context) const {
 
   auto& device_prop = GetDeviceProp();
   RocmAttentionParameters attn;
-  ORT_RETURN_IF_ERROR(
-      multihead_attention_helper::CheckInputs<Tensor>(
-          query, key, value, bias,
-          key_padding_mask, attention_bias,
-          past_key, past_value, past_seq_len,
-          &attn, num_heads_,
-          mask_filter_value_, scale_, false, /*is_unidirectional_*/
-          past_present_share_buffer_,
-          attn_type_,
-          device_prop.maxThreadsPerBlock));
+  ORT_RETURN_IF_ERROR(multihead_attention_helper::CheckInputs<Tensor>(query,
+                                                                      key,
+                                                                      value,
+                                                                      bias,
+                                                                      key_padding_mask,
+                                                                      attention_bias,
+                                                                      past_key,
+                                                                      past_value,
+                                                                      cache_indirection,
+                                                                      past_seq_len,
+                                                                      &attn, /* parameters */
+                                                                      num_heads_,
+                                                                      mask_filter_value_,
+                                                                      scale_,
+                                                                      is_unidirectional_,
+                                                                      past_present_share_buffer_,
+                                                                      attn_type_,
+                                                                      device_prop.maxThreadsPerBlock));
 
   if (attn_type_ == kDecoderMaskedMultiHeadAttention && attn.sequence_length != 1) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,

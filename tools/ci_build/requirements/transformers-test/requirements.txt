@@ -8,5 +8,7 @@ torch
 coloredlogs==15.0
 transformers==4.46.3
 parameterized>=0.8.1
+sentencepiece
 psutil
 einops
+onnxscript==0.2.3

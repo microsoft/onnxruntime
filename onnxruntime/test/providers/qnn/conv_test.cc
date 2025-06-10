@@ -87,12 +87,7 @@ static void RunCPUConvOpTest(const std::string& conv_op_type, const TestInputDef
                              int opset = 13,
                              float fp32_abs_err = 1e-5f) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto build_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads,
@@ -313,12 +308,7 @@ static void RunHTPConvOpTest(const std::string& conv_op_type, const TestInputDef
                              QDQTolerance tolerance = QDQTolerance(),
                              std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
@@ -351,12 +341,7 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
                                        QDQTolerance tolerance = QDQTolerance(),
                                        std::optional<OutputActivationInfo> output_activation = std::nullopt) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_fn = BuildF32ConvTestCase(conv_op_type, input_def, weights_def, bias_def, strides, pads, dilations,
@@ -371,7 +356,8 @@ static void RunHTPConvOpPerChannelTest(const std::string& conv_op_type, const Te
 // Check that QNN compiles DQ -> Conv -> Q as a single unit.
 // Tests bias as a dynamic input.
 // TODO: Segfaults when calling graphFinalize(). v2.13
-TEST_F(QnnCPUBackendTests, DISABLED_Convf32_dynamic_bias) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, Convf32_dynamic_bias) {
   RunCPUConvOpTest("Conv",
                    TestInputDef<float>({1, 1, 3, 3}, false, 0.0f, 10.0f),  // Random dynamic input
                    TestInputDef<float>({2, 1, 2, 2}, true, 0.0f, 1.0f),    // Random static weights
@@ -499,7 +485,8 @@ TEST_F(QnnCPUBackendTests, Convf32_AutoPadLower) {
 // Tests ConvTranspose's auto_pad value "SAME_LOWER" (compares to CPU EP).
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTransposef32_AutoPadLower) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTransposef32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                    TestInputDef<float>({1, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -516,7 +503,8 @@ TEST_F(QnnCPUBackendTests, DISABLED_ConvTransposef32_AutoPadLower) {
 // Exception from graphFinalize
 // Exception thrown at 0x00007FFFB7651630 (QnnCpu.dll) in onnxruntime_test_all.exe:
 // 0xC0000005: Access violation reading location 0x0000000000000000.
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose3D_f32_AutoPadLower) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTranspose3D_f32_AutoPadLower) {
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 1, 3, 3, 3}, false, -3.0f, 3.0f),  // Random dynamic input
                    TestInputDef<float>({1, 2, 2, 2, 2}, false, -1.0f, 1.0f),  // Random dynamic weights
@@ -642,7 +630,8 @@ TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_StaticWeights_DefaultBias) {
 // Test 1D ConvTranspose with dynamic weights (implemented in QNN EP as 2D convolution with height of 1).
 // 2.31 Exception from qnn_interface.graphAddNode
 // unknown file: error: SEH exception with code 0xc0000005 thrown in the test body
-TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose1Df32_DynamicWeights_DefaultBias) {
+// fixed by QNN 2.32
+TEST_F(QnnCPUBackendTests, ConvTranspose1Df32_DynamicWeights_DefaultBias) {
   std::vector<float> input_data = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f};
   RunCPUConvOpTest("ConvTranspose",
                    TestInputDef<float>({1, 2, 4}, false, input_data),                // Dynamic input
@@ -667,12 +656,7 @@ TEST_F(QnnCPUBackendTests, DISABLED_ConvTranspose1Df32_DynamicWeights_DefaultBia
 // So, Conv gets processed before Mul node
 TEST_F(QnnHTPBackendTests, Test_QDQConvWithDynamicWeightsFromMul) {
   ProviderOptions provider_options;
-
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto BuildConvMulGraph = [](ModelTestBuilder& builder) {
@@ -869,6 +853,34 @@ TEST_F(QnnHTPBackendTests, ConvU16U8_PerTensor_NoBias) {
                                       false,  // use_qdq_contrib_ops
                                       21);    // opset
 }
+
+#ifndef __linux__
+// Test per-channel QDQ Conv with uint16 input[0], uint8 weights, and no bias.
+// in0: u16, in1 (weight): s4, out: u8
+// Tests bug in QNN SDK 2.25 when validating Conv without a bias (QNN EP adds a dummy bias).
+TEST_F(QnnHTPBackendTests, ConvU16U16_PerTensor_NoBias) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(0.0f, 1.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+
+  RunHTPConvOpTest<uint16_t, uint16_t>("Conv",
+                                       input_def,
+                                       weight_def,
+                                       TestInputDef<float>(),
+                                       {1, 1},        // Strides
+                                       {0, 0, 0, 0},  // Pads
+                                       {1, 1},        // Dilations
+                                       1,             // default group
+                                       "NOTSET",
+                                       ExpectedEPNodeAssignment::All,
+                                       false,  // use_qdq_contrib_ops
+                                       21);    // opset
+}
+#endif
 
 TEST_F(QnnHTPBackendTests, ConvU16S4_PerChannel_NoBias_LargeINT4Weight) {
   std::vector<int64_t> input_shape = {1, 3072, 1, 512};
@@ -1324,6 +1336,36 @@ TEST_F(QnnHTPBackendTests, ConvTranspose3D_U8S8S32_PerChannel) {
                                               false,
                                               13);
 }
+
+#ifndef __linux__
+// Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
+TEST_F(QnnHTPBackendTests, ConvU16S16S32_PerChannel) {
+  std::vector<int64_t> input_shape = {1, 2, 4, 4};
+  std::vector<int64_t> weight_shape = {3, 2, 2, 2};
+  std::vector<int64_t> bias_shape = {3};
+
+  TestInputDef<float> input_def(input_shape, false,
+                                GetFloatDataInRange(-10.0f, 10.0f, TensorShape(input_shape).Size()));
+  TestInputDef<float> weight_def(weight_shape, true,
+                                 GetFloatDataInRange(-1.0f, 5.0f, TensorShape(weight_shape).Size()));
+  TestInputDef<float> bias_def(bias_shape, true,
+                               GetFloatDataInRange(-1.0f, 1.0f, TensorShape(bias_shape).Size()));
+
+  RunHTPConvOpPerChannelTest<uint16_t, int16_t>("Conv",
+                                                input_def,
+                                                weight_def,
+                                                bias_def,
+                                                0,             // weight quant axis
+                                                {1, 1},        // Strides
+                                                {0, 0, 0, 0},  // Pads
+                                                {1, 1},        // Dilations
+                                                1,             // default group
+                                                "NOTSET",
+                                                ExpectedEPNodeAssignment::All,
+                                                true,  // use_qdq_contrib_ops
+                                                13);   // opset
+}
+#endif
 
 // Test per-channel QDQ Conv. in0: u16, in1 (weight): s8, in2 (bias): s32, out: u16
 TEST_F(QnnHTPBackendTests, ConvU16S8S32_PerChannel) {

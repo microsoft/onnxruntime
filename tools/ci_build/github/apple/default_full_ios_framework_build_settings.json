@@ -18,6 +18,7 @@
             "--build_apple_framework",
             "--use_coreml",
             "--skip_tests",
+            "--no_kleidiai",
             "--cmake_extra_defines=onnxruntime_BUILD_UNIT_TESTS=OFF"
         ],
         "iphoneos": [

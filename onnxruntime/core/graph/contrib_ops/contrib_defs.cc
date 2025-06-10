@@ -1188,7 +1188,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(BeamSearch, 1,
 
 ONNX_MS_OPERATOR_SET_SCHEMA(WhisperBeamSearch, 1,
                             OpSchema()
-                                .SetDoc("Beam Search for whisper model, especiall with cross_qk features etc.")
+                                .SetDoc("Beam Search for whisper model, especially with cross_qk features etc.")
                                 .Attr("eos_token_id", "The id of the end-of-sequence token", AttributeProto::INT)
                                 .Attr("pad_token_id", "The id of the padding token", AttributeProto::INT)
                                 .Attr("decoder_start_token_id", "The id of the token that indicates decoding starts (i.e. the start of transcription token id)", AttributeProto::INT, static_cast<int64_t>(-1))
@@ -2079,7 +2079,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(MatMulFpQ4, 1,
                                 .SetDoc(R"DOC(
 Matrix product with right hand matrix being pre-packed and quantized int4 data blob.
 During quantization, the matrix is divided into blocks, where each block is a
-continguous subset inside each column. Each block is quantized into a
+contiguous subset inside each column. Each block is quantized into a
 sequence of 4b integers with a scaling factor and an optional offset.
 Currently 3 quantization types are supported:
 (0): block size 32, no offset, (1): block size 32, with offset, (2): block size 64,
@@ -2691,12 +2691,12 @@ ONNX_MS_OPERATOR_SET_SCHEMA(GemmFloat8, 1,
                                 .SetDoc(R"DOC(Generic Gemm for float and float 8.)DOC")
                                 .Attr(
                                     "transA",
-                                    "Whether A should be transposed. Float 8 only supprted transA=0.",
+                                    "Whether A should be transposed. Float 8 only supported transA=0.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
                                     "transB",
-                                    "Whether B should be transposed. Float 8 only supprted transB=1.",
+                                    "Whether B should be transposed. Float 8 only supported transB=1.",
                                     AttributeProto::INT,
                                     static_cast<int64_t>(0))
                                 .Attr(
@@ -3361,7 +3361,8 @@ void RegisterContribSchemas() {
           OpSchema::NonDifferentiable)
       .TypeConstraint(
           "T",
-          {"tensor(int8)",
+          {"tensor(bool)",
+           "tensor(int8)",
            "tensor(int16)",
            "tensor(int32)",
            "tensor(int64)",
@@ -3387,7 +3388,7 @@ where
 scale = 1. / (1. - ratio).
 ```
 
-This op functions in much the same was as Dropout-11 and Dropout-13 do, execpt that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
+This op functions in much the same was as Dropout-11 and Dropout-13 do, except that the mask is output as a bit-packed uint32 tensor, instead of a boolean tensor.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(BitmaskDropout)
@@ -3570,10 +3571,11 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
   1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
      `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
   2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
-     If `zero_points` is not provided, 0 is the zero point.
+     If `zero_points` is not provided, 0 is the zero point except when data is uint8 type then the default zero point is 8.
   3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
      to dequantize the output.
   4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
+  5. For uint8 data, the `gather_axis` must be 0.
 )DOC";
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(GatherBlockQuantized)
@@ -3601,7 +3603,7 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
       .Input(2, "scales", "quantization scale", "T2")
       .Input(3, "zero_points", "quantization zero points", "T1", OpSchema::Optional)
       .Output(0, "output", "Dequantized output tensor of rank q + (r - 1).", "T2")
-      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)"}, "Constrain quantized types.")
+      .TypeConstraint("T1", {"tensor(int4)", "tensor(uint4)", "tensor(uint8)"}, "Constrain quantized types.")
       .TypeConstraint("T2", {"tensor(float)", "tensor(float16)", "tensor(bfloat16)"}, "Constrain dequantized types.")
       .TypeConstraint("Tind", {"tensor(int32)", "tensor(int64)"}, "Constrain indices to integer types.")
       .TypeAndShapeInferenceFunction([](ONNX_NAMESPACE::InferenceContext& ctx) {
@@ -3636,14 +3638,19 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
         gather_axis = (gather_axis + r) % r;
         quantize_axis = (quantize_axis + r) % r;
 
+        if ((ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) && gather_axis != 0) {
+          fail_shape_inference("gather_axis must be 0, for uint8 data");
+        }
+
         if (scales_shape.dim_size() != r) {
           fail_shape_inference("scales must have the same rank as data");
         }
 
+        uint32_t components = ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8 ? 2 : 1;
         for (int i = 0; i < r; ++i) {
           if (!data_shape.dim(i).has_dim_value() ||
               !scales_shape.dim(i).has_dim_value() ||
-              (i == quantize_axis && (data_shape.dim(i).dim_value() + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
+              (i == quantize_axis && (data_shape.dim(i).dim_value() * components + block_size - 1) / block_size != scales_shape.dim(i).dim_value()) ||
               (i != quantize_axis && data_shape.dim(i).dim_value() != scales_shape.dim(i).dim_value())) {
             fail_shape_inference("data shape and scales shape do not match");
           }
@@ -3651,6 +3658,10 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
 
         // validate zero point shape
         if (ctx.hasInput(3)) {
+          if (ctx.getInputType(0)->tensor_type().elem_type() == onnx::TensorProto_DataType_UINT8) {
+            fail_type_inference("zero_points are not supported for uint8_t data type");
+          }
+
           if (!hasInputShape(ctx, 3)) {
             fail_shape_inference("zero_points shape must be known");
           }
@@ -3674,12 +3685,15 @@ GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (h
           ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape();
         }
         for (int i = 0; i < out_rank; ++i) {
+          // For uint8_t data type the last dimension needs to be expanded back to actual dimension,
+          // because the data 2 int4s are stored packed in a single uint8_t.
+          auto last_dimension_components = (i == out_rank - 1) ? components : 1;
           *ctx.getOutputType(0)->mutable_tensor_type()->mutable_shape()->add_dim() =
               (i < gather_axis)
                   ? data_shape.dim(i)
               : (i >= gather_axis && i < gather_axis + q)
                   ? indices_shape.dim(i - gather_axis)
-                  : data_shape.dim(i - q + 1);
+                  : data_shape.dim(i - q + 1) * last_dimension_components;
         }
       });
 

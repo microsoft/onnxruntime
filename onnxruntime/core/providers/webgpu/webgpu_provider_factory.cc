@@ -143,13 +143,33 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
     }
   }
 
+  std::string preserve_device_str;
+  bool preserve_device = false;
+  if (config_options.TryGetConfigEntry(kPreserveDevice, preserve_device_str)) {
+    if (preserve_device_str == kPreserveDevice_ON) {
+      preserve_device = true;
+    } else if (preserve_device_str == kPreserveDevice_OFF) {
+      preserve_device = false;
+    } else {
+      ORT_THROW("Invalid preserve device: ", preserve_device_str);
+    }
+  }
+
   webgpu::WebGpuContextConfig context_config{
       context_id,
       reinterpret_cast<WGPUInstance>(webgpu_instance),
       reinterpret_cast<WGPUDevice>(webgpu_device),
       reinterpret_cast<const void*>(dawn_proc_table),
       validation_mode,
+      preserve_device,
   };
+
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP Device ID: " << context_id;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUInstance: " << webgpu_instance;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP WGPUDevice: " << webgpu_device;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP DawnProcTable: " << dawn_proc_table;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP ValidationMode: " << validation_mode;
+  LOGS_DEFAULT(VERBOSE) << "WebGPU EP PreserveDevice: " << preserve_device;
 
   //
   // STEP.3 - prepare parameters for WebGPU context initialization.

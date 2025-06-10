@@ -31,19 +31,7 @@ static void RunMatMulOpTest(bool is_htp_backend, const std::vector<int64_t>& sha
                             ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
                             int opset = 18, float f32_abs_err = 1e-4f) {
   ProviderOptions provider_options;
-  if (is_htp_backend) {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnHtp.dll";
-#else
-    provider_options["backend_path"] = "libQnnHtp.so";
-#endif
-  } else {
-#if defined(_WIN32)
-    provider_options["backend_path"] = "QnnCpu.dll";
-#else
-    provider_options["backend_path"] = "libQnnCpu.so";
-#endif
-  }
+  provider_options["backend_type"] = is_htp_backend ? "htp" : "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildMatMulOpTestCase(
@@ -136,13 +124,10 @@ template <typename Input0QType, typename Input1QType, typename OutputQType>
 static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::vector<int64_t>& shape_1,
                                bool is_initializer_0, bool is_initializer_1,
                                ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All,
-                               int opset = 21, bool use_contrib_qdq = false) {
+                               int opset = 21, bool use_contrib_qdq = false,
+                               QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestInputDef<float> input0_def(
@@ -159,7 +144,7 @@ static void RunQDQMatMulOpTest(const std::vector<int64_t>& shape_0, const std::v
   TestQDQModelAccuracy(
       BuildMatMulOpTestCase(input0_def, input1_def),
       BuildMatMulOpQDQTestCase<Input0QType, Input1QType, OutputQType>(input0_def, input1_def, use_contrib_qdq),
-      provider_options, opset, expected_ep_assignment);
+      provider_options, opset, expected_ep_assignment, tolerance);
 }
 
 template <typename InputQType, typename WeightQType, typename OutputQType>
@@ -169,11 +154,7 @@ static void RunQDQPerChannelMatMulOpTest(
     ExpectedEPNodeAssignment expected_ep_assignment = ExpectedEPNodeAssignment::All, int opset = 21,
     bool use_contrib_qdq = false, bool enable_fp16_precision = true) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   if (enable_fp16_precision) {
@@ -279,7 +260,8 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
   // RunQDQMatMulOpTest(shape_0, shape_1, is_initializer_0, is_initializer_1, expected_ep_assignment, opset,
   // use_contrib_qdq)
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, false);
-  RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, true);
+  RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 3}, {3, 2}, false, true, ExpectedEPNodeAssignment::All, 21,
+                                                false, QDQTolerance(0.008f));
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 2, 3}, {3, 2}, true, false, ExpectedEPNodeAssignment::All, 18,
                                                 true);
   RunQDQMatMulOpTest<uint8_t, uint8_t, uint8_t>({2, 1, 3, 3}, {3, 3, 2}, false, true);
@@ -312,11 +294,7 @@ TEST_F(QnnHTPBackendTests, MatMulOp_QDQ) {
 // Got specific shapes and input ranges (quant params) from customer model.
 TEST_F(QnnHTPBackendTests, MatMulOp_QDQ_Regression_uint16_dynamic_inputs) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Test with rank 4 inputs

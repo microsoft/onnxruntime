@@ -6,33 +6,12 @@
 #include <cuda_fp16.h>
 #include <cublas_v2.h>
 #include "contrib_ops/cpu/bert/attention_common.h"
+#include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "contrib_ops/cuda/bert/attention_data.h"
 
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
-
-template <typename T>
-struct PackedMultiHeadAttentionData {
-  const T* query;
-  const T* key;
-  const T* value;
-  const T* bias;
-  const T* attention_bias;
-
-  const int32_t* token_offset;
-  const int32_t* cumulative_sequence_length;
-
-  AttentionQkvFormat source_qkv_format;
-
-  bool no_qkv_workspace;
-  T* workspace;
-  T* output;
-
-  void* fused_runner;
-
-  bool use_flash_attention;
-  bool use_memory_efficient_attention;
-};
 
 template <typename T>
 Status QkvToContext(

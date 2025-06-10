@@ -49,6 +49,8 @@ steps:
     docker version
     docker image ls
     docker system df
+    docker info  |grep '^\s* Docker Root'
+    df -h
   displayName: Check Docker Images
 
 - ${{ if eq(parameters.UseImageCacheContainerRegistry, true) }}:

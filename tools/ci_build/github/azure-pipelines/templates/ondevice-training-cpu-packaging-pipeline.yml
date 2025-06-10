@@ -297,10 +297,6 @@ stages:
         msbuildArguments: '-t:Clean -p:OnnxRuntimeBuildDirectory="$(Build.BinariesDirectory)" -p:OrtPackageId=$(OrtPackageId)'
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
-    - template: component-governance-component-detection-steps.yml
-      parameters :
-        condition : 'succeeded'
-
 
 - template: ../nuget/templates/test_win.yml
   parameters:

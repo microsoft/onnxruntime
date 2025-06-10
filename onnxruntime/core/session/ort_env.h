@@ -4,11 +4,11 @@
 #pragma once
 #include <atomic>
 #include <string>
-#include "core/session/onnxruntime_c_api.h"
 #include <mutex>
 #include "core/common/status.h"
 #include "core/common/logging/logging.h"
 #include "core/framework/allocator.h"
+#include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
 class Environment;
@@ -38,7 +38,11 @@ struct OrtEnv {
   static void Release(OrtEnv* env_ptr);
 
   const onnxruntime::Environment& GetEnvironment() const {
-    return *(value_.get());
+    return *value_;
+  }
+
+  onnxruntime::Environment& GetEnvironment() {
+    return *value_;
   }
 
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;

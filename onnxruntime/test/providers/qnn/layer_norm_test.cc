@@ -23,11 +23,7 @@ static void RunLayerNormCpuTest(const TestInputDef<float>& input_def,
                                 const std::vector<ONNX_NAMESPACE::AttributeProto>& attrs,
                                 ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),
@@ -148,11 +144,7 @@ static void RunLayerNormQDQTest(const TestInputDef<float>& input_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment,
                                 bool use_contrib_qdq_ops = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   TestQDQModelAccuracy(BuildOpTestCase<float>("LayerNormalization", {input_def, scale_def}, {}, attrs),

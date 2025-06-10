@@ -16,44 +16,28 @@ class CudaTensorConsoleDumper : public onnxruntime::contrib::IConsoleDumper {
   CudaTensorConsoleDumper();
   virtual ~CudaTensorConsoleDumper() {}
 
-  void Print(const char* name, const size_t* tensor, int dim0, int dim1) const override;
-
-  void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const override;
-  void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const override;
-  void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2, int dim3) const override;
-  void Print(const char* name, const int32_t* tensor, gsl::span<const int64_t>& dims) const override;
-
-  void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const override;
-  void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const override;
-  void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2, int dim3) const override;
-  void Print(const char* name, const int64_t* tensor, gsl::span<const int64_t>& dims) const override;
-
-  void Print(const char* name, const float* tensor, int dim0, int dim1) const override;
-  void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const override;
-  void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const override;
-  void Print(const char* name, const float* tensor, gsl::span<const int64_t>& dims) const override;
-
-  void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const override;
-  void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const override;
-  void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const override;
-  void Print(const char* name, const MLFloat16* tensor, gsl::span<const int64_t>& dims) const override;
-
-  void Print(const char* name, const half* tensor, int dim0, int dim1) const;
-  void Print(const char* name, const half* tensor, int dim0, int dim1, int dim2) const;
-  void Print(const char* name, const half* tensor, int dim0, int dim1, int dim2, int dim3) const;
-  void Print(const char* name, const half* tensor, gsl::span<const int64_t>& dims) const;
-
-  void Print(const char* name, const BFloat16* tensor, int dim0, int dim1) const;
-  void Print(const char* name, const BFloat16* tensor, int dim0, int dim1, int dim2) const;
-  void Print(const char* name, const BFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const;
-  void Print(const char* name, const BFloat16* tensor, gsl::span<const int64_t>& dims) const;
-
   void Print(const char* name, const Tensor& value) const override;
   void Print(const char* name, const OrtValue& value) const override;
-  void Print(const char* name, int index, bool end_line) const override;
-  void Print(const char* name, const std::string& value, bool end_line) const override;
-
   void Print(const std::string& value) const override;
+
+#define CUDA_DUMPER_PRINT_TYPE(dtype)                                                              \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1) const;                     \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const;           \
+  void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const; \
+  void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const;
+
+  CUDA_DUMPER_PRINT_TYPE(int8_t)
+  CUDA_DUMPER_PRINT_TYPE(uint8_t)
+  CUDA_DUMPER_PRINT_TYPE(int32_t)
+  CUDA_DUMPER_PRINT_TYPE(int64_t)
+  CUDA_DUMPER_PRINT_TYPE(float)
+  CUDA_DUMPER_PRINT_TYPE(MLFloat16)
+  CUDA_DUMPER_PRINT_TYPE(BFloat16)
+  CUDA_DUMPER_PRINT_TYPE(UInt4x2)
+  CUDA_DUMPER_PRINT_TYPE(Int4x2)
+  CUDA_DUMPER_PRINT_TYPE(half)
+
+#undef CUDA_DUMPER_PRINT_TYPE
 };
 
 }  // namespace cuda

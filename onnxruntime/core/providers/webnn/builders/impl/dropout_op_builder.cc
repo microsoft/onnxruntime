@@ -24,7 +24,7 @@ class DropoutOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& initializers, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -58,7 +58,7 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   if (output_defs.size() > 1) {
     std::vector<int64_t> mask_shape;
     ORT_RETURN_IF_NOT(GetShape(*output_defs[1], mask_shape, logger), "Cannot get mask output's shape");
-    std::vector<uint32_t> dims = GetVecUint32FromVecInt64(mask_shape);
+    std::vector<uint32_t> dims = GetNarrowedIntfromInt64<uint32_t>(mask_shape);
     emscripten::val one_constant = model_builder.CreateOrGetConstant<uint8_t>(
         ONNX_NAMESPACE::TensorProto_DataType_BOOL, 1, dims);
 
@@ -73,7 +73,7 @@ Status DropoutOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool DropoutOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool DropoutOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                          const Node& node,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {

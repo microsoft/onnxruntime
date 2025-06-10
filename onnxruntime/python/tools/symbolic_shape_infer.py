@@ -126,6 +126,7 @@ class SymbolicShapeInference:
     def __init__(self, int_max, auto_merge, guess_output_rank, verbose, prefix=""):
         self.dispatcher_ = {
             "Add": self._infer_symbolic_compute_ops,
+            "AllReduce": self._pass_on_shape_and_type,
             "ArrayFeatureExtractor": self._infer_ArrayFeatureExtractor,
             "AveragePool": self._infer_Pool,
             "BatchNormalization": self._infer_BatchNormalization,
@@ -147,7 +148,6 @@ class SymbolicShapeInference:
             "GatherElements": self._infer_GatherElements,
             "GatherND": self._infer_GatherND,
             "Identity": self._pass_on_shape_and_type,
-            "AllReduce": self._pass_on_shape_and_type,
             "If": self._infer_If,
             "Loop": self._infer_Loop,
             "MatMul": self._infer_MatMul,
@@ -199,9 +199,11 @@ class SymbolicShapeInference:
             "BiasSplitGelu": self._infer_BiasSplitGelu,
             "DecoderMaskedMultiHeadAttention": self._infer_DecoderMaskedMultiHeadAttention,
             "DequantizeLinear": self._infer_DequantizeLinear,
+            "DynamicTimeWarping": self._infer_DynamicTimeWarping,
             "EmbedLayerNormalization": self._infer_EmbedLayerNormalization,
             "FastGelu": self._infer_FastGelu,
             "GatedRelativePositionBias": self._infer_GatedRelativePositionBias,
+            "GatherBlockQuantized": self._infer_Gather,
             "Gelu": self._infer_Gelu,
             "GemmFastGelu": self._infer_GemmFastGelu,
             "GemmFloat8": self._infer_GemmFloat8,
@@ -217,6 +219,8 @@ class SymbolicShapeInference:
             "PackedMultiHeadAttention": self._infer_PackedMultiHeadAttention,
             "PagedAttention": self._infer_PagedAttention,
             "PythonOp": self._infer_PythonOp,
+            "QLinearAdd": self._infer_QLinearBinary,
+            "QLinearMul": self._infer_QLinearBinary,
             "QuantizeLinear": self._infer_QuantizeLinear,
             "QuickGelu": self._infer_FastGelu,
             "RelativePositionBias": self._infer_RelativePositionBias,
@@ -228,6 +232,7 @@ class SymbolicShapeInference:
             "SkipLayerNormalization": self._infer_SkipLayerNormalization,
             "SkipSimplifiedLayerNormalization": self._infer_SkipLayerNormalization,
             "SparseAttention": self._infer_SparseAttention,
+            "UnfoldTensor": self._infer_UnfoldTensor,
         }
         self.aten_op_dispatcher_ = {
             "embedding": self._infer_Gather,
@@ -456,35 +461,39 @@ class SymbolicShapeInference:
             "SplitToSequence",
             "ZipMap",  # contrib ops
             "Attention",
+            "BiasAdd",
             "BiasGelu",
+            "BiasSplitGelu",
+            "DequantizeLinear",
+            "DynamicTimeWarping",
             "EmbedLayerNormalization",
             "FastGelu",
+            "GatherBlockQuantized",
             "Gelu",
             "GemmFastGelu",
-            "LayerNormalization",
-            "LongformerAttention",
-            "DequantizeLinear",
-            "QuantizeLinear",
-            "RelativePositionBias",
-            "RemovePadding",
-            "RestorePadding",
-            "SimplifiedLayerNormalization",
-            "SkipLayerNormalization",
-            "SkipSimplifiedLayerNormalization",
-            "PackedAttention",
-            "PagedAttention",
-            "PythonOp",
-            "MultiHeadAttention",
             "GroupNorm",
             "GroupNormalization",
             "GroupQueryAttention",
+            "LayerNormalization",
+            "LongformerAttention",
+            "MultiHeadAttention",
+            "NhwcConv",
+            "PackedAttention",
+            "PagedAttention",
+            "PythonOp",
+            "QuantizeLinear",
+            "QuickGelu",
+            "RelativePositionBias",
+            "RemovePadding",
+            "RestorePadding",
+            "RotaryEmbedding",
+            "SimplifiedLayerNormalization",
+            "SkipLayerNormalization",
+            "SkipSimplifiedLayerNormalization",
             "SparseAttention",
             "SkipGroupNorm",
-            "BiasSplitGelu",
-            "BiasAdd",
-            "NhwcConv",
-            "QuickGelu",
-            "RotaryEmbedding",
+            "QLinearAdd",
+            "QLinearMul",
         ]
 
         if not skip_infer:
@@ -1035,6 +1044,20 @@ class SymbolicShapeInference:
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
+    def _infer_QLinearBinary(self, node):  # noqa: N802
+        # Get the output data type from the first input to QLinearAdd / QLinearMul.
+        output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+
+        # The inputs are first and fourth operands respectively.
+        input_1_shape = self._get_shape(node, 0)
+        input_2_shape = self._get_shape(node, 3)
+
+        # Compute the broadcasted shape
+        new_shape = self._broadcast_shapes(input_1_shape, input_2_shape)
+
+        vi = self.known_vi_[node.output[0]]
+        vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, new_shape))
+
     def _infer_Einsum(self, node):  # noqa: N802
         # ref:https://github.com/onnx/onnx/blob/623dfaa0151b2e4ce49779c3ec31cbd78c592b80/onnx/defs/math/defs.cc#L3275
         equation = get_attribute(node, "equation")
@@ -1118,10 +1141,17 @@ class SymbolicShapeInference:
         axis = handle_negative_axis(get_attribute(node, "axis", 0), len(data_shape))
         indices_shape = self._get_shape(node, 1)
         vi = self.known_vi_[node.output[0]]
+        if node.op_type == "Gather":
+            elem_type = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+        elif node.op_type == "GatherBlockQuantized":
+            # scales
+            elem_type = self.known_vi_[node.input[2]].type.tensor_type.elem_type
+        else:
+            raise ValueError(f"Unsupported Gather op_type: {node.op_type}")
         vi.CopyFrom(
             helper.make_tensor_value_info(
                 node.output[0],
-                self.known_vi_[node.input[0]].type.tensor_type.elem_type,
+                elem_type,
                 data_shape[:axis] + indices_shape + data_shape[axis + 1 :],
             )
         )
@@ -2403,6 +2433,42 @@ class SymbolicShapeInference:
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
                     vi = self.known_vi_[node.output[2]]
                     vi.CopyFrom(helper.make_tensor_value_info(vi.name, output_dtype, past_shape))
+
+    def _infer_UnfoldTensor(self, node):  # noqa: N802
+        input_shape = self._get_shape(node, 0)
+        if input_shape is not None:
+            output_shape = input_shape.copy()
+            output_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
+            assert output_dtype is not None
+
+            rank, dim, size, step = len(input_shape), None, None, None
+            for attr in node.attribute:
+                if attr.name == "dim":
+                    dim = attr.i
+                    dim = rank + dim if dim == -1 else dim
+                elif attr.name == "size":
+                    size = attr.i
+                elif attr.name == "step":
+                    step = attr.i
+
+            output_shape.append(size)
+            output_shape[dim] = (input_shape[dim] - size) // step + 1
+
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
+
+    def _infer_DynamicTimeWarping(self, node):  # noqa: N802
+        # Input 0 has shape M x N or 1 x M x N
+        # Output 0 has shape (2, O) where max(M, N) <= O < M + N
+        input_shape = self._get_shape(node, 0)
+        if input_shape is not None:
+            shape_len = len(input_shape)
+            assert shape_len == 2 or shape_len == 3
+            M, N = input_shape[shape_len - 2], input_shape[shape_len - 1]  # noqa: N806
+            output_shape = [2, f"max({M}, {N}) <= O < {M} + {N}"]
+            output_dtype = onnx.TensorProto.FLOAT
+            vi = self.known_vi_[node.output[0]]
+            vi.CopyFrom(helper.make_tensor_value_info(node.output[0], output_dtype, output_shape))
 
     def _infer_FastGelu(self, node):  # noqa: N802
         self._propagate_shape_and_type(node)

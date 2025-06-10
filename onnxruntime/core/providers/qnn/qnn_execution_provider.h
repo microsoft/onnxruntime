@@ -30,7 +30,9 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const onnxruntime::GraphViewer& graph_view,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& /* graph_optimizer_registry */,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
@@ -49,6 +51,8 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
+  OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
+
  private:
   std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewer,
                                                     const std::unordered_map<const Node*, const NodeUnit*>& node_unit_map,
@@ -64,7 +68,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+  void InitQnnHtpGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 
@@ -89,6 +93,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   uint32_t default_rpc_control_latency_ = 0;
   bool enable_HTP_FP16_precision_ = true;
   bool share_ep_contexts_ = false;
+  bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #if defined(_WIN32)
   onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;

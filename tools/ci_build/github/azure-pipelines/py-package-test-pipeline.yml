@@ -29,12 +29,14 @@ stages:
       parameters:
         job_name: Test_MAC_Wheels
         machine_pool:
-          vmImage: 'macOS-13'
+          vmImage: 'macOS-14'
         itemPattern: '*/*mac*x86_64.whl'
+        arch: 'x86_64'
     - template: templates/py-package-smoking-test.yml
       parameters:
         job_name: Test_LINUX_x86_64_Wheels
         itemPattern: '*/*manylinux*x86_64.whl'
+        arch: 'x86_64'
         machine_pool:
           name: 'onnxruntime-Ubuntu2204-AMD-CPU'
 

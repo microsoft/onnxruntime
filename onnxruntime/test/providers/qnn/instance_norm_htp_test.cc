@@ -74,11 +74,7 @@ static void RunInstanceNormQDQTest(const TestInputDef<float>& input_def,
                                    ExpectedEPNodeAssignment expected_ep_assignment,
                                    bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   // Runs model with DQ-> InstanceNorm -> Q and compares the outputs of the CPU and QNN EPs.

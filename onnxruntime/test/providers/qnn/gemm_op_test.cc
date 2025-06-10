@@ -24,11 +24,7 @@ static void RunGemmTestOnCPU(const std::vector<TestInputDef<DataType>>& input_de
                              int opset = 13) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
   provider_options["offload_graph_io_quantization"] = "0";
 
   RunQnnModelTest(BuildOpTestCase<float>("Gemm", input_defs, {}, attrs),
@@ -178,6 +174,43 @@ TEST_F(QnnCPUBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
                           ExpectedEPNodeAssignment::All);
 }
 
+namespace {
+GetTestModelFn BuildReshapeGemmTestCase(const TestInputDef<float>& input, const TestInputDef<int64_t>& shape,
+                                        const TestInputDef<float>& weight, const TestInputDef<float>& bias) {
+  return [&](ModelTestBuilder& builder) {
+    std::vector<NodeArg*> reshape_inputs = {MakeTestInput<float>(builder, input),
+                                            MakeTestInput<int64_t>(builder, shape)};
+    auto* reshape_output = builder.MakeIntermediate();
+    builder.AddNode("Reshape", reshape_inputs, {reshape_output});
+    NodeArg* output = builder.MakeOutput();
+    std::vector<NodeArg*> gemm_inputs = {reshape_output, MakeTestInput<float>(builder, weight),
+                                         MakeTestInput<float>(builder, bias)};
+    builder.AddNode("Gemm", gemm_inputs, {output});
+  };
+}
+
+void RunCPUReshapeGemmTest(const TestInputDef<float>& input, const TestInputDef<int64_t>& shape,
+                           const TestInputDef<float>& weight, const TestInputDef<float>& bias,
+                           ExpectedEPNodeAssignment expected_ep_assignment, float fp32_abs_err = 1e-5f) {
+  ProviderOptions provider_options;
+
+  provider_options["backend_type"] = "cpu";
+  auto build_fn = BuildReshapeGemmTestCase(input, shape, weight, bias);
+  RunQnnModelTest(build_fn, provider_options, 18, expected_ep_assignment, fp32_abs_err);
+}
+
+}  // namespace
+
+TEST_F(QnnCPUBackendTests, ReshapeGemmFusion) {
+  std::vector<float> input_data = {1.0f, 2.0f, 3.0f, 4.0f, -1.0f, -2.0f, -3.0f, -4.0f};
+  std::vector<int64_t> shape_data = {4, 2};
+  std::vector<float> weight_data(6, 1.0f);
+  std::vector<float> bias_data = {1.0f, 2.0f, 3.0f};
+  RunCPUReshapeGemmTest(TestInputDef<float>({2, 2, 2}, false, input_data), TestInputDef<int64_t>({2}, true, shape_data),
+                        TestInputDef<float>({2, 3}, true, weight_data), TestInputDef<float>({3}, true, bias_data),
+                        ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
@@ -242,11 +275,7 @@ static void RunQDQGemmTestOnHTP(const std::vector<TestInputDef<float>>& input_de
                                 QDQTolerance tolerance = QDQTolerance()) {
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   auto f32_model_builder = BuildOpTestCase<float>("Gemm", input_defs, {}, attrs);

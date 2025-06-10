@@ -63,7 +63,10 @@ Abstract:
 #endif
 #if defined(__wasm__)
 #define MLAS_TARGET_WASM
-#if defined(__wasm_simd128__)
+#if defined(__wasm_relaxed_simd__)
+#define MLAS_TARGET_WASM_RELAXED_SIMD
+#define MLAS_TARGET_WASM_SIMD
+#elif defined(__wasm_simd128__)
 #define MLAS_TARGET_WASM_SIMD
 #else
 #define MLAS_TARGET_WASM_SCALAR
@@ -1030,6 +1033,16 @@ MlasComputeSoftcap(
     T cap
     );
 
+template <typename T>
+void
+MLASCALL
+MlasEltwiseAdd(
+    const T* left,
+    const T* right,
+    T* output,
+    size_t N
+    );
+
 template<typename T>
 void
 MLASCALL
@@ -1043,49 +1056,15 @@ MlasComputeTanh(
 // Transpose routines.
 //
 
+template<typename DataType>
 void
 MLASCALL
 MlasTranspose(
-    const uint8_t* Input,
-    uint8_t* Output,
+    const DataType* Input,
+    DataType* Output,
     size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const int8_t* Input,
-    int8_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint16_t* Input,
-    uint16_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const uint32_t* Input,
-    uint32_t* Output,
-    size_t M,
-    size_t N
-    );
-
-void
-MLASCALL
-MlasTranspose(
-    const float* Input,
-    float* Output,
-    size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     );
 
 //
@@ -1464,8 +1443,8 @@ void
 MLASCALL
 MlasRotaryEmbedOneRow(
     const T* input,
-    const T* sin,
-    const T* cos,
+    const T* sin_data,
+    const T* cos_data,
     size_t dim,
     bool interleaved,
     T* output
@@ -1491,6 +1470,17 @@ struct MLAS_HGEMM_DATA_PARAMS {
 bool
 MLASCALL
 MlasHGemmSupported(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB
+    );
+
+/**
+ * @brief Check whether mlas supports GQA kernels with the type and transpose settings.
+ */
+template <typename T>
+bool
+MLASCALL
+MlasGQASupported(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB
     );
@@ -1916,20 +1906,22 @@ MlasConvDepthwise(
     MLAS_HALF_GEMM_POSTPROCESSOR* PostProc
     );
 
-
 inline
 void
 MlasTranspose(
     const MLAS_FP16* Input,
     MLAS_FP16* Output,
     size_t M,
-    size_t N
+    size_t N,
+    MLAS_THREADPOOL* ThreadPool
     )
 {
     MlasTranspose(
         reinterpret_cast<const uint16_t*>(Input),
         reinterpret_cast<uint16_t*>(Output),
-        M, N);
+        M,
+        N,
+        ThreadPool);
 }
 
 

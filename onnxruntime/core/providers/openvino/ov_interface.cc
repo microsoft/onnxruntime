@@ -14,15 +14,6 @@ namespace onnxruntime {
 namespace openvino_ep {
 
 static const std::string log_tag = "[OpenVINO-EP] ";
-static std::unique_ptr<ov::Core> g_core;
-
-void OVCore::Initialize() {
-  g_core = std::make_unique<ov::Core>();
-}
-
-void OVCore::Teardown() {
-  g_core.reset();
-}
 
 #ifndef NDEBUG
 void printDebugInfo(const ov::CompiledModel& obj) {
@@ -55,9 +46,20 @@ void printDebugInfo(const ov::CompiledModel& obj) {
 }
 #endif
 
-std::shared_ptr<OVNetwork> OVCore::ReadModel(const std::string& model, const std::string& model_path) {
+// Function to check if a given OV property is enabled
+std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type) {
   try {
-    std::istringstream modelStringStream(model);
+    // Get the property value
+    auto supported_properties = OVCore::Get()->core.get_property(device_type, ov::supported_properties);
+    return std::find(supported_properties.begin(), supported_properties.end(), property) != supported_properties.end();
+  } catch (const std::exception&) {
+    return std::nullopt;  // Property not found or invalid
+  }
+}
+
+std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
+  try {
+    std::istringstream modelStringStream(std::move(model));
     std::istream& modelStream = modelStringStream;
     // Try to load with FrontEndManager
     ov::frontend::FrontEndManager manager;
@@ -86,7 +88,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& ie_cnn_netwo
                                   const std::string& name) {
   ov::CompiledModel obj;
   try {
-    obj = Get().compile_model(ie_cnn_network, hw_target, device_config);
+    obj = core.compile_model(ie_cnn_network, hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -105,7 +107,7 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
                                   const std::string& name) {
   ov::CompiledModel obj;
   try {
-    obj = Get().compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
+    obj = core.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -124,7 +126,7 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
                                  std::string name) {
   try {
     ov::CompiledModel obj;
-    obj = Get().import_model(model_stream, hw_target, device_config);
+    obj = core.import_model(model_stream, hw_target, device_config);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -138,19 +140,14 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
 }
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
-  Get().set_property(ov::cache_dir(cache_dir_path));
-}
-
-inline ov::Core& OVCore::Get() {
-  ORT_ENFORCE(g_core);
-  return *g_core;
+  core.set_property(ov::cache_dir(cache_dir_path));
 }
 
 #ifdef IO_BUFFER_ENABLED
 OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
                                   OVRemoteContextPtr context, std::string name) {
   try {
-    auto obj = oe.compile_model(model, *context);
+    auto obj = core.compile_model(model, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -164,7 +161,7 @@ OVExeNetwork OVCore::CompileModel(std::shared_ptr<const OVNetwork>& model,
 OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_stream,
                                  OVRemoteContextPtr context, std::string name) {
   try {
-    auto obj = oe.import_model(*model_stream, *context);
+    auto obj = core.import_model(*model_stream, *context);
 #ifndef NDEBUG
     printDebugInfo(obj);
 #endif
@@ -178,13 +175,53 @@ OVExeNetwork OVCore::ImportModel(std::shared_ptr<std::istringstream> model_strea
 }
 #endif
 
-std::vector<std::string> OVCore::GetAvailableDevices() {
-  auto available_devices = Get().get_available_devices();
+std::vector<std::string> OVCore::GetAvailableDevices() const {
+  std::vector<std::string> available_devices = core.get_available_devices();
+  return available_devices;
+}
+
+std::vector<std::string> OVCore::GetAvailableDevices(const std::string& device_type) const {
+  std::vector<std::string> available_devices;
+  std::vector<std::string> devicesIDs;
+  // Uses logic from OpenVINO to only return available devices of the specified type (e.g. CPU, NPU or GPU)
+  try {
+    devicesIDs = core.get_property(device_type, ov::available_devices);
+  } catch (const ov::Exception&) {
+    // plugin is not created by e.g. invalid env
+    // Empty device list will be returned
+  } catch (const std::runtime_error& ex) {
+    // plugin is not created by e.g. invalid env
+    // Empty device list will be returned
+    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
+              device_type,
+              " device: ",
+              ex.what());
+  } catch (const std::exception& ex) {
+    ORT_THROW("[ERROR] [OpenVINO] An exception occurred while trying to create the ",
+              device_type,
+              " device: ",
+              ex.what());
+  } catch (...) {
+    ORT_THROW("[ERROR] [OpenVINO] Unknown exception occurred while trying to create the ",
+              device_type,
+              " device");
+  }
+
+  if (devicesIDs.size() > 1 ||
+      (devicesIDs.size() == 1 && devicesIDs[0] == "0")) {
+    for (const auto& deviceID : devicesIDs) {
+      available_devices.push_back(device_type + '.' + deviceID);
+    }
+  }
+  if (!devicesIDs.empty()) {
+    available_devices.push_back(device_type);
+  }
+
   return available_devices;
 }
 
 void OVCore::SetStreams(const std::string& device_type, int num_streams) {
-  Get().set_property(device_type, {ov::num_streams(num_streams)});
+  core.set_property(device_type, {ov::num_streams(num_streams)});
 }
 
 OVInferRequest OVExeNetwork::CreateInferRequest() {

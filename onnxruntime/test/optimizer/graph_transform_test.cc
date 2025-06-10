@@ -2204,6 +2204,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAddReluIdentity) {
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
   }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
+  }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2231,6 +2235,10 @@ TEST_F(GraphTransformationTests, FuseCudaConvAdd) {
 #if defined(USE_JSEP)
   for (auto& node : p_model->MainGraph().Nodes()) {
     node.SetExecutionProviderType(kJsExecutionProvider);
+  }
+#elif defined(USE_WEBGPU)
+  for (auto& node : p_model->MainGraph().Nodes()) {
+    node.SetExecutionProviderType(kWebGpuExecutionProvider);
   }
 #else
   for (auto& node : p_model->MainGraph().Nodes()) {
@@ -2330,6 +2338,10 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kJsExecutionProvider);
     }
+#elif defined(USE_WEBGPU)
+    for (auto& node : p_model->MainGraph().Nodes()) {
+      node.SetExecutionProviderType(kWebGpuExecutionProvider);
+    }
 #else
     for (auto& node : p_model->MainGraph().Nodes()) {
       node.SetExecutionProviderType(kCpuExecutionProvider);
@@ -2347,6 +2359,13 @@ TEST_F(GraphTransformationTests, FuseConvActivation) {
 #if defined(USE_JSEP)
     std::set<std::string> js_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu"};
     if (js_supported.find(model.second) == js_supported.end()) {
+      ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
+    } else {
+      ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
+    }
+#elif defined(USE_WEBGPU)
+    std::set<std::string> webgpu_supported = {"Relu", "Clip", "Sigmoid", "Tanh", "LeakyRelu", "HardSigmoid"};
+    if (webgpu_supported.find(model.second) == webgpu_supported.end()) {
       ASSERT_EQ(op_to_count_before_fusion[model.second], op_to_count_after_fusion[model.second]);
     } else {
       ASSERT_TRUE(op_to_count_after_fusion[model.second] == 0);
@@ -2566,12 +2585,8 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_three_input) {
   ASSERT_TRUE(op_to_count["Gemm"] == 1);
 }
 
-// Matmul+Add with shape [k]*[k,N]+[N], won't do the fusion
-// We can do the fusion by changing shape to [1,k]*[k,N]+[1,N], then add a reshape [1,N]=>[N]
-// This will bring extra cost. And there's only very limited gain to fuse Matmul+Add to Gemm
-// Since the basic implementation is almost same
-TEST_F(GraphTransformationTests, MatMulAddFusion_negitive_case) {
-  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/neg_model.onnx";
+TEST_F(GraphTransformationTests, MatMulAddFusion_three_input_with_1d) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "matmul_add_fusion/3Input/model_1d.onnx";
 
   std::shared_ptr<Model> p_model;
   ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
@@ -2582,9 +2597,22 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_negitive_case) {
   ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
 
   std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
-  ASSERT_TRUE(op_to_count["MatMul"] == 1);
-  ASSERT_TRUE(op_to_count["Add"] == 1);
-  ASSERT_TRUE(op_to_count["Gemm"] == 0);
+  ASSERT_TRUE(op_to_count["MatMul"] == 0);
+  ASSERT_TRUE(op_to_count["Add"] == 0);
+  ASSERT_TRUE(op_to_count["Gemm"] == 1);
+  ASSERT_TRUE(op_to_count["Reshape"] == 2);
+  for (const Node& node : graph.Nodes()) {
+    if (node.OpType() == "Reshape") {
+      auto shape_proto = node.OutputDefs()[0]->Shape();
+      ASSERT_TRUE(shape_proto != nullptr);
+      auto shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
+      if (node.Name().find("gemm_input") != std::string::npos) {
+        ASSERT_TRUE(shape.NumDimensions() == 2 && shape[0] == 1 && shape[1] == 4);
+      } else {
+        ASSERT_TRUE(shape.NumDimensions() == 1 && shape[0] == 3);
+      }
+    }
+  }
 }
 
 // Matmul+Add with shape [M,k]*[k,N]+[1,4], won't do the fusion
@@ -2621,6 +2649,50 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_MissingShape) {
   ASSERT_EQ(op_to_count["MatMul"], 1);
   ASSERT_EQ(op_to_count["Add"], 1);
   ASSERT_EQ(op_to_count["Gemm"], 0);
+}
+
+TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
+    auto* weight_arg = builder.MakeInput<float>({{32, 768}});
+    auto* bias_arg = builder.MakeInput<float>({{768}});
+    auto* matmul_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("MatMul", {input_arg, weight_arg}, {matmul_out});
+    builder.AddNode("Add", {matmul_out, bias_arg}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["MatMul"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Add"] == 0);
+    TEST_RETURN_IF_NOT(op_to_count["Gemm"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
+    for (const Node& node : graph.Nodes()) {
+      if (node.OpType() == "Reshape") {
+        auto shape_proto = node.OutputDefs()[0]->Shape();
+        TEST_RETURN_IF_NOT(shape_proto != nullptr);
+        auto shape = utils::GetTensorShapeFromTensorShapeProto(*shape_proto);
+        if (node.Name().find("gemm_input") != std::string::npos) {
+          TEST_RETURN_IF_NOT(shape.NumDimensions() == 2 && shape[0] == 8 * 16 && shape[1] == 32);
+        } else {
+          TEST_RETURN_IF_NOT(shape.NumDimensions() == 3 && shape[0] == 8 && shape[1] == 16 && shape[2] == 768);
+        }
+      }
+    }
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<MatMulAddFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 #ifndef DISABLE_CONTRIB_OPS
@@ -2872,6 +2944,24 @@ TEST_F(GraphTransformationTests, TransposeMatmulTransBatchNoFusion) {
     ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
     ASSERT_EQ(op_to_count["com.microsoft.FusedMatMul"], orig_op_to_count["com.microsoft.FusedMatMul"]);
   }
+}
+
+TEST_F(GraphTransformationTests, TransposeMatmulFusion_SameInput_gh_issue_24341) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "fusion/gh_issue_24341.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+  Graph& graph = p_model->MainGraph();
+  std::map<std::string, int> orig_op_to_count = CountOpsInGraph(graph);
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MatmulTransposeFusion>(), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+
+  std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+  ASSERT_EQ(op_to_count["Transpose"], orig_op_to_count["Transpose"]);
+  ASSERT_EQ(op_to_count["MatMul"], orig_op_to_count["MatMul"]);
+  ASSERT_EQ(op_to_count["Cast"], orig_op_to_count["Cast"]);
 }
 
 TEST_F(GraphTransformationTests, Gemm_LeakyRelu_Fusion) {
@@ -4201,6 +4291,41 @@ TEST_F(GraphTransformationTests, ReshapeFusionDistilBertTest) {
       EXPECT_EQ(val[3], 4);
     }
   }
+}
+
+TEST_F(GraphTransformationTests, ReshapeFusion_Contiguous_Reshape) {
+  auto build_test_case = [&](ModelTestBuilder& builder) {
+    auto* input_arg = builder.MakeInput<float>({{8, 16, 32}});
+    auto* shape_initializer_1 = builder.MakeInitializer<int64_t>({4}, {2, 4, 16, 32});
+    auto* shape_initializer_2 = builder.MakeInitializer<int64_t>({4}, {2, 64, 32});
+    auto* axes_initializer = builder.MakeInitializer<int64_t>({1}, {1});
+    auto* reshape_out_1 = builder.MakeIntermediate();
+    auto* reshape_out_2 = builder.MakeIntermediate();
+    auto* unsqueeze_out = builder.MakeIntermediate();
+    auto* output_arg = builder.MakeOutput();
+    builder.AddNode("Reshape", {input_arg, shape_initializer_1}, {reshape_out_1});
+    builder.AddNode("Reshape", {reshape_out_1, shape_initializer_2}, {reshape_out_2});
+    builder.AddNode("Unsqueeze", {reshape_out_2, axes_initializer}, {unsqueeze_out});
+    builder.AddNode("Identity", {unsqueeze_out}, {output_arg});
+  };
+
+  auto pre_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 2);
+    TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 1);
+    return Status::OK();
+  };
+
+  auto post_graph_checker = [](Graph& graph) {
+    std::map<std::string, int> op_to_count = CountOpsInGraph(graph);
+    TEST_RETURN_IF_NOT(op_to_count["Reshape"] == 1);
+    TEST_RETURN_IF_NOT(op_to_count["Unsqueeze"] == 0);
+    return Status::OK();
+  };
+
+  std::unique_ptr<GraphTransformer> transformer = std::make_unique<ReshapeFusion>();
+  ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
+                                        1, pre_graph_checker, post_graph_checker));
 }
 
 // Test eliminating redundant Concat-Slice pattern.
@@ -6158,6 +6283,7 @@ TEST_F(GraphTransformationTests, MatMulScaleFusionUnfusableModels) {
       MODEL_FOLDER "fusion/matmul_scale_unfusable_div_not_scale.onnx",
       MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_scalar.onnx",
       MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_not_constant.onnx",
+      MODEL_FOLDER "fusion/matmul_scale_unfusable_scale_broadcasting_changes_shape.onnx",
   };
 
   for (const auto& path : unfusable_model_paths) {
@@ -7612,6 +7738,18 @@ TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput) {
                                         1, pre_graph_checker, post_graph_checker));
 }
 
+TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_AllSlice_GraphInput_gh_issue_24203) {
+  // https://github.com/microsoft/onnxruntime/issues/24203
+  // This bug is manifested when the model features nameless nodes and there are more than one
+  // SliceToSplitFusion resulting in multiple Split nodes with the same name.
+  const PathString CUSTOM_OP_MODEL_URI = ORT_TSTR("testdata/gh_issue_24203.onnx");
+  SessionOptions session_options;
+  session_options.graph_optimization_level = TransformerLevel::Level2;
+  InferenceSession session(session_options, GetEnvironment());
+  ASSERT_STATUS_OK(session.Load(CUSTOM_OP_MODEL_URI));
+  ASSERT_STATUS_OK(session.Initialize());
+}
+
 TEST_F(GraphTransformationTests, GatherSliceToSplitFusion_Combined) {
   auto build_test_case = [&](ModelTestBuilder& builder) {
     auto* data_arg = builder.MakeInput<float>({{144}});
@@ -7970,9 +8108,9 @@ TEST_F(GraphTransformationTests, MatMulNBitsBiasFusion) {
                                                 q_rows, q_cols);
 
       size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-      MlasBlockwiseQuantizedBufferSizes(qbits, block_size, /* columnwise */ true,
-                                        K, N,
-                                        q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+      MlasBlockwiseQuantizedBufferSizes<qbits>(block_size, /* columnwise */ true,
+                                               K, N,
+                                               q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
 
       auto* A = builder.MakeInput<float>(std::vector{M, K}, "A");
 

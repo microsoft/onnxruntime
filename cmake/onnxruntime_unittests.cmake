@@ -61,13 +61,13 @@ function(AddTest)
             Threads::Threads)
     target_compile_definitions(${_UT_TARGET} PRIVATE -DUSE_ONNXRUNTIME_DLL)
   else()
-    if(onnxruntime_USE_CUDA)
+    if(onnxruntime_USE_CUDA OR onnxruntime_USE_NV)
       #XXX: we should not need to do this. onnxruntime_test_all.exe should not have direct dependency on CUDA DLLs,
       # otherwise it will impact when CUDA DLLs can be unloaded.
       target_link_libraries(${_UT_TARGET} PRIVATE CUDA::cudart)
-      if(NOT onnxruntime_CUDA_MINIMAL)
-          target_link_libraries(${_UT_TARGET} PRIVATE cudnn_frontend)
-      endif()
+    endif()
+    if(onnxruntime_USE_CUDA AND NOT onnxruntime_CUDA_MINIMAL)
+      target_link_libraries(${_UT_TARGET} PRIVATE cudnn_frontend)
     endif()
     target_link_libraries(${_UT_TARGET} PRIVATE ${_UT_LIBS} GTest::gtest GTest::gmock ${onnxruntime_EXTERNAL_LIBRARIES})
   endif()
@@ -75,7 +75,7 @@ function(AddTest)
   onnxruntime_add_include_to_target(${_UT_TARGET} date::date flatbuffers::flatbuffers)
   target_include_directories(${_UT_TARGET} PRIVATE ${TEST_INC_DIR})
   if (onnxruntime_USE_CUDA)
-    target_include_directories(${_UT_TARGET} PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    target_include_directories(${_UT_TARGET} PRIVATE ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
     if (onnxruntime_USE_NCCL)
       target_include_directories(${_UT_TARGET} PRIVATE ${NCCL_INCLUDE_DIRS})
     endif()
@@ -86,6 +86,10 @@ function(AddTest)
   if (onnxruntime_USE_TENSORRT)
     # used for instantiating placeholder TRT builder to mitigate TRT library load/unload overhead
     target_include_directories(${_UT_TARGET} PRIVATE ${TENSORRT_INCLUDE_DIR})
+  endif()
+  if (onnxruntime_USE_NV)
+    # used for instantiating placeholder TRT builder to mitigate TRT library load/unload overhead
+    target_include_directories(${_UT_TARGET} PRIVATE ${NV_INCLUDE_DIR} ${CUDAToolkit_INCLUDE_DIRS})
   endif()
 
   if(MSVC)
@@ -222,8 +226,11 @@ function(AddTest)
       else()
         set(TEST_NODE_FLAGS)
 
+        if (onnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD)
+          message(WARNING "Use system `node` to test Wasm relaxed SIMD. Please make sure to install node v21 or newer.")
+          set(NODE_EXECUTABLE node)
         # prefer Node from emsdk so the version is more deterministic
-        if (DEFINED ENV{EMSDK_NODE})
+        elseif (DEFINED ENV{EMSDK_NODE})
           set(NODE_EXECUTABLE $ENV{EMSDK_NODE})
         else()
           message(WARNING "EMSDK_NODE environment variable was not set. Falling back to system `node`.")
@@ -236,14 +243,14 @@ function(AddTest)
         )
       endif()
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
     else()
       add_test(NAME ${_UT_TARGET}
         COMMAND ${_UT_TARGET} ${TEST_ARGS}
         WORKING_DIRECTORY $<TARGET_FILE_DIR:${_UT_TARGET}>
       )
       # Set test timeout to 3 hours.
-      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 7200)
+      set_tests_properties(${_UT_TARGET} PROPERTIES TIMEOUT 10800)
     endif()
   endif()
 endfunction(AddTest)
@@ -487,6 +494,7 @@ set (ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR "${TEST_SRC_DIR}/shared_lib")
 set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread_pools")
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
+set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -503,6 +511,7 @@ set (onnxruntime_shared_lib_test_SRC
 
 if (NOT onnxruntime_MINIMAL_BUILD)
   list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_inference.cc)
+  list(APPEND onnxruntime_shared_lib_test_SRC ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_model_builder_api.cc)
 endif()
 
 if(onnxruntime_RUN_ONNX_TESTS)
@@ -674,6 +683,15 @@ if(onnxruntime_USE_TENSORRT)
   list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
 endif()
 
+if(onnxruntime_USE_NV)
+  list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/nv_tensorrt_rtx/*)
+  list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/nv_tensorrt_rtx/nv_execution_provider_utils.h")
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_nv_tensorrt_rtx)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_nv_tensorrt_rtx onnxruntime_providers_shared)
+  list(APPEND onnxruntime_test_providers_libs ${TENSORRT_LIBRARY_INFER})
+endif()
+
+
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_src_patterns  ${TEST_SRC_DIR}/providers/migraphx/*)
   list(APPEND onnxruntime_test_framework_src_patterns  "${ONNXRUNTIME_ROOT}/core/providers/migraphx/migraphx_execution_provider_utils.h")
@@ -773,16 +791,13 @@ endif()
 if (onnxruntime_USE_ROCM)
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
 endif()
-onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface)
-
-
-
+onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface Eigen3::Eigen)
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
 endif()
 add_dependencies(onnxruntime_test_utils ${onnxruntime_EXTERNAL_DEPENDENCIES})
 target_include_directories(onnxruntime_test_utils PUBLIC "${TEST_SRC_DIR}/util/include" PRIVATE
-        ${eigen_INCLUDE_DIRS} ${ONNXRUNTIME_ROOT})
+        ${ONNXRUNTIME_ROOT})
 set_target_properties(onnxruntime_test_utils PROPERTIES FOLDER "ONNXRuntimeTest")
 source_group(TREE ${TEST_SRC_DIR} FILES ${onnxruntime_test_utils_src})
 
@@ -806,11 +821,10 @@ if(NOT IOS)
       target_compile_options(onnx_test_runner_common PRIVATE "/wd4244")
     endif()
     onnxruntime_add_include_to_target(onnx_test_runner_common onnxruntime_common onnxruntime_framework
-            onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface)
+            onnxruntime_test_utils onnx onnx_proto re2::re2 flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
 
     add_dependencies(onnx_test_runner_common onnx_test_data_proto ${onnxruntime_EXTERNAL_DEPENDENCIES})
-    target_include_directories(onnx_test_runner_common PRIVATE ${eigen_INCLUDE_DIRS}
-            ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+    target_include_directories(onnx_test_runner_common PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
 
     set_target_properties(onnx_test_runner_common PROPERTIES FOLDER "ONNXRuntimeTest")
     set(onnx_test_runner_common_lib onnx_test_runner_common)
@@ -887,9 +901,15 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
     )
 endif()
+if (USE_ROCM)
+    # The following unit test takes about 40 minutes.
+    list(REMOVE_ITEM all_tests
+      "${TEST_SRC_DIR}/contrib_ops/matmul_4bits_test.cc"
+    )
+endif()
 
 set(test_all_args)
-if (onnxruntime_USE_TENSORRT)
+if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV)
   # TRT EP CI takes much longer time when updating to TRT 8.2
   # So, we only run trt ep and exclude other eps to reduce CI test time.
   #
@@ -936,7 +956,7 @@ if (HAS_SHORTEN_64_TO_32 AND NOT CMAKE_SIZEOF_VOID_P EQUAL 8)
   target_compile_options(onnxruntime_test_all PRIVATE -Wno-error=shorten-64-to-32)
 endif()
 
-if (UNIX AND onnxruntime_USE_TENSORRT)
+if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
     # The test_main.cc includes NvInfer.h where it has many deprecated declarations
     # simply ignore them for TensorRT EP build
     set_property(TARGET onnxruntime_test_all APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
@@ -1053,21 +1073,6 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       TARGET ${test_data_target} POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy ${SNPE_SO_FILES} $<TARGET_FILE_DIR:${test_data_target}>
       )
-  endif()
-
-  if (onnxruntime_USE_QNN)
-    if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
-      add_custom_command(
-        TARGET ${test_data_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${test_data_target}>
-        )
-    endif()
-    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
-      add_custom_command(
-        TARGET ${test_data_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${test_data_target}>
-        )
-    endif()
   endif()
 
   if (onnxruntime_USE_DNNL)
@@ -1241,7 +1246,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/utf-8>")
     endif()
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
+          ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
     if (onnxruntime_USE_ROCM)
       target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
@@ -1269,9 +1274,9 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       if (CMAKE_SYSTEM_NAME STREQUAL "Android")
         list(APPEND onnxruntime_perf_test_libs ${android_shared_libs})
       endif()
-      if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+      if (CMAKE_SYSTEM_NAME MATCHES "AIX")
         list(APPEND onnxruntime_perf_test_libs onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 gtest absl_failure_signal_handler absl_examine_stack absl_flags_parse  absl_flags_usage absl_flags_usage_internal)
-    endif()
+      endif()
       target_link_libraries(onnxruntime_perf_test PRIVATE ${onnxruntime_perf_test_libs} Threads::Threads)
       if(WIN32)
         target_link_libraries(onnxruntime_perf_test PRIVATE debug dbghelp advapi32)
@@ -1281,36 +1286,39 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     endif()
     set_target_properties(onnxruntime_perf_test PROPERTIES FOLDER "ONNXRuntimeTest")
 
-  endif()
+endif()
 
 
   if(onnxruntime_USE_QNN)
     #qnn ctx generator
-    set(onnxruntime_qnn_ctx_gen_src_dir ${TEST_SRC_DIR}/qnn_ctx_gen)
-    set(onnxruntime_qnn_ctx_gen_src_patterns
-    "${onnxruntime_qnn_ctx_gen_src_dir}/*.cc"
-    "${onnxruntime_qnn_ctx_gen_src_dir}/*.h")
+    set(ep_weight_sharing_ctx_gen_src_dir ${TEST_SRC_DIR}/ep_weight_sharing_ctx_gen)
+    set(ep_weight_sharing_ctx_gen_src_patterns
+    "${ep_weight_sharing_ctx_gen_src_dir}/*.cc"
+    "${ep_weight_sharing_ctx_gen_src_dir}/*.h")
 
-    file(GLOB onnxruntime_qnn_ctx_gen_src CONFIGURE_DEPENDS
-      ${onnxruntime_qnn_ctx_gen_src_patterns}
+    file(GLOB ep_weight_sharing_ctx_gen_src CONFIGURE_DEPENDS
+      ${ep_weight_sharing_ctx_gen_src_patterns}
       )
-    onnxruntime_add_executable(onnxruntime_qnn_ctx_gen ${onnxruntime_qnn_ctx_gen_src})
-    target_include_directories(onnxruntime_qnn_ctx_gen PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
-          ${eigen_INCLUDE_DIRS} ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
-          ${CMAKE_CURRENT_BINARY_DIR})
+    onnxruntime_add_executable(ep_weight_sharing_ctx_gen ${ep_weight_sharing_ctx_gen_src})
+    target_include_directories(ep_weight_sharing_ctx_gen PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR})
     if (WIN32)
-      target_compile_options(onnxruntime_qnn_ctx_gen PRIVATE ${disabled_warnings})
+      target_compile_options(ep_weight_sharing_ctx_gen PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
         set(SYS_PATH_LIB shlwapi)
       endif()
     endif()
 
-    if(WIN32)
-      target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE debug dbghelp advapi32)
+    if (onnxruntime_BUILD_SHARED_LIB)
+      set(ep_weight_sharing_ctx_gen_libs onnxruntime_common onnxruntime ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
+      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE ${ep_weight_sharing_ctx_gen_libs})
+      if (WIN32)
+        target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE debug dbghelp advapi32)
+      endif()
+    else()
+      target_link_libraries(ep_weight_sharing_ctx_gen PRIVATE onnxruntime_session ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE})
     endif()
-    target_link_libraries(onnxruntime_qnn_ctx_gen PRIVATE onnx_test_runner_common onnxruntime_test_utils onnxruntime_common onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers onnx_test_data_proto ${onnxruntime_test_providers_libs} ${onnxruntime_EXTERNAL_LIBRARIES} ${GETOPT_LIB_WIDE} ${SYS_PATH_LIB} ${CMAKE_DL_LIBS})
 
-    set_target_properties(onnxruntime_qnn_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
+    set_target_properties(ep_weight_sharing_ctx_gen PROPERTIES FOLDER "ONNXRuntimeTest")
   endif()
 
   # shared lib
@@ -1332,13 +1340,16 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       list(APPEND onnxruntime_shared_lib_test_LIBS cpuinfo)
     endif()
     if (onnxruntime_USE_CUDA)
-      list(APPEND onnxruntime_shared_lib_test_LIBS CUDA::cudart)
+      list(APPEND onnxruntime_shared_lib_test_LIBS)
     endif()
     if (onnxruntime_USE_ROCM)
       list(APPEND onnxruntime_shared_lib_test_LIBS hip::host)
     endif()
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
+    endif()
+    if (onnxruntime_USE_NV)
+      list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER} CUDA::cudart)
     endif()
     if (onnxruntime_USE_DML)
       list(APPEND onnxruntime_shared_lib_test_LIBS d3d12.lib)
@@ -1347,7 +1358,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${android_shared_libs})
     endif()
 
-    if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    if (CMAKE_SYSTEM_NAME MATCHES "AIX")
       list(APPEND onnxruntime_shared_lib_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 onnx)
     endif()
 
@@ -1357,14 +1368,21 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
             LIBS ${onnxruntime_shared_lib_test_LIBS}
             DEPENDS ${all_dependencies}
     )
+
+    target_include_directories(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_ROOT})
+
     if (onnxruntime_USE_CUDA)
-      target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES})
+      target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
       target_sources(onnxruntime_shared_lib_test PRIVATE ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu)
+    endif()
+    if (onnxruntime_USE_NV)
+      target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     endif()
     if (onnxruntime_USE_ROCM)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${onnxruntime_ROCM_HOME}/include)
       target_compile_definitions(onnxruntime_shared_lib_test PRIVATE __HIP_PLATFORM_AMD__)
     endif()
+
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
         "${ONNXRUNTIME_ROOT}/core/platform/android/cxa_demangle.cc"
@@ -1381,7 +1399,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
         $<TARGET_FILE_DIR:onnxruntime_shared_lib_test>/testdata)
     endif()
 
-    if (UNIX AND onnxruntime_USE_TENSORRT)
+    if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
         # The test_main.cc includes NvInfer.h where it has many deprecated declarations
         # simply ignore them for TensorRT EP build
         set_property(TARGET onnxruntime_shared_lib_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
@@ -1517,7 +1535,6 @@ endif()
       ${CMAKE_CURRENT_BINARY_DIR}
       ${ONNXRUNTIME_ROOT}
       ${ORTTRAINING_ROOT}
-      ${eigen_INCLUDE_DIRS}
       ${CXXOPTS}
       ${extra_includes}
       ${onnxruntime_graph_header}
@@ -1564,7 +1581,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     list(APPEND custom_op_src_patterns
         "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/cuda_ops.cu"
         "${TEST_SRC_DIR}/testdata/custom_op_library/cuda/cuda_ops.*")
-    list(APPEND custom_op_lib_include ${CMAKE_CUDA_TOOLKIT_INCLUDE_DIRECTORIES} ${CUDNN_INCLUDE_DIR})
+    list(APPEND custom_op_lib_include ${CUDAToolkit_INCLUDE_DIRS} ${CUDNN_INCLUDE_DIR})
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()
@@ -1587,7 +1604,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   if(UNIX)
     if (APPLE)
       set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker -dead_strip")
-    elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       set(ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_library/custom_op_library.lds -Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
     endif()
   else()
@@ -1598,6 +1615,12 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     endif()
   endif()
   set_property(TARGET custom_op_library APPEND_STRING PROPERTY LINK_FLAGS ${ONNXRUNTIME_CUSTOM_OP_LIB_LINK_FLAG})
+  #ON AIX, to call dlopen on custom_op_library, we need to generate this library as shared object .so file.
+  #Latest cmake behavior is changed and  cmake will remove shared object .so file after generating the shared archive.
+  #To prevent that, making AIX_SHARED_LIBRARY_ARCHIVE as OFF for custom_op_library.
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    set_target_properties(custom_op_library PROPERTIES AIX_SHARED_LIBRARY_ARCHIVE OFF)
+  endif()
 
   if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     if (onnxruntime_BUILD_JAVA AND NOT onnxruntime_ENABLE_STATIC_ANALYSIS)
@@ -1665,7 +1688,10 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
-    if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    if (onnxruntime_USE_NV)
+      list(APPEND onnxruntime_customopregistration_test_LIBS ${TENSORRT_LIBRARY_INFER})
+    endif()
+    if (CMAKE_SYSTEM_NAME MATCHES "AIX")
       list(APPEND onnxruntime_customopregistration_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers onnxruntime_lora onnxruntime_framework onnxruntime_util onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
     endif()
     AddTest(DYN
@@ -1683,7 +1709,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
         $<TARGET_FILE_DIR:onnxruntime_customopregistration_test>/testdata)
     endif()
 
-    if (UNIX AND onnxruntime_USE_TENSORRT)
+    if (UNIX AND (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV))
         # The test_main.cc includes NvInfer.h where it has many deprecated declarations
         # simply ignore them for TensorRT EP build
         set_property(TARGET onnxruntime_customopregistration_test APPEND_STRING PROPERTY COMPILE_FLAGS "-Wno-deprecated-declarations")
@@ -1702,7 +1728,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
   if(UNIX)
     if (APPLE)
       set(ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG "-Xlinker -dead_strip")
-    elseif (NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       string(CONCAT ONNXRUNTIME_CUSTOM_OP_INVALID_LIB_LINK_FLAG
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_invalid_library/custom_op_library.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
@@ -1733,7 +1759,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
   if(UNIX)
     if (APPLE)
       set(ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
-    elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       string(CONCAT ONNXRUNTIME_CUSTOM_OP_GET_CONST_INPUT_TEST_LIB_LINK_FLAG
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_get_const_input_test_library/custom_op_lib.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
@@ -1765,7 +1791,7 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
   if(UNIX)
     if (APPLE)
       set(ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG "-Xlinker -dead_strip")
-    elseif(NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    elseif(NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       string(CONCAT ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG
              "-Xlinker --version-script=${TEST_SRC_DIR}/testdata/custom_op_local_function/custom_op_local_function.lds "
              "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
@@ -1779,12 +1805,76 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND (NOT onnxruntime_MINIMAL_BUI
                ${ONNXRUNTIME_CUSTOM_OP_lOCAL_FUNCTION_TEST_LIB_LINK_FLAG})
 endif()
 
+# Build library that can be used with RegisterExecutionProviderLibrary and automatic EP selection
+# We need a shared lib build to use that as a dependency for the test library
+# Currently we only have device discovery on Windows so no point building the test app on other platforms.
+if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
+    NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
+    NOT onnxruntime_MINIMAL_BUILD)
+  onnxruntime_add_shared_library_module(example_plugin_ep
+                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
+  target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
+  target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
+
+  if(UNIX)
+    if (APPLE)
+      set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG "-Xlinker -dead_strip")
+    elseif (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
+      string(CONCAT ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
+             "-Xlinker --version-script=${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.lds "
+             "-Xlinker --no-undefined -Xlinker --gc-sections -z noexecstack")
+    endif()
+  else()
+    set(ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG
+        "-DEF:${TEST_SRC_DIR}/autoep/library/example_plugin_ep_library.def")
+  endif()
+
+  set_property(TARGET example_plugin_ep APPEND_STRING PROPERTY LINK_FLAGS
+               ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
+
+  # test library
+  file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
+                                                "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+
+  set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
+                                   onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
+
+  if (onnxruntime_USE_TENSORRT)
+    list(APPEND onnxruntime_autoep_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  endif()
+
+  if (onnxruntime_USE_CUDA)
+    list(APPEND onnxruntime_autoep_test_LIBS CUDA::cudart)
+  endif()
+
+  if (onnxruntime_USE_DML)
+    list(APPEND onnxruntime_autoep_test_LIBS d3d12.lib)
+  endif()
+
+  if (CPUINFO_SUPPORTED)
+    list(APPEND onnxruntime_autoep_test_LIBS cpuinfo)
+  endif()
+
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    list(APPEND onnxruntime_autoep_test_LIBS onnxruntime_graph onnxruntime_session onnxruntime_providers
+                onnxruntime_optimizer onnxruntime_mlas onnxruntime_framework onnxruntime_util onnxruntime_flatbuffers
+                iconv re2 onnx)
+  endif()
+
+  AddTest(DYN
+          TARGET onnxruntime_autoep_test
+          SOURCES ${onnxruntime_autoep_test_SRC} ${onnxruntime_unittest_main_src}
+          LIBS ${onnxruntime_autoep_test_LIBS}
+          DEPENDS ${all_dependencies} example_plugin_ep
+  )
+endif()
+
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   set (onnxruntime_logging_apis_test_SRC
        ${ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR}/test_logging_apis.cc)
 
   set(onnxruntime_logging_apis_test_LIBS onnxruntime_common onnxruntime_test_utils)
-  if (${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
     list(APPEND onnxruntime_logging_apis_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework onnxruntime_common onnxruntime_graph  onnxruntime_providers onnxruntime_mlas onnxruntime_optimizer onnxruntime_flatbuffers iconv re2 ${PROTOBUF_LIB} onnx onnx_proto)
      endif()
 
@@ -1827,7 +1917,7 @@ endif()
 
 # limit to only test on windows first, due to a runtime path issue on linux
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
-                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS"
+                                  AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
                                   AND NOT onnxruntime_USE_ROCM)
@@ -1855,7 +1945,7 @@ if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
   if(APPLE)
     set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker -exported_symbols_list ${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/exported_symbols.lst")
   elseif(UNIX)
-    if (NOT ${CMAKE_SYSTEM_NAME} MATCHES "AIX")
+    if (NOT CMAKE_SYSTEM_NAME MATCHES "AIX")
       set_property(TARGET test_execution_provider APPEND_STRING PROPERTY LINK_FLAGS "-Xlinker --version-script=${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/version_script.lds -Xlinker --gc-sections -Xlinker -rpath=\\$ORIGIN")
      endif()
   elseif(WIN32)

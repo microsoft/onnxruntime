@@ -616,6 +616,66 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   RunSession(session_object9, run_options, feeds, output_names, expected_dims_mul_m, expected_values_mul_m);
 }
 
+TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
+  /* The mnist.onnx looks like this:
+   *        Conv
+   *         |
+   *        Add
+   *         .
+   *         .
+   *         |
+   *      MaxPool
+   *         |
+   *         .
+   *         .
+   *      MaxPool
+   *         |
+   *      Reshape
+   *         |
+   *      MatMul
+   *         .
+   *         .
+   *
+   */
+  PathString model_name = ORT_TSTR("testdata/mnist.onnx");
+  SessionOptions so;
+  so.session_logid = "TensorrtExecutionProviderExcludeOpsTest";
+  RunOptions run_options;
+  run_options.run_tag = so.session_logid;
+  InferenceSession session_object{so, GetEnvironment()};
+  auto cuda_provider = DefaultCudaExecutionProvider();
+  auto cpu_allocator = cuda_provider->CreatePreferredAllocators()[1];
+  std::vector<int64_t> dims_op_x = {1, 1, 28, 28};
+  std::vector<float> values_op_x(784, 1.0f);  // 784=1*1*28*28
+  OrtValue ml_value_x;
+  CreateMLValue<float>(cpu_allocator, dims_op_x, values_op_x, &ml_value_x);
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("Input3", ml_value_x));
+
+  // prepare outputs
+  std::vector<std::string> output_names;
+  output_names.push_back("Plus214_Output_0");
+  std::vector<OrtValue> fetches;
+
+  RemoveCachesByType("./", ".engine");
+  OrtTensorRTProviderOptionsV2 params;
+  params.trt_engine_cache_enable = 1;
+  params.trt_op_types_to_exclude = "MaxPool";
+  std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
+  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
+  auto status = session_object.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  status = session_object.Run(run_options, feeds, output_names, &fetches);
+  ASSERT_TRUE(status.IsOK());
+
+  std::vector<fs::path> engine_files;
+  engine_files = GetCachesByType("./", ".engine");
+  // The whole graph should be partitioned into 3 TRT subgraphs and 2 cpu nodes
+  ASSERT_EQ(engine_files.size(), 3);
+}
+
 TEST(TensorrtExecutionProviderTest, TRTPluginsCustomOpTest) {
   PathString model_name = ORT_TSTR("testdata/trt_plugin_custom_op_test.onnx");
   SessionOptions so;

@@ -22,12 +22,23 @@
 #   Always generate packages for onnxruntime-common and onnxruntime-(node|web|react-native)
 #
 
-if ($Args.Count -ne 3) {
-    throw "This script requires 3 arguments, but got $($Args.Count)"
+if ($Args.Count -lt 3) {
+    throw "This script requires at least 3 arguments, but got $($Args.Count)"
 }
 $MODE=$Args[0] # "dev" or "release" or "rc"; otherwise it is considered as a version number
 $ORT_ROOT=$Args[1] # eg. D:\source\onnxruntime
 $TARGET=$Args[2] # "node" or "web" or "react_native"
+
+if ($TARGET -ne "node" -and $TARGET -ne "web" -and $TARGET -ne "react_native") {
+    throw "Invalid target: $TARGET. Must be one of 'node', 'web' or 'react_native'"
+}
+if ($TARGET -ne "node" -and $Args.Count -gt 3) {
+    throw "Invalid argument count: $($Args.Count). Only 3 arguments are allowed for target '$TARGET'"
+}
+$VERSION_CANDIDATES=$Args[3] # optional, only for node target
+if ($TARGET -eq "node" -and $Args.Count -gt 4) {
+    throw "Invalid argument count: $($Args.Count). Only 4 arguments are allowed for target '$TARGET'"
+}
 
 Function Generate-Package-Version-Number {
     pushd $ORT_ROOT
@@ -170,7 +181,7 @@ if ($MODE -eq "dev") {
 
     # update version.ts of TARGET
     pushd ..
-    npm run update-version $TARGET
+    npm run update-version $TARGET $VERSION_CANDIDATES
     npm run format
     popd
 

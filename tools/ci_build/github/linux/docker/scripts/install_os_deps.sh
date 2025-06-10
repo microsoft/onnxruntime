@@ -63,12 +63,7 @@ if [[ ("$DISTRIBUTOR" = "CentOS" || "$DISTRIBUTOR" = "RedHatEnterprise") && $SYS
 else
   LIBDIR="lib"
 fi
-if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then
-  echo "Installing azcopy"
-  mkdir -p /tmp/azcopy
-  GetFile https://aka.ms/downloadazcopy-v10-linux /tmp/azcopy/azcopy.tar.gz
-  tar --strip 1 -xf /tmp/azcopy/azcopy.tar.gz -C /tmp/azcopy
-  cp /tmp/azcopy/azcopy /usr/bin
+if [[ $SYS_LONG_BIT = "64" && "$GLIBC_VERSION" -gt "9" ]]; then  
   echo "Installing cmake"
   GetFile https://github.com/Kitware/CMake/releases/download/v3.31.5/cmake-3.31.5-Linux-x86_64.tar.gz /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz
   tar -zxf /tmp/src/cmake-3.31.5-Linux-x86_64.tar.gz --strip=1 -C /usr
@@ -89,10 +84,6 @@ else
 fi
 
 cd /tmp/src
-
-if ! [ -x "$(command -v protoc)" ]; then
-  $SCRIPT_DIR/install_protobuf.sh -p $INSTALL_PREFIX  
-fi
 
 if [ $DEVICE_TYPE = "gpu" ]; then
   if [[ $INSTALL_DEPS_DISTRIBUTED_SETUP = true ]]; then

@@ -7,7 +7,7 @@ parameters:
 - name: QNN_SDK
   displayName: QNN SDK Version
   type: string
-  default: 2.31.0.250130
+  default: 2.33.2.250410
 
 - name: ENV_SETUP_SCRIPT
   type: string
@@ -19,6 +19,11 @@ parameters:
   type: string
   default: ''
 
+- name: is1ES
+  displayName: 'Whether the pipeline is running in 1ES'
+  type: boolean
+  default: false
+
 jobs:
 - job: Win_py_arm64_qnn_Wheels
   timeoutInMinutes: 210
@@ -26,6 +31,8 @@ jobs:
     clean: all
   pool:
     name: ${{ parameters.MACHINE_POOL }}
+    os: windows
+    hostArchitecture: Arm64
   strategy:
     matrix:
       Python311_arm64:
@@ -34,136 +41,144 @@ jobs:
       Python312_arm64:
         PythonVersion: '3.12.6'
         LocalPythonDir: 'C:\Python\Python312'
+      Python313_arm64:
+        PythonVersion: '3.13.2'
+        LocalPythonDir: 'C:\Python\Python313'
   variables:
     GRADLE_OPTS: '-Dorg.gradle.daemon=false'
     VSGenerator: 'Visual Studio 17 2022'
   steps:
-      - checkout: self
-        clean: true
-        submodules: recursive
+  - checkout: self
+    clean: true
+    submodules: recursive
 
-      - template: telemetry-steps.yml
+  - template: telemetry-steps.yml
 
-      - script: |
-          MKDIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
-          XCOPY /s /y /h /e /c /q "$(LocalPythonDir)\*.*" $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64\
-          COPY NUL $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64.complete
-          DIR $(Agent.ToolsDirectory)\Python
-          DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)
-          DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
-        displayName: Copy python $(PythonVersion) version to agent tools directory
+  - script: |
+      MKDIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
+      XCOPY /s /y /h /e /c /q "$(LocalPythonDir)\*.*" $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64\
+      COPY NUL $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64.complete
+      DIR $(Agent.ToolsDirectory)\Python
+      DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)
+      DIR $(Agent.ToolsDirectory)\Python\$(PythonVersion)\arm64
+    displayName: Copy python $(PythonVersion) version to agent tools directory
 
-      - task: UsePythonVersion@0
-        inputs:
-          versionSpec: $(PythonVersion)
-          addToPath: true
-          architecture: 'arm64'
+  - task: UsePythonVersion@0
+    inputs:
+      versionSpec: $(PythonVersion)
+      addToPath: true
+      architecture: 'arm64'
 
-      - task: PipAuthenticate@1
-        displayName: 'Pip Authenticate'
-        inputs:
-          artifactFeeds: 'Lotus'
+  - task: PipAuthenticate@1
+    displayName: 'Pip Authenticate'
+    inputs:
+      artifactFeeds: 'Lotus'
 
-      - task: onebranch.pipeline.tsaoptions@1
-        displayName: 'OneBranch TSAOptions'
-        inputs:
-          tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
-          appendSourceBranchName: false
+  - task: onebranch.pipeline.tsaoptions@1
+    displayName: 'OneBranch TSAOptions'
+    inputs:
+      tsaConfigFilePath: '$(Build.SourcesDirectory)\.config\tsaoptions.json'
+      appendSourceBranchName: false
 
-      - task: PythonScript@0
-        inputs:
-          scriptSource: inline
-          script: |
-            import subprocess
-            subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel'])
-          workingDirectory: '$(Build.BinariesDirectory)'
-          displayName: 'Install python modules'
+  - task: PythonScript@0
+    inputs:
+      scriptSource: inline
+      script: |
+        import subprocess
+        subprocess.call(['pip', 'install', '-q', 'setuptools', 'wheel'])
+      workingDirectory: '$(Build.BinariesDirectory)'
+      displayName: 'Install python modules'
 
-      - template: set-nightly-build-option-variable-step.yml
+  - template: set-nightly-build-option-variable-step.yml
 
-      - template: jobs/download_win_qnn_sdk.yml
-        parameters:
-          QnnSDKVersion: ${{ parameters.QNN_SDK }}
+  - template: jobs/download_win_qnn_sdk.yml
+    parameters:
+      QnnSDKVersion: ${{ parameters.QNN_SDK }}
 
-      - task: PythonScript@0
-        displayName: 'Generate cmake config'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
-          arguments: >
-            --config RelWithDebInfo
-            --build_dir $(Build.BinariesDirectory)
-            --skip_submodule_sync
-            --cmake_generator "$(VSGenerator)"
-            --build_shared_lib
-            --use_qnn
-            --qnn_home $(QnnSDKRootDir)
-            --enable_pybind
-            --parallel --use_vcpkg --update
-            $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
-          workingDirectory: '$(Build.BinariesDirectory)'
+  - task: PythonScript@0
+    displayName: 'Generate cmake config'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\tools\ci_build\build.py'
+      arguments: >
+        --config RelWithDebInfo
+        --build_dir $(Build.BinariesDirectory)
+        --skip_submodule_sync
+        --cmake_generator "$(VSGenerator)"
+        --build_shared_lib
+        --use_qnn
+        --qnn_home $(QnnSDKRootDir)
+        --enable_pybind
+        --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --update
+        $(TelemetryOption) ${{ parameters.BUILD_PY_PARAMETERS }}
+      workingDirectory: '$(Build.BinariesDirectory)'
 
-      - task: VSBuild@1
-        displayName: 'Build'
-        inputs:
-          solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
-          platform: 'arm64'
-          configuration: RelWithDebInfo
-          msbuildArchitecture: 'arm64'
-          maximumCpuCount: true
-          logProjectEvents: true
-          workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
-          createLogFile: true
+  - task: VSBuild@1
+    displayName: 'Build'
+    inputs:
+      solution: '$(Build.BinariesDirectory)\RelWithDebInfo\onnxruntime.sln'
+      platform: 'arm64'
+      configuration: RelWithDebInfo
+      msbuildArchitecture: 'arm64'
+      maximumCpuCount: true
+      logProjectEvents: true
+      workingFolder: '$(Build.BinariesDirectory)\RelWithDebInfo'
+      createLogFile: true
 
-      # Esrp signing
-      - template: win-esrp-dll.yml
-        parameters:
-          FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
-          DisplayName: 'ESRP - Sign Native dlls'
-          DoEsrp: true
-          Pattern: '*.pyd'
+  # Esrp signing
+  - template: win-esrp-dll.yml
+    parameters:
+      FolderPath: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime\capi'
+      DisplayName: 'ESRP - Sign Native dlls'
+      DoEsrp: true
+      Pattern: '*.pyd'
 
-      - task: PythonScript@0
-        displayName: 'Build wheel'
-        inputs:
-          scriptPath: '$(Build.SourcesDirectory)\setup.py'
-          arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
-          workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
+  - task: PythonScript@0
+    displayName: 'Build wheel'
+    inputs:
+      scriptPath: '$(Build.SourcesDirectory)\setup.py'
+      arguments: 'bdist_wheel $(NightlyBuildOption) --wheel_name_suffix=qnn'
+      workingDirectory: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
 
-      - task: CopyFiles@2
-        displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
-        inputs:
-          SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
-          Contents: '*.whl'
-          TargetFolder: '$(Build.ArtifactStagingDirectory)'
+  - task: CopyFiles@2
+    displayName: 'Copy Python Wheel to: $(Build.ArtifactStagingDirectory)'
+    inputs:
+      SourceFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\dist'
+      Contents: '*.whl'
+      TargetFolder: '$(Build.ArtifactStagingDirectory)'
 
-      - task: PublishBuildArtifacts@1
-        displayName: 'Publish Artifact: ONNXRuntime python wheel'
-        inputs:
-          ArtifactName: onnxruntime_qnn_arm64
+  - ${{ if eq(parameters.is1ES, true) }}:
+    - task: 1ES.PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      inputs:
+        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
+        targetPath: '$(Build.ArtifactStagingDirectory)'
+  - ${{ if eq(parameters.is1ES, false) }}:
+    - task: PublishPipelineArtifact@1
+      displayName: 'Publish Artifact: ONNXRuntime python wheel'
+      input:
+        artifactName: onnxruntime_qnn_arm64_$(PythonVersion)
+        targetPath: '$(Build.ArtifactStagingDirectory)'
 
-      - script: |
-          7z x *.whl
-        workingDirectory: '$(Build.ArtifactStagingDirectory)'
-        displayName: 'unzip the package'
+  - script: |
+      7z x *.whl
+    workingDirectory: '$(Build.ArtifactStagingDirectory)'
+    displayName: 'unzip the package'
 
-      - task: CredScan@3
-        displayName: 'Run CredScan'
-        inputs:
-          debugMode: false
-        continueOnError: true
+  - task: CredScan@3
+    displayName: 'Run CredScan'
+    inputs:
+      debugMode: false
+    continueOnError: true
 
-      - task: BinSkim@4
-        displayName: 'Run BinSkim'
-        inputs:
-          AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
+  - task: BinSkim@4
+    displayName: 'Run BinSkim'
+    inputs:
+      AnalyzeTargetGlob: '+:file|$(Build.ArtifactStagingDirectory)\**\*.dll'
 
-      - task: TSAUpload@2
-        displayName: 'TSA upload'
-        condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
-        inputs:
-          GdnPublishTsaOnboard: false
-          GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa' 
+  - task: TSAUpload@2
+    displayName: 'TSA upload'
+    condition: and (succeeded(), eq(variables['Build.SourceBranch'], 'refs/heads/main'))
+    inputs:
+      GdnPublishTsaOnboard: false
+      GdnPublishTsaConfigFile: '$(Build.sourcesDirectory)\.gdn\.gdntsa'
 
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'

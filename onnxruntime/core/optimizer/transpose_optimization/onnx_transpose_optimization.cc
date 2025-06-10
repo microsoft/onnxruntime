@@ -2487,6 +2487,7 @@ constexpr HandlerInfo reshape_handler = {&FirstInput, &HandleReshape, /*transpos
 static const std::unordered_map<std::string_view, const HandlerInfo&> handler_map{
     {"Cast", simple_node_handler},
     {"Exp", simple_node_handler},
+    {"Gelu", simple_node_handler},
     {"Identity", simple_node_handler},
     {"LeakyRelu", simple_node_handler},
     {"Log", simple_node_handler},
@@ -3307,7 +3308,7 @@ const std::unordered_set<std::string_view>& GetLayoutSensitiveOps() {
       "BatchNormalization", "InstanceNormalization",
 
       // convolutions
-      "Conv", "QLinearConv", "ConvTranspose",
+      "Conv", "ConvInteger", "QLinearConv", "ConvTranspose",
 
       // pooling
       "AveragePool", "LpPool", "MaxPool", "MaxUnpool",

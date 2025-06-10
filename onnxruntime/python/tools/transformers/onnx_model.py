@@ -1183,11 +1183,21 @@ class OnnxModel:
         graph.ClearField("node")
         graph.node.extend(sorted_nodes)
 
-    def topological_sort(self, is_deterministic=False):
+    def topological_sort(self, is_deterministic=False, dump_model_on_failure=False):
         # TODO: support graph_topological_sort() in subgraphs
         # for graph in self.graphs():
         #    self.graph_topological_sort(graph)
-        OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
+        try:
+            OnnxModel.graph_topological_sort(self.model.graph, is_deterministic)
+        except RuntimeError as e:
+            if dump_model_on_failure:
+                logger.info(
+                    "Failed to sort graph in topological order. Dumping model to _topo_sort_failed.onnx for debugging."
+                )
+                OnnxModel.save(
+                    self.model, "_topo_sort_failed.onnx", save_as_external_data=True, all_tensors_to_one_file=True
+                )
+            raise e
 
     @staticmethod
     def save(

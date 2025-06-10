@@ -57,6 +57,7 @@ static const std::string kDumpEpContextModel = "ORT_DUMP_EP_CONTEXT_MODEL";
 static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
 static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
+static const std::string kOpTypesToExclude = "ORT_TENSORRT_OP_TYPES_TO_EXCLUDE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -182,6 +183,7 @@ struct TensorrtFuncState {
   std::vector<nvinfer1::IOptimizationProfile*> profiles;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::unordered_map<std::string, float> dynamic_range_map;
   bool engine_decryption_enable = false;
   int (*engine_decryption)(const char*, char*, size_t*) = nullptr;
@@ -200,6 +202,7 @@ struct TensorrtFuncState {
   std::string cache_prefix;
   std::string cache_suffix;
   bool engine_hw_compatible = false;
+  std::vector<nvinfer1::PreviewFeature> preview_features;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -214,6 +217,7 @@ struct TensorrtShortFuncState {
   std::vector<std::unordered_map<std::string, size_t>> output_info;
   bool context_memory_sharing_enable = false;
   size_t* max_context_mem_size_ptr = nullptr;
+  IAllocatorUniquePtr<void>* context_memory = nullptr;
   std::mutex* tensorrt_mu_ptr = nullptr;
 };
 
@@ -247,7 +251,9 @@ class TensorrtExecutionProvider : public IExecutionProvider {
 
   std::vector<std::unique_ptr<ComputeCapability>>
   GetCapability(const GraphViewer& graph,
-                const IKernelLookup& /*kernel_lookup*/) const override;
+                const IKernelLookup& /*kernel_lookup*/,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* /* resource_accountant */) const override;
 
   int GetDeviceId() const { return device_id_; }
 
@@ -330,6 +336,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   std::string cache_prefix_;
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
+  std::vector<nvinfer1::PreviewFeature> preview_features_;
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
@@ -590,5 +597,35 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * This function only creates the instance at the first time it's being called."
    */
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
+
+  /**
+   *  This is the helper function for ConstantFoldingDQ graph transformer.
+   *
+   *  It selects the qualified/required DQ node to be optimized as well as provides a mapping table
+   *  to help TRT EP later include the DQ node which is filtered out by TRT parser.
+   */
+  void SelectQualifiedDQNode(const GraphViewer& graph,
+                             std::unordered_set<NodeIndex>& selection_node_set,
+                             std::unordered_map<NodeIndex, NodeIndex>& consumer_to_dq) const;
+
+  /**
+   * This function returns an optimization ComputeCapability that is limited to:
+   *  1. the DQ nodes in this individual TRT ComputeCapability
+   *  2. the DQ nodes that are qualified and selected by TRT EP
+   *
+   * It also needs to make sure the DQ nodes is a subset of the complete list of DQ nodes to optimize in original selection ComputeCapability.
+   * Finally, copy the optimization function from the original selection ComputeCapability.
+   */
+  std::unique_ptr<ComputeCapability> CreateOptimizationComputeCapability(ComputeCapability* selection_cc,
+                                                                         std::unordered_set<NodeIndex>& trt_selection_node_set,
+                                                                         ComputeCapability* trt_cc) const;
+  /**
+   * This function helps add back the DQ nodes that are filtered out by TRT parser.
+   * The reason is the DQ nodes can be optimized and dequantized by applying ConstantFoldingDQ optimizer by ORT L2+ optimization.
+   */
+  void UpdateSupportedNodeVectorForDQ(const GraphViewer& graph,
+                                      SubGraph_t& supported_node_vector,
+                                      SubGraphCollection_t& supported_nodes_vector,
+                                      std::unordered_map<NodeIndex, NodeIndex> consumer_to_dq) const;
 };
 }  // namespace onnxruntime

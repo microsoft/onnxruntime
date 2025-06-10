@@ -306,6 +306,10 @@ class OnnxTestCase : public ITestCase {
                        bool is_input, size_t i,
                        std::unordered_map<std::string, Ort::Value>& out) const;
 
+  void ConvertResult(Ort::Value& out_value,
+                     size_t i,
+                     ONNX_NAMESPACE::TensorProto& result_pb) const;
+
   void ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
                        onnxruntime::test::HeapBuffer& b,
                        bool is_input, size_t i,
@@ -349,6 +353,7 @@ class OnnxTestCase : public ITestCase {
 
   void LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b, std::unordered_map<std::string, Ort::Value>&,
                     bool is_input) const override;
+  void SaveResult(size_t id, std::vector<Ort::Value>& out_values) const override;
 };
 
 std::unique_ptr<ITestCase> CreateOnnxTestCase(const std::string& test_case_name,
@@ -439,6 +444,21 @@ static void LoadTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorPr
   f.SetCloseOnDelete(true);
   if (!input_pb.ParseFromZeroCopyStream(&f)) {
     ORT_THROW("parse file '", ToUTF8String(pb_file), "' failed");
+  }
+}
+
+// save tensors to disk
+template <typename PATH_STRING_TYPE>
+static void SaveTensor(const PATH_STRING_TYPE& pb_file, ONNX_NAMESPACE::TensorProto& result_pb) {
+  int tensor_fd;
+  auto st = Env::Default().FileOpenWr(pb_file, tensor_fd);
+  if (!st.IsOK()) {
+    ORT_THROW("open file '", ToUTF8String(pb_file), "' failed:", st.ErrorMessage());
+  }
+  google::protobuf::io::FileOutputStream f(tensor_fd, protobuf_block_size_in_bytes);
+  f.SetCloseOnDelete(true);
+  if (!result_pb.SerializeToZeroCopyStream(&f)) {
+    ORT_THROW("serialize file '", ToUTF8String(pb_file), "' failed");
   }
 }
 
@@ -559,6 +579,41 @@ void OnnxTestCase::LoadTestData(size_t id, onnxruntime::test::HeapBuffer& b,
   }
 }
 
+void OnnxTestCase::SaveResult(size_t id, std::vector<Ort::Value>& out_values) const {
+  if (id >= test_data_dirs_.size()) {
+    ORT_THROW("index out of bound");
+  }
+  std::vector<PATH_STRING_TYPE> result_pb_files;
+
+  std::filesystem::path dir_fs_path = test_data_dirs_[id];
+  if (!std::filesystem::exists(dir_fs_path)) return;
+
+  for (size_t idx = 0; idx < out_values.size(); idx++) {
+    auto onnx_type = out_values[idx].GetConst().GetTypeInfo().GetConst().GetONNXType();
+    if (onnx_type == ONNXType::ONNX_TYPE_TENSOR) {
+      ONNX_NAMESPACE::TensorProto result_pb;
+      ConvertResult(out_values[idx], idx, result_pb);
+      std::cout << "[SaveResult] " << result_pb.dims_size() << std::endl;
+#ifdef _WIN32
+      std::wstring actual_output = std::wstring(L"actual_output_") + std::to_wstring(idx) + std::wstring(L".pb");
+#else
+      std::string actual_output = std::string("actual_output_") + std::to_string(idx) + std::string(".pb");
+#endif
+      result_pb_files.push_back(actual_output);
+      SaveTensor(dir_fs_path / result_pb_files[idx], result_pb);
+    } else if (onnx_type == ONNXType::ONNX_TYPE_SEQUENCE) {
+      // TODO: Support SequenceProto
+      ORT_THROW("ONNX_TYPE_SEQUENCE type for the output ", idx, " is not yet supported in test runner SaveResult");
+    } else if (onnx_type == ONNXType::ONNX_TYPE_OPTIONAL) {
+      // TODO: Support OptionalProto
+      ORT_THROW("ONNX_TYPE_OPTIONAL type for the output ", idx, " is not yet supported in test runner SaveResult");
+    } else {
+      ORT_THROW("Unsupported type for the output ", idx, " in test runner SaveResult");
+    }
+  }
+  return;
+}
+
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_pb,
                                    onnxruntime::test::HeapBuffer& b,
                                    bool is_input, size_t i,
@@ -587,6 +642,18 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
     b.AddDeleter(d);
   }
   out.emplace(name_finalized, std::move(v1));
+}
+
+void OnnxTestCase::ConvertResult(Ort::Value& out_value,
+                                 size_t i,
+                                 ONNX_NAMESPACE::TensorProto& result_pb) const {
+  // Convert output Ort::Value to TensorProto
+  std::string out_name = model_info_->GetOutputName(i);
+  auto status = onnxruntime::test::MLValueToTensorProto(out_value, result_pb);
+  if (!status.IsOK()) {
+    ORT_THROW("Output ", i, " ", out_name, ": ", status.ToString());
+  }
+  return;
 }
 
 void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_data_pb,
@@ -1381,6 +1448,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
     broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
     // Fails with QNN SDK 2.17.0:
@@ -1410,6 +1479,8 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"convtranspose_1d", "Access violation 0xc000005 from call graphAddNode."});
     broken_tests->insert({"convtranspose", "Access violation 0xc000005 from call graphAddNode."});
     broken_tests->insert({"averagepool_2d_ceil", "result differs. expected 13.5 (41580000), got 0 (0)"});
+    // Fails with QNN 2.32
+    broken_tests->insert({"resize_upsample_scales_linear", "expected 1 (3f800000), got 0.25 (3e800000)"});
   }
 
 #ifdef DISABLE_CONTRIB_OPS

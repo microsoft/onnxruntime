@@ -56,7 +56,7 @@ extends:
     # Update the pool with your team's 1ES hosted pool.
     pool:
       name: "Azure Pipelines"
-      image: "macOS-13"
+      image: "macOS-14"
       os: macOS
     sdl:
       sourceAnalysisPool:

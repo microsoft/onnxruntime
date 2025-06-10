@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 namespace Microsoft.ML.OnnxRuntime
@@ -375,6 +376,68 @@ namespace Microsoft.ML.OnnxRuntime
                 _envLogLevel = value;
             }
         }
+
+        /// <summary>
+        /// Register an execution provider library with the OrtEnv instance.
+        /// A registered execution provider library can be used by all sessions created with the OrtEnv instance.
+        /// Devices the execution provider can utilize are added to the values returned by GetEpDevices() and can
+        /// be used in SessionOptions.AppendExecutionProvider to select an execution provider for a device.
+        /// 
+        /// Coming: A selection policy can be specified and ORT will automatically select the best execution providers
+        /// and devices for the model.
+        /// </summary>
+        /// <param name="registrationName">The name to register the library under.</param>
+        /// <param name="libraryPath">The path to the library to register.</param>
+        /// <see cref="GetEpDevices"/>
+        /// <see cref="SessionOptions.AppendExecutionProvider(OrtEnv, IReadOnlyList{OrtEpDevice}, IReadOnlyDictionary{string, string})"/>
+        public void RegisterExecutionProviderLibrary(string registrationName, string libraryPath)
+        {
+            var registrationNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(registrationName);
+            var pathUtf8 = NativeOnnxValueHelper.GetPlatformSerializedString(libraryPath);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtRegisterExecutionProviderLibrary(handle, registrationNameUtf8, pathUtf8));
+        }
+
+        /// <summary>
+        /// Unregister an execution provider library from the OrtEnv instance.
+        /// </summary>
+        /// <param name="registrationName">The name the library was registered under.</param>
+        public void UnregisterExecutionProviderLibrary(string registrationName)
+        {
+            var registrationNameUtf8 = NativeOnnxValueHelper.StringToZeroTerminatedUtf8(registrationName);
+
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.OrtUnregisterExecutionProviderLibrary(handle, registrationNameUtf8));
+        }
+
+        /// <summary>
+        /// Get the list of all execution provider and device combinations that are available.
+        /// These can be used to select the execution provider and device for a session.
+        /// </summary>
+        /// <see cref="OrtEpDevice"/>
+        /// <see cref="SessionOptions.AppendExecutionProvider(OrtEnv, IReadOnlyList{OrtEpDevice}, IReadOnlyDictionary{string, string})"/>
+        /// <returns></returns>
+        public IReadOnlyList<OrtEpDevice> GetEpDevices()
+        {
+            IntPtr epDevicesPtr;
+            UIntPtr numEpDevices;
+
+            NativeApiStatus.VerifySuccess(NativeMethods.OrtGetEpDevices(handle, out epDevicesPtr, out numEpDevices));
+
+            int count = (int)numEpDevices;
+            var epDevices = new List<OrtEpDevice>(count);
+
+            IntPtr[] epDevicePtrs = new IntPtr[count];
+            Marshal.Copy(epDevicesPtr, epDevicePtrs, 0, count);
+
+            foreach (var ptr in epDevicePtrs)
+            {
+                epDevices.Add(new OrtEpDevice(ptr));
+            }
+
+            return epDevices.AsReadOnly();
+        }        
 
         #endregion
 

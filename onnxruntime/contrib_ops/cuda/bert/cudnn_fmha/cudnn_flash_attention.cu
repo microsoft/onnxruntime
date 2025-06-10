@@ -100,9 +100,7 @@ bool is_supported(const cudaDeviceProp& dprops,
                   int sequence_length_q,
                   int sequence_length_kv,
                   bool is_causal) {
-  bool is_sm8x = dprops.major == 8 && dprops.minor >= 0;
-  bool is_sm90 = dprops.major == 9 && dprops.minor == 0;
-  return (is_sm8x || is_sm90) &&
+  return (dprops.major >= 8) &&
          (head_size_qk % 8 == 0) && (head_size_qk <= 256) &&
          (head_size_v % 8 == 0) && (head_size_v <= 256) &&
          (num_heads_q % num_heads_kv == 0) &&

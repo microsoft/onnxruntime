@@ -2,7 +2,6 @@
 // Copyright (c) Intel Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/common/safeint.h"
 #include "core/providers/common.h"
 #include "core/providers/shared/utils/utils.h"
 #include "core/providers/webnn/builders/helper.h"
@@ -26,7 +25,7 @@ class PadOpBuilder : public BaseOpBuilder {
 
   // Operator support related.
  private:
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
 };
 
@@ -156,7 +155,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
 }
 
 // Operator support related.
-bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
+bool PadOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
                                      const Node& node,
                                      const WebnnDeviceType /* device_type */,
                                      const logging::Logger& logger) const {
@@ -184,7 +183,7 @@ bool PadOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& initializers,
     for (size_t i = 1; i < input_defs.size(); i++) {
       // Optional tensors (constant_value, axes) can be indicated by an empty name, just ignore it.
       const std::string input_name = GetTensorName(input_defs, i);
-      if (!input_name.empty() && !Contains(initializers, input_name)) {
+      if (!input_name.empty() && !graph_viewer.GetConstantInitializer(input_name)) {
         LOGS(logger, VERBOSE) << "Input [" << input_name << "] must be known as initializer";
         return false;
       }

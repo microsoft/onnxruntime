@@ -35,68 +35,68 @@ jobs:
 
   workspace:
     clean: all
-  timeoutInMinutes:  210
-  pool: ${{parameters.PoolName}}
+  timeoutInMinutes: 210
+  pool:
+    name: ${{parameters.PoolName}}
+    os: linux
+    ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+      hostArchitecture: Arm64
   steps:
-    - checkout: self
-      clean: true
-      submodules: none
-    - template: set-version-number-variables-step.yml
-    - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
-
-    - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
-      - template: get-docker-image-steps.yml
-        parameters:
-          Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
-          Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
-          DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
-          Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
-
-    - task: CmdLine@2
-      inputs:
-        script: |
-          set -e -x
-          mkdir -p $HOME/.onnx
-          docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
-          --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
-          /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
-          --skip_submodule_sync --parallel --use_vcpkg --use_binskim_compliant_compile_flags --use_vcpkg --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
-          mkdir $(Build.ArtifactStagingDirectory)/testdata
-          cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
-          ls -al $(Build.ArtifactStagingDirectory)
-      displayName: 'Create Artifacts'
-
-    - ${{ if eq(parameters.PackageJava, 'true') }}:
-      - template: java-api-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: 'linux-${{parameters.OnnxruntimeArch}}'
-          buildConfig: 'Release'
-          artifactName: 'onnxruntime-java-linux-${{parameters.OnnxruntimeArch}}'
-          version: '$(OnnxRuntimeVersion)'
-          libraryName: 'libonnxruntime.so'
-          nativeLibraryName: 'libonnxruntime4j_jni.so'
-
-    - template: c-api-artifacts-package-and-publish-steps-posix.yml
+  - checkout: self
+    clean: true
+    submodules: none
+  - template: set-version-number-variables-step.yml
+  - ${{ if eq(parameters.OnnxruntimeArch, 'x64') }}:
+    - template: get-docker-image-steps.yml
       parameters:
-          buildConfig: 'Release'
-          artifactName: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
-          artifactNameNoVersionString: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}'
-          libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+        Dockerfile: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/x86_64/default/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
-    - ${{ if eq(parameters.PackageNodejs, 'true') }}:
-      - template: nodejs-artifacts-package-and-publish-steps-posix.yml
-        parameters:
-          arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
-          os: 'linux'
-          artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'
+  - ${{ if eq(parameters.OnnxruntimeArch, 'aarch64') }}:
+    - template: get-docker-image-steps.yml
+      parameters:
+        Dockerfile: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu/Dockerfile
+        Context: tools/ci_build/github/linux/docker/inference/aarch64/default/cpu
+        DockerBuildArgs: "--build-arg BUILD_UID=$( id -u )"
+        Repository: onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging
 
-    - ${{ if not(eq(parameters.OnnxruntimeNodejsBindingArch, 'arm64')) }}:
-      - template: component-governance-component-detection-steps.yml
-        parameters:
-          condition: 'succeeded'
+  - task: CmdLine@2
+    inputs:
+      script: |
+        set -e -x
+        mkdir -p $HOME/.onnx
+        docker run -e SYSTEM_COLLECTIONURI --rm --volume /data/onnx:/data/onnx:ro --volume $(Build.SourcesDirectory):/onnxruntime_src --volume $(Build.BinariesDirectory):/build \
+        --volume $HOME/.onnx:/home/onnxruntimedev/.onnx -e NIGHTLY_BUILD onnxruntimecpubuildcentos8${{parameters.OnnxruntimeArch}}_packaging /bin/bash -c "python3 \
+        /onnxruntime_src/tools/ci_build/build.py --enable_lto --build_java --build_nodejs --build_dir /build --config Release \
+        --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --use_binskim_compliant_compile_flags --use_vcpkg --use_vcpkg_ms_internal_asset_cache --build_shared_lib ${{ parameters.AdditionalBuildFlags }} && cd /build/Release && make install DESTDIR=/build/installed"
+        mkdir $(Build.ArtifactStagingDirectory)/testdata
+        cp $(Build.BinariesDirectory)/Release/libcustom_op_library.so* $(Build.ArtifactStagingDirectory)/testdata
+        ls -al $(Build.ArtifactStagingDirectory)
+    displayName: 'Create Artifacts'
+
+  - ${{ if eq(parameters.PackageJava, 'true') }}:
+    - template: java-api-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        arch: 'linux-${{parameters.OnnxruntimeArch}}'
+        buildConfig: 'Release'
+        artifactName: 'onnxruntime-java-linux-${{parameters.OnnxruntimeArch}}'
+        version: '$(OnnxRuntimeVersion)'
+        libraryName: 'libonnxruntime.so'
+        nativeLibraryName: 'libonnxruntime4j_jni.so'
+        is1ES: true
+
+  - template: c-api-artifacts-package-and-publish-steps-posix.yml
+    parameters:
+      buildConfig: 'Release'
+      artifactName: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}-$(OnnxRuntimeVersion)'
+      artifactNameNoVersionString: '${{parameters.ArtifactNamePrefix}}-linux-${{parameters.OnnxruntimeArch}}'
+      libraryName: 'libonnxruntime.so.$(OnnxRuntimeVersion)'
+
+  - ${{ if eq(parameters.PackageNodejs, 'true') }}:
+    - template: nodejs-artifacts-package-and-publish-steps-posix.yml
+      parameters:
+        arch: '${{parameters.OnnxruntimeNodejsBindingArch}}'
+        os: 'linux'
+        artifactName: 'drop-onnxruntime-nodejs-linux-${{parameters.OnnxruntimeArch}}'

@@ -81,11 +81,50 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
   bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
   Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
 
+  struct CastNodeInfo {
+    std::string node_name;
+    std::string input_name;
+    std::string output_name;
+  };
+  std::vector<CastNodeInfo> cast_node_info_vec;
+
+  // Check if we need to add a cast node for int64
+  bool needs_int64_cast = false;
+  if (is_graph_output) {
+    for (const auto& input_name : input_names) {
+      if (input_name.find("_cast_int32") != std::string::npos) {
+        needs_int64_cast = true;
+        break;
+      }
+    }
+  }
+
+  const auto& transpose_output = node_unit.Outputs()[0];
+  // Get the output info for the gather output tensor
+  TensorInfo output_info = {};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(transpose_output, output_info));
   std::vector<uint32_t> output_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(node_unit.Outputs()[0].node_arg, output_shape),
                     "Cannot get shape");
 
   const QnnTensorWrapper& input_tensor_wrapper = qnn_model_wrapper.GetQnnTensorWrapper(input_names[0]);
+
+  // If a cast to int64 is needed, add the cast node
+  if (needs_int64_cast) {
+    std::string cast_node_name = output_name + "_cast_int64";
+    std::string cast_input_name = output_name + "_cast_int64_aux";
+    std::string cast_output_name = output_name;
+
+    // Create the cast input tensor wrapper
+    QnnTensorWrapper cast_input_tensorwrapper(cast_input_name,
+                                              QNN_TENSOR_TYPE_NATIVE,
+                                              output_info.qnn_data_type,
+                                              output_info.quant_param.Copy(),
+                                              std::move(output_shape));
+
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(cast_input_tensorwrapper)), "Failed to add tensor.");
+    cast_node_info_vec.push_back({cast_node_name, cast_input_name, cast_output_name});
+  }
 
   // Transpose output uses same data type and quantization parameter with input
   // 1. In QDQ model, the optimization may create scenario like Q -> Transpose -> DQ, Transpose is single node
@@ -110,6 +149,18 @@ Status TransposeOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mode
                                                     do_op_validation),
                     "Failed to add node.");
 
+  if (needs_int64_cast) {
+    for (const auto& cast_node_info : cast_node_info_vec) {
+      // Insert cast node.
+      ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(cast_node_info.node_name,
+                                                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                                                        "Cast",
+                                                        {cast_node_info.input_name},
+                                                        {cast_node_info.output_name},
+                                                        {}),
+                        " Failed to add Cast node");
+    }
+  }
   return Status::OK();
 }
 

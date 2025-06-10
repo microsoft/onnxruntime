@@ -26,7 +26,6 @@ class ConcatOpBuilder : public BaseOpBuilder {
 Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
                                               const Node& node,
                                               const logging::Logger& logger) const {
-#if defined(COREML_ENABLE_MLPROGRAM)
   if (model_builder.CreateMLProgram()) {
     using namespace CoreML::Specification::MILSpec;  // NOLINT
 
@@ -45,7 +44,6 @@ Status ConcatOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else  // NOLINT
-#endif    // defined(COREML_ENABLE_MLPROGRAM)
   {
     std::unique_ptr<COREML_SPEC::NeuralNetworkLayer> layer = model_builder.CreateNNLayer(node);
 

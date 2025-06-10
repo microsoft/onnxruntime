@@ -7,7 +7,7 @@ SHORT_CUDA_VERSION=$(echo $CUDA_VERSION | sed   's/\([[:digit:]]\+\.[[:digit:]]\
 BUILD_ARGS=('--config' 'Release'
               '--skip_submodule_sync'
               '--build_shared_lib'
-              '--parallel' '--use_vcpkg' '--use_binskim_compliant_compile_flags'
+              '--parallel' '--use_vcpkg' '--use_vcpkg_ms_internal_asset_cache' '--use_binskim_compliant_compile_flags'
               '--build_wheel'
               '--enable_onnx_tests'
               '--use_cuda'

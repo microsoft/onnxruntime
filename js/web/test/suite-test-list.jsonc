@@ -453,7 +453,7 @@
       // // "test_convinteger_without_padding",
       "test_convtranspose_1d",
       // // "test_convtranspose_3d",
-      "test_convtranspose_autopad_same",
+      "!(opset14)/test_convtranspose_autopad_same",
       "test_convtranspose_dilations",
       "test_convtranspose_kernel_shape",
       "opset{9,17}/test_convtranspose_output_shape",

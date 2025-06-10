@@ -45,6 +45,7 @@ void usage() {
       "\t-M : Disable memory pattern\n"
       "\t-c [runs]: Specifies the number of Session::Run() to invoke simultaneously for each model.\n"
       "\t-r [repeat]: Specifies the number of times to repeat\n"
+      "\t-I [inference_mode]: Use inference mode. Save the inference result and skip the output value comparison.\n"
       "\t-v: verbose\n"
       "\t-n [test_case_name]: Specifies a single test case to run.\n"
       "\t-e [EXECUTION_PROVIDER]: EXECUTION_PROVIDER could be 'cpu', 'cuda', 'dnnl', 'tensorrt', 'vsinpu'"
@@ -59,7 +60,8 @@ void usage() {
       "\t    Refer to onnxruntime_session_options_config_keys.h for valid keys and values. \n"
       "\t    [Example] -C \"session.disable_cpu_ep_fallback|1 ep.context_enable|1\" \n"
       "\t-i: Specify EP specific runtime options as key value pairs. Different runtime options available are: \n"
-      "\t    [QNN only] [backend_path]: QNN backend path. e.g '/folderpath/libQnnHtp.so', '/folderpath/libQnnCpu.so'.\n"
+      "\t    [QNN only] [backend_type]: QNN backend type. E.g., 'cpu', 'htp'. Mutually exclusive with 'backend_path'.\n"
+      "\t    [QNN only] [backend_path]: QNN backend path. E.g., '/folderpath/libQnnHtp.so', '/winfolderpath/QnnHtp.dll'. Mutually exclusive with 'backend_type'.\n"
       "\t    [QNN only] [profiling_level]: QNN profiling level, options:  'basic', 'detailed', default 'off'.\n"
       "\t    [QNN only] [profiling_file_path]: QNN profiling file path if ETW not enabled.\n"
       "\t    [QNN only] [rpc_control_latency]: QNN rpc control latency. default to 10.\n"
@@ -80,7 +82,7 @@ void usage() {
       "\t    [QNN only] [offload_graph_io_quantization]: Offload graph input quantization and graph output dequantization to another EP (typically CPU EP). \n"
       "\t    Defaults to '0' (QNN EP handles the graph I/O quantization and dequantization). \n"
       "\t [Usage]: -e <provider_name> -i '<key1>|<value1> <key2>|<value2>' \n\n"
-      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_path|/folderpath/libQnnCpu.so\" \n\n"
+      "\t [Example] [For QNN EP] -e qnn -i \"profiling_level|detailed backend_type|cpu\" \n\n"
       "\t    [SNPE only] [runtime]: SNPE runtime, options: 'CPU', 'GPU', 'GPU_FLOAT16', 'DSP', 'AIP_FIXED_TF'. \n"
       "\t    [SNPE only] [priority]: execution priority, options: 'low', 'normal'. \n"
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
@@ -202,6 +204,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool enable_cpu_mem_arena = true;
   ExecutionMode execution_mode = ExecutionMode::ORT_SEQUENTIAL;
   int repeat_count = 1;
+  bool inference_mode = false;
   int p_models = GetNumCpuCores();
   bool enable_cuda = false;
   bool enable_dnnl = false;
@@ -239,7 +242,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
   bool pause = false;
   {
     int ch;
-    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:Mn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
+    while ((ch = getopt(argc, argv, ORT_TSTR("Ac:hj:IMn:r:e:t:a:xvo:d:C:i:pzfb"))) != -1) {
       switch (ch) {
         case 'A':
           enable_cpu_mem_arena = false;
@@ -267,6 +270,9 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             usage();
             return -1;
           }
+          break;
+        case 'I':
+          inference_mode = true;
           break;
         case 'M':
           enable_mem_pattern = false;
@@ -554,7 +560,8 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           if (supported_profiling_level.find(value) == supported_profiling_level.end()) {
             ORT_THROW("Supported profiling_level: off, basic, detailed");
           }
-        } else if (key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" || key == "device_id") {
+        } else if (key == "backend_type" || key == "rpc_control_latency" || key == "vtcm_mb" || key == "soc_model" ||
+                   key == "device_id") {
           // no validation
         } else if (key == "htp_performance_mode") {
           std::set<std::string> supported_htp_perf_mode = {"burst", "balanced", "default", "high_performance",
@@ -602,10 +609,11 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             ORT_THROW("Wrong value for ", key, ". select from: ", str);
           }
         } else {
-          ORT_THROW(R"(Wrong key type entered. Choose from options: ['backend_path',
-'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode',
-'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority',
-'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization'])");
+          ORT_THROW(
+              "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
+              "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
+              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', "
+              "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
         }
 
         qnn_options[key] = value;
@@ -932,7 +940,7 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
               });
 
     auto tp = TestEnv::CreateThreadPool(Env::Default());
-    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat);
+    TestEnv test_env(env, sf, tp.get(), std::move(tests), stat, inference_mode);
     Status st = test_env.Run(p_models, concurrent_session_runs, repeat_count);
     if (!st.IsOK()) {
       fprintf(stderr, "%s\n", st.ErrorMessage().c_str());

@@ -19,9 +19,9 @@ class LogicalOpBuilder : public BaseOpBuilder {
   Status AddToModelBuilderImpl(ModelBuilder& model_builder, const Node& node,
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
   // Operator support related.
-  bool IsOpSupportedImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
                          const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
-  bool HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+  bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
 
@@ -54,7 +54,7 @@ Status LogicalOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, cons
   return Status::OK();
 }
 
-bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initializers */,
+bool LogicalOpBuilder::IsOpSupportedImpl(const GraphViewer&,
                                          const Node& node,
                                          const WebnnDeviceType /* device_type */,
                                          const logging::Logger& logger) const {
@@ -72,7 +72,7 @@ bool LogicalOpBuilder::IsOpSupportedImpl(const InitializedTensorSet& /* initiali
   return true;
 }
 
-bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* initializers */, const Node& node,
+bool LogicalOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                               const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
@@ -86,7 +86,7 @@ bool LogicalOpBuilder::HasSupportedInputsImpl(const InitializedTensorSet& /* ini
     if (!GetType(*input_defs[1], input1_type, logger))
       return false;
     std::array<int32_t, 2> input_types{input0_type, input1_type};
-    if (!AreInputDataTypesSame(op_type, input_types, logger)) {
+    if (!AreDataTypesSame(op_type, input_types, logger)) {
       return false;
     }
   }

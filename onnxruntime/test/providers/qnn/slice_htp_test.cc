@@ -44,11 +44,7 @@ TEST_F(QnnCPUBackendTests, Slice_SharedInitializersBugFix) {
 
   ProviderOptions provider_options;
 
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnCpu.dll";
-#else
-  provider_options["backend_path"] = "libQnnCpu.so";
-#endif
+  provider_options["backend_type"] = "cpu";
 
   RunQnnModelTest(model_fn,
                   provider_options,
@@ -79,11 +75,7 @@ static void RunSliceQDQTest(const TestInputDef<float>& data_def,
                             ExpectedEPNodeAssignment expected_ep_assignment,
                             bool use_contrib_qdq = false) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   provider_options["offload_graph_io_quantization"] = "0";
 
   const std::vector<TestInputDef<float>> f32_inputs = {data_def};
@@ -116,11 +108,7 @@ static void RunSliceNonQDQOnHTP(const TestInputDef<DataType>& data_def,
                                 const TestInputDef<int64_t>& steps_def,
                                 ExpectedEPNodeAssignment expected_ep_assignment) {
   ProviderOptions provider_options;
-#if defined(_WIN32)
-  provider_options["backend_path"] = "QnnHtp.dll";
-#else
-  provider_options["backend_path"] = "libQnnHtp.so";
-#endif
+  provider_options["backend_type"] = "htp";
   auto f32_model_builder = BuildOpTestCase<DataType, int64_t>("Slice", {data_def},
                                                               {starts_def, ends_def, axes_def, steps_def}, {});
   RunQnnModelTest(f32_model_builder,

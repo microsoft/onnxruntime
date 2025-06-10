@@ -8,7 +8,7 @@
     "@typescript-eslint/eslint-plugin": "^7.4.0",
     "@typescript-eslint/parser": "^7.4.0",
     "dir-compare": "^4.2.0",
-    "esbuild": "^0.19.3",
+    "esbuild": "^0.25.0",
     "esbuild-plugin-polyfill-node": "^0.3.0",
     "eslint": "^8.51.0",
     "eslint-config-prettier": "^9.1.0",
