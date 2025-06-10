@@ -37,7 +37,6 @@ struct PluginExecutionProviderFactory : public IExecutionProviderFactory {
   std::vector<const OrtEpDevice*> devices_;
   std::vector<const OrtHardwareDevice*> hardware_devices_;
   std::vector<const OrtKeyValuePairs*> ep_metadata_;
-  std::vector<const OrtMemoryInfo*> ep_allocator_mem_infos_;
 };
 
 /// <summary>
@@ -61,10 +60,11 @@ using UniqueOrtEp = std::unique_ptr<OrtEp, OrtEpDeleter>;
 /// </summary>
 class PluginExecutionProvider : public IExecutionProvider {
  public:
-  explicit PluginExecutionProvider(UniqueOrtEp ep, std::vector<const OrtMemoryInfo*>& allocator_mem_infos);
+  explicit PluginExecutionProvider(UniqueOrtEp ep, OrtEpFactory& ep_factory,
+                                   gsl::span<const OrtEpDevice* const> ep_devices);
   ~PluginExecutionProvider();
 
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
   // create per-session allocators
   // TODO: longer term we should prefer shared allocators in Environment and only create per-session allocators as
@@ -76,8 +76,8 @@ class PluginExecutionProvider : public IExecutionProvider {
  private:
   UniqueOrtEp plugin_ep_;
 
-  // store the individual OrtMemoryInfo instances so we can create the specific allocators required
+  OrtEpFactory& ep_factory_;
+  std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
-  std::vector<std::unique_ptr<plugin_ep::Stream>> streams_;
 };
 }  // namespace onnxruntime

@@ -127,9 +127,9 @@ class Environment {
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
   OrtAllocator* GetSharedAllocator(const OrtMemoryInfo& mem_info);
 
-  Status CreateSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type,
-                               const OrtKeyValuePairs* allocator_options, const OrtArenaCfg* arena_cfg,
-                               OrtAllocator** allocator,
+  Status CreateSharedAllocator(const OrtEpDevice& ep_device,
+                               OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
+                               const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator,
                                bool error_if_found = true);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
 

@@ -247,15 +247,14 @@ ORT_API(OrtAllocator*, OrtApis::GetSharedAllocator, _In_ OrtEnv* ort_env, _In_ c
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
-                    _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
-                    _In_opt_ const OrtArenaCfg* arena_cfg,
-                    _Outptr_opt_ OrtAllocator** allocator) {
+                    _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
+                    _In_opt_ const OrtKeyValuePairs* allocator_options, _Outptr_opt_ OrtAllocator** allocator) {
   if (ort_env == nullptr || ep_device == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
   }
 
   auto& env = ort_env->GetEnvironment();
-  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_options, arena_cfg,
+  ORT_API_RETURN_IF_STATUS_NOT_OK(env.CreateSharedAllocator(*ep_device, mem_type, allocator_type, allocator_options,
                                                             allocator));
 
   return nullptr;

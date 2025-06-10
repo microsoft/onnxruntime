@@ -25,7 +25,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   ReleaseAllocator = ReleaseAllocatorImpl;
 
   CreateDataTransfer = CreateDataTransferImpl;
-  ReleaseDataTransfer = ReleaseDataTransferImpl;
+
+  IsStreamAware = IsStreamAwareImpl;
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
   // for the sake of this example we specify a CPU allocator with no arena and 1K alignment (arbitrary)
   // as well as GPU and GPU shared memory. the actual EP implementation would typically define two at most for a
@@ -193,6 +195,9 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *allocator = nullptr;
 
+  // NOTE: The factory implementation can return a shared OrtAllocator* instead of creating a new instance on each call.
+  //       To do this just make ReleaseAllocatorImpl a no-op.
+
   // NOTE: If OrtMemoryInfo has allocator type (call MemoryInfoGetType) of OrtArenaAllocator, an ORT BFCArena
   //       will be added to wrap the returned OrtAllocator. The EP is free to implement its own arena, and if it
   //       wants to do this the OrtMemoryInfo MUST be created with an allocator type of OrtDeviceAllocator.
@@ -200,8 +205,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   // NOTE: The OrtMemoryInfo pointer should only ever be coming straight from an OrtEpDevice, and pointer based
   // matching should work.
   if (memory_info == factory.cpu_memory_info_.get()) {
-    // create a CPU allocator. use the basic OrtAllocator for this example. in real code you could derive a class
-    // from it
+    // create a CPU allocator. use the basic OrtAllocator for this example.
     auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info);
     *allocator = cpu_allocator.release();
   } else if (memory_info == factory.default_gpu_memory_info_.get()) {
@@ -234,7 +238,22 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* t
 }
 
 /*static*/
-void ORT_API_CALL ExampleEpFactory::ReleaseDataTransferImpl(OrtEpFactory* /*this_ptr*/,
-                                                            OrtDataTransferImpl* /*data_transfer*/) noexcept {
-  // no-op as we use a shared OrtDataTransferImpl instance
+bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+  return true;  // the example EP implements stream synchronization.
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                                        const OrtMemoryDevice* memory_device,
+                                                                        OrtSyncStreamImpl** stream) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  *stream = nullptr;
+
+  // we only need stream synchronization on the device stream
+  if (factory.ep_api.OrtMemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
+    auto sync_stream = std::make_unique<StreamImpl>(factory);
+    *stream = sync_stream.release();
+  }
+
+  return nullptr;
 }

@@ -7,10 +7,17 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+#include "core/session/abi_key_value_pairs.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+
+namespace onnxruntime {
+namespace common {
+class Status;
+}
+}  // namespace onnxruntime
 
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
@@ -45,6 +52,18 @@ struct OrtArenaCfg {
            initial_growth_chunk_size_bytes >= -1 &&
            max_power_of_two_extend_bytes >= -1;
   }
+
+  // config key names that we parse in FromKeyValuePairs
+  struct ConfigKeyNames {
+    static constexpr const char* ArenaExtendStrategy = "arena.extend_strategy";
+    static constexpr const char* InitialChunkSizeBytes = "arena.initial_chunk_size_bytes";
+    static constexpr const char* MaxDeadBytesPerChunk = "arena.max_dead_bytes_per_chunk";
+    static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
+    static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
+    static constexpr const char* MaxMem = "arena.max_mem";
+  };
+
+  static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
 };
 
 namespace onnxruntime {

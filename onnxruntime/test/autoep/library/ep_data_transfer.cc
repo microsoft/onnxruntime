@@ -49,7 +49,8 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(_In_ void* this_ptr
     OrtDeviceMemoryType src_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(src_device);
     OrtDeviceMemoryType dst_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(dst_device);
 
-    void *src_data = nullptr, *dst_data = nullptr;
+    const void* src_data = nullptr;
+    void* dst_data = nullptr;
     RETURN_IF_ERROR(impl.ort_api.GetTensorData(src_tensors[i], &src_data));
     RETURN_IF_ERROR(impl.ort_api.GetTensorMutableData(dst_tensors[i], &dst_data));
 

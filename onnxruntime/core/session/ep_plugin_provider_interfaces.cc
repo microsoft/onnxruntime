@@ -28,19 +28,10 @@ PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_
       devices_{ep_devices.begin(), ep_devices.end()} {
   hardware_devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
-  ep_allocator_mem_infos_.reserve(ep_devices.size());
 
-  for (const auto* ep_device : ep_devices) {
+  for (const auto* ep_device : devices_) {
     hardware_devices_.push_back(ep_device->device);
     ep_metadata_.push_back(&ep_device->ep_metadata);
-
-    if (ep_device->device_memory_info != nullptr) {
-      ep_allocator_mem_infos_.push_back(ep_device->device_memory_info);
-    }
-
-    if (ep_device->host_accessible_memory_info != nullptr) {
-      ep_allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
-    }
   }
 }
 
@@ -55,7 +46,8 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
   }
 
   auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                              ep_allocator_mem_infos_);
+                                                              ep_factory_,
+                                                              devices_);
   ep_wrapper->SetLogger(session_logger.ToInternal());
 
   return ep_wrapper;
@@ -65,16 +57,31 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
 // PluginExecutionProvider
 //
 
-PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep,
-                                                 std::vector<const OrtMemoryInfo*>& allocator_mem_infos)
+PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, OrtEpFactory& ep_factory,
+                                                 gsl::span<const OrtEpDevice* const> ep_devices)
     : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
       plugin_ep_(std::move(ep)),
-      allocator_mem_infos_{allocator_mem_infos} {
+      ep_factory_{ep_factory},
+      ep_devices_{ep_devices.begin(), ep_devices.end()} {
+  // generally there should only be one OrtEpDevice.
+  // if there are multiple we expect them to come from the same factory.
+  ORT_ENFORCE(std::all_of(ep_devices_.begin(), ep_devices_.end(),
+                          [this](const OrtEpDevice* ep_device) { return ep_device->ep_factory == &ep_factory_; }));
+
+  for (const auto* ep_device : ep_devices_) {
+    if (ep_device->device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->device_memory_info);
+    }
+
+    if (ep_device->host_accessible_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
+    }
+  }
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
   OrtDataTransferImpl* data_transfer_impl = nullptr;
-  OrtStatus* status = plugin_ep_->CreateDataTransfer(plugin_ep_.get(), &data_transfer_impl);
+  OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
   if (status != nullptr) {
     ORT_THROW("Error creating data transfer: ", ToStatus(status).ToString());
   }
@@ -89,7 +96,7 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
-    OrtStatus* ort_status = plugin_ep_->CreateAllocator(plugin_ep_.get(), memory_info, nullptr, &ort_allocator_ptr);
+    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
 
     // throw or log? start with throw
     if (ort_status != nullptr) {
@@ -98,8 +105,8 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
     auto ort_allocator = OrtAllocatorUniquePtr(
         ort_allocator_ptr,
-        [&ep_device = *this](OrtAllocator* allocator) {
-          ep_device.plugin_ep_->ReleaseAllocator(ep_device.plugin_ep_.get(), allocator);
+        [this](OrtAllocator* allocator) {
+          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
         });
     allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
   }
@@ -110,32 +117,34 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 //
 void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& registry,
                                                      AllocatorMap& /*allocators*/) const {
+  if (!ep_factory_.IsStreamAware(&ep_factory_)) {
+    return;
+  }
+
   // TODO: The CUDA implementation uses the pinned memory allocator for the stream and gets that from AllocatorMap.
   // Assumption: It can have an internal or shared pinned memory allocator in the EP Factory that is used for all
   // pinnned memory usage across session. A pointer to this can be returned from OrtEpFactory::CreateAllocator and
   // OrtEp::CreateAllocator, so there's no requirement to pass in an AllocatorMap here.
   // i.e. ORT should not need to care about that implementation detail.
   for (const auto* mem_info : allocator_mem_infos_) {
-    if (mem_info->device.Type() == OrtDevice::CPU) {
+    auto device_type = mem_info->device.Type();
+    if (device_type == OrtDevice::CPU) {
       // CPU memory does not need a stream
       continue;
     }
 
-    OrtSyncStreamImpl* stream = nullptr;
-    const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
-    auto* status = plugin_ep_->CreateSyncStreamForDevice(plugin_ep_.get(), memory_device, &stream);
-    ORT_ENFORCE(status == nullptr, "Error creating sync stream for device: ", ToStatus(status).ToString());
+    registry.RegisterCreateStreamFn(
+        device_type,
+        [mem_info, this](const OrtDevice& device) {
+          OrtSyncStreamImpl* stream = nullptr;
+          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+          auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, &stream);
+          ORT_ENFORCE(status == nullptr, "Error creating sync stream for device: ", ToStatus(status).ToString());
+          return std::make_unique<plugin_ep::Stream>(device, *stream);
+        });
 
-    if (stream != nullptr) {
-      registry.RegisterCreateStreamFn(mem_info->device.Type(),
-                                      [memory_device, stream](const OrtDevice& device) {
-                                        return std::make_unique<plugin_ep::Stream>(device, *stream);
-                                      });
-
-      auto device_type = mem_info->device.Type();
-      registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
-      registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
-    }
+    registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
+    registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
   }
 }
 

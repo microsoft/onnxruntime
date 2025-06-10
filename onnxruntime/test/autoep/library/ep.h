@@ -17,17 +17,6 @@ class ExampleEp : public OrtEp, public ApiPtrs {
 
  private:
   static const char* GetNameImpl(const OrtEp* this_ptr) noexcept;
-  static OrtStatus* CreateSyncStreamForDeviceImpl(OrtEp* this_ptr, /*const OrtSession* session,*/
-                                                  const OrtMemoryDevice* memory_device,
-                                                  OrtSyncStreamImpl** stream) noexcept;
-
-  static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEp* this_ptr,
-                                                        OrtDataTransferImpl** data_transfer) noexcept;
-
-  static void ORT_API_CALL ReleaseDataTransferImpl(OrtEp* /*this_ptr*/,
-                                                   OrtDataTransferImpl* /*data_transfer*/) noexcept {
-    // no-op. the factory owns the instance
-  }
 
   ExampleEpFactory& factory_;
   std::string name_;

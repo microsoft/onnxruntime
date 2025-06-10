@@ -5386,8 +5386,8 @@ struct OrtApi {
   // This allows configuration of the shared allocator if required (vs. the allocator instance created when the
   // EP library is registered which uses default settings).
   ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
-                  _In_ OrtDeviceMemoryType mem_type, _In_opt_ const OrtKeyValuePairs* allocator_options,
-                  _In_opt_ const OrtArenaCfg* arena_cfg,
+                  _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
+                  _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_opt_ OrtAllocator** allocator);
 
   // get a shared allocator from the OrtEnv.
@@ -5411,28 +5411,7 @@ struct OrtApi {
    *
    * \since Version 1.23
    */
-  ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ void** out);
-
-  /** \brief Copy tensors from one OrtValue array to another
-   *
-   * Copies the contents of the source tensors to the destination tensors.
-   * The source and destination tensors must have the same shape and data type.
-   * The number of tensors must match between the source and destination arrays.
-   *
-   * To create the destination tensor use GetSharedAllocator and CreateTensorAsOrtValue.
-   *
-   * \param[in] src_tensors Array of source OrtValue pointers
-   * \param[in] dst_tensors Array of destination OrtValue pointers
-   * \param[in] num_tensors Number of tensors in the arrays
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23
-   */
-  ORT_API2_STATUS(CopyTensors,
-                  _In_reads_(num_tensors) const OrtValue** src_tensors,
-                  _In_reads_(num_tensors) OrtValue** dst_tensors,
-                  _In_ size_t num_tensors);
+  ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 };
 
 /*
@@ -6285,9 +6264,6 @@ struct OrtEpApi {
   // We implement a derived class on the ORT side and plugin the virtual functions via OrtSyncStreamImpl.
   //
 
-  // ORT_API2_STATUS(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
-  //                 _Outptr_ OrtSyncStream** stream);
-
   // returns the OrtSyncStreamImpl. used in the notification wait function
   ORT_API_T(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream);
 
@@ -6344,48 +6320,8 @@ struct OrtEp {
 
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
 
-  // Design choice:
-  //   - have a create/release pair for individual OrtMemoryInfo* values
-  //     - alternative: CreatePreferredAllocators style where EP returns new instance for all allocators
-  //     - this allows finer grained control in the future so we only create an allocator when needed.
-  //       logic: check the shared allocators from the Environment first before creating any per-session allocators.
-  //   - the create/release lets us use a unique_ptr with automatic cleanup
-  //   - the signature for CreateAllocator/ReleaseAllocator is the same for OrtEpFactory as OrtEp (with the obvious
-  //     exception of the `this_ptr` type, so that a common implementation can be used.
-  //     EP library is free to return a single allocator instance for both as it controls the create/release logic.
-  //   - we pass through all the EP options as allocator_options
-  //     - if there's an arena involved, ORT will look for the AllocatorInfo options in this set when adding the
-  //       BFCArena wrapper on the ORT side.
-  //   - we internally pass through the OrtMemoryInfo*'s from the OrtEpDevice instances to the
-  //     IExecutionProvider EP wrapper on the ORT side to enable this approach.
-
-  ORT_API2_STATUS(CreateAllocator, _In_ OrtEp* this_ptr,
-                  _In_ const OrtMemoryInfo* memory_info,
-                  _In_ const OrtKeyValuePairs* allocator_options,
-                  _Outptr_ OrtAllocator** allocator);
-  ORT_API_T(void, ReleaseAllocator, _In_ OrtEp* this_ptr, _In_ OrtAllocator* allocator);
-
-  // Design choice:
-  //   - technically we expect the IDataTransfer to be a global thing, but we only want to add IDataTransfer instances
-  //     to a session for the EPs that are enabled so that we minimize the cost to find the correct IDataTransfer
-  //     instance for a copy that the session needs to do. If we accumulate them in the Environment and pass the that
-  //     to the session we will call CanCopy on instances that are not used in the session.
-  //   - if we put them in the EP interface it's simple to only add the required instances to a session
-  //   - the EP implementation can return a shared instance in CreateDataTransfer and treat the ReleaseDataTransfer as
-  //     a no-op.
-  //   - given the EP implementation to use a shared instance is relatively simple and the example implementation will
-  //     demonstrate this, it's not worth adding complexity to ORT to put the instance in the Environment and try and
-  //     filter the global list to relevant ones when creating the inference session.
-
-  // get the OrtDataTransfer for the library.
-  // if a data transfer implementation is not required set data_transfer to nullptr.
-  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEp* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
-  ORT_API_T(void, ReleaseDataTransfer, _In_ OrtEp* this_ptr, _In_ OrtDataTransferImpl* data_transfer);
-
-  // create stream if required for the memory_device. set `stream` to nullptr if it's not.
-  // ORT will register the stream if created with the session, so it's not passed in here currently
-  ORT_API_T(OrtStatus*, CreateSyncStreamForDevice, _In_ OrtEp* this_ptr, _In_ const OrtMemoryDevice* memory_device,
-            _Outptr_ OrtSyncStreamImpl** stream);
+  // IExecutionProvider::Sync. Called by IOBinding to ensure data values are available.
+  ORT_API2_STATUS(Sync, _In_ OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -6529,9 +6465,14 @@ struct OrtEpFactory {
 
   // Create an IDataTransfer instance for the factory.
   // This is required to support the ability to copy data between devices externally to ORT.
-  // e.g. user
   ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
-  ORT_API_T(void, ReleaseDataTransfer, _In_ OrtEpFactory* this_ptr, _In_ OrtDataTransferImpl* data_transfer);
+
+  // create stream if required for the memory_device. set `stream` to nullptr if it's not.
+  // ORT will register the stream if created with the session, so it's not passed in here currently
+  ORT_API_T(bool, IsStreamAware, _In_ const OrtEpFactory* this_ptr);
+  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryDevice* memory_device,
+                  _Outptr_ OrtSyncStreamImpl** stream);
 };
 
 /*
