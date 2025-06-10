@@ -383,10 +383,6 @@ def generate_build_tree(
         ]
         if args.winml_root_namespace_override:
             cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
-        if args.disable_memleak_checker or args.enable_address_sanitizer:
-            cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=OFF")
-        else:
-            cmake_args.append("-Donnxruntime_ENABLE_MEMLEAK_CHECKER=ON")
 
         if args.use_winml:
             cmake_args.append("-Donnxruntime_BUILD_WINML_TESTS=" + ("OFF" if args.skip_winml_tests else "ON"))

@@ -85,14 +85,6 @@ file(GLOB onnxruntime_common_src CONFIGURE_DEPENDS
     ${onnxruntime_common_src_patterns}
     )
 
-# Remove new/delete intercept. To deal with memory leaks
-# Use either non-mimalloc build OR use mimalloc built-in features.
-if(WIN32 AND onnxruntime_USE_MIMALLOC)
-    list(REMOVE_ITEM onnxruntime_common_src
-    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.cc"
-    "${ONNXRUNTIME_ROOT}/core/platform/windows/debug_alloc.h")
-endif()
-
 source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_common_src})
 
 onnxruntime_add_static_library(onnxruntime_common ${onnxruntime_common_src})

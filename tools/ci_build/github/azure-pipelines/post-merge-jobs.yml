@@ -264,7 +264,7 @@ stages:
       BuildConfig: 'Debug'
       EnvSetupScript: setup_env.bat
       buildArch: x64
-      additionalBuildFlags: --disable_memleak_checker --use_mimalloc --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+      additionalBuildFlags: --use_mimalloc --use_vcpkg --use_vcpkg_ms_internal_asset_cache
       msbuildPlatform: x64
       isX86: false
       job_name_suffix: x64_mimalloc
