@@ -732,6 +732,17 @@ if (onnxruntime_USE_WEBGPU)
           #
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_destroy_buffer_on_destructor.patch &&
 
+          # The dawn_allow_non_uniform_for_subgroup_matrix_args.patch contains the following changes:
+          #
+          # - (private) Revert change "[tint] Check uniformity for subgroup matrix builtin arguments"
+          #   The following change was made in upstream to force the subgroup matrix builtin arguments to be uniform:
+          #   https://dawn-review.googlesource.com/c/dawn/+/236054  (https://issues.chromium.org/issues/403611487)
+          #
+          #   Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to revert this change
+          #   to allow the subgroup matrix builtin arguments to be non-uniform.
+          #
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_allow_non_uniform_for_subgroup_matrix_args.patch &&
+
           # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
           #
           # - (private) Force enable f16 support for NVIDIA Vulkan
