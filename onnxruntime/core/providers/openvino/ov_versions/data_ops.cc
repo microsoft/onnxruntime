@@ -420,7 +420,8 @@ void DataOps::populate_op_mode_supported() {
     UnsupportedOpMode obj = {{V_2023_1, V_2023_2, V_2023_3, V_2024_0, V_2024_1, V_2024_2,
                               V_2024_3, V_2024_4, V_2024_5, V_2024_6, V_2025_0, V_2025_1},
                              [this](const Node* node, const InitializedTensorSet&) {
-                               const auto& input_arg = node->InputDefs()[1];
+                               const auto& input_args = node->InputDefs();
+                               const auto& input_arg = (input_args.size() > 1) ? input_args[1] : input_args[0];
                                auto shape = input_arg->Shape();
                                // Reshape op with empty dim is Rejected for Myriad
                                // [TODO] Is this condition required anymore with Myriad removed?
