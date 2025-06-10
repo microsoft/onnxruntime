@@ -1,3 +1,10 @@
+resources:
+  repositories:
+  - repository: 1esPipelines
+    type: git
+    name: 1ESPipelineTemplates/1ESPipelineTemplates
+    ref: refs/tags/release
+
 parameters:
 - name: DoEsrp
   displayName: Run code sign tasks? Must be true if you are doing an ONNX Runtime release
