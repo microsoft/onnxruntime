@@ -4,7 +4,6 @@
 #include "qnn_execution_provider.h"
 
 #include <filesystem>
-#include <fstream>
 #include <optional>
 #include <string_view>
 #include <unordered_set>
@@ -417,7 +416,14 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                             << ": " << htp_vtcm_backup_buffer_sharing_pos->second
                             << ", only 1 or 0 are allowed. Setting to 0.";
     }
+
     LOGS_DEFAULT(VERBOSE) << "User specified enable_vtcm_backup_buffer_sharing: " << enable_vtcm_backup_buffer_sharing_;
+
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR < 35)
+    if (enable_vtcm_backup_buffer_sharing_) {
+      LOGS_DEFAULT(WARNING) << "User specified enable_vtcm_backup_buffer_sharing but QNN API version is older than 2.35.";
+    }
+#endif
   }
 
   static const std::string QNN_DEVICE_ID = "device_id";
@@ -743,27 +749,6 @@ static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::F
   return true;
 }
 
-static void GetEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
-                         std::unordered_set<const Node*>& ep_context_nodes,
-                         const logging::Logger& logger) {
-  for (const auto& node : graph_viewer.Nodes()) {
-    NodeAttrHelper node_helper(node);
-    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
-
-    std::transform(cache_source.begin(),
-                   cache_source.end(),
-                   cache_source.begin(),
-                   [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-
-    if (qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
-      LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node.Index()
-                            << "] name: [" << node.Name()
-                            << "] index: [" << node.Index() << "]";
-      ep_context_nodes.insert(&node);
-    }
-  }
-}
-
 // For model with EPContext, filter in EPContext nodes only, and make sure each partition only has one single EPContext node
 static void PartitionCtxModel (const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
@@ -846,31 +831,14 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     }
   }
 
-  std::unordered_set<std::string> context_bin_list;
-  // if this point is reached and VCTM backup buffer sharing is enabled, then
-  // qnn_backend_manager still needs to be set up
-  if (enable_vtcm_backup_buffer_sharing_) {
-    std::unordered_set<const Node*> ep_ctx_nodes;
-    GetEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
-
-    std::filesystem::path parent_path = graph_viewer.ModelPath().parent_path();
-
-    for (auto& ep_ctx_node : ep_ctx_nodes) {
-      NodeAttrHelper node_helper(*ep_ctx_node);
-      std::string context_bin_filepath(parent_path.string());
-      context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
-      context_bin_list.emplace(context_bin_filepath);
-    }
-  }
-
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
   auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
                                                context_cache_enabled_ && enable_spill_fill_buffer_,
                                                share_ep_contexts_,
-                                               enable_vtcm_backup_buffer_sharing_,
-                                               context_bin_list);
+                                               enable_vtcm_backup_buffer_sharing_);
+
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();
     return result;

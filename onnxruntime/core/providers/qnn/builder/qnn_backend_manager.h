@@ -140,8 +140,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
-                      bool enable_vtcm_backup_buffer_sharing,
-                      const std::unordered_set<std::string>& context_bin_list);
+                      bool enable_vtcm_backup_buffer_sharing);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -199,6 +198,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ParseLoraConfig(std::string lora_config);
 
+  QnnSerializerConfig* GetQnnSerializerConfig();
+
   // Adds a new QNN context.
   // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
@@ -218,8 +219,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status ReleaseProfilehandle();
 
-  Status CreateContext(bool enable_htp_weight_sharing, bool enable_vtcm_backup_buffer_sharing,
-                       const std::unordered_set<std::string>& context_bin_list);
+  Status CreateContext(bool enable_htp_weight_sharing);
+
+  Status CreateContextVtcmBackupBufferSharingEnabled(char* buffer, uint64_t buffer_length, Qnn_ContextHandle_t& context_handle);
 
   Status ReleaseContext();
 
@@ -345,6 +347,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
+  bool vtcm_backup_buffer_sharing_enabled_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;

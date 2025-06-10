@@ -732,9 +732,72 @@ void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
   }
 }
 
-Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing,
-                                        bool enable_vtcm_backup_buffer_sharing,
-                                        const std::unordered_set<std::string>& context_bin_list) {
+Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(char* buffer, uint64_t buffer_length,
+                                                                      Qnn_ContextHandle_t& context_handle) {
+
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
+  QnnContext_Config_t context_config_resource_sharing = QNN_CONTEXT_CONFIG_INIT;
+  QnnHtpContext_CustomConfig_t resource_sharing_custom_config;
+  resource_sharing_custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES;
+  resource_sharing_custom_config.shareResources = true;
+  context_config_resource_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  context_config_resource_sharing.customConfig = &resource_sharing_custom_config;
+
+  QnnHtpContext_CustomConfig_t context_config_resource_sharing_opt_type;
+  context_config_resource_sharing_opt_type.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES_OPTIMIZATION_TYPE;
+  context_config_resource_sharing_opt_type.shareResOptType = SEQUENTIAL_WITHOUT_VA_OPTIMIZATION;
+  QnnContext_Config_t resource_sharing_opt_type_config;
+  resource_sharing_opt_type_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  resource_sharing_opt_type_config.customConfig = &context_config_resource_sharing_opt_type;
+
+  QnnContext_Config_t context_config_weight_sharing = QNN_CONTEXT_CONFIG_INIT;
+  QnnHtpContext_CustomConfig_t custom_config;
+  custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_WEIGHT_SHARING_ENABLED;
+  custom_config.weightSharingEnabled = true;
+  context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+  context_config_weight_sharing.customConfig = &custom_config;
+
+  QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
+  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
+
+  // A separate config list must be made otherwise it is considered a ContextAPI error
+  const QnnContext_Config_t* configs[] = {&context_priority_config,
+                                          &context_config_resource_sharing,
+                                          &resource_sharing_opt_type_config,
+                                          &context_config_weight_sharing,
+                                          nullptr};
+
+  QnnContext_ParamsV1_t context_params_v1 = {nullptr,
+                                             buffer,
+                                             buffer_length,
+                                             nullptr,
+                                             ContextCreateAsyncCallback,
+                                             nullptr};
+  QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
+                                        context_params_v1};
+
+  const QnnContext_Params_t* params_list[] = {&context_params, nullptr};
+  auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
+                                                                device_handle_,
+                                                                params_list,
+                                                                configs,
+                                                                nullptr);
+
+  // Get last added context
+  auto context_idx = static_cast<int>(GetQnnContextSize() - 1);
+  context_handle = GetQnnContext(context_idx);
+
+#else
+  LOGS(*logger_, ERROR) << "VTCM Backup Buffer Sharing is only supported on QNN API versions 2.26 or later.";
+  auto result = QNN_CONTEXT_ERROR_UNSUPPORTED_FEATURE;
+#endif
+
+  ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
+
+  return Status::OK();
+}
+
+Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   if (true == context_created_) {
     LOGS_DEFAULT(INFO) << "Context created already.";
     return Status::OK();
@@ -747,28 +810,8 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing,
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   context_config_weight_sharing.customConfig = &custom_config;
 
-  QnnContext_Config_t context_config_resource_sharing = QNN_CONTEXT_CONFIG_INIT;
-  QnnHtpContext_CustomConfig_t resource_sharing_custom_config;
-  resource_sharing_custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES;
-  resource_sharing_custom_config.shareResources = enable_vtcm_backup_buffer_sharing;
-  context_config_resource_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-  context_config_resource_sharing.customConfig = &resource_sharing_custom_config;
-
-  QnnHtpContext_CustomConfig_t context_config_resource_sharing_opt_type;
-  context_config_resource_sharing_opt_type.option = QNN_HTP_CONTEXT_CONFIG_OPTION_SHARE_RESOURCES_OPTIMIZATION_TYPE;
-  context_config_resource_sharing_opt_type.shareResOptType = SEQUENTIAL_WITHOUT_VA_OPTIMIZATION;
-  QnnContext_Config_t resource_sharing_opt_type_config;
-  resource_sharing_opt_type_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-  resource_sharing_opt_type_config.customConfig = &context_config_resource_sharing_opt_type;
-
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
   ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, context_priority_config));
-
-  // A separate config list must be made otherwise it is considered a ContextAPI error
-  const QnnContext_Config_t* npu_resource_sharing_configs[] = {&context_priority_config,
-                                                               &context_config_resource_sharing,
-                                                               &resource_sharing_opt_type_config,
-                                                               nullptr};
 
   const QnnContext_Config_t* npu_context_configs[] = {&context_priority_config,
                                                       &context_config_weight_sharing,
@@ -780,11 +823,7 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing,
   switch (GetQnnBackendType()) {
     case QnnBackendType::HTP:
     case QnnBackendType::DSP:
-      if (enable_vtcm_backup_buffer_sharing) {
-        configs = npu_resource_sharing_configs;
-      } else {
-        configs = npu_context_configs;
-      }
+      configs = npu_context_configs;
       break;
     case QnnBackendType::GPU:
     case QnnBackendType::SERIALIZER:
@@ -803,70 +842,14 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing,
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = 0;
 
-  if (enable_vtcm_backup_buffer_sharing) {
-    // need to persist context params objs throguh entirety of QNN context creation
-    size_t num_bins = context_bin_list.size();
-    std::vector<QnnContext_Params_t> context_params_list;
-    std::vector<const QnnContext_Params_t*> context_params_ptr_list(num_bins + 1);
-    std::vector<std::unique_ptr<char[]>> buffer_list;
-
-    size_t idx = 0;
-    for (auto context_binary_path : context_bin_list) {
-      std::ifstream cache_file(context_binary_path.c_str(), std::ifstream::binary);
-
-      ORT_RETURN_IF(!cache_file || !cache_file.good(), "Failed to retrieve context binary from: ", context_binary_path);
-
-      cache_file.seekg(0, cache_file.end);
-      size_t buffer_size = static_cast<size_t>(cache_file.tellg());
-      ORT_RETURN_IF(0 == buffer_size, "Empty cache file encountered.");
-
-      cache_file.seekg(0, cache_file.beg);
-      std::unique_ptr<char[]> buffer = std::make_unique < char[]>(buffer_size);
-      ORT_RETURN_IF(nullptr == buffer, "Failed to allocate memory for cache file.");
-      const auto& read_result = cache_file.read(buffer.get(), buffer_size);
-      ORT_RETURN_IF(!read_result, "Failed to read contents from cached context file.");
-
-      cache_file.close();
-      
-      QnnContext_ParamsV1_t context_params_v1 = {nullptr,
-                                                 buffer.get(),
-                                                 buffer_size,
-                                                 nullptr,
-                                                 ContextCreateAsyncCallback,
-                                                 nullptr};
-
-      QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
-                                          context_params_v1};
-
-      buffer_list.push_back(std::move(buffer));
-      context_params_list.push_back(context_params);
-      context_params_ptr_list[idx++] = &context_params_list.back();
-    }
-    context_params_ptr_list[idx] = nullptr;
-    std::cout << context_params_ptr_list.size() << std::endl;
-    const QnnContext_Params_t** context_config_ptrs = context_params_ptr_list.data();
-
-    result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
-                                                             device_handle_,
-                                                             context_config_ptrs,
-                                                             configs,
-                                                             nullptr);
-
-    context_params_ptr_list.clear();
-    context_params_list.clear();
-    buffer_list.clear();
-  } else {
     result = qnn_interface_.contextCreate(backend_handle_,
                                           device_handle_,
                                           configs,
                                           &context);
-  }
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
 
-  if (!enable_vtcm_backup_buffer_sharing) {
     ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
-  }
 
   context_created_ = true;
   return Status::OK();
@@ -1044,46 +1027,52 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
 
-  QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
-  ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
+    Qnn_ContextHandle_t context = nullptr;
+  if (vtcm_backup_buffer_sharing_enabled_) {
+    auto status = CreateContextVtcmBackupBufferSharingEnabled(buffer, buffer_length, context);
+    ORT_RETURN_IF(status != Status::OK(), "Failed to create context from binary. Error code: ", rt);
+  } else {
+    QnnContext_Config_t qnn_context_config = QNN_CONTEXT_CONFIG_INIT;
+    ORT_RETURN_IF_ERROR(SetQnnContextConfig(context_priority_, qnn_context_config));
 
-  // Register spill fill buffer for multi context
-  QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
+    // Register spill fill buffer for multi context
+    QnnContext_Config_t spill_fill_config = QNN_CONTEXT_CONFIG_INIT;
 
-  // The spill fill buffer is available since 2.28, API version starts from 2.21
+    // The spill fill buffer is available since 2.28, API version starts from 2.21
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 21)
-  QnnHtpContext_CustomConfig_t custom_config;
-  custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
-  QnnHtpContext_GroupRegistration_t group_info;
-  size_t current_contexts_size = GetQnnContextSize();
-  // set to 0x0 (new group) if this is the first context, otherwise point to the first context handle
-  // note that we already move the context with max spill fill size to the beginning of the list
-  group_info.firstGroupHandle = (max_spill_fill_size > 0 && current_contexts_size > 0) ? GetQnnContext(0) : 0x0;
-  group_info.maxSpillFillBuffer = max_spill_fill_size;  // Max spill-fill buffer across contexts. Must be >0
-  custom_config.groupRegistration = group_info;
-  spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
-  spill_fill_config.customConfig = &custom_config;
-
+    QnnHtpContext_CustomConfig_t custom_config;
+    custom_config.option = QNN_HTP_CONTEXT_CONFIG_OPTION_REGISTER_MULTI_CONTEXTS;
+    QnnHtpContext_GroupRegistration_t group_info;
+    size_t current_contexts_size = GetQnnContextSize();
+    // set to 0x0 (new group) if this is the first context, otherwise point to the first context handle
+    // note that we already move the context with max spill fill size to the beginning of the list
+    group_info.firstGroupHandle = (max_spill_fill_size > 0 && current_contexts_size > 0) ? GetQnnContext(0) : 0x0;
+    group_info.maxSpillFillBuffer = max_spill_fill_size;  // Max spill-fill buffer across contexts. Must be >0
+    custom_config.groupRegistration = group_info;
+    spill_fill_config.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
+    spill_fill_config.customConfig = &custom_config;
 
 #endif
 
-  QnnContext_Config_t* spill_fill_config_pointer = max_spill_fill_size > 0 ? &spill_fill_config : nullptr;
-  LOGS(*logger_, VERBOSE) << "Max spill fill buffer size:" << max_spill_fill_size;
+    QnnContext_Config_t* spill_fill_config_pointer = max_spill_fill_size > 0 ? &spill_fill_config : nullptr;
+    LOGS(*logger_, VERBOSE) << "Max spill fill buffer size:" << max_spill_fill_size;
 
-  const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
+    const QnnContext_Config_t* context_configs[] = {&qnn_context_config, spill_fill_config_pointer, nullptr};
 
-  ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
-                "Invalid function pointer for contextCreateFromBinary.");
-  Qnn_ContextHandle_t context = nullptr;
-  rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
-                                              device_handle_,
-                                              context_configs,
-                                              static_cast<void*>(buffer),
-                                              buffer_length,
-                                              &context,
-                                              profile_backend_handle_);
-  ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
-  ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+    ORT_RETURN_IF(nullptr == qnn_interface_.contextCreateFromBinary,
+                  "Invalid function pointer for contextCreateFromBinary.");
+
+    rt = qnn_interface_.contextCreateFromBinary(backend_handle_,
+                                                device_handle_,
+                                                context_configs,
+                                                static_cast<void*>(buffer),
+                                                buffer_length,
+                                                &context,
+                                                profile_backend_handle_);
+    ORT_RETURN_IF(QNN_SUCCESS != rt, "Failed to create context from binary. Error code: ", rt);
+    ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+  }
+
   if (1 == graph_count) {
     // in case the EPContext node is generated from script
     // the graph name from the context binary may not match the EPContext node name
@@ -1114,13 +1103,14 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool load_from_cached_context,
                                        bool need_load_system_lib,
                                        bool share_ep_contexts,
-                                       bool enable_vtcm_backup_buffer_sharing,
-                                       const std::unordered_set<std::string>& context_bin_list) {
+                                       bool enable_vtcm_backup_buffer_sharing) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
     return Status::OK();
   }
+
+    vtcm_backup_buffer_sharing_enabled_ = enable_vtcm_backup_buffer_sharing;
 
   Status status = Status::OK();
   if (!qnn_serializer_config_) {
@@ -1171,7 +1161,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   }
 
   bool enable_htp_weight_sharing = false;
-  if (share_ep_contexts && !load_from_cached_context && !enable_vtcm_backup_buffer_sharing) {
+  if (share_ep_contexts && !load_from_cached_context) {
 #if defined(__aarch64__) || defined(_M_ARM64)
     LOGS(logger, WARNING) << "Weight sharing only available with offline generation on x64 platform, not work on real device.";
 #else
@@ -1179,10 +1169,9 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 #endif
   }
 
-  if (!load_from_cached_context || enable_vtcm_backup_buffer_sharing) {
+  if (!load_from_cached_context || !vtcm_backup_buffer_sharing_enabled_) {
     if (status.IsOK()) {
-      status = CreateContext(enable_htp_weight_sharing, enable_vtcm_backup_buffer_sharing,
-                             context_bin_list);
+      status = CreateContext(enable_htp_weight_sharing);
     }
     if (status.IsOK()) {
       LOGS(logger, VERBOSE) << "CreateContext succeed.";
