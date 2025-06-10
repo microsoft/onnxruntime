@@ -211,7 +211,6 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
       return context.RunProgram(program);
     }
   }
-  const bool sequentially_access_by_threads = true;
   // Transpose weights
   Tensor transposed_kernel;
   ORT_RETURN_IF_ERROR(TransposeKernel(context, kernel, kernel_shape, &transposed_kernel, perm));
@@ -221,7 +220,7 @@ Status Conv<is_channels_last, is_fused>::ComputeInternal(ComputeContext& context
   inputs[1] = &transposed_kernel;
   TensorShape transposed_kernel_shape = transposed_kernel.Shape();
   modified_input_output_shapes[1] = transposed_kernel.Shape();
-  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, sequentially_access_by_threads, modified_input_output_shapes);
+  Conv2dMMProgram conv2d_mm_program = CreateConv2dMMProgram(activation_, inputs, pads, strides, dilations, output, dim_a_outer, dim_b_outer, dim_inner, is_channels_last, modified_input_output_shapes);
   return context.RunProgram(conv2d_mm_program);
 }
 
