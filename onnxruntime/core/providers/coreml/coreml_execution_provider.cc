@@ -37,14 +37,6 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
 
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
-std::unordered_set<NodeIndex> GetPartitionNodesAsSet(const IndexedSubGraph& partition) {
-  std::unordered_set<NodeIndex> nodes_set;
-  for (const auto& node_index : partition.nodes) {
-    nodes_set.insert(node_index);
-  }
-  return nodes_set;
-}
-
 // After an input node is removed from the partition, we need to update the inputs of the partition.
 // We evaluate the outputs of the input nodes
 // For each output, if its consumer node is part of the partition, we add this output to the inputs of the partition
@@ -86,6 +78,7 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime::Graph
                                                         IndexedSubGraph::MetaDef* meta_def,
                                                         const logging::Logger& logger) const {
   bool incompatibleInputFound = false;
+  bool updateMetaDef = false;
 
   std::unordered_set<std::string> newInputs;
 
@@ -114,6 +107,7 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime::Graph
       for (const auto& node : consumer_nodes) {
         if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
           incompatibleInputFound = true;
+          updateMetaDef = true;
           incompatible_nodes.insert(node->Index());
           partition_nodes_set.erase(node->Index());
 
@@ -131,13 +125,17 @@ bool CoreMLExecutionProvider::ProcessIncompatibleInputs(const onnxruntime::Graph
       for (const auto& node : consumer_nodes) {
         if (partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
           newInputs.insert(input);
+        } else {
+          updateMetaDef = true;
         }
       }
     }
   }
 
-  std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
-  meta_def->inputs = std::move(new_inputs_vector);
+  if (updateMetaDef) {
+    std::vector<std::string> new_inputs_vector(newInputs.begin(), newInputs.end());
+    meta_def->inputs = std::move(new_inputs_vector);
+  }
 
   return incompatibleInputFound;
 }
@@ -148,6 +146,7 @@ bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::Grap
                                                          IndexedSubGraph::MetaDef* meta_def,
                                                          const logging::Logger& logger) const {
   bool incompatibleOutputFound = false;
+  bool updateMetaDef = false;
   std::unordered_set<std::string> newOutputs;
 
   for (const auto& output : meta_def->outputs) {
@@ -159,14 +158,11 @@ bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::Grap
       continue;
     }
 
-    if (output.find("Where_1") != std::string::npos) {
-      LOGS(logger, VERBOSE) << "Where_1 found";
-    }
-
     // step 2: check if the type is supported
     if (supported_input_output_types_.find(type) == supported_input_output_types_.end()) {
       const Node* node = graph_viewer.GetProducerNode(output);
       incompatibleOutputFound = true;
+      updateMetaDef = true;
       incompatible_nodes.insert(node->Index());
       partition_nodes_set.erase(node->Index());
 
@@ -178,35 +174,26 @@ bool CoreMLExecutionProvider::ProcessIncompatibleOutputs(const onnxruntime::Grap
       const Node* node = graph_viewer.GetProducerNode(output);
       if (node && partition_nodes_set.find(node->Index()) != partition_nodes_set.end()) {
         newOutputs.insert(output);
+      } else {
+        // in the else case, an output name is being omitted from newOutputs; thus, meta_def-> outputs should be updated
+        updateMetaDef = true;
       }
     }
   }
 
-  std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
-  meta_def->outputs = std::move(new_outputs_vector);
-
-  return incompatibleOutputFound;
-}
-
-void CoreMLExecutionProvider::UpdatePartitionNodes(IndexedSubGraph& partition,
-                                                   const std::unordered_set<NodeIndex>& partition_nodes_set) const {
-  // Create a new vector with only the nodes still in the set
-  std::vector<NodeIndex> updated_nodes;
-  updated_nodes.reserve(partition_nodes_set.size());
-
-  for (const auto& node_index : partition_nodes_set) {
-    updated_nodes.push_back(node_index);
+  if (updateMetaDef) {
+    std::vector<std::string> new_outputs_vector(newOutputs.begin(), newOutputs.end());
+    meta_def->outputs = std::move(new_outputs_vector);
   }
 
-  // Replace the partition's nodes with our filtered list
-  partition.nodes = std::move(updated_nodes);
+  return incompatibleOutputFound;
 }
 
 void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSubGraph& partition,
                                                                        const onnxruntime::GraphViewer& graph_viewer,
                                                                        const logging::Logger& logger) const {
   bool checkForMoreIncompatibleNodes = true;
-  std::unordered_set<NodeIndex> partition_nodes_set = GetPartitionNodesAsSet(partition);
+  std::unordered_set<NodeIndex> partition_nodes_set = std::unordered_set<NodeIndex>(partition.nodes.begin(), partition.nodes.end());
 
   IndexedSubGraph::MetaDef* meta_def = partition.GetMutableMetaDef();
   if (!meta_def) {
@@ -230,7 +217,7 @@ void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSu
     // step 3: remove the incompatible nodes from the partition
     if (inputs_modified || outputs_modified) {
       checkForMoreIncompatibleNodes = true;
-      UpdatePartitionNodes(partition, partition_nodes_set);
+      partition.nodes = std::vector<NodeIndex>(partition_nodes_set.begin(), partition_nodes_set.end());
     }
   }
 }

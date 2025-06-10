@@ -1544,14 +1544,14 @@ Status Graph::VerifyNoDuplicateName() {
         auto& output_arg_name = output_def->Name();
         if (inputs_and_initializers.count(output_arg_name)) {
           Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                        "This is an invalid model. line 1547Error: Duplicate definition of name (" + output_arg_name + ").");
+                        "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
         auto result = output_args.insert({output_arg_name, {&node, output_index}});
         if (!result.second) {
           // Two outputs with same name, so that insertion fails.
           Status status(ONNXRUNTIME, onnxruntime::common::StatusCode::FAIL,
-                        "This is an invalid model. line 1554 Error: Duplicate definition of name (" + output_arg_name + ").");
+                        "This is an invalid model. Error: Duplicate definition of name (" + output_arg_name + ").");
           return status;
         }
       }
