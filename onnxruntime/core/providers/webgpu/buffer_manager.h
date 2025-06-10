@@ -25,7 +25,8 @@ enum class BufferCacheMode {
   Disabled,
   LazyRelease,
   Simple,
-  Bucket
+  Bucket,
+  Graph,
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 
@@ -47,7 +48,7 @@ class IBufferCacheManager {
   virtual size_t CalculateBufferSize(size_t request_size) = 0;
 
   // return a buffer if available in cache. otherwise empty.
-  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) = 0;
+  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t session_id) = 0;
 
   // register a newly created buffer
   virtual void RegisterBuffer(WGPUBuffer buffer, size_t request_size) = 0;
@@ -71,10 +72,9 @@ class BufferManager {
 
   void Upload(void* src, WGPUBuffer dst, size_t size);
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+  WGPUBuffer Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   // Create a buffer mapped for writing.
-  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                                                              wgpu::BufferUsage::CopyDst);
+  WGPUBuffer CreateUMA(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   void Release(WGPUBuffer buffer);
   void Download(WGPUBuffer src, void* dst, size_t size);
   void RefreshPendingBuffers(SStatus session_status, uint32_t session_id);

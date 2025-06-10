@@ -120,6 +120,7 @@ class WebGpuContext final {
   void CaptureEnd();
   void Replay(uint32_t session_id);
   void OnReleaseSession(uint32_t session_id);
+  void OnSessionInitializationStart(uint32_t session_id);
 
   void Flush();
 

@@ -403,7 +403,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, session_id_, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -690,6 +690,10 @@ void WebGpuContext::Flush() {
   num_pending_dispatches_ = 0;
 }
 
+void WebGpuContext::OnSessionInitializationStart(uint32_t session_id) {
+  session_id_ = session_id;
+}
+
 void WebGpuContext::OnRunEnd() {
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   if (pix_frame_generator_) {
@@ -729,8 +733,8 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
 
 void WebGpuContext::CaptureBegin(uint32_t session_id) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin: " << session_id;
-
-  captured_commands_map_.emplace(session_id, std::vector<CapturedCommandInfo>());
+  session_id_ = session_id;
+  captured_commands_map_.emplace(session_id_, std::vector<CapturedCommandInfo>());
 
   // TODO: support profiling with graph capture.
   ORT_ENFORCE(!is_profiling_, "profiing is not supported yet under graph capture mode");
@@ -740,7 +744,6 @@ void WebGpuContext::CaptureBegin(uint32_t session_id) {
 
   // Change to capturing mode
   session_status_ = SStatus::Capturing;
-  session_id_ = session_id;
 }
 
 void WebGpuContext::CaptureEnd() {
@@ -759,7 +762,7 @@ void WebGpuContext::Replay(uint32_t session_id) {
   session_status_ = SStatus::Replaying;
 
   // Replay all captured commands
-  auto command_list = captured_commands_map_[session_id];
+  auto command_list = captured_commands_map_[session_id_];
   const size_t command_count = command_list.size();
   for (size_t i = 0; i < command_count; ++i) {
     auto& command = command_list[i];

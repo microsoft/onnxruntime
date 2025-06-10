@@ -26,7 +26,7 @@ class DisabledCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
+  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/, uint32_t /*session_id*/) override {
     // always return empty buffer
     return nullptr;
   }
@@ -51,7 +51,7 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/) override {
+  WGPUBuffer TryAcquireCachedBuffer(size_t /*buffer_size*/, uint32_t /*session_id*/) override {
     return nullptr;
   }
 
@@ -92,7 +92,7 @@ class SimpleCacheManager : public IBufferCacheManager {
     return NormalizeBufferSize(request_size);
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t /*session_id*/) override {
     auto it = buffers_.find(buffer_size);
     if (it != buffers_.end() && !it->second.empty()) {
       auto buffer = it->second.back();
@@ -211,7 +211,7 @@ class BucketCacheManager : public IBufferCacheManager {
     }
   }
 
-  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t /*session_id*/) override {
     auto it = buckets_.find(buffer_size);
     if (it != buckets_.end() && !it->second.empty()) {
       auto buffer = it->second.back();
@@ -229,33 +229,18 @@ class BucketCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void ReleaseCapturedBuffers(uint32_t session_id) override {
-    auto it = captured_buffers_.find(session_id);
-    if (it != captured_buffers_.end()) {
-      for (auto& buffer : it->second) {
-        wgpuBufferRelease(buffer);
-      }
-      captured_buffers_.erase(session_id);
-    }
+  void ReleaseCapturedBuffers(uint32_t /*session_id*/) override {
+    // no-op
   }
 
-  void OnRefresh(SStatus session_status, uint32_t session_id) override {
+  void OnRefresh(SStatus /*session_status*/, uint32_t /*session_id*/) override {
     for (auto& buffer : pending_buffers_) {
       auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
-      if (session_status == SStatus::Default) {
-        auto it = buckets_.find(buffer_size);
-        if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
-          it->second.emplace_back(buffer);
-        } else {
-          wgpuBufferRelease(buffer);
-        }
+      auto it = buckets_.find(buffer_size);
+      if (it != buckets_.end() && it->second.size() < buckets_limit_[buffer_size]) {
+        it->second.emplace_back(buffer);
       } else {
-        // TODO: Reuse the captured buffers for storage buffer to reduce peak memory.
-        auto it = captured_buffers_.find(session_id);
-        if (it == captured_buffers_.end()) {
-          captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());
-        }
-        captured_buffers_[session_id].emplace_back(buffer);
+        wgpuBufferRelease(buffer);
       }
     }
 
@@ -267,11 +252,6 @@ class BucketCacheManager : public IBufferCacheManager {
       wgpuBufferRelease(buffer);
     }
     for (auto& pair : buckets_) {
-      for (auto& buffer : pair.second) {
-        wgpuBufferRelease(buffer);
-      }
-    }
-    for (auto& pair : captured_buffers_) {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
       }
@@ -300,8 +280,119 @@ class BucketCacheManager : public IBufferCacheManager {
   std::unordered_map<size_t, size_t> buckets_limit_;
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<WGPUBuffer> pending_buffers_;
-  // session_id -> WGPUBuffer[] mapping.
-  std::unordered_map<uint32_t, std::vector<WGPUBuffer>> captured_buffers_;
+  std::vector<size_t> buckets_keys_;
+};
+
+class GraphCacheManager : public IBufferCacheManager {
+ public:
+  GraphCacheManager() : buckets_limit_{BUCKET_DEFAULT_LIMIT_TABLE} {
+    Initialize();
+  }
+  GraphCacheManager(std::unordered_map<size_t, size_t>&& buckets_limit) : buckets_limit_{buckets_limit} {
+    Initialize();
+  }
+
+  size_t CalculateBufferSize(size_t request_size) override {
+    // binary serch size
+    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
+    if (it == buckets_keys_.end()) {
+      return NormalizeBufferSize(request_size);
+    } else {
+      return *it;
+    }
+  }
+
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t session_id) override {
+    auto buckets = buckets_map_.find(session_id);
+    if (buckets != buckets_map_.end()) {
+      auto it = buckets->second.find(buffer_size);
+      if (it != buckets->second.end() && !it->second.empty()) {
+        auto buffer = it->second.back();
+        it->second.pop_back();
+        return buffer;
+      }
+    }
+    return nullptr;
+  }
+
+  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+    // no-op
+  }
+
+  void ReleaseBuffer(WGPUBuffer buffer) override {
+    pending_buffers_.emplace_back(buffer);
+  }
+
+  void ReleaseCapturedBuffers(uint32_t session_id) override {
+    auto buckets = buckets_map_.find(session_id);
+    if (buckets != buckets_map_.end()) {
+      for (auto& pair : buckets->second) {
+        for (auto& buffer : pair.second) {
+          wgpuBufferRelease(buffer);
+        }
+      }
+      buckets_map_.erase(session_id);
+    }
+  }
+
+  void OnRefresh(SStatus /*session_status*/, uint32_t session_id) override {
+    auto buckets = buckets_map_.find(session_id);
+    if (buckets == buckets_map_.end()) {
+      buckets_map_.emplace(session_id, std::unordered_map<size_t, std::vector<WGPUBuffer>>(buckets_limit_.size()));
+      buckets = buckets_map_.find(session_id);
+      for (const auto& pair : buckets_limit_) {
+        buckets->second.emplace(pair.first, std::vector<WGPUBuffer>());
+      }
+    }
+
+    for (auto& buffer : pending_buffers_) {
+      auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+      auto it = buckets->second.find(buffer_size);
+      if (it != buckets->second.end()) {
+        it->second.emplace_back(buffer);
+      } else {
+        // insert a new bucket if it doesn't exist
+        buckets->second[buffer_size] = std::vector<WGPUBuffer>{buffer};
+      }
+    }
+
+    pending_buffers_.clear();
+  }
+
+  ~GraphCacheManager() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
+    for (auto& it : buckets_map_) {
+      for (auto& pair : it.second) {
+        for (auto& buffer : pair.second) {
+          wgpuBufferRelease(buffer);
+        }
+      }
+    }
+  }
+
+ protected:
+  void Initialize() {
+    buckets_keys_.reserve(buckets_limit_.size());
+    for (const auto& pair : buckets_limit_) {
+      buckets_keys_.push_back(pair.first);
+    }
+    std::sort(buckets_keys_.begin(), buckets_keys_.end());
+
+#ifndef NDEBUG  // if debug build
+    ORT_ENFORCE(std::all_of(buckets_keys_.begin(), buckets_keys_.end(), [](size_t size) { return size % 16 == 0; }),
+                "Bucket sizes must be multiples of 16.");
+
+    for (size_t i = 1; i < buckets_keys_.size(); ++i) {
+      ORT_ENFORCE(buckets_keys_[i] > buckets_keys_[i - 1], "Bucket sizes must be in increasing order.");
+    }
+#endif
+  }
+  std::unordered_map<size_t, size_t> buckets_limit_;
+  // session_id -> buckets_ mapping.
+  std::unordered_map<uint32_t, std::unordered_map<size_t, std::vector<WGPUBuffer>>> buckets_map_;
+  std::vector<WGPUBuffer> pending_buffers_;
   std::vector<size_t> buckets_keys_;
 };
 
@@ -315,6 +406,8 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
       return std::make_unique<SimpleCacheManager>();
     case BufferCacheMode::Bucket:
       return std::make_unique<BucketCacheManager>();
+    case BufferCacheMode::Graph:
+      return std::make_unique<GraphCacheManager>();
     default:
       ORT_NOT_IMPLEMENTED("Unsupported buffer cache mode");
   }
@@ -333,6 +426,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
       break;
     case BufferCacheMode::Bucket:
       os << "Bucket";
+      break;
+    case BufferCacheMode::Graph:
+      os << "Graph";
       break;
     default:
       os << "Unknown(" << static_cast<int>(mode) << ")";
@@ -393,11 +489,11 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, buffer_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
+WGPUBuffer BufferManager::Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage) {
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
-  auto buffer = cache.TryAcquireCachedBuffer(buffer_size);
+  auto buffer = cache.TryAcquireCachedBuffer(buffer_size, session_id);
   if (buffer) {
     return buffer;
   }
@@ -414,7 +510,7 @@ WGPUBuffer BufferManager::Create(size_t size, wgpu::BufferUsage usage) {
   return buffer;
 }
 
-WGPUBuffer BufferManager::CreateUMA(size_t size, wgpu::BufferUsage usage) {
+WGPUBuffer BufferManager::CreateUMA(size_t size, uint32_t /*session_id*/, wgpu::BufferUsage usage) {
   ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must be a storage buffer.");
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
@@ -466,6 +562,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
 
   auto mapped_data = staging_buffer.GetConstMappedRange();
   memcpy(dst, mapped_data, size);
+  staging_buffer.Unmap();
 }
 
 void BufferManager::RefreshPendingBuffers(SStatus session_status, uint32_t session_id) {
