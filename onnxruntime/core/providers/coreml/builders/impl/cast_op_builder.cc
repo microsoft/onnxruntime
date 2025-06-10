@@ -88,29 +88,10 @@ bool CastOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
 
   const auto& prec_node = node.InputEdgesBegin()->GetNode();
 
-  /*Cast node is only aimed for supporting argmax and we are only handling the case where an argmax
-    followed by a cast node. We need to check if the preceding node is an argmax and also if it's a
-    supported argmax op type.*/
-  if (prec_node.OpType() != "ArgMax") {
-    LOGS(logger, VERBOSE) << "Cast's producing node is not ArgMax is not supported."
-                          << "Current producing node: [" << prec_node.OpType()
-                          << "]";
-    return false;
-  }
   if (!IsNodeSupported(prec_node, input_params, logger)) {
     LOGS(logger, VERBOSE) << "Cast's producing node ["
                           << prec_node.OpType()
                           << "] is not a supported op.";
-    return false;
-  }
-
-  // Check if the output type of cast node is int32
-  NodeAttrHelper helper(node);
-  const auto cast_to_type = helper.Get("to", ONNX_NAMESPACE::TensorProto::UNDEFINED);
-  if (cast_to_type != ONNX_NAMESPACE::TensorProto::INT32) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType()
-                          << "] Output type: [" << cast_to_type
-                          << "] is not supported.";
     return false;
   }
 
@@ -149,14 +130,6 @@ bool CastOpBuilder::HasSupportedInputsImpl(const Node& node, [[maybe_unused]] co
                             << "] is not supported.";
       return false;
     }
-  }
-
-  // only support int64 coming from ArgMax (check for ArgMax is done in IsOpSupportedImpl())
-  if (input_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-    LOGS(logger, VERBOSE) << "[" << node.OpType()
-                          << "] Input type: [" << input_type
-                          << "] is not supported.";
-    return false;
   }
 
   return true;
