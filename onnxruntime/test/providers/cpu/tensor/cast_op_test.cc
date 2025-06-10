@@ -450,6 +450,40 @@ TEST(CastOpTest, UInt4x2ToInt64) {
   TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_int64_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToBool) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(0, -1),  // zero and non-zero
+      Int4x2(7, 0),   // non-zero and zero
+      Int4x2(-8, 3),  // both non-zero
+      Int4x2(0, 0)    // both zero
+  };
+
+  const bool bool_output[] = {false, true, true, false, true, true, false, false};
+  const gsl::span<const bool> expected_bool_output_span(bool_output);
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(int4x2_input), expected_bool_output_span, shape);
+}
+
+TEST(CastOpTest, UInt4x2ToBool) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<UInt4x2> uint4x2_input = {
+      UInt4x2(0, 1),   // zero and non-zero
+      UInt4x2(15, 0),  // non-zero and zero
+      UInt4x2(8, 7),   // both non-zero
+      UInt4x2(0, 0)    // both zero
+  };
+
+  const bool bool_output[] = {false, true, true, false, true, true, false, false};
+  const gsl::span<const bool> expected_bool_output_span(bool_output);
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(uint4x2_input), expected_bool_output_span, shape);
+}
+
 TEST(CastOpTest, Int4x2ToFloat) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
@@ -584,6 +618,48 @@ TEST(CastOpTest, UInt4x2ToBFloat16) {
   TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_bfloat16_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToUInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(-8, 7),  // negative values get clamped to 0
+      Int4x2(0, -1),  // -1 becomes 0
+      Int4x2(3, -5),  // -5 becomes 0
+      Int4x2(6, 2)    // positive values remain
+  };
+
+  const std::vector<UInt4x2> expected_uint4x2_output = {
+      UInt4x2(0, 7),  // -8 clamped to 0
+      UInt4x2(0, 0),  // -1 clamped to 0
+      UInt4x2(3, 0),  // -5 clamped to 0
+      UInt4x2(6, 2)   // unchanged
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint4x2_output), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<UInt4x2> uint4x2_input = {
+      UInt4x2(0, 15),  // 15 is out of int4 range, should be clamped to 7
+      UInt4x2(1, 14),  // 14 is out of int4 range, should be clamped to 7
+      UInt4x2(7, 8),   // 8 is out of int4 range, should be clamped to 7
+      UInt4x2(3, 6)    // both within range
+  };
+
+  const std::vector<Int4x2> expected_int4x2_output = {
+      Int4x2(0, 7),  // 15 clamped to 7
+      Int4x2(1, 7),  // 14 clamped to 7
+      Int4x2(7, 7),  // 8 clamped to 7
+      Int4x2(3, 6)   // unchanged
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_int4x2_output), shape);
+}
+
 TEST(CastOpTest, Int8ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
@@ -641,7 +717,7 @@ TEST(CastOpTest, UInt16ToUInt4x2) {
   const std::vector<UInt4x2> expected_uint4x2_output = {
       UInt4x2(15, 15),  // 20 clamped to 15
       UInt4x2(0, 1),
-      UInt4x2(7, 15),   // 25 clamped to 15
+      UInt4x2(7, 15),  // 25 clamped to 15
       UInt4x2(3, 12)};
 
   // WHEN, THEN
@@ -769,6 +845,38 @@ TEST(CastOpTest, DoubleToUInt4x2) {
   TestCastOp(gsl::make_span(double_input), gsl::make_span(expected_uint4x2_output), shape);
 }
 
+TEST(CastOpTest, BoolToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const bool bool_input[] = {false, true, true, false, false, true, true, true};
+  const gsl::span<const bool> bool_input_span(bool_input);
+
+  const std::vector<Int4x2> expected_int4x2_output = {
+      Int4x2(0, 1),
+      Int4x2(1, 0),
+      Int4x2(0, 1),
+      Int4x2(1, 1)};
+
+  // WHEN, THEN
+  TestCastOp(bool_input_span, gsl::make_span(expected_int4x2_output), shape);
+}
+
+TEST(CastOpTest, BoolToUInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const bool bool_input[] = {false, true, true, false, false, true, true, true};
+  const gsl::span<const bool> bool_input_span(bool_input);
+
+  const std::vector<UInt4x2> expected_uint4x2_output = {
+      UInt4x2(0, 1),
+      UInt4x2(1, 0),
+      UInt4x2(0, 1),
+      UInt4x2(1, 1)};
+
+  // WHEN, THEN
+  TestCastOp(bool_input_span, gsl::make_span(expected_uint4x2_output), shape);
+}
+
 #if !defined(DISABLE_FLOAT8_TYPES)
 
 template <typename F8>
@@ -838,8 +946,7 @@ TEST(CastOpTest, Int4x2ToFloat8E4M3FN) {
       Int4x2(-8, 7),
       Int4x2(0, -1),
       Int4x2(3, -5),
-      Int4x2(6, 2)
-  };
+      Int4x2(6, 2)};
 
   std::vector<Float8E4M3FN> expected_float8_output;
   expected_float8_output.reserve(8);
