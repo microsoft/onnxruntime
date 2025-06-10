@@ -120,6 +120,14 @@ function(AddTest)
     if (${HAS_NOERROR})
       target_compile_options(${_UT_TARGET} PRIVATE "$<$<COMPILE_LANGUAGE:CXX>:-Wno-error=uninitialized>")
     endif()
+    if (HAS_CHARACTER_CONVERSION)
+      # There are some warnings from gtest. For example:
+      #
+      # gtest-printers.h:520:35: error: implicit conversion from 'char16_t' to 'char32_t' may change the meaning of the represented code unit [-Werror,-Wcharacter-conversion]
+      #   520 |   PrintTo(ImplicitCast_<char32_t>(c), os);
+      #       |           ~~~~~~~~~~~~~           ^
+      target_compile_options(${_UT_TARGET} PRIVATE "-Wno-character-conversion")
+    endif()
   endif()
 
   set(TEST_ARGS ${_UT_TEST_ARGS})
@@ -785,6 +793,14 @@ if(MSVC)
                 "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
 else()
   target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR} ${ONNXRUNTIME_ROOT})
+  if (HAS_CHARACTER_CONVERSION)
+    # There are some warnings from gtest. For example:
+    #
+    # gtest-printers.h:520:35: error: implicit conversion from 'char16_t' to 'char32_t' may change the meaning of the represented code unit [-Werror,-Wcharacter-conversion]
+    #   520 |   PrintTo(ImplicitCast_<char32_t>(c), os);
+    #       |           ~~~~~~~~~~~~~           ^
+    target_compile_options(onnxruntime_test_utils PRIVATE "-Wno-character-conversion")
+  endif()
 endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
