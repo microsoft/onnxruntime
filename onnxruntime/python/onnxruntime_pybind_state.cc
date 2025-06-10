@@ -303,14 +303,26 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-      return CUDA;
+      switch (device.Vendor()) {
+        case OrtDevice::VendorIds::NVIDIA:
+          return CUDA;
+        case OrtDevice::VendorIds::AMD:
+          return HIP;
+        case OrtDevice::VendorIds::MICROSOFT:
+          return DML;
+      }
+
+      return CUDA;  // default to CUDA for backwards compatibility
+
     case OrtDevice::DML:
       return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
 #ifdef USE_CANN
-      return CANN;
+      if (device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
+        return CANN;
+      }
 #else
       return "NPU";
 #endif
@@ -1907,7 +1919,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
              } else if (type == OrtDevice::GPU) {
 #if USE_CUDA
                vendor = OrtDevice::VendorIds::NVIDIA;
-#elif USE_ROCM
+#elif USE_ROCM || USE_MIGRAPHX
                vendor = OrtDevice::VendorIds::AMD;
 #endif
              }

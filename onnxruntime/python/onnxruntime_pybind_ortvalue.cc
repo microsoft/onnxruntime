@@ -31,7 +31,13 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
       throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
     }
     allocator = GetCudaAllocator(device.Id());
-#elif USE_ROCM
+#else
+    throw std::runtime_error(
+        "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+        "Please use the CUDA package of OnnxRuntime to use this feature.");
+#endif
+  } else if (strcmp(GetDeviceName(device), HIP) == 0) {
+#if USE_ROCM
     if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
       throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
     }
@@ -40,8 +46,8 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
     allocator = GetMIGraphXAllocator(device.Id());
 #else
     throw std::runtime_error(
-        "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-        "Please use the CUDA package of OnnxRuntime to use this feature.");
+        "Can't allocate memory on the AMD device using this package of OnnxRuntime. "
+        "Please use the ROCm package of OnnxRuntime to use this feature.");
 #endif
   } else if (strcmp(GetDeviceName(device), DML) == 0) {
 #if USE_DML
@@ -126,7 +132,7 @@ void addOrtValueMethods(pybind11::module& m) {
                 "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
                 "Please use the CUDA package of OnnxRuntime to use this feature.");
           }
-        } else if (device.Type() == OrtDevice::NPU) {
+        } else if (device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
 #ifdef USE_CANN
           if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
@@ -164,41 +170,53 @@ void addOrtValueMethods(pybind11::module& m) {
               CpuToCpuMemCpy);
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
-          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
+          if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+            if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
 
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToCudaMemCpy);
-#elif USE_ROCM
-          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
-
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToRocmMemCpy);
-#elif USE_MIGRAPHX
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToMIGraphXMemCpy);
-#elif USE_DML
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToDmlMemCpy);
-#else
-          throw std::runtime_error(
-              "Unsupported GPU device: Cannot find the supported GPU device.");
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToCudaMemCpy);
+          } else
 #endif
+#if USE_ROCM
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
+
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToRocmMemCpy);
+          } else
+#endif
+#if USE_MIGRAPHX
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToMIGraphXMemCpy);
+          } else
+#endif
+#if USE_DML
+              if (device.Vendor() == OrtDevice::VendorIds::MICROSOFT) {
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToDmlMemCpy);
+          } else
+#endif
+          {
+            throw std::runtime_error(
+                "Unsupported GPU device: Cannot find the supported GPU device.");
+          }
         } else if (device.Type() == OrtDevice::DML) {
 #if USE_DML
           onnxruntime::python::CopyDataToTensor(
