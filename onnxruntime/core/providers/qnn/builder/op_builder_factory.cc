@@ -183,6 +183,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateMeanOpBuilder("Mean", *this);
+  }
+
+  {
     CreateLSTMOpBuilder("LSTM", *this);
   }
 
