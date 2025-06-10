@@ -264,6 +264,9 @@
     if("90" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
       target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
       target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+      if (MSVC)
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+      endif()
     endif()
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
