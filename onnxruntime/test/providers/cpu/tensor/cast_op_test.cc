@@ -889,6 +889,115 @@ TEST(CastOpTest, DoubleToUInt4x2) {
   TestCastOp(gsl::make_span(double_input), gsl::make_span(expected_uint4x2_output), shape);
 }
 
+TEST(CastOpTest, MLFloat16ToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const MLFloat16 mlfloat16_array[8] = {
+      MLFloat16(static_cast<float>(-8)),
+      MLFloat16(static_cast<float>(7)),
+      MLFloat16(static_cast<float>(0)),
+      MLFloat16(static_cast<float>(-1)),
+      MLFloat16(static_cast<float>(3)),
+      MLFloat16(static_cast<float>(-5)),
+      MLFloat16(static_cast<float>(6)),
+      MLFloat16(static_cast<float>(2))};
+
+  const std::vector<Int4x2> expected_int4x2 = {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5),
+      Int4x2(6, 2)};
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const MLFloat16>(mlfloat16_array, 8),
+      gsl::span<const Int4x2>(expected_int4x2),
+      shape);
+}
+
+TEST(CastOpTest, MLFloat16ToUInt4x2) {
+  // GIVEN
+  // 8 MLFloat16 values will compress to 4 UInt4x2 values
+  const std::vector<int64_t> shape{2, 4};  // Shape that contains 8 elements
+
+  // MLFloat16 values: 0, 15, 8, 7, 3, 12, 10, 5
+  const MLFloat16 mlfloat16_array[8] = {
+      MLFloat16(static_cast<float>(0)),
+      MLFloat16(static_cast<float>(15)),
+      MLFloat16(static_cast<float>(8)),
+      MLFloat16(static_cast<float>(7)),
+      MLFloat16(static_cast<float>(3)),
+      MLFloat16(static_cast<float>(12)),
+      MLFloat16(static_cast<float>(10)),
+      MLFloat16(static_cast<float>(5))};
+
+  const std::vector<UInt4x2> expected_uint4x2 = {
+      UInt4x2(0, 15),
+      UInt4x2(8, 7),
+      UInt4x2(3, 12),
+      UInt4x2(10, 5)};
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const MLFloat16>(mlfloat16_array, 8),
+      gsl::span<const UInt4x2>(expected_uint4x2),
+      shape);
+}
+
+TEST(CastOpTest, MLFloat16ToInt4x2BoundaryValuesClamping) {
+  // GIVEN
+  // Test MLFloat16 values that need clamping to Int4x2 range (-8 to 7)
+  const std::vector<int64_t> shape{3, 2};
+  const MLFloat16 mlfloat16_array[6] = {
+      MLFloat16(static_cast<float>(-10)),    // Below min, should clamp to -8
+      MLFloat16(static_cast<float>(9)),      // Above max, should clamp to 7
+      MLFloat16(static_cast<float>(-8)),     // At min, should remain -8
+      MLFloat16(static_cast<float>(7)),      // At max, should remain 7
+      MLFloat16(static_cast<float>(-0.6f)),  // Should round to -1
+      MLFloat16(static_cast<float>(1.7f))    // Should round to 2
+  };
+
+  // Values should be clamped to int4 range (-8 to 7)
+  const std::vector<Int4x2> expected_int4x2 = {
+      Int4x2(-8, 7),  // -10 clamped to -8, 9 clamped to 7
+      Int4x2(-8, 7),  // -8 and 7 already at boundaries
+      Int4x2(-1, 2)   // -0.6 rounds to -1, 1.7 rounds to 2
+  };
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const MLFloat16>(mlfloat16_array, 6),
+      gsl::span<const Int4x2>(expected_int4x2),
+      shape);
+}
+
+TEST(CastOpTest, MLFloat16ToUInt4x2BoundaryValuesClamping) {
+  // GIVEN
+  // Test MLFloat16 values that need clamping to UInt4x2 range (0 to 15)
+  const std::vector<int64_t> shape{3, 2};  // Shape that contains 6 elements
+  const MLFloat16 mlfloat16_array[6] = {
+      MLFloat16(static_cast<float>(-5)),    // Negative, should clamp to 0
+      MLFloat16(static_cast<float>(20)),    // Above max, should clamp to 15
+      MLFloat16(static_cast<float>(0)),     // At min, should remain 0
+      MLFloat16(static_cast<float>(15)),    // At max, should remain 15
+      MLFloat16(static_cast<float>(3.4f)),  // Should round to 3
+      MLFloat16(static_cast<float>(5.7f))   // Should round to 6
+  };
+
+  // Values should be clamped to uint4 range (0-15)
+  const std::vector<UInt4x2> expected_uint4x2 = {
+      UInt4x2(0, 15),  // -5 clamped to 0, 20 clamped to 15
+      UInt4x2(0, 15),  // 0 and 15 already at boundaries
+      UInt4x2(3, 6)    // 3.4 rounds to 3, 5.7 rounds to 6
+  };
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const MLFloat16>(mlfloat16_array, 6),
+      gsl::span<const UInt4x2>(expected_uint4x2),
+      shape);
+}
+
 TEST(CastOpTest, BoolToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
