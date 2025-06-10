@@ -47,4 +47,4 @@ jobs:
           @echo off
           echo %PATH%
           python -m pip install -r "%GITHUB_WORKSPACE%\tools\ci_build/github/windows\python\requirements.txt"
-          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --disable_memleak_checker --enable_address_sanitizer
+          python "%GITHUB_WORKSPACE%\tools\ci_build\build.py" --config Debug --build_dir "%RUNNER_TEMP%\build" --skip_submodule_sync --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache --cmake_generator "Visual Studio 17 2022" --enable_address_sanitizer
