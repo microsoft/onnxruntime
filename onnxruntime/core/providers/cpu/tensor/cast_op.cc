@@ -144,21 +144,6 @@ CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
 
-inline void CastToString(Int4x2 value, std::string& out) {
-  // Int4x2 contains two 4-bit signed integers
-  // Show both values as [first,second]
-  auto val0 = value.GetElem(0);  // First 4-bit value
-  auto val1 = value.GetElem(1);  // Second 4-bit value
-  out = "[" + std::to_string(static_cast<int>(val0)) + "," + std::to_string(static_cast<int>(val1)) + "]";
-}
-
-inline void CastToString(UInt4x2 value, std::string& out) {
-  // UInt4x2 contains two 4-bit unsigned integers
-  auto val0 = value.GetElem(0);  // First 4-bit value
-  auto val1 = value.GetElem(1);  // Second 4-bit value
-  out = "[" + std::to_string(static_cast<unsigned>(val0)) + "," + std::to_string(static_cast<unsigned>(val1)) + "]";
-}
-
 template <typename DstType>
 typename std::enable_if<std::is_floating_point<DstType>::value, void>::type
 CastFromString(const std::string& input, DstType& output) {
@@ -181,66 +166,6 @@ CastFromString(const std::string& input, DstType& output) {
   static_assert(sizeof(DstType) <= sizeof(long long),
                 "largest supported signed integral type is long long");
   output = gsl::narrow_cast<DstType>(std::stoll(input));
-}
-
-inline void CastFromString(const std::string& in, Int4x2& out) {
-  // Parse string format: "[-3,7]" or "-3,7" or just "-3" (single value)
-  std::string trimmed = in;
-
-  // Remove brackets if present
-  if (!trimmed.empty() && trimmed.front() == '[') {
-    trimmed = trimmed.substr(1);
-  }
-  if (!trimmed.empty() && trimmed.back() == ']') {
-    trimmed = trimmed.substr(0, trimmed.length() - 1);
-  }
-
-  // Find comma separator
-  size_t comma_pos = trimmed.find(',');
-  int8_t val0 = 0, val1 = 0;
-  if (comma_pos != std::string::npos) {
-    // Two values: "val0,val1"
-    std::string val0_str = trimmed.substr(0, comma_pos);
-    std::string val1_str = trimmed.substr(comma_pos + 1);
-
-    val0 = static_cast<int8_t>(std::clamp(std::stoi(val0_str), -8, 7));
-    val1 = static_cast<int8_t>(std::clamp(std::stoi(val1_str), -8, 7));
-  } else {
-    // Single value - use for both elements
-    val0 = val1 = static_cast<int8_t>(std::clamp(std::stoi(trimmed), -8, 7));
-  }
-
-  out = Int4x2(val0, val1);
-}
-
-inline void CastFromString(const std::string& in, UInt4x2& out) {
-  // Parse string format: "[5,12]" or "5,12" or just "5" (single value)
-  std::string trimmed = in;
-
-  // Remove brackets if present
-  if (!trimmed.empty() && trimmed.front() == '[') {
-    trimmed = trimmed.substr(1);
-  }
-  if (!trimmed.empty() && trimmed.back() == ']') {
-    trimmed = trimmed.substr(0, trimmed.length() - 1);
-  }
-
-  // Find comma separator
-  size_t comma_pos = trimmed.find(',');
-  uint8_t val0 = 0, val1 = 0;
-  if (comma_pos != std::string::npos) {
-    // Two values: "val0,val1"
-    std::string val0_str = trimmed.substr(0, comma_pos);
-    std::string val1_str = trimmed.substr(comma_pos + 1);
-
-    val0 = static_cast<uint8_t>(std::clamp(std::stoi(val0_str), 0, 15));
-    val1 = static_cast<uint8_t>(std::clamp(std::stoi(val1_str), 0, 15));
-  } else {
-    // Single value - use for both elements
-    val0 = val1 = static_cast<uint8_t>(std::clamp(std::stoi(trimmed), 0, 15));
-  }
-
-  out = UInt4x2(val0, val1);
 }
 
 template <typename DstType>
@@ -391,6 +316,99 @@ struct TensorCaster<std::string, DstType> {
     auto* out_data = out.MutableData<DstType>();
     for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
       CastFromString(in_data[i], out_data[i]);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, std::string> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<std::string>();
+
+    // Unpack each Int4x2 into two separate string elements
+    size_t out_idx = 0;
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; i++) {
+      auto val0 = in_data[i].GetElem(0);
+      auto val1 = in_data[i].GetElem(1);
+
+      out_data[out_idx++] = std::to_string(static_cast<int>(val0));
+      out_data[out_idx++] = std::to_string(static_cast<int>(val1));
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, std::string> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<std::string>();
+
+    // Unpack each UInt4x2 into two separate string elements
+    size_t out_idx = 0;
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()) >> 1; i++) {
+      auto val0 = in_data[i].GetElem(0);
+      auto val1 = in_data[i].GetElem(1);
+
+      out_data[out_idx++] = std::to_string(static_cast<unsigned>(val0));
+      out_data[out_idx++] = std::to_string(static_cast<unsigned>(val1));
+    }
+  }
+};
+
+template <>
+struct TensorCaster<std::string, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    // Every 2 strings combine into 1 Int4x2
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    size_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      // Parse each string and clamp to int4 range (-8 to 7)
+      int v0 = std::stoi(in_data[i]);
+      int v1 = std::stoi(in_data[i + 1]);
+      int8_t val0 = static_cast<int8_t>(std::clamp(v0, -8, 7));
+      int8_t val1 = static_cast<int8_t>(std::clamp(v1, -8, 7));
+
+      out_data[i >> 1] = Int4x2(val0, val1);
+    }
+
+    // Handle odd number of elements - pad with 0
+    if (i < shape_size) {
+      int v0 = std::stoi(in_data[i]);
+      int8_t val0 = static_cast<int8_t>(std::clamp(v0, -8, 7));
+      out_data[i >> 1] = Int4x2(val0, 0);
+    }
+  }
+};
+
+// TensorCaster specialization for string to UInt4x2
+template <>
+struct TensorCaster<std::string, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    // Every 2 strings combine into 1 UInt4x2
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    size_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      // Parse each string and clamp to uint4 range (0 to 15)
+      int v0 = std::stoi(in_data[i]);
+      int v1 = std::stoi(in_data[i + 1]);
+      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, 0, 15));
+      uint8_t val1 = static_cast<uint8_t>(std::clamp(v1, 0, 15));
+
+      out_data[i >> 1] = UInt4x2(val0, val1);
+    }
+
+    // Handle odd number of elements - pad with 0
+    if (i < shape_size) {
+      int v0 = std::stoi(in_data[i]);
+      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, 0, 15));
+      out_data[i >> 1] = UInt4x2(val0, 0);
     }
   }
 };

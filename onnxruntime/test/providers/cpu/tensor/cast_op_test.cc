@@ -618,6 +618,50 @@ TEST(CastOpTest, UInt4x2ToBFloat16) {
   TestCastOp(gsl::make_span(uint4x2_input), gsl::make_span(expected_bfloat16_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToString) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(-8, 7),  // boundary values
+      Int4x2(0, -1),  // zero and negative
+      Int4x2(3, -5),  // mixed values
+      Int4x2(6, 2)    // positive values
+  };
+
+  // Each Int4x2 becomes two string values
+  const std::vector<std::string> expected_output = {
+      "-8", "7",  // from first Int4x2
+      "0", "-1",  // from second Int4x2
+      "3", "-5",  // from third Int4x2
+      "6", "2"    // from fourth Int4x2
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const Int4x2>(int4x2_input), gsl::span<const std::string>(expected_output), shape);
+}
+
+TEST(CastOpTest, UInt4x2ToString) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<UInt4x2> uint4x2_input = {
+      UInt4x2(0, 15),  // boundary values
+      UInt4x2(8, 7),   // mid-range values
+      UInt4x2(3, 12),  // mixed values
+      UInt4x2(10, 5)   // other values
+  };
+
+  // Each UInt4x2 becomes two string values
+  const std::vector<std::string> expected_output = {
+      "0", "15",  // from first UInt4x2
+      "8", "7",   // from second UInt4x2
+      "3", "12",  // from third UInt4x2
+      "10", "5"   // from fourth UInt4x2
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const UInt4x2>(uint4x2_input), gsl::span<const std::string>(expected_output), shape);
+}
+
 TEST(CastOpTest, Int4x2ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
@@ -875,6 +919,68 @@ TEST(CastOpTest, BoolToUInt4x2) {
 
   // WHEN, THEN
   TestCastOp(bool_input_span, gsl::make_span(expected_uint4x2_output), shape);
+}
+
+TEST(CastOpTest, StringToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<std::string> string_input = {
+      "-8", "7",  // boundary values
+      "0", "-1",  // zero and negative
+      "3", "-5",  // mixed values
+      "6", "2"    // positive values
+  };
+
+  const std::vector<Int4x2> expected_output {
+      Int4x2(-8, 7),
+      Int4x2(0, -1),
+      Int4x2(3, -5),
+      Int4x2(6, 2)};
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const Int4x2>(expected_output), shape);
+}
+
+TEST(CastOpTest, StringToUInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<std::string> string_input = {
+      "0", "15",  // boundary values
+      "8", "7",   // mid-range values
+      "3", "12",  // mixed values
+      "10", "5"   // other values
+  };
+
+  const std::vector<UInt4x2> expected_output{
+      UInt4x2(0, 15),
+      UInt4x2(8, 7),
+      UInt4x2(3, 12),
+      UInt4x2(10, 5)};
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const UInt4x2>(expected_output), shape);
+}
+
+TEST(CastOpTest, String2UInt4x2BoundaryValuesClamping) {
+  // GIVEN
+  // Test string values that need clamping to UInt4x2 range (0-15)
+  const std::vector<int64_t> shape{3, 2};
+  const std::vector<std::string> string_input = {
+      "-5", "20",   // out of range values that should be clamped
+      "16", "100",  // out of range values that should be clamped
+      "0", "15"     // boundary values that are in range
+  };
+
+  // Each pair of strings becomes one UInt4x2
+  // Values should be clamped to uint4 range (0-15)
+  const std::vector<UInt4x2> expected_output {
+      UInt4x2(0, 15),   // -5 clamped to 0, 20 clamped to 15
+      UInt4x2(15, 15),  // 16 clamped to 15, 100 clamped to 15
+      UInt4x2(0, 15)    // 0 and 15 already in range
+  };
+
+  // WHEN, THEN
+  TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const UInt4x2>(expected_output), shape);
 }
 
 #if !defined(DISABLE_FLOAT8_TYPES)
