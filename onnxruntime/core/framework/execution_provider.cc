@@ -37,10 +37,4 @@ common::Status IExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>&
 }
 
 #endif
-#ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
-#else
-  ORT_UNUSED_PARAMETER(provider_id);
-  ORT_UNUSED_PARAMETER(providerOptions);
-  ORT_UNUSED_PARAMETER(captureState);
-#endif
 }  // namespace onnxruntime
