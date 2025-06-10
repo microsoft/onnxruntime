@@ -230,13 +230,11 @@ class PosixThread : public EnvThread {
         } else {
           errno = ret;
           auto [err_no, err_msg] = GetErrnoInfo();
-#if !defined(USE_MIGRAPHX) && !defined(USE_MIGRAPHX_INTERFACE)
           LOGS_DEFAULT(ERROR) << "pthread_setaffinity_np failed for thread: " << syscall(SYS_gettid)
                               << ", index: " << p->index
                               << ", mask: " << *p->affinity
                               << ", error code: " << err_no << " error msg: " << err_msg
                               << ". Specify the number of threads explicitly so the affinity is not set.";
-#endif
         }
       }
 #endif
