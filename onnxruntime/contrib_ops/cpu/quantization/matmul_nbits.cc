@@ -7,7 +7,6 @@
 #include <type_traits>
 
 #include "core/common/common.h"
-#include "core/common/make_string.h"
 #include "core/common/narrow.h"
 #include "core/common/safeint.h"
 #include "core/framework/op_kernel.h"
@@ -471,6 +470,7 @@ Status MatMulNBits<float>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
     } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -607,6 +607,7 @@ Status MatMulNBits<MLFloat16>::ComputeBUnpacked(const Tensor* a,
           static_cast<int32_t>(N_),                       // number of columns in quantized input
           thread_pool);
     } else {  // If it isn't 4bit, it has to be 8-bit quantization
+      ORT_ENFORCE(nbits_ == 8);
       MlasDequantizeBlockwise<float, 8>(
           tmp_b_data_ptr.get(),                           // dequantized output
           b_data,                                         // quantized input
@@ -753,11 +754,11 @@ Status MatMulNBits<T1>::Compute(OpKernelContext* ctx) const {
   }
 
   // TODO(hasesh): Should this logging level be warning ?
-  LOGS(ctx->Logger(), INFO) << MakeString("Falling back to using unpacked compute mode for the Matmul operation ",
-                                          "(i.e.) the weights will be de-quantized to fp32 before invoking "
-                                          "the fp32 Matmul kernel."
-                                          "This is because MLAS doesn't have an optimized quantized kernel "
-                                          "for the requested compute configuration.");
+  LOGS(ctx->Logger(), INFO) << "Falling back to using unpacked compute mode for the Matmul operation "
+                               "(i.e.) the weights will be de-quantized to fp32 before invoking "
+                               "the fp32 Matmul kernel."
+                               "This is because MLAS doesn't have an optimized quantized kernel "
+                               "for the requested compute configuration.";
 
   return ComputeBUnpacked(a, b, scales, zero_points, reorder_idx, bias, y, allocator, thread_pool, helper);
 }
