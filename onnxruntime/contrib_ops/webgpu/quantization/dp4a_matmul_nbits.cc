@@ -327,8 +327,8 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_  % 4 == 0, "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
-const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
-ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
+  const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
+  ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
 
   // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
@@ -353,16 +353,16 @@ ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by s
                                     << "  const tile_size_k_vec = " << tile_size_k_vec_ << "u;\n"
                                     << "  const double_tile_size_k_vec = " << 2 * tile_size_k_vec_ << "u;\n"
                                     // sub_tile_count is the number of concurrent b rows processed by the workgroup.
-                                    << "  const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec_ << "u;\n"
-                                    << "  const scale_a_size_k_vec = " << (tile_size_k_vec_ + 3) / 4 << "u;\n";
+                                    << "  const sub_tile_count = " << sub_tile_count << "u;\n";
 
   shader.AdditionalImplementation() << CommonFunctions(nbits_)
                                     << R"ADDNL_FN(
     var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
     // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
-    // Need (tile_size_k_vec + 3) / 4 scales value since each tile_A includes (tile_size_k_vec * 2 * 16) scalars and the block_size is 128.
-    var<workgroup> scale_A : array<output_element_t, scale_a_size_k_vec>;
+    // double_tile_size_k_vec * 16 / 128
+    const scale_a_size_in_tile_a = double_tile_size_k_vec / 8;
+    var<workgroup> scale_A : array<output_element_t, scale_a_size_in_tile_a>;
     fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
     {
       let k_offset = kidx_v + col;
@@ -371,7 +371,7 @@ ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by s
       }
 
       tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
-      if (col < scale_a_size_k_vec)
+      if (col < scale_a_size_in_tile_a)
       {
         // kidx_v - covers 16 values of k in input_a
         scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
