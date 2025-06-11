@@ -3795,9 +3795,14 @@ TEST(MathOpTest, Asin) {
   OpTester test("Asin");
   float abs_error =
 #ifdef _WIN32
-      // Set abs_error to 0.0001f for built-in function asin() in HLSL based EPs (DML and WebGPU)
+      // Set abs_error to 0.0001f for built-in function asin() in HLSL based EPs (DML and WebGPU with D3D12)
       DefaultDmlExecutionProvider().get() != nullptr || DefaultWebGpuExecutionProvider().get() != nullptr
           ? 0.0001f
+          :
+#elif !defined(__APPLE__)
+      // Set abs_error to 0.00022f for built-in function asin() in Vulkan compute shader
+      DefaultWebGpuExecutionProvider().get() != nullptr
+          ? 0.00022f
           :
 #endif
           -1.0f;
