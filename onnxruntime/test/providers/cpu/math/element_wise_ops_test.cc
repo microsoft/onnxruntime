@@ -1446,6 +1446,16 @@ TEST(MathOpTest, Pow_float_float16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
+
+TEST(MathOpTest, Pow_float_sqrt) {
+  OpTester test("Pow", 12);
+  std::vector<int64_t> dims{1};
+  test.AddInput<float>("X", dims, {9.});
+  test.AddInput<float>("Y", dims, {0.5});
+  test.AddOutput<float>("Z", dims, {3.});
+  test.Run();
+}
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Exp_bfloat16) {
 #ifdef USE_DNNL
