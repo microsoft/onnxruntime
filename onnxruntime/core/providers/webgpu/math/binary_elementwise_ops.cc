@@ -294,7 +294,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
        "  if (b == 0.0) {\n"
        "    return input_a_element_t(1.0);\n"
        "  } else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
-       "    return input_a_element_t(sqrt(" << (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? "f16" : "f32") << "(a)));\n"
+       "    return input_a_element_t(" << round_str << "(sqrt(" << (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16 ? "f16" : "f32") << "(a))));\n"
        "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
        "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
        "  }\n"
