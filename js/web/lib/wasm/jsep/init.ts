@@ -278,11 +278,11 @@ export const init = async (
     const backend = new WebNNBackend(env);
     jsepInit('webnn', [
       backend,
-      // jsepReserveTensorId
+      // webnnReserveTensorId
       () => backend.reserveTensorId(),
-      // jsepReleaseTensorId,
+      // webnnReleaseTensorId
       (tensorId: number) => backend.releaseTensorId(tensorId),
-      // jsepEnsureTensor
+      // webnnEnsureTensor
       async (
         sessionId: number | undefined,
         tensorId: number,
@@ -290,15 +290,15 @@ export const init = async (
         shape: number[],
         copyOld: boolean,
       ) => backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
-      // jsepUploadTensor
+      // webnnUploadTensor
       (tensorId: number, data: Uint8Array) => {
         backend.uploadTensor(tensorId, data);
       },
-      // jsepDownloadTensor
+      // webnnDownloadTensor
       async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
-      // jsepRegisterMLContext
+      // webnnRegisterMLContext
       (sessionId: number, mlContext: MLContext) => backend.registerMLContext(sessionId, mlContext),
-      // jsepEnableTraceEvent
+      // webnnEnableTraceEvent
       !!env.trace,
     ]);
   }
