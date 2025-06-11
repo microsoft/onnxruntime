@@ -326,9 +326,9 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  ORT_ENFORCE(WorkgroupSizeX() >= tile_size_k_vec_, "tile_size_k_vec_ must be smaller than workgroup size X");
   ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0, "tile_size_k_vec_ must evenly divide workgroup size X");
   ORT_ENFORCE(tile_size_ % (WorkgroupSizeX() / tile_size_k_vec_) == 0, "tile_size_ must be divisible by sub_tile_count");
+
   // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
   // For each load of k, the tile_size_k_vec threads also reload B tile_size/num_concurrent_b_rows times to compute partial dot products of other B rows
@@ -353,14 +353,14 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                                     << "  const double_tile_size_k_vec = " << 2 * tile_size_k_vec_ << "u;\n"
                                     // sub_tile_count is the number of concurrent b rows processed by the workgroup.
                                     << "  const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec_ << "u;\n"
-                                    << "  const scale_a_size_k_vec = " << tile_size_k_vec_ / 4 << "u;\n";
+                                    << "  const scale_a_size_k_vec = " << (tile_size_k_vec_ + 3) / 4 << "u;\n";
 
   shader.AdditionalImplementation() << CommonFunctions(nbits_)
                                     << R"ADDNL_FN(
     var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
     // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
     var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
-    // Need (tile_size_k_vec / 4) scales value since each tile_A includes (tile_size_k_vec * 2 * 16) scalars and the block_size is 128.
+    // Need (tile_size_k_vec + 3) / 4 scales value since each tile_A includes (tile_size_k_vec * 2 * 16) scalars and the block_size is 128.
     var<workgroup> scale_A : array<output_element_t, scale_a_size_k_vec>;
     fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
     {
@@ -406,7 +406,6 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (nbits_ == 4) {
     shader.MainFunctionBody() << R"MAIN_FN(
           let b_value = input_b[b_offset];
-
           let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
           let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
   )MAIN_FN";
