@@ -16,18 +16,7 @@
 #pragma once
 
 #include <cuda_runtime_api.h>
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 177)
-#endif
-
 #include "cutlass/device_kernel.h"
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "core/providers/cuda/cuda_common.h"
 
