@@ -2560,14 +2560,14 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       std::string compute_capability_hw_compat = compute_capability_ + "+";
 
       ep_context_models_.push_back(CreateCtxNode(graph_body_viewer,
-                                    ep_cache_context_attr_,
-                                    reinterpret_cast<char*>(serialized_engine->data()),
-                                    serialized_engine->size(),
-                                    ep_context_embed_mode_,
-                                    compute_capability_hw_compat,
-                                    model_path_,
-                                    GetLogger(),
-                                    fused_node.Name()));
+                                                 ep_cache_context_attr_,
+                                                 reinterpret_cast<char*>(serialized_engine->data()),
+                                                 serialized_engine->size(),
+                                                 ep_context_embed_mode_,
+                                                 compute_capability_hw_compat,
+                                                 model_path_,
+                                                 GetLogger(),
+                                                 fused_node.Name()));
     }
   }
 
