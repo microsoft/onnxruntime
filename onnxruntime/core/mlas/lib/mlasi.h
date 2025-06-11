@@ -949,6 +949,10 @@ extern "C" {
 #if defined(__aarch64__) && defined(__linux__)
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelZero;
     MLAS_SBGEMM_FLOAT_KERNEL MlasSbgemmKernelAdd;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwFloatKernelNeon;
+    MLAS_CONV_FLOAT_KERNEL MlasConvNchwcFloatKernelNeon;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL MlasConvDepthwiseFloatKernelNeon;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL MlasConvPointwiseFloatKernelNeon; 
 #endif
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelZero;
     MLAS_GEMM_DOUBLE_KERNEL MlasDgemmKernelAdd;
@@ -1332,6 +1336,13 @@ struct MLAS_PLATFORM {
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8U8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmU8S8Dispatch;
     const MLAS_GEMM_QUANT_DISPATCH* GemmS8S8Dispatch;
+#endif
+#if defined(__aarch64__) && defined(__linux__)
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwFloatKernel;
+    MLAS_CONV_FLOAT_KERNEL* ConvNchwcFloatKernel;
+    MLAS_CONV_DEPTHWISE_FLOAT_KERNEL* ConvDepthwiseFloatKernel;
+    MLAS_CONV_POINTWISE_FLOAT_KERNEL* ConvPointwiseFloatKernel;
+    uint32_t NchwcBlockSize;
 #endif
     const MLAS_SYMM_QGEMM_DISPATCH* SymmQgemmDispatch{nullptr};
 

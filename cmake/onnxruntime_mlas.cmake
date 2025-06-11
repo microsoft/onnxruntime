@@ -442,6 +442,7 @@ else()
             ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
             ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
             ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
+            ${MLAS_SRC_DIR}/aarch64/SConvKernelNeon.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp

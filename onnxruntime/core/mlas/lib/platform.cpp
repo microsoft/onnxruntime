@@ -558,6 +558,12 @@ Return Value:
     this->SoftmaxDispatch = &MlasSoftmaxDispatchNeon;
     this->EltwiseDispatch = &MlasEltwiseDispatchNeon;
 
+    this->ConvNchwFloatKernel = MlasConvNchwFloatKernelNeon;
+    this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
+    this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
+    this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
+    this->NchwcBlockSize = 16; // What is it supposed to be?
+
     //
     // Check if the processor supports ASIMD dot product instructions.
     //
