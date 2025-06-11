@@ -66,14 +66,14 @@ void UpdateCtxNodeModelEngineContext(ONNX_NAMESPACE::ModelProto* model_proto,
  * Create EP context node where engine information is embedded
  */
 std::unique_ptr<onnxruntime::Model> CreateCtxNode(const GraphViewer& graph_viewer,
-                                           const std::string engine_cache_path,
-                                           char* engine_data,
-                                           size_t size,
-                                           const int64_t embed_mode,
-                                           const std::string compute_capability,
-                                           const std::string onnx_model_path,
-                                           const logging::Logger* logger,
-                                           const std::string& ep_context_node_name) {
+                                                  const std::string engine_cache_path,
+                                                  char* engine_data,
+                                                  size_t size,
+                                                  const int64_t embed_mode,
+                                                  const std::string compute_capability,
+                                                  const std::string onnx_model_path,
+                                                  const logging::Logger* logger,
+                                                  const std::string& ep_context_node_name) {
   auto model_build = Model::Create("nv_trt_rtx_ep_context_model", false, *logger);
   auto& graph_build = model_build->MainGraph();
 
