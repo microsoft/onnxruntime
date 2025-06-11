@@ -3747,7 +3747,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
 <dt><tt>cumulative_sequence_length</tt> : S</dt>
 <dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
-<dt><tt>seqlens</tt> : S</dt>
+<dt><tt>past_seqlens</tt> : S</dt>
 <dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
 <dt><tt>block_table</tt> : S</dt>
 <dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
