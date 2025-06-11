@@ -167,6 +167,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
+  }
+
+  {
     CreatePadOpBuilder("Pad", *this);
   }
 
