@@ -864,13 +864,12 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   profiler_ = profiler.get();
   return profiler;
 }
-Status WebGpuExecutionProvider::OnSessionInitializationStart(uint32_t session_id) {
+void WebGpuExecutionProvider::OnSessionInitializationStart(uint32_t session_id) {
   if (allocator_ != nullptr) {
     allocator_->OnSessionInitializationStart(session_id);
   }
   context_.OnSessionInitializationStart(session_id);
   session_id_ = session_id;
-  return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnSessionInitializationEnd() {

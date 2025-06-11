@@ -259,7 +259,7 @@ class IExecutionProvider {
     return Status::OK();
   }
 
-  virtual common::Status OnSessionInitializationStart(uint32_t /*session_id*/) { return Status::OK(); }
+  virtual void OnSessionInitializationStart(uint32_t /*session_id*/) {}
 
   /**
      Called when session creation is complete

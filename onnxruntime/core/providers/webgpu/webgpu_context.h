@@ -244,7 +244,7 @@ class WebGpuContext final {
   bool is_profiling_ = false;
   bool preserve_device_;
 
-  SStatus session_status_{SStatus::Default};
+  SessionState session_status_{SessionState::Default};
 
   struct CapturedCommandInfo {
     wgpu::ComputePipeline compute_pipeline;

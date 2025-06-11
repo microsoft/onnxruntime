@@ -1906,10 +1906,8 @@ common::Status InferenceSession::Initialize() {
     }
 
     for (auto& ep : execution_providers_) {
-      auto end_status = ep->OnSessionInitializationStart(session_id_);
-      if (status.IsOK()) {
-        status = end_status;
-      }
+      ep->OnSessionInitializationStart(session_id_);
+
       auto tuning_ctx = ep->GetTuningContext();
       if (nullptr != tuning_ctx) {
         tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());

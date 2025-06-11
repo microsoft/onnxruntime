@@ -719,7 +719,7 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
   auto bind_group = Device().CreateBindGroup(&bind_group_desc);
 
-  if (session_status_ == SStatus::Capturing) {
+  if (session_status_ == SessionState::Capturing) {
     captured_commands_map_[session_id_].push_back({program_artifact.compute_pipeline,
                                                    bind_group,
                                                    {x, y, z}});
@@ -743,7 +743,7 @@ void WebGpuContext::CaptureBegin(uint32_t session_id) {
   Flush();
 
   // Change to capturing mode
-  session_status_ = SStatus::Capturing;
+  session_status_ = SessionState::Capturing;
 }
 
 void WebGpuContext::CaptureEnd() {
@@ -753,13 +753,13 @@ void WebGpuContext::CaptureEnd() {
   Flush();
 
   // Change back to default mode
-  session_status_ = SStatus::Default;
+  session_status_ = SessionState::Default;
 }
 
 void WebGpuContext::Replay(uint32_t session_id) {
   LOGS_DEFAULT(VERBOSE) << "Replay: " << session_id;
   session_id_ = session_id;
-  session_status_ = SStatus::Replaying;
+  session_status_ = SessionState::Replaying;
 
   // Replay all captured commands
   auto command_list = captured_commands_map_[session_id_];
@@ -787,7 +787,7 @@ void WebGpuContext::Replay(uint32_t session_id) {
   Flush();
 
   // Change back to default mode
-  session_status_ = SStatus::Default;
+  session_status_ = SessionState::Default;
 }
 
 void WebGpuContext::OnReleaseSession(uint32_t session_id) {
