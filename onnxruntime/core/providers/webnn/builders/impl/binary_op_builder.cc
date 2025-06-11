@@ -75,7 +75,7 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
 
   std::string webnn_input_name = op_type == "PRelu" ? "input" : "a";
   std::string onnx_input_name = op_type == "PRelu" || op_type == "Pow" ? "X" : "A";
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger);
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, webnn_input_name, onnx_input_name, logger);
 }
 
 void CreateBinaryOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {
