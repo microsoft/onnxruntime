@@ -326,8 +326,9 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
-  ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0, "tile_size_k_vec_ must evenly divide workgroup size X");
-  ORT_ENFORCE(tile_size_ % (WorkgroupSizeX() / tile_size_k_vec_) == 0, "tile_size_ must be divisible by sub_tile_count");
+  ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_  % 4 == 0, "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
+const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
+ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
 
   // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
@@ -481,7 +482,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(std::to_string(nbits) + "_" +std::to_string(tile_size_k_vec) + "_" + std::to_string(tile_size));
+        .CacheHint(nbits, tile_size_k_vec, tile_size);
     return context.RunProgram(mul_program);
   }
 
