@@ -444,7 +444,7 @@ def export_onnx_models(
 
         output_paths.append(output_path)
 
-    return output_paths
+    return models, output_paths
 
 
 def main(argv=None):
@@ -461,7 +461,7 @@ def main(argv=None):
     if args.precision == Precision.FLOAT16:
         assert args.use_gpu, "fp16 requires --use_gpu"
 
-    output_paths = export_onnx_models(
+    models, output_paths = export_onnx_models(
         args.model_name_or_path,
         args.model_impl,
         cache_dir,
@@ -534,6 +534,21 @@ def main(argv=None):
                 os.remove(path)
                 if path in output_paths:
                     output_paths.remove(path)
+
+    else:
+        # Create ancillary JSON files for ONNX Runtime GenAI and/or Hugging Face's Optimum
+        WhisperHelper.save_processing(
+            args.model_name_or_path,
+            args.provider,
+            args.separate_encoder_and_decoder_init,
+            args.output_cross_qk,
+            models["encoder"],
+            models["decoder"],
+            list(filter(lambda path: "encoder" in path, output_paths))[0],
+            list(filter(lambda path: "decoder" in path, output_paths))[0],
+            output_dir,
+            cache_dir,
+        )
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff
