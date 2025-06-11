@@ -3,6 +3,8 @@
 
 #pragma once
 
+#if !defined(__wasm__)
+
 #include <string>
 
 #include "core/providers/webgpu/program.h"
@@ -53,3 +55,5 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
 }  // namespace webgpu
 }  // namespace contrib
 }  // namespace onnxruntime
+
+#endif
