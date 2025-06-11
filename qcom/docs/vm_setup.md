@@ -106,3 +106,7 @@ Install the Service
 
 The GitHub runner runs as a Windows service. Log in as the local administrator and follow the
 [standard instructions](https://github.com/organizations/qcom-ai-hub/settings/actions/runners/new?arch=x64&os=win).
+
+#### Build Configuration
+
+Set the environment variable `ORT_BUILD_TOOLS_PATH` to `C:\Users\OrtQnnEpCi\.ort-build-tools`.

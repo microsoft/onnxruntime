@@ -7,6 +7,13 @@ REPO_ROOT=$(git rev-parse --show-toplevel)
 source "${REPO_ROOT}/qcom/scripts/linux/common.sh"
 
 #
+# Remove outdated packages from th tools directory.
+#
+function clean_tools_dir() {
+    package_manager --clean
+}
+
+#
 # Get the Android NDK root (ANDROID_NDK_HOME).
 # This also installs any other Android SDK packages that ORT needs.
 #
@@ -77,7 +84,7 @@ function get_qairt_contentdir() {
 }
 
 function get_tools_dir() {
-    local tools_dir="${REPO_ROOT}/build/tools"
+    local tools_dir="${ORT_BUILD_TOOLS_PATH:-${REPO_ROOT}/build/tools}"
 
     if [ ! -d "${tools_dir}" ]; then
         mkdir -p "${tools_dir}"

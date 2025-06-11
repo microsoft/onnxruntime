@@ -221,6 +221,8 @@ switch ($TargetPlatform) {
 $CmakeBinDir = (Get-PackageBinDir cmake_windows_x86_64)
 $env:Path = "$CmakeBinDir;" + $env:Path
 
+Optimize-ToolsDir
+
 Push-Location $RepoRoot
 
 if ($MakeTestArchive) {

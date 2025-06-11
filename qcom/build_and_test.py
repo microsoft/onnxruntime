@@ -55,18 +55,22 @@ def parse_arguments():
 
 Environment variables
 ---------------------
+  ANDROID_HOME/ANDROID_NDK_HOME
+    If both are specified, they are used instead of installing known good
+    versions into build/tools.
+
+  JAVA_HOME
+    If specified, it is used instead of installing a known good version into build/tools.
+
+  ORT_BUILD_TOOLS_PATH
+    If specified, use this directory for build-managed tools instead of build/tools.
+
   QAIRT_SDK_ROOT
   QNN_SDK_ROOT
   SNPE_ROOT
     If specified, any of these will be used in place of the LKG QAIRT version.
     They are searched in the above order.
 
-  ANDROID_HOME/ANDROID_NDK_HOME
-    If both are specified, they are used instead of installing known good
-    versions into build/tools.
-
-  JAVA_HOME
-    If specified, it is used instead of installing a known good version into build/tools
   QDC_API_TOKEN
     API token for use with testing in Qualcomm Device Cloud.
 """

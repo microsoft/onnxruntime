@@ -83,7 +83,7 @@ jobs:
             ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip
 
   test-windows-arm64:
-    runs-on: ["self-hosted"]
+    runs-on: ["self-hosted", "Windows"]
     needs: [build-windows-arm64]
     steps:
       - uses: actions/checkout@v4
@@ -116,7 +116,7 @@ jobs:
             ${{ github.workspace }}/build/qdc-windows/*.*
 
   build-android:
-    runs-on: ["self-hosted", "X64"]
+    runs-on: ["self-hosted", "X64", "Windows"]
     steps:
       - uses: actions/checkout@v4
         with:

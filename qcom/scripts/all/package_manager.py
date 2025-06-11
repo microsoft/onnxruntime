@@ -136,6 +136,21 @@ class PackageManager:
         self.__package_root = package_root
         self.__package_root.mkdir(parents=True, exist_ok=True)
 
+    @classmethod
+    def clean(cls, package_root: Path) -> None:
+        config = cls.__parse_config(PACKAGE_CONFIG)
+
+        known = [f"{cls.__format_package_dir(name, atts['version'])}" for name, atts in config.items()]
+
+        for subdir in package_root.iterdir():
+            if not subdir.is_dir():
+                continue
+            if subdir.name in known:
+                logging.debug(f"{subdir.name} is up to date")
+            else:
+                logging.info(f"Removing unknown/outdated package in {subdir.name}")
+                shutil.rmtree(subdir)
+
     def get_bindir(self, assert_exists: bool = True) -> Path:
         """
         Get the binary directory of this package.
@@ -168,8 +183,7 @@ class PackageManager:
         """
         Get the name of a package-unique directory.
         """
-        package_version = self.__config["version"]
-        return Path(f"{self.__package}-{package_version}")
+        return Path(self.__format_package_dir(self.__package, self.__config["version"]))
 
     def get_root_dir(self) -> Path:
         """Get the path of the directory in which a package is extracted."""
@@ -231,6 +245,10 @@ class PackageManager:
         return fmt_str.format_map({key: self.__config.get(key) for key in simple_substitutions})
 
     @staticmethod
+    def __format_package_dir(package_name: str, package_version: str) -> str:
+        return f"{package_name}-{package_version}"
+
+    @staticmethod
     def __parse_config(config_path: Path) -> dict[str, dict[str, Any]]:
         with config_path.open() as config_file:
             return yaml.safe_load(config_file)
@@ -239,15 +257,17 @@ class PackageManager:
 def make_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser()
 
-    parser.add_argument("--package", action="store", help="Specify the package to select", required=True)
+    parser.add_argument("--package", action="store", help="Specify the package to select")
     parser.add_argument(
         "--package-root",
         action="store",
         help="Path to the package installation directory",
         required=True,
+        type=Path,
     )
 
     action_group = parser.add_argument_group("Actions").add_mutually_exclusive_group(required=True)
+    action_group.add_argument("--clean", action="store_true", help="Uninstall all outdated packages")
     action_group.add_argument("--install", action="store_true", help="Install the selected package")
     action_group.add_argument(
         "--print-bin-dir",
@@ -268,11 +288,16 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.DEBUG, format=log_format, force=True)
     parser = make_parser()
     args = parser.parse_args()
-    packager = PackageManager(args.package, Path(args.package_root))
 
-    if args.install:
-        packager.install()
-    elif args.print_bin_dir:
-        print(packager.get_bindir())
-    elif args.print_content_dir:
-        print(packager.get_content_dir())
+    if args.clean:
+        PackageManager.clean(args.package_root)
+    else:
+        if "package" not in args:
+            raise ValueError("--package is required for package installation or inspection.")
+        packager = PackageManager(args.package, args.package_root)
+        if args.install:
+            packager.install()
+        elif args.print_bin_dir:
+            print(packager.get_bindir())
+        elif args.print_content_dir:
+            print(packager.get_content_dir())

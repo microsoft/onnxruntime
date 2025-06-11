@@ -4,8 +4,15 @@
 $RepoRoot = (Resolve-Path -Path "$(Split-Path -Parent $MyInvocation.MyCommand.Definition)\..\..\..").Path
 
 function Get-ToolsDir() {
-    $ToolsDir = (Join-Path $RepoRoot "build\Tools")
+    if (Test-Path Env:ORT_BUILD_TOOLS_PATH) {
+        $ToolsDir = $Env:ORT_BUILD_TOOLS_PATH
+    } else {
+        $ToolsDir = (Join-Path $RepoRoot "build\Tools")
+    }
     New-Item -ItemType Directory $ToolsDir -Force
+    if (-not $?) {
+        throw "Failed to create $ToolsDir"
+    }
 }
 
 function Get-AndroidNdkRoot() {
@@ -63,5 +70,13 @@ function Install-Package() {
     python.exe (Get-PackageManager) --install --package $Package --package-root (Get-ToolsDir)
     if (-not $?) {
         throw "Failed to install package $Package."
+    }
+}
+
+# We call this "Optimize" to conform to the PowerShell approved verbs list.
+function Optimize-ToolsDir() {
+    python.exe (Get-PackageManager) --clean --package-root (Get-ToolsDir)
+    if (-not $?) {
+        throw "Failed to optimize tools directory."
     }
 }

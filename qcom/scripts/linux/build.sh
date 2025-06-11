@@ -146,6 +146,8 @@ case "${target_platform}" in
     die "Unknown target platform ${target_platform}."
 esac
 
+clean_tools_dir
+
 if [ -n "${make_test_archive}" ]; then
   python "${REPO_ROOT}/qcom/scripts/all/archive_tests.py" \
     "--cmake-bin-dir=${cmake_bindir}" \
