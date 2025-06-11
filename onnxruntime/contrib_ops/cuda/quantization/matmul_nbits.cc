@@ -481,6 +481,18 @@ ONNX_OPERATOR_TYPED_KERNEL_EX(
         .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<MLFloat16>()}),
     MatMulNBits<MLFloat16>);
 
-}  // namespace cuda
+
+ONNX_OPERATOR_TYPED_KERNEL_EX(
+    MatMulNBits,
+    kMSDomain,
+    1,
+    BFloat16,
+    kCudaExecutionProvider,
+    (*KernelDefBuilder::Create())
+        .TypeConstraint("T1", DataTypeImpl::GetTensorType<BFloat16>())
+        .TypeConstraint("T2", DataTypeImpl::GetTensorType<uint8_t>())
+        .TypeConstraint("T3", {DataTypeImpl::GetTensorType<uint8_t>(), DataTypeImpl::GetTensorType<BFloat16>()}),
+    MatMulNBits<BFloat16>);
+  }  // namespace cuda
 }  // namespace contrib
 }  // namespace onnxruntime

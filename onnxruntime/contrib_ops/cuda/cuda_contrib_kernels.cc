@@ -148,6 +148,7 @@ class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, MLFloat16_float_float, SimplifiedLayerNor
 class CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization);
 class CUDA_MS_OP_CLASS_NAME(1, Inverse);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulNBits);
+class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulNBits);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulNBits);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulBnb4);
 class CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulBnb4);
@@ -360,6 +361,7 @@ Status RegisterCudaContribKernels(KernelRegistry& kernel_registry) {
       BuildKernelCreateInfo<CUDA_ONNX_OP_TYPED_CLASS_NAME(1, BFloat16_float_BFloat16, SimplifiedLayerNormalization)>,
       BuildKernelCreateInfo<CUDA_MS_OP_CLASS_NAME(1, Inverse)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulNBits)>,
+      BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulNBits)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, float, MatMulNBits)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, BFloat16, MatMulBnb4)>,
       BuildKernelCreateInfo<CUDA_MS_OP_TYPED_CLASS_NAME(1, MLFloat16, MatMulBnb4)>,
