@@ -223,26 +223,19 @@ def get_file_content(launcher_inl_files, operations):
         instantiate_operation(insts_list, op)
     instantiations = "\n".join(insts_list)
 
-    file_content = f"""
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4172)  // returning address of local variable or temporary
-#endif
-
-{includes}
-namespace onnxruntime::llm {{
-namespace kernels {{
-namespace cutlass_kernels {{
+    file_content = f"""{includes}
+namespace onnxruntime::llm
+{{
+namespace kernels
+{{
+namespace cutlass_kernels
+{{
 
 {instantiations}
 
-}}  // namespace cutlass_kernels
-}}  // namespace kernels
-}}  // namespace onnxruntime::llm
-
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
+}} // namespace cutlass_kernels
+}} // namespace kernels
+}} // namespace onnxruntime::llm
 """
     return file_content
 
