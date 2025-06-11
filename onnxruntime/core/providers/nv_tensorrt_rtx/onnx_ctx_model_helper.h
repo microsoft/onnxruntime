@@ -26,14 +26,14 @@ bool GraphHasCtxNode(const GraphViewer& graph_viewer);
 const std::filesystem::path& GetModelPath(const GraphViewer& graph_viewer);
 std::filesystem::path GetPathOrParentPathOfCtxModel(const std::string& ep_context_file_path);
 std::unique_ptr<onnxruntime::Model> CreateCtxNode(const GraphViewer& graph_viewer,
-                                           const std::string engine_cache_path,
-                                           char* engine_data,
-                                           size_t size,
-                                           const int64_t embed_mode,
-                                           const std::string compute_capability,
-                                           const std::string onnx_model_path,
-                                           const logging::Logger* logger,
-                                           const std::string& ep_context_node_name);
+                                                  const std::string engine_cache_path,
+                                                  char* engine_data,
+                                                  size_t size,
+                                                  const int64_t embed_mode,
+                                                  const std::string compute_capability,
+                                                  const std::string onnx_model_path,
+                                                  const logging::Logger* logger,
+                                                  const std::string& ep_context_node_name);
 std::string GetCtxModelPath(const std::string& ep_context_file_path,
                             const std::string& original_model_path);
 bool IsAbsolutePath(const std::string& path_string);
