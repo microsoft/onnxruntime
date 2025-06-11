@@ -61,7 +61,7 @@ nuget_win:
   url: https://dist.nuget.org/win-x86-commandline/v{version}/nuget.exe
   sha256: 506085572a662f03bec1a5ffe43f81a240ff99b3765b8dbc0e22c33532775227
 qairt:
-  version: 2.34.0.250424
+  version: 2.35.0.250530
   url: https://softwarecenter.qualcomm.com/api/download/software/sdks/Qualcomm_AI_Runtime_Community/All/{version}/v{version}.zip
   content_root: qairt/{version}
   bindir: bin
