@@ -1272,6 +1272,11 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
       int64_t num_heads = getAttribute(ctx, "num_heads", 0);
       int64_t kv_num_heads = getAttribute(ctx, "kv_num_heads", 0);
       int64_t hidden_size = query_dims[1].dim_value();
+      if (hidden_size <= 0 || num_heads <= 0 || kv_num_heads < 0) {
+        fail_shape_inference("Invalid hidden size or number of heads. Hidden size, num_heads and kv_num_heads must be positive integers.");
+      } else if (hidden_size % (num_heads + 2 * kv_num_heads) != 0) {
+        fail_shape_inference("Hidden size must be divisible by (num_heads + 2 * kv_num_heads).");
+      }
       int64_t head_size = hidden_size / (num_heads + 2 * kv_num_heads);
       output_shape.add_dim()->set_dim_value(head_size * num_heads);
       updateOutputShape(ctx, 0, output_shape);
@@ -1295,6 +1300,8 @@ void PagedAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceContext& ctx) 
     // KV cache in and out share the same buffer, thus they have the same shape
     ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 3, 1);
     ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, 4, 2);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 3, 1);
+    ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 4, 2);
   }
 }
 
@@ -1355,7 +1362,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "entries in Q/K/V.",
                "S")
         .Input(6,
-               "seqlens",
+               "past_seqlens",
                "A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.",
                "S")
         .Input(7,

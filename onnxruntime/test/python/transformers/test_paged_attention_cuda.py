@@ -101,7 +101,7 @@ def create_paged_attention_graph(
                 "key_cache",
                 "value_cache",
                 "cumulative_sequence_length",
-                "seqlens",
+                "past_seqlens",
                 "block_table",
                 "cos_cache" if config.rotary else "",
                 "sin_cache" if config.rotary else "",
@@ -155,7 +155,7 @@ def create_paged_attention_graph(
             [config.batch_size + 1],
         ),
         helper.make_tensor_value_info(
-            "seqlens",
+            "past_seqlens",
             TensorProto.INT32,
             [config.batch_size],
         ),
@@ -257,7 +257,7 @@ def paged_attention_func(
     key_cache,
     value_cache,
     cumulative_sequence_length,
-    seqlens,
+    past_seqlens,
     block_table,
     cos=None,
     sin=None,
@@ -278,7 +278,7 @@ def paged_attention_func(
         "key_cache": OrtValue.ortvalue_from_numpy(key_cache.detach().cpu().numpy(), "cuda", 0),
         "value_cache": OrtValue.ortvalue_from_numpy(value_cache.detach().cpu().numpy(), "cuda", 0),
         "cumulative_sequence_length": cumulative_sequence_length.detach().cpu().numpy(),
-        "seqlens": seqlens.detach().cpu().numpy(),
+        "past_seqlens": past_seqlens.detach().cpu().numpy(),
         "block_table": block_table.detach().cpu().numpy(),
     }
     sess_options = SessionOptions()
@@ -302,7 +302,7 @@ def paged_attention_func(
         "value_cache", "cuda", 0, numpy.float16, ort_inputs["value_cache"].shape(), ort_inputs["value_cache"].data_ptr()
     )
     io_binding.bind_cpu_input("cumulative_sequence_length", ort_inputs["cumulative_sequence_length"])
-    io_binding.bind_cpu_input("seqlens", ort_inputs["seqlens"])
+    io_binding.bind_cpu_input("past_seqlens", ort_inputs["past_seqlens"])
     io_binding.bind_cpu_input("block_table", ort_inputs["block_table"])
     io_binding.bind_output("output")
     io_binding.bind_ortvalue_output("key_cache_out", ort_inputs["key_cache"])

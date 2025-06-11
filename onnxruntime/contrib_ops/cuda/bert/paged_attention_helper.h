@@ -159,7 +159,7 @@ Status CheckKVCache(const T* key_cache, const T* value_cache, const int kv_num_h
 template <typename T = Tensor>
 Status CheckSequenceLengthTensors(const T* cumulative_sequence_length, const T* seqlens, int& batch_size) {
   const auto& cumulative_seqlen_dim = cumulative_sequence_length->Shape().GetDims();
-  if (cumulative_seqlen_dim.size() != 1) {
+  if (cumulative_seqlen_dim.size() != 1 || cumulative_seqlen_dim[0] < 2) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "cumulative_sequence_length must be shape (batch_size + 1).");
   }
