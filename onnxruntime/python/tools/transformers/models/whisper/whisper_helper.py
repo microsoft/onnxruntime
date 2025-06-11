@@ -76,8 +76,6 @@ class WhisperHelper:
         provider: str,
         separate_encoder_and_decoder_init: bool,
         output_qk: bool,
-        encoder_model: torch.nn.Module,
-        decoder_model: torch.nn.Module,
         encoder_path: str,
         decoder_path: str,
         output_dir: str,
