@@ -419,9 +419,9 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
     LOGS_DEFAULT(VERBOSE) << "User specified enable_vtcm_backup_buffer_sharing: " << enable_vtcm_backup_buffer_sharing_;
 
-#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR < 35)
+#if QNN_API_VERSION_MAJOR < 2 || ((QNN_API_VERSION_MAJOR) == 2 && (QNN_API_VERSION_MINOR < 26))
     if (enable_vtcm_backup_buffer_sharing_) {
-      LOGS_DEFAULT(WARNING) << "User specified enable_vtcm_backup_buffer_sharing but QNN API version is older than 2.35.";
+      LOGS_DEFAULT(WARNING) << "User specified enable_vtcm_backup_buffer_sharing but QNN API version is older than 2.26.";
     }
 #endif
   }
@@ -749,6 +749,28 @@ static bool EpSharedContextsHasAllGraphs(const std::vector<IExecutionProvider::F
   return true;
 }
 
+static void GetMainEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
+                              std::unordered_set<const Node*>& ep_context_nodes,
+                              const logging::Logger& logger) {
+  for (const auto& node : graph_viewer.Nodes()) {
+    NodeAttrHelper node_helper(node);
+    bool is_main_context = node_helper.Get(qnn::MAIN_CONTEXT, static_cast<int64_t>(0));
+    std::string cache_source = node_helper.Get(qnn::SOURCE, "");
+
+    std::transform(cache_source.begin(),
+                   cache_source.end(),
+                   cache_source.begin(),
+                   [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
+    
+    if (is_main_context && qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
+      LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node.Index()
+                            << "] name: [" << node.Name()
+                            << "] index: [" << node.Index() << "]";
+      ep_context_nodes.insert(&node);
+    }
+  }
+}
+
 // For model with EPContext, filter in EPContext nodes only, and make sure each partition only has one single EPContext node
 static void PartitionCtxModel (const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
@@ -831,13 +853,37 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     }
   }
 
+  std::unordered_map<std::string,std::vector<std::string>> context_bin_map;
+  if (enable_vtcm_backup_buffer_sharing_) {
+    std::unordered_set<const Node*> ep_ctx_nodes;
+    GetMainEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
+
+    std::filesystem::path parent_path = graph_viewer.ModelPath().parent_path();
+
+    for (auto& ep_ctx_node : ep_ctx_nodes) {
+      NodeAttrHelper node_helper(*ep_ctx_node);
+      std::string context_bin_filepath(parent_path.string());
+      context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
+
+      if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
+        context_bin_map.emplace(context_bin_filepath,std::vector<std::string>());
+        // Push context bin filepath for lookup between sessions
+        context_bin_map.at(context_bin_filepath).push_back(context_bin_filepath);
+      }
+      context_bin_map.at(context_bin_filepath).push_back(ep_ctx_node->Name());
+    }
+  }
+
   // It will load the QnnSystem lib if is_qnn_ctx_model=true, and
   // delay the Qnn context creation to Compile() using the cached context binary
   // or generate context cache enable, need to use use QnnSystem lib to parse the binary to get the max spill fill buffer size
   auto rt = qnn_backend_manager_->SetupBackend(logger, is_qnn_ctx_model,
                                                context_cache_enabled_ && enable_spill_fill_buffer_,
                                                share_ep_contexts_,
-                                               enable_vtcm_backup_buffer_sharing_);
+                                               enable_vtcm_backup_buffer_sharing_,
+                                               context_bin_map);
+
+  context_bin_map.clear();
 
   if (Status::OK() != rt) {
     LOGS(logger, ERROR) << "QNN SetupBackend failed " << rt.ErrorMessage();

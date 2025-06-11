@@ -140,7 +140,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
-                      bool enable_vtcm_backup_buffer_sharing);
+                      bool enable_vtcm_backup_buffer_sharing,
+                      std::unordered_map<std::string, std::vector<std::string>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -200,9 +201,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
-  // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
-  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
+  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* ep_node_names);
 
  private:
   Status LoadBackend();
@@ -221,9 +220,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateContext(bool enable_htp_weight_sharing);
 
-#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 35)
-  Status CreateContextVtcmBackupBufferSharingEnabled(char* buffer, uint64_t buffer_length, Qnn_ContextHandle_t& context_handle);
-#endif
+  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::vector<std::string>>& context_bin_map);
+
+  // Adds a new QNN context.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
+  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
   Status ReleaseContext();
 
@@ -337,6 +338,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Note: Using shared_ptr<QnnContextHandleRecord> so that we can refer to it with a weak_ptr from a
   // HtpSharedMemoryAllocator allocation cleanup callback.
   std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
+
+  // Map of EP Main Context Node names to Qnn_ContextHandle_t
+  std::mutex ep_context_handle_map_mutex_;
+  std::unordered_map<std::string, Qnn_ContextHandle_t> ep_context_handle_map_;
 
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
