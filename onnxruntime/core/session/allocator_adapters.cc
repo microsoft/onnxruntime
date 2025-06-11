@@ -11,6 +11,12 @@
 namespace onnxruntime {
 
 namespace {
+// The ORT API maintains ABI and backward compatibility, allowing applications to be built with an older version
+// and run with a newer one. Users may call `RegisterAllocator` with a custom allocator. However, any new
+// function pointers introduced in the newer version may contain invalid values, as the older application
+// is unaware of them.
+// Therefore, it's necessary to check the version value in `OrtAllocatorImplWrappingIAllocator` and
+// `IAllocatorImplWrappingOrtAllocator` to ensure compatibility.
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
 constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 }  // namespace
