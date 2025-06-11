@@ -3,21 +3,22 @@
 
 #include "tensorprotoutils.h"
 
-#include <memory>
 #include <algorithm>
 #include <limits>
+#include <memory>
 #include <utility>
 
-#include "mem_buffer.h"
+#include "callback.h"
+#include "core/common/make_string.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
-#include "core/common/make_string.h"
+#include "core/framework/allocator.h"
 #include "core/framework/data_types.h"
 #include "core/framework/endian.h"
-#include "core/framework/allocator.h"
-#include "core/session/onnxruntime_cxx_api.h"
+#include "core/framework/endian_utils.h"
 #include "core/graph/onnx_protobuf.h"
-#include "callback.h"
+#include "core/session/onnxruntime_cxx_api.h"
+#include "mem_buffer.h"
 
 struct OrtStatus {
   OrtErrorCode code;
@@ -69,21 +70,13 @@ static void UnpackTensorWithRawData(const void* raw_data, size_t raw_data_length
     ORT_CXX_API_THROW(MakeString("UnpackTensor: the pre-allocated size does not match the raw data size, expected ",
                                  expected_size_in_bytes, ", got ", raw_data_length),
                       OrtErrorCode::ORT_FAIL);
-  memcpy(p_data, raw_data, raw_data_length);
-  if constexpr (endian::native != endian::little) {
-    /* Convert Endianness */
-    char* bytes = reinterpret_cast<char*>(p_data);
-    size_t element_size = sizeof(T);
-    size_t num_elements = raw_data_length / element_size;
 
-    for (size_t i = 0; i < num_elements; ++i) {
-      char* start_byte = bytes + i * element_size;
-      char* end_byte = start_byte + element_size - 1;
-      /* keep swapping */
-      for (size_t count = 0; count < element_size / 2; ++count) {
-        std::swap(*start_byte++, *end_byte--);
-      }
-    }
+  /* Convert Endianness */
+  if constexpr (endian::native != endian::little && sizeof(T) > 1) {
+    utils::SwapByteOrderCopy(sizeof(T), gsl::make_span(reinterpret_cast<const unsigned char*>(raw_data), raw_data_length),
+                             gsl::make_span(reinterpret_cast<unsigned char*>(p_data), raw_data_length));
+  } else {
+    memcpy(p_data, raw_data, raw_data_length);
   }
 }
 
