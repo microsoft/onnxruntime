@@ -74,7 +74,7 @@ bool IsScaleOperator(Graph& graph, Node& node,
           return false;
         }
 
-        Initializer init_const{*tensor_proto, graph.ModelPath()};
+        Initializer init_const{graph, *tensor_proto, graph.ModelPath()};
         const auto data_type = tensor_proto->data_type();
         if (data_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16) {
           const MLFloat16* val = init_const.data<MLFloat16>();
