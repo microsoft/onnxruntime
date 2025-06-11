@@ -19,6 +19,7 @@
 #pragma GCC diagnostic ignored "-Wstrict-aliasing"
 #endif  // __GNUC__
 
+#include "cutlass/float8.h"
 #include "cutlass/gemm/kernel/default_gemm.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/compute_occupancy.h"
 #include "contrib_ops/cuda/llm/cutlass_extensions/gemm/device/gemm_universal_base_compat.h"
@@ -39,7 +40,9 @@
 #include "contrib_ops/cuda/llm/cutlass_heuristic.h"
 #include "contrib_ops/cuda/llm/cutlass_type_conversion.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
+#ifndef EXCLUDE_SM_90
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm_template_sm90.h"
+#endif
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 
 namespace tk = onnxruntime::llm::common;
@@ -116,11 +119,12 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
   }
 
   if constexpr (cutlass::isFinegrained(QuantOp)) {
-    if constexpr (cutlass::platform::is_same<CutlassActivationType, float_e4m3_t>::value) {
+    if constexpr (cutlass::platform::is_same<CutlassActivationType, cutlass::float_e4m3_t>::value) {
       if (group_size != 128) {
         ORT_THROW("Only group size 128 supported for fine grained W4A(fp)8 kernels.");
       }
     }
+
     if (group_size != 64 && group_size != 128) {
       ORT_THROW("Only group size 64 and 128 supported for fine grained kernels.");
     }
@@ -355,13 +359,10 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
 
   // std::string config_str = gemm_config.toString();
   // printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
+  ORT_ENFORCE(sm_ >= 75);
 
-  if (sm_ >= 75 && sm_ < 80) {
+  if (sm_ < 80) {
     dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm75,
-                             QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
-                                                   workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
-  } else if ((sm_ >= 80 && sm_ < 89) || sm_ >= 100) {
-    dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
                              QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
                                                    workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
   } else if (sm_ == 89) {
@@ -374,14 +375,18 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm89,
                              QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
                                                    workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
+#ifndef EXCLUDE_SM_90
   } else if (sm_ == 90) {
     static_assert(!cutlass::platform::is_same<ActivationType, __nv_fp8_e4m3>::value || cutlass::platform::is_same<ScaleZeroType, half>::value,
                   "ScaleZeroType must be half for activation=fp8");
     sm90_dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
                                   EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size, workspace_ptr,
                                                workspace_bytes, gemm_config, stream, occupancy);
+#endif
   } else {
-    ORT_THROW("[fpA_intB_gemm] Error:Arch unsupported for CUTLASS mixed type GEMM");
+    dispatch_gemm_to_cutlass<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, cutlass::arch::Sm80,
+                             QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
+                                                   workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
   }
 }
 
