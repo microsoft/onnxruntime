@@ -16,6 +16,8 @@ stages:
   - build
   - test
   #- publish
+  #- perf-test
+  #- build-fpga-image
 
 include:
   - local: '.arm-ci/stages/static-analysis.yml'
@@ -23,3 +25,5 @@ include:
   - local: '.arm-ci/stages/test.yml'
   - local: '.arm-ci/common.yml'
  # - local: '.arm-ci/stages/publish.yml'
+ # - local: '.arm-ci/stages/perf-test.yml'
+ # - local: '.arm-ci/stages/build-fpga-image.yml'

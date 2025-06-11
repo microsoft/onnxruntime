@@ -4,9 +4,10 @@
 # SPDX-License-Identifier: MIT
 #
 
-test_release_ubuntu_mlas:
+test_release_ubuntu:
   extends:
     - .default_settings
+    - .default_settings_test
   stage: test
   image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
   needs:
@@ -18,32 +19,54 @@ test_release_ubuntu_mlas:
     paths:
       - build/Linux/Release/report.xml
     expire_in: 1h
-# Test_debug_ubuntu_20.04_docker:
+
+# test_debug_ubuntu:
+#   extends:
+#     - .default_settings
+#     - .default_settings_test
 #   stage: test
-#   image: ubuntu:20.04
+#   image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
 #   needs:
 #     - job: build_debug_ubuntu
 #       artifacts: true
 #   script:
-#     - cd build/Linux/Debug && ./onnxruntime_mlas_test
+#     - cd build/Linux/Debug && ./onnxruntime_mlas_test --gtest_output=xml:report.xml
+#   artifacts:
+#     paths:
+#       - build/Linux/Debug/report.xml
+#     expire_in: 1h
 
 
-# Test_release_osx:
+test_release_mac:
+  extends:
+    - .mac_common
+  stage: test
+  tags:
+    - mac-mini
+  needs:
+    - job: mac_release_build
+      artifacts: true
+  script:
+    - cd build/MacOS/Release/Release && ./onnxruntime_mlas_test --gtest_output=xml:report.xml
+  allow_failure: true
+  artifacts:
+    paths:
+      - build/MacOS/Release/Release/report.xml
+    expire_in: 1h
+
+# test_debug_mac:
+#   extends:
+#     - .mac_common
 #   stage: test
-#   tag:
-#     - mac_ci # assuming we have an agent or group of agents called mac_ci
+#   tags:
+#     - mac-mini
 #   needs:
-#     - job: build_release_osx
+#     - job: mac_debug_build
 #       artifacts: true
 #   script:
-#     - cd build && ctest --output-on-failure
-
-# Test_debug_ubuntu_20.04_docker:
-#   stage: test
-#   tag:
-#     - mac_ci # assuming we have an agent or group of agents called mac_ci
-#   needs:
-#     - job: build_debug_osx
-#       artifacts: true
-#   script:
-#     - cd build && ctest --output-on-failure
+#     - cd build/MacOS/Debug/Debug && ./onnxruntime_mlas_test --gtest_output=xml:report.xml
+#   allow_failure: true
+#   artifacts:
+#     paths:
+#       - build/MacOS/Debug/Debug/report.xml
+#     expire_in: 1h

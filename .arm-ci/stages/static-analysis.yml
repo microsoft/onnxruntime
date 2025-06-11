@@ -7,10 +7,11 @@
 cppcheck_run:
   extends:
     - .default_settings
+    - .default_settings_test
   stage: static_analysis
   image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
   script:
-      - cppcheck -j $(nproc) --enable=all --inconclusive --std=c++17 onnxruntime/core/mlas  2>&1 | tee cppcheck-result.txt || true
+      - cppcheck -j $(nproc) --enable=all --inconclusive --std=c++17 onnxruntime/core/mlas/lib/kleidiAI  2>&1 | tee cppcheck-result.txt || true
   allow_failure: true
   artifacts:
     when: always
