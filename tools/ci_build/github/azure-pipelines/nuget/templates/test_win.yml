@@ -9,7 +9,6 @@ parameters:
   # For training packages, to differentiate the artifact name we add '-training' suffix. This needs to be passed from
   # the parent pipeline.
   TestDataArtifactSuffix: ''
-  Skipx86Tests: 'false'
   CudaVersion: ''
   SpecificArtifact: false
   BuildId: ''
@@ -89,15 +88,6 @@ stages:
       env:
         PACKAGENAME: ${{ parameters.NugetPackageName }}
 
-    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-        - script: |
-           @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net8.0 x86 $(NuGetPackageVersionNumber)
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-          displayName: 'Run End to End Test (C#) .Net Core x86'
-          env:
-            PACKAGENAME: ${{ parameters.NugetPackageName }}
-
     # TODO: Add .Net Framework AnyCPU test task
 
     - script: |
@@ -107,15 +97,3 @@ stages:
       displayName: 'Run End to End Test (C#) .NetFramework x64'
       env:
         PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - ${{ if ne(parameters['Skipx86Tests'], 'true') }}:
-        - script: |
-           @echo "Running Runtest.bat"
-           test\Microsoft.ML.OnnxRuntime.EndToEndTests\runtest.bat $(Build.BinariesDirectory)\nuget-artifact net462 x86 $(NuGetPackageVersionNumber)
-          workingDirectory: '$(Build.SourcesDirectory)\csharp'
-          displayName: 'Run End to End Test (C#) .NetFramework x86'
-          enabled: false
-          env:
-            PACKAGENAME: ${{ parameters.NugetPackageName }}
-
-    - template: ../../templates/clean-agent-build-directory-step.yml
