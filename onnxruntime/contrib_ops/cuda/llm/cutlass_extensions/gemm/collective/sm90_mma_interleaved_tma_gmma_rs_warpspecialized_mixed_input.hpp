@@ -48,16 +48,7 @@
 #include "cute/arch/copy_sm90.hpp"
 #include "cute/atom/copy_traits_sm90_tma.hpp"
 #include "cute/atom/mma_atom.hpp"
-
-#ifdef _MSC_VER
-#pragma warning(push)
-#pragma warning(disable : 4172)  // suppress warning: arithmetic_tuple.hpp(277) returning address of local variable or temporary
-#endif
 #include "cute/numeric/arithmetic_tuple.hpp"
-#ifdef _MSC_VER
-#pragma warning(pop)
-#endif
-
 #include "cute/tensor_predicate.hpp"
 #include "contrib_ops/cuda/llm/cutlass_extensions/interleaved_numeric_conversion.h"
 

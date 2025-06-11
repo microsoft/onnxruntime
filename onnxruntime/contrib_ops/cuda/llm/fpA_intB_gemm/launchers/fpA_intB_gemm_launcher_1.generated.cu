@@ -1,10 +1,13 @@
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable : 4172)  // returning address of local variable or temporary
+#endif
+
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/launchers/fpA_intB_launcher_sm90.inl"
-namespace onnxruntime::llm
-{
-namespace kernels
-{
-namespace cutlass_kernels
-{
+namespace onnxruntime::llm {
+namespace kernels {
+namespace cutlass_kernels {
 
 
 template void sm90_generic_mixed_gemm_kernelLauncher<half, cutlass::uint4b_t, half, half, half,
@@ -511,6 +514,10 @@ __nv_bfloat16*, int, int, int, const int, onnxruntime::llm::cutlass_extensions::
 );
 
 
-} // namespace cutlass_kernels
-} // namespace kernels
-} // namespace onnxruntime::llm
+}  // namespace cutlass_kernels
+}  // namespace kernels
+}  // namespace onnxruntime::llm
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
