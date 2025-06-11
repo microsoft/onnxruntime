@@ -81,8 +81,8 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
 
   // If embed mode is not specified, default to 1 if dump_ep_context_model is true, otherwise 0
   const auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "-1"));
-  if(embed_mode == -1) {
-    if(info.dump_ep_context_model)
+  if (embed_mode == -1) {
+    if (info.dump_ep_context_model)
       embed_mode = 1;
     else
       embed_mode = 0;
