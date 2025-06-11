@@ -111,27 +111,13 @@ class SimpleCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void ReleaseCapturedBuffers(uint32_t session_id) override {
-    auto it = captured_buffers_.find(session_id);
-    if (it != captured_buffers_.end()) {
-      for (auto& buffer : it->second) {
-        wgpuBufferRelease(buffer);
-      }
-      captured_buffers_.erase(session_id);
-    }
+  void ReleaseCapturedBuffers(uint32_t /*session_id*/) override {
+    // no-op
   }
 
-  void OnRefresh(SStatus session_status, uint32_t session_id) override {
+  void OnRefresh(SStatus /*session_status*/, uint32_t /*session_id*/) override {
     for (auto& buffer : pending_buffers_) {
-      if (session_status == SStatus::Default) {
-        buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
-      } else {
-        auto it = captured_buffers_.find(session_id);
-        if (it == captured_buffers_.end()) {
-          captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());
-        }
-        captured_buffers_[session_id].emplace_back(buffer);
-      }
+      buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
     }
     pending_buffers_.clear();
   }
@@ -146,18 +132,11 @@ class SimpleCacheManager : public IBufferCacheManager {
         wgpuBufferRelease(buffer);
       }
     }
-    for (auto& pair : captured_buffers_) {
-      for (auto& buffer : pair.second) {
-        wgpuBufferRelease(buffer);
-      }
-    }
   }
 
  protected:
   std::map<size_t, std::vector<WGPUBuffer>> buffers_;
   std::vector<WGPUBuffer> pending_buffers_;
-  // session_id -> WGPUBuffer[] mapping.
-  std::unordered_map<uint32_t, std::vector<WGPUBuffer>> captured_buffers_;
 };
 
 // TODO: maybe use different bucket size for storage and uniform buffers?
@@ -396,6 +375,79 @@ class GraphCacheManager : public IBufferCacheManager {
   std::vector<size_t> buckets_keys_;
 };
 
+class GraphSimpleCacheManager : public IBufferCacheManager {
+  size_t CalculateBufferSize(size_t request_size) override {
+    return NormalizeBufferSize(request_size);
+  }
+
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t /*session_id*/) override {
+    auto it = buffers_.find(buffer_size);
+    if (it != buffers_.end() && !it->second.empty()) {
+      auto buffer = it->second.back();
+      it->second.pop_back();
+      return buffer;
+    }
+
+    return nullptr;
+  }
+
+  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+    // no-op
+  }
+
+  void ReleaseBuffer(WGPUBuffer buffer) override {
+    pending_buffers_.emplace_back(buffer);
+  }
+
+  void ReleaseCapturedBuffers(uint32_t session_id) override {
+    auto it = captured_buffers_.find(session_id);
+    if (it != captured_buffers_.end()) {
+      for (auto& buffer : it->second) {
+        wgpuBufferRelease(buffer);
+      }
+      captured_buffers_.erase(session_id);
+    }
+  }
+
+  void OnRefresh(SStatus session_status, uint32_t session_id) override {
+    for (auto& buffer : pending_buffers_) {
+      if (session_status == SStatus::Default) {
+        buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
+      } else {
+        auto it = captured_buffers_.find(session_id);
+        if (it == captured_buffers_.end()) {
+          captured_buffers_.emplace(session_id, std::vector<WGPUBuffer>());
+        }
+        captured_buffers_[session_id].emplace_back(buffer);
+      }
+    }
+    pending_buffers_.clear();
+  }
+
+ public:
+  ~GraphSimpleCacheManager() {
+    for (auto& buffer : pending_buffers_) {
+      wgpuBufferRelease(buffer);
+    }
+    for (auto& pair : buffers_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+    for (auto& pair : captured_buffers_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+  }
+
+ protected:
+  std::map<size_t, std::vector<WGPUBuffer>> buffers_;
+  std::vector<WGPUBuffer> pending_buffers_;
+  // session_id -> WGPUBuffer[] mapping.
+  std::unordered_map<uint32_t, std::vector<WGPUBuffer>> captured_buffers_;
+};
+
 std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode) {
   switch (cache_mode) {
     case BufferCacheMode::Disabled:
@@ -408,6 +460,8 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
       return std::make_unique<BucketCacheManager>();
     case BufferCacheMode::Graph:
       return std::make_unique<GraphCacheManager>();
+    case BufferCacheMode::GraphSimple:
+      return std::make_unique<GraphSimpleCacheManager>();
     default:
       ORT_NOT_IMPLEMENTED("Unsupported buffer cache mode");
   }

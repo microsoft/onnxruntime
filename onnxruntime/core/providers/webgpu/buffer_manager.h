@@ -27,6 +27,7 @@ enum class BufferCacheMode {
   Simple,
   Bucket,
   Graph,
+  GraphSimple,
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 
@@ -34,12 +35,13 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // IBufferCacheManager is an interface for buffer cache management.
 //
 // By implementing this interface, we can have different buffer cache management strategies.
-// Currently, we have 3 strategies:
+// Currently, we have 5 strategies:
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
 // - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
-//
+// - Graph: a session-aware buckets cache that each session has its own buckets. Buffers in the same session can be reused across session runs and in one run.
+// - GraphSimple: a session-aware simple cache that each session has its own cache. Buffers in the same session can be reused across session runs but can't be reused in one run.
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;

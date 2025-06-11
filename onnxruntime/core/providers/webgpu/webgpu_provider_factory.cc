@@ -224,7 +224,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
                                                              webgpu_ep_config.enable_graph_capture ? webgpu::BufferCacheMode::Graph : webgpu::BufferCacheMode::Bucket);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << buffer_cache_config.storage.mode;
 
-  buffer_cache_config.uniform.mode = parse_buffer_cache_mode(kUniformBufferCacheMode, webgpu::BufferCacheMode::Simple);
+  buffer_cache_config.uniform.mode = parse_buffer_cache_mode(kUniformBufferCacheMode,
+                                                             webgpu_ep_config.enable_graph_capture ? webgpu::BufferCacheMode::GraphSimple : webgpu::BufferCacheMode::Simple);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << buffer_cache_config.uniform.mode;
 
   buffer_cache_config.query_resolve.mode = parse_buffer_cache_mode(kQueryResolveBufferCacheMode, webgpu::BufferCacheMode::Disabled);
