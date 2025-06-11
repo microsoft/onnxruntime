@@ -222,7 +222,7 @@ extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace onnxruntime
 #endif
 
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 namespace onnxruntime {
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
 ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();

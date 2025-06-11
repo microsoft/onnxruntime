@@ -936,7 +936,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
                           << "TensorRT-ExecutionProvider.html#requirements to ensure all dependencies are met.";
 #endif
   } else if (type == kMIGraphXExecutionProvider) {
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
     std::string calibration_table;
     std::string save_model_path;
     std::string load_model_path;

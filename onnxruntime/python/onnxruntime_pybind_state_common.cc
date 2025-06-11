@@ -41,12 +41,12 @@ onnxruntime::rocm::TunableOpInfo tunable_op{};
 onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info{};
 #endif
 
-#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 // TODO remove deprecated global config
 onnxruntime::ArenaExtendStrategy arena_extend_strategy = onnxruntime::ArenaExtendStrategy::kNextPowerOfTwo;
 #endif
 
-#ifdef USE_MIGRAPHX
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info{};
 #endif
 
