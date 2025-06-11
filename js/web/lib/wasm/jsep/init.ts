@@ -283,14 +283,21 @@ export const init = async (
       // jsepReleaseTensorId,
       (tensorId: number) => backend.releaseTensorId(tensorId),
       // jsepEnsureTensor
-      async (sessionId: number | undefined, tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
-        backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
+      async (
+        sessionId: number | undefined,
+        tensorId: number,
+        onnxDataType: number,
+        shape: number[],
+        copyOld: boolean,
+      ) => backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
       // jsepUploadTensor
       (tensorId: number, data: Uint8Array) => {
         backend.uploadTensor(tensorId, data);
       },
       // jsepDownloadTensor
       async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => backend.downloadTensor(tensorId, dstBuffer),
+      // jsepRegisterMLContext
+      (sessionId: number, mlContext: MLContext) => backend.registerMLContext(sessionId, mlContext),
       // jsepEnableTraceEvent
       !!env.trace,
     ]);
