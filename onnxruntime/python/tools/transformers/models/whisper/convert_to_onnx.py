@@ -542,8 +542,8 @@ def main(argv=None):
             args.provider,
             args.separate_encoder_and_decoder_init,
             args.output_cross_qk,
-            list(filter(lambda path: "encoder" in path, output_paths))[0],
-            list(filter(lambda path: "decoder" in path, output_paths))[0],
+            next(iter(filter(lambda path: "encoder" in path, output_paths))),
+            next(iter(filter(lambda path: "decoder" in path, output_paths))),
             output_dir,
             cache_dir,
         )

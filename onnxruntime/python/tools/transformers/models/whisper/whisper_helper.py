@@ -3,8 +3,6 @@
 # Licensed under the MIT License.  See License.txt in the project root for
 # license information.
 # --------------------------------------------------------------------------
-from __future__ import annotations
-
 import json
 import logging
 import os
@@ -573,13 +571,11 @@ class WhisperHelper:
                     "filename": os.path.basename(encoder_path),
                     "head_size": config.d_model // config.encoder_attention_heads,
                     "hidden_size": config.d_model,
-                    "inputs": {
-                        "audio_features" : "audio_features"
-                    },
+                    "inputs": {"audio_features": "audio_features"},
                     "outputs": {
                         "encoder_hidden_states": "encoder_hidden_states",
                         "cross_present_key_names": "present_key_cross_%d",
-                        "cross_present_value_names": "present_value_cross_%d"
+                        "cross_present_value_names": "present_value_cross_%d",
                     },
                     "num_attention_heads": config.encoder_attention_heads,
                     "num_hidden_layers": config.encoder_layers,
@@ -604,20 +600,24 @@ class WhisperHelper:
                 "repetition_penalty": 1.0,
                 "temperature": 1.0,
                 "top_k": 1,
-                "top_p": 1.0
-            }
+                "top_p": 1.0,
+            },
         }
 
         if provider == "cuda":
-            genai_config["model"]["decoder"]["inputs"].update({
-                "past_sequence_length": "past_sequence_length",
-                "cache_indirection": "cache_indirection",
-            })
+            genai_config["model"]["decoder"]["inputs"].update(
+                {
+                    "past_sequence_length": "past_sequence_length",
+                    "cache_indirection": "cache_indirection",
+                }
+            )
 
         if output_qk:
-            genai_config["model"]["decoder"]["outputs"].update({
-                "output_cross_qk_names": "output_cross_qk_%d",
-            })
+            genai_config["model"]["decoder"]["outputs"].update(
+                {
+                    "output_cross_qk_names": "output_cross_qk_%d",
+                }
+            )
 
         with open(os.path.join(output_dir, "genai_config.json"), "w") as f:
             json.dump(genai_config, f, indent=4)
