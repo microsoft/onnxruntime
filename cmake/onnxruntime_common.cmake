@@ -14,7 +14,6 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
     "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
-    "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
     "${ONNXRUNTIME_ROOT}/core/platform/env.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env_time.h"
@@ -40,10 +39,23 @@ if(WIN32)
 
 else()
     list(APPEND onnxruntime_common_src_patterns
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.h"
-         "${ONNXRUNTIME_ROOT}/core/platform/posix/*.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/device_discovery.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env_time.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/env.cc"
+         "${ONNXRUNTIME_ROOT}/core/platform/posix/stacktrace.cc"
     )
 
+    # device discovery files
+    if (LINUX OR ANDROID)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/posix/device_discovery.cc")
+    elseif(APPLE)
+        list(APPEND onnxruntime_common_src_patterns
+             "${ONNXRUNTIME_ROOT}/core/platform/apple/device_discovery.cc")
+    endif()
+
+
+    # logging files
     if (onnxruntime_USE_SYSLOG)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/posix/logging/*.h"
@@ -51,7 +63,7 @@ else()
         )
     endif()
 
-    if (CMAKE_SYSTEM_NAME STREQUAL "Android")
+    if (ANDROID)
         list(APPEND onnxruntime_common_src_patterns
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.h"
             "${ONNXRUNTIME_ROOT}/core/platform/android/logging/*.cc"
