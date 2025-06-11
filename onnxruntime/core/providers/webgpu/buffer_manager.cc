@@ -484,6 +484,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
     case BufferCacheMode::Graph:
       os << "Graph";
       break;
+    case BufferCacheMode::GraphSimple:
+      os << "GraphSimple";
+      break;
     default:
       os << "Unknown(" << static_cast<int>(mode) << ")";
   }
