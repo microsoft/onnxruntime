@@ -1759,6 +1759,10 @@ TEST_F(QnnHTPBackendTests, QnnContextShareAcrossSessions) {
 }
 
 TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
+  ProviderOptions provider_options;
+  provider_options["offload_graph_io_quantization"] = "0";
+  provider_options["backend_path"] = "QnnHtp.dll";
+
   // Create QDQ models
   std::vector<std::string> onnx_model_paths{"./weight_share1.onnx", "./weight_share2.onnx"};
   // cleanup in case some failure test doesn't remove them
@@ -1798,17 +1802,14 @@ TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
   auto file_size_1 = std::filesystem::file_size(qnn_ctx_binary_file_name1);
   EXPECT_TRUE(file_size_1 > 0);
 
-
   provider_options["enable_vtcm_backup_buffer_sharing"] = "1";
   // only load and run the session on real device
 #if defined(__aarch64__) || defined(_M_ARM64)
   Ort::SessionOptions so1;
   so1.SetLogId("so1");
   so1.AppendExecutionProvider("QNN", provider_options);
-  so1.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   Ort::SessionOptions so2;
   so2.SetLogId("so2");
-  so1.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
   so2.AppendExecutionProvider("QNN", provider_options);
 
   EXPECT_TRUE(2 == ctx_model_paths.size());
@@ -1856,6 +1857,7 @@ TEST_F(QnnHTPBackendTests, VTCMBackupBufferSharing) {
     std::remove(ctx_model_path.c_str());
   }
   std::remove(qnn_ctx_binary_file_name1.c_str());
+
 }
 
 // For Ort sessions to generate the context binary, with session option ep.share_ep_contexts enabled

@@ -713,11 +713,11 @@ Status SetQnnContextConfig(ContextPriority context_priority, QnnContext_Config_t
 // callback required to add context handles to class list
 // when using contextCreateFromBinaryListAsync()
 void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
-       Qnn_GraphHandle_t graph,
-       const char* graphName,
-       QnnContext_createFromBinaryAsyncNotifyType_t notifyType,
-       void* notifyParam,
-       Qnn_ErrorHandle_t status) {
+                                Qnn_GraphHandle_t graph,
+                                const char* graphName,
+                                QnnContext_createFromBinaryAsyncNotifyType_t notifyType,
+                                void* notifyParam,
+                                Qnn_ErrorHandle_t status) {
   auto qnn_backend_manager = SharedContext::GetInstance().GetSharedQnnBackendManager();
 
   if (context) {
@@ -727,7 +727,6 @@ void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
   if (nullptr == graphName || graph || notifyType || status) {
     // Avoid compilation unused var warning error
   }
-
 }
 
 void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t context, void* notifyParams) {
@@ -773,7 +772,7 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
   custom_config.weightSharingEnabled = true;
   context_config_weight_sharing.option = QNN_CONTEXT_CONFIG_OPTION_CUSTOM;
   context_config_weight_sharing.customConfig = &custom_config;
-# else
+#else
   LOGS(*logger_, WARNING) << "Called CreateContextVtcmBackupBufferSharingEnabled() but QNN API version is older than 2.26!";
 #endif
   QnnContext_Config_t context_priority_config = QNN_CONTEXT_CONFIG_INIT;
@@ -788,6 +787,7 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                           nullptr};
 
   std::vector<QnnContext_Params_t> context_params_list;
+  std::vector<QnnContext_ParamsV1_t> context_paramsv1_list;
   std::vector<const QnnContext_Params_t*> context_params_ptr_list(context_bin_map.size() + 1);
   std::vector<std::unique_ptr<char[]>> buffer_list;
 
@@ -820,11 +820,11 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                           context_params_v1};
 
     buffer_list.push_back(std::move(buffer));
-    context_params_list.push_back(context_params);
+    context_params_list.push_back(std::move(context_params));
+    context_paramsv1_list.push_back(std::move(context_params_v1));
     context_params_ptr_list[idx++] = &context_params_list.back();
   }
   context_params_ptr_list[idx] = nullptr;
-
   auto result = qnn_interface_.contextCreateFromBinaryListAsync(backend_handle_,
                                                                 device_handle_,
                                                                 context_params_ptr_list.data(),
@@ -832,6 +832,7 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                                                 nullptr);
 
   context_params_ptr_list.clear();
+  context_paramsv1_list.clear();
   context_params_list.clear();
   buffer_list.clear();
 
@@ -884,10 +885,10 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
   Qnn_ContextHandle_t context = nullptr;
   Qnn_ErrorHandle_t result = 0;
 
-    result = qnn_interface_.contextCreate(backend_handle_,
-                                          device_handle_,
-                                          configs,
-                                          &context);
+  result = qnn_interface_.contextCreate(backend_handle_,
+                                        device_handle_,
+                                        configs,
+                                        &context);
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
 
@@ -1069,13 +1070,13 @@ Status QnnBackendManager::LoadCachedQnnContextFromBuffer(char* buffer, uint64_t 
   ORT_RETURN_IF(graph_count < 1 || graphs_info == nullptr, "Failed to get graph info from Qnn cached context.");
   LOGS(*logger_, VERBOSE) << "Graph count from QNN context: " << graph_count;
 
-    Qnn_ContextHandle_t context = nullptr;
+  Qnn_ContextHandle_t context = nullptr;
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
   if (vtcm_backup_buffer_sharing_enabled_) {
-      if (ep_context_handle_map_.find(node_name) != ep_context_handle_map_.end()) {
-        context = ep_context_handle_map_.at(node_name);
-      }
-      ORT_RETURN_IF(nullptr == context, "Failed to retrieve context for ", node_name);
+    if (ep_context_handle_map_.find(node_name) != ep_context_handle_map_.end()) {
+      context = ep_context_handle_map_.at(node_name);
+    }
+    ORT_RETURN_IF(nullptr == context, "Failed to retrieve context for ", node_name);
 
   } else {
 #endif
@@ -1155,11 +1156,11 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool share_ep_contexts,
                                        bool enable_vtcm_backup_buffer_sharing,
                                        std::unordered_map<std::string, std::vector<std::string>>& context_bin_map) {
-
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
 
+#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
     if (vtcm_backup_buffer_sharing_enabled_) {
       LOGS(logger, VERBOSE) << "Mapping contexts to new EP main context nodes";
 
@@ -1168,12 +1169,12 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
         auto ep_node_names = it.second;
 
         auto context = ep_context_handle_map_.at(context_bin_filepath);
-          for (auto node_name : ep_node_names) {
-            ep_context_handle_map_.emplace(node_name, context);
-          }
+        for (auto node_name : ep_node_names) {
+          ep_context_handle_map_.emplace(node_name, context);
+        }
       }
     }
-
+#endif
     return Status::OK();
   }
 
