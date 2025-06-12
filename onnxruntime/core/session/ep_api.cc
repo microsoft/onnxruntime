@@ -100,31 +100,10 @@ ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemory
                                                                  : OrtDeviceMemoryType_HOST_ACCESSIBLE;
 }
 
-// ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
-//                     _Outptr_ OrtSyncStream** stream) {
-//   auto plugin_stream = std::make_unique<plugin_ep::Stream>(*device, *impl);
-//
-//   // go from derived class to onnxruntime::Stream to OrtSyncStream alias
-//   *stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(plugin_stream.release()));
-//
-//   return nullptr;
-// }
-
 ORT_API(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream) {
   // go from OrtSyncStream alias to onnxruntime::Stream to derived class
   auto* plugin_stream = static_cast<plugin_ep::Stream*>(static_cast<Stream*>(stream));
   return &plugin_stream->GetImplementation();
-}
-
-ORT_API(const OrtMemoryDevice*, SyncStream_GetMemoryDevice, _In_ const OrtSyncStream* stream) {
-  // 2x static_cast between API aliases and internal types
-  return static_cast<const OrtMemoryDevice*>(&static_cast<const Stream*>(stream)->GetDevice());
-}
-
-ORT_API(void, ReleaseSyncStream, _In_ OrtSyncStream* stream) {
-  // go from OrtSyncStream alias to onnxruntime::Stream to derived class
-  auto* plugin_stream = static_cast<plugin_ep::Stream*>(static_cast<Stream*>(stream));
-  delete plugin_stream;
 }
 
 ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
@@ -137,13 +116,6 @@ ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ Ort
       static_cast<OrtSyncNotification*>(static_cast<synchronize::Notification*>(notification_impl.release()));
 
   return nullptr;
-}
-
-ORT_API(void, ReleaseSyncNotification, _In_ OrtSyncNotification* notification) {
-  // go from OrtSyncNotification alias to synchronize::Notification to derived class
-  auto* plugin_notification =
-      static_cast<plugin_ep::Notification*>(static_cast<synchronize::Notification*>(notification));
-  delete plugin_notification;
 }
 
 static constexpr OrtEpApi ort_ep_api = {
@@ -161,13 +133,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::OrtMemoryDevice_GetDeviceType,
     &OrtExecutionProviderApi::OrtMemoryDevice_GetMemoryType,
 
-    //&OrtExecutionProviderApi::CreateSyncStream,
     &OrtExecutionProviderApi::SyncStream_GetStreamImpl,
-    &OrtExecutionProviderApi::SyncStream_GetMemoryDevice,
-    &OrtExecutionProviderApi::ReleaseSyncStream,
-
     &OrtExecutionProviderApi::CreateSyncNotification,
-    &OrtExecutionProviderApi::ReleaseSyncNotification,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

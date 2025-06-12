@@ -121,11 +121,7 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
     return;
   }
 
-  // TODO: The CUDA implementation uses the pinned memory allocator for the stream and gets that from AllocatorMap.
-  // Assumption: It can have an internal or shared pinned memory allocator in the EP Factory that is used for all
-  // pinnned memory usage across session. A pointer to this can be returned from OrtEpFactory::CreateAllocator and
-  // OrtEp::CreateAllocator, so there's no requirement to pass in an AllocatorMap here.
-  // i.e. ORT should not need to care about that implementation detail.
+
   for (const auto* mem_info : allocator_mem_infos_) {
     auto device_type = mem_info->device.Type();
     if (device_type == OrtDevice::CPU) {
@@ -139,7 +135,8 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
           OrtSyncStreamImpl* stream = nullptr;
           const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
           auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, &stream);
-          ORT_ENFORCE(status == nullptr, "Error creating sync stream for device: ", ToStatus(status).ToString());
+          ORT_ENFORCE(status == nullptr && stream != nullptr,
+                      "Error creating sync stream for device: ", ToStatus(status).ToString());
           return std::make_unique<plugin_ep::Stream>(device, *stream);
         });
 

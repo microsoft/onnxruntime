@@ -33,16 +33,10 @@ OrtStatus* ORT_API_CALL StreamImpl::OnSessionRunEndImpl(_In_ void* /*this_ptr*/)
   return nullptr;
 }
 
-/*static*/  // TODO: Is this required?
-void* ORT_API_CALL StreamImpl::GetResourceImpl(_In_ void* /*this_ptr*/, int32_t /*version*/, int32_t /*id*/) noexcept {
-  return nullptr;
-}
-
 // callback for EP library to release any internal state
 /*static*/
 void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
-  auto* impl = static_cast<StreamImpl*>(this_ptr);
-  delete impl;
+  delete static_cast<StreamImpl*>(this_ptr);
 }
 
 //
@@ -54,6 +48,7 @@ void ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
+  // e.g.
   // CUDA: cudaEventRecord
   // CANN: aclrtRecordEvent
 }
@@ -80,6 +75,7 @@ void ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ void* this_ptr) noexcept
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
+  // e.g.
   // CUDA: cudaEventSynchronize(event_)
   // CANN: aclrtSynchronizeEvent(event_)
 }

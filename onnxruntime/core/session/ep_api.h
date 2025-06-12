@@ -27,13 +27,7 @@ ORT_API(bool, OrtMemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ cons
 ORT_API(OrtMemoryInfoDeviceType, OrtMemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device);
 ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
 
-//ORT_API_STATUS_IMPL(CreateSyncStream, _In_ const OrtMemoryDevice* device, _In_ OrtSyncStreamImpl* impl,
-//                    _Outptr_ OrtSyncStream** stream);
 ORT_API(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream);
-ORT_API(const OrtMemoryDevice*, SyncStream_GetMemoryDevice, _In_ const OrtSyncStream* stream);
-ORT_API(void, ReleaseSyncStream, _In_ OrtSyncStream* stream);
-
 ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
                     _Outptr_ OrtSyncNotification** notification);
-ORT_API(void, ReleaseSyncNotification, _In_ OrtSyncNotification* notification);
 }  // namespace OrtExecutionProviderApi

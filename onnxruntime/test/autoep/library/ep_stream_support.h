@@ -16,7 +16,6 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
     CreateNotification = CreateNotificationImpl;
     Flush = FlushImpl;
     OnSessionRunEnd = OnSessionRunEndImpl;
-    GetResource = GetResourceImpl;
     Release = ReleaseImpl;
   }
 
@@ -30,7 +29,6 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
                                                         _Outptr_ OrtSyncNotification** sync_notification) noexcept;
   static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr) noexcept;
-  static void* ORT_API_CALL GetResourceImpl(_In_ void* this_ptr, int32_t version, int32_t id) noexcept;
   static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;
 
   void* handle_{nullptr};  // use the real stream type, like cudaStream_t or aclrtStream, etc.

@@ -74,11 +74,6 @@ class Stream : public onnxruntime::Stream {
     return (ort_status != nullptr) ? ToStatus(ort_status) : Status::OK();
   }
 
-  void* GetResource(int32_t version, int32_t id) const override {
-    // Implement resource retrieval logic if needed
-    return impl_.GetResource(&impl_, version, id);
-  }
-
   WaitNotificationFn GetWaitNotificationFn() const override {
     return Notification::WaitNotificationOnDevice;
   }
