@@ -519,7 +519,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
   if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
-
     qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
     // Clear the QnnBackendManager from singleton to stop the resource share
     if (stop_share_ep_contexts_) {
