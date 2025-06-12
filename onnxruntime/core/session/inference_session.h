@@ -918,6 +918,8 @@ class InferenceSession {
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   } telemetry_;
 
+  mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
+
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;
   TraceLoggingActivity<telemetry_provider_handle> session_activity;
