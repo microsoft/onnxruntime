@@ -289,11 +289,18 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     round_str = "round";
   }
+  std::string is_float;
+  if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT ||
+      lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
+    is_float = "true";
+  } else {
+    is_float = "false";
+  }
 
   s << "fn pow_custom(a : input_a_element_t, b : f32) -> input_a_element_t {\n"
        "  if (b == 0.0) {\n"
        "    return input_a_element_t(1.0);\n"
-       "  } else if ((input_a_element_t == f32 || input_a_element_t == f16) && (a >= input_a_element_t(0.0) && b == 0.5)) {\n"
+       "  } else if (" << is_float << " && (a >= input_a_element_t(0.0) && b == 0.5)) {\n"
        "    return sqrt(a);\n"
        "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
        "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
