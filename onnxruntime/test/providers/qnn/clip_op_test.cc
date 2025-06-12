@@ -76,9 +76,7 @@ TEST_F(QnnCPUBackendTests, Clip_5D_f32) {
 //
 
 // Test Clip with float32 on HTP
-// Fails with QNN SDK 2.35.0:
-// value pair (-4.54545403, -4.54687548) at index #3 don't match, which is -0.00142145 from -4.54545
-TEST_F(QnnHTPBackendTests, DISABLED_Clip_f32) {
+TEST_F(QnnHTPBackendTests, Clip_f32) {
   bool on_cpu_backend = false;
   RunClipTest<float>(TestInputDef<float>({1, 1, 3, 4}, false, GetFloatDataInRange(-10.0f, 10.0f, 12)),
                      {TestInputDef<float>({}, true, {-5.0f}),

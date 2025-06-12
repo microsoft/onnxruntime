@@ -37,9 +37,7 @@ static void RunCumSumOpTest(const std::string& op_type,
 }
 
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis 0
-// Fails with QNN SDK 2.35.0:
-// Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r0_axis_0) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {0}),
@@ -50,9 +48,7 @@ TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_0) {
 }
 
 // Non-QDQ model, CumSum with float input and axis input as initializer with axis -1
-// Fails with QNN SDK 2.35.0:
-// Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_CumSum_float_int32_e0_r0_axis_neg1) {
+TEST_F(QnnHTPBackendTests, CumSum_float_int32_e0_r0_axis_neg1) {
   RunCumSumOpTest<float, int32_t>("CumSum",
                                   TestInputDef<float>({3, 2}, false, {1.3f, 7.2f, 0.4f, 3.4f, 5.7f, 0.8f}),
                                   TestInputDef<int32_t>({}, true, {-1}),

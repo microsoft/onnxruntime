@@ -120,9 +120,7 @@ TEST_F(QnnHTPBackendTests, TransposeInt32OnHTP) {
 }
 
 // Check that QNN supports Transpose with float32 data input on HTP
-// Fails with QNN SDK 2.35.0:
-// value pair (0.183528364, 0.183471695) at index #0 don't match, which is -5.66691e-05 from 0.183528
-TEST_F(QnnHTPBackendTests, DISABLED_TransposeFloatOnHTP) {
+TEST_F(QnnHTPBackendTests, TransposeFloatOnHTP) {
   RunTransposeNonQDQOnHTP<float>(TestInputDef<float>({1, 3, 224, 128}, false, 0, 10.0f),
                                  {utils::MakeAttribute("perm", std::vector<int64_t>{0, 2, 3, 1})},
                                  ExpectedEPNodeAssignment::All, false);

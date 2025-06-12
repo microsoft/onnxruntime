@@ -178,9 +178,7 @@ static void RunOpTest(const std::string& op_type,
 }
 
 // Non-QDQ model, Gather with static input and dynamic int64 indices
-// Fails with QNN SDK 2.35.0:
-// Failed to finalize QNN graph. Error code: 1002
-TEST_F(QnnHTPBackendTests, DISABLED_GatherOp_IndicesStaticInt64) {
+TEST_F(QnnHTPBackendTests, GatherOp_IndicesStaticInt64) {
   RunOpTest<float, int64_t>("Gather",
                             TestInputDef<float>({3, 2}, true, {1.0f, 1.2f, 2.3f, 3.4f, 4.5f, 5.7f}),
                             TestInputDef<int64_t>({2, 2}, false, {0, 1, 1, 2}),
