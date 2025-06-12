@@ -127,7 +127,9 @@ TEST_F(QnnHTPBackendTests, TestCastInt32ToFloatHTP) {
 }
 
 // Cast uint8_t to float on HTP
-TEST_F(QnnHTPBackendTests, TestCastUInt8ToFloatHTP) {
+// Fails with QNN SDK 2.35.0:
+// value pair (13, 1.00000012) at index #0 don't match, which is -12 from 13
+TEST_F(QnnHTPBackendTests, DISABLED_TestCastUInt8ToFloatHTP) {
   RunCastOpTest<uint8_t>({3, 3}, ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_FLOAT, ExpectedEPNodeAssignment::All,
                          true, false);
 }

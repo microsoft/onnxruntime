@@ -197,7 +197,8 @@ void SetOptionalZeroPoint::UpdateNodes(Graph& graph, const NodesToOptimize& sele
 
     const ONNX_NAMESPACE::TensorProto* dummy_zp_tensor_proto;
     if (!graph.GetInitializedTensor(zp_tensor_proto.name(), dummy_zp_tensor_proto)) {
-      graph.AddInitializedTensor(zp_tensor_proto);
+      // Zero points are small, no need for external data
+      graph_utils::AddInitializer(graph, zp_tensor_proto);
     }
 
     auto& node_arg = graph.GetOrCreateNodeArg(zp_tensor_proto.name(), nullptr);
@@ -280,8 +281,7 @@ Status MatMulReplaceWithQLinear::Run(Graph& graph, const NodesToOptimize& select
 
 DQMatMulToMatMulNBitsAction::DQMatMulToMatMulNBitsAction(
     int64_t accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors)
+    concurrency::ThreadPool* intra_op_thread_pool)
     : accuracy_level_{accuracy_level},
       domain_{kMSDomain},
       op_type_{"MatMulNBits"},
@@ -291,8 +291,7 @@ DQMatMulToMatMulNBitsAction::DQMatMulToMatMulNBitsAction(
             MoveAndAppend(target, ArgType::kInput, 0, ArgType::kInput),
             MoveAll(target, ArgType::kOutput)};
       }()},
-      intra_op_thread_pool_{intra_op_thread_pool},
-      p_buffered_tensors_{p_buffered_tensors} {
+      intra_op_thread_pool_{intra_op_thread_pool} {
   ORT_ENFORCE(accuracy_level_ >= 0 && accuracy_level_ <= 4, "MatMulNBits accuracy level must be between 0 and 4");
 }
 
@@ -317,7 +316,6 @@ DQMatMulToMatMulNBitsAction::ExtraAttributes(const RuntimeState& runtime_state) 
 Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
                                                    const NodesToOptimize& selected_nodes,
                                                    Node& replacement_node) const {
-  ORT_RETURN_IF_NOT(p_buffered_tensors_, "Buffered tensors map cannot be null");
   const auto* dq_node = selected_nodes.Input(0);
   const auto* weight_arg = dq_node->InputDefs()[0];
   const auto* scale_arg = dq_node->InputDefs()[1];
@@ -325,11 +323,16 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   const auto& attrs = dq_node->GetAttributes();
 
   const ONNX_NAMESPACE::TensorProto* weight_tensor_proto = nullptr;
+  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto),
+                    "Missing required weight: ", weight_arg->Name(), " for node: ", dq_node->Name());
+
   const ONNX_NAMESPACE::TensorProto* scale_tensor_proto = nullptr;
+  ORT_RETURN_IF_NOT(graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto),
+                    "Missing required scale: ", scale_arg->Name(), " for node: ", dq_node->Name());
   const ONNX_NAMESPACE::TensorProto* zp_tensor_proto = nullptr;
-  graph.GetInitializedTensor(weight_arg->Name(), weight_tensor_proto);
-  graph.GetInitializedTensor(scale_arg->Name(), scale_tensor_proto);
   if (zp_arg) {
+    // zero point is optional, one can have a NodeArg for a missing optional
+    // if the name is an empty string, and the below would not return ptr to a proto.
     graph.GetInitializedTensor(zp_arg->Name(), zp_tensor_proto);
   }
 
@@ -343,37 +346,38 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
   // external file, a raw buffer, or a repeated field depending on the data
   // type.  UnpackTensor() already contains some of these logic and is closest
   // to what we need. But it does not handle external data.
-  Initializer weight_src(*weight_tensor_proto, graph.ModelPath());
-  Initializer scale_src(*scale_tensor_proto, graph.ModelPath());
+  Initializer weight_src(graph, *weight_tensor_proto, graph.ModelPath());
+  Initializer scale_src(graph, *scale_tensor_proto, graph.ModelPath());
   auto uint8_type = DataTypeImpl::TensorTypeFromONNXEnum(ONNX_NAMESPACE::TensorProto_DataType_UINT8)->GetElementType();
   auto scale_type = DataTypeImpl::TensorTypeFromONNXEnum(scale_src.data_type())->GetElementType();
-  std::optional<Initializer> zp_src_ptr;
-  auto cpu_allocator = std::make_shared<CPUAllocator>();
+
+  std::optional<Initializer> zp_src;
+  auto cpu_allocator = CPUAllocator::DefaultInstance();
   auto weight_dst_name = graph.GenerateNodeArgName(weight_arg->Name() + "_T");
-  auto weight_dst_ptr = std::make_unique<Tensor>(uint8_type,
-                                                 TensorShape{N, quant_num, blob_bytes},
-                                                 cpu_allocator);
+  auto weight_dst = Tensor(uint8_type,
+                           TensorShape{N, quant_num, blob_bytes},
+                           cpu_allocator);
   auto scale_dst_name = graph.GenerateNodeArgName(scale_arg->Name() + "_T");
   auto scale_size = (TensorShape{N, quant_num}).Size();
-  auto scale_dst_ptr = std::make_unique<Tensor>(scale_type,
-                                                TensorShape{scale_size},
-                                                cpu_allocator);
+  auto scale_dst = Tensor(scale_type,
+                          TensorShape{scale_size},
+                          cpu_allocator);
   std::string zp_dst_name;
-  std::unique_ptr<Tensor> zp_dst_ptr;
+  std::optional<Tensor> zp_dst;
   auto zp_size = (TensorShape{N, (quant_num + 1) / 2}).Size();
 
   if (zp_tensor_proto) {
-    zp_src_ptr.emplace(*zp_tensor_proto, graph.ModelPath());
+    zp_src.emplace(graph, *zp_tensor_proto, graph.ModelPath());
     zp_dst_name = graph.GenerateNodeArgName(zp_arg->Name() + "_T");
-    zp_dst_ptr = std::make_unique<Tensor>(uint8_type,
-                                          TensorShape{zp_size},
-                                          cpu_allocator);
+    zp_dst = Tensor(uint8_type,
+                    TensorShape{zp_size},
+                    cpu_allocator);
   } else if (weight_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_UINT4) {
     zp_dst_name = graph.GenerateNodeArgName("fused_DQ_MatMul_zero_point_T");
-    zp_dst_ptr = std::make_unique<Tensor>(uint8_type,
-                                          TensorShape{zp_size},
-                                          cpu_allocator);
-    memset(zp_dst_ptr->MutableDataRaw(), 0, zp_dst_ptr->SizeInBytes());
+    zp_dst = Tensor(uint8_type,
+                    TensorShape{zp_size},
+                    cpu_allocator);
+    memset(zp_dst->MutableDataRaw(), 0, zp_dst->SizeInBytes());
   }
 
   if (scale_src.data_type() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
@@ -381,10 +385,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<float, 4, true>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<float>(),
-          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-          weight_dst_ptr->MutableData<uint8_t>(),
-          scale_dst_ptr->MutableData<float>(),
-          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
+          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
+          weight_dst.MutableData<uint8_t>(),
+          scale_dst.MutableData<float>(),
+          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -394,10 +398,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<float, 4, false>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<float>(),
-          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-          weight_dst_ptr->MutableData<uint8_t>(),
-          scale_dst_ptr->MutableData<float>(),
-          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
+          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
+          weight_dst.MutableData<uint8_t>(),
+          scale_dst.MutableData<float>(),
+          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -409,10 +413,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, true>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<MLFloat16>(),
-          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-          weight_dst_ptr->MutableData<uint8_t>(),
-          scale_dst_ptr->MutableData<MLFloat16>(),
-          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
+          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
+          weight_dst.MutableData<uint8_t>(),
+          scale_dst.MutableData<MLFloat16>(),
+          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -423,10 +427,10 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
       MlasQDQTransposeBlockwiseQuantized<MLFloat16, 4, false>(
           weight_src.DataAsByteSpan().data(),
           scale_src.data<MLFloat16>(),
-          zp_src_ptr ? zp_src_ptr->DataAsByteSpan().data() : nullptr,
-          weight_dst_ptr->MutableData<uint8_t>(),
-          scale_dst_ptr->MutableData<MLFloat16>(),
-          zp_dst_ptr ? zp_dst_ptr->MutableData<uint8_t>() : nullptr,
+          zp_src ? zp_src->DataAsByteSpan().data() : nullptr,
+          weight_dst.MutableData<uint8_t>(),
+          scale_dst.MutableData<MLFloat16>(),
+          zp_dst ? zp_dst->MutableData<uint8_t>() : nullptr,
           true,
           static_cast<int>(K),
           static_cast<int>(N),
@@ -435,43 +439,24 @@ Status DQMatMulToMatMulNBitsAction::ProcessNewNode(Graph& graph,
     }
   }
 
-  auto weight_T_tp = utils::TensorToTensorProto(*weight_dst_ptr, weight_dst_name, true);
-  auto scale_T_tp = utils::TensorToTensorProto(*scale_dst_ptr, scale_dst_name, true);
+  auto weight_T_tp = utils::TensorToTensorProto(weight_dst, weight_dst_name, true);
+  auto scale_T_tp = utils::TensorToTensorProto(scale_dst, scale_dst_name, true);
   std::optional<ONNX_NAMESPACE::TensorProto> zp_T_tp;
 
-  if (zp_dst_ptr) {
-    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst_ptr, zp_dst_name, true));
+  if (zp_dst) {
+    zp_T_tp.emplace(utils::TensorToTensorProto(*zp_dst, zp_dst_name, true));
   }
 
   auto& input_defs = replacement_node.MutableInputDefs();
-  input_defs.push_back(&graph_utils::AddInitializer(graph, weight_T_tp));
+  input_defs.push_back(&graph_utils::AddInitializerWithExternalData(graph, weight_T_tp, std::move(weight_dst)));
   replacement_node.MutableInputArgsCount().push_back(1);
-  if (weight_T_tp.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-    // If tensor is too small, tensor proto directly copies data from tensor. The tensor allocated
-    // here can be directly destructed.
-    // Only keep the tensor in p_buffered_tensors_ when the tensor proto is using external data location
-    // and pointing the location to tensor's buffer.
-    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(weight_dst_name, std::move(weight_dst_ptr)).second,
-                      "Failed to add buffered tensor ",
-                      weight_dst_name);
-  }
 
-  input_defs.push_back(&graph_utils::AddInitializer(graph, scale_T_tp));
+  input_defs.push_back(&graph_utils::AddInitializerWithExternalData(graph, scale_T_tp, std::move(scale_dst)));
   replacement_node.MutableInputArgsCount().push_back(1);
-  if (scale_T_tp.data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-    ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(scale_dst_name, std::move(scale_dst_ptr)).second,
-                      "Failed to add buffered tensor ",
-                      scale_dst_name);
-  }
 
   if (zp_T_tp) {
-    input_defs.push_back(&graph_utils::AddInitializer(graph, zp_T_tp.value()));
+    input_defs.push_back(&graph_utils::AddInitializerWithExternalData(graph, zp_T_tp.value(), std::move(*zp_dst)));
     replacement_node.MutableInputArgsCount().push_back(1);
-    if (zp_T_tp->data_location() == ONNX_NAMESPACE::TensorProto_DataLocation_EXTERNAL) {
-      ORT_RETURN_IF_NOT(p_buffered_tensors_->emplace(zp_dst_name, std::move(zp_dst_ptr)).second,
-                        "Failed to add buffered tensor ",
-                        zp_dst_name);
-    }
   }
 
   return Status::OK();

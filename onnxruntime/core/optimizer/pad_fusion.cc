@@ -117,7 +117,7 @@ bool PadFusion::SatisfyCondition(const Graph& graph, const Node& node, const log
     // constant_value should be zero because Conv and MaxPool allow only 0 as padding value.
     if (node.InputDefs().size() > 2) {
       const auto* pad_constant_value_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[2]->Name());
-      Initializer pad_constant_value{*pad_constant_value_proto, graph.ModelPath()};
+      Initializer pad_constant_value{graph, *pad_constant_value_proto, graph.ModelPath()};
       if (std::any_of(pad_constant_value.DataAsByteSpan().begin(), pad_constant_value.DataAsByteSpan().end(), [](const uint8_t byte) { return byte != 0; })) {
         return false;
       }
@@ -152,7 +152,7 @@ Status PadFusion::Apply(Graph& graph, Node& pad_node, RewriteRuleEffect& rule_ef
 
   if (pad_node.SinceVersion() >= 11) {
     const auto* pads_proto = graph_utils::GetConstantInitializer(graph, pad_node.InputDefs()[1]->Name());
-    Initializer pads{*pads_proto, graph.ModelPath()};
+    Initializer pads{graph, *pads_proto, graph.ModelPath()};
     pads_values.assign(pads.DataAsSpan<int64_t>().begin(), pads.DataAsSpan<int64_t>().end());
   } else {
     pads_values.assign(pad_node.GetAttributes().at("pads").ints().begin(), pad_node.GetAttributes().at("pads").ints().end());
