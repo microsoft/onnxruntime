@@ -729,7 +729,7 @@ public class OrtSession implements AutoCloseable {
     @Override
     public void close() {
       if (!closed) {
-        if (customLibraryHandles.size() > 0) {
+        if (!customLibraryHandles.isEmpty()) {
           long[] longArray = new long[customLibraryHandles.size()];
           for (int i = 0; i < customLibraryHandles.size(); i++) {
             longArray[i] = customLibraryHandles.get(i);
@@ -916,10 +916,10 @@ public class OrtSession implements AutoCloseable {
      *
      * <p>&emsp;OrtStatus* (*fn)(OrtSessionOptions* options, const OrtApiBase* api);
      *
-     * <p>See https://onnxruntime.ai/docs/reference/operators/add-custom-op.html for more
-     * information on custom ops. See
-     * https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115
-     * for an example of a custom op library registration function.
+     * <p>See <a href="https://onnxruntime.ai/docs/reference/operators/add-custom-op.html">Add
+     * Custom Op</a> for more information on custom ops. See an example of a custom op library
+     * registration function <a
+     * href="https://github.com/microsoft/onnxruntime/blob/342a5bf2b756d1a1fc6fdc582cfeac15182632fe/onnxruntime/test/testdata/custom_op_library/custom_op_library.cc#L115">here</a>.
      *
      * @param registrationFuncName The name of the registration function to call.
      * @throws OrtException If there was an error finding or calling the registration function.
@@ -1284,13 +1284,23 @@ public class OrtSession implements AutoCloseable {
     public void addExecutionProvider(List<OrtEpDevice> devices, Map<String, String> providerOptions)
         throws OrtException {
       checkClosed();
+      if (devices.isEmpty()) {
+        throw new IllegalArgumentException("Must supply at least one OrtEpDevice");
+      }
       long[] deviceHandles = new long[devices.size()];
       for (int i = 0; i < devices.size(); i++) {
         deviceHandles[i] = devices.get(i).getNativeHandle();
       }
       String[][] optsArray = OrtUtil.unpackMap(providerOptions);
+      // This is valid as the environment must have been created to create the OrtEpDevice list.
+      long envHandle = OrtEnvironment.getEnvironment().getNativeHandle();
       addExecutionProvider(
-          OnnxRuntime.ortApiHandle, nativeHandle, deviceHandles, optsArray[0], optsArray[1]);
+          OnnxRuntime.ortApiHandle,
+          envHandle,
+          nativeHandle,
+          deviceHandles,
+          optsArray[0],
+          optsArray[1]);
     }
 
     /**
@@ -1496,6 +1506,7 @@ public class OrtSession implements AutoCloseable {
 
     private native void addExecutionProvider(
         long apiHandle,
+        long envHandle,
         long nativeHandle,
         long[] deviceHandles,
         String[] providerOptionKey,
