@@ -15,6 +15,36 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  build-android:
+    runs-on: ["self-hosted", "X64", "Linux", "Build"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build Android
+        run: |
+          python3 qcom/build_and_test.py archive_ort_android
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Android Tests
+          path: |
+            ${{ github.workspace }}/build/onnxruntime-tests-android.zip
+
+  # The build isn't yet capable of archiving and extracting Linux builds; take that up separately:
+  # TODO: [AISW-138979] Run unit tests with HTP simulator
+  build-linux:
+    runs-on: ["self-hosted", "X64", "Linux", "Build"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Build Linux
+        run: |
+          python3 qcom/build_and_test.py build_ort_linux
+
   build-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64", "Build"]
     steps:
@@ -32,6 +62,17 @@ jobs:
           name: ORT Windows x86_64 Tests
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-x86_64.zip
+
+  lint:
+    runs-on: ["self-hosted", "X64", "Linux", "Build"]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - name: Run Linting Tool
+        run: |
+          python3 qcom/build_and_test.py lint
 
   test-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64", "Build"]
@@ -85,7 +126,7 @@ jobs:
 
   # TODO: [AISW-140530] combine Android and Windows
   test-android:
-    runs-on: ["self-hosted", "Windows", "QDC"]
+    runs-on: ["self-hosted", "Linux", "QDC"]
     needs: [build-android]
     steps:
       - uses: actions/checkout@v4
@@ -101,9 +142,8 @@ jobs:
       - name: Test Android
         env:
           QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
-        shell: cmd
         run: |
-          python .\qcom\build_and_test.py create_venv test_ort_qdc_android --only
+          python3 qcom/build_and_test.py create_venv test_ort_qdc_android --only
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4
@@ -119,7 +159,7 @@ jobs:
             ${{ github.workspace }}/build/qdc-android/*.*
 
   test-windows-arm64:
-    runs-on: ["self-hosted", "Windows", "QDC"]
+    runs-on: ["self-hosted", "Linux", "QDC"]
     needs: [build-windows-arm64]
     steps:
       - uses: actions/checkout@v4
@@ -135,9 +175,8 @@ jobs:
       - name: Test Windows ARM64
         env:
           QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
-        shell: cmd
         run: |
-          python .\qcom\build_and_test.py create_venv test_ort_qdc_windows_arm64 --only
+          python3 qcom/build_and_test.py create_venv test_ort_qdc_windows_arm64 --only
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4
@@ -151,21 +190,3 @@ jobs:
           name: ORT Windows ARM64 Test Results
           path: |
             ${{ github.workspace }}/build/qdc-windows/*.*
-
-  build-android:
-    runs-on: ["self-hosted", "X64", "Windows", "Build"]
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: false
-
-      - name: Build Android
-        shell: cmd
-        run: |
-          python .\qcom\build_and_test.py archive_ort_android
-
-      - uses: actions/upload-artifact@v3
-        with:
-          name: ORT Android Tests
-          path: |
-            ${{ github.workspace }}/build/onnxruntime-tests-android.zip
