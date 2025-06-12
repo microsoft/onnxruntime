@@ -121,7 +121,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
 #ifdef FPA_INTB_GEMM_LATENCY
     auto end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    std::cout << "Prepack Latency: " << duration.count() << " ms for input " << input_idx << ", N=" << N_ << ", K=" << K_ << std::endl;
+    std::cout << "Prepack Latency: " << duration.count() << " microseconds for input " << input_idx << ", N=" << N_ << ", K=" << K_ << std::endl;
 #endif
   }
 

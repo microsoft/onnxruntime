@@ -91,7 +91,7 @@ class MatMulNBits final : public CudaKernel {
 #ifdef FPA_INTB_GEMM_LATENCY
         auto end = std::chrono::high_resolution_clock::now();
         auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        std::cout << "Gemm Profile Latency: " << duration.count() << " ms for N=" << N_ << ", K=" << K_ << std::endl;
+        std::cout << "Gemm Profile Latency: " << duration.count() << " microseconds for N=" << N_ << ", K=" << K_ << std::endl;
 #endif
 
         has_fpA_intB_gemm_ = true;
