@@ -424,6 +424,17 @@ struct TensorCaster<MLFloat16, float> {
   }
 };
 
+// tensor float -> MLFloat16
+template <>
+struct TensorCaster<float, MLFloat16> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    auto in_data = in.Data<float>();
+    auto out_data = out.MutableData<MLFloat16>();
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
+  }
+};
+
 template <typename DstType>
 struct TensorCaster<Int4x2, DstType,
                     std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value
