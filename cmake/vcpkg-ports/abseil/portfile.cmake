@@ -8,6 +8,7 @@ vcpkg_from_github(
     REF "${VERSION}"
     SHA512 92542db666e0c628cf56bf8ad09412af9c8b622e4f26e72d1e1b092ceec430a5c105f6561e2d9983af565f55da07f67e770cafe373b20cc4cb29a893a6a236fc
     HEAD_REF master
+    PATCHES absl_windows.patch
 )
 
 
