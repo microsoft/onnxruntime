@@ -1,15 +1,9 @@
 // Copyright (c) Qualcomm. All rights reserved.
 // Licensed under the MIT License.
 
-#include <algorithm>
-#include <array>
-#include <set>
-#include <string>
-#include <vector>
-
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
@@ -20,11 +14,53 @@ class ReciprocalOpBuilder : public BaseOpBuilder {
   ReciprocalOpBuilder() : BaseOpBuilder("ReciprocalOpBuilder") {}
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(ReciprocalOpBuilder);
 
+  Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+
  protected:
-  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper, const NodeUnit& node_unit,
-                                     std::vector<std::string>&& input_names, const logging::Logger& logger,
+  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                       const NodeUnit& node_unit,
+                       const logging::Logger& logger,
+                       std::vector<std::string>& input_names,
+                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
+
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
                                      bool do_op_validation) const override ORT_MUST_USE_RESULT;
 };
+
+Status ReciprocalOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
+                                          const NodeUnit& node_unit,
+                                          const logging::Logger& logger) const {
+  ORT_UNUSED_PARAMETER(logger);
+
+  const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF_NOT(inputs.size() == 1, "Reciprocal operator must have exactly 1 input.");
+
+  const auto& outputs = node_unit.Outputs();
+  ORT_RETURN_IF_NOT(outputs.size() == 1, "Reciprocal operator must have exactly 1 output.");
+
+  // Check input type is float for CPU. Can't use QNN Op validation API since it's before layout transformation
+  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
+
+  return Status::OK();
+}
+
+Status ReciprocalOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
+                                          const NodeUnit& node_unit,
+                                          const logging::Logger& logger,
+                                          std::vector<std::string>& input_names,
+                                          bool do_op_validation) const {
+  ORT_UNUSED_PARAMETER(do_op_validation);
+
+  const auto& inputs = node_unit.Inputs();
+  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+
+  return Status::OK();
+}
 
 Status ReciprocalOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                         const NodeUnit& node_unit,
@@ -32,56 +68,77 @@ Status ReciprocalOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mod
                                                         const logging::Logger& logger,
                                                         bool do_op_validation) const {
   ORT_UNUSED_PARAMETER(logger);
-  ORT_UNUSED_PARAMETER(do_op_validation);
 
-  const auto& input = node_unit.Inputs()[0];
-  const auto& output = node_unit.Outputs()[0];
+  // Create a constant tensor for the divisor (1.0)
+  std::string divisor_name = node_unit.Name() + "_divisor";
+  std::vector<uint32_t> divisor_shape{1};
+  std::vector<uint8_t> divisor_data;
 
-  TensorInfo reciprocal_input_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(input, reciprocal_input_info));
+  TensorInfo input_info{};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(node_unit.Inputs()[0], input_info));
 
-  // Create constant tensor with value 1.0
-  float one_value = 1.0f;
-  std::vector<uint32_t> scalar_shape = {1};
-  std::vector<uint8_t> one_data(sizeof(float));
-  memcpy(one_data.data(), &one_value, sizeof(float));
+  QnnQuantParamsWrapper divisor_quant_param = input_info.quant_param.Copy();
+  Qnn_DataType_t divisor_qnn_data_type = input_info.qnn_data_type;
 
-  const std::string one_tensor_name = input_names[0] + "_ort_qnn_ep_one";
+  if (input_info.quant_param.IsQuantized()) {
+    const auto& encoding = divisor_quant_param.Get().scaleOffsetEncoding;
+    double divisor_value = 1.0;
+    int quantized_divisor_value;
 
-  QnnTensorWrapper one_tensor(one_tensor_name, QNN_TENSOR_TYPE_STATIC, reciprocal_input_info.qnn_data_type,
-                              reciprocal_input_info.quant_param.Copy(), std::move(scalar_shape), std::move(one_data));
+    ORT_RETURN_IF_ERROR(utils::Quantize(divisor_value,
+                                        encoding.scale,
+                                        encoding.offset,
+                                        input_info.qnn_data_type,
+                                        quantized_divisor_value));
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(one_tensor)),
-                    "Failed to add constant tensor wrapper for reciprocal numerator.");
+    size_t element_size = qnn::utils::GetElementSizeByType(input_info.qnn_data_type);
+    divisor_data.resize(element_size);
 
-  // Get output shape
-  std::vector<uint32_t> output_shape;
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(output.node_arg, output_shape),
-                    "Failed to get output shape.");
+    switch (input_info.qnn_data_type) {
+      case QNN_DATATYPE_UFIXED_POINT_8:
+        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(uint8_t));
+        break;
+      case QNN_DATATYPE_SFIXED_POINT_8:
+        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(int8_t));
+        break;
+      case QNN_DATATYPE_UFIXED_POINT_16:
+        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(uint16_t));
+        break;
+      default:
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported quantized data type for divisor.");
+    }
 
-  const std::string output_name = output.node_arg.Name();
+  } else {
+    // FP32 path
+    divisor_data.resize(sizeof(float));
+    float one = 1.0f;
+    std::memcpy(divisor_data.data(), &one, sizeof(float));
+  }
 
-  TensorInfo reciprocal_output_info = {};
-  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(output, reciprocal_output_info));
-  Qnn_TensorType_t output_tensor_type = qnn_model_wrapper.IsGraphOutput(output_name)
-                                            ? QNN_TENSOR_TYPE_APP_READ
-                                            : QNN_TENSOR_TYPE_NATIVE;
+  QnnTensorWrapper divisor_tensorwrapper(divisor_name, QNN_TENSOR_TYPE_STATIC, divisor_qnn_data_type,
+                                         std::move(divisor_quant_param), std::move(divisor_shape), std::move(divisor_data));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(divisor_tensorwrapper)), "Failed to add divisor tensor.");
 
-  QnnTensorWrapper output_tensor(output_name, output_tensor_type, reciprocal_output_info.qnn_data_type,
-                                 reciprocal_output_info.quant_param.Copy(), std::move(output_shape));
+  // Create the Div node
+  const auto& outputs = node_unit.Outputs();
+  const std::string& output_name = outputs[0].node_arg.Name();
+  bool is_graph_output = qnn_model_wrapper.IsGraphOutput(output_name);
+  Qnn_TensorType_t tensor_type = is_graph_output ? QNN_TENSOR_TYPE_APP_READ : QNN_TENSOR_TYPE_NATIVE;
+  TensorInfo output_info{};
+  ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(outputs[0], output_info));
+  QnnTensorWrapper output_tensorwrapper(output_name, tensor_type, output_info.qnn_data_type,
+                                        output_info.quant_param.Copy(), std::move(output_info.shape));
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensorwrapper)), "Failed to add output tensor.");
 
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(output_tensor)),
-                    "Failed to add output tensor wrapper for reciprocal.");
-
-  // Create Div node: 1 / input
-  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(output_name + "_div",
-                                                    QNN_OP_PACKAGE_NAME_QTI_AISW,
-                                                    QNN_OP_ELEMENT_WISE_DIVIDE,
-                                                    {one_tensor_name, input_names[0]},
-                                                    {output_name},
-                                                    {},
-                                                    do_op_validation),
-                    "Failed to create Reciprocal_Div node.");
+  ORT_RETURN_IF_NOT(qnn_model_wrapper.CreateQnnNode(
+                        utils::GetNodeName(node_unit),
+                        QNN_OP_PACKAGE_NAME_QTI_AISW,
+                        QNN_OP_ELEMENT_WISE_DIVIDE,
+                        {divisor_name, input_names[0]},
+                        {output_name},
+                        {},
+                        do_op_validation),
+                    "Failed to create Div node.");
 
   return Status::OK();
 }
