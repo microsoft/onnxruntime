@@ -338,7 +338,7 @@ class CallableDispatchableHelper {
 // Other policies may set the second result argument accordingly.
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
-  void operator()(int32_t dt_type, Ret& /*result*/) const {
+  [[noreturn]] void operator()(int32_t dt_type, Ret& /*result*/) const {
     ORT_THROW("Unsupported data type: ", dt_type);
   }
 };
