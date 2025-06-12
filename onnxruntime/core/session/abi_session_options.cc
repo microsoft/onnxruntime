@@ -63,18 +63,17 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
   ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
                                                         (void**)&RegisterCustomOps));
 
-  // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
-  const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
-                                                                             OrtApis::ReleaseStatus);
+  // Call the exported RegisterCustomOps function.
+  auto status = onnxruntime::MoveToStatus(RegisterCustomOps(this, OrtGetApiBase()));
 
-  if (status) {  // A non-nullptr status indicates an error registering custom ops.
+  if (!status.IsOK()) {
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
                             << onnxruntime::PathToUTF8String(library_name) << ": " << unload_status;
     }
 
-    return onnxruntime::ToStatus(status.get());
+    return status;
   }
 
   // The internal onnxruntime::SessionOptions will manage the lifetime of library handles.

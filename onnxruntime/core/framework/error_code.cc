@@ -1,12 +1,16 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/framework/error_code_helper.h"
+
+#include <cassert>
+#include <memory>
+
 #include "core/session/onnxruntime_c_api.h"
 #include "core/session/ort_apis.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
-#include "core/framework/error_code_helper.h"
-#include <cassert>
+
 using onnxruntime::common::Status;
 
 struct OrtStatus {
@@ -26,6 +30,13 @@ inline OrtStatus* NewStatus(size_t clen) {
   if (buf == nullptr) return nullptr;  // OOM. What we can do here? abort()?
   return new (buf) OrtStatus;
 }
+
+inline void DeleteStatus(OrtStatus* ort_status) {
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(suppress : 26409)
+#endif
+  delete[] reinterpret_cast<uint8_t*>(ort_status);
+}
 }  // namespace
 
 // Even we say it may not return NULL, indeed it may.
@@ -43,6 +54,21 @@ _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtEr
 }
 
 namespace onnxruntime {
+
+namespace {
+
+struct OrtStatusDeleter {
+  void operator()(OrtStatus* p) const noexcept {
+    if (p != nullptr) {
+      DeleteStatus(p);
+    }
+  }
+};
+
+using UniqueOrtStatus = std::unique_ptr<OrtStatus, OrtStatusDeleter>;
+
+}  // namespace
+
 _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
@@ -63,10 +89,18 @@ Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
 
   return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
 }
+
+Status MoveToStatus(OrtStatus* ort_status, common::StatusCategory category) {
+  auto unique_ort_status = UniqueOrtStatus{ort_status};
+  return ToStatus(unique_ort_status.get(), category);
+}
+
 }  // namespace onnxruntime
+
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
+
 ORT_API(OrtErrorCode, OrtApis::GetErrorCode, _In_ const OrtStatus* status) {
   return status->code;
 }
@@ -74,7 +108,7 @@ ORT_API(OrtErrorCode, OrtApis::GetErrorCode, _In_ const OrtStatus* status) {
 ORT_API(const char*, OrtApis::GetErrorMessage, _In_ const OrtStatus* status) {
   return status->msg;
 }
-#if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(disable : 26409)
-#endif
-ORT_API(void, OrtApis::ReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) { delete[] reinterpret_cast<uint8_t*>(value); }
+
+ORT_API(void, OrtApis::ReleaseStatus, _Frees_ptr_opt_ OrtStatus* value) {
+  DeleteStatus(value);
+}
