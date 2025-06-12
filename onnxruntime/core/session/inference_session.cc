@@ -68,6 +68,9 @@
 #include "core/providers/dml/DmlExecutionProvider/src/ExecutionProvider.h"
 #include "core/optimizer/stft_decomposition.h"
 #endif
+#ifdef USE_QNN  // For registering QNN-EP specific Level1 Transformations
+#include "core/optimizer/dynamic_quantize_convinteger_fusion.h"
+#endif
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -2023,6 +2026,17 @@ common::Status InferenceSession::Initialize() {
           auto stft_decomposition_transformer = std::make_unique<STFTDecomposition>(dml_ep);
           ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(stft_decomposition_transformer), onnxruntime::TransformerLevel::Level1));
         }
+      }
+#endif
+
+#ifdef USE_QNN
+      const IExecutionProvider* qnnExecutionProvider = execution_providers_.Get(kQnnExecutionProvider);
+
+      if (qnnExecutionProvider) {
+        // Fuse Dynamic Quantize ConvInteger sequence into Dequantize + Conv, QnnEp-only
+        const InlinedHashSet<std::string_view> qnn_ep = {onnxruntime::kQnnExecutionProvider};
+        auto dynamicQuantizeConvInteger_transformer = std::make_unique<DynamicQuantizeConvIntegerFusion>(qnn_ep);
+        ORT_RETURN_IF_ERROR_SESSIONID_(graph_transformer_mgr_.Register(std::move(dynamicQuantizeConvInteger_transformer), onnxruntime::TransformerLevel::Level1));
       }
 #endif
 
