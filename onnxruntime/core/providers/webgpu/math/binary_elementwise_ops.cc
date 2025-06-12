@@ -291,7 +291,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   }
   std::string use_sqrt_for_pow;
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    // use sqrt instead of pow when base (a) is float and exponent (b) is 0.5
+    // use sqrt instead of pow when base (a) is a positive float and exponent (b) is 0.5
     use_sqrt_for_pow =
         "  else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
         "    return sqrt(a);\n"
