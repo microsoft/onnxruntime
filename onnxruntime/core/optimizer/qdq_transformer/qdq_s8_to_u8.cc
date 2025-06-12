@@ -41,8 +41,8 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
 
   // TODO(fuchen): need to augment this when we support per row quantization
   using ONNX_TENSOR_ELEM_TYPE = ONNX_NAMESPACE::TensorProto::DataType;
-  Initializer q_zero_point(*q_zp_tensor_proto, graph.ModelPath());
-  Initializer dq_zero_point(*dq_zp_tensor_proto, graph.ModelPath());
+  Initializer q_zero_point(graph, *q_zp_tensor_proto, graph.ModelPath());
+  Initializer dq_zero_point(graph, *dq_zp_tensor_proto, graph.ModelPath());
   if (q_zero_point.size() != 1 ||
       dq_zero_point.size() != 1 ||
       q_zero_point.data_type() != ONNX_TENSOR_ELEM_TYPE::TensorProto_DataType_INT8 ||
@@ -61,7 +61,7 @@ static bool QDQ_S8_to_U8(Graph& graph, Node& q_node, Node& dq_node) {
   zp_tensor_proto_u8.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_UINT8);
   zp_tensor_proto_u8.set_name(graph.GenerateNodeArgName("qdq_s8_to_u8_zp_conversion"));
   utils::SetRawDataInTensorProto(zp_tensor_proto_u8, &q_zp_value, sizeof(uint8_t));
-  NodeArg* zp_u8_arg = &graph_utils::AddInitializer(graph, zp_tensor_proto_u8);
+  NodeArg* zp_u8_arg = &graph_utils::AddInitializerWithExternalData(graph, zp_tensor_proto_u8);
 
   auto q_output_node_arg_name = graph.GenerateNodeArgName("qdq_s8_to_u8_quant");
   NodeArg* q_output_arg = &graph.GetOrCreateNodeArg(q_output_node_arg_name, nullptr);

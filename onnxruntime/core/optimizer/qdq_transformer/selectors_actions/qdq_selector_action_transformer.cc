@@ -282,8 +282,7 @@ void MatMulQDQRules(SelectorActionRegistry& qdq_selector_action_registry, bool i
 
 void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_registry,
                                 int64_t qdq_matmulnbits_accuracy_level,
-                                concurrency::ThreadPool* intra_op_thread_pool,
-                                std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+                                concurrency::ThreadPool* intra_op_thread_pool) {
   // 2 nodes. DQ -> MatMul. DQ is the second input to MatMul.
   // DQ's weight is int4/uint4. DQ's scale is float/float16.
   // DQ is block-quantized along axis 0, with block_size >= 16 and as 2's power.
@@ -291,8 +290,7 @@ void DQMatMulToMatMulNBitsRules(SelectorActionRegistry& qdq_selector_action_regi
 
   std::unique_ptr<Action> action =
       std::make_unique<QDQ::DQMatMulToMatMulNBitsAction>(qdq_matmulnbits_accuracy_level,
-                                                         intra_op_thread_pool,
-                                                         p_buffered_tensors);
+                                                         intra_op_thread_pool);
 
 #if !defined(ORT_MINIMAL_BUILD)
   std::vector<const char*> providers = {kCpuExecutionProvider, kCudaExecutionProvider, kDmlExecutionProvider};
@@ -353,8 +351,7 @@ void WhereQDQRules(SelectorActionRegistry& qdq_selector_action_registry) {
 SelectorActionRegistry CreateSelectorActionRegistry(
     bool is_int8_allowed,
     int64_t qdq_matmulnbits_accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    concurrency::ThreadPool* intra_op_thread_pool) {
   SelectorActionRegistry qdq_selector_action_registry;
   SplitQDQRules(qdq_selector_action_registry);
   DropQDQNodesRules(qdq_selector_action_registry);
@@ -368,8 +365,7 @@ SelectorActionRegistry CreateSelectorActionRegistry(
   WhereQDQRules(qdq_selector_action_registry);
   DQMatMulToMatMulNBitsRules(qdq_selector_action_registry,
                              qdq_matmulnbits_accuracy_level,
-                             intra_op_thread_pool,
-                             p_buffered_tensors);
+                             intra_op_thread_pool);
 
   return qdq_selector_action_registry;
 }
@@ -380,12 +376,11 @@ QDQSelectorActionTransformer::QDQSelectorActionTransformer(
     bool is_int8_allowed,
     const SatApplyContextVariant& apply_context,
     int64_t qdq_matmulnbits_accuracy_level,
-    concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors)
+    concurrency::ThreadPool* intra_op_thread_pool)
     : SelectorActionTransformer{
           "QDQSelectorActionTransformer",
           CreateSelectorActionRegistry(is_int8_allowed, qdq_matmulnbits_accuracy_level,
-                                       intra_op_thread_pool, p_buffered_tensors),
+                                       intra_op_thread_pool),
           apply_context,
           // this transformer is compatible with CPU, DML, ACL and CUDA EP.
           // There is further EP control on the rule level.

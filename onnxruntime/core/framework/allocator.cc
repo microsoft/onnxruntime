@@ -82,34 +82,14 @@ void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
 
 void* AllocatorDefaultAllocAligned(size_t size, size_t alignment) {
   if (size == 0) return nullptr;
+
   size += MLAS_SYMM_QGEMM_BUF_OVERRUN;
-  void* p;
-#if _MSC_VER
-  p = _aligned_malloc(size, alignment);
-  if (p == nullptr)
-    ORT_THROW_EX(std::bad_alloc);
-#elif defined(_LIBCPP_SGX_CONFIG)
-  p = memalign(alignment, size);
-  if (p == nullptr)
-    ORT_THROW_EX(std::bad_alloc);
-#else
-  int ret = posix_memalign(&p, alignment, size);
-  if (ret != 0)
-    ORT_THROW_EX(std::bad_alloc);
-#endif
-  return p;
+
+  return ::operator new(size, std::align_val_t{alignment});
 }
 
-void AllocatorDefaultFree(void* p) {
-#if _MSC_VER
-  _aligned_free(p);
-#else
-  free(p);
-#endif
-}
-
-void AllocatorDefaultFreeAligned(void* p, size_t /* alignment */) {
-  AllocatorDefaultFree(p);
+void AllocatorDefaultFreeAligned(void* p, size_t alignment) {
+  ::operator delete(p, std::align_val_t{alignment});
 }
 
 #endif  // USE_MIMALLOC
@@ -117,6 +97,11 @@ void AllocatorDefaultFreeAligned(void* p, size_t /* alignment */) {
 void* AllocatorDefaultAlloc(size_t size) {
   const size_t alignment = MlasGetPreferredBufferAlignment();
   return AllocatorDefaultAllocAligned(size, alignment);
+}
+
+AllocatorPtr CPUAllocator::DefaultInstance() {
+  static AllocatorPtr instance = std::make_shared<CPUAllocator>();
+  return instance;
 }
 
 void* CPUAllocator::Alloc(size_t size) {

@@ -78,11 +78,8 @@ using unique_pointer = std::unique_ptr<T, TensorrtInferDeleter>;
 //
 class OutputAllocator : public nvinfer1::IOutputAllocator {
  public:
-#if NV_TENSORRT_MAJOR >= 10
   void* reallocateOutputAsync(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment, cudaStream_t stream) noexcept override;
-#else
-  void* reallocateOutput(char const* tensorName, void* currentMemory, uint64_t size, uint64_t alignment) noexcept override;
-#endif
+
   void notifyShape(char const* tensorName, nvinfer1::Dims const& dims) noexcept override;
 
   void* getBuffer() {
@@ -238,6 +235,7 @@ class NvExecutionProvider : public IExecutionProvider {
   int max_partition_iterations_ = 1000;
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
+  size_t max_shared_mem_size_ = 0;
   bool force_sequential_engine_build_ = false;
   bool dump_subgraphs_ = false;
   bool engine_cache_enable_ = false;
@@ -465,7 +463,7 @@ class NvExecutionProvider : public IExecutionProvider {
    * and save those information in subgraph context data structure. It's useful for building a valid graph and
    * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
    */
-  void BuildSubGraphContext(const Graph& build_graph) const;
+  void BuildSubGraphContext(Graph& build_graph) const;
 
   /**
    * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
