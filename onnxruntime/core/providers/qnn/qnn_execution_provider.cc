@@ -381,7 +381,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   if (htp_performance_mode_pos != provider_options_map.end()) {
     ParseHtpPerformanceMode(htp_performance_mode_pos->second, default_htp_performance_mode_);
   }
-  
+
   htp_graph_finalization_opt_mode_ = qnn::HtpGraphFinalizationOptimizationMode::kDefault;
   static const std::string HTP_GRAPH_FINALIZATION_OPT_MODE = "htp_graph_finalization_optimization_mode";
   auto htp_graph_finalization_opt_mode_pos = provider_options_map.find(HTP_GRAPH_FINALIZATION_OPT_MODE);
@@ -761,7 +761,7 @@ static void GetMainEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
                    cache_source.end(),
                    cache_source.begin(),
                    [](unsigned char c) { return static_cast<unsigned char>(std::tolower(c)); });
-    
+
     if (is_main_context && qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
       LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node.Index()
                             << "] name: [" << node.Name()
@@ -821,6 +821,18 @@ static void PartitionCtxModel (const onnxruntime::GraphViewer& graph_viewer,
   return;
 }
 
+// Figure out the context cache Onnx file path to decide the folder location
+static void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
+                                        const onnxruntime::PathString& model_path_string,
+                                        onnxruntime::PathString& context_model_path) {
+  // always try the path set by user first, it's the only way to set it if load model from memory
+  if (!user_context_cache_path.empty()) {
+    context_model_path = ToPathString(user_context_cache_path);
+  } else if (!model_path_string.empty()) {  // model loaded from file
+    context_model_path = model_path_string;
+  }
+}
+
 std::vector<std::unique_ptr<ComputeCapability>>
 QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer,
                                     const IKernelLookup& /*kernel_lookup*/,
@@ -858,7 +870,10 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     std::unordered_set<const Node*> ep_ctx_nodes;
     GetMainEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
 
-    std::filesystem::path parent_path = graph_viewer.ModelPath().parent_path();
+    onnxruntime::PathString context_model_path;
+    GetContextOnnxModelFilePath(context_cache_path_cfg_, graph_viewer.ModelPath().native(), context_model_path);
+
+    std::filesystem::path parent_path = std::filesystem::path(context_model_path).parent_path();
 
     for (auto& ep_ctx_node : ep_ctx_nodes) {
       NodeAttrHelper node_helper(*ep_ctx_node);
@@ -1130,18 +1145,6 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     ORT_RETURN_IF_ERROR(CreateComputeFunc(node_compute_funcs, logger));
   }
   return Status::OK();
-}
-
-// Figure out the context cache Onnx file path to decide the folder location
-static void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
-                                        const onnxruntime::PathString& model_path_string,
-                                        onnxruntime::PathString& context_model_path) {
-  // always try the path set by user first, it's the only way to set it if load model from memory
-  if (!user_context_cache_path.empty()) {
-    context_model_path = ToPathString(user_context_cache_path);
-  } else if (!model_path_string.empty()) {  // model loaded from file
-    context_model_path = model_path_string;
-  }
 }
 
 Status QNNExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,

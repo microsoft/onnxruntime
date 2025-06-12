@@ -222,10 +222,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::vector<std::string>>& context_bin_map);
 
-  // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
-  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
-
   Status ReleaseContext();
 
   // Sets the ORT logger and creates a corresponding QNN logger with the same log level.
@@ -308,6 +304,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       const std::string& eventLevel,
       const char* eventIdentifier);
 #endif
+
+  
+  // Adds a new QNN context.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
+  Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
   // assume Qnn_ContextHandle_t is a pointer and able to be wrapped with std::unique_ptr
