@@ -46,10 +46,9 @@ std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
   OrtEp* ort_ep = nullptr;
-  const UniqueOrtStatus status(
-      ep_factory_.CreateEp(&ep_factory_, devices_.data(), ep_metadata_.data(), devices_.size(),
-                           &session_options, &session_logger, &ort_ep),
-      OrtApis::ReleaseStatus);
+  UniqueOrtStatus status(ep_factory_.CreateEp(&ep_factory_, devices_.data(), ep_metadata_.data(), devices_.size(),
+                                              &session_options, &session_logger, &ort_ep),
+                         OrtApis::ReleaseStatus);
 
   if (status != nullptr) {
     ORT_THROW("Error creating execution provider: ", ToStatus(status.get()).ToString());
@@ -110,8 +109,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   auto ep_graph = EpGraph::Create(graph_viewer);
   OrtEpGraphSupportInfo api_graph_support_info(*ep_graph);
-  const UniqueOrtStatus status(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info),
-                               OrtApis::ReleaseStatus);
+  UniqueOrtStatus status(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info),
+                         OrtApis::ReleaseStatus);
 
   // GetCapability is not supposed to fail. If there's an error, return an empty result to ensure this EP is not
   // assigned any nodes and log an error.
@@ -210,9 +209,9 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     api_fused_nodes.push_back(ep_fused_node.ToExternal());
   }
 
-  const UniqueOrtStatus status(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(), num_graphs,
-                                                api_node_compute_infos.data()),
-                               OrtApis::ReleaseStatus);
+  UniqueOrtStatus status(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(), num_graphs,
+                                          api_node_compute_infos.data()),
+                         OrtApis::ReleaseStatus);
   ORT_RETURN_IF_ERROR(ToStatus(status.get()));
 
   // Save OrtNodeComputeInfo created by OrtEp instance. They're freed when this IExecutionProvider
@@ -232,10 +231,10 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [api_node_compute_info, logger](ComputeContext* context,
                                                                      FunctionState* compute_state) -> int {
-      const UniqueOrtStatus status(api_node_compute_info->CreateComputeState(api_node_compute_info,
-                                                                             reinterpret_cast<OrtNodeComputeContext*>(context),
-                                                                             compute_state),
-                                   OrtApis::ReleaseStatus);
+      UniqueOrtStatus status(api_node_compute_info->CreateComputeState(api_node_compute_info,
+                                                                       reinterpret_cast<OrtNodeComputeContext*>(context),
+                                                                       compute_state),
+                             OrtApis::ReleaseStatus);
       const bool success = status == nullptr;
       if (!success) {
         LOGS(*logger, ERROR) << "OrtNodeComputeInfo::CreateComputeState() failed with error: "
@@ -251,9 +250,8 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     compute_info.compute_func = [api_node_compute_info](FunctionState compute_state,
                                                         const OrtApi* /*c_api*/,
                                                         OrtKernelContext* kernel_context) -> Status {
-      const UniqueOrtStatus status(api_node_compute_info->Compute(api_node_compute_info, compute_state,
-                                                                  kernel_context),
-                                   OrtApis::ReleaseStatus);
+      UniqueOrtStatus status(api_node_compute_info->Compute(api_node_compute_info, compute_state, kernel_context),
+                             OrtApis::ReleaseStatus);
       return ToStatus(status.get());
     };
 
