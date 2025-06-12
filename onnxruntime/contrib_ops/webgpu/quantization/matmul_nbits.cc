@@ -359,6 +359,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
   ORT_ENFORCE(bias == nullptr, "bias as input is not supported yet.");
 
+  const bool has_zero_points = zero_points != nullptr;
+  if (has_zero_points) {
+    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+  }
+
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -385,7 +390,6 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
   uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
-  const bool has_zero_points = zero_points != nullptr;
   // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
   if (M >= kMinMForTileOptimization &&
       CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K)) {
