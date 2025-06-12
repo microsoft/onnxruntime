@@ -134,7 +134,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
       // Only check and skip Attention pattern here because normally input to Attention is 4D.
-      if (attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node) && preserve_attention_pattern_) {
+      if (preserve_attention_pattern_ && attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node)) {
         continue;
       }
 
