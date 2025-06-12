@@ -5,6 +5,8 @@
 
 #include <sstream>
 
+#include "core/providers/webgpu/wgsl/wgsl.h"
+
 #include "core/providers/webgpu/webgpu_external_header.h"
 
 #include "core/framework/tensor_shape.h"
@@ -72,6 +74,15 @@ class ShaderHelper final {
                uint32_t dispatch_group_size_z);
 
   Status Init();
+
+  // Apply the WGSL template to the shader helper.
+  //
+  // \param TemplateFilepath The filepath of the WGSL template to apply.
+  // \return Status indicating success or failure.
+  template <wgsl::detail::string_template_filepath TemplateFilepath>
+  Status ApplyTemplate() {
+    return wgsl::ApplyTemplate<TemplateFilepath>(*this);
+  }
 
   // Add an input variable to the shader.
   //
