@@ -59,7 +59,7 @@ Status PrepareSliceComputeMetadata(const Node& slice_node,
 
     const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name());
     ORT_RETURN_IF_NOT(tensor_proto, "Failed to get constant initializer.");
-    Initializer unpacked_tensor(*tensor_proto, graph_viewer.ModelPath());
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *tensor_proto, graph_viewer.ModelPath());
     const auto data_type = unpacked_tensor.data_type();
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
