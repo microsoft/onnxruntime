@@ -374,15 +374,13 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   }
 
   EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
-  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
 
   if (internal_factory) {
-    provider_factory = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
   } else {
-    provider_factory = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
+    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
   }
 
-  out = std::move(provider_factory);
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
