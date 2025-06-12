@@ -85,7 +85,8 @@ class TestConfig(NamedTuple):
 QDC_TESTS = [
     TestConfig("Mobile Device", Platform.ANDROID, [
         TestDevice("3625030", "Lanai SM8650"),
-        TestDevice("3700521", "Pakala SM8750"),
+        # TODO: [AISW-140749] Unit test failures on Pakala in QAIRT 2.35
+        # TestDevice("3700521", "Pakala SM8750"),
     ]),
     TestConfig("Windows on Snapdragon", Platform.WINDOWS, [
         TestDevice("3748430", "Purwa SC8340XP"),

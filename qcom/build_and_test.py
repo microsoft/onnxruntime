@@ -357,6 +357,17 @@ class TaskLibrary:
         )
 
     @task
+    @depends(["archive_ort_android"])
+    def test_ort_qdc_android(self, plan: Plan) -> str:
+        return plan.add_step(
+            QdcTestsTask(
+                "Testing ONNX Runtime for Android in QDC",
+                self.__venv_path,
+                ["android"],
+            )
+        )
+
+    @task
     @depends(["archive_ort_windows_arm64"])
     def test_ort_qdc_windows_arm64(self, plan: Plan) -> str:
         return plan.add_step(

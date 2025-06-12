@@ -37,10 +37,15 @@ class CTestPlan:
         # This isn't technically correct since it doesn't allow for double quotes embedded in paths, but we'll
         # accept the shortcoming due to its improbability.
         add_test_re = re.compile(r'add_test\(\[=\[(.*)\]=\] "([^"]*)"(?: "([^"]*)")*\)')
+
         for line in ctesttestfile_path.read_text().splitlines():
             matches = add_test_re.match(line)
             if matches:
                 test_name = matches.group(1).replace(build_directory, device_test_root)
-                cmd = [m.replace(build_directory, device_test_root) for m in matches.groups()[1:]]
+                cmd = [
+                    # CTestTestfiles.cmake produced on Windows uses both / and \\ as path separators.
+                    m.replace("\\\\", "/").replace(build_directory, device_test_root)
+                    for m in matches.groups()[1:]
+                ]
                 tests[test_name] = cmd
         return tests

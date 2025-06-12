@@ -16,7 +16,7 @@ concurrency:
 
 jobs:
   build-windows-x86_64:
-    runs-on: ["self-hosted", "Windows", "X64"]
+    runs-on: ["self-hosted", "Windows", "X64", "Build"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -34,7 +34,7 @@ jobs:
             ${{ github.workspace }}/build/onnxruntime-tests-windows-x86_64.zip
 
   test-windows-x86_64:
-    runs-on: ["self-hosted", "Windows", "X64"]
+    runs-on: ["self-hosted", "Windows", "X64", "Build"]
     needs: [build-windows-x86_64]
     steps:
       - uses: actions/checkout@v4
@@ -56,6 +56,7 @@ jobs:
         uses: mikepenz/action-junit-report@v4.0.4
         if: always() # always run even if the previous step fails
         with:
+          check_name: windows-x86_64-test-results
           report_paths: ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
       - uses: actions/upload-artifact@v3
@@ -65,7 +66,7 @@ jobs:
             ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
   build-windows-arm64:
-    runs-on: ["self-hosted", "Windows", "X64"]
+    runs-on: ["self-hosted", "Windows", "X64", "Build"]
     steps:
       - uses: actions/checkout@v4
         with:
@@ -82,8 +83,43 @@ jobs:
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-arm64.zip
 
+  # TODO: [AISW-140530] combine Android and Windows
+  test-android:
+    runs-on: ["self-hosted", "Windows", "QDC"]
+    needs: [build-android]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT Android Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test Android
+        env:
+          QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        shell: cmd
+        run: |
+          python .\qcom\build_and_test.py create_venv test_ort_qdc_android --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          check_name: android-test-results
+          report_paths: ${{ github.workspace }}/build/qdc-android/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Android Test Results
+          path: |
+            ${{ github.workspace }}/build/qdc-android/*.*
+
   test-windows-arm64:
-    runs-on: ["self-hosted", "Windows"]
+    runs-on: ["self-hosted", "Windows", "QDC"]
     needs: [build-windows-arm64]
     steps:
       - uses: actions/checkout@v4
@@ -107,6 +143,7 @@ jobs:
         uses: mikepenz/action-junit-report@v4.0.4
         if: always() # always run even if the previous step fails
         with:
+          check_name: windows-arm64-test-results
           report_paths: ${{ github.workspace }}/build/qdc-windows/*.results.xml
 
       - uses: actions/upload-artifact@v3
@@ -116,7 +153,7 @@ jobs:
             ${{ github.workspace }}/build/qdc-windows/*.*
 
   build-android:
-    runs-on: ["self-hosted", "X64", "Windows"]
+    runs-on: ["self-hosted", "X64", "Windows", "Build"]
     steps:
       - uses: actions/checkout@v4
         with:

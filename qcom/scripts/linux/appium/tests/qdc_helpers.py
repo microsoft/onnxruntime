@@ -20,7 +20,7 @@ ORT_TEST_RESULTS_DEVICE_GLOB = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/onnxruntim
 QDC_LOG_PATH = "/data/local/tmp/QDC_logs"
 
 QNN_ADSP_LIBRARY_PATH = "\\;".join([f"{ORT_DEVICE_PATH}/lib/hexagon-v{arch}/unsigned" for arch in [66, 68, 73, 75, 79]])
-QNN_LD_LIBRARY_PATH = f"{ORT_DEVICE_PATH}/lib/aarch64-android"
+QNN_LD_LIBRARY_PATH = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}:{ORT_DEVICE_PATH}/lib/aarch64-android"
 
 
 class TestBase:
@@ -47,6 +47,22 @@ class TestBase:
         # Push binaries from QDC_HOST_PATH to /data/local/tmp
         for item in Path(QDC_HOST_PATH).iterdir():
             adb.push(item, Path(ORT_DEVICE_PATH))
+
+        # Builds sometimes come from Windows, where executable bits are not set.
+        adb.shell(
+            [
+                "find",
+                f"{ORT_DEVICE_PATH}/lib",
+                "-type",
+                "f",
+                "-exec",
+                "chmod",
+                "+x",
+                "{}",
+                "\\;",
+            ],
+        )
+        adb.shell([f"sh -c 'chmod +x {ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/*'"])
 
     def copy_logs(self):
         adb = Adb()
