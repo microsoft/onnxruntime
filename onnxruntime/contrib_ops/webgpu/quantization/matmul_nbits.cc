@@ -417,8 +417,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
 
-#if !defined(__wasm__)
   const bool has_zero_points = zero_points != nullptr;
+#if !defined(__wasm__)
   int32_t subgroup_matrix_config_index = -1;
   // apple|intel - Experimental dawn support for subgroup matrix matmul.
   if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
