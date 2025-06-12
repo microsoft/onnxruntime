@@ -13,7 +13,7 @@ import numpy as np
 import torch
 from convert_generation import add_cache_indirection_to_mha, add_output_qk_to_mha, fix_past_sequence_length
 from optimizer import optimize_model
-from transformers import WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor, WhisperTokenizer
+from transformers import AutoTokenizer, WhisperConfig, WhisperForConditionalGeneration, WhisperProcessor
 from whisper_decoder import WhisperDecoder
 from whisper_encoder import WhisperEncoder
 from whisper_encoder_decoder_init import WhisperEncoderDecoderInit
@@ -82,7 +82,7 @@ class WhisperHelper:
         config = WhisperConfig.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         config.save_pretrained(output_dir)
 
-        tokenizer = WhisperTokenizer.from_pretrained(model_name_or_path, cache_dir=cache_dir)
+        tokenizer = AutoTokenizer.from_pretrained(model_name_or_path, cache_dir=cache_dir)
         tokenizer.save_pretrained(output_dir)
 
         processor = WhisperProcessor.from_pretrained(model_name_or_path, cache_dir=cache_dir)
