@@ -699,7 +699,7 @@ void CastMLFloat16ThroughFloatTensor(
 // tensor MLFloat16 -> X
 template <typename DstType>
 struct TensorCaster<MLFloat16, DstType,
-    std::enable_if_t<!std::is_same_v<DstType, Int4x2> && !std::is_same_v<DstType, UInt4x2>>> {
+                    std::enable_if_t<!std::is_same_v<DstType, Int4x2> && !std::is_same_v<DstType, UInt4x2>>> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
   }
