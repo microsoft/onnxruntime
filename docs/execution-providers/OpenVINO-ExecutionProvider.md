@@ -340,6 +340,8 @@ The following table lists all the available configuration options for API 2.0 an
 | enable_opencl_throttling | string | True/False | boolean | This option enables OpenCL queue throttling for GPU devices (reduces CPU utilization when using GPU). |
 | enable_qdq_optimizer | string | True/False | boolean | This option enables QDQ Optimization to improve model performance and accuracy on NPU. |
 | load_config | string | Any custom JSON path | string | This option enables a feature for loading custom JSON OV config during runtime which sets OV parameters. |
+| disable_dynamic_shapes | string | True/False | boolean | This option enables rewriting dynamic shaped models to static shape at runtime and execute. |
+| model_priority | string | LOW, MEDIUM, HIGH, DEFAULT | string | This option configures which models should be allocated to the best resource. |
 
 
 Valid Hetero or Multi or Auto Device combinations:
