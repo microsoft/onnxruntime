@@ -718,6 +718,21 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+
+  /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
+   *   Defaults to SIZE_MAX.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  size_t migraphx_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+   *   0 = kNextPowerOfTwo<br>
+   *   1 = kSameAsRequested<br>
+   *   Defaults to 0.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  int migraphx_arena_extend_strategy;
+
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options

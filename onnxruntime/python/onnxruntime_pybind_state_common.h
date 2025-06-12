@@ -134,6 +134,7 @@ struct OrtStatus {
 #endif
 #ifdef USE_MIGRAPHX
 #include "core/providers/migraphx/migraphx_provider_factory.h"
+#include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #endif
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
 #include "core/providers/openvino/openvino_provider_factory.h"
@@ -209,9 +210,27 @@ extern bool do_copy_in_default_stream;
 // TODO remove deprecated global config
 extern onnxruntime::rocm::TunableOpInfo tunable_op;
 extern onnxruntime::ROCMExecutionProviderExternalAllocatorInfo external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+#endif
+
+#if defined(USE_ROCM) || defined(USE_MIGRAPHX)
+namespace onnxruntime {
+namespace python {
 extern onnxruntime::ArenaExtendStrategy arena_extend_strategy;
 }  // namespace python
 }  // namespace onnxruntime
+#endif
+
+#ifdef USE_MIGRAPHX
+namespace onnxruntime {
+ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX();
+ProviderInfo_MIGraphX& GetProviderInfo_MIGraphX();
+namespace python {
+extern onnxruntime::MIGraphXExecutionProviderExternalAllocatorInfo migx_external_allocator_info;
+}  // namespace python
+}  // namespace onnxruntime
+
 #endif
 
 #include "core/providers/dnnl/dnnl_provider_factory.h"
@@ -302,7 +321,7 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  static AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   return alloc;
 }
 

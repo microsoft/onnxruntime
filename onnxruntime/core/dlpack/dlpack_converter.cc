@@ -260,7 +260,7 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
       deleter(p);
   };
 
-  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), deleter);
+  ort_value.Init(p_tensor.release(), DataTypeImpl::GetType<Tensor>(), std::move(deleter));
   return ort_value;
 }
 

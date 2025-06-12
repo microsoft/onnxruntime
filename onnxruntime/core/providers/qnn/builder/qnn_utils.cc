@@ -1299,6 +1299,21 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
   return Status::OK();
 }
 
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm) {
+  ORT_RETURN_IF_NOT(axis < rank, "Expected axis must be smaller than rank: ", axis, " >= ", rank);
+
+  perm.reserve(rank);
+  for (uint32_t dim = 0; dim < rank; ++dim) {
+    perm.push_back(dim);
+  }
+
+  // Swap axis with the last one.
+  perm[axis] = rank - 1;
+  perm[rank - 1] = axis;
+
+  return Status::OK();
+}
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

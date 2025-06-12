@@ -116,27 +116,34 @@ static void FuseInitializerWithNode(Graph& graph,
   }
 
   // Get the src initialized tensor at input def index 0
-  auto constant_initializer_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name());
-  ONNX_NAMESPACE::TensorProto src_tensor(*constant_initializer_tensor);
+  const auto* constant_initializer_tensor = graph_utils::GetConstantInitializer(graph, node.InputDefs()[0]->Name());
   Initializer src_init{*constant_initializer_tensor, graph.ModelPath()};
-  src_init.ToProto(src_tensor);
 
   // Convert to dst tensor
-  ONNX_NAMESPACE::TensorProto dst_tensor;
+  std::string new_arg_name = graph.GenerateNodeArgName(NewNodeArgName(
+      next_node.InputDefs()[next_node_arg_index]->Name()));
+
+  OrtValue new_data;
   if (next_node_arg_type == DataTypeImpl::GetTensorType<float>())
-    dst_tensor = src_init.ToFloat32(graph.GenerateNodeArgName(NewNodeArgName(next_node.InputDefs()[next_node_arg_index]->Name())), thread_pool);
+    new_data = src_init.ToFloat32(thread_pool);
   else if (next_node_arg_type == DataTypeImpl::GetTensorType<MLFloat16>())
-    dst_tensor = src_init.ToFP16(graph.GenerateNodeArgName(NewNodeArgName(next_node.InputDefs()[next_node_arg_index]->Name())));
+    new_data = src_init.ToFP16();
   else if (next_node_arg_type == DataTypeImpl::GetTensorType<BFloat16>())
-    dst_tensor = src_init.ToBFloat16(graph.GenerateNodeArgName(NewNodeArgName(next_node.InputDefs()[next_node_arg_index]->Name())));
+    new_data = src_init.ToBFloat16();
   else
     return;
 
   // Remove the edge between the current node output def at index 0 and next node arg at relative arg index.
   graph.RemoveEdge(node.Index(), next_node.Index(), 0, static_cast<int>(next_node_arg_index));
 
-  // Add the new converted Tensor in next node as initializer
-  graph_utils::ReplaceNodeInput(next_node, static_cast<int>(next_node_arg_index), graph_utils::AddInitializer(graph, dst_tensor));
+  // Add the new converted Tensor in next node as initializer potentially with external data
+  ONNX_NAMESPACE::TensorProto dst_tensor = utils::TensorToTensorProto(new_data.Get<Tensor>(), new_arg_name, true);
+  if (!utils::HasExternalData(dst_tensor)) {
+    new_data = OrtValue();  // Data is inline
+  }
+
+  auto& new_arg = graph_utils::AddInitializerWithExternalData(graph, dst_tensor, std::move(new_data));
+  graph_utils::ReplaceNodeInput(next_node, static_cast<int>(next_node_arg_index), new_arg);
 }
 
 Status FuseInitializersTransformer::ApplyImpl(Graph& graph, bool& modified, int /*graph_level*/, const logging::Logger& /*logger*/) const {
