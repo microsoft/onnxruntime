@@ -49,38 +49,18 @@ Status GatherOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-// Operator support related.
-
-bool GatherOpBuilder::IsOpSupportedImpl(const GraphViewer&,
-                                        const Node& node,
-                                        const WebnnDeviceType /* device_type */,
-                                        const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  std::vector<int64_t> input_shape;
-  if (!GetShape(*input_defs[0], input_shape, logger))
-    return false;
-  const auto rank = input_shape.size();
-  if (rank < 1) {
-    LOGS(logger, VERBOSE) << "Gather only supports input shapes >= 1D, but input is "
-                          << rank << "d shape";
-    return false;
-  }
-
-  return true;
-}
-
 bool GatherOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                                              const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const std::string_view op_type = node.OpType();
-  int32_t input_type;
-  int32_t indices_type;
+  int32_t input_type, indices_type;
+
   if (!GetType(input, input_type, logger) ||
       !GetType(indices, indices_type, logger))
     return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 
