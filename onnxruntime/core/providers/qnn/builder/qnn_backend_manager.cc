@@ -892,7 +892,7 @@ Status QnnBackendManager::CreateContext(bool enable_htp_weight_sharing) {
 
   ORT_RETURN_IF(QNN_CONTEXT_NO_ERROR != result, "Failed to create context. Error: ", QnnErrorHandleToString(result), ", Code:", result);
 
-    ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
+  ORT_RETURN_IF_ERROR(AddQnnContextHandle(context));
 
   context_created_ = true;
   return Status::OK();

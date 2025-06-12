@@ -518,9 +518,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
 
   // For context binary generation with weight sharing enabled, use the QnnBackendManager from the shared context if it exits
   // So that all graphs from later sessions will be compiled into the same QNN context
-  if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_ )
-       && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
-
+  if (((context_cache_enabled_ && share_ep_contexts_) || enable_vtcm_backup_buffer_sharing_) && SharedContext::GetInstance().GetSharedQnnBackendManager()) {
     qnn_backend_manager_ = SharedContext::GetInstance().GetSharedQnnBackendManager();
     // Clear the QnnBackendManager from singleton to stop the resource share
     if (stop_share_ep_contexts_) {
@@ -772,7 +770,7 @@ static void GetMainEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
 }
 
 // For model with EPContext, filter in EPContext nodes only, and make sure each partition only has one single EPContext node
-static void PartitionCtxModel (const onnxruntime::GraphViewer& graph_viewer,
+static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
                               const size_t num_nodes_in_graph,
                               std::vector<std::unique_ptr<ComputeCapability>>& result,
                               const std::function<std::string()>& gen_metadef_name,
@@ -865,7 +863,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     }
   }
 
-  std::unordered_map<std::string,std::vector<std::string>> context_bin_map;
+  std::unordered_map<std::string, std::vector<std::string>> context_bin_map;
   if (enable_vtcm_backup_buffer_sharing_) {
     std::unordered_set<const Node*> ep_ctx_nodes;
     GetMainEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
@@ -881,7 +879,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
 
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
-        context_bin_map.emplace(context_bin_filepath,std::vector<std::string>());
+        context_bin_map.emplace(context_bin_filepath, std::vector<std::string>());
         // Push context bin filepath for lookup between sessions
         context_bin_map.at(context_bin_filepath).push_back(context_bin_filepath);
       }
