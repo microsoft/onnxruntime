@@ -306,6 +306,21 @@ TEST(CastOpTest, Int4x2ToUInt32) {
   TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint32_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToInt32OddNumberOfElements) {
+  // GIVEN
+  const std::vector<int64_t> odd_shape{5};
+  const std::vector<Int4x2> odd_input = {
+      Int4x2(-8, 7),  // boundary values
+      Int4x2(0, -1),  // zero and negative
+      Int4x2(3, 0),
+  };
+
+  const std::vector<int32_t> expected_odd_output = {-8, 7, 0, -1, 3};
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(odd_input), gsl::make_span(expected_odd_output), odd_shape);
+}
+
 TEST(CastOpTest, Int4x2ToInt64) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
