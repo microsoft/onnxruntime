@@ -345,26 +345,17 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   }
 
   const auto& ep_name = ep_devices[0]->ep_name;
+  OrtEpFactory* ep_factory = ep_devices[0]->ep_factory;
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [&ep_name](const OrtEpDevice* ep_device) { return ep_device->ep_name == ep_name; });
+                               [&ep_name, &ep_factory](const OrtEpDevice* ep_device) {
+                                 return (ep_device->ep_name == ep_name) && (ep_device->ep_factory == ep_factory);
+                               });
   if (!all_match) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
   }
 
-  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
-
   for (const OrtEpDevice* ep_device : ep_devices) {
-    if (provider_factory == nullptr) {
-      EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
-
-      if (internal_factory) {
-        provider_factory = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
-      } else {
-        provider_factory = std::make_unique<PluginExecutionProviderFactory>(*ep_device->ep_factory, ep_devices);
-      }
-    }
-
     // add the options to the session options with the EP prefix.
     // first add the default values with prefix followed by user specified values so those win
     const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
@@ -380,6 +371,15 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
 
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + ep_option_keys[j]).c_str(), ep_option_vals[j]));
     }
+  }
+
+  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
+  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
+
+  if (internal_factory) {
+    provider_factory = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+  } else {
+    provider_factory = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
   }
 
   out = std::move(provider_factory);
