@@ -289,12 +289,13 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT32) {
     round_str = "round";
   }
-
-  SS(float_cond, 1024);
+  std::string use_sqrt_for_pow;
   if (lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT || lhs_element_type == ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16) {
-    float_cond << " else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
-                  "  return sqrt(a);\n"
-                  "  }\n";
+    // use sqrt instead of pow when base (a) is float exponent (b) is 0.5
+    use_sqrt_for_pow =
+        "  else if (a >= input_a_element_t(0.0) && b == 0.5) {\n"
+        "    return sqrt(a);\n"
+        "  }\n";
   }
 
   s << "fn pow_custom(a : input_a_element_t, b : f32) -> input_a_element_t {\n"
@@ -303,7 +304,7 @@ std::string GetPowImpl(int lhs_element_type, int /* rhs_element_type */) {
        "  } else if (a < input_a_element_t(0.0) && b != floor(b)) {\n"
        "    return input_a_element_t(pow(f32(a), b)); // NaN\n"
        "  }\n"
-    << SS_GET(float_cond)
+    << use_sqrt_for_pow
     << "  return select(sign(a), input_a_element_t(1.0), round(abs(b) % 2.0) != 1.0) * input_a_element_t(" << round_str << "(pow(f32(abs(a)), b)));\n"
     << "}\n"
        "fn pow_v(a : vec4<input_a_element_t>, b : vec4<input_b_element_t>) -> vec4<input_a_element_t> {\n"
