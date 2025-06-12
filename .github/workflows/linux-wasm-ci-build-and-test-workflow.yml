@@ -92,7 +92,6 @@ jobs:
             ${{ env.common_build_args }} \
             --build_dir ${{ github.workspace }}/build/wasm_inferencing_webgpu \
             --use_webgpu \
-            --use_jsep \
             --use_webnn \
             --target onnxruntime_webassembly \
             --skip_tests
@@ -113,8 +112,8 @@ jobs:
         if: ${{ inputs.skip_publish != true && inputs.build_webgpu == true }}
         run: |
           mkdir -p ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.wasm ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.mjs ${{ github.workspace }}/artifacts/wasm_webgpu/
+          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm_webgpu/
+          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm_webgpu/
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
