@@ -4,9 +4,9 @@
 #include "core/framework/error_code_helper.h"
 
 #include <cassert>
+#include <memory>
 
 #include "core/session/onnxruntime_c_api.h"
-#include "core/session/onnxruntime_cxx_api.h"  // for Ort::Status
 #include "core/session/ort_apis.h"
 #include "core/common/status.h"
 #include "core/common/safeint.h"
@@ -55,6 +55,20 @@ _Check_return_ _Ret_notnull_ OrtStatus* ORT_API_CALL OrtApis::CreateStatus(OrtEr
 
 namespace onnxruntime {
 
+namespace {
+
+struct OrtStatusDeleter {
+  void operator()(OrtStatus* p) const noexcept {
+    if (p != nullptr) {
+      DeleteStatus(p);
+    }
+  }
+};
+
+using UniqueOrtStatus = std::unique_ptr<OrtStatus, OrtStatusDeleter>;
+
+}  // namespace
+
 _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   if (st.IsOK())
     return nullptr;
@@ -77,8 +91,8 @@ Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
 }
 
 Status MoveToStatus(OrtStatus* ort_status, common::StatusCategory category) {
-  Ort::Status owned_ort_status{ort_status};  // takes ownership of `ort_status` and releases it on destruction
-  return ToStatus(owned_ort_status, category);
+  auto unique_ort_status = UniqueOrtStatus{ort_status};
+  return ToStatus(unique_ort_status.get(), category);
 }
 
 }  // namespace onnxruntime
