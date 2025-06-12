@@ -262,7 +262,7 @@ struct ToInt4ElementConverter<double> {
 
 template <typename SrcType>
 struct ToInt4ElementConverter<SrcType,
-                              std::enable_if_t<std::is_same_v<SrcType, BFloat16>
+                              std::enable_if_t<IsOrtFloat16Type<SrcType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
                                                || IsOrtFloat8Type<SrcType>::value
 #endif
@@ -576,7 +576,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, Int4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || std::is_same_v<BFloat16, SrcType>
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || IsOrtFloat16Type<SrcType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<SrcType>::value
 #endif
@@ -627,7 +627,7 @@ struct TensorCaster<bool, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, UInt4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || std::is_same_v<BFloat16, SrcType>
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || IsOrtFloat16Type<SrcType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<SrcType>::value
 #endif
@@ -698,7 +698,8 @@ void CastMLFloat16ThroughFloatTensor(
 
 // tensor MLFloat16 -> X
 template <typename DstType>
-struct TensorCaster<MLFloat16, DstType> {
+struct TensorCaster<MLFloat16, DstType,
+    std::enable_if_t<!std::is_same_v<DstType, Int4x2> && !std::is_same_v<DstType, UInt4x2>>> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
   }
