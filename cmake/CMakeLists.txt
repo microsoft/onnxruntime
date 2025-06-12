@@ -372,7 +372,7 @@ if (onnxruntime_USE_ROCM)
     if (HIPIFY_PERL_PATH-NOTFOUND)
       MESSAGE(FATAL_ERROR "hipify-perl not found")
     endif()
-    MESSAGE("HIPIFY PATH:"${HIPIFY_PERL_PATH}/hipify-perl)
+    MESSAGE("HIPIFY PATH: ${HIPIFY_PERL_PATH}/hipify-perl")
     set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
