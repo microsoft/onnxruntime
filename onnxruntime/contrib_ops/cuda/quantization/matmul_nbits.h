@@ -13,6 +13,11 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
 
+#include <iostream>
+#include <chrono>
+
+#define FPA_INTB_GEMM_LATENCY 1
+
 namespace onnxruntime {
 namespace contrib {
 namespace cuda {
@@ -76,8 +81,19 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(sm_);
 
-        constexpr int max_m = 8291;
-        RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
+#ifdef FPA_INTB_GEMM_LATENCY
+        std::cout << "Start Gemm Profile for N=" << N_ << ", K=" << K_ << std::endl;
+        auto start = std::chrono::high_resolution_clock::now();
+#endif
+
+        RunGemmProfile(has_fpA_intB_gemv_, 1, 8192);
+
+#ifdef FPA_INTB_GEMM_LATENCY
+        auto end = std::chrono::high_resolution_clock::now();
+        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+        std::cout << "Gemm Profile Latency: " << duration.count() << " ms for N=" << N_ << ", K=" << K_ << std::endl;
+#endif
+
         has_fpA_intB_gemm_ = true;
       }
     }

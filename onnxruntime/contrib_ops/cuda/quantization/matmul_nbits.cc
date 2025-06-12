@@ -100,6 +100,11 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
   is_packed = false;
   if (has_fpA_intB_gemm_) {
     cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
+
+#ifdef FPA_INTB_GEMM_LATENCY
+    auto start = std::chrono::high_resolution_clock::now();
+#endif
+
     if (input_idx == MatMulNBits_Input_B) {
       ORT_RETURN_IF_ERROR(PrePack_B(tensor, alloc, stream));
       is_packed = true;
@@ -112,6 +117,12 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
         is_packed = true;
       }
     }
+
+#ifdef FPA_INTB_GEMM_LATENCY
+    auto end = std::chrono::high_resolution_clock::now();
+    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
+    std::cout << "Prepack Latency: " << duration.count() << " ms for input " << input_idx << ", N=" << N_ << ", K=" << K_ << std::endl;
+#endif
   }
 
   return Status::OK();
