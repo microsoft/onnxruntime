@@ -1,0 +1,35 @@
+diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
+index 3effc441..565a5260 100644
+--- a/absl/container/internal/raw_hash_set.h
++++ b/absl/container/internal/raw_hash_set.h
+@@ -1121,11 +1121,12 @@ class CommonFields : public CommonFieldsGenerationInfo {
+ #ifdef NDEBUG
+     f();
+     return;
+-#endif
++#else
+     const size_t cap = capacity();
+     set_capacity(InvalidCapacity::kReentrance);
+     f();
+     set_capacity(cap);
++#endif
+   }
+ 
+  private:
+@@ -3348,7 +3349,7 @@ class raw_hash_set {
+   void AssertHashEqConsistent(const K& key) {
+ #ifdef NDEBUG
+     return;
+-#endif
++#else
+     // If the hash/eq functors are known to be consistent, then skip validation.
+     if (std::is_same<hasher, absl::container_internal::StringHash>::value &&
+         std::is_same<key_equal, absl::container_internal::StringEq>::value) {
+@@ -3385,6 +3386,7 @@ class raw_hash_set {
+     // We only do validation for small tables so that it's constant time.
+     if (capacity() > 16) return;
+     IterateOverFullSlots(common(), sizeof(slot_type), assert_consistent);
++#endif
+   }
+ 
+   // Attempts to find `key` in the table; if it isn't found, returns an iterator
