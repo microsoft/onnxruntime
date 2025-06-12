@@ -99,6 +99,11 @@ void* AllocatorDefaultAlloc(size_t size) {
   return AllocatorDefaultAllocAligned(size, alignment);
 }
 
+AllocatorPtr CPUAllocator::DefaultInstance() {
+  static AllocatorPtr instance = std::make_shared<CPUAllocator>();
+  return instance;
+}
+
 void* CPUAllocator::Alloc(size_t size) {
   const auto alignment = std::max(Info().device.GetAlignment(), MlasGetPreferredBufferAlignment());
   return AllocatorDefaultAllocAligned(size, alignment);
