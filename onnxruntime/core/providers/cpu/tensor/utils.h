@@ -441,6 +441,8 @@ struct SliceIterator : public SliceIteratorBase {
 };
 
 inline void CopyCpuTensor(const Tensor* src, Tensor* tgt) {
+  ORT_ENFORCE(src->SizeInBytes() == tgt->SizeInBytes(), "Destination size does not match source.");
+
   void* target = tgt->MutableDataRaw();
   const void* source = src->DataRaw();
 
