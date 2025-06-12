@@ -1,5 +1,5 @@
 diff --git a/absl/container/internal/raw_hash_set.h b/absl/container/internal/raw_hash_set.h
-index 3effc441..565a5260 100644
+index 3effc441..c339e269 100644
 --- a/absl/container/internal/raw_hash_set.h
 +++ b/absl/container/internal/raw_hash_set.h
 @@ -1121,11 +1121,12 @@ class CommonFields : public CommonFieldsGenerationInfo {
@@ -16,20 +16,29 @@ index 3effc441..565a5260 100644
    }
  
   private:
-@@ -3348,7 +3349,7 @@ class raw_hash_set {
-   void AssertHashEqConsistent(const K& key) {
+@@ -3344,11 +3345,14 @@ class raw_hash_set {
+ 
+   // Asserts that hash and equal functors provided by the user are consistent,
+   // meaning that `eq(k1, k2)` implies `hash(k1)==hash(k2)`.
+-  template <class K>
+-  void AssertHashEqConsistent(const K& key) {
  #ifdef NDEBUG
++  template <class K>
++  void AssertHashEqConsistent(const K&) {
      return;
 -#endif
++  }
 +#else
++  template <class K>
++  void AssertHashEqConsistent(const K& key) {
      // If the hash/eq functors are known to be consistent, then skip validation.
      if (std::is_same<hasher, absl::container_internal::StringHash>::value &&
          std::is_same<key_equal, absl::container_internal::StringEq>::value) {
-@@ -3385,6 +3386,7 @@ class raw_hash_set {
-     // We only do validation for small tables so that it's constant time.
+@@ -3386,6 +3390,7 @@ class raw_hash_set {
      if (capacity() > 16) return;
      IterateOverFullSlots(common(), sizeof(slot_type), assert_consistent);
-+#endif
    }
++#endif
  
    // Attempts to find `key` in the table; if it isn't found, returns an iterator
+   // where the value can be inserted into, with the control byte already set to
