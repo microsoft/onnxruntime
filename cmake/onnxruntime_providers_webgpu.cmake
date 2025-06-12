@@ -20,6 +20,7 @@
 
   source_group(TREE ${REPO_ROOT} FILES ${onnxruntime_providers_webgpu_cc_srcs})
   onnxruntime_add_static_library(onnxruntime_providers_webgpu ${onnxruntime_providers_webgpu_cc_srcs})
+  target_compile_features(onnxruntime_providers_webgpu PRIVATE cxx_std_20)
   onnxruntime_add_include_to_target(onnxruntime_providers_webgpu
     onnxruntime_common onnx onnx_proto flatbuffers::flatbuffers Boost::mp11 safeint_interface)
 
