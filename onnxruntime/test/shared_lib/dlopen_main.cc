@@ -142,7 +142,7 @@ int main() {
   const OrtApi* g_ort_api_instance = nullptr;
 
   std::cout << "Attempting to test ONNX Runtime dynamic load/unload..." << std::endl;
-
+  int retval = 0;
   try {
 #ifdef _DEBUG
     _CrtMemCheckpoint(&s1);
@@ -290,8 +290,7 @@ int main() {
         } else {
           std::cout << "\nHEAP_DEBUG: s3_diff_final did not show a net increase in _NORMAL_BLOCKs." << std::endl;
         }
-      } else {
-        std::cout << "\nHEAP_DEBUG: No overall memory difference detected between s1 (before load) and s2 (after unload)." << std::endl;
+        retval = EXIT_FAILURE;
       }
     }
 #endif
@@ -310,5 +309,5 @@ int main() {
   }
 
   std::cout << "Program finished." << std::endl;
-  return 0;
+  return retval;
 }
