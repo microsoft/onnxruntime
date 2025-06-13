@@ -5351,13 +5351,14 @@ struct OrtApi {
    * \param[in] vendor_id PCI Vendor ID. Use 0 for a generic allocator (e.g. WebGPU).
    * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
    * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
-   *                                  OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer
-   *                                  between the device and the CPU.
+   *                     OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer between the
+   *                     device and the CPU. Use the device_type and device_id of the GPU/NPU that the memory is also
+   *                     accessible to.
    * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
    * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
    *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
    *                           allocators via CreateAllocator/CreateAndRegisterAllocator/CreateAndRegisterAllocatorV2.
-   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtAPi::ReleaseMemoryInfo
+   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtApi::ReleaseMemoryInfo
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *

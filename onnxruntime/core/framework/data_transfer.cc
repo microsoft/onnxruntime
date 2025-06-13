@@ -42,7 +42,8 @@ common::Status IDataTransfer::CopySparseTensors(const std::vector<SparseSrcDstPa
 #endif
 
 bool CPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  return src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU;
+  return ((src_device.Type() == OrtDevice::CPU || src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) &&
+          (dst_device.Type() == OrtDevice::CPU || dst_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE));
 }
 
 common::Status CPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {

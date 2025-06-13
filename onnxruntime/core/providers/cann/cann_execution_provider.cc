@@ -1474,7 +1474,7 @@ std::vector<AllocatorPtr> CANNExecutionProvider::CreatePreferredAllocators() {
       [](OrtDevice::DeviceId device_id) {
         return std::make_unique<CANNPinnedAllocator>(device_id, CANN_PINNED);
       },
-      DEFAULT_CPU_ALLOCATOR_DEVICE_ID);
+      info_.device_id);
 
   return std::vector<AllocatorPtr>{
       CreateCannAllocator(info_.device_id, info_.npu_mem_limit, info_.arena_extend_strategy,
@@ -1491,9 +1491,10 @@ OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::HUAWEI, 0);
+    return OrtDevice(OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::HUAWEI,
+                     default_device_.Id());
   return default_device_;
 }
 
 }  // namespace onnxruntime
-/
+

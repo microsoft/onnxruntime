@@ -23,7 +23,7 @@ TEST(TestDeferredRelease, WithArena) {
   // Create CUDA EP.
   CUDAExecutionProviderInfo info;
   CUDAExecutionProvider ep(info);
-  AllocatorPtr gpu_alloctor = ep.CreatePreferredAllocators()[0];
+  AllocatorPtr gpu_allocator = ep.CreatePreferredAllocators()[0];
 
   onnxruntime::RunOptions run_opts;
   run_opts.run_tag = "log1";
@@ -32,7 +32,7 @@ TEST(TestDeferredRelease, WithArena) {
   AllocatorPtr cpu_pinned_alloc = ep.CreatePreferredAllocators()[1];
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr, info);
+  CudaStream stream(nullptr, gpu_allocator->Info().device, cpu_pinned_alloc, false, true, nullptr, nullptr, info);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;
@@ -60,8 +60,9 @@ TEST(TestDeferredRelease, WithoutArena) {
   onnxruntime::RunOptions run_opts;
   run_opts.run_tag = "log1";
 
-  OrtDevice pinned_device{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                          DEFAULT_CPU_ALLOCATOR_DEVICE_ID};
+
+  OrtDevice pinned_device{OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                          info.device_id};
   // Create allocator without BFCArena
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId) {
@@ -70,12 +71,12 @@ TEST(TestDeferredRelease, WithoutArena) {
       pinned_device.Id(),
       false /* no arena */);
   auto cuda_pinned_alloc = CreateAllocator(pinned_memory_info);
-  AllocatorPtr gpu_alloctor = ep.CreatePreferredAllocators()[0];
+  AllocatorPtr gpu_allocator = ep.CreatePreferredAllocators()[0];
   // Allocator for call cudaMallocHost and cudaFreeHost
   // For details, see CUDAPinnedAllocator in cuda_allocator.cc.
   // let the CudaStream instance "own" the default stream, so we can avoid the
   // work to initialize cublas/cudnn/... It is ok since it is just a customized unit test.
-  CudaStream stream(nullptr, gpu_alloctor->Info().device, cuda_pinned_alloc, false, true, nullptr, nullptr, info);
+  CudaStream stream(nullptr, gpu_allocator->Info().device, cuda_pinned_alloc, false, true, nullptr, nullptr, info);
   // 10 MB
   const size_t n_bytes = 10 * 1000000;
   const int64_t n_allocs = 64;

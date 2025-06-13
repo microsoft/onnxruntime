@@ -11,7 +11,15 @@ NPUDataTransfer::NPUDataTransfer() {}
 NPUDataTransfer::~NPUDataTransfer() {}
 
 bool NPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  return src_device.Type() == OrtDevice::NPU || dst_device.Type() == OrtDevice::NPU;
+  // check that only our NPU is involved
+  if ((src_device.Type() == OrtDevice::NPU && src_device.Vendor() != OrtDevice::VendorIds::HUAWEI) ||
+      (dst_device.Type() == OrtDevice::NPU && dst_device.Vendor() != OrtDevice::VendorIds::HUAWEI)) {
+    return false;
+  }
+
+  // copies between NPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
+  return (src == OrtDevice::NPU || src == OrtDevice::CPU) &&
+         (dst == OrtDevice::NPU || dst == OrtDevice::CPU);
 }
 
 common::Status NPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -22,9 +30,12 @@ common::Status NPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
+  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU && dst_device.MemType() == OrtDevice::DEFAULT;
+  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU && src_device.MemType() == OrtDevice::DEFAULT;
+
   // for the sync version of memcpy, launch to cann default stream
-  if (dst_device.Type() == OrtDevice::NPU) {
-    if (src_device.Type() == OrtDevice::NPU) {
+  if (dst_is_npu_default) {
+    if (src_is_npu_default) {
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
         CANN_RETURN_IF_ERROR(aclrtMemcpy(dst_data,
@@ -43,7 +54,7 @@ common::Status NPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
                                        ACL_MEMCPY_HOST_TO_DEVICE));
       CANN_RETURN_IF_ERROR(aclrtSynchronizeStream(nullptr));
     }
-  } else if (src_device.Type() == OrtDevice::NPU) {
+  } else if (src_is_npu_default) {
     // copying from NPU to CPU memory, this is blocking
     CANN_RETURN_IF_ERROR(aclrtMemcpy(dst_data,
                                      bytes,
@@ -67,16 +78,11 @@ common::Status NPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  if (dst_device.Type() == OrtDevice::NPU) {
-    if (src_device.Type() == OrtDevice::CPU) {
-      // copy from pinned memory to NPU, this is non-blocking
-      CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
-                                            bytes,
-                                            src_data,
-                                            bytes,
-                                            ACL_MEMCPY_HOST_TO_DEVICE,
-                                            static_cast<aclrtStream>(stream.GetHandle())));
-    } else if (src_device.Type() == OrtDevice::NPU) {
+  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU && dst_device.MemType() == OrtDevice::DEFAULT;
+  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU && src_device.MemType() == OrtDevice::DEFAULT;
+
+  if (dst_is_npu_default) {
+    if (src_is_npu_default) {
       // copying between NPU, this is non-blocking
       if (dst_data != src_data) {
         CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
@@ -86,17 +92,23 @@ common::Status NPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
                                               ACL_MEMCPY_DEVICE_TO_DEVICE,
                                               static_cast<aclrtStream>(stream.GetHandle())));
       }
+    } else {
+      // copy from pinned or CPU memory to NPU, this is non-blocking
+      CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
+                                            bytes,
+                                            src_data,
+                                            bytes,
+                                            ACL_MEMCPY_HOST_TO_DEVICE,
+                                            static_cast<aclrtStream>(stream.GetHandle())));
     }
-  } else if (src_device.Type() == OrtDevice::NPU) {
-    if (dst_device.Type() == OrtDevice::CPU) {
-      // copying from NPU to pinned memory, this is non-blocking
+  } else if (src_is_npu_default) {
+      // copying from NPU to pinned or CPU memory, this is non-blocking
       CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
                                             bytes,
                                             src_data,
                                             bytes,
                                             ACL_MEMCPY_DEVICE_TO_HOST,
                                             static_cast<aclrtStream>(stream.GetHandle())));
-    }
   } else {
     if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived

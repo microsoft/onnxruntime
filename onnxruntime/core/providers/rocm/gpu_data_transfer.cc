@@ -10,8 +10,15 @@
 namespace onnxruntime {
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE ||
-         dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE;
+  // check that only our GPU is involved
+  if ((src_device.Type() == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::AMD) ||
+      (dst_device.Type() == OrtDevice::GPU && dst_device.Vendor() != OrtDevice::VendorIds::AMD)) {
+    return false;
+  }
+
+  // copies between GPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
+  return (src == OrtDevice::GPU || src == OrtDevice::CPU) &&
+         (dst == OrtDevice::GPU || dst == OrtDevice::CPU);
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -22,9 +29,12 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+
   // for the sync version of memcpy, launch to hip default stream
-  if (dst_device.Type() == OrtDevice::GPU) {
-    if (src_device.Type() == OrtDevice::GPU) {
+  if (dst_is_gpu_default) {
+    if (src_is_gpu_default) {
       // Copy only if the two addresses are different.
       if (dst_data != src_data) {
         HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToDevice));
@@ -39,7 +49,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
         HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr));
       }
     }
-  } else if (src_device.Type() == OrtDevice::GPU) {
+  } else if (src_is_gpu_default) {
     // copying from GPU to CPU memory, this is blocking
     HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyDeviceToHost));
   } else {
@@ -59,20 +69,23 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  if (dst_device.Type() == OrtDevice::GPU) {
-    if (src_device.Type() == OrtDevice::CPU) {
-      // If source are not pinned, the memory copy will be performed synchronously.
-      // For best performance, use hipHostMalloc to allocate host memory that is transferred asynchronously.
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyHostToDevice,
-                                         static_cast<hipStream_t>(stream.GetHandle())));
-    } else if (src_device.Type() == OrtDevice::GPU) {
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+
+  if (dst_is_gpu_default) {
+    if (src_is_gpu_default) {
       // copying between GPU, this is non-blocking
       if (dst_data != src_data) {
         HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToDevice,
                                            static_cast<hipStream_t>(stream.GetHandle())));
       }
+    } else {
+      // If source are not pinned, the memory copy will be performed synchronously.
+      // For best performance, use hipHostMalloc to allocate host memory that is transferred asynchronously.
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyHostToDevice,
+                                         static_cast<hipStream_t>(stream.GetHandle())));
     }
-  } else if (src_device.Type() == OrtDevice::GPU) {
+  } else if (src_is_gpu_default) {
     // If dest are not pinned, the memory copy will be performed synchronously.
     // For best performance, use hipHostMalloc to allocate host memory that is transferred asynchronously.
     HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost,

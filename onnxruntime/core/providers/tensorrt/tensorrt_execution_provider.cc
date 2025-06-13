@@ -1917,10 +1917,9 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED, device_id);
       },
-      0);
+      narrow<OrtDevice::DeviceId>(device_id_));
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
@@ -4517,8 +4516,8 @@ OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                     0 /*CPU device id always be 0*/);
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     default_device_.Id());
   return default_device_;
 }
 
