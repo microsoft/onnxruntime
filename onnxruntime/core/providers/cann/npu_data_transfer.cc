@@ -11,8 +11,8 @@ NPUDataTransfer::NPUDataTransfer() {}
 NPUDataTransfer::~NPUDataTransfer() {}
 
 bool NPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  OrtDevice::Type src_type = src_device.Type();
-  OrtDevice::Type dst_type = dst_device.Type();
+  OrtDevice::DeviceType src_type = src_device.Type();
+  OrtDevice::DeviceType dst_type = dst_device.Type();
 
   // check that only our NPU is involved
   if ((src_type == OrtDevice::NPU && src_device.Vendor() != OrtDevice::VendorIds::HUAWEI) ||

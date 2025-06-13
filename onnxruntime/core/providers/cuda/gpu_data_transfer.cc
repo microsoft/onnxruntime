@@ -8,18 +8,16 @@
 
 namespace onnxruntime {
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  OrtDevice::Type src_type = src_device.Type();
-  OrtDevice::Type dst_type = dst_device.Type();
+  OrtDevice::DeviceType src_type = src_device.Type();
+  OrtDevice::DeviceType dst_type = dst_device.Type();
 
-  // check that only our GPU is involved
   if ((src_type == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NVIDIA) ||
       (dst_type == OrtDevice::GPU && dst_device.Vendor() != OrtDevice::VendorIds::NVIDIA)) {
-    return false;
+      return false;
   }
 
-  // copies between GPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
   return (src_type == OrtDevice::GPU || src_type == OrtDevice::CPU) &&
-         (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
+        (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {

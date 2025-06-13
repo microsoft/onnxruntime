@@ -10,8 +10,8 @@
 #define CUDA_RETURN_IF_ERROR(expr) ORT_RETURN_IF_ERROR(CUDA_CALL(expr))
 namespace onnxruntime {
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  OrtDevice::Type src_type = src_device.Type();
-  OrtDevice::Type dst_type = dst_device.Type();
+  OrtDevice::DeviceType src_type = src_device.Type();
+  OrtDevice::DeviceType dst_type = dst_device.Type();
 
   // check that only our GPU is involved
   if ((src_type == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NVIDIA) ||
