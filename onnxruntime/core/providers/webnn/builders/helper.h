@@ -203,11 +203,11 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
                                                   const emscripten::val& wnn_limits,
                                                   const logging::Logger& logger);
 
-// Retrieve the first input name of a WebNN op used for validating supported input data types.
+// Retrieve the first input name of an ONNX op's corresponding WebNN op used for validating supported input data types.
 // WebNN ops have various first input names such as 'a', 'input', 'inputs', etc.
 // All WebNN op inputs are recorded in op_inputs_map.
-inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op_type) {
-  auto it = op_inputs_map.find(webnn_op_type);
+inline std::string_view GetWebNNOpFirstInputName(const std::string_view onnx_op_type) {
+  auto it = op_inputs_map.find(onnx_op_type);
   if (it != op_inputs_map.end()) {
     for (const auto& input : it->second.inputs) {
       if (input.index == 0) {
@@ -218,9 +218,9 @@ inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op
   return "input";
 }
 
-inline std::string_view GetWebNNOpType(const std::string_view op_type) {
-  auto it = op_inputs_map.find(op_type);
-  // Return an empty string if the op_type is not listed in the op_inputs_map.
+inline std::string_view GetWebNNOpType(const std::string_view onnx_op_type) {
+  auto it = op_inputs_map.find(onnx_op_type);
+  // Return an empty string if the onnx_op_type is not listed in the op_inputs_map.
   return (it != op_inputs_map.end()) ? it->second.opType : "";
 }
 
