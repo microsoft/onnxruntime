@@ -2698,6 +2698,34 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetNumAttributes, _In_ const OrtNode* node, _Out_ size_t* num_attrs) {
+  API_IMPL_BEGIN
+  if (num_attrs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'num_attrs' argument is NULL");
+  }
+  *num_attrs = 0;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumImplicitInputs(*num_attrs));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node,
+                    _Out_writes_all_(max_num_attrs) const OrtOpAttr** attrs,
+                    _In_ size_t max_num_attrs) {
+  API_IMPL_BEGIN
+  if (attrs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid 'attrs' argument is NULL");
+  }
+  onnxruntime::InlinedVector<const OrtOpAttr*> attributes;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(attributes));
+  size_t num_attrs = std::min(max_num_attrs, attributes.size());
+  for (size_t i = 0; i < num_attrs; i++) {
+    attrs[i] = attributes[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
   API_IMPL_BEGIN
   if (num_subgraphs == nullptr) {
@@ -3405,6 +3433,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetNumImplicitInputs,
     &OrtApis::Node_GetImplicitInputs,
+    &OrtApis::Node_GetNumAttributes,
+    &OrtApis::Node_GetAttributes,
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,

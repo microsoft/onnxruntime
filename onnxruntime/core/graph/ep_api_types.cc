@@ -81,6 +81,17 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   InlinedVector<EpValueInfo*> ep_node_outputs(node_outputs.size(), nullptr);
   ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_outputs, ep_node_outputs, EpValueInfo::kFlagNone);
 
+  const auto& node_attrs = node.GetAttributes();
+  std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>> ep_node_attributes_map;
+  std::vector<OrtOpAttr*> ep_node_attributes;
+  ep_node_attributes_map.reserve(node_attrs.size());
+  ep_node_attributes.reserve(node_attrs.size());
+  for (const auto& item : node_attrs) {
+    auto attr = std::make_unique<OrtOpAttr>(item.second);
+    ep_node_attributes.emplace_back(attr.get());
+    ep_node_attributes_map[item.first] = std::move(attr);
+  }
+
   std::vector<SubgraphState> ep_node_subgraphs;
   std::vector<EpValueInfo*> ep_node_implicit_inputs;
 
@@ -102,6 +113,8 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
   ep_node->inputs = std::move(ep_node_inputs);
   ep_node->outputs = std::move(ep_node_outputs);
+  ep_node->attributes_map = std::move(ep_node_attributes_map);
+  ep_node->attributes = std::move(ep_node_attributes);
   ep_node->implicit_inputs = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs = std::move(ep_node_subgraphs);
   result = std::move(ep_node);
@@ -141,6 +154,19 @@ Status EpNode::GetImplicitInputs(InlinedVector<const OrtValueInfo*>& result) con
   result.resize(implicit_inputs.size());
   for (size_t i = 0; i < implicit_inputs.size(); i++) {
     result[i] = implicit_inputs[i];
+  }
+  return Status::OK();
+}
+
+Status EpNode::GetNumAttributes(size_t& num_attrs) const {
+  num_attrs = attributes.size();
+  return Status::OK();
+}
+
+Status EpNode::GetAttributes(onnxruntime::InlinedVector<const OrtOpAttr*>& result) const {
+  result.resize(attributes.size());
+  for (size_t i = 0; i < attributes.size(); i++) {
+    result[i] = attributes[i];
   }
   return Status::OK();
 }

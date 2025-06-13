@@ -5790,6 +5790,34 @@ struct OrtApi {
                   _Out_writes_all_(max_num_implicit_inputs) const OrtValueInfo** implicit_inputs,
                   _In_ size_t max_num_implicit_inputs);
 
+  /** \brief Returns the number of attributes for an OrtNode instance.
+   *
+   * \param[in] node The OrtNode instance.
+   * \return The number of attributes.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumAttributes, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
+
+  /** \brief Gets the Attributes for an OrtNode.
+   *
+   * Caller provides a pre-allocated array that will be filled with the inputs. Use Node_NumInputs() to get the
+   * number of inputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo pointers.
+   *                    Any optional input that does not have a value is set to NULL in the `inputs` array.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+   *                           Typical usage sets this to the value of Node_NumInputs().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node,
+                  _Out_writes_all_(max_num_attrs) const OrtOpAttr** attrs,
+                  _In_ size_t max_num_attrs);
+
   /** \brief Returns the number of subgraphs contained by a node.
    *
    * Certain operator types (e.g., If and Loop) contain nested subgraphs.
@@ -6345,6 +6373,19 @@ struct OrtModelEditorApi {
    */
   ORT_API2_STATUS(FinalizeModelEditorSession, _Inout_ OrtSession* session, _In_ const OrtSessionOptions* options,
                   _In_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+
+  /** \brief Create a subgraph from an OrtGraph
+   *
+   * Add the node to the graph. The OrtGraph will take ownership of OrtNode and you should NOT call ReleaseOrtNode.
+   *
+   * \param[in] graph The OrtGraph instance to update.
+   * \param[in] node The OrtNode instance to add to the graph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t max_num_nodes, _Outptr_ OrtGraph** subgraph);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

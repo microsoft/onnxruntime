@@ -9,6 +9,7 @@
 #include "core/common/inlined_containers_fwd.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/onnx_protobuf.h"
+#include "core/graph/basic_types.h"
 
 #define DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(external_type, internal_type, internal_api) \
   external_type* ToExternal() { return static_cast<external_type*>(this); }                        \
@@ -90,6 +91,8 @@ struct OrtNode {
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
   virtual onnxruntime::Status GetNumImplicitInputs(size_t& num_implicit_inputs) const = 0;
   virtual onnxruntime::Status GetImplicitInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
+  virtual onnxruntime::Status GetNumAttributes(size_t& num_attrs) const = 0;
+  virtual onnxruntime::Status GetAttributes(onnxruntime::InlinedVector<const OrtOpAttr*>& attrs) const = 0;
   virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
   virtual onnxruntime::Status GetSubgraphs(onnxruntime::InlinedVector<const OrtGraph*>& subgraphs) const = 0;
   virtual onnxruntime::Status GetParentGraph(const OrtGraph*& parent_graph) const = 0;

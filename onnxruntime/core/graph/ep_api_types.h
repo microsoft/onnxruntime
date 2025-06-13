@@ -117,6 +117,8 @@ struct EpNode : public OrtNode {
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
   Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
   Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+  Status GetNumAttributes(size_t& num_attrs) const override;
+  Status GetAttributes(onnxruntime::InlinedVector<const OrtOpAttr*>& attrs) const override;
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
   Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
@@ -133,6 +135,9 @@ struct EpNode : public OrtNode {
   // because sizeof(InlinedVector) > sizeof(std::vector) and most nodes will *NOT* have this data.
   std::vector<EpValueInfo*> implicit_inputs;
   std::vector<SubgraphState> subgraphs;
+  
+  std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>> attributes_map;
+  std::vector<OrtOpAttr*> attributes;
 };
 
 /// <summary>
@@ -166,7 +171,18 @@ struct EpGraph : public OrtGraph {
                        /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
-  DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
+  OrtGraph* ToExternal() {
+    return static_cast<OrtGraph*>(this);
+  }
+  const OrtGraph* ToExternal() const {
+    return static_cast<const OrtGraph*>(this);
+  }
+  static EpGraph* ToInternal(OrtGraph* e) {
+    return e->graph_ir_api == (OrtGraphIrApi::kEpApi) ? static_cast<EpGraph*>(e) : nullptr;
+  }
+  static const EpGraph* ToInternal(const OrtGraph* e) {
+    return e->graph_ir_api == (OrtGraphIrApi::kEpApi) ? static_cast<const EpGraph*>(e) : nullptr;
+  }
 
   const std::string& Name() const override;
   int64_t OnnxIRVersion() const override;

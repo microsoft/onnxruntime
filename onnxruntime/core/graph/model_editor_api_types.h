@@ -104,6 +104,14 @@ struct ModelEditorNode : public OrtNode {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
   }
+  Status GetNumAttributes(size_t& /*num_attrs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the number of attributes for OrtNode");
+  }
+  Status GetAttributes(onnxruntime::InlinedVector<const OrtOpAttr*>& /*attrs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the attributes for OrtNode");
+  }
   Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the number of subgraphs for OrtNode");
@@ -139,7 +147,18 @@ struct ModelEditorGraph : public OrtGraph {
   ModelEditorGraph() : OrtGraph(OrtGraphIrApi::kModelEditorApi) {}
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and ModelEditorGraph.
-  DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
+  OrtGraph* ToExternal() {
+    return static_cast<OrtGraph*>(this);
+  }
+  const OrtGraph* ToExternal() const {
+    return static_cast<const OrtGraph*>(this);
+  }
+  static ModelEditorGraph* ToInternal(OrtGraph* e) {
+    return e->graph_ir_api == (OrtGraphIrApi::kModelEditorApi) ? static_cast<ModelEditorGraph*>(e) : nullptr;
+  }
+  static const ModelEditorGraph* ToInternal(const OrtGraph* e) {
+    return e->graph_ir_api == (OrtGraphIrApi::kModelEditorApi) ? static_cast<const ModelEditorGraph*>(e) : nullptr;
+  }
   const std::string& Name() const override { return name; }
   int64_t OnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
