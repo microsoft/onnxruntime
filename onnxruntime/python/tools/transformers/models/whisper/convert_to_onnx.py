@@ -535,6 +535,19 @@ def main(argv=None):
                 if path in output_paths:
                     output_paths.remove(path)
 
+    else:
+        # Create ancillary JSON files for ONNX Runtime GenAI and/or Hugging Face's Optimum
+        WhisperHelper.save_processing(
+            args.model_name_or_path,
+            args.provider,
+            args.separate_encoder_and_decoder_init,
+            args.output_cross_qk,
+            next(iter(filter(lambda path: "encoder" in path, output_paths))),
+            next(iter(filter(lambda path: "decoder" in path, output_paths))),
+            output_dir,
+            cache_dir,
+        )
+
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff
 

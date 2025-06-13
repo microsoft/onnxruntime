@@ -301,7 +301,6 @@ stages:
 - template: ../nuget/templates/test_win.yml
   parameters:
     AgentPool : 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests : false
     NugetPackageName : 'Microsoft.ML.OnnxRuntime.Training'
     ArtifactSuffix: 'Training-CPU'
     StageSuffix: 'Training_CPU'

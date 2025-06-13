@@ -381,6 +381,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
+
+        if args.caller_framework:
+            cmake_args.append("-Donnxruntime_CALLER_FRAMEWORK=" + args.caller_framework)
         if args.winml_root_namespace_override:
             cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
         if args.disable_memleak_checker or args.enable_address_sanitizer:

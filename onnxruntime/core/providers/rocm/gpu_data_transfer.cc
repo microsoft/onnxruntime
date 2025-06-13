@@ -10,8 +10,8 @@
 namespace onnxruntime {
 
 bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
-  return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::HIP_PINNED ||
-         dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::HIP_PINNED;
+  return src_device.Type() == OrtDevice::GPU || src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE ||
+         dst_device.Type() == OrtDevice::GPU || dst_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE;
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -34,7 +34,7 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
     } else {
       // copy from other CPU memory to GPU, this is blocking
       HIP_RETURN_IF_ERROR(hipMemcpy(dst_data, src_data, bytes, hipMemcpyHostToDevice));
-      if (src_device.MemType() != OrtDevice::MemType::HIP_PINNED) {
+      if (src_device.MemType() != OrtDevice::MemType::HOST_ACCESSIBLE) {
         // Follow core/providers/cuda/gpu_data_transfer.cc to synchronize the default stream here.
         HIP_RETURN_IF_ERROR(hipStreamSynchronize(nullptr));
       }
@@ -63,19 +63,22 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
     if (src_device.Type() == OrtDevice::CPU) {
       // If source are not pinned, the memory copy will be performed synchronously.
       // For best performance, use hipHostMalloc to allocate host memory that is transferred asynchronously.
-      HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyHostToDevice, static_cast<hipStream_t>(stream.GetHandle())));
+      HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyHostToDevice,
+                                         static_cast<hipStream_t>(stream.GetHandle())));
     } else if (src_device.Type() == OrtDevice::GPU) {
       // copying between GPU, this is non-blocking
       if (dst_data != src_data) {
-        HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToDevice, static_cast<hipStream_t>(stream.GetHandle())));
+        HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToDevice,
+                                           static_cast<hipStream_t>(stream.GetHandle())));
       }
     }
   } else if (src_device.Type() == OrtDevice::GPU) {
     // If dest are not pinned, the memory copy will be performed synchronously.
     // For best performance, use hipHostMalloc to allocate host memory that is transferred asynchronously.
-    HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost, static_cast<hipStream_t>(stream.GetHandle())));
+    HIP_RETURN_IF_ERROR(hipMemcpyAsync(dst_data, src_data, bytes, hipMemcpyDeviceToHost,
+                                       static_cast<hipStream_t>(stream.GetHandle())));
   } else {
-    if (src_device.MemType() == OrtDevice::MemType::CUDA_PINNED) {
+    if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived
       HIP_RETURN_IF_ERROR(hipStreamSynchronize(static_cast<hipStream_t>(stream.GetHandle())));
     }

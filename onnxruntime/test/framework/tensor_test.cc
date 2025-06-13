@@ -30,7 +30,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
   EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<T>());
   auto& location = t.Location();
   EXPECT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
+  EXPECT_EQ(location.device.Id(), 0);
 
   const T* t_data = t.Data<T>();
   EXPECT_EQ(first_element, t_data);
@@ -48,7 +48,7 @@ void CPUTensorTest(std::vector<int64_t> dims, const int offset_elements = 0) {
     EXPECT_EQ(new_t.DataType(), DataTypeImpl::GetType<T>());
     auto& new_location = new_t.Location();
     ASSERT_STREQ(new_location.name, CPU);
-    EXPECT_EQ(new_location.id, 0);
+    EXPECT_EQ(new_location.device.Id(), 0);
   }
 }
 
@@ -136,7 +136,7 @@ TEST(TensorTest, EmptyTensorTest) {
 
   auto& location = t.Location();
   ASSERT_STREQ(location.name, CPU);
-  EXPECT_EQ(location.id, 0);
+  EXPECT_EQ(location.device.Id(), 0);
 
   const auto expected_allocator_type = DoesCpuAllocatorSupportArenaUsage()
                                            ? OrtAllocatorType::OrtArenaAllocator
@@ -161,7 +161,7 @@ TEST(TensorTest, StringTensorTest) {
     EXPECT_EQ(t.DataType(), DataTypeImpl::GetType<std::string>());
     auto& location = t.Location();
     ASSERT_STREQ(location.name, CPU);
-    EXPECT_EQ(location.id, 0);
+    EXPECT_EQ(location.device.Id(), 0);
 
     std::string* new_data = t.MutableData<std::string>();
     EXPECT_TRUE(new_data);

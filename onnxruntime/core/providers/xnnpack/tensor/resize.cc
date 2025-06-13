@@ -65,7 +65,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     // check the scale for the second dim is 1 or the size of the second dim matches the input shape.
     // if not, it is not the C dim as a Resize will not change the number of channels.
     if (scale_tensor) {
-      const Initializer scale_val(*scale_tensor, node_unit.ModelPath());
+      const Initializer scale_val(graph_viewer.GetGraph(), *scale_tensor, node_unit.ModelPath());
       const auto scales = scale_val.DataAsSpan<float>();
       if (scales[1] != 1.0F) {
         break;
@@ -90,7 +90,7 @@ bool Resize::IsOnnxNodeSupported(const NodeUnit& node_unit,
     }
 
     if (size_tensor) {
-      const Initializer size_val(*size_tensor, node_unit.ModelPath());
+      const Initializer size_val(graph_viewer.GetGraph(), *size_tensor, node_unit.ModelPath());
       if (size_val.DataAsSpan<int64_t>()[1] != x_shape->dim(1).dim_value()) {
         break;
       }

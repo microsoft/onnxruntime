@@ -48,6 +48,16 @@ void SwapByteOrderCopy(size_t element_size_in_bytes,
   }
 }
 
+void SwapByteOrderInplace(size_t element_size_in_bytes, gsl::span<std::byte> bytes) {
+  ORT_ENFORCE(element_size_in_bytes > 0, "Expecting a positive element size");
+  ORT_ENFORCE(bytes.size_bytes() % element_size_in_bytes == 0, "Expecting a match");
+  if (element_size_in_bytes > 1) {
+    for (size_t offset = 0, lim = bytes.size_bytes(); offset < lim; offset += element_size_in_bytes) {
+      std::reverse(bytes.begin() + offset, bytes.begin() + offset + element_size_in_bytes);
+    }
+  }
+}
+
 namespace detail {
 
 Status CopyLittleEndian(size_t element_size_in_bytes,

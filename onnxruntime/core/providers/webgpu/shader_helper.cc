@@ -379,6 +379,7 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 #if !defined(__wasm__)
   if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
+    ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
 #endif
 
