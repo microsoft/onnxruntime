@@ -80,7 +80,7 @@ inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm, bool ve
 
   size_t free = 0;
   size_t total = 0;
-  check_cuda_error(cudaMemGetInfo(&free, &total));
+  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   if (verbose) {
     std::ostringstream msg;
