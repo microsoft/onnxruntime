@@ -600,6 +600,30 @@ class InferenceSession {
   const Model& GetModel() const;
   const Environment& GetEnvironment() const;
 
+  void SetWeightDataType(const std::string& type) {
+    weight_data_type_ = type;
+  }
+
+  const std::string& GetWeightDataType() const {
+    return weight_data_type_;
+  }
+
+  void SetGraphHash(const std::string& hash) {
+    graph_hash_ = hash;
+  }
+
+  const std::string& GetGraphHash() const {
+    return graph_hash_;
+  }
+
+  void SetWeightHash(const std::string& hash) {
+    weight_hash_ = hash;
+  }
+
+  const std::string& GetWeightHash() const {
+    return weight_hash_;
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -671,6 +695,17 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
+
+  // Input, Output and Weight tensor data types
+  std::string input_data_type_;
+  std::string output_data_type_;
+  std::string weight_data_type_;
+
+  // Graph hash of the model
+  std::string graph_hash_;
+
+  // Weight hash of the model
+  std::string weight_hash_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -873,14 +908,17 @@ class InferenceSession {
 
   struct Telemetry {
     Telemetry() : time_sent_last_() {}
-    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // Event Rate per provider < 20 peak events per second
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   } telemetry_;
+
+  mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;
