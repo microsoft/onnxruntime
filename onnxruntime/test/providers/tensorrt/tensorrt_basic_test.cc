@@ -9,6 +9,8 @@
 #include "test/util/include/scoped_env_vars.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/providers/tensorrt/tensorrt_execution_provider_utils.h"
+#include <onnxruntime_cxx_api.h>
+#include <onnxruntime_session_options_config_keys.h>
 #include <string>
 #include <thread>
 #include <filesystem>
@@ -412,7 +414,7 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   std::vector<float> expected_values_mul_m = {3.0f, 6.0f, 9.0f, 12.0f, 15.0f, 18.0f};
 
   /*
-   * Test case 1: Dump context model
+   * Test case 1a: Dump context model
    *
    * provider options=>
    *   trt_ep_context_file_path = "EP_Context_model.onnx"
@@ -431,6 +433,33 @@ TEST(TensorrtExecutionProviderTest, EPContextNode) {
   ASSERT_TRUE(status.IsOK());
   status = session_object.Initialize();
   ASSERT_TRUE(status.IsOK());
+  ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
+
+  /*
+   * Test case 1b: Dump context model using session options
+   *
+   * session options=>
+   *   trt_ep_context_file_path = "EP_Context_model.onnx"
+   *
+   * expected result =>
+   *   context model "EP_Context_model.onnx" should be created in current directory
+   *
+   */
+  SessionOptions so_1b;
+  so_1b.session_logid = sess_log_id;
+  so_1b.config_options.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+  so_1b.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, params.trt_ep_context_file_path);
+  InferenceSession session_object_1b{so, GetEnvironment()};
+  OrtTensorRTProviderOptionsV2 params_1b;
+  std::unique_ptr<IExecutionProvider> execution_provider_1b = TensorrtExecutionProviderWithOptions(&params_1b);
+  // remove previous context model file
+  std::filesystem::remove(params.trt_ep_context_file_path);
+  EXPECT_TRUE(session_object_1b.RegisterExecutionProvider(std::move(execution_provider_1b)).IsOK());
+  status = session_object_1b.Load(model_name);
+  ASSERT_TRUE(status.IsOK());
+  status = session_object_1b.Initialize();
+  ASSERT_TRUE(status.IsOK());
+  // TODO: this fails even with a return in https://github.com/microsoft/onnxruntime/blob/b4f7a905b0d636b71bd486c0ef702eb5a44eadf2/onnxruntime/core/framework/graph_partitioner.cc#L813
   ASSERT_TRUE(HasCacheFileWithPrefix(params.trt_ep_context_file_path));
 
   /*
