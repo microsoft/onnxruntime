@@ -11,15 +11,18 @@ NPUDataTransfer::NPUDataTransfer() {}
 NPUDataTransfer::~NPUDataTransfer() {}
 
 bool NPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const {
+  OrtDevice::Type src_type = src_device.Type();
+  OrtDevice::Type dst_type = dst_device.Type();
+
   // check that only our NPU is involved
-  if ((src_device.Type() == OrtDevice::NPU && src_device.Vendor() != OrtDevice::VendorIds::HUAWEI) ||
-      (dst_device.Type() == OrtDevice::NPU && dst_device.Vendor() != OrtDevice::VendorIds::HUAWEI)) {
+  if ((src_type == OrtDevice::NPU && src_device.Vendor() != OrtDevice::VendorIds::HUAWEI) ||
+      (dst_type == OrtDevice::NPU && dst_device.Vendor() != OrtDevice::VendorIds::HUAWEI)) {
     return false;
   }
 
   // copies between NPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
-  return (src == OrtDevice::NPU || src == OrtDevice::CPU) &&
-         (dst == OrtDevice::NPU || dst == OrtDevice::CPU);
+  return (src_type == OrtDevice::NPU || src_type == OrtDevice::CPU) &&
+         (dst_type == OrtDevice::NPU || dst_type == OrtDevice::CPU);
 }
 
 common::Status NPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
