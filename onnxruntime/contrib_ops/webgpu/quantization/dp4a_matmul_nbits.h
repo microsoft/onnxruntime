@@ -37,7 +37,7 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
 
 class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
  public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size, uint32_t nbits) : Program{"DP4AMatMulNBitsSmallMProgram"}, tile_size_(tile_size), nbits_(nbits) {}
+  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits) : Program{"DP4AMatMulNBitsSmallMProgram"}, tile_size_k_vec_(tile_size_k_vec), tile_size_(tile_size), nbits_(nbits) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -49,6 +49,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"num_N_tile", ProgramUniformVariableDataType::Uint32});
 
  private:
+  uint32_t tile_size_k_vec_;
   uint32_t tile_size_;
   uint32_t nbits_;
 };
