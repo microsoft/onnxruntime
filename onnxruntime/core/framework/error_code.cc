@@ -33,9 +33,13 @@ inline OrtStatus* NewStatus(size_t clen) {
 
 inline void DeleteStatus(OrtStatus* ort_status) {
 #if defined(_MSC_VER) && !defined(__clang__)
-#pragma warning(suppress : 26409)
+#pragma warning(push)
+#pragma warning(disable : 26409)
 #endif
   delete[] reinterpret_cast<uint8_t*>(ort_status);
+#if defined(_MSC_VER) && !defined(__clang__)
+#pragma warning(pop)
+#endif
 }
 }  // namespace
 
