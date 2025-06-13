@@ -2854,7 +2854,7 @@ OrtDevice CUDAExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
 std::vector<AllocatorPtr> CUDAExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED, device_id);
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
       },
       info_.device_id);
   return std::vector<AllocatorPtr>{

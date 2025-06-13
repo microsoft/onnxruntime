@@ -87,7 +87,7 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   } else if (src_is_gpu_default) {
     // copy from GPU to pinned or non-pinned CPU memory.
     CUDA_RETURN_IF_ERROR(cudaMemcpyAsync(dst_data, src_data, bytes, cudaMemcpyDeviceToHost,
-                                          static_cast<cudaStream_t>(stream.GetHandle())));
+                                         static_cast<cudaStream_t>(stream.GetHandle())));
   } else {
     if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived

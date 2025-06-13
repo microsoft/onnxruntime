@@ -102,13 +102,13 @@ common::Status NPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
                                             static_cast<aclrtStream>(stream.GetHandle())));
     }
   } else if (src_is_npu_default) {
-      // copying from NPU to pinned or CPU memory, this is non-blocking
-      CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
-                                            bytes,
-                                            src_data,
-                                            bytes,
-                                            ACL_MEMCPY_DEVICE_TO_HOST,
-                                            static_cast<aclrtStream>(stream.GetHandle())));
+    // copying from NPU to pinned or CPU memory, this is non-blocking
+    CANN_RETURN_IF_ERROR(aclrtMemcpyAsync(dst_data,
+                                          bytes,
+                                          src_data,
+                                          bytes,
+                                          ACL_MEMCPY_DEVICE_TO_HOST,
+                                          static_cast<aclrtStream>(stream.GetHandle())));
   } else {
     if (src_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       // sync the stream first to make sure the data arrived

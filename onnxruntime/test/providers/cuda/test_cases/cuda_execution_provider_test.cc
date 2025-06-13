@@ -60,7 +60,6 @@ TEST(TestDeferredRelease, WithoutArena) {
   onnxruntime::RunOptions run_opts;
   run_opts.run_tag = "log1";
 
-
   OrtDevice pinned_device{OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                           info.device_id};
   // Create allocator without BFCArena

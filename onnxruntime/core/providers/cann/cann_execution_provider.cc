@@ -1497,4 +1497,3 @@ OrtDevice CANNExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
 }
 
 }  // namespace onnxruntime
-

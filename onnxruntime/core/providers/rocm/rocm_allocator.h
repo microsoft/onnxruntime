@@ -52,7 +52,7 @@ class ROCMExternalAllocator : public ROCMAllocator {
 // TODO: add a default constructor
 class ROCMPinnedAllocator : public IAllocator {
  public:
-  ROCMPinnedAllocator(const char* name, OrtDevice::DeviceId device_id)
+  ROCMPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
