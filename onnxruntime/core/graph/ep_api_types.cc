@@ -8,6 +8,7 @@
 #include <memory>
 #include <limits>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -324,16 +325,22 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
     return Status::OK();
   }
 
-  result = nullptr;
-  if (graph == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get initializer value for OrtValueInfo '", name,
-                           "' because it is not owned by a OrtGraph.");
+  const EpGraph* curr_graph = graph;
+
+  while (curr_graph != nullptr) {
+    auto map_iter = curr_graph->initializer_values.find(name);
+
+    if (map_iter != curr_graph->initializer_values.end()) {
+      result = map_iter->second.get();
+      return Status::OK();
+    }
+
+    const EpNode* parent_node = curr_graph->parent_node;
+    curr_graph = parent_node != nullptr ? parent_node->ep_graph : nullptr;
   }
 
-  auto map_iter = graph->initializer_values.find(this);
-  ORT_RETURN_IF(map_iter == graph->initializer_values.end(), "Unable to find initializer value named '", name, "'.");
-  result = map_iter->second.get();
-  return Status::OK();
+  result = nullptr;
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find initializer value named '", name, "'.");
 }
 
 //
@@ -396,9 +403,17 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
   if (parent_ep_node != nullptr) {
     const auto parent_implicit_inputs = parent_ep_node->node.ImplicitInputDefs();
     for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_implicit_inputs) {
-      assert(value_infos_map.count(implicit_node_arg->Name()) == 0);  // Should not have added these yet.
-      value_infos_map.emplace(implicit_node_arg->Name(),
-                              CreateValueInfo(*implicit_node_arg, ep_graph.get(), EpValueInfo::kIsOuterScope));
+      const std::string& implicit_name = implicit_node_arg->Name();
+      const GraphViewer& parent_graph_viewer = parent_ep_node->ep_graph->graph_viewer;
+      bool is_outer_scope_initializer = parent_graph_viewer.GetGraph().GetInitializer(implicit_name, true) != nullptr;
+      size_t flags = EpValueInfo::kIsOuterScope;
+
+      if (is_outer_scope_initializer) {
+        flags |= EpValueInfo::kIsInitializer;
+      }
+
+      assert(value_infos_map.count(implicit_name) == 0);  // Should not have added these yet.
+      value_infos_map.emplace(implicit_node_arg->Name(), CreateValueInfo(*implicit_node_arg, ep_graph.get(), flags));
     }
   }
 
@@ -406,7 +421,7 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
   // TODO(adrianlizarraga): Add OrtValue instances for each initializer. This just adds OrtValueInfos.
   const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
   std::vector<EpValueInfo*> initializer_value_infos;
-  std::unordered_map<const EpValueInfo*, std::unique_ptr<OrtValue>> initializer_values;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
 
   initializer_value_infos.reserve(initializers.size());
@@ -437,7 +452,7 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
     auto initializer_value = std::make_unique<OrtValue>();
     ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
                                                      initializer_allocator, *initializer_value));
-    initializer_values.emplace(value_info, std::move(initializer_value));
+    initializer_values.emplace(value_info->name, std::move(initializer_value));
   }
 
   // Process nodes in topological order, converting Node to EpNode.

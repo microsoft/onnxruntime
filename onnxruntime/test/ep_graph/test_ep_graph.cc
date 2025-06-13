@@ -83,6 +83,30 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
   }
 }
 
+static void CheckInitializerValueInfosCApi(const GraphViewer& graph_viewer,
+                                           gsl::span<const OrtValueInfo* const> initializer_value_infos,
+                                           const InitializedTensorSet& initializer_tensor_protos) {
+  const OrtApi& ort_api = Ort::GetApi();
+  (void)graph_viewer;
+
+  for (size_t i = 0; i < initializer_value_infos.size(); i++) {
+    const OrtValueInfo* api_value_info = initializer_value_infos[i];
+    const OrtValue* api_initializer_value = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
+    ASSERT_NE(api_initializer_value, nullptr);
+
+    const char* api_initializer_name = nullptr;
+    ort_api.GetValueInfoName(api_value_info, &api_initializer_name);
+    ASSERT_NE(api_initializer_name, nullptr);
+
+    auto iter = initializer_tensor_protos.find(api_initializer_name);
+    ASSERT_NE(iter, initializer_tensor_protos.end());
+
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = iter->second;
+    ASSERT_NE(tensor_proto, nullptr);
+    // TODO(adrianlizarraga): Check initializer type and first couple of values.
+  }
+}
 // Checks that the OrtValueInfos obtained from the public C API are "equivalent" to the NodeArgs
 // in the original graph.
 static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const OrtValueInfo* const> value_infos,
@@ -117,9 +141,16 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       bool api_is_graph_output = ort_api.ValueInfo_IsGraphOutput(value_info);
       ASSERT_EQ(api_is_graph_output, is_graph_output);
 
-      bool is_initializer = graph_viewer.IsInitializedTensor(node_arg->Name());
+      const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_viewer.GetGraph().GetInitializer(node_arg->Name(), true);
+      bool is_initializer = tensor_proto != nullptr;
       bool api_is_initializer = ort_api.ValueInfo_IsInitializer(value_info);
       ASSERT_EQ(api_is_initializer, is_initializer);
+
+      if (is_initializer) {
+        const OrtValue* api_initializer_value = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(value_info, &api_initializer_value));
+        ASSERT_NE(api_initializer_value, nullptr);
+      }
 
       bool is_outer_scope = graph_viewer.GetGraph().IsOuterScopeValue(node_arg->Name());
       bool api_is_outer_scope = ort_api.ValueInfo_IsFromOuterScope(value_info);
@@ -191,6 +222,15 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   std::vector<const OrtValueInfo*> api_graph_outputs(api_num_graph_outputs, nullptr);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetOutputs(&api_graph, api_graph_outputs.data(), api_graph_outputs.size()));
   CheckValueInfosCApi(graph_viewer, api_graph_outputs, graph_output_node_args);
+
+  // Check graph initializers
+  const auto& graph_initializers = graph_viewer.GetAllInitializedTensors();
+  size_t api_num_initializers = ort_api.Graph_NumInitializers(&api_graph);
+  ASSERT_EQ(api_num_initializers, graph_initializers.size());
+
+  std::vector<const OrtValueInfo*> api_initializers(api_num_initializers, nullptr);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, api_initializers.data(), api_initializers.size()));
+  CheckInitializerValueInfosCApi(graph_viewer, api_initializers, graph_initializers);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();

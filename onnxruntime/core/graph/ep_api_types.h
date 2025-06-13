@@ -6,6 +6,7 @@
 #include <gsl/gsl>
 #include <memory>
 #include <string>
+#include <string_view>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -186,7 +187,7 @@ struct EpGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;  // All value infos in the graph
 
   std::vector<EpValueInfo*> initializer_value_infos;
-  std::unordered_map<const EpValueInfo*, std::unique_ptr<OrtValue>> initializer_values;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
 
   InlinedVector<EpValueInfo*> inputs;
   InlinedVector<EpValueInfo*> outputs;
