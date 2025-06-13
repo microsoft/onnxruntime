@@ -281,7 +281,7 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
-    ORT_RETURN_IF_ERROR(MoveToStatus(
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
         internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
                                                    info.devices.size(), &options, &logger,
                                                    &ep)));
@@ -293,9 +293,9 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
     // OrtEp* api_ep = nullptr;
     //// add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-    // ORT_RETURN_IF_ERROR(MoveToStatus(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(),
-    //                                                            info.ep_metadata.data(), info.devices.size(),
-    //                                                            &options, &logger, &api_ep)));
+    // ORT_RETURN_IF_ERROR(ToStatusAndRelease(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(),
+    //                                                                  info.ep_metadata.data(), info.devices.size(),
+    //                                                                  &options, &logger, &api_ep)));
   }
 
   return Status::OK();

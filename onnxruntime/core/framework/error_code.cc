@@ -82,17 +82,13 @@ _Ret_notnull_ OrtStatus* ToOrtStatus(const Status& st) {
   return p;
 }
 
-Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category) {
+Status ToStatusAndRelease(OrtStatus* ort_status, common::StatusCategory category) {
   if (ort_status == nullptr) {
     return Status::OK();
   }
 
-  return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
-}
-
-Status MoveToStatus(OrtStatus* ort_status, common::StatusCategory category) {
   auto unique_ort_status = UniqueOrtStatus{ort_status};
-  return ToStatus(unique_ort_status.get(), category);
+  return Status(category, static_cast<common::StatusCode>(ort_status->code), &ort_status->msg[0]);
 }
 
 }  // namespace onnxruntime

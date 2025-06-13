@@ -23,8 +23,8 @@ Status EpLibraryPlugin::Load() {
       std::vector<OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
-      ORT_RETURN_IF_ERROR(MoveToStatus(create_fn_(registration_name_.c_str(), OrtGetApiBase(),
-                                                  factories.data(), factories.size(), &num_factories)));
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(create_fn_(registration_name_.c_str(), OrtGetApiBase(),
+                                                        factories.data(), factories.size(), &num_factories)));
 
       for (size_t i = 0; i < num_factories; ++i) {
         factories_.push_back(factories[i]);
@@ -61,7 +61,7 @@ Status EpLibraryPlugin::Unload() {
             continue;
           }
 
-          auto status = MoveToStatus(release_fn_(factory));
+          auto status = ToStatusAndRelease(release_fn_(factory));
           if (!status.IsOK()) {
             // log it and treat it as released
             LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_path_ << " with error: "

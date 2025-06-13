@@ -797,7 +797,7 @@ struct CustomOpKernel : OpKernel {
   Status Compute(OpKernelContext* ctx) const override {
     if (op_.version >= min_ort_version_with_compute_v2_support &&
         op_.KernelComputeV2) {
-      return MoveToStatus(op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx)));
+      return ToStatusAndRelease(op_.KernelComputeV2(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx)));
     } else {
       op_.KernelCompute(op_kernel_, reinterpret_cast<OrtKernelContext*>(ctx));
       return Status::OK();

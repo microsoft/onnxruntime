@@ -64,7 +64,7 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
                                                         (void**)&RegisterCustomOps));
 
   // Call the exported RegisterCustomOps function.
-  auto status = onnxruntime::MoveToStatus(RegisterCustomOps(this, OrtGetApiBase()));
+  auto status = onnxruntime::ToStatusAndRelease(RegisterCustomOps(this, OrtGetApiBase()));
 
   if (!status.IsOK()) {
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
