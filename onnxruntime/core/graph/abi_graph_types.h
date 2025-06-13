@@ -113,7 +113,7 @@ struct OrtGraph {
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
   virtual onnxruntime::Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const = 0;
   virtual size_t NumNodes() const = 0;
-  virtual std::vector<const OrtNode*> GetNodes(int order) const = 0;
+  virtual std::vector<const OrtNode*> GetNodes() const = 0;
   virtual onnxruntime::Status GetParentNode(const OrtNode*& parent_node) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;

@@ -417,8 +417,7 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
     }
   }
 
-  // Process initializers.
-  // TODO(adrianlizarraga): Add OrtValue instances for each initializer. This just adds OrtValueInfos.
+  // Create OrtValueInfo and OrtValue instances for each initializer.
   const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
   std::vector<EpValueInfo*> initializer_value_infos;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
@@ -524,9 +523,8 @@ Status EpGraph::GetInitializers(std::vector<const OrtValueInfo*>& result) const 
 
 size_t EpGraph::NumNodes() const { return nodes.size(); }
 
-std::vector<const OrtNode*> EpGraph::GetNodes(int order) const {
-  ExecutionOrder execution_order = static_cast<ExecutionOrder>(order);
-  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder(execution_order);
+std::vector<const OrtNode*> EpGraph::GetNodes() const {
+  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder();
 
   std::vector<const OrtNode*> result;
   result.reserve(NumNodes());

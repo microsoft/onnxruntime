@@ -250,7 +250,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   ASSERT_EQ(num_nodes, graph_viewer.NumberOfNodes());
 
   std::vector<const OrtNode*> api_nodes(num_nodes, nullptr);
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, 0, api_nodes.data(), api_nodes.size()));
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, api_nodes.data(), api_nodes.size()));
 
   std::vector<NodeIndex> node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
   for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {

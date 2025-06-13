@@ -203,7 +203,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
 
     std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, /*order*/ 0, nodes.data(), nodes.size()));
+    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size()));
 
     std::vector<const OrtNode*> supported_nodes;
 
@@ -249,7 +249,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
     size_t num_nodes = ep->ort_api.Graph_NumNodes(graphs[0]);
 
     std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], /*order*/ 0, nodes.data(), nodes.size()));
+    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], nodes.data(), nodes.size()));
 
     if (num_nodes != 1) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");

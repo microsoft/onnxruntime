@@ -178,7 +178,7 @@ PluginExecutionProvider::FusedNodeState& PluginExecutionProvider::PushFusedNodeS
   return fused_node_state;
 }
 
-Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode* added_ep_node) {
+Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node) {
   std::unique_ptr<EpNode> unique_ep_fused_node = nullptr;
   ORT_RETURN_IF_ERROR(EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos, unique_ep_fused_node));
   this->nodes.push_back(std::move(unique_ep_fused_node));

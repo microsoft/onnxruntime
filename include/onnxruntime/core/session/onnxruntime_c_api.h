@@ -5392,6 +5392,8 @@ struct OrtApi {
    * Sets the output parameter to NULL if the given OrtValueInfo does not represent an initializer.
    * Does not return an error status in this case.
    *
+   * Supports initializers defined in an outer scope (i.e., a parent graph).
+   *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] initializer_value Output parameter set to the initializer's value or NULL.
    *
@@ -5432,6 +5434,7 @@ struct OrtApi {
   /** \brief Returns a boolean indicating if the given value is an initializer.
    *
    * Returns true for both constant and non-constant (i.e., overridable) initializers.
+   * Returns true for initializers defined in an outer scope (i.e., in a parent graph).
    *
    * The semantics of graph inputs and initializers changed in ONNX IR version 4:
    *   - For ONNX IR version < 4, all initializers must have a matching graph input
@@ -5578,13 +5581,11 @@ struct OrtApi {
   /** \brief Returns an array of the OrtNode instances contained in the OrtGraph.
    *
    * Caller provides a pre-allocated array that will be filled with the nodes. Use OrtGraph_NumNodes() to get the
-   * number of nodes in the graph. The nodes are sorted according to the `order` argument.
+   * number of nodes in the graph.
+   *
+   * The nodes are sorted using a default topological ordering.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[in] order The ordering of the nodes:
-   *                  0 means the nodes are sorted in topological order.
-   *                  1 means the nodes are sorted in topological order with priority.
-   *                  2 means the nodes are sorted in memory efficient topological order.
    * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode pointers.
    * \param[in] max_num_nodes The maximum size of the nodes array.
    *                          Typical usage sets this to the value of OrtGraph_NumNodes.
@@ -5593,8 +5594,8 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, int order,
-                  _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, _Out_writes_all_(max_num_nodes) const OrtNode** nodes,
+                  _In_ size_t max_num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
    *

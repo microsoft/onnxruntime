@@ -2566,18 +2566,15 @@ ORT_API(size_t, OrtApis::Graph_NumNodes, _In_ const OrtGraph* graph) {
   return graph->NumNodes();
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, int order,
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
-  // TODO: make order an enum value.
-  if (order < 0 || order > 2) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "Invalid `order` value passed to OrtGraph_GetNodes(); only accepts values "
-                                 "0, 1, or 2.");
-  }
-
-  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes(order);
+  std::vector<const OrtNode*> sorted_nodes = graph->GetNodes();
   size_t num_nodes = std::min(max_num_nodes, sorted_nodes.size());
+
+  if (nodes == nullptr && max_num_nodes > 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'nodes' argument is NULL");
+  }
 
   for (size_t i = 0; i < num_nodes; i++) {
     nodes[i] = sorted_nodes[i];

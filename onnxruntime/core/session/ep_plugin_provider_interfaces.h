@@ -76,7 +76,7 @@ class PluginExecutionProvider : public IExecutionProvider {
     FusedNodeState() = default;
     FusedNodeState(FusedNodeState&& other) = default;
     FusedNodeState(const FusedNodeState& other) = delete;
-    Status AddFusedNode(const Node& fused_node, /*out*/ EpNode* added_ep_node);
+    Status AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node);
 
     std::vector<std::unique_ptr<EpNode>> nodes;
     std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;

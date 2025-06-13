@@ -630,8 +630,8 @@ ORT_API_STATUS_IMPL(Graph_GetInitializers, _In_ const OrtGraph* graph,
                     _Out_writes_all_(max_num_initializers) const OrtValueInfo** initializers,
                     _In_ size_t max_num_initializers);
 ORT_API(size_t, Graph_NumNodes, _In_ const OrtGraph* graph);
-ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
-                    _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, _Out_writes_all_(max_num_nodes) const OrtNode** nodes,
+                    _In_ size_t max_num_nodes);
 ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 ORT_API(size_t, Node_Id, const OrtNode* node);
 ORT_API(const char*, Node_Name, const OrtNode* node);

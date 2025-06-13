@@ -176,7 +176,7 @@ struct EpGraph : public OrtGraph {
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
   Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const override;
   size_t NumNodes() const override;
-  std::vector<const OrtNode*> GetNodes(int order) const override;
+  std::vector<const OrtNode*> GetNodes() const override;
   Status GetParentNode(const OrtNode*& parent_node) const override;
 
   const GraphViewer& graph_viewer;

@@ -104,7 +104,7 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   // Get all nodes
   const size_t num_nodes = ort_api.Graph_NumNodes(&graph);
   std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, 0, nodes.data(), nodes.size()));
+  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size()));
 
   // Get the maximum node ID. Not really required if we chose to represent the `in_degree` as a map instead of vector.
   size_t max_node_id = 0;

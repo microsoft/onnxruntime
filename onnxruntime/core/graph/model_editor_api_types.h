@@ -171,7 +171,7 @@ struct ModelEditorGraph : public OrtGraph {
 
   size_t NumNodes() const override { return nodes.size(); }
 
-  std::vector<const OrtNode*> GetNodes(int /*order*/) const override {
+  std::vector<const OrtNode*> GetNodes() const override {
     std::vector<const OrtNode*> result;
     result.reserve(nodes.size());
     for (const auto& n : nodes) {
