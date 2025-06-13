@@ -118,9 +118,9 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     int device;
     CUDA_CALL_THROW(cudaGetDevice(&device));
 
-    if (device != src_location.id) {
+    if (device != src_location.device.Id()) {
       // Need to switch to the allocating device.
-      CUDA_CALL_THROW(cudaSetDevice(src_location.id));
+      CUDA_CALL_THROW(cudaSetDevice(src_location.device.Id()));
       // Copy from GPU to CPU.
       CUDA_CALL_THROW(cudaMemcpy(dst_ptr, src_ptr, size, cudaMemcpyDeviceToHost));
       // Switch back to current device.

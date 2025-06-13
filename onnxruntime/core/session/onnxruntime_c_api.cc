@@ -3373,6 +3373,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
+    &OrtApis::CreateMemoryInfo_V2,
 
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,

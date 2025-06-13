@@ -3226,19 +3226,22 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
     }
 
     // Shrink if it is an arena based allocator
-    auto alloc = session_state_->GetAllocator(OrtDevice(device_type, memory_type, device_id));
-
-    if (alloc == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Did not find an arena based allocator registered for device-id ",
-                             " combination in the memory arena shrink list: ", device_id_pair);
+    // Iterate through the registered allocators as we could have multiple allocators for the device+type
+    // if they differ by vendor_id.
+    for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
+      if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
+        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+          arenas_to_shrink.push_back(allocator_ptr);
+          break;
+        }
+      }
     }
 
-    if (alloc->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The registered allocator for device-id ",
-                             " combination is not an arena based allocator: ", device_id_pair);
+    if (arenas_to_shrink.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Did not find an arena based allocator registered for device-id ",
+                             "combination in the memory arena shrink list: ", device_id_pair);
     }
-
-    arenas_to_shrink.push_back(std::move(alloc));
   }
 
   return Status::OK();

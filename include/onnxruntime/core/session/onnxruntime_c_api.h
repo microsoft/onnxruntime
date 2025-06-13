@@ -333,10 +333,16 @@ typedef OrtStatus* OrtStatusPtr;
  * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
  */
 typedef struct OrtAllocator {
-  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+
+  /// Returns a pointer to an allocated block of `size` bytes
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
+
+  /// Free a block of memory previously allocated with OrtAllocator::Alloc
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
+
+  /// Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
   /**
    * @brief Optional allocation function to use for memory allocations made during session initialization.
    * Use this function if you want to separate allocations made by ORT during Run() calls from
@@ -423,12 +429,19 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This matches OrtDevice::MemoryType values */
+typedef enum OrtDeviceMemoryType {
+  OrtDeviceMemoryType_DEFAULT = 0,          ///< Device memory
+  OrtDeviceMemoryType_HOST_ACCESSIBLE = 5,  ///< Shared/pinned memory for transferring between CPU and the device
+} OrtDeviceMemoryType;
+
 /** \brief This mimics OrtDevice type constants so they can be returned in the API
  */
 typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_CPU = 0,
   OrtMemoryInfoDeviceType_GPU = 1,
-  OrtMemoryInfoDeviceType_FPGA = 2
+  OrtMemoryInfoDeviceType_FPGA = 2,
+  OrtMemoryInfoDeviceType_NPU = 3,
 } OrtMemoryInfoDeviceType;
 
 typedef enum OrtHardwareDeviceType {
@@ -2408,6 +2421,8 @@ struct OrtApi {
 
   /** \brief Create an allocator for an ::OrtSession following an ::OrtMemoryInfo
    *
+   * The allocator wraps the internal allocator from the OrtSession and becomes invalid when the session does.
+   *
    * \param[in] session
    * \param[in] mem_info valid ::OrtMemoryInfo instance
    * \param[out] out Newly created ::OrtAllocator. Must be freed with OrtApi::ReleaseAllocator
@@ -2918,7 +2933,7 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
-   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   * "max_power_of_two_extend_bytes": The maximum extend size if arena strategy is `kNextPowerOfTwo`.
    *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
@@ -5334,6 +5349,30 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Create an ::OrtMemoryInfo
+   *
+   * \param[in] name Arbitrary name.
+   * \param[in] device_type Device type.
+   * \param[in] vendor_id PCI Vendor ID. Use 0 for a generic allocator (e.g. WebGPU).
+   * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
+   * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
+   *                                  OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer
+   *                                  between the device and the CPU.
+   * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
+   * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
+   *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
+   *                           allocators via CreateAllocator/CreateAndRegisterAllocator/CreateAndRegisterAllocatorV2.
+   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtAPi::ReleaseMemoryInfo
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
+                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                  _In_ size_t alignment, enum OrtAllocatorType allocator_type,
+                  _Outptr_ OrtMemoryInfo** out);
 
   /** \brief Get the OrtNode that produces the value represented by the given OrtValueInfo.
    * Optionally returns the associated output index.
