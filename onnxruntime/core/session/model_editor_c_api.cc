@@ -226,6 +226,50 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::GetSubGraph, _In_ const OrtGraph* ort_graph, _In_ const OrtNode** ort_nodes, _In_ size_t num_nodes, _Outptr_ OrtGraph** ort_subgraph) {
+  API_IMPL_BEGIN
+  OrtGraph* graph = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateGraph(&graph));
+
+  for (size_t i = 0; i < num_nodes; ++i) {
+    const OrtNode* node = ort_nodes[i];
+    // Gets node's inputs
+    size_t node_num_inputs = OrtApis::Node_NumInputs(node);
+    std::vector<const OrtValueInfo*> node_inputs(node_num_inputs, nullptr);
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetInputs(node, node_inputs.data(), node_inputs.size()));
+    std::vector<const char*> node_input_names(node_num_inputs, nullptr);
+    for (size_t index = 0; index < node_num_inputs; ++index) {
+      node_input_names[index] = node_inputs[index]->Name().c_str();
+    }
+
+    // Gets node's outputs
+    size_t node_num_outputs = OrtApis::Node_NumOutputs(node);
+    std::vector<const OrtValueInfo*> node_outputs(node_num_outputs, nullptr);
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetOutputs(node, node_outputs.data(), node_outputs.size()));
+    std::vector<const char*> node_output_names(node_num_outputs, nullptr);
+    for (size_t index = 0; index < node_num_outputs; ++index) {
+      node_output_names[index] = node_outputs[index]->Name().c_str();
+    }
+
+    // Creates the node
+    const char* operator_type = OrtApis::Node_OperatorType(node);
+    const char* domain_name = OrtApis::Node_Domain(node);
+    const char* node_name = OrtApis::Node_Name(node);
+    OrtNode* new_node = nullptr;
+    size_t node_num_attrs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetNumAttributes(node, &node_num_attrs));
+    std::vector<OrtOpAttr*> node_attributes(node_num_attrs, nullptr);
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetAttributes(node, node_attributes.data(), node_attributes.size()));
+    ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateNode(operator_type, domain_name, node_name,
+                                                          node_input_names.data(), node_input_names.size(),
+                                                          node_output_names.data(), node_output_names.size(),
+                                                          node_attributes.data(), node_attributes.size(),
+                                                          &new_node));
+  }
+
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateModel,
                     _In_reads_(opset_entries_len) const char* const* domain_names,
                     _In_reads_(opset_entries_len) const int* opset_versions,
@@ -392,6 +436,9 @@ static constexpr OrtModelEditorApi ort_model_editor_api = {
     &OrtModelEditorAPI::SessionGetOpsetForDomain,
     &OrtModelEditorAPI::ApplyModelToModelEditorSession,
     &OrtModelEditorAPI::FinalizeModelEditorSession,
+    // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtModelEditorAPI::GetSubGraph,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
