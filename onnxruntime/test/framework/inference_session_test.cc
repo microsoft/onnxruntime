@@ -298,25 +298,32 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x_A = {3, 4};
   std::vector<int64_t> dims_mul_x_B = {4, 3};
 
+#if defined(USE_WEBGPU)
+  // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
+  // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
+  // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
+  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  auto gpu_alloc = session_object.GetAllocator(mem_info);
+#else
+  auto gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
+#endif
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
   if (enable_graph_capture) {
     // For graph capture, all inputs/outputs should be in preallocated gpu memory.
     ASSERT_TRUE(is_preallocate_output_vec);
     OrtValue input_ml_value_A_cpu;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x_A, values_mul_x, &input_ml_value_A_cpu);
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_A, values_mul_x, &input_ml_value_A_cpu);
     auto& cpu_tensor_a = input_ml_value_A_cpu.Get<Tensor>();
-    Tensor gpu_tensor_a(cpu_tensor_a.DataType(), cpu_tensor_a.Shape(),
-                        gpu_provider->CreatePreferredAllocators()[0]);
+    Tensor gpu_tensor_a(cpu_tensor_a.DataType(), cpu_tensor_a.Shape(), gpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a, gpu_tensor_a);
     ASSERT_TRUE(st.IsOK());
     OrtValue input_ml_value_A;
     Tensor::InitOrtValue(std::move(gpu_tensor_a), input_ml_value_A);
 
     OrtValue input_ml_value_B_cpu;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x_B, values_mul_x,
-                         &input_ml_value_B_cpu);
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B_cpu);
     auto& cpu_tensor_b = input_ml_value_B_cpu.Get<Tensor>();
-    Tensor gpu_tensor_b(cpu_tensor_b.DataType(), cpu_tensor_b.Shape(),
-                        gpu_provider->CreatePreferredAllocators()[0]);
+    Tensor gpu_tensor_b(cpu_tensor_b.DataType(), cpu_tensor_b.Shape(), gpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_b, gpu_tensor_b);
     ASSERT_TRUE(st.IsOK());
     OrtValue input_ml_value_B;
@@ -344,8 +351,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     CreateMLValue<float>(input_allocator, dims_mul_x_A, values_mul_x, &input_ml_value_A);
 
     OrtValue input_ml_value_B;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x_B, values_mul_x,
-                         &input_ml_value_B);
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B);
 
     ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
     ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
@@ -358,10 +364,9 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], expected_output_dims,
-                             &output_ml_value);
+      AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
     } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
-      AllocateMLValue<float>(gpu_provider->CreatePreferredAllocators()[0], expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(gpu_alloc, expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -395,10 +400,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
 #ifdef USE_CUDA
     st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
@@ -425,7 +427,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   if (enable_graph_capture) {
     // Update input_a's value. Run again. Replay the captured graph
     OrtValue input_a2;
-    CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x_A_tmp, values_mul_x_tmp, &input_a2);
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_A_tmp, values_mul_x_tmp, &input_a2);
     auto& cpu_tensor_a2 = input_a2.Get<Tensor>();
     st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a2, const_cast<Tensor&>(io_binding->GetInputs()[0].Get<Tensor>()));
     ASSERT_TRUE(st.IsOK());
@@ -441,10 +443,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
     st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
