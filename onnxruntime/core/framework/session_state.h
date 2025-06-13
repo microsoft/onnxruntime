@@ -452,19 +452,12 @@ class SessionState {
     bool operator()(const OrtMemoryInfo& lhs, const OrtMemoryInfo& rhs) const {
       // if (lhs.alloc_type != rhs.alloc_type)
       //   return lhs.alloc_type < rhs.alloc_type;
-      if (lhs.mem_type != rhs.mem_type)
+      if (lhs.mem_type != rhs.mem_type) {
         return lhs.mem_type < rhs.mem_type;
-
-      if (lhs.id != rhs.id)
-        return lhs.id < rhs.id;
+      }
 
       if (lhs.device != rhs.device) {
-        // id should always == device.id so ignore that
-        if (lhs.device.Type() != rhs.device.Type())
-          return lhs.device.Type() < rhs.device.Type();
-
-        // this is the allocator mem type and not the kernel mem type that OrtMemoryInfo.mem_type represents
-        return lhs.device.MemType() < rhs.device.MemType();
+        return lhs.device < rhs.device;
       }
 
       return false;
