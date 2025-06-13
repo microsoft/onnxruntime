@@ -61,13 +61,13 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
   init_ep_node_io(node_outputs, ep_node_outputs);
 
   const auto& node_attrs = node.GetAttributes();
-  std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>> ep_node_attributes_map;
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> ep_node_attributes_map;
   std::vector<OrtOpAttr*> ep_node_attributes;
   ep_node_attributes_map.reserve(node_attrs.size());
   ep_node_attributes.reserve(node_attrs.size());
   for (const auto& item : node_attrs) {
-    auto attr = std::make_unique<OrtOpAttr>(item.second);
-    ep_node_attributes.emplace_back(attr.get());
+    auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);
+    ep_node_attributes.emplace_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
     ep_node_attributes_map[item.first] = std::move(attr);
   }
 
