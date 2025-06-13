@@ -209,7 +209,7 @@ class FusionBartAttention(FusionAttention):
             if k_nodes_no_past_hf is not None:
                 k_nodes = k_nodes_no_past_hf
                 (transpose_k, reshape_k, matmul_k) = k_nodes
-            if k_nodes_no_past_bias_hf is not None:
+            elif k_nodes_no_past_bias_hf is not None:
                 k_nodes = k_nodes_no_past_bias_hf
                 (mul_k, transpose_k, reshape_k, add_k, matmul_k) = k_nodes_no_past_bias_hf
             # Find present_k output name
