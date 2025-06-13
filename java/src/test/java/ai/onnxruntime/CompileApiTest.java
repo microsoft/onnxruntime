@@ -21,7 +21,7 @@ public class CompileApiTest {
   public void basicUsage() throws OrtException, IOException {
     SessionOptions so = new SessionOptions();
     try (OrtModelCompilationOptions compileOptions =
-        OrtModelCompilationOptions.createFromSessionOptions(so)) {
+        OrtModelCompilationOptions.createFromSessionOptions(env, so)) {
       // mainly checking these don't throw which ensures all the plumbing for the binding works.
       compileOptions.setInputModelPath("model.onnx");
       compileOptions.setOutputModelPath("compiled_model.onnx");
@@ -31,7 +31,7 @@ public class CompileApiTest {
     }
 
     try (OrtModelCompilationOptions compileOptions =
-        OrtModelCompilationOptions.createFromSessionOptions(so)) {
+        OrtModelCompilationOptions.createFromSessionOptions(env, so)) {
       Path modelPath = TestHelpers.getResourcePath("/squeezenet.onnx");
       byte[] modelBytes = Files.readAllBytes(modelPath);
       ByteBuffer modelBuffer = ByteBuffer.wrap(modelBytes);

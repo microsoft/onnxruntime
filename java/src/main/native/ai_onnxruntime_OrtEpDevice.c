@@ -13,7 +13,7 @@
  * Signature: (JJ)Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getName
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtEpDevice* epDevice = (OrtEpDevice*) nativeHandle;
@@ -28,7 +28,7 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getName
  * Signature: (JJ)Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getVendor
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtEpDevice* epDevice = (OrtEpDevice*) nativeHandle;
@@ -43,12 +43,12 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtEpDevice_getVendor
  * Signature: (JJ)[[Ljava/lang/String;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getMetadata
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtEpDevice* epDevice = (OrtEpDevice*) nativeHandle;
-  OrtKeyValuePairs* kvp = api->EpDevice_EpMetadata(epDevice);
-  jobjectarray pair = convertOrtKeyValuePairsToArrays(*jniEnv, api, kvp);
+  const OrtKeyValuePairs* kvp = api->EpDevice_EpMetadata(epDevice);
+  jobjectArray pair = convertOrtKeyValuePairsToArrays(jniEnv, api, kvp);
   return pair;
 }
 
@@ -58,12 +58,12 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getMetadata
  * Signature: (JJ)[[Ljava/lang/String;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getOptions
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtEpDevice* epDevice = (OrtEpDevice*) nativeHandle;
-  OrtKeyValuePairs* kvp = api->EpDevice_EpOptions(epDevice);
-  jobjectarray pair = convertOrtKeyValuePairsToArrays(*jniEnv, api, kvp);
+  const OrtKeyValuePairs* kvp = api->EpDevice_EpOptions(epDevice);
+  jobjectArray pair = convertOrtKeyValuePairsToArrays(jniEnv, api, kvp);
   return pair;
 }
 
@@ -73,8 +73,8 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtEpDevice_getOptions
  * Signature: (JJ)J
  */
 JNIEXPORT jlong JNICALL Java_ai_onnxruntime_OrtEpDevice_getDeviceHandle
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
-  (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
+  (void) jniEnv; (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object or the JVM.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtEpDevice* epDevice = (OrtEpDevice*) nativeHandle;
   const OrtHardwareDevice* device = api->EpDevice_Device(epDevice);

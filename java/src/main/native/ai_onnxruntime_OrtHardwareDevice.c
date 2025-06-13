@@ -13,7 +13,7 @@
  * Signature: (JJ)Ljava/lang/String;
  */
 JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getVendor
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
@@ -28,12 +28,12 @@ JNIEXPORT jstring JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getVendor
  * Signature: (JJ)[[Ljava/lang/String;
  */
 JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getMetadata
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
-  OrtKeyValuePairs* kvp = api->HardwareDevice_Metadata(device);
-  jobjectarray pair = convertOrtKeyValuePairsToArrays(*jniEnv, api, kvp);
+  const OrtKeyValuePairs* kvp = api->HardwareDevice_Metadata(device);
+  jobjectArray pair = convertOrtKeyValuePairsToArrays(jniEnv, api, kvp);
   return pair;
 }
 
@@ -43,7 +43,7 @@ JNIEXPORT jobjectArray JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getMetadata
  * Signature: (JJ)I
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getDeviceType
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
@@ -73,8 +73,8 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getDeviceType
  * Signature: (JJ)I
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getDeviceId
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
-  (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
+  (void) jniEnv; (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object or the JVM.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
   uint32_t id = api->HardwareDevice_DeviceId(device);
@@ -87,8 +87,8 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getDeviceId
  * Signature: (JJ)I
  */
 JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getVendorId
-  (JNIEnv * jniEnv, jclass clazz, jlong apiHandle, jlong nativeHandle) {
-  (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
+  (JNIEnv * jniEnv, jclass jclazz, jlong apiHandle, jlong nativeHandle) {
+  (void) jniEnv; (void) jclazz; // Required JNI parameters not needed by functions which don't need to access their host object or the JVM.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
   uint32_t id = api->HardwareDevice_VendorId(device);

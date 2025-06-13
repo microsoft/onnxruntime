@@ -57,14 +57,19 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    * model. The OrtSessionOptions object has the execution providers with which the model will be
    * compiled.
    *
+   * @param env The OrtEnvironment.
    * @param sessionOptions The session options to use.
    * @return A constructed model compilation options instance.
    * @throws OrtException If the construction failed.
    */
   public static OrtModelCompilationOptions createFromSessionOptions(
-      OrtSession.SessionOptions sessionOptions) throws OrtException {
+      OrtEnvironment env, OrtSession.SessionOptions sessionOptions) throws OrtException {
     long handle =
-        createFromSessionOptions(OnnxRuntime.ortCompileApiHandle, sessionOptions.getNativeHandle());
+        createFromSessionOptions(
+            OnnxRuntime.ortApiHandle,
+            OnnxRuntime.ortCompileApiHandle,
+            env.getNativeHandle(),
+            sessionOptions.getNativeHandle());
     return new OrtModelCompilationOptions(handle);
   }
 
@@ -98,7 +103,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public void setInputModelPath(String inputModelPath) throws OrtException {
     checkClosed();
-    setInputModelPath(OnnxRuntime.ortCompileApiHandle, nativeHandle, inputModelPath);
+    setInputModelPath(
+        OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, inputModelPath);
   }
 
   /**
@@ -117,7 +123,7 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
     checkClosed();
     if (!inputModelBuffer.isDirect()) {
       // if it's not a direct buffer, copy it.
-      ByteBuffer buffer = ByteBuffer.allocateDirect(inputModelBuffer.remaining());
+      buffer = ByteBuffer.allocateDirect(inputModelBuffer.remaining());
       int tmpPos = inputModelBuffer.position();
       buffer.put(inputModelBuffer);
       buffer.rewind();
@@ -128,7 +134,12 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
     int bufferPos = buffer.position();
     int bufferRemaining = buffer.remaining();
     setInputModelFromBuffer(
-        OnnxRuntime.ortCompileApiHandle, nativeHandle, buffer, bufferPos, bufferRemaining);
+        OnnxRuntime.ortApiHandle,
+        OnnxRuntime.ortCompileApiHandle,
+        nativeHandle,
+        buffer,
+        bufferPos,
+        bufferRemaining);
   }
 
   /**
@@ -142,7 +153,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public void setOutputModelPath(String outputModelPath) throws OrtException {
     checkClosed();
-    setOutputModelPath(OnnxRuntime.ortCompileApiHandle, nativeHandle, outputModelPath);
+    setOutputModelPath(
+        OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, outputModelPath);
   }
 
   /**
@@ -161,7 +173,9 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   public void setOutputExternalInitializersPath(
       String outputExternalInitializersPath, long sizeThreshold) throws OrtException {
     checkClosed();
+    // check positive
     setOutputExternalInitializersPath(
+        OnnxRuntime.ortApiHandle,
         OnnxRuntime.ortCompileApiHandle,
         nativeHandle,
         outputExternalInitializersPath,
@@ -188,7 +202,8 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public void setEpContextEmbedMode(boolean embedEpContext) throws OrtException {
     checkClosed();
-    setEpContextEmbedMode(OnnxRuntime.ortCompileApiHandle, nativeHandle, embedEpContext);
+    setEpContextEmbedMode(
+        OnnxRuntime.ortApiHandle, OnnxRuntime.ortCompileApiHandle, nativeHandle, embedEpContext);
   }
 
   /**
@@ -200,7 +215,10 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
   public void setCompilationFlags(EnumSet<OrtCompileApiFlags> flags) throws OrtException {
     checkClosed();
     setCompilationFlags(
-        OnnxRuntime.ortCompileApiHandle, nativeHandle, OrtFlags.aggregateToInt(flags));
+        OnnxRuntime.ortApiHandle,
+        OnnxRuntime.ortCompileApiHandle,
+        nativeHandle,
+        OrtFlags.aggregateToInt(flags));
   }
 
   /**
@@ -211,18 +229,26 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
    */
   public void compileModel() throws OrtException {
     checkClosed();
-    compileModel(OnnxRuntime.ortCompileApiHandle, nativeHandle);
+    // Safe as the environment must exist to create one of these objects.
+    OrtEnvironment env = OrtEnvironment.getEnvironment();
+    compileModel(
+        OnnxRuntime.ortApiHandle,
+        OnnxRuntime.ortCompileApiHandle,
+        env.getNativeHandle(),
+        nativeHandle);
   }
 
-  private static native long createFromSessionOptions(long compileApiHandle, long nativeHandle)
-      throws OrtException;
+  private static native long createFromSessionOptions(
+      long apiHandle, long compileApiHandle, long envHandle, long nativeHandle) throws OrtException;
 
   private static native void close(long compileApiHandle, long nativeHandle);
 
   private static native void setInputModelPath(
-      long compileApiHandle, long nativeHandle, String inputModelPath) throws OrtException;
+      long apiHandle, long compileApiHandle, long nativeHandle, String inputModelPath)
+      throws OrtException;
 
   private static native void setInputModelFromBuffer(
+      long apiHandle,
       long compileApiHandle,
       long nativeHandle,
       ByteBuffer inputBuffer,
@@ -231,18 +257,24 @@ public final class OrtModelCompilationOptions implements AutoCloseable {
       throws OrtException;
 
   private static native void setOutputModelPath(
-      long compileApiHandle, long nativeHandle, String outputModelPath) throws OrtException;
+      long apiHandle, long compileApiHandle, long nativeHandle, String outputModelPath)
+      throws OrtException;
 
   private static native void setOutputExternalInitializersPath(
-      long compileApiHandle, long nativeHandle, String externalInitializersPath, long sizeThreshold)
+      long apiHandle,
+      long compileApiHandle,
+      long nativeHandle,
+      String externalInitializersPath,
+      long sizeThreshold)
       throws OrtException;
 
   private static native void setEpContextEmbedMode(
-      long compileApiHandle, long nativeHandle, boolean embedEpContext) throws OrtException;
+      long apiHandle, long compileApiHandle, long nativeHandle, boolean embedEpContext)
+      throws OrtException;
 
   private static native void setCompilationFlags(
-      long compileApiHandle, long nativeHandle, int flags) throws OrtException;
+      long apiHandle, long compileApiHandle, long nativeHandle, int flags) throws OrtException;
 
-  private static native void compileModel(long compileApiHandle, long nativeHandle)
-      throws OrtException;
+  private static native void compileModel(
+      long apiHandle, long compileApiHandle, long envHandle, long nativeHandle) throws OrtException;
 }
