@@ -93,7 +93,8 @@ class MatMulNBits final : public CudaKernel {
 
 #ifdef FPA_INTB_GEMM_LATENCY
         });
-        std::cout << "Latency: " << latency_us << " microseconds" << std::endl;;
+        std::cout << "Latency: " << latency_us << " microseconds" << std::endl;
+        ;
 #endif
 
         has_fpA_intB_gemm_ = true;

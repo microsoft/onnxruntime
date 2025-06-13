@@ -11,11 +11,11 @@ namespace onnxruntime {
 
 template <typename Func>
 auto measure_latency(Func&& func) {
-    auto start = std::chrono::high_resolution_clock::now();
-    func();
-    auto end = std::chrono::high_resolution_clock::now();
+  auto start = std::chrono::high_resolution_clock::now();
+  func();
+  auto end = std::chrono::high_resolution_clock::now();
 
-    return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();  // Latency in microseconds
+  return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();  // Latency in microseconds
 }
 
-}
+}  // namespace onnxruntime

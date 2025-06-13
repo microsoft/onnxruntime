@@ -250,15 +250,15 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
   return Status::OK();
 }
 
-  inline int nextPowerOfTwo(int v) {
-    --v;
-    v |= v >> 1;
-    v |= v >> 2;
-    v |= v >> 4;
-    v |= v >> 8;
-    v |= v >> 16;
-    return ++v;
-  }
+inline int nextPowerOfTwo(int v) {
+  --v;
+  v |= v >> 1;
+  v |= v >> 2;
+  v |= v >> 4;
+  v |= v >> 8;
+  v |= v >> 16;
+  return ++v;
+}
 
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
@@ -316,10 +316,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
         std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=" << max_m_ << "~" << next_m << std::endl;
         auto latency_us = measure_latency([&]() {
 #endif
-
-        int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
-        GemmDims dims = {max_m_, next_m, n_16b, K_};
-        gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, has_fpA_intB_gemv_);
+          int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
+          GemmDims dims = {max_m_, next_m, n_16b, K_};
+          gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, has_fpA_intB_gemv_);
 
 #ifdef FPA_INTB_GEMM_LATENCY
         });
@@ -330,9 +329,13 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
       }
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
-      DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+      bool run_gemv = m < 16;
+      if (bestTactic.has_value()) {
+        run_gemv = bestTactic->enableCudaKernel;
+        DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+      }
 
-      if (bestTactic->enableCudaKernel) {
+      if (run_gemv) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
         KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
 
@@ -346,7 +349,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             alpha, m, n, k, block_size_, cuda_kernel_type, apply_alpha_in_advance);
 
         onnxruntime::llm::kernels::fpA_intB_gemv::kernel_launcher(sm_, params, stream);
-      } else {
+        return Status::OK();
+      } else if (bestTactic.has_value()) {
         const size_t workspace_size = weightOnlyGemmRunner_->getWorkspaceSize(m, n, k);
         auto workspace_buffer = GetScratchBuffer<void>(workspace_size, ctx->GetComputeStream());
 
@@ -364,9 +368,8 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             reinterpret_cast<char*>(workspace_buffer.get()),
             workspace_size,
             stream);
+        return Status::OK();
       }
-
-      return Status::OK();
     }
   }
 

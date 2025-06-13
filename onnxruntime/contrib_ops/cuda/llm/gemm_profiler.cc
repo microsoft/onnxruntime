@@ -17,6 +17,7 @@
 
 #include "contrib_ops/cuda/llm/gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/logger.h"
+#include "contrib_ops/cuda/llm/common/cuda_runtime_utils.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
 #include "contrib_ops/cpu/utils/measure_latency.h"
@@ -135,6 +136,18 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   auto profileTactics = [&mProfileMap, &isAllocated, this](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
+        // Check whether there is enough free GPU memory.
+        auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false);
+        if (freeMemory < mTmpWorkspaceSizeInBytes) {
+          ORT_LLM_LOG_WARNING(
+              "Not enough free memory to profile GEMM tactics. "
+              "Free memory: ",
+              freeMemory, ", required: ", mTmpWorkspaceSizeInBytes);
+          mSkip = true;
+          return;
+        }
+        std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << mTmpWorkspaceSizeInBytes << std::endl;
+
         // Allocate tmp data to run GEMMs
         allocateTmpData();
         isAllocated = true;
@@ -231,7 +244,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   bool foundOne = false;
 
   // Iterate over all tactics for given M, N and K
-  std::cout << "total configs=" << tactics.size() << std::endl;
+  std::cout << "total configs to profile:" << tactics.size() << std::endl;
   for (size_t ii = 0; ii < tactics.size(); ++ii) {
     Config const& candidateConfig = tactics[ii];
     float time = std::numeric_limits<float>::max();
@@ -248,7 +261,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
       }
 #endif
 
-foundOne = true;
+      foundOne = true;
     } catch (std::exception const& e) {
       std::ostringstream msg;
       msg << "Cannot profile configuration " << ii;
