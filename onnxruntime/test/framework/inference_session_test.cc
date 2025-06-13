@@ -303,7 +303,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
   // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
   // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
-  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0));
+  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
   auto gpu_alloc = session_object.GetAllocator(mem_info);
 #elif defined(USE_CUDA) || defined(USE_ROCM)
   auto gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
