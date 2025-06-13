@@ -169,10 +169,10 @@ Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
 EpValueInfo::EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info,
                          size_t flags)
     : OrtValueInfo(OrtGraphIrApi::kEpApi),
-      graph(graph),
-      name(name),
-      type_info(std::move(type_info)),
-      flags(flags) {}
+      graph_(graph),
+      name_(name),
+      type_info_(std::move(type_info)),
+      flags_(flags) {}
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetInputIndices(const EpNode& consumer_node,
@@ -183,7 +183,7 @@ static Status GetInputIndices(const EpNode& consumer_node,
       [&found, &value_info_name, &indices](gsl::span<const EpValueInfo* const> input_value_infos,
                                            bool is_implicit) -> void {
     for (size_t i = 0; i < input_value_infos.size(); i++) {
-      if (input_value_infos[i]->name == value_info_name) {
+      if (input_value_infos[i]->Name() == value_info_name) {
         indices.push_back(is_implicit ? -1 : static_cast<int64_t>(i));
         found = true;
       }
@@ -202,7 +202,7 @@ static Status GetOutputIndex(const EpNode& producer_node,
                              /*out*/ size_t& index) {
   bool found = false;
   for (size_t i = 0; i < producer_node.outputs.size(); i++) {
-    if (producer_node.outputs[i]->name == value_info_name) {
+    if (producer_node.outputs[i]->Name() == value_info_name) {
       index = i;
       found = true;
     }
@@ -217,23 +217,23 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   producer_info.node = nullptr;
   producer_info.output_index = 0;
 
-  if (graph == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get producer node for OrtValueInfo '", name,
+  if (graph_ == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get producer node for OrtValueInfo '", name_,
                            "' that is not owned by a OrtGraph.");
   }
 
-  const Node* node = graph->graph_viewer.GetProducerNode(name);
+  const Node* node = graph_->graph_viewer.GetProducerNode(name_);
   if (node == nullptr) {
     return Status::OK();
   }
 
-  const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+  const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
   if (ep_node == nullptr) {
     return Status::OK();  // Node is not in this GraphViewer
   }
 
   size_t output_index = 0;
-  ORT_RETURN_IF_ERROR(GetOutputIndex(*ep_node, name, output_index));
+  ORT_RETURN_IF_ERROR(GetOutputIndex(*ep_node, name_, output_index));
 
   producer_info.node = ep_node->ToExternal();
   producer_info.output_index = output_index;
@@ -247,12 +247,12 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
 
 Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& result) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
-  if (graph == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get uses of OrtValueInfo '", name,
+  if (graph_ == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get uses of OrtValueInfo '", name_,
                            "' that is not owned by a OrtGraph.");
   }
 
-  std::vector<const Node*> nodes = graph->graph_viewer.GetConsumerNodes(name);
+  std::vector<const Node*> nodes = graph_->graph_viewer.GetConsumerNodes(name_);
   if (nodes.empty()) {
     return Status::OK();
   }
@@ -260,13 +260,13 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& re
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
   consumer_infos.reserve(nodes.size());
   for (const Node* node : nodes) {
-    const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+    const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
     if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
 
     std::vector<int64_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name, input_indices));
+    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name_, input_indices));
 
     for (int64_t input_index : input_indices) {
       OrtValueInfo::ConsumerInfo use_info(ep_node->ToExternal(), input_index);
@@ -287,24 +287,24 @@ Status EpValueInfo::GetNumConsumerInfos(size_t& num_consumers) const {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   num_consumers = 0;
 
-  if (graph == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get number of uses of OrtValueInfo '", name,
+  if (graph_ == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get number of uses of OrtValueInfo '", name_,
                            "' that is not owned by a OrtGraph.");
   }
 
-  std::vector<const Node*> nodes = graph->graph_viewer.GetConsumerNodes(name);
+  std::vector<const Node*> nodes = graph_->graph_viewer.GetConsumerNodes(name_);
   if (nodes.empty()) {
     return Status::OK();
   }
 
   for (const Node* node : nodes) {
-    const EpNode* ep_node = graph->index_to_ep_node.GetEpNode(node->Index());
+    const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
     if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
 
     std::vector<int64_t> input_indices;
-    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name, input_indices));
+    ORT_RETURN_IF_ERROR(GetInputIndices(*ep_node, name_, input_indices));
 
     num_consumers += input_indices.size();  // A single OrtNode can use an OrtValueInfo as an input more than once.
   }
@@ -325,10 +325,10 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
     return Status::OK();
   }
 
-  const EpGraph* curr_graph = graph;
+  const EpGraph* curr_graph = graph_;
 
   while (curr_graph != nullptr) {
-    auto map_iter = curr_graph->initializer_values.find(name);
+    auto map_iter = curr_graph->initializer_values.find(name_);
 
     if (map_iter != curr_graph->initializer_values.end()) {
       result = map_iter->second.get();
@@ -340,7 +340,7 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
   }
 
   result = nullptr;
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find initializer value named '", name, "'.");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find initializer value named '", name_, "'.");
 }
 
 //
@@ -451,7 +451,7 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
     auto initializer_value = std::make_unique<OrtValue>();
     ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
                                                      initializer_allocator, *initializer_value));
-    initializer_values.emplace(value_info->name, std::move(initializer_value));
+    initializer_values.emplace(value_info->Name(), std::move(initializer_value));
   }
 
   // Process nodes in topological order, converting Node to EpNode.
@@ -524,14 +524,10 @@ Status EpGraph::GetInitializers(std::vector<const OrtValueInfo*>& result) const 
 size_t EpGraph::NumNodes() const { return nodes.size(); }
 
 std::vector<const OrtNode*> EpGraph::GetNodes() const {
-  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder();
-
   std::vector<const OrtNode*> result;
-  result.reserve(NumNodes());
+  result.reserve(nodes.size());
 
-  for (NodeIndex node_idx : node_indices) {
-    const EpNode* ep_node = index_to_ep_node.GetEpNode(node_idx);
-    assert(ep_node != nullptr);
+  for (const std::unique_ptr<EpNode>& ep_node : nodes) {
     result.push_back(ep_node->ToExternal());
   }
   return result;

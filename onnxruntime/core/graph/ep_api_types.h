@@ -39,8 +39,8 @@ struct EpValueInfo : public OrtValueInfo {
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and EpValueInfo.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, EpValueInfo, OrtGraphIrApi::kEpApi)
 
-  const std::string& Name() const override { return name; }
-  const OrtTypeInfo* TypeInfo() const override { return type_info.get(); }
+  const std::string& Name() const override { return name_; }
+  const OrtTypeInfo* TypeInfo() const override { return type_info_.get(); }
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
   Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
   Status GetNumConsumerInfos(size_t& num_consumers) const override;
@@ -58,16 +58,17 @@ struct EpValueInfo : public OrtValueInfo {
     return IsFlagSet(kIsOuterScope);
   }
 
-  void SetFlag(EpValueInfo::Flags flag) { flags |= flag; }
-  bool IsFlagSet(EpValueInfo::Flags flag) const { return flags & flag; }
+  void SetFlag(EpValueInfo::Flags flag) { flags_ |= flag; }
+  bool IsFlagSet(EpValueInfo::Flags flag) const { return flags_ & flag; }
 
+ private:
   // Back pointer to parent graph. If not null, enables retrieval of consumer and producer nodes.
   // Is null if the EpValueInfo was created without an owning EpGraph
   // (e.g., OrtValueInfo instances created for fused nodes in OrtEp::Compile()).
-  const EpGraph* graph = nullptr;
-  std::string name;
-  std::unique_ptr<OrtTypeInfo> type_info;
-  size_t flags = 0;
+  const EpGraph* graph_ = nullptr;
+  std::string name_;
+  std::unique_ptr<OrtTypeInfo> type_info_;
+  size_t flags_ = 0;
 };
 
 /// <summary>
