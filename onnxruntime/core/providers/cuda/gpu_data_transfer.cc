@@ -15,8 +15,8 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
   }
 
   // copies between GPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
-  return (src == OrtDevice::GPU || src == OrtDevice::CPU) &&
-         (dst == OrtDevice::GPU || dst == OrtDevice::CPU);
+  return (src_device == OrtDevice::GPU || src_device == OrtDevice::CPU) &&
+         (dst_device == OrtDevice::GPU || dst_device == OrtDevice::CPU);
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
@@ -27,8 +27,10 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   // for the sync version of memcpy, launch to cuda default stream
   if (dst_is_gpu_default) {
@@ -69,8 +71,10 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   if (dst_is_gpu_default) {
     if (src_is_gpu_default) {

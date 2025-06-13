@@ -30,8 +30,10 @@ common::Status NPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   // for the sync version of memcpy, launch to cann default stream
   if (dst_is_npu_default) {
@@ -78,8 +80,10 @@ common::Status NPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_npu_default = dst_device.Type() == OrtDevice::NPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_npu_default = src_device.Type() == OrtDevice::NPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   if (dst_is_npu_default) {
     if (src_is_npu_default) {

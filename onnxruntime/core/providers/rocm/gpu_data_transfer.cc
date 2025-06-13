@@ -29,8 +29,10 @@ common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   // for the sync version of memcpy, launch to hip default stream
   if (dst_is_gpu_default) {
@@ -69,8 +71,10 @@ common::Status GPUDataTransfer::CopyTensorAsync(const Tensor& src, Tensor& dst, 
   auto& src_device = src.Location().device;
   auto& dst_device = dst.Location().device;
 
-  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU && dst_device.MemType() == OrtDevice::DEFAULT;
-  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU && src_device.MemType() == OrtDevice::DEFAULT;
+  const bool dst_is_gpu_default = dst_device.Type() == OrtDevice::GPU &&
+                                  dst_device.MemType() == OrtDevice::MemType::DEFAULT;
+  const bool src_is_gpu_default = src_device.Type() == OrtDevice::GPU &&
+                                  src_device.MemType() == OrtDevice::MemType::DEFAULT;
 
   if (dst_is_gpu_default) {
     if (src_is_gpu_default) {
