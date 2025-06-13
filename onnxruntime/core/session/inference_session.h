@@ -134,6 +134,12 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+#ifdef _WIN32
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+#endif
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -793,6 +799,10 @@ class InferenceSession {
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
 
+#ifdef _WIN32
+  static void LogAllSessions();
+#endif
+
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
       GraphTransformerManager& transformer_manager,
@@ -1011,57 +1021,6 @@ class InferenceSession {
 #if !defined(ORT_MINIMAL_BUILD)
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
-#endif
-
-#ifdef _WIN32
-  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
-  static std::map<uint32_t, InferenceSession*> active_sessions_;
-  // Single callback for all sessions. Registers when the first session comes up
-  // and unregister when the last session goes away.
-  static const std::string callback_etw_provider_key_;
-  std::string callback_etw_sink_key_;  // Session Start Stop
-
-  void UnregisterEtwCallbacks();
-
-  struct AutoEtwUnregistrar {
-    std::function<void()> unregister_callback;
-    explicit AutoEtwUnregistrar(std::function<void()> func)
-        : unregister_callback(std::move(func)) {}
-    ~AutoEtwUnregistrar() {
-      if (unregister_callback) {
-        unregister_callback();
-      }
-    }
-  };
-
-  // Automatically cleans up all outstanding registrations
-  // in case session loading fails and ETW callbacks are already registered.
-  // We want callbacks to stop before any other members of the object are
-  // destroyed.
-  std::optional<AutoEtwUnregistrar> auto_etw_unregistrar_;
-
-  // This callback is registered globally for all sessions
-  // It is unregistered when the last session goes away.
-  static void EtwProviderCallbackLogAllSessions(LPCGUID SourceId,
-                                                ULONG IsEnabled,
-                                                UCHAR Level,
-                                                ULONGLONG MatchAnyKeyword,
-                                                ULONGLONG MatchAllKeyword,
-                                                PEVENT_FILTER_DESCRIPTOR FilterData,
-                                                PVOID CallbackContext);
-
-  static void LogAllSessions();
-
-  // This callback is registered per session
-  void EtwProviderSinkControlCallback(logging::EtwRegistrationManager& etwRegistrationManager,
-                                      LPCGUID /*SourceId */,
-                                      ULONG IsEnabled,
-                                      UCHAR /* Level */,
-                                      ULONGLONG MatchAnyKeyword,
-                                      ULONGLONG /* MatchAllKeyword */,
-                                      PEVENT_FILTER_DESCRIPTOR /* FilterData */,
-                                      PVOID /* CallbackContext */);
-
 #endif
 };
 
