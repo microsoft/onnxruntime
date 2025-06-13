@@ -325,7 +325,7 @@ class BucketCacheManager : public IBufferCacheManager {
 
  private:
   static constexpr size_t kRunsBeforeAdjustment = 1;   // Number of runs before adjusting buckets
-  static constexpr size_t kMinFrequencyThreshold = 3;  // Minimum frequency to create a bucket
+  static constexpr size_t kMinFrequencyThreshold = 1;  // Minimum frequency to create a bucket
   static constexpr float kHeadroomFactor = 1.1f;       // Add 10% headroom to max concurrent use
 
   size_t run_count_{0};
