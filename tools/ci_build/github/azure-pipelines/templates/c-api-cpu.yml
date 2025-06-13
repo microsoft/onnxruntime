@@ -163,20 +163,6 @@ stages:
         targetPath: '$(Build.BinariesDirectory)/artifacts'
         artifactName: 'onnxruntime-ios-full-xcframework'
 
-
-
-- template: win-ci.yml
-  parameters:
-    DoEsrp: ${{ parameters.DoEsrp }}
-    stage_name_suffix: CPU_x86_${{ parameters.BuildVariant }}
-    buildArch: x86
-    msbuildPlatform: Win32
-    packageName: x86
-    buildparameter: ${{ parameters.AdditionalBuildFlags }} ${{ parameters.AdditionalWinBuildFlags}}
-    runTests: ${{ parameters.RunOnnxRuntimeTests }}
-    buildJava: false
-    buildNodejs: false
-
 - template: win-ci.yml
   parameters:
     DoEsrp: ${{ parameters.DoEsrp }}
@@ -296,7 +282,6 @@ stages:
   - Setup
   - Linux_C_API_Packaging_CPU
   - MacOS_C_API_Package_Publish
-  - Windows_Packaging_CPU_x86_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_x64_${{ parameters.BuildVariant }}
   - Windows_Packaging_CPU_arm64_${{ parameters.BuildVariant }}
   - Android_Java_API_AAR_Packaging_Full
@@ -322,14 +307,6 @@ stages:
       parameters:
         StepName: 'Download Pipeline Artifact - Win x64'
         ArtifactName: 'onnxruntime-win-x64'
-        TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
-        SpecificArtifact: ${{ parameters.specificArtifact }}
-        BuildId: ${{ parameters.BuildId }}
-
-    - template: flex-downloadPipelineArtifact.yml
-      parameters:
-        StepName: 'Download win-x86 Pipeline Artifact'
-        ArtifactName: 'onnxruntime-win-x86'
         TargetPath: '$(Build.BinariesDirectory)/nuget-artifact'
         SpecificArtifact: ${{ parameters.specificArtifact }}
         BuildId: ${{ parameters.BuildId }}
@@ -484,7 +461,7 @@ stages:
         PackageType: 'nuget'
         PackagePath: '$(Build.ArtifactStagingDirectory)'
         PackageName: 'Microsoft.ML.OnnxRuntime.*nupkg'
-        PlatformsSupported: 'win-x64,win-x86,linux-x64,linux-arm64,osx-x64'
+        PlatformsSupported: 'win-x64,linux-x64,linux-arm64,osx-x64'
         VerifyNugetSigning: false
 
     - task: 1ES.PublishPipelineArtifact@1
@@ -806,7 +783,6 @@ stages:
 - template: ../nuget/templates/test_win.yml
   parameters:
     AgentPool: 'onnxruntime-Win-CPU-2022'
-    Skipx86Tests: false
     NugetPackageName: 'Microsoft.ML.OnnxRuntime'
     ArtifactSuffix: 'CPU'
     SpecificArtifact: ${{ parameters.SpecificArtifact }}

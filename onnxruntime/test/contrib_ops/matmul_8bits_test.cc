@@ -2,8 +2,6 @@
 // Licensed under the MIT License.
 
 #ifndef ORT_MINIMAL_BUILD
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
-
 #include <optional>
 
 #include "gtest/gtest.h"
@@ -25,6 +23,8 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
+
+#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -289,6 +289,8 @@ TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
   constexpr float abs_error = 0.055f;
   constexpr float rel_error = 0.02f;
   TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>(abs_error, rel_error);
 }
 #endif

@@ -2386,8 +2386,8 @@ TEST(InferenceSessionTests, LoadModelWithValidOrtConfigJson) {
   ASSERT_TRUE(session_object_1.GetSessionOptions().execution_mode == ExecutionMode::ORT_SEQUENTIAL);
 
   // The default value for graph_optimization_level is Level1
-  // The model requests Level3 - hence that should be used
-  ASSERT_TRUE(session_object_1.GetSessionOptions().graph_optimization_level == TransformerLevel::Level3);
+  // The model requests MaxLevel - hence that should be used
+  ASSERT_TRUE(session_object_1.GetSessionOptions().graph_optimization_level == TransformerLevel::MaxLevel);
 
   // The default value for enable_profiling is false
   // The model requests true - hence that should be used
