@@ -446,6 +446,8 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 64, 32, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 128, 128, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();

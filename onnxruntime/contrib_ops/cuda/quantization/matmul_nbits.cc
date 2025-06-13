@@ -14,7 +14,7 @@
 #include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
-#include "contrib_ops/cuda/llm/cutlass_preprocessors.h"
+#include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 constexpr int MatMulNBits_Input_B = 1;
@@ -30,21 +30,40 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
+constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
+constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
+
 template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   }
 
@@ -126,27 +145,18 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
           stream, packed_transposed_weight, blob_data, n, k);
     }
 
-    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
-
-    auto tranpose_weight_buffer = this->AllocateBufferOnCPUPinned<int8_t>(packed_weight_bytes);
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(tranpose_weight_buffer.get(), packed_transposed_weight, packed_weight_bytes, cudaMemcpyDeviceToHost));
-
-    auto processed_weight_buffer = this->AllocateBufferOnCPUPinned<uint8_t>(n * k / (8 / nbits_));
-    bool force_interleave = false;
-
-    using onnxruntime::llm::kernels::cutlass_kernels::QuantType;
+    using onnxruntime::llm::kernels::weight_only::QuantType;
     QuantType quant_type = nbits_ == 4 ? QuantType::W4_A16 : QuantType::W8_A16;
 
-    // TODO: Add a cuda kernle for preprocessing so that we can avoid copying the data back to CPU.
-    onnxruntime::llm::kernels::cutlass_kernels::preprocess_weights_for_mixed_gemm(
-        reinterpret_cast<int8_t*>(processed_weight_buffer.get()),
-        reinterpret_cast<const int8_t*>(tranpose_weight_buffer.get()),
+    auto permutation_map_buffer = this->GetTransientScratchBuffer<int32_t>(32);
+    onnxruntime::llm::kernels::weight_only::preprocess_weights_for_mixed_gemm_cuda(
+        stream,
+        sm_,
+        preprocessed_weight,
+        packed_transposed_weight,
+        permutation_map_buffer.get(),
         {static_cast<size_t>(k), static_cast<size_t>(n)},
-        quant_type,
-        force_interleave);
-
-    CUDA_RETURN_IF_ERROR(cudaMemcpy(preprocessed_weight, processed_weight_buffer.get(), n * k / (8 / nbits_), cudaMemcpyHostToDevice));
-    CUDA_RETURN_IF_ERROR(cudaDeviceSynchronize());
+        quant_type);
 
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
@@ -172,7 +182,8 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
+    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
+        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();

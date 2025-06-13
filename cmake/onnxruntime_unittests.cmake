@@ -1334,6 +1334,14 @@ endif()
 
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
+    if(WIN32)
+        AddTest(DYN
+                TARGET onnxruntime_shared_lib_dlopen_test
+                SOURCES ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/dlopen_main.cc
+                LIBS onnxruntime
+                DEPENDS ${all_dependencies}
+        )
+    endif()
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)
     target_link_libraries(onnxruntime_mocked_allocator PRIVATE ${GSL_TARGET})
