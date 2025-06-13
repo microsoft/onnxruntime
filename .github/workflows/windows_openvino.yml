@@ -149,13 +149,13 @@ jobs:
         shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --update --parallel --use_vcpkg
 
       - name: Build
         shell: pwsh
         working-directory: ${{ runner.temp }}
         run: |
-          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --build --parallel
+          python.exe ${{ github.workspace }}\tools\ci_build\build.py --config ${{ env.BuildConfig }} --build_dir build --cmake_generator "Visual Studio 17 2022" --build_shared_lib --use_openvino CPU --use_binskim_compliant_compile_flags --build --parallel --use_vcpkg
 
 
       - name: Run unit tests
@@ -169,4 +169,4 @@ jobs:
             --build_shared_lib `
             --use_openvino CPU `
             --use_binskim_compliant_compile_flags `
-            --test --enable_onnx_tests
+            --test --enable_onnx_tests --use_vcpkg
