@@ -182,21 +182,14 @@ class BucketCacheManager : public IBufferCacheManager {
     // Track usage for the current run
     current_run_usage_[request_size]++;
 
-    if (!first_run_ended_) {
-      if (buckets_.find(request_size) == buckets_.end() && buckets_.size() < MAX_BUCKET_COUNT) {
-        buckets_.emplace(request_size, std::vector<WGPUBuffer>());
-        buckets_limit_.emplace(request_size, INITIAL_BUCKET_LIMIT);
-        buckets_keys_.push_back(request_size);
-        std::sort(buckets_keys_.begin(), buckets_keys_.end());
-      }
+    if (buckets_.find(request_size) == buckets_.end() && buckets_.size() < MAX_BUCKET_COUNT) {
+      buckets_.emplace(request_size, std::vector<WGPUBuffer>());
+      buckets_limit_.emplace(request_size, INITIAL_BUCKET_LIMIT);
+      buckets_keys_.push_back(request_size);
+      std::sort(buckets_keys_.begin(), buckets_keys_.end());
     }
 
-    // Find appropriate bucket size
-    auto it = std::lower_bound(buckets_keys_.begin(), buckets_keys_.end(), request_size);
-    if (it == buckets_keys_.end()) {
-      return request_size;
-    }
-    return *it;
+    return request_size;
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
