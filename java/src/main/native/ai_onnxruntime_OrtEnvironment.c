@@ -126,11 +126,7 @@ JNIEXPORT jlongArray JNICALL Java_ai_onnxruntime_OrtEnvironment_getEpDevices
     } else {
         jsize numDevicesInt = safecast_size_t_to_jsize(numDevices);
         jlongArray outputArr = (*jniEnv)->NewLongArray(jniEnv, numDevicesInt);
-        jlong *arrElements = (*jniEnv)->GetLongArrayElements(jniEnv, outputArr, NULL);
-        for (int32_t i = 0; i < numDevicesInt; i++) {
-            arrElements[i] = (jlong) devicesArr[i];
-        }
-        (*jniEnv)->ReleaseLongArrayElements(jniEnv, outputArr, arrElements, 0);
+        (*jniEnv)->SetLongArrayRegion(jniEnv, outputArr, 0, numDevicesInt, (jlong*)devicesArr);
         return outputArr;
     }
 }
