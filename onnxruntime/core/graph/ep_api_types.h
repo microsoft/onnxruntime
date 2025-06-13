@@ -136,7 +136,7 @@ struct EpNode : public OrtNode {
   std::vector<EpValueInfo*> implicit_inputs;
   std::vector<SubgraphState> subgraphs;
   
-  std::unordered_map<std::string, std::unique_ptr<OrtOpAttr>> attributes_map;
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> attributes_map;
   std::vector<OrtOpAttr*> attributes;
 };
 
