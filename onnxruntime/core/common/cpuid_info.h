@@ -148,6 +148,7 @@ class CPUIDInfo {
 #if defined(__linux__)
 
   void ArmLinuxInit();
+  std::string GetArmLinuxVendor();
 
 #elif defined(_WIN32)
 

@@ -39,6 +39,8 @@
 
 #endif  // ARM
 
+#include "core/platform/linux/cpuinfo.h"
+
 #endif  // Linux
 
 #if _WIN32
@@ -170,7 +172,7 @@ std::string CPUIDInfo::GetX86Vendor(int32_t* data) {
 
 uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "GenuineIntel") return 0x8086;
-  if (vendor == "GenuineAMD") return 0x1022;
+  if (vendor == "AuthenticAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
   if (vendor.find("NV") == 0) return 0x10DE;
   return 0;
@@ -222,6 +224,23 @@ void CPUIDInfo::ArmLinuxInit() {
 
     has_arm_neon_bf16_ = ((getauxval(AT_HWCAP2) & HWCAP2_BF16) != 0);
   }
+}
+
+std::string CPUIDInfo::GetArmLinuxVendor() {
+  std::string vendor{};
+
+  CpuInfo cpu_info{};
+  Status parse_status = ParseCpuInfoFile(cpu_info);
+  if (!parse_status.IsOK()) {
+    LOGS_DEFAULT(WARNING) << "Failed to parse /proc/cpuinfo file. Error: " << parse_status;
+  }
+
+  if (cpu_info.size() > 0) {
+    // just use the vendor from the first processor's information
+    vendor = cpu_info[0].vendor_id;
+  }
+
+  return vendor;
 }
 
 #elif defined(_WIN32)  // ^ defined(__linux__)

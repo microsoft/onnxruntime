@@ -19,7 +19,7 @@ const std::unordered_set<OrtHardwareDevice>& DeviceDiscovery::GetDevices() {
     // log discovered devices
     for (const auto& ortdevice : discovered_devices) {
       std::ostringstream oss;
-      oss << "Adding OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
+      oss << "Discovered OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
           << ", device_id:0x" << ortdevice.device_id
           << ", vendor:" << ortdevice.vendor
           << ", type:" << std::dec << static_cast<int>(ortdevice.type)
