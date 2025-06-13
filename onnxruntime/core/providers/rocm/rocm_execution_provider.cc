@@ -2537,7 +2537,7 @@ OrtDevice ROCMExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) cons
 std::vector<AllocatorPtr> ROCMExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo pinned_memory_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<ROCMPinnedAllocator>(HIP_PINNED, device_id);
+        return std::make_unique<ROCMPinnedAllocator>(device_id, HIP_PINNED);
       },
       info_.device_id);
   return std::vector<AllocatorPtr>{

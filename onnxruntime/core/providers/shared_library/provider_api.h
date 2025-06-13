@@ -316,7 +316,7 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
