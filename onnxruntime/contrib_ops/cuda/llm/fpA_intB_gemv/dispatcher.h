@@ -235,7 +235,7 @@ template <typename Details, int CtaM, int CtaN, int Threads, int GroupSize, bool
           bool EnableBias, bool ApplyAlphaInAdvance, typename TypeA = typename Details::TypeDetailsA::Type>
 __global__ void kernel(TypeA* act, TypeA* act_scale, uint8_t* weight, TypeA* scales, TypeA* zeros, TypeA* bias,
                        TypeA* out, float alpha, int m, int n, int k) {
-#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750))
+#if (defined(__CUDA_ARCH__) && (__CUDA_ARCH__ >= 750)) || !defined(__CUDA_ARCH__)
   // ArgType          ArgName          DataType           Shape                 Layout
   // input            act              fp16/bf16          [m, k]                RowMajor
   // input            act_scale        fp16/bf16          [1, k]                RowMajor

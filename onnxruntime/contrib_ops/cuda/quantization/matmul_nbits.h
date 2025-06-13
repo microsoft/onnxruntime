@@ -12,9 +12,9 @@
 #include "core/providers/cuda/shared_inc/fpgeneric.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "core/platform/env_var_utils.h"
+#include "contrib_ops/cpu/utils/measure_latency.h"
 
 #include <iostream>
-#include <chrono>
 
 #define FPA_INTB_GEMM_LATENCY 1
 
@@ -36,6 +36,8 @@ constexpr int kFpAIntBGemmOption_All = 0x01;
 constexpr int kFpAIntBGemmOption_Gemv = 0x02;
 constexpr int kFpAIntBGemmOption_Int4 = 0x04;
 constexpr int kFpAIntBGemmOption_Int8 = 0x08;
+
+constexpr const char* kFpAIntBGemmInitM = "ORT_FPA_INTB_GEMM_INIT_M";
 
 template <typename T>
 class MatMulNBits final : public CudaKernel {
@@ -81,20 +83,21 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(sm_);
 
+        int max_m = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmInitM, 16);
+
 #ifdef FPA_INTB_GEMM_LATENCY
-        std::cout << "Start Gemm Profile for N=" << N_ << ", K=" << K_ << std::endl;
-        auto start = std::chrono::high_resolution_clock::now();
+        std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=1~" << max_m << std::endl;
+        auto latency_us = measure_latency([&]() {
 #endif
-
-        RunGemmProfile(has_fpA_intB_gemv_, 1, 8192);
+          RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
 
 #ifdef FPA_INTB_GEMM_LATENCY
-        auto end = std::chrono::high_resolution_clock::now();
-        auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-        std::cout << "Gemm Profile Latency: " << duration.count() << " microseconds for N=" << N_ << ", K=" << K_ << std::endl;
+        });
+        std::cout << "Latency: " << latency_us << " microseconds" << std::endl;;
 #endif
 
         has_fpA_intB_gemm_ = true;
+        max_m_ = max_m;
       }
     }
 
@@ -133,6 +136,8 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool has_fpA_intB_gemv_{false};
   bool has_fpA_intB_gemm_{false};
+
+  mutable int max_m_{0};
 
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};

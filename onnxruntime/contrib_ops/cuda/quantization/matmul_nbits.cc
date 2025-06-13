@@ -102,6 +102,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
     cudaStream_t stream = cudaStreamLegacy;  // Use default stream for prepacking.
 
 #ifdef FPA_INTB_GEMM_LATENCY
+    std::cout << "Prepack for input " << input_idx << ", N=" << N_ << ", K=" << K_ << std::endl;
     auto start = std::chrono::high_resolution_clock::now();
 #endif
 
@@ -120,8 +121,8 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
 
 #ifdef FPA_INTB_GEMM_LATENCY
     auto end = std::chrono::high_resolution_clock::now();
-    auto duration = std::chrono::duration_cast<std::chrono::microseconds>(end - start);
-    std::cout << "Prepack Latency: " << duration.count() << " microseconds for input " << input_idx << ", N=" << N_ << ", K=" << K_ << std::endl;
+    auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
+    std::cout << "Latency: " << latency_us << " microseconds" << K_ << std::endl;
 #endif
   }
 
@@ -249,6 +250,16 @@ Status MatMulNBits<T>::PrePack_ZeroPoint([[maybe_unused]] const Tensor& tensor,
   return Status::OK();
 }
 
+  inline int nextPowerOfTwo(int v) {
+    --v;
+    v |= v >> 1;
+    v |= v >> 2;
+    v |= v >> 4;
+    v |= v >> 8;
+    v |= v >> 16;
+    return ++v;
+  }
+
 template <typename T>
 Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   const bool is_prepacked = has_fpA_intB_gemm_;
@@ -298,6 +309,25 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if constexpr (std::is_same<T, MLFloat16>::value) {
     if (has_fpA_intB_gemm_) {
+      if (m > max_m_) {
+        auto next_m = nextPowerOfTwo(m);
+
+#ifdef FPA_INTB_GEMM_LATENCY
+        std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=" << max_m_ << "~" << next_m << std::endl;
+        auto latency_us = measure_latency([&]() {
+#endif
+
+        int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
+        GemmDims dims = {max_m_, next_m, n_16b, K_};
+        gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, has_fpA_intB_gemv_);
+
+#ifdef FPA_INTB_GEMM_LATENCY
+        });
+        std::cout << "Latency: " << latency_us << " microseconds" << std::endl;
+#endif
+
+        max_m_ = next_m;
+      }
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
       DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());

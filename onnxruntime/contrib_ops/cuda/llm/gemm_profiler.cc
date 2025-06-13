@@ -19,6 +19,7 @@
 #include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "core/providers/cuda/shared_inc/cuda_call.h"
+#include "contrib_ops/cpu/utils/measure_latency.h"
 
 #include <cstddef>
 
@@ -120,6 +121,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
     // Create map for GEMM ID
+    std::cout << "Create map for GEMM ID" << std::endl;
     mMNKProfileMap->createMProfileMap(gemmId);
   }
 
@@ -139,6 +141,8 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
       }
       initTmpData(m, n, k, mWorkspaceTmp, mTmpWorkspaceSizeInBytes, mStream);
       auto tactics = this->getTactics(m, n, k);
+
+      std::cout << "profileTactics workspace=" << mTmpWorkspaceSizeInBytes << std::endl;
 
       // Profile different tactics for particular m and insert best config to the map
       mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
@@ -171,8 +175,11 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   if (isAllocated) {
     // Free tmp data
+    std::cout << "free temp data" << std::endl;
     freeTmpData();
   }
+
+  std::cout << "cudaStreamDestroy" << std::endl;
   CUDA_CALL_THROW(cudaStreamDestroy(mStream));
 }
 
@@ -224,6 +231,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
   bool foundOne = false;
 
   // Iterate over all tactics for given M, N and K
+  std::cout << "total configs=" << tactics.size() << std::endl;
   for (size_t ii = 0; ii < tactics.size(); ++ii) {
     Config const& candidateConfig = tactics[ii];
     float time = std::numeric_limits<float>::max();
@@ -233,6 +241,11 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
       }
       // Profile particular tactic for given M, N and K
       time = profileTacticForProblem(m, n, k, candidateConfig);
+
+      if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
+        std::cout << "time=" << time << " for config: " << candidateConfig.toString() << std::endl;
+      }
+
       foundOne = true;
     } catch (std::exception const& e) {
       std::ostringstream msg;
@@ -262,6 +275,8 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     ORT_LLM_LOG_WARNING(msg.str());
     return std::nullopt;
   }
+
+  std::cout << "Best config:" << bestConfig.toString() << std::endl;
 
   return {bestConfig};
 }
