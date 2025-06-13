@@ -50,6 +50,12 @@ class IBufferCacheManager {
 
   // when a stream refresh is requested
   virtual void OnRefresh() = 0;
+
+  // Track start of inference run
+  virtual void OnRunStart() {}
+
+  // Track end of inference run and update memory patterns
+  virtual void OnRunEnd() {}
 };
 
 //
@@ -69,6 +75,21 @@ class BufferManager {
   void Download(WGPUBuffer src, void* dst, size_t size);
   void RefreshPendingBuffers();
 
+  // Track inference run memory patterns
+  void OnRunStart() {
+    if (storage_cache_) storage_cache_->OnRunStart();
+    if (uniform_cache_) uniform_cache_->OnRunStart();
+    if (query_resolve_cache_) query_resolve_cache_->OnRunStart();
+    if (default_cache_) default_cache_->OnRunStart();
+  }
+
+  void OnRunEnd() {
+    if (storage_cache_) storage_cache_->OnRunEnd();
+    if (uniform_cache_) uniform_cache_->OnRunEnd();
+    if (query_resolve_cache_) query_resolve_cache_->OnRunEnd();
+    if (default_cache_) default_cache_->OnRunEnd();
+  }
+
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
   IBufferCacheManager& GetCacheManager(WGPUBuffer buffer) const;
@@ -86,6 +107,16 @@ class BufferManagerFactory {
 
  private:
   BufferManagerFactory() {}
+};
+
+// Structure to track memory usage patterns
+struct MemoryUsagePattern {
+  size_t request_size;
+  size_t frequency;
+  size_t max_concurrent_use;
+
+  MemoryUsagePattern(size_t size = 0, size_t freq = 0, size_t max_use = 0)
+      : request_size(size), frequency(freq), max_concurrent_use(max_use) {}
 };
 
 }  // namespace webgpu
