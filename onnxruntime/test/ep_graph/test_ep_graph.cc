@@ -96,7 +96,7 @@ static void CheckInitializerValueInfosCApi(const GraphViewer& graph_viewer,
     ASSERT_NE(api_initializer_value, nullptr);
 
     const char* api_initializer_name = nullptr;
-    ort_api.GetValueInfoName(api_value_info, &api_initializer_name);
+    ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
     ASSERT_NE(api_initializer_name, nullptr);
 
     auto iter = initializer_tensor_protos.find(api_initializer_name);

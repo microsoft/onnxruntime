@@ -152,7 +152,7 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
     topo_order.push_back(ort_api.Node_Id(current));
   }
 
-  if (num_nodes != static_cast<int>(topo_order.size())) {
+  if (num_nodes != topo_order.size()) {
     return Ort::Status("Some nodes are not included in the topological sort: graph has a cycle", ORT_FAIL);
   }
 
