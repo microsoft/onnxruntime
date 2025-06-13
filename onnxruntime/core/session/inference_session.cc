@@ -1673,6 +1673,131 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+[[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
+  std::string data_type_list;
+
+  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
+    if (graph.weight_data_type_freq_[i] > 0) {
+      if (!data_type_list.empty()) {
+        data_type_list += ", ";
+      }
+      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += ": ";
+      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+    }
+  }
+
+  return data_type_list;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
+  std::size_t hash = 0;
+  std::hash<std::string> hasher;
+  const uint64_t golden_ratio = 0x9e3779b9;
+
+  /*
+    Combine the current string's hash into the final hash using a mixing function.
+    The mixing function ensures that the order of the string affects the final hash
+    and reduces the likelihood of hash collisions.
+    Here's the breakdown:
+    - hasher(string): The hash of the current string being processed.
+    - 0x9e3779b9: A constant derived from the golden ratio, often used in hash functions
+                  to improve distribution and reduce collisions.
+    - (prev_hash << 6) + (prev_hash >> 2): A bitwise operation that shifts the bits to
+                                           introduce additional entropy.
+  */
+
+  hash = hasher(string) + golden_ratio + (prev_hash << 6) + (prev_hash >> 2);
+  return hash;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Graph Hash
+  const auto& nodes = graph.Nodes();
+  const std::size_t total_nodes = graph.NumberOfNodes();
+  const std::size_t node_step = (total_nodes > node_hash_count) ? (total_nodes / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& node : nodes) {
+    if (index % node_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each node component using GetStringHash
+    final_hash = GetStringHash(node.Name(), final_hash);
+    final_hash = GetStringHash(node.OpType(), final_hash);
+    final_hash = GetStringHash(node.Domain(), final_hash);
+
+    // Hash the input definitions
+    for (const auto& input : node.InputDefs()) {
+      if (input->Exists()) {
+        final_hash = GetStringHash(input->Name(), final_hash);
+      }
+    }
+
+    // Hash the output definitions
+    for (const auto& output : node.OutputDefs()) {
+      if (output->Exists()) {
+        final_hash = GetStringHash(output->Name(), final_hash);
+      }
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Weight Hash
+  const size_t total_initializers = initializers.size();
+  const size_t initializer_step = (total_initializers > node_hash_count) ? (total_initializers / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& [tensor_name, tensor] : initializers) {
+    if (index % initializer_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each tensor component using GetStringHash
+    final_hash = GetStringHash(tensor_name, final_hash);
+
+    if (tensor->has_data_type()) {
+      final_hash = GetStringHash(std::to_string(tensor->data_type()), final_hash);
+    }
+
+    if (tensor->has_raw_data()) {
+      final_hash = GetStringHash(tensor->raw_data(), final_hash);
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
 common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
   if (prepacked_weights_container == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -1837,6 +1962,7 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
@@ -1882,6 +2008,23 @@ common::Status InferenceSession::Initialize() {
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
+#endif
+    // Generate and cache telemetry data for the model when caller framework is WinAI
+    std::string model_weight_type, model_graph_hash, model_weight_hash;
+#ifdef ORT_CALLER_FRAMEWORK
+    if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
+      InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+#if !defined(ORT_MINIMAL_BUILD)
+      model_weight_type = ModelWeightDataType(graph);
+      SetWeightDataType(model_weight_type);
+#endif
+#ifdef _WIN32
+      model_graph_hash = ComputeModelGraphHash(graph);
+      model_weight_hash = ComputeModelWeightHash(initializers);
+      SetGraphHash(model_graph_hash);
+      SetWeightHash(model_weight_hash);
+#endif
+    }
 #endif
 
     // now that we have all the execution providers, create the session state
@@ -2265,14 +2408,17 @@ common::Status InferenceSession::Initialize() {
     session_state_->PruneRemovableAttributes();
 
     // and log telemetry
+    std::filesystem::path model_path = graph.ModelPath();
+    std::string model_file_name = model_path.filename().string();
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
+
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -2668,7 +2814,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
-  TimePoint tp;
+  TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
@@ -2836,18 +2982,40 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  int64_t batch_size = 1;
+  for (const auto& feed : feeds) {
+    if (!feed.IsTensor()) {
+      continue;
+    }
+
+    const Tensor& tensor = feed.Get<Tensor>();
+    const TensorShape& shape = tensor.Shape();
+    if (shape.NumDimensions() > 0) {
+      batch_size = shape[0];  // Extract batch size
+    }
+    // Exit the loop after finding the first tensor since subsequent feeds will have the same batch size.
+    break;
+  }
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
+  {
+    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    ++telemetry_.total_runs_since_last_;
+    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
+      // send the telemetry
+      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                telemetry_.total_run_duration_since_last_,
+                                                telemetry_.duration_per_batch_size_);
+      // reset counters
+      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+      telemetry_.total_runs_since_last_ = 0;
+      telemetry_.total_run_duration_since_last_ = 0;
+      telemetry_.duration_per_batch_size_.clear();
+    }
   }
 
   // log evaluation stop to trace logging provider
@@ -3500,12 +3668,17 @@ void InferenceSession::LogAllSessions() {
 
     auto model = session->model_;
     if (nullptr != model) {
-      const onnxruntime::Graph& graph = model->MainGraph();
-      const bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      onnxruntime::Graph& graph = model->MainGraph();
+      std::filesystem::path model_path = graph.ModelPath();
+      std::string model_file_name = model_path.filename().string();
+      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      std::string model_weight_type = session->GetWeightDataType();
+      std::string model_graph_hash = session->GetGraphHash();
+      std::string model_weight_hash = session->GetWeightHash();
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
-          graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
-          session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+          graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
