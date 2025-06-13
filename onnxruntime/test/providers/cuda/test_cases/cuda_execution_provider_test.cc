@@ -64,8 +64,8 @@ TEST(TestDeferredRelease, WithoutArena) {
                           info.device_id};
   // Create allocator without BFCArena
   AllocatorCreationInfo pinned_memory_info(
-      [](OrtDevice::DeviceId) {
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
       },
       pinned_device.Id(),
       false /* no arena */);

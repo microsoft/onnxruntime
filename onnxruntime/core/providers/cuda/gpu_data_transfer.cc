@@ -13,11 +13,11 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
 
   if ((src_type == OrtDevice::GPU && src_device.Vendor() != OrtDevice::VendorIds::NVIDIA) ||
       (dst_type == OrtDevice::GPU && dst_device.Vendor() != OrtDevice::VendorIds::NVIDIA)) {
-      return false;
+    return false;
   }
 
   return (src_type == OrtDevice::GPU || src_type == OrtDevice::CPU) &&
-        (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
+         (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
 }
 
 common::Status GPUDataTransfer::CopyTensor(const Tensor& src, Tensor& dst) const {
