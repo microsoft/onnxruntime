@@ -242,11 +242,13 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
       // Profile particular tactic for given M, N and K
       time = profileTacticForProblem(m, n, k, candidateConfig);
 
+#ifndef NDEBUG
       if constexpr (std::is_same_v<Config, onnxruntime::llm::cutlass_extensions::CutlassGemmConfig>) {
         std::cout << "time=" << time << " for config: " << candidateConfig.toString() << std::endl;
       }
+#endif
 
-      foundOne = true;
+foundOne = true;
     } catch (std::exception const& e) {
       std::ostringstream msg;
       msg << "Cannot profile configuration " << ii;
