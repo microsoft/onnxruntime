@@ -83,10 +83,11 @@ std::unique_ptr<IExecutionProvider>
 InternalExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                  const OrtLogger& session_logger) {
   std::unique_ptr<IExecutionProvider> ep;
-  OrtStatus* status = ep_factory_.CreateIExecutionProvider(devices_.data(), ep_metadata_.data(), devices_.size(),
-                                                           &session_options, &session_logger, &ep);
-  if (status != nullptr) {
-    ORT_THROW("Error creating execution provider: ", ToStatus(status).ToString());
+  auto status = ToStatusAndRelease(ep_factory_.CreateIExecutionProvider(devices_.data(), ep_metadata_.data(),
+                                                                        devices_.size(), &session_options,
+                                                                        &session_logger, &ep));
+  if (!status.IsOK()) {
+    ORT_THROW("Error creating execution provider: ", status);
   }
 
   return ep;

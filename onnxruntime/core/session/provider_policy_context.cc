@@ -281,12 +281,10 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
-    OrtStatus* status = internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                                   info.devices.size(), &options, &logger,
-                                                                   &ep);
-    if (status != nullptr) {
-      return ToStatus(status);
-    }
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
+                                                   info.devices.size(), &options, &logger,
+                                                   &ep)));
   } else {
     // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
     // and we would add that IExecutionProvider to the InferenceSession.
@@ -295,12 +293,9 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
     // OrtEp* api_ep = nullptr;
     //// add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-    // auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-    //                                         info.devices.size(), &options, &logger,
-    //                                         &api_ep);
-    // if (status != nullptr) {
-    //   return ToStatus(status);
-    // }
+    // ORT_RETURN_IF_ERROR(ToStatusAndRelease(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(),
+    //                                                                  info.ep_metadata.data(), info.devices.size(),
+    //                                                                  &options, &logger, &api_ep)));
   }
 
   return Status::OK();
