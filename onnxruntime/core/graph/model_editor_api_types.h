@@ -38,6 +38,15 @@ struct ModelEditorValueInfo : public OrtValueInfo {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the number of consumers for a OrtValueInfo");
   }
+  Status GetInitializerValue(const OrtValue*& value) const override {
+    if (!IsInitializer()) {
+      value = nullptr;
+      return Status::OK();
+    }
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
+  }
+
   bool IsGraphInput() const override {
     return is_graph_input;
   }
@@ -137,6 +146,8 @@ struct ModelEditorGraph : public OrtGraph {
   }
   size_t NumInputs() const override { return inputs.size(); }
   size_t NumOutputs() const override { return outputs.size(); }
+  size_t NumInitializers() const override { return initializers.size() + external_initializers.size(); }
+
   Status GetInputs(InlinedVector<const OrtValueInfo*>& result) const override {
     result.resize(inputs.size());
     for (size_t i = 0; i < inputs.size(); i++) {
@@ -144,6 +155,7 @@ struct ModelEditorGraph : public OrtGraph {
     }
     return Status::OK();
   }
+
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& result) const override {
     result.resize(outputs.size());
     for (size_t i = 0; i < outputs.size(); i++) {
@@ -151,7 +163,14 @@ struct ModelEditorGraph : public OrtGraph {
     }
     return Status::OK();
   }
+
+  Status GetInitializers(std::vector<const OrtValueInfo*>& /*initializers*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the OrtValueInfos for initializers");
+  }
+
   size_t NumNodes() const override { return nodes.size(); }
+
   std::vector<const OrtNode*> GetNodes(int /*order*/) const override {
     std::vector<const OrtNode*> result;
     result.reserve(nodes.size());
@@ -160,6 +179,7 @@ struct ModelEditorGraph : public OrtGraph {
     }
     return result;
   }
+
   Status GetParentNode(const OrtNode*& /*parent_node*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the parent node for OrtGraph");

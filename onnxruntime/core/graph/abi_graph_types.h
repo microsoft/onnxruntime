@@ -55,6 +55,7 @@ struct OrtValueInfo {
   };
   virtual onnxruntime::Status GetConsumerInfos(std::vector<ConsumerInfo>& consumer_infos) const = 0;
   virtual onnxruntime::Status GetNumConsumerInfos(size_t& num_consumers) const = 0;
+  virtual onnxruntime::Status GetInitializerValue(const OrtValue*& value) const = 0;
 
   virtual bool IsGraphInput() const = 0;
   virtual bool IsGraphOutput() const = 0;
@@ -107,8 +108,10 @@ struct OrtGraph {
   virtual int64_t OnnxIRVersion() const = 0;
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
+  virtual size_t NumInitializers() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
+  virtual onnxruntime::Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const = 0;
   virtual size_t NumNodes() const = 0;
   virtual std::vector<const OrtNode*> GetNodes(int order) const = 0;
   virtual onnxruntime::Status GetParentNode(const OrtNode*& parent_node) const = 0;

@@ -2471,6 +2471,14 @@ ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetValueConsumers, _In_ const OrtValueInf
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtValue** initializer_value) {
+  API_IMPL_BEGIN
+  ORT_API_RETURN_IF_STATUS_NOT_OK(value_info->GetInitializerValue(*initializer_value));
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(bool, OrtApis::ValueInfo_IsGraphInput, _In_ const OrtValueInfo* value_info) {
   return value_info->IsGraphInput();
 }
@@ -2507,6 +2515,10 @@ ORT_API(size_t, OrtApis::Graph_NumOutputs, _In_ const OrtGraph* graph) {
   return graph->NumOutputs();
 }
 
+ORT_API(size_t, OrtApis::Graph_NumInitializers, _In_ const OrtGraph* graph) {
+  return graph->NumInitializers();
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
   API_IMPL_BEGIN
@@ -2530,6 +2542,21 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph,
   size_t num_outputs = std::min(max_num_outputs, graph_outputs.size());
   for (size_t i = 0; i < num_outputs; i++) {
     outputs[i] = graph_outputs[i];
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetInitializers, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_initializers) const OrtValueInfo** initializers,
+                    _In_ size_t max_num_initializers) {
+  API_IMPL_BEGIN
+  std::vector<const OrtValueInfo*> graph_initializers;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInitializers(graph_initializers));
+
+  size_t num_initializers = std::min(max_num_initializers, graph_initializers.size());
+  for (size_t i = 0; i < num_initializers; i++) {
+    initializers[i] = graph_initializers[i];
   }
   return nullptr;
   API_IMPL_END
@@ -3353,6 +3380,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,
     &OrtApis::ValueInfo_GetValueConsumers,
+    &OrtApis::ValueInfo_GetInitializerValue,
     &OrtApis::ValueInfo_IsGraphInput,
     &OrtApis::ValueInfo_IsGraphOutput,
     &OrtApis::ValueInfo_IsInitializer,
@@ -3361,8 +3389,10 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_OnnxIRVersion,
     &OrtApis::Graph_NumInputs,
     &OrtApis::Graph_NumOutputs,
+    &OrtApis::Graph_NumInitializers,
     &OrtApis::Graph_GetInputs,
     &OrtApis::Graph_GetOutputs,
+    &OrtApis::Graph_GetInitializers,
     &OrtApis::Graph_NumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,

@@ -5387,6 +5387,20 @@ struct OrtApi {
                   _Out_writes_all_(max_num_consumers) int64_t* input_indices,
                   _In_ size_t max_num_consumers);
 
+  /** \brief Get the underlying initializer value, as an OrtValue, from the given OrtValueInfo.
+   *
+   * Sets the output parameter to NULL if the given OrtValueInfo does not represent an initializer.
+   * Does not return an error status in this case.
+   *
+   * \param[in] value_info The OrtValueInfo instance.
+   * \param[out] initializer_value Output parameter set to the initializer's value or NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
+                  _Outptr_ const OrtValue** initializer_value);
+
   /** \brief Returns a boolean indicating if the given value is a graph input.
    *
    * Returns true for both required graph inputs and optional graph inputs.
@@ -5484,6 +5498,17 @@ struct OrtApi {
    */
   ORT_API_T(size_t, Graph_NumOutputs, _In_ const OrtGraph* graph);
 
+  /** \brief Returns the number of initializers for the OrtGraph instance.
+   *
+   * Counts initializers that are also graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \return The number of initializers.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(size_t, Graph_NumInitializers, _In_ const OrtGraph* graph);
+
   /** \brief Returns the input OrtValueInfo instances for an OrtGraph.
    *
    * Includes initializers that are also graph inputs.
@@ -5519,6 +5544,27 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
                   _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+
+  /** \brief Returns the initializer OrtValueInfo instances for an OrtGraph.
+   *
+   * Includes initializers that are also graph inputs.
+   *
+   * Caller provides a pre-allocated array that will be filled with the OrtValueInfo instances.
+   * Use Graph_NumInitializers() to get the number of initializers.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] initializers Pre-allocated array of `max_num_initializers` elements that will be filled with
+   *                          OrtValueInfo*.
+   * \param[in] max_num_inputs The maximum size of the `initializers` array.
+   *                           Typical usage sets this to the value of Graph_NumInitializers().
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph,
+                  _Out_writes_all_(max_num_initializers) const OrtValueInfo** initializers,
+                  _In_ size_t max_num_initializers);
 
   /** \brief Returns the number of nodes in the OrtGraph instance.
    *

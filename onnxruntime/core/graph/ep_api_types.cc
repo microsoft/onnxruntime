@@ -12,6 +12,8 @@
 #include <utility>
 #include <vector>
 
+#include "core/framework/allocator.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/graph.h"
@@ -65,8 +67,9 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
 EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
     : OrtNode(OrtGraphIrApi::kEpApi), ep_graph(ep_graph), node(node) {}
 
-std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph,
-                                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map) {
+Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
+                      std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map,
+                      /*out*/ std::unique_ptr<EpNode>& result) {
   auto ep_node = std::make_unique<EpNode>(ep_graph, node, PrivateTag{});
 
   auto node_inputs = node.InputDefs();
@@ -91,7 +94,7 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
       SubgraphState subgraph_state;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      subgraph_state.ep_subgraph = EpGraph::Create(*subgraph_state.subgraph_viewer, ep_node.get());
+      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, ep_node.get(), subgraph_state.ep_subgraph));
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
     }
   }
@@ -100,7 +103,8 @@ std::unique_ptr<EpNode> EpNode::Create(const Node& node, const EpGraph* ep_graph
   ep_node->outputs = std::move(ep_node_outputs);
   ep_node->implicit_inputs = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs = std::move(ep_node_subgraphs);
-  return ep_node;
+  result = std::move(ep_node);
+  return Status::OK();
 }
 
 size_t EpNode::Id() const { return node.Index(); }
@@ -161,6 +165,13 @@ Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
 //
 // EpValueInfo
 //
+EpValueInfo::EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info,
+                         size_t flags)
+    : OrtValueInfo(OrtGraphIrApi::kEpApi),
+      graph(graph),
+      name(name),
+      type_info(std::move(type_info)),
+      flags(flags) {}
 
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 static Status GetInputIndices(const EpNode& consumer_node,
@@ -305,6 +316,26 @@ Status EpValueInfo::GetNumConsumerInfos(size_t& num_consumers) const {
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
 }
 
+Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
+  if (!IsFlagSet(kIsInitializer)) {
+    // This OrtValueInfo does not represent an initializer. Set result to nullptr and return an OK status
+    // to allow user to use this function to check if this is an initializer.
+    result = nullptr;
+    return Status::OK();
+  }
+
+  result = nullptr;
+  if (graph == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to get initializer value for OrtValueInfo '", name,
+                           "' because it is not owned by a OrtGraph.");
+  }
+
+  auto map_iter = graph->initializer_values.find(this);
+  ORT_RETURN_IF(map_iter == graph->initializer_values.end(), "Unable to find initializer value named '", name, "'.");
+  result = map_iter->second.get();
+  return Status::OK();
+}
+
 //
 // EpGraph
 //
@@ -343,7 +374,8 @@ static ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node) {
+Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node,
+                       /*out*/ std::unique_ptr<EpGraph>& result) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, parent_ep_node, PrivateTag{});
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
@@ -373,21 +405,39 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const 
   // Process initializers.
   // TODO(adrianlizarraga): Add OrtValue instances for each initializer. This just adds OrtValueInfos.
   const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
-  InlinedVector<EpValueInfo*> graph_initializer_value_infos;
+  std::vector<EpValueInfo*> initializer_value_infos;
+  std::unordered_map<const EpValueInfo*, std::unique_ptr<OrtValue>> initializer_values;
+  AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
+
+  initializer_value_infos.reserve(initializers.size());
+  initializer_values.reserve(initializers.size());
+
   for (const auto& [initializer_name, tensor_proto] : initializers) {
+    EpValueInfo* value_info = nullptr;
+
     auto iter = value_infos_map.find(initializer_name);
     if (iter != value_infos_map.end()) {
-      EpValueInfo* value_info = iter->second.get();
+      value_info = iter->second.get();
       value_info->SetFlag(EpValueInfo::kIsInitializer);
-      graph_initializer_value_infos.push_back(value_info);
     } else {
       auto type_proto = TypeProtoFromTensorProto(*tensor_proto);
       std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
-      auto value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),
-                                                      EpValueInfo::kIsInitializer);
-      graph_initializer_value_infos.push_back(value_info.get());
-      value_infos_map.emplace(initializer_name, std::move(value_info));
+      auto unique_value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),
+                                                             EpValueInfo::kIsInitializer);
+
+      value_info = unique_value_info.get();
+      value_infos_map.emplace(initializer_name, std::move(unique_value_info));
     }
+
+    initializer_value_infos.push_back(value_info);
+
+    // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
+    // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
+    // OrtValue instances is merged.
+    auto initializer_value = std::make_unique<OrtValue>();
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                     initializer_allocator, *initializer_value));
+    initializer_values.emplace(value_info, std::move(initializer_value));
   }
 
   // Process nodes in topological order, converting Node to EpNode.
@@ -401,7 +451,11 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const 
 
   for (NodeIndex node_index : node_indices) {
     gsl::not_null<const Node*> node = graph_viewer.GetNode(node_index);
-    ep_nodes.push_back(EpNode::Create(*node, ep_graph.get(), value_infos_map));
+    std::unique_ptr<EpNode> ep_node = nullptr;
+
+    ORT_RETURN_IF_ERROR(EpNode::Create(*node, ep_graph.get(), value_infos_map, ep_node));
+    ep_nodes.push_back(std::move(ep_node));
+
     min_node_index = std::min(min_node_index, node->Index());
     max_node_index = std::max(max_node_index, node->Index());
   }
@@ -415,15 +469,19 @@ std::unique_ptr<EpGraph> EpGraph::Create(const GraphViewer& graph_viewer, const 
   ep_graph->nodes = std::move(ep_nodes);
   ep_graph->index_to_ep_node = std::move(index_to_ep_node);
   ep_graph->value_infos = std::move(value_infos_map);
+  ep_graph->initializer_value_infos = std::move(initializer_value_infos);
+  ep_graph->initializer_values = std::move(initializer_values);
   ep_graph->inputs = std::move(graph_input_value_infos);
   ep_graph->outputs = std::move(graph_output_value_infos);
-  return ep_graph;
+  result = std::move(ep_graph);
+  return Status::OK();
 }
 
 const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
 int64_t EpGraph::OnnxIRVersion() const { return graph_viewer.GetOnnxIRVersion(); }
 size_t EpGraph::NumInputs() const { return inputs.size(); }
 size_t EpGraph::NumOutputs() const { return outputs.size(); }
+size_t EpGraph::NumInitializers() const { return initializer_value_infos.size(); }
 
 Status EpGraph::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
   result.resize(inputs.size());
@@ -437,6 +495,14 @@ Status EpGraph::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
   result.resize(outputs.size());
   for (size_t i = 0; i < outputs.size(); i++) {
     result[i] = outputs[i];
+  }
+  return Status::OK();
+}
+
+Status EpGraph::GetInitializers(std::vector<const OrtValueInfo*>& result) const {
+  result.resize(initializer_value_infos.size());
+  for (size_t i = 0; i < initializer_value_infos.size(); i++) {
+    result[i] = initializer_value_infos[i];
   }
   return Status::OK();
 }

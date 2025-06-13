@@ -11,6 +11,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/allocator.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/graph_viewer.h"
@@ -32,12 +33,7 @@ struct EpValueInfo : public OrtValueInfo {
   };
 
   EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info,
-              size_t flags)
-      : OrtValueInfo(OrtGraphIrApi::kEpApi),
-        graph(graph),
-        name(name),
-        type_info(std::move(type_info)),
-        flags(flags) {}
+              size_t flags);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and EpValueInfo.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, EpValueInfo, OrtGraphIrApi::kEpApi)
@@ -47,6 +43,7 @@ struct EpValueInfo : public OrtValueInfo {
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
   Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
   Status GetNumConsumerInfos(size_t& num_consumers) const override;
+  Status GetInitializerValue(const OrtValue*& value) const override;
   bool IsGraphInput() const override {
     return IsFlagSet(kIsGraphInput);
   }
@@ -72,13 +69,6 @@ struct EpValueInfo : public OrtValueInfo {
   size_t flags = 0;
 };
 
-struct SubgraphState {
-  SubgraphState() = default;
-  SubgraphState(SubgraphState&& other) = default;
-  std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
-  std::unique_ptr<EpGraph> ep_subgraph;
-};
-
 /// <summary>
 /// Concrete implementation of OrtNode used in the OrtEpApi.
 /// </summary>
@@ -86,6 +76,13 @@ struct EpNode : public OrtNode {
  private:
   struct PrivateTag {};  // Used to prevent use of public constructor (use static EpNode::Create())
                          // Need to make the constructor public for std::make_unique().
+
+  struct SubgraphState {
+    SubgraphState() = default;
+    SubgraphState(SubgraphState&& other) = default;
+    std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
+    std::unique_ptr<EpGraph> ep_subgraph;
+  };
 
  public:
   EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag);
@@ -98,9 +95,11 @@ struct EpNode : public OrtNode {
   ///                        neighboring nodes from this node's input and output OrtValueInfo instances.</param>
   /// <param name="value_infos">Cache of all OrtValueInfo instances in the graph. Can be set to an empty
   ///                           std::unordered_map if creating a node without a graph.</param>
-  /// <returns>An EpNode instance.</returns>
-  static std::unique_ptr<EpNode> Create(const Node& node, const EpGraph* ep_graph,
-                                        std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos);
+  /// <param name="result">The new EpNode instance.</param>
+  /// <returns>A Status indicating success or an error.</returns>
+  static Status Create(const Node& node, const EpGraph* ep_graph,
+                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos,
+                       /*out*/ std::unique_ptr<EpNode>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and EpNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, EpNode, OrtGraphIrApi::kEpApi)
@@ -161,7 +160,8 @@ struct EpGraph : public OrtGraph {
  public:
   EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag);
 
-  static std::unique_ptr<EpGraph> Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node = nullptr);
+  static Status Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node,
+                       /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -170,8 +170,10 @@ struct EpGraph : public OrtGraph {
   int64_t OnnxIRVersion() const override;
   size_t NumInputs() const override;
   size_t NumOutputs() const override;
+  size_t NumInitializers() const override;
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+  Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const override;
   size_t NumNodes() const override;
   std::vector<const OrtNode*> GetNodes(int order) const override;
   Status GetParentNode(const OrtNode*& parent_node) const override;
@@ -181,7 +183,11 @@ struct EpGraph : public OrtGraph {
   std::vector<std::unique_ptr<EpNode>> nodes;
   IndexToEpNodeMap index_to_ep_node;
 
-  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;  // All value infos in the graph
+
+  std::vector<EpValueInfo*> initializer_value_infos;
+  std::unordered_map<const EpValueInfo*, std::unique_ptr<OrtValue>> initializer_values;
+
   InlinedVector<EpValueInfo*> inputs;
   InlinedVector<EpValueInfo*> outputs;
 };

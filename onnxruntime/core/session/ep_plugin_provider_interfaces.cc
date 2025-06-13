@@ -107,13 +107,16 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(resource_accountant);       // TODO: Add support? Not used by prioritized EPs
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
-  auto ep_graph = EpGraph::Create(graph_viewer);
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  if (Status status = EpGraph::Create(graph_viewer, /*parent_node*/ nullptr, ep_graph); !status.IsOK()) {
+    LOGS_DEFAULT(ERROR) << "Failed to create OrtGraph: " << status.ToString();
+    return {};
+  }
+
   OrtEpGraphSupportInfo api_graph_support_info(*ep_graph);
   UniqueOrtStatus status(ort_ep_->GetCapability(ort_ep_.get(), ep_graph->ToExternal(), &api_graph_support_info),
                          OrtApis::ReleaseStatus);
 
-  // GetCapability is not supposed to fail. If there's an error, return an empty result to ensure this EP is not
-  // assigned any nodes and log an error.
   if (status != nullptr) {
     LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() failed with error: " << ToStatus(status.get()).ToString();
     return {};
@@ -175,10 +178,12 @@ PluginExecutionProvider::FusedNodeState& PluginExecutionProvider::PushFusedNodeS
   return fused_node_state;
 }
 
-EpNode& PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node) {
-  auto ep_fused_node = EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos);
-  this->nodes.push_back(std::move(ep_fused_node));
-  return *this->nodes.back();
+Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode* added_ep_node) {
+  std::unique_ptr<EpNode> unique_ep_fused_node = nullptr;
+  ORT_RETURN_IF_ERROR(EpNode::Create(fused_node, /*parent graph*/ nullptr, this->value_infos, unique_ep_fused_node));
+  this->nodes.push_back(std::move(unique_ep_fused_node));
+  added_ep_node = this->nodes.back().get();
+  return Status::OK();
 }
 
 common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
@@ -201,12 +206,14 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     const GraphViewer& graph_viewer = node_and_graph.filtered_graph;
     const Node& fused_node = node_and_graph.fused_node;
 
-    auto ep_graph = EpGraph::Create(graph_viewer);
+    std::unique_ptr<EpGraph> ep_graph = nullptr;
+    ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, /*parent_node*/ nullptr, ep_graph));
     api_graphs.push_back(ep_graph->ToExternal());
     api_graphs_holder.push_back(std::move(ep_graph));
 
-    EpNode& ep_fused_node = fused_node_state.AddFusedNode(fused_node);
-    api_fused_nodes.push_back(ep_fused_node.ToExternal());
+    EpNode* ep_fused_node = nullptr;
+    ORT_RETURN_IF_ERROR(fused_node_state.AddFusedNode(fused_node, ep_fused_node));
+    api_fused_nodes.push_back(ep_fused_node->ToExternal());
   }
 
   UniqueOrtStatus status(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(), num_graphs,

@@ -611,6 +611,8 @@ ORT_API_STATUS_IMPL(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_
                     _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
                     _Out_writes_all_(max_num_consumers) int64_t* input_indices,
                     _In_ size_t max_num_consumers);
+ORT_API_STATUS_IMPL(ValueInfo_GetInitializerValue, _In_ const OrtValueInfo* value_info,
+                    _Outptr_ const OrtValue** initializer_value);
 ORT_API(bool, ValueInfo_IsGraphInput, _In_ const OrtValueInfo* value_info);
 ORT_API(bool, ValueInfo_IsGraphOutput, _In_ const OrtValueInfo* value_info);
 ORT_API(bool, ValueInfo_IsInitializer, _In_ const OrtValueInfo* value_info);
@@ -619,10 +621,14 @@ ORT_API(const char*, Graph_Name, _In_ const OrtGraph* graph);
 ORT_API(int64_t, Graph_OnnxIRVersion, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumInputs, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumOutputs, _In_ const OrtGraph* graph);
+ORT_API(size_t, Graph_NumInitializers, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph,
                     _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
 ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+ORT_API_STATUS_IMPL(Graph_GetInitializers, _In_ const OrtGraph* graph,
+                    _Out_writes_all_(max_num_initializers) const OrtValueInfo** initializers,
+                    _In_ size_t max_num_initializers);
 ORT_API(size_t, Graph_NumNodes, _In_ const OrtGraph* graph);
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, int order,
                     _Out_writes_all_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
