@@ -185,6 +185,9 @@ class FusionBartAttention(FusionAttention):
             ["Transpose", "Reshape", "MatMul"],
             [1, 0, 0],
         )
+        k_nodes_no_past_bias_hf = self.model.match_parent_path(
+            matmul_qk, ["Mul", "Transpose", "Reshape", "Add", "MatMul"], [1, 0, 0, 0, 1]
+        )
         k_nodes_with_past_hf = self.model.match_parent_path(
             matmul_qk,
             ["Transpose", "Concat", "Transpose", "Reshape", "MatMul"],
@@ -202,10 +205,13 @@ class FusionBartAttention(FusionAttention):
         )
         past_k, present_k = "", ""
         k_nodes, add_k, matmul_k = [], None, None
-        if k_nodes_no_past_hf is not None:
-            k_nodes = k_nodes_no_past_hf
-            (transpose_k, reshape_k, matmul_k) = k_nodes
-
+        if k_nodes_no_past_hf is not None or k_nodes_no_past_bias_hf is not None:
+            if k_nodes_no_past_hf is not None:
+                k_nodes = k_nodes_no_past_hf
+                (transpose_k, reshape_k, matmul_k) = k_nodes
+            if k_nodes_no_past_bias_hf is not None:
+                k_nodes = k_nodes_no_past_bias_hf
+                (mul_k, transpose_k, reshape_k, add_k, matmul_k) = k_nodes_no_past_bias_hf
             # Find present_k output name
             transpose_k_nodes = input_name_to_nodes[reshape_k.output[0]]
             for transpose_k_node in transpose_k_nodes:
