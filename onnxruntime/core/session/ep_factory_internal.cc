@@ -33,7 +33,7 @@ OrtStatus* EpFactoryInternal::GetSupportedDevices(const OrtHardwareDevice* const
                                                   size_t num_devices,
                                                   OrtEpDevice** ep_devices,
                                                   size_t max_ep_devices,
-                                                  size_t* num_ep_devices) {
+                                                  size_t* num_ep_devices) noexcept {
   return get_supported_func_(this, devices, num_devices, ep_devices, max_ep_devices, num_ep_devices);
 }
 
@@ -68,7 +68,7 @@ void EpFactoryInternal::ReleaseEp(OrtEp* /*ep*/) {
 }
 
 InternalExecutionProviderFactory::InternalExecutionProviderFactory(EpFactoryInternal& ep_factory,
-                                                                   const std::vector<const OrtEpDevice*>& ep_devices)
+                                                                   gsl::span<const OrtEpDevice* const> ep_devices)
     : ep_factory_{ep_factory} {
   devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());

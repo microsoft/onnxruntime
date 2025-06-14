@@ -3384,11 +3384,11 @@ TEST(CApiTest, TestSharedAllocators) {
     // NOTE: On x86 builds arenas are not supported and will default to using non-arena based allocator
     ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg) == nullptr);
 
-    // Test that duplicates are handled
+    // Registration is always a replace operation
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
         api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg),
         api.ReleaseStatus);
-    ASSERT_FALSE(status_releaser.get() == nullptr);
+    ASSERT_TRUE(status_releaser.get() == nullptr);
 
     {
       // create session 1
@@ -3427,12 +3427,12 @@ TEST(CApiTest, TestSharedAllocators) {
     MockedOrtAllocator custom_allocator;
     ASSERT_TRUE(api.RegisterAllocator(env_ptr, &custom_allocator) == nullptr);
 
-    // Test that duplicates are handled
+    // Registration is always a replace operation
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)>
         status_releaser(
             api.RegisterAllocator(env_ptr, &custom_allocator),
             api.ReleaseStatus);
-    ASSERT_FALSE(status_releaser.get() == nullptr);
+    ASSERT_TRUE(status_releaser.get() == nullptr);
 
     {
       // Keep this scoped to destroy the underlying sessions after use
