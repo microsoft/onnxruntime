@@ -627,8 +627,7 @@ ORT_API(int64_t, Graph_OnnxIRVersion, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumInputs, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumOutputs, _In_ const OrtGraph* graph);
 ORT_API(size_t, Graph_NumInitializers, _In_ const OrtGraph* graph);
-ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph,
-                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph, _Outptr_ const OrtConstPointerArray** inputs);
 ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph,
                     _Out_writes_all_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
 ORT_API_STATUS_IMPL(Graph_GetInitializers, _In_ const OrtGraph* graph,
@@ -658,4 +657,9 @@ ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,
                     _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+ORT_API(OrtTypeTag, ConstPointerArray_ElementType, _In_ const OrtConstPointerArray* array);
+ORT_API(const void* const*, ConstPointerArray_Data, _In_ const OrtConstPointerArray* array);
+ORT_API(size_t, ConstPointerArray_Size, _In_ const OrtConstPointerArray* array);
+ORT_API_STATUS_IMPL(ConstPointerArray_At, _In_ const OrtConstPointerArray* array, _In_ size_t index,
+                    _Outptr_ const void** out);
 }  // namespace OrtApis

@@ -109,7 +109,7 @@ struct OrtGraph {
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
   virtual size_t NumInitializers() const = 0;
-  virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
+  virtual onnxruntime::Status GetInputs(const OrtConstPointerArray*& inputs) const = 0;
   virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
   virtual onnxruntime::Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const = 0;
   virtual size_t NumNodes() const = 0;

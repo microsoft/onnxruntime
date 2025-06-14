@@ -148,12 +148,9 @@ struct ModelEditorGraph : public OrtGraph {
   size_t NumOutputs() const override { return outputs.size(); }
   size_t NumInitializers() const override { return initializers.size() + external_initializers.size(); }
 
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& result) const override {
-    result.resize(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-      result[i] = inputs[i]->ToExternal();
-    }
-    return Status::OK();
+  Status GetInputs(const OrtConstPointerArray*& /*result*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting graph inputs");
   }
 
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& result) const override {

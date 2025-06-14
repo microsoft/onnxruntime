@@ -239,6 +239,8 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
   producer_info.output_index = output_index;
   return Status::OK();
 #else
+  // TODO(adrianlizarraga): Should support getting a value producer in a minimal build. Would require building our own map
+  // of values to producers.
   ORT_UNUSED_PARAMETER(producer_info);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting the producer of an OrtValueInfo is not supported in this build");
@@ -277,6 +279,8 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& re
   result = std::move(consumer_infos);
   return Status::OK();
 #else
+  // TODO(adrianlizarraga): Should support getting value consumers in a minimal build. Would require building our own
+  // map of values to a set of consumers.
   ORT_UNUSED_PARAMETER(result);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                          "Getting the consumers of an OrtValueInfo is not supported in this build");
@@ -389,9 +393,9 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
 
   // Process graph inputs.
   const std::vector<const NodeArg*>& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
-  InlinedVector<EpValueInfo*> graph_input_value_infos(graph_input_node_args.size(), nullptr);
-  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_input_node_args, graph_input_value_infos,
-                              EpValueInfo::kIsGraphInput);
+  OrtConstPointerArray graph_input_value_infos(ORT_TYPE_TAG_OrtValueInfo, graph_input_node_args.size(), nullptr);
+  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_input_node_args,
+                              graph_input_value_infos.ToSpan<EpValueInfo>(), EpValueInfo::kIsGraphInput);
 
   // Process graph outputs.
   const std::vector<const NodeArg*>& graph_output_node_args = graph_viewer.GetOutputs();
@@ -493,15 +497,12 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
 
 const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
 int64_t EpGraph::OnnxIRVersion() const { return graph_viewer.GetOnnxIRVersion(); }
-size_t EpGraph::NumInputs() const { return inputs.size(); }
+size_t EpGraph::NumInputs() const { return inputs.storage.size(); }
 size_t EpGraph::NumOutputs() const { return outputs.size(); }
 size_t EpGraph::NumInitializers() const { return initializer_value_infos.size(); }
 
-Status EpGraph::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(inputs.size());
-  for (size_t i = 0; i < inputs.size(); i++) {
-    result[i] = inputs[i];
-  }
+Status EpGraph::GetInputs(const OrtConstPointerArray*& result) const {
+  result = &inputs;
   return Status::OK();
 }
 

@@ -319,6 +319,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(ConstPointerArray);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -489,6 +490,12 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
                                                       _In_ size_t max_selected,
                                                       _Out_ size_t* num_selected,
                                                       _In_ void* state);
+
+typedef enum OrtTypeTag {
+  ORT_TYPE_TAG_Void,
+  ORT_TYPE_TAG_OrtValueInfo,
+  ORT_TYPE_TAG_OrtNode,
+} OrtTypeTag;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -5555,20 +5562,14 @@ struct OrtApi {
    *
    * Includes initializers that are also graph inputs.
    *
-   * Caller provides a pre-allocated array that will be filled with the inputs. Use Graph_NumInputs() to get the
-   * number of inputs.
-   *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo*.
-   * \param[in] max_num_inputs The maximum size of the `inputs` array.
-   *                           Typical usage sets this to the value of Graph_NumInputs().
+   * \param[out] inputs Output parameter set to the OrtConstPointer instance containing the graph inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
-                  _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph, _Outptr_ const OrtConstPointerArray** inputs);
 
   /** \brief Returns the output OrtValueInfo instances for an OrtGraph.
    *
@@ -5836,6 +5837,16 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
                   _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+
+  //
+  // OrtConstPointerArray
+  //
+
+  ORT_API_T(OrtTypeTag, ConstPointerArray_ElementType, _In_ const OrtConstPointerArray* array);
+  ORT_API_T(const void* const*, ConstPointerArray_Data, _In_ const OrtConstPointerArray* array);
+  ORT_API_T(size_t, ConstPointerArray_Size, _In_ const OrtConstPointerArray* array);
+  ORT_API2_STATUS(ConstPointerArray_At, _In_ const OrtConstPointerArray* array, _In_ size_t index,
+                  _Outptr_ const void** out);
 };
 
 /*

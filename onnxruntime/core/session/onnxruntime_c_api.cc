@@ -15,6 +15,7 @@
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/common/string_helper.h"
+#include "core/framework/abi_pointer_array.h"
 #include "core/framework/allocator.h"
 #include "core/framework/callback.h"
 #include "core/framework/data_types.h"
@@ -2520,15 +2521,9 @@ ORT_API(size_t, OrtApis::Graph_NumInitializers, _In_ const OrtGraph* graph) {
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
-                    _Out_writes_all_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
+                    _Outptr_ const OrtConstPointerArray** inputs) {
   API_IMPL_BEGIN
-  onnxruntime::InlinedVector<const OrtValueInfo*> graph_inputs;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(graph_inputs));
-
-  size_t num_inputs = std::min(max_num_inputs, graph_inputs.size());
-  for (size_t i = 0; i < num_inputs; i++) {
-    inputs[i] = graph_inputs[i];
-  }
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(*inputs));
   return nullptr;
   API_IMPL_END
 }
@@ -2737,6 +2732,36 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetParentGraph, _In_ const OrtNode* node,
 
   *parent_graph = nullptr;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetParentGraph(*parent_graph));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(OrtTypeTag, OrtApis::ConstPointerArray_ElementType, _In_ const OrtConstPointerArray* array) {
+  return array->elem_type;
+}
+
+ORT_API(const void* const*, OrtApis::ConstPointerArray_Data, _In_ const OrtConstPointerArray* array) {
+  return array->storage.data();
+}
+
+ORT_API(size_t, OrtApis::ConstPointerArray_Size, _In_ const OrtConstPointerArray* array) {
+  return array->storage.size();
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_At, _In_ const OrtConstPointerArray* array, _In_ size_t index,
+                    _Outptr_ const void** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+
+  if (index >= array->storage.size()) {
+    std::ostringstream oss;
+    oss << "'index' value (" << index << ") is out of bounds for array of size " << array->storage.size();
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
+  }
+
+  *out = array->storage[index];
   return nullptr;
   API_IMPL_END
 }
@@ -3408,6 +3433,11 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
+
+    &OrtApis::ConstPointerArray_ElementType,
+    &OrtApis::ConstPointerArray_Data,
+    &OrtApis::ConstPointerArray_Size,
+    &OrtApis::ConstPointerArray_At,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

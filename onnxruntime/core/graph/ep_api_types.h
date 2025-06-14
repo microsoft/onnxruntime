@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/abi_pointer_array.h"
 #include "core/framework/allocator.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
@@ -173,7 +174,7 @@ struct EpGraph : public OrtGraph {
   size_t NumInputs() const override;
   size_t NumOutputs() const override;
   size_t NumInitializers() const override;
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+  Status GetInputs(const OrtConstPointerArray*& inputs) const override;
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
   Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const override;
   size_t NumNodes() const override;
@@ -190,7 +191,8 @@ struct EpGraph : public OrtGraph {
   std::vector<EpValueInfo*> initializer_value_infos;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
 
-  InlinedVector<EpValueInfo*> inputs;
+  // InlinedVector<EpValueInfo*> inputs;
+  OrtConstPointerArray inputs;
   InlinedVector<EpValueInfo*> outputs;
 };
 }  // namespace onnxruntime
