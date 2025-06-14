@@ -143,5 +143,24 @@ TEST(SequenceOpsTest, ConcatFromSequence_Concat_ScalarInputs) {
            {kDmlExecutionProvider});
 }
 
+// Test that reproduces the issue where ConcatFromSequence aborts
+// when mixing empty and non-empty tensors with different ranks
+TEST(SequenceOpsTest, ConcatFromSequence_Concat_MixedEmptyAndNonEmptyDifferentRanks) {
+  OpTester test("ConcatFromSequence", 11);
+  test.AddAttribute<int64_t>("axis", 1);
+  test.AddAttribute<int64_t>("new_axis", 0);  // concat mode
+  SeqTensors<float> input;
+  input.AddTensor({0}, {});          // Empty tensor with rank 1 (shape [0])
+  input.AddTensor({5, 5}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 
+                           6.0f, 7.0f, 8.0f, 9.0f, 10.0f,
+                           11.0f, 12.0f, 13.0f, 14.0f, 15.0f,
+                           16.0f, 17.0f, 18.0f, 19.0f, 20.0f,
+                           21.0f, 22.0f, 23.0f, 24.0f, 25.0f}); // Non-empty tensor with rank 2 (shape [5,5])
+  test.AddSeqInput("S", input);
+  
+  // This should fail with a proper error message, not abort
+  test.Run(OpTester::ExpectResult::kExpectFailure, "Ranks of input data are different");
+}
+
 }  // namespace test
 }  // namespace onnxruntime
