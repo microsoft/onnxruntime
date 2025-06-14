@@ -39,6 +39,12 @@ onnxruntime::NodeArg* AddCastNode(onnxruntime::Graph& graph,
   std::vector<onnxruntime::NodeArg*> input_defs = {new_on_input ? new_arg : old_arg};
   std::vector<onnxruntime::NodeArg*> output_defs = {new_on_input ? old_arg : new_arg};
 
+  // Validate to_type to ensure it's a valid ONNX data type
+  if (to_type < 0 || to_type > TensorProto_DataType_DataType_MAX) {
+    ORT_THROW("Invalid data type value: ", to_type, 
+              ". Valid range is 0 to ", TensorProto_DataType_DataType_MAX);
+  }
+
   auto& cast_node = graph.AddNode(node_name, "Cast", "cast node to cast from float16 to float32 on cpu",
                                   input_defs, output_defs);
   cast_node.AddAttribute("to", to_type);
