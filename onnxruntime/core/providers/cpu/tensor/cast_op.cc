@@ -24,6 +24,7 @@
 
 #include "core/mlas/inc/mlas.h"
 #include "core/common/cpuid_info.h"
+#include "core/framework/int4.h"
 
 namespace onnxruntime {
 
@@ -259,6 +260,102 @@ struct TensorCaster<MLFloat16, float> {
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBufferInParallel(in_data, out_data, shape_size, ctx.GetOperatorThreadPool());
+  }
+};
+
+// Helper functions for Int4/UInt4 value clamping
+namespace {
+template <typename T>
+struct ToInt4ElementConverter {
+  static int8_t ConvertToInt4(T val) {
+    // Clamp to signed int4 range [-8, 7]
+    if (val < -8) return -8;
+    if (val > 7) return 7;
+    return static_cast<int8_t>(val);
+  }
+  
+  static uint8_t ConvertToUInt4(T val) {
+    // Clamp to unsigned int4 range [0, 15]
+    if (val < 0) return 0;
+    if (val > 15) return 15;
+    return static_cast<uint8_t>(val);
+  }
+};
+} // namespace
+
+// Specializations for Int4x2 -> MLFloat16
+template <>
+struct TensorCaster<Int4x2, MLFloat16> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<MLFloat16>();
+
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+      out_data[i] = MLFloat16(static_cast<float>(val));
+    }
+  }
+};
+
+// Specializations for UInt4x2 -> MLFloat16
+template <>
+struct TensorCaster<UInt4x2, MLFloat16> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<MLFloat16>();
+
+    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+      out_data[i] = MLFloat16(static_cast<float>(val));
+    }
+  }
+};
+
+// Specializations for MLFloat16 -> Int4x2
+template <>
+struct TensorCaster<MLFloat16, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<MLFloat16>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    size_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      int8_t low_val = ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(in_data[i]));
+      int8_t high_val = ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(in_data[i + 1]));
+
+      out_data[i >> 1] = Int4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      int8_t low_val = ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(in_data[i]));
+      out_data[i >> 1] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+// Specializations for MLFloat16 -> UInt4x2
+template <>
+struct TensorCaster<MLFloat16, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const auto* in_data = in.Data<MLFloat16>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    size_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      uint8_t low_val = ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(in_data[i]));
+      uint8_t high_val = ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(in_data[i + 1]));
+
+      out_data[i >> 1] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      uint8_t low_val = ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(in_data[i]));
+      out_data[i >> 1] = UInt4x2(low_val, 0);
+    }
   }
 };
 
