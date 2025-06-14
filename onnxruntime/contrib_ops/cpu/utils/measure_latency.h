@@ -18,4 +18,12 @@ auto measure_latency(Func&& func) {
   return std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();  // Latency in microseconds
 }
 
+std::string current_time_string(bool no_date=true) {
+  std::ostringstream os;
+  auto now = std::chrono::system_clock::now();
+  auto in_time_t = std::chrono::system_clock::to_time_t(now);
+  os << std::put_time(std::localtime(&in_time_t), no_date ? "%H:%M:%S" : "%F %T%z");
+  return os.str();
+}
+
 }  // namespace onnxruntime
