@@ -16,6 +16,7 @@
  */
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_profiler.h"
 #include "contrib_ops/cuda/llm/common/workspace.h"
+#include "contrib_ops/cuda/llm/common/logger.h"
 
 using namespace onnxruntime::llm::common;
 using namespace onnxruntime::llm::kernels::cutlass_kernels;
