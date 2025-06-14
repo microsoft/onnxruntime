@@ -16,695 +16,990 @@ _Note: this API is in preview and is subject to change._
 * TOC placeholder
 {:toc}
 
-
 ## Overview
+
+This document describes the C API for ONNX Runtime GenAI.  
+Below are the main functions and types, with code snippets and descriptions for each.
+
+---
 
 ## Model API
 
-### Create model
+### OgaCreateModel
 
 Creates a model from the given directory. The directory should contain a file called `genai_config.json`, which corresponds to the [configuration specification](../reference/config.md).
 
-#### Parameters
- * Input: config_path The path to the model configuration directory. The path is expected to be encoded in UTF-8.
- * Output:  out The created model.
-
-#### Returns
- `OgaResult` containing the error message if the model creation failed.
-
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateModel(const char* config_path, OgaModel** out);
+OgaModel* model = NULL;
+OgaResult* result = OgaCreateModel("path/to/model_dir", &model);
 ```
 
-### Destroy model
+---
+
+### OgaDestroyModel
 
 Destroys the given model.
 
-
-#### Parameters
-
-* Input: model The model to be destroyed.
- 
-#### Returns
-`void`
-
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyModel(OgaModel* model);
+OgaDestroyModel(model);
 ```
 
-### Generate
+---
 
-Generates an array of token arrays from the model execution based on the given generator params.
+### OgaCreateModelWithRuntimeSettings
 
-#### Parameters
+Creates a model with runtime settings.
 
-* Input: model The model to use for generation.
-* Input: generator_params The parameters to use for generation.
-* Output:  out The generated sequences of tokens. The caller is responsible for freeing the sequences using OgaDestroySequences after it is done using the sequences.
-
-#### Returns
-
-OgaResult containing the error message if the generation failed.
- 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerate(const OgaModel* model, const OgaGeneratorParams* generator_params, OgaSequences** out);
+OgaRuntimeSettings* settings = NULL;
+OgaCreateRuntimeSettings(&settings);
+// ... configure settings ...
+OgaModel* model = NULL;
+OgaResult* result = OgaCreateModelWithRuntimeSettings("path/to/model_dir", settings, &model);
 ```
+
+---
+
+### OgaCreateModelFromConfig
+
+Creates a model from a config object.
+
+```c
+OgaConfig* config = NULL;
+OgaCreateConfig("path/to/model_dir", &config);
+OgaModel* model = NULL;
+OgaResult* result = OgaCreateModelFromConfig(config, &model);
+```
+
+---
+
+### OgaModelGetType
+
+Gets the type of the model.
+
+```c
+const char* type = NULL;
+OgaModelGetType(model, &type);
+```
+
+---
+
+### OgaModelGetDeviceType
+
+Gets the device type used by the model.
+
+```c
+const char* device_type = NULL;
+OgaModelGetDeviceType(model, &device_type);
+```
+
+---
+
+## Config API
+
+### OgaCreateConfig
+
+Creates a configuration object from a config path.
+
+```c
+OgaConfig* config = NULL;
+OgaResult* result = OgaCreateConfig("path/to/model_dir", &config);
+```
+
+---
+
+### OgaConfigClearProviders
+
+Clears all providers from the configuration.
+
+```c
+OgaConfigClearProviders(config);
+```
+
+---
+
+### OgaConfigAppendProvider
+
+Appends a provider to the configuration.
+
+```c
+OgaConfigAppendProvider(config, "CUDAExecutionProvider");
+```
+
+---
+
+### OgaConfigSetProviderOption
+
+Sets a provider option in the configuration.
+
+```c
+OgaConfigSetProviderOption(config, "CUDAExecutionProvider", "device_id", "0");
+```
+
+---
+
+### OgaConfigOverlay
+
+Overlays a JSON string onto the configuration.
+
+```c
+OgaConfigOverlay(config, "{\"option\": \"value\"}");
+```
+
+---
+
+### OgaDestroyConfig
+
+Destroys the configuration object.
+
+```c
+OgaDestroyConfig(config);
+```
+
+---
+
+## Runtime Settings API
+
+### OgaCreateRuntimeSettings
+
+Creates a runtime settings object.
+
+```c
+OgaRuntimeSettings* settings = NULL;
+OgaCreateRuntimeSettings(&settings);
+```
+
+---
+
+### OgaRuntimeSettingsSetHandle
+
+Sets a named handle in the runtime settings.
+
+```c
+OgaRuntimeSettingsSetHandle(settings, "custom_handle", handle_ptr);
+```
+
+---
+
+### OgaDestroyRuntimeSettings
+
+Destroys the runtime settings object.
+
+```c
+OgaDestroyRuntimeSettings(settings);
+```
+
+---
 
 ## Tokenizer API
 
-### Create Tokenizer
+### OgaCreateTokenizer
 
-#### Parameters
-* Input: model. The model for which the tokenizer should be created
-
-#### Returns
-`OgaResult` containing the error message if the tokenizer creation failed.
+Creates a tokenizer for the given model.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizer(const OgaModel* model, OgaTokenizer** out);
+OgaTokenizer* tokenizer = NULL;
+OgaResult* result = OgaCreateTokenizer(model, &tokenizer);
 ```
 
-### Destroy Tokenizer
+---
+
+### OgaDestroyTokenizer
+
+Destroys the tokenizer.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyTokenizer(OgaTokenizer*);
+OgaDestroyTokenizer(tokenizer);
 ```
-### Encode
 
-Encodes a single string and adds the encoded sequence of tokens to the OgaSequences. The OgaSequences must be freed with OgaDestroySequences when it is no longer needed.
+---
 
-#### Parameters
+### OgaTokenizerEncode
 
-#### Returns
+Encodes a single string and adds the encoded sequence of tokens to the OgaSequences.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerEncode(const OgaTokenizer*, const char* str, OgaSequences* sequences);
+OgaSequences* sequences = NULL;
+OgaCreateSequences(&sequences);
+OgaTokenizerEncode(tokenizer, "Hello world", sequences);
 ```
 
-### Decode
+---
 
-Decode a single token sequence and returns a null terminated utf8 string. out_string must be freed with OgaDestroyString
+### OgaTokenizerEncodeBatch
 
-#### Parameters
-
-#### Returns
+Encodes a batch of strings.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerDecode(const OgaTokenizer*, const int32_t* tokens, size_t token_count, const char** out_string);
+const char* texts[] = {"Hello", "World"};
+OgaTensor* tensor = NULL;
+OgaTokenizerEncodeBatch(tokenizer, texts, 2, &tensor);
 ```
 
-### Encode batch
+---
 
-#### Parameters
-* 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerEncodeBatch(const OgaTokenizer*, const char** strings, size_t count, TokenSequences** out);
-```
+### OgaTokenizerToTokenId
 
-### Decode batch
+Converts a string to its corresponding token ID.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerDecodeBatch(const OgaTokenizer*, const OgaSequences* tokens, const char*** out_strings);
+int32_t token_id = 0;
+OgaTokenizerToTokenId(tokenizer, "Hello", &token_id);
 ```
 
-### Destroy tokenizer strings
+---
+
+### OgaTokenizerDecode
+
+Decodes a sequence of tokens into a string.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaTokenizerDestroyStrings(const char** strings, size_t count);
+const char* out_string = NULL;
+OgaTokenizerDecode(tokenizer, tokens, token_count, &out_string);
+// Use out_string, then:
+OgaDestroyString(out_string);
 ```
 
-### Create tokenizer stream
+---
 
-OgaTokenizerStream is used to decoded token strings incrementally, one token at a time.
+### OgaTokenizerApplyChatTemplate
+
+Applies a chat template to messages and tools.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateTokenizerStream(const OgaTokenizer*, OgaTokenizerStream** out);
+const char* result = NULL;
+OgaTokenizerApplyChatTemplate(tokenizer, "template", "messages", "tools", true, &result);
+OgaDestroyString(result);
 ```
 
-### Destroy tokenizer stream
+---
 
-#### Parameters
+### OgaTokenizerDecodeBatch
+
+Decodes a batch of token sequences.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyTokenizerStream(OgaTokenizerStream*);
+OgaStringArray* out_strings = NULL;
+OgaTokenizerDecodeBatch(tokenizer, tensor, &out_strings);
+// Use out_strings, then:
+OgaDestroyStringArray(out_strings);
 ```
 
-### Decode stream
+---
 
-Decode a single token in the stream. If this results in a word being generated, it will be returned in 'out'. The caller is responsible for concatenating each chunk together to generate the complete result.
-'out' is valid until the next call to OgaTokenizerStreamDecode or when the OgaTokenizerStream is destroyed
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaTokenizerStreamDecode(OgaTokenizerStream*, int32_t token, const char** out);
-```
+### OgaCreateTokenizerStream
 
-## Generator Params API
-
-### Create Generator Params
-
-Creates a OgaGeneratorParams from the given model.
-
-#### Parameters
-
-* Input: model The model to use for generation.
-* Output:  out The created generator params.
-
-#### Returns
-
-`OgaResult` containing the error message if the generator params creation failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGeneratorParams(const OgaModel* model, OgaGeneratorParams** out);
-```
-
-### Destroy Generator Params
-
-Destroys the given generator params.
-
-#### Parameters
-
-* Input: generator_params The generator params to be destroyed.
-
-#### Returns
-`void`
+Creates a tokenizer stream for incremental decoding.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyGeneratorParams(OgaGeneratorParams* generator_params);
+OgaTokenizerStream* stream = NULL;
+OgaCreateTokenizerStream(tokenizer, &stream);
 ```
 
-### Set search option (number)
+---
 
-Set a search option where the option is a number
+### OgaDestroyTokenizerStream
 
-#### Parameters
-* generator_params: The generator params object to set the parameter on
-* name: the name of the parameter
-* value: the value to set
-
-#### Returns
-`OgaResult` containing the error message if the generator params creation failed.
+Destroys the tokenizer stream.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetSearchNumber(OgaGeneratorParams* generator_params, const char* name, double value);
+OgaDestroyTokenizerStream(stream);
 ```
 
-### Set search option (bool)
+---
 
-Set a search option where the option is a bool.
+### OgaTokenizerStreamDecode
 
-#### Parameters
-* generator_params: The generator params object to set the parameter on
-* name: the name of the parameter
-* value: the value to set
-
-#### Returns
-`OgaResult` containing the error message if the generator params creation failed.
+Decodes a single token in the stream.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetSearchBool(OgaGeneratorParams* generator_params, const char* name, bool value);
+const char* chunk = NULL;
+OgaTokenizerStreamDecode(stream, token, &chunk);
+// chunk is valid until next call or stream is destroyed
 ```
 
-### Try graph capture with max batch size
+---
 
-Graph capture fixes the dynamic elements of the computation graph to constant values. It can provide more efficient execution in some environments. To execute in graph capture mode, the maximum batch size needs to be known ahead of time. This function can fail if there is not enough memory to allocate the specified maximum batch size.
+## Sequences API
 
-#### Parameters
+### OgaCreateSequences
 
-* generator_params: The generator params object to set the parameter on
-* max_batch_size: The maximum batch size to allocate
-
-#### Returns
-
-`OgaResult` containing the error message if graph capture mode could not be configured with the specified batch size
+Creates an empty OgaSequences object.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsTryGraphCaptureWithMaxBatchSize(OgaGeneratorParams* generator_params, int32_t max_batch_size);
+OgaSequences* sequences = NULL;
+OgaCreateSequences(&sequences);
 ```
 
-### Set inputs
+---
 
-Sets the input ids for the generator params. The input ids are used to seed the generation.
+### OgaDestroySequences
 
-#### Parameters
-
- * Input: generator_params The generator params to set the input ids on.
- * Input: input_ids The input ids array of size input_ids_count = batch_size * sequence_length.
- * Input: input_ids_count The total number of input ids.
- * Input: sequence_length The sequence length of the input ids.
- * Input: batch_size The batch size of the input ids.
-
-#### Returns
-
-`OgaResult` containing the error message if the setting of the input ids failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputIDs(OgaGeneratorParams* generator_params, const int32_t* input_ids, size_t input_ids_count, size_t sequence_length, size_t batch_size);
-```
-
-### Set input sequence
-
-Sets the input id sequences for the generator params. The input id sequences are used to seed the generation.
-
-#### Parameters
-
- * Input: generator_params The generator params to set the input ids on.
- * Input: sequences The input id sequences.
-
-#### Returns
-
-OgaResult containing the error message if the setting of the input id sequences failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetInputSequences(OgaGeneratorParams* generator_params, const OgaSequences* sequences);
-```
-
-### Set model input
-
-Set an additional model input, aside from the input_ids.
-
-### Parameters
-
-* generator_params: The generator params to set the input on
-* name: the name of the parameter to set
-* tensor: the value of the parameter
-
-### Returns
-
-OgaResult containing the error message if the setting of the input failed.
+Destroys the given OgaSequences.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGeneratorParamsSetWhisperInputFeatures(OgaGeneratorParams*, OgaTensor* tensor);
+OgaDestroySequences(sequences);
 ```
 
+---
 
-## Generator API
+### OgaSequencesCount
 
-### Create Generator
-
-Creates a generator from the given model and generator params.
-
-#### Parameters
-
- * Input: model The model to use for generation.
- * Input: params The parameters to use for generation.
- * Output:  out The created generator.
-
-#### Returns
-`OgaResult` containing the error message if the generator creation failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateGenerator(const OgaModel* model, const OgaGeneratorParams* params, OgaGenerator** out);
-```
-
-### Destroy generator
-
-Destroys the given generator.
-
-#### Parameters
-
-* Input: generator The generator to be destroyed.
-
-#### Returns
-`void`
+Returns the number of sequences.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyGenerator(OgaGenerator* generator);
+size_t count = OgaSequencesCount(sequences);
 ```
 
-### Check if generation has completed
+---
 
-Returns true if the generator has finished generating all the sequences.
-
-#### Parameters
-
-* Input: generator The generator to check if it is done with generating all sequences.
-
-#### Returns
-
-True if the generator has finished generating all the sequences, false otherwise.
- 
-```c
-OGA_EXPORT bool OGA_API_CALL OgaGenerator_IsDone(const OgaGenerator* generator);
-```
-
-### Run one iteration of the model
-
-Computes the logits from the model based on the input ids and the past state. The computed logits are stored in the generator.
-
-#### Parameters
-
-* Input: generator The generator to compute the logits for.
-
-#### Returns
-
-OgaResult containing the error message if the computation of the logits failed.
- 
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_ComputeLogits(OgaGenerator* generator);
-```
-
-### Generate next token
-
-Generates the next token based on the computed logits using the configured generation parameters.
-
-#### Parameters
-
- * Input: generator The generator to generate the next token for.
-
-#### Returns
-
-OgaResult containing the error message if the generation of the next token failed.
-
-```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGenerator_GenerateNextToken(OgaGenerator* generator);
-```
-
-
-### Get number of tokens
+### OgaSequencesGetSequenceCount
 
 Returns the number of tokens in the sequence at the given index.
 
-#### Parameters
-
- * Input: generator The generator to get the count of the tokens for the sequence at the given index.
- * Input: index. The index at which to return the tokens
-
-#### Returns
-
-The number tokens in the sequence at the given index.
- 
 ```c
-OGA_EXPORT size_t OGA_API_CALL OgaGenerator_GetSequenceCount(const OgaGenerator* generator, size_t index);
+size_t token_count = OgaSequencesGetSequenceCount(sequences, 0);
 ```
 
-### Get sequence
+---
 
-Returns a pointer to the sequence data at the given index. The number of tokens in the sequence is given by `OgaGenerator_GetSequenceCount`.
+### OgaSequencesGetSequenceData
 
-#### Parameters
-
-* Input: generator The generator to get the sequence data for the sequence at the given index. The pointer to the sequence data at the given index. The sequence data is owned by the OgaGenerator and will be freed when the OgaGenerator is destroyed. The caller must copy the data if it needs to be used after the OgaGenerator is destroyed.
-* Input: index. The index at which to get the sequence.
-
-#### Returns
-
-A pointer to the token sequence
+Returns a pointer to the token data for the sequence at the given index.
 
 ```c
-OGA_EXPORT const int32_t* OGA_API_CALL OgaGenerator_GetSequenceData(const OgaGenerator* generator, size_t index);
+const int32_t* data = OgaSequencesGetSequenceData(sequences, 0);
 ```
 
-### Set Runtime Option
+---
 
-An API to set Runtime options, more parameters will be added to this generic API to support Runtime options. An example to use this API for terminating the current session would be to call the SetRuntimeOption with key as "terminate_session" and value as "1": OgaGenerator_SetRuntimeOption(generator, "terminate_session", "1")
+## Generator Params API
 
-More details on the current runtime options can be found [here](https://github.com/microsoft/onnxruntime-genai/blob/main/documents/Runtime_option.md).
+### OgaCreateGeneratorParams
 
-#### Parameters
-
-* Input: generator The generator on which the Runtime option needs to be set
-* Input: key The key for setting the runtime option
-* Input: value The value for the key provided
-
-#### Returns
-`void`
+Creates generator parameters for the given model.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaGenerator_SetRuntimeOption(OgaGenerator* generator, const char* key, const char* value);
+OgaGeneratorParams* params = NULL;
+OgaCreateGeneratorParams(model, &params);
 ```
+
+---
+
+### OgaDestroyGeneratorParams
+
+Destroys the given generator params.
+
+```c
+OgaDestroyGeneratorParams(params);
+```
+
+---
+
+### OgaGeneratorParamsSetSearchNumber
+
+Sets a numeric search option.
+
+```c
+OgaGeneratorParamsSetSearchNumber(params, "max_length", 128);
+```
+
+---
+
+### OgaGeneratorParamsSetSearchBool
+
+Sets a boolean search option.
+
+```c
+OgaGeneratorParamsSetSearchBool(params, "do_sample", true);
+```
+
+---
+
+### OgaGeneratorParamsTryGraphCaptureWithMaxBatchSize
+
+Attempts to enable graph capture mode with a maximum batch size.
+
+```c
+OgaGeneratorParamsTryGraphCaptureWithMaxBatchSize(params, 8);
+```
+
+---
+
+### OgaGeneratorParamsSetInputIDs
+
+Sets the input ids for the generator params.
+
+```c
+OgaGeneratorParamsSetInputIDs(params, input_ids, input_ids_count, sequence_length, batch_size);
+```
+
+---
+
+### OgaGeneratorParamsSetInputSequences
+
+Sets the input id sequences for the generator params.
+
+```c
+OgaGeneratorParamsSetInputSequences(params, sequences);
+```
+
+---
+
+### OgaGeneratorParamsSetModelInput
+
+Sets an additional model input.
+
+```c
+OgaGeneratorParamsSetModelInput(params, "input_name", tensor);
+```
+
+---
+
+### OgaGeneratorParamsSetInputs
+
+Sets named tensors as inputs.
+
+```c
+OgaGeneratorParamsSetInputs(params, named_tensors);
+```
+
+---
+
+### OgaGeneratorParamsSetGuidance
+
+Sets guidance data.
+
+```c
+OgaGeneratorParamsSetGuidance(params, "type", "data");
+```
+
+---
+
+## Generator API
+
+### OgaCreateGenerator
+
+Creates a generator from the given model and generator params.
+
+```c
+OgaGenerator* generator = NULL;
+OgaCreateGenerator(model, params, &generator);
+```
+
+---
+
+### OgaDestroyGenerator
+
+Destroys the given generator.
+
+```c
+OgaDestroyGenerator(generator);
+```
+
+---
+
+### OgaGenerator_IsDone
+
+Checks if generation is complete.
+
+```c
+bool done = OgaGenerator_IsDone(generator);
+```
+
+---
+
+### OgaGenerator_AppendTokenSequences
+
+Appends token sequences to the generator.
+
+```c
+OgaGenerator_AppendTokenSequences(generator, sequences);
+```
+
+---
+
+### OgaGenerator_AppendTokens
+
+Appends tokens to the generator.
+
+```c
+OgaGenerator_AppendTokens(generator, input_ids, input_ids_count);
+```
+
+---
+
+### OgaGenerator_IsSessionTerminated
+
+Checks if the session is terminated.
+
+```c
+bool terminated = OgaGenerator_IsSessionTerminated(generator);
+```
+
+---
+
+### OgaGenerator_GenerateNextToken
+
+Generates the next token.
+
+```c
+OgaGenerator_GenerateNextToken(generator);
+```
+
+---
+
+### OgaGenerator_RewindTo
+
+Rewinds the sequence to a new length.
+
+```c
+OgaGenerator_RewindTo(generator, new_length);
+```
+
+---
+
+### OgaGenerator_SetRuntimeOption
+
+Sets a runtime option.
+
+```c
+OgaGenerator_SetRuntimeOption(generator, "terminate_session", "1");
+```
+
+---
+
+### OgaGenerator_GetSequenceCount
+
+Returns the number of tokens in the sequence at the given index.
+
+```c
+size_t count = OgaGenerator_GetSequenceCount(generator, 0);
+```
+
+---
+
+### OgaGenerator_GetSequenceData
+
+Returns a pointer to the sequence data at the given index.
+
+```c
+const int32_t* data = OgaGenerator_GetSequenceData(generator, 0);
+```
+
+---
+
+### OgaGenerator_GetOutput
+
+Gets a named output tensor.
+
+```c
+OgaTensor* tensor = NULL;
+OgaGenerator_GetOutput(generator, "output_name", &tensor);
+```
+
+---
+
+### OgaGenerator_GetLogits
+
+Gets the logits tensor.
+
+```c
+OgaTensor* logits = NULL;
+OgaGenerator_GetLogits(generator, &logits);
+```
+
+---
+
+### OgaGenerator_SetLogits
+
+Sets the logits tensor.
+
+```c
+OgaGenerator_SetLogits(generator, tensor);
+```
+
+---
+
+### OgaSetActiveAdapter
+
+Sets the active adapter for the generator.
+
+```c
+OgaSetActiveAdapter(generator, adapters, "adapter_name");
+```
+
+---
 
 ## Adapter API
 
-This API is used to load and switch fine-tuned adapters, such as LoRA adapters.
+### OgaCreateAdapters
 
-### Create adapters
-
-Creates the object that manages the adapters. This object is used to load all the model adapters. It is responsible for reference counting the loaded adapters.
+Creates the object that manages the adapters.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateAdapters(const OgaModel* model, OgaAdapters** out);
+OgaAdapters* adapters = NULL;
+OgaCreateAdapters(model, &adapters);
 ```
 
-#### Parameters
+---
 
-* model: the `OgaModel`, which has previously been created
-
-#### Results
-
-* out: a reference to the list of `OgaAdapters` created
-
-### Load adapter
+### OgaLoadAdapter
 
 Loads the model adapter from the given adapter file path and adapter name.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaLoadAdapter(OgaAdapters* adapters, const char* adapter_file_path, const char* adapter_name);
+OgaLoadAdapter(adapters, "adapter_file_path", "adapter_name");
 ```
 
-#### Parameters
+---
 
- * `adapters`: The OgaAdapters object into which to load the adapter.
- * `adapter_file_path`: The file path of the adapter to load.
- * `adapter_name`: A unique identifier for the adapter to be used for adapter querying
+### OgaUnloadAdapter
 
-#### Return value
-
-`OgaResult` containing an error message if the adapter failed to load.
-
-### Unload adapter
-
-Unloads the adapter with the given identifier from the set of previously loaded adapters. If the adapter is not found, or if it cannot be unloaded (when it is in use), an error is returned.
+Unloads the adapter with the given identifier.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaUnloadAdapter(OgaAdapters* adapters, const char* adapter_name);
+OgaUnloadAdapter(adapters, "adapter_name");
 ```
 
-#### Parameters
+---
 
-* `adapters`: The OgaAdapters object from which to unload the adapter.
-*  `adapter_name`: The name of the adapter to unload.
+## Tensor API
 
-#### Return value
+### OgaCreateTensorFromBuffer
 
-`OgaResult` containing an error message if the adapter failed to unload. This can occur if the method is called with an adapter that is not already loaded or has been marked active by a `OgaGenerator` still in use.
-
-### Set active adapter
-
-Sets the adapter with the given adapter name as active for the given OgaGenerator object.
+Creates a tensor from a buffer.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaSetActiveAdapter(OgaGenerator* generator, OgaAdapters* adapters, const char* adapter_name);
+OgaTensor* tensor = NULL;
+OgaCreateTensorFromBuffer(data, shape_dims, shape_dims_count, element_type, &tensor);
 ```
 
-#### Parameters
+---
 
-* `generator`: The OgaGenerator object to set the active adapter.
-* `adapters`: The OgaAdapters object that manages the model adapters.
-* `adapter_name`: The name of the adapter to set as active.
+### OgaTensorGetType
 
-#### Return value
-
-`OgaResult` containing an error message if the adapter failed to be set as active. This can occur if the method is called with an adapter that has not been previously loaded.
-
-## Enums and structs
+Returns the element type of the tensor.
 
 ```c
-typedef enum OgaDataType {
-  OgaDataType_int32,
-  OgaDataType_float32,
-  OgaDataType_string,  // UTF8 string
-} OgaDataType;
+OgaElementType type;
+OgaTensorGetType(tensor, &type);
 ```
+
+---
+
+### OgaTensorGetShapeRank
+
+Returns the rank (number of dimensions) of the tensor.
 
 ```c
-typedef struct OgaResult OgaResult;
-typedef struct OgaGeneratorParams OgaGeneratorParams;
-typedef struct OgaGenerator OgaGenerator;
-typedef struct OgaModel OgaModel;
-typedef struct OgaBuffer OgaBuffer;
+size_t rank;
+OgaTensorGetShapeRank(tensor, &rank);
 ```
 
+---
 
-## Utility functions
+### OgaTensorGetShape
 
-### Set the GPU device ID
+Returns the shape of the tensor.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaSetCurrentGpuDeviceId(int device_id);
+int64_t shape[rank];
+OgaTensorGetShape(tensor, shape, rank);
 ```
 
-### Get the GPU device ID
+---
+
+### OgaTensorGetData
+
+Returns a pointer to the tensor data.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaGetCurrentGpuDeviceId(int* device_id);
+void* data = NULL;
+OgaTensorGetData(tensor, &data);
 ```
 
-### Get error message
+---
 
-#### Parameters
+### OgaDestroyTensor
 
-* Input: result OgaResult that contains the error message.
-
-#### Returns
-
-Error message contained in the OgaResult. The const char* is owned by the OgaResult and can will be freed when the OgaResult is destroyed.
- 
-```c
-OGA_EXPORT const char* OGA_API_CALL OgaResultGetError(OgaResult* result);
-```
-
-### Destroy result
-
-#### Parameters
-
-* Input: result OgaResult to be destroyed.
-
-#### Returns
-`void`
+Destroys the tensor.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyResult(OgaResult*);
+OgaDestroyTensor(tensor);
 ```
 
-### Destroy string
+---
 
-#### Parameters
-* Input: string to be destroyed
+## Images and Audios API
 
-#### Returns
+### OgaLoadImages
+
+Loads images from file paths.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyString(const char*);
+OgaStringArray* image_paths = NULL;
+OgaCreateStringArrayFromStrings(paths, count, &image_paths);
+OgaImages* images = NULL;
+OgaLoadImages(image_paths, &images);
+OgaDestroyStringArray(image_paths);
 ```
 
-### Destroy buffer
+---
 
-#### Parameters
-* Input: buffer to be destroyed
+### OgaLoadImagesFromBuffers
 
-#### Returns
-`void`
+Loads images from memory buffers.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroyBuffer(OgaBuffer*);
+OgaImages* images = NULL;
+OgaLoadImagesFromBuffers(image_data, image_sizes, count, &images);
 ```
 
-### Get buffer type
+---
 
-#### Parameters
-* Input: the buffer
+### OgaDestroyImages
 
-#### Returns
-
-The type of the buffer
+Destroys the images object.
 
 ```c
-OGA_EXPORT OgaDataType OGA_API_CALL OgaBufferGetType(const OgaBuffer*);
+OgaDestroyImages(images);
 ```
 
-### Get the number of dimensions of a buffer
+---
 
-#### Parameters
-* Input: the buffer
+### OgaLoadAudios
 
-#### Returns
-The number of dimensions in the buffer
+Loads audios from file paths.
 
 ```c
-OGA_EXPORT size_t OGA_API_CALL OgaBufferGetDimCount(const OgaBuffer*);
+OgaStringArray* audio_paths = NULL;
+OgaCreateStringArrayFromStrings(paths, count, &audio_paths);
+OgaAudios* audios = NULL;
+OgaLoadAudios(audio_paths, &audios);
+OgaDestroyStringArray(audio_paths);
 ```
 
-### Get buffer dimensions
+---
 
-Get the dimensions of a buffer
+### OgaLoadAudiosFromBuffers
 
-#### Parameters
-* Input: the buffer
-* Output: a dimension array
-
-#### Returns
-`OgaResult`
+Loads audios from memory buffers.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaBufferGetDims(const OgaBuffer*, size_t* dims, size_t dim_count);
+OgaAudios* audios = NULL;
+OgaLoadAudiosFromBuffers(audio_data, audio_sizes, count, &audios);
 ```
 
-### Get buffer data
+---
 
-Get the data from a buffer
+### OgaDestroyAudios
 
-#### Parameters
-
-#### Returns
-`void`
+Destroys the audios object.
 
 ```c
-OGA_EXPORT const void* OGA_API_CALL OgaBufferGetData(const OgaBuffer*);
+OgaDestroyAudios(audios);
 ```
 
-### Create sequences
+---
+
+## Named Tensors API
+
+### OgaCreateNamedTensors
+
+Creates a named tensors object.
 
 ```c
-OGA_EXPORT OgaResult* OGA_API_CALL OgaCreateSequences(OgaSequences** out);
+OgaNamedTensors* named_tensors = NULL;
+OgaCreateNamedTensors(&named_tensors);
 ```
 
-### Destroy sequences
+---
 
-#### Parameters
+### OgaNamedTensorsGet
 
-* Input: sequences OgaSequences to be destroyed.
-
-#### Returns
-`void`
-
-#### Returns
+Gets a tensor by name.
 
 ```c
-OGA_EXPORT void OGA_API_CALL OgaDestroySequences(OgaSequences* sequences);
+OgaTensor* tensor = NULL;
+OgaNamedTensorsGet(named_tensors, "input_name", &tensor);
 ```
 
-### Get number of sequences
+---
 
-Returns the number of sequences in the OgaSequences
+### OgaNamedTensorsSet
 
-#### Parameters
+Sets a tensor by name.
 
-* Input: sequences
-
-#### Returns
-The number of sequences in the OgaSequences
- 
 ```c
-OGA_EXPORT size_t OGA_API_CALL OgaSequencesCount(const OgaSequences* sequences);
+OgaNamedTensorsSet(named_tensors, "input_name", tensor);
 ```
 
-### Get the number of tokens in a sequence
+---
 
-Returns the number of tokens in the sequence at the given index
+### OgaNamedTensorsDelete
 
-#### Parameters
+Deletes a tensor by name.
 
-* Input: sequences
-
-#### Returns
-
-The number of tokens in the sequence at the given index
- 
 ```c
-OGA_EXPORT size_t OGA_API_CALL OgaSequencesGetSequenceCount(const OgaSequences* sequences, size_t sequence_index);
+OgaNamedTensorsDelete(named_tensors, "input_name");
 ```
 
-### Get sequence data
+---
 
-Returns a pointer to the sequence data at the given index. The number of tokens in the sequence is given by OgaSequencesGetSequenceCount
+### OgaNamedTensorsCount
 
-#### Parameters
-* Input: sequences
+Returns the number of named tensors.
 
-#### Returns
-
-The pointer to the sequence data at the given index. The pointer is valid until the OgaSequences is destroyed.
- 
 ```c
-OGA_EXPORT const int32_t* OGA_API_CALL OgaSequencesGetSequenceData(const OgaSequences* sequences, size_t sequence_index);
+size_t count = 0;
+OgaNamedTensorsCount(named_tensors, &count);
 ```
+
+---
+
+### OgaNamedTensorsGetNames
+
+Gets the names of all tensors.
+
+```c
+OgaStringArray* names = NULL;
+OgaNamedTensorsGetNames(named_tensors, &names);
+OgaDestroyStringArray(names);
+```
+
+---
+
+### OgaDestroyNamedTensors
+
+Destroys the named tensors object.
+
+```c
+OgaDestroyNamedTensors(named_tensors);
+```
+
+---
+
+## Utility Functions
+
+### OgaSetLogBool
+
+Sets a boolean logging option.
+
+```c
+OgaSetLogBool("option_name", true);
+```
+
+---
+
+### OgaSetLogString
+
+Sets a string logging option.
+
+```c
+OgaSetLogString("option_name", "value");
+```
+
+---
+
+### OgaSetCurrentGpuDeviceId
+
+Sets the current GPU device ID.
+
+```c
+OgaSetCurrentGpuDeviceId(0);
+```
+
+---
+
+### OgaGetCurrentGpuDeviceId
+
+Gets the current GPU device ID.
+
+```c
+int device_id = 0;
+OgaGetCurrentGpuDeviceId(&device_id);
+```
+
+---
+
+### OgaResultGetError
+
+Gets the error message from an OgaResult.
+
+```c
+const char* error = OgaResultGetError(result);
+```
+
+---
+
+### OgaDestroyResult
+
+Destroys an OgaResult.
+
+```c
+OgaDestroyResult(result);
+```
+
+---
+
+### OgaDestroyString
+
+Destroys a string returned by the API.
+
+```c
+OgaDestroyString(str);
+```
+
+---
+
+### OgaDestroyBuffer
+
+Destroys a buffer.
+
+```c
+OgaDestroyBuffer(buffer);
+```
+
+---
+
+### OgaBufferGetType
+
+Gets the type of the buffer.
+
+```c
+OgaDataType type = OgaBufferGetType(buffer);
+```
+
+---
+
+### OgaBufferGetDimCount
+
+Gets the number of dimensions of a buffer.
+
+```c
+size_t dim_count = OgaBufferGetDimCount(buffer);
+```
+
+---
+
+### OgaBufferGetDims
+
+Gets the dimensions of a buffer.
+
+```c
+size_t dims[dim_count];
+OgaBufferGetDims(buffer, dims, dim_count);
+```
+
+---
+
+### OgaBufferGetData
+
+Gets the data from a buffer.
+
+```c
+const void* data = OgaBufferGetData(buffer);
+```
+
+---
