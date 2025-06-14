@@ -874,13 +874,18 @@ class DefaultWeightOnlyQuantizer:
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
         # if QDQ, CW and SYM enabled, optimize for Intel NPU, tranpose the weight to NHWC format will increase performance
-        qdq_opt_for_intel_npu_enabled = self.config.quant_format == QuantFormat.QDQ \
-            and self.config.channel_wised_quantize and self.config.is_symmetric
+        qdq_opt_for_intel_npu_enabled = (
+            self.config.quant_format == QuantFormat.QDQ
+            and self.config.channel_wised_quantize
+            and self.config.is_symmetric
+        )
         if qdq_opt_for_intel_npu_enabled:
             rows, cols = b_ndarray.shape
             packed = transpose_packed_int4_matrix(packed, rows, cols)
-            scales = scales.reshape((cols, 1)) # (cols, 1)
-            b_quant = onnx.helper.make_tensor(b_tensor.name + f"_DQ_Q{bits}", qtype, [cols, rows], packed.tobytes(), True)
+            scales = scales.reshape((cols, 1))  # (cols, 1)
+            b_quant = onnx.helper.make_tensor(
+                b_tensor.name + f"_DQ_Q{bits}", qtype, [cols, rows], packed.tobytes(), True
+            )
             scales_tensor = onnx.numpy_helper.from_array(scales, b_tensor.name + "_DQ_scales")
 
         for input in b_graph.input:
@@ -924,7 +929,10 @@ class DefaultWeightOnlyQuantizer:
             dq_output_names = [b_quant.name + "_output"]
             tp_input_names = [dq_output_names[0]]
             tp_output_names = [dq_output_names[0] + "_transposed"]
-            matmul_input_names = [node.input[0], tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0]]
+            matmul_input_names = [
+                node.input[0],
+                tp_output_names[0] if qdq_opt_for_intel_npu_enabled else dq_output_names[0],
+            ]
             matmul_output_names = [node.output[0]]
             if not self.config.is_symmetric:
                 zp_tensor = onnx.helper.make_tensor(
@@ -935,7 +943,7 @@ class DefaultWeightOnlyQuantizer:
             rows, cols = b_ndarray.shape
             dq_kwargs = {
                 "axis": 1 if qdq_opt_for_intel_npu_enabled else 0,
-                "block_size": rows if self.config.channel_wised_quantize else self.config.block_size
+                "block_size": rows if self.config.channel_wised_quantize else self.config.block_size,
             }
             dq_node = onnx.helper.make_node(
                 "DequantizeLinear",
@@ -955,7 +963,7 @@ class DefaultWeightOnlyQuantizer:
                     "Transpose",
                     inputs=tp_input_names,
                     outputs=tp_output_names,
-                    perm=[1,0],
+                    perm=[1, 0],
                 )
                 output_nodes.extend([dq_node, tp_node, matmul_node])
             else:

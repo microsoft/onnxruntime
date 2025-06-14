@@ -38,7 +38,23 @@ struct OnnxToOvNetworkBindings {
     ov::element::Type type;
     ov::PartialShape ov_shape;
     std::vector<int64_t> onnx_shape;
+    uint8_t dynamic_flags = 0;  // bit 0: fully_dynamic, bit 1: bounded_dynamic
+
+    // Query methods
+    bool IsStatic() const { return dynamic_flags == 0; }
+    bool IsFullyDynamic() const { return dynamic_flags & 1; }
+    bool IsBoundedDynamic() const { return dynamic_flags & 2; }
+    bool IsMixed() const { return (dynamic_flags & 3) == 3; }
+
+    // Setter methods
+    void SetFullyDynamic(bool value) {
+      dynamic_flags = value ? (dynamic_flags | 1) : (dynamic_flags & ~1);
+    }
+    void SetBoundedDynamic(bool value) {
+      dynamic_flags = value ? (dynamic_flags | 2) : (dynamic_flags & ~2);
+    }
   };
+
   std::vector<ParameterInfo> network_outputs_;
   std::vector<ParameterInfo> network_inputs_;
 
@@ -52,8 +68,8 @@ struct OnnxToOvNetworkBindings {
         // However, these tensors are internally converted to a stateful representation, which removes them.
         // To prevent runtime exceptions, we simply continue processing here.
         if ((onnx_name.empty() || onnx_name == "beam_idx" ||
-            onnx_name.find("past_key_values") != std::string::npos ||
-            onnx_name.find("present") != std::string::npos) &&
+             onnx_name.find("past_key_values") != std::string::npos ||
+             onnx_name.find("present") != std::string::npos) &&
             session_context.enable_causallm) {
           continue;
         }
@@ -68,19 +84,40 @@ struct OnnxToOvNetworkBindings {
         auto type = ov_parameters[ov_param_index].get_element_type();
         ParameterInfo info{onnx_name, ov_param_index, onnx_param_index, type, shape};
 
+        // Analyze shape dynamism and set flags
         if (shape.is_static()) {
+          // dynamic_flags remains 0 (static)
           auto static_shape = shape.get_shape();
-          std::transform(static_shape.begin(), static_shape.end(), std::back_inserter(info.onnx_shape), [](const auto& dim) { return static_cast<int64_t>(dim); });
+          std::transform(static_shape.begin(), static_shape.end(), std::back_inserter(info.onnx_shape),
+                         [](const auto& dim) { return static_cast<int64_t>(dim); });
+        } else {
+          // Analyze dynamic dimensions
+          bool has_fully_dynamic = false;
+          bool has_bounded_dynamic = false;
+
+          for (const auto& dim : shape) {
+            if (dim.is_dynamic()) {
+              if (dim.get_interval().has_upper_bound()) {
+                has_bounded_dynamic = true;
+              } else {
+                has_fully_dynamic = true;
+              }
+            }
+          }
+
+          info.SetFullyDynamic(has_fully_dynamic);
+          info.SetBoundedDynamic(has_bounded_dynamic);
         }
+
         input_output_map.push_back(std::move(info));
       }
     };
 
+    // Populate inputs and outputs
     populate(network_inputs_, subgraph_context.input_names, exec_network.Get().inputs());
     populate(network_outputs_, subgraph_context.output_names, exec_network.Get().outputs());
   }
 };
-
 class InferRequestsQueue;
 class BasicBackend : public IBackend {
  public:
@@ -105,6 +142,8 @@ class BasicBackend : public IBackend {
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
   void StartAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
+  void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
+                                          const ov::PartialShape& partial_shape) const;
   void CompleteAsyncInference(Ort::KernelContext& context, std::shared_ptr<OVInferRequest> infer_request);
 
   SessionContext& session_context_;
@@ -123,7 +162,7 @@ class InferRequestsQueue {
  public:
   InferRequestsQueue(OVExeNetwork& net, size_t nireq, std::function<void(OVInferRequestPtr)> initializer) {
     OVInferRequestPtr infer_request;
-    live_threads=nireq;
+    live_threads = nireq;
     for (size_t id = 0; id < nireq; id++) {
       infer_request = net.CreateInferRequest();
       initializer(infer_request);
@@ -155,7 +194,7 @@ class InferRequestsQueue {
 
   OVInferRequestPtr getIdleRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    if(live_threads==0) {
+    if (live_threads == 0) {
       return nullptr;
     }
 
@@ -167,8 +206,7 @@ class InferRequestsQueue {
 
   void deleteRequest() {
     std::unique_lock<std::mutex> lock(_mutex);
-    live_threads=live_threads-1;
-    std::cout << "delete Request" << live_threads << "\n";
+    live_threads = live_threads - 1;
   }
 
  private:

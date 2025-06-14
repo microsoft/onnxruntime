@@ -146,6 +146,10 @@ CreateOVModel(std::string&& model,
   try {
     auto ov_model = OVCore::Get()->ReadModel(std::move(model), session_context.onnx_model_path_name.string());
 
+    if (!session_context.reshape.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Reshaping the ov tensor to specified shape";
+      ov_model->reshape(session_context.reshape);
+    }
     // Check for Constant Folding
     if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;

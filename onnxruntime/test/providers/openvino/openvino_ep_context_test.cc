@@ -25,27 +25,21 @@
 using namespace ONNX_NAMESPACE;
 using namespace onnxruntime::logging;
 
-
 extern std::unique_ptr<Ort::Env> ort_env;
 
 class OVEPEPContextTests : public ::testing::Test {
-
-
 };
 
 namespace onnxruntime {
 namespace test {
 
-
 // Test if folder path given to ep_context_file_path throws an error
 TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
-
   Ort::SessionOptions sessionOptions;
   std::unordered_map<std::string, std::string> ov_options;
 
-  //The below line could fail the test in non NPU platforms.Commenting it out so that the device used for building OVEP will be used.
-  //ov_options["device_type"] = "NPU";
-
+  // The below line could fail the test in non NPU platforms.Commenting it out so that the device used for building OVEP will be used.
+  // ov_options["device_type"] = "NPU";
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -66,11 +60,9 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
 
   const std::string ep_context_file_path = "./ep_context_folder_path/";
 
-
   sessionOptions.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
-  sessionOptions.AddConfigEntry(kOrtSessionOptionEpContextFilePath,ep_context_file_path.c_str());
+  sessionOptions.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_file_path.c_str());
   sessionOptions.AppendExecutionProvider_OpenVINO_V2(ov_options);
-
 
   try {
     Ort::Session session(*ort_env, model_data_span.data(), model_data_span.size(), sessionOptions);
@@ -79,9 +71,7 @@ TEST_F(OVEPEPContextTests, OVEPEPContextFolderPath) {
     ASSERT_EQ(excpt.GetOrtErrorCode(), ORT_INVALID_ARGUMENT);
     ASSERT_THAT(excpt.what(), testing::HasSubstr("context_file_path should not point to a folder."));
   }
-
 }
-
 
 }  // namespace test
 }  // namespace onnxruntime

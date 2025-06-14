@@ -34,12 +34,12 @@ void OVRTAllocator::Free(void* p) {
   try {
     ov::Tensor* tensor = nullptr;
     {
-    std::lock_guard<std::mutex> lock(mutex_);
-    auto it = allocated_.find(p);
-    if (it != allocated_.end()) {
-      tensor = it->second;
-      allocated_.erase(it);
-    }
+      std::lock_guard<std::mutex> lock(mutex_);
+      auto it = allocated_.find(p);
+      if (it != allocated_.end()) {
+        tensor = it->second;
+        allocated_.erase(it);
+      }
     }
     if (tensor) {
       delete tensor;

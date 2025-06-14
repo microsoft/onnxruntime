@@ -364,7 +364,7 @@ StatefulOVInferRequest::StatefulOVInferRequest(ov::InferRequest infer_request, s
 }
 
 void StatefulOVInferRequest::FillTensor(const std::string& tensor_name, const ov::element::Type& type,
-                                         const std::vector<size_t>& shape, int32_t fill_value) {
+                                        const std::vector<size_t>& shape, int32_t fill_value) {
   ov::Tensor tensor = ov::Tensor(type, shape);
   std::fill_n(tensor.data<int32_t>(), tensor.get_size(), fill_value);
   ovInfReq.set_tensor(tensor_name, tensor);
@@ -379,7 +379,7 @@ void StatefulOVInferRequest::CacheTensor(const std::string& tensor_name, std::ve
 }
 
 void StatefulOVInferRequest::SetTensorFromCache(const std::string& tensor_name,
-                                               const std::vector<int64_t>& cache_data) {
+                                                const std::vector<int64_t>& cache_data) {
   auto tensor = ovInfReq.get_tensor(tensor_name);
   auto new_shape = tensor.get_shape();
   new_shape[1] = cache_data.size();

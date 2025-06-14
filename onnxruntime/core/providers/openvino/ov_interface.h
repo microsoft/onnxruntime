@@ -14,6 +14,9 @@
 #include "openvino/runtime/intel_npu/properties.hpp"
 #include "openvino/pass/convert_fp32_to_fp16.hpp"
 #include "openvino/frontend/manager.hpp"
+#include "openvino/core/dimension.hpp"
+#include "openvino/core/partial_shape.hpp"
+
 #include <string>
 
 namespace onnxruntime {
@@ -129,7 +132,7 @@ class StatefulOVInferRequest : public OVInferRequest {
   void Infer() override;
   void RewindKVCache(size_t index) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,
-                   const std::vector<size_t>& shape, int32_t fill_value);
+                  const std::vector<size_t>& shape, int32_t fill_value);
   void CacheTensor(const std::string& tensor_name, std::vector<int64_t>& cache);
   void SetTensorFromCache(const std::string& tensor_name, const std::vector<int64_t>& cache_data);
   std::optional<ov::Tensor> FindTensor(const std::string& tensor_name);

@@ -240,9 +240,9 @@ common::Status OpenVINOExecutionProvider::SetEpDynamicOptions(gsl::span<const ch
       if (workload_type != "") {
         LOGS_DEFAULT(VERBOSE) << "SetEpDynamicOptions - modifying: " << key << "/" << value;
         for (auto& backend : backend_managers_) {
-            ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
-            if(ov_compiled_model) {
-              ov_compiled_model.set_property(ov::workload_type(workload_type));
+          ov::CompiledModel ov_compiled_model = backend.GetOVCompiledModel();
+          if (ov_compiled_model) {
+            ov_compiled_model.set_property(ov::workload_type(workload_type));
           } else {
             LOGS_DEFAULT(VERBOSE) << "Model is not compiled in OV as its dynamic";
             ov::AnyMap map;
