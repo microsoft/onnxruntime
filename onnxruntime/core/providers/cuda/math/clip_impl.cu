@@ -13,8 +13,9 @@ __global__ void _Clip(const T* input, T* output, const T* min, const T* max, T m
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
 
   // output = Min(max, Max(input, min)). Note that min might be larger than max, so we need to compute in two steps.
-  auto value = (input[id] > max_val) ? max_val : input[id];
-  output[id] = (value < min_val) ? min_val : value;
+  auto value = input[id];
+  value = (value < min_val) ? min_val : value;
+  output[id] = (value > max_val) ? max_val : value;
 }
 
 template <typename T>
