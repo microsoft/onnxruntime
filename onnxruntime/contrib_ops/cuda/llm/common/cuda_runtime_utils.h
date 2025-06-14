@@ -53,38 +53,29 @@ inline int getMultiProcessorCount() {
 
 // return The free and total amount of memory in bytes
 inline std::tuple<size_t, size_t> getDeviceMemoryInfo(bool const useUvm, bool verbose) {
+  size_t free = 0;
+  size_t total = 0;
+
   if (useUvm) {
-    size_t freeSysMem = 0;
-    size_t totalSysMem = 0;
 #ifndef _WIN32  // Linux
     struct sysinfo info;
     sysinfo(&info);
-    totalSysMem = info.totalram * info.mem_unit;
-    freeSysMem = info.freeram * info.mem_unit;
+    total = info.totalram * info.mem_unit;
+    free = info.freeram * info.mem_unit;
 #else   // Windows
     MEMORYSTATUSEX memInfo;
     memInfo.dwLength = sizeof(memInfo);
     GlobalMemoryStatusEx(&memInfo);
-    totalSysMem = memInfo.ullTotalPhys;
-    freeSysMem = memInfo.ullAvailPhys;
+    total = memInfo.ullTotalPhys;
+    free = memInfo.ullAvailPhys;
 #endif  // WIN32
-
-    if (verbose) {
-      std::ostringstream msg;
-      msg << "Using UVM based system memory, total memory " << ((double)totalSysMem / 1e9) << "GB, available memory " << ((double)freeSysMem / 1e9) << "GB";
-      ORT_LLM_LOG_INFO(msg.str());
-    }
-
-    return {freeSysMem, totalSysMem};
+  } else {
+    CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
   }
-
-  size_t free = 0;
-  size_t total = 0;
-  CUDA_CALL_THROW(cudaMemGetInfo(&free, &total));
 
   if (verbose) {
     std::ostringstream msg;
-    msg << "Using GPU memory, total memory " << ((double)totalSysMem / 1e9) << "GB, available memory " << ((double)freeSysMem / 1e9) << "GB";
+    msg << "Using " << (useUvm ? "UVM" : "GPU") << " memory, total memory " << ((double)total / 1e9) << "GB, available memory " << ((double)free / 1e9) << "GB";
     ORT_LLM_LOG_INFO(msg.str());
   }
 
