@@ -960,6 +960,50 @@ TEST(MathOpTest, Div_double) {
   test.Run();
 }
 
+// Test that division by zero for integer types returns proper error instead of crashing
+TEST(MathOpTest, Div_DivisionByZero_Int32) {
+  OpTester test("Div");
+  test.AddInput<int32_t>("A", {1}, {1});
+  test.AddInput<int32_t>("B", {1}, {0});
+  test.AddOutput<int32_t>("C", {1}, {0}); // Output doesn't matter since we expect failure
+  
+  // Should return an error instead of crashing
+  test.Run(OpTester::ExpectResult::kExpectFailure, 
+           "Division by zero error in Div operator");
+}
+
+TEST(MathOpTest, Div_DivisionByZero_Int64) {
+  OpTester test("Div");
+  test.AddInput<int64_t>("A", {1}, {1});
+  test.AddInput<int64_t>("B", {1}, {0});
+  test.AddOutput<int64_t>("C", {1}, {0}); // Output doesn't matter since we expect failure
+  
+  // Should return an error instead of crashing
+  test.Run(OpTester::ExpectResult::kExpectFailure, 
+           "Division by zero error in Div operator");
+}
+
+// Test that floating point division by zero still works (produces infinity)
+TEST(MathOpTest, Div_DivisionByZero_Float) {
+  OpTester test("Div");
+  test.AddInput<float>("A", {1}, {1.0f});
+  test.AddInput<float>("B", {1}, {0.0f});
+  test.AddOutput<float>("C", {1}, {std::numeric_limits<float>::infinity()});
+  
+  // Should succeed and produce infinity
+  test.Run();
+}
+
+TEST(MathOpTest, Div_DivisionByZero_Double) {
+  OpTester test("Div");
+  test.AddInput<double>("A", {1}, {1.0});
+  test.AddInput<double>("B", {1}, {0.0});
+  test.AddOutput<double>("C", {1}, {std::numeric_limits<double>::infinity()});
+  
+  // Should succeed and produce infinity
+  test.Run();
+}
+
 TEST(MathOpTest, Abs) {
   OpTester test("Abs");
   std::vector<int64_t> dims{2, 2};
