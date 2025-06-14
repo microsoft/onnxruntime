@@ -1,15 +1,15 @@
-//use guardAgainstOutOfBoundsWorkgroupSizes
-//use getElementAt
-//use output.offsetToIndices
-//use output.setByOffset
-//use output.rank
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use getElementAt
+#use output.offsetToIndices
+#use output.setByOffset
+#use output.rank
 
-//param boolean dim_value_zero
-//param boolean is_float16
-//param boolean pad_mode_is_constant
-//param boolean pad_mode_is_edge
-//param boolean pad_mode_is_reflect
-//param boolean output_rank_is_greater_than_1
+#param boolean is_float16
+#param boolean dim_value_zero
+#param boolean pad_mode_is_constant
+#param boolean pad_mode_is_edge
+#param boolean pad_mode_is_reflect
+#param boolean output_rank_is_greater_than_1
 
 fn MAIN() {
   guardAgainstOutOfBoundsWorkgroupSizes(uniforms.output_size);
@@ -19,7 +19,7 @@ fn MAIN() {
       bitcast<vec2<f16>>(uniforms.constant_value)[0];
 #else
       bitcast<output_value_t>(uniforms.constant_value);
-#endif
+#endif  // is_float16
 
 #if dim_value_zero
   output[global_idx] = constant_value;
