@@ -37,7 +37,7 @@ struct MulKernel {
   OrtStatus* Compute(OrtKernelContext* kernel_context) {
     ReleaseResources();
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
-                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_VERBOSE,
+                                              OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                               "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
     size_t num_inputs = 0;
     RETURN_IF_ERROR(ort_api.KernelContext_GetInputCount(kernel_context, &num_inputs));
