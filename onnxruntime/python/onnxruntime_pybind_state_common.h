@@ -436,6 +436,9 @@ class SessionObjectInitializer {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
+
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options);
+bool CheckIfUsingGlobalThreadPool();
 Environment& GetEnv();
 OrtEnv* GetOrtEnv();
 

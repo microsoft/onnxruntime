@@ -173,6 +173,8 @@ void ORTTrainingPythonEnv::ClearExecutionProviderInstances() {
 }
 
 static ORTTrainingPythonEnv* ort_training_env = nullptr;
+static OrtThreadingOptions global_tp_options;
+static bool use_global_tp = false;
 
 OrtEnv* GetOrtEnv() {
   return &ort_training_env->GetORTEnv();
@@ -185,7 +187,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status));
+  std::unique_ptr<OrtEnv> ort_env(OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr));
   if (!status.IsOK()) return status;
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
   if (!InitProvidersSharedLibrary()) {
@@ -199,6 +201,17 @@ static Status CreateOrtEnv() {
 
 ORTTrainingPythonEnv& GetTrainingEnv() {
   return *ort_training_env;
+}
+
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options) {
+  if (ort_training_env != nullptr) {
+    OrtPybindThrowIfError(GetEnv().SetGlobalThreadingOptions(tp_options));
+  }
+  global_tp_options = tp_options;
+  use_global_tp = true;
+}
+bool CheckIfUsingGlobalThreadPool() {
+  return use_global_tp;
 }
 
 void ResolveExtraProviderOptions(const std::vector<std::string>& provider_types,
