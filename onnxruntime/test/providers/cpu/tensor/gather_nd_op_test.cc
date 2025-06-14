@@ -321,5 +321,20 @@ TEST(GatherNDOpTest, GatherND_slice_int64_t) {
   test.Run();
 }
 
+// Test case to reproduce issue #25053: overly strict batch dimension validation in CUDA
+// This test case represents a scenario where the current CUDA validation is too restrictive
+// When batch_dims=0 (the default), there should be no batch dimension constraints
+TEST(GatherNDOpTest, GatherND_flexible_input_shapes_regression) {
+  OpTester test("GatherND", 12, kOnnxDomain);
+  // Use default batch_dims=0, with different first dimensions for input and indices
+  // This should be valid since no batch constraints are imposed when batch_dims=0
+  test.AddInput<float>("data", {1, 3}, {0.625f, 0.0608f, 1.0f});
+  test.AddInput<int64_t>("indices", {3, 2}, {0LL, 0LL, 0LL, 1LL, 0LL, 2LL});
+  test.AddOutput<float>("output", {3}, {0.625f, 0.0608f, 1.0f});
+  
+  // This test should pass on all providers
+  test.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
