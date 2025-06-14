@@ -273,7 +273,7 @@ struct OrtEpFactory {
    */
   const char*(ORT_API_CALL* GetVendor)(const OrtEpFactory* this_ptr);  // return EP vendor
 
-  /** \brief Get information from the execution provider if it supports the OrtHardwareDevice.
+  /** \brief Get information from the execution provider about OrtHardwareDevice support.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    *                     Non-const as the factory is passed through to the CreateEp call via the OrtEpDevice.
