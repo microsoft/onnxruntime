@@ -122,7 +122,7 @@ Status MatMulNBits<MLFloat16>::PrePack(const Tensor& tensor, int input_idx, Allo
 #ifdef FPA_INTB_GEMM_LATENCY
     auto end = std::chrono::high_resolution_clock::now();
     auto latency_us = std::chrono::duration_cast<std::chrono::microseconds>(end - start).count();
-    std::cout << "Latency: " << latency_us << " microseconds" << K_ << std::endl;
+    std::cout << "Latency: " << latency_us << " microseconds" << std::endl;
 #endif
   }
 
@@ -369,6 +369,9 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
             workspace_size,
             stream);
         return Status::OK();
+      } else {
+        // Prepacking is done, so we cannot fall back to older kernels.
+        ORT_THROW("No tactic for MatMulNBits with m=", m, ", n=", n, ", k=", k);
       }
     }
   }

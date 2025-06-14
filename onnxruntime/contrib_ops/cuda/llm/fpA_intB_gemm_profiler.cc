@@ -30,7 +30,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   half* actPtr = reinterpret_cast<half*>(workspace);
   void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
-  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(float)));
+  half* inputScalesPtr = reinterpret_cast<half*>(nextWorkspacePtr(reinterpret_cast<int8_t*>(weightPtr), n * k * sizeof(half)));
   half* zerosPtr = reinterpret_cast<half*>(
       nextWorkspacePtr(reinterpret_cast<int8_t*>(inputScalesPtr), k * originalN * sizeof(half) / mGroupSize));
   half* biasesPtr = reinterpret_cast<half*>(
@@ -76,7 +76,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, siz
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   std::vector<size_t> workspaces = {
       maxM * k * sizeof(half),                       // A
-      k * n * sizeof(float),                         // B
+      k * n * sizeof(half),                          // B
       k * originalN * sizeof(half) / mGroupSize,     // scales
       k * originalN * sizeof(half) / mGroupSize,     // zeros
       originalN * sizeof(half),                      // biases
