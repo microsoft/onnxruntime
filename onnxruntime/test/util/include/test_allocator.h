@@ -15,6 +15,7 @@ struct MockedOrtAllocator : OrtAllocator {
   void Free(void* p);
   const OrtMemoryInfo* Info() const;
   void* Reserve(size_t size);
+  OrtKeyValuePairs* Stats() const;
   size_t NumAllocations() const;
   size_t NumReserveAllocations() const;
 
