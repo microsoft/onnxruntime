@@ -2292,7 +2292,9 @@ TEST(GraphTest, OuterScopeInitializerTypeInference) {
   
   // Set the subgraph as an attribute of the parent node
   subgraph_proto.set_name("then_branch");
-  *(subgraph_proto.add_node()) = sub_node.ToProto();
+  NodeProto node_proto;
+  sub_node.ToProto(node_proto);
+  *(subgraph_proto.add_node()) = std::move(node_proto);
   subgraph_proto.add_output()->set_name("subgraph_out");
   
   parent_node.AddAttribute("then_branch", subgraph_proto);
