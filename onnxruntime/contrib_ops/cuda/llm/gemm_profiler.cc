@@ -137,7 +137,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
         // Check whether there is enough free GPU memory.
-        auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false);
+        auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
         if (freeMemory < mTmpWorkspaceSizeInBytes) {
           ORT_LLM_LOG_WARNING(
               "Not enough free memory to profile GEMM tactics. "
