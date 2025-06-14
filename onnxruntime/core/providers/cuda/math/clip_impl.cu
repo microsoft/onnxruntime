@@ -8,10 +8,13 @@ namespace onnxruntime {
 namespace cuda {
 template <typename T>
 __global__ void _Clip(const T* input, T* output, const T* min, const T* max, T min_default, T max_default, size_t N) {
-  auto min_val = (min) ? *min : min_default; 
-  auto max_val = (max) ? *max : max_default; 
+  auto min_val = (min) ? *min : min_default;
+  auto max_val = (max) ? *max : max_default;
   CALCULATE_ELEMENTWISE_INDEX_OR_EXIT(id, N);
-  output[id] = (input[id] < min_val) ? min_val : ((input[id] > max_val) ? max_val : input[id]);
+
+  // output = Min(max, Max(input, min)). Note that min might be larger than max, so we need to compute in two steps.
+  auto value = (input[id] > max_val) ? max_val : input[id];
+  output[id] = (value < min_val) ? min_val : value;
 }
 
 template <typename T>
