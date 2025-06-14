@@ -15,8 +15,8 @@
 
 #if defined(TRACE_ENTRY_EXIT) && TRACE_ENTRY_EXIT
 #include <iostream>
-#define ORT_LLM_LOG_ENTRY() std::cout << "Entering " << PRETTY_FUNCTION << std::endl;
-#define ORT_LLM_LOG_EXIT() std::cout << "Exiting " << PRETTY_FUNCTION << std::endl;
+#define ORT_LLM_LOG_ENTRY() std::cout << "  Enter " << PRETTY_FUNCTION << std::endl;
+#define ORT_LLM_LOG_EXIT() std::cout << "  Exit " << PRETTY_FUNCTION << std::endl;
 #else
 #define ORT_LLM_LOG_ENTRY()
 #define ORT_LLM_LOG_EXIT()
