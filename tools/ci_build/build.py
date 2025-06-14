@@ -1722,6 +1722,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
 
+            log.info("Testing Global Thread Pool feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
+
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
 
