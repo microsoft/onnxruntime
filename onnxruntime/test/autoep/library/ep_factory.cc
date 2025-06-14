@@ -211,7 +211,8 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
     // create a GPU allocator
     return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Example is not implemented.");
   } else if (memory_info == factory.host_accessible_gpu_memory_info_.get()) {
-    // create a pinned memory allocator
+    // create a pinned/shared memory allocator. Use the real device type (i.e. GPU/NPU) and id and a memory type of
+    // OrtDeviceMemoryType_HOST_ACCESSIBLE.
     return factory.ort_api.CreateStatus(ORT_NOT_IMPLEMENTED, "Example is not implemented.");
   } else {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,

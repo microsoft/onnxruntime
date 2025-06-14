@@ -11,6 +11,10 @@
 namespace onnxruntime {
 namespace plugin_ep {
 
+/// <summary>
+/// Class to implement IDataTransfer for plugin execution providers.
+/// It uses the OrtDataTransferImpl from the plugin EP factory to implement the data transfer functionality.
+/// </summary>
 class DataTransfer : public IDataTransfer {
  public:
   DataTransfer(OrtDataTransferImpl& impl)

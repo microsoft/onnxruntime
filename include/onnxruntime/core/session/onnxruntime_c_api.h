@@ -241,7 +241,7 @@ typedef enum OrtLoggingLevel {
   ORT_LOGGING_LEVEL_VERBOSE,  ///< Verbose informational messages (least severe).
   ORT_LOGGING_LEVEL_INFO,     ///< Informational messages.
   ORT_LOGGING_LEVEL_WARNING,  ///< Warning messages.
-  ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.M
+  ORT_LOGGING_LEVEL_ERROR,    ///< Error messages.
   ORT_LOGGING_LEVEL_FATAL,    ///< Fatal error messages (most severe).
 } OrtLoggingLevel;
 
@@ -5388,9 +5388,6 @@ struct OrtApi {
    * OrtDeviceMemoryType_DEFAULT is always supported for non-CPU based devices.
    * OrtDeviceMemoryType_HOST_ACCESSIBLE is optional and dependent on the device as to whether it's required/supported.
    *
-   * If a shared allocator already exists and is a custom allocator added with RegisterAllocator, an error is returned
-   * as it must be remove with UnregisterAllocator first.
-   *
    * If a shared allocator already exists for the OrtEpDevice and OrtDeviceMemoryType, it is replaced. This allows
    * changing the shared allocator configuration from the default. e.g. adding an arena.
    *
@@ -5398,8 +5395,10 @@ struct OrtApi {
    * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
    * \param[in] mem_type The memory type to use for the shared allocator.
    * \param[in] allocator_type The type of allocator to create (e.g. OrtAllocatorType::OrtArenaAllocator).
-   * \param[in] allocator_options Optional key-value pairs to configure the allocator.
-   * \param[out] allocator A pointer to the created shared allocator. Owned by the OrtEnv.
+   * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
+   *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
+   *                              used.
+   * \param[out] allocator A pointer to the created shared allocator. Owned by the OrtEnv instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5415,7 +5414,7 @@ struct OrtApi {
    * By default there is a shared allocator created for all OrtEpDevice instances, so if you get the OrtMemoryInfo
    * from the OrtEpDevice using EpDevice_MemoryInfo a shared allocator is guaranteed to exist.
    *
-   * This will also match and return custom allocators created with RegisterAllocator.
+   * This will also match and return custom allocators added with RegisterAllocator.
    *
    * \param[in] env The OrtEnv instance to get the shared allocator from.
    * \param[in] mem_info The OrtMemoryInfo instance to get the shared allocator for.
@@ -6187,7 +6186,8 @@ ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 
-// Opaque class to create an onnxruntime::Stream. Will be filled out in separate PR. Adding here for IDataTransfer
+// Opaque class to create an onnxruntime::Stream. Will be filled out in separate PR.
+// Adding here for OrtDataTransferImpl as the stream type is required by the IDataTransfer API.
 ORT_RUNTIME_CLASS(SyncStream);
 
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
@@ -6241,50 +6241,6 @@ struct OrtDataTransferImpl {
                   _In_ size_t num_tensors);
 };
 
-/** \brief Struct that an EP implements for Stream Notifications.
- *
- * \since Version 1.23.
- */
-struct OrtSyncNotificationImpl {
-  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
-
-  /** \brief Release the OrtSyncNotificationImpl instance.
-   *
-   * This is called by ORT when the OrtSyncNotificationImpl instance is no longer needed.
-   * The implementation should release any resources held by the instance.
-   *
-   * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(void, Release, _In_ void* this_ptr);
-
-  /** \brief Called by ORT when the notification is being activated
-   *
-   * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(void, Activate, _In_ void* this_ptr);
-
-  /** \brief Wait for a device to device operation to complete.
-   *
-   * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   * \param[in] stream The OrtSyncStream instance that the notification is associated with.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(void, WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* stream);
-
-  /** \brief Wait for a device to host operation to complete.
-   *
-   * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(void, WaitOnHost, _In_ void* this_ptr);
-};
-
 /// <summary>
 /// Functions that a plugin EP needs to call from its implementation.
 /// </summary>
@@ -6313,7 +6269,7 @@ struct OrtEpApi {
   /** \brief Register an allocator with the OrtEpDevice.
    *
    * This allows an EP to provide OrtMemoryInfo for DEFAULT and HOST_ACCESSIBLE memory types as needed.
-   * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocators
+   * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
@@ -6326,8 +6282,6 @@ struct OrtEpApi {
   ORT_API2_STATUS(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
                   _In_ const OrtMemoryInfo* allocator_memory_info);
 
-  // get the OrtMemoryDevice information from an OrtMemoryInfo instance and OrtValue
-  //
   /** \brief Get the OrtMemoryDevice from an OrtMemoryInfo instance.
    *
    * This is required for OrtDataTransferImpl (which implements onnxruntime::IDataTransfer) where the OrtMemoryDevice
@@ -6415,9 +6369,6 @@ struct OrtEp {
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
-
-  // IExecutionProvider::Sync. Called by IOBinding to ensure data values are available.
-  ORT_API2_STATUS(Sync, _In_ OrtEp* this_ptr);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -6552,7 +6503,7 @@ struct OrtEpFactory {
 
   /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
    *
-   * This is used to create an allocator that an execution provider that can be created by the factory requires.
+   * This is used to create an allocator that an execution provider created by the factory requires.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
