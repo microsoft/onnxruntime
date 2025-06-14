@@ -258,8 +258,16 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::GetSubGraph, _In_ const OrtGraph* ort_gra
     OrtNode* new_node = nullptr;
     size_t node_num_attrs = 0;
     ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetNumAttributes(node, &node_num_attrs));
+    std::vector<const OrtOpAttr*> const_node_attributes(node_num_attrs, nullptr);
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetAttributes(node, const_node_attributes.data(), const_node_attributes.size()));
+    std::vector<std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> node_attributes_holder;
     std::vector<OrtOpAttr*> node_attributes(node_num_attrs, nullptr);
-    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetAttributes(node, node_attributes.data(), node_attributes.size()));
+    for (size_t index = 0; index < node_num_attrs; ++index) {
+      auto& attr_proto = const_node_attributes[index]->attr_proto;
+      auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(attr_proto);
+      node_attributes[i] = reinterpret_cast<OrtOpAttr*>(attr.get());
+      node_attributes_holder.emplace_back(std::move(attr));
+    }
     ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateNode(operator_type, domain_name, node_name,
                                                           node_input_names.data(), node_input_names.size(),
                                                           node_output_names.data(), node_output_names.size(),
