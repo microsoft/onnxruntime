@@ -391,6 +391,91 @@ class TestOrtValue(unittest.TestCase):
             proto_type = ortvalue.element_type()
             self.assertIn(proto_type, expected)
 
+    def test_array_protocol(self):
+        """Test that OrtValue supports numpy array protocol."""
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        
+        # Test __array__ method directly
+        array_result = ortvalue.__array__()
+        assert_almost_equal(numpy_arr_input, array_result)
+        
+        # Test that np.array() works with OrtValue
+        numpy_result = np.array(ortvalue)
+        assert_almost_equal(numpy_arr_input, numpy_result)
+        
+        # Test that np.asarray() works with OrtValue
+        asarray_result = np.asarray(ortvalue)
+        assert_almost_equal(numpy_arr_input, asarray_result)
+        
+        # Verify data types are preserved
+        self.assertEqual(numpy_arr_input.dtype, array_result.dtype)
+        self.assertEqual(numpy_arr_input.dtype, numpy_result.dtype)
+        self.assertEqual(numpy_arr_input.dtype, asarray_result.dtype)
+
+    def test_dlpack_protocol_methods_python_wrapper(self):
+        """Test that dlpack protocol methods are accessible through Python wrapper."""
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        
+        # Test __dlpack__ method
+        dlpack_capsule = ortvalue.__dlpack__()
+        self.assertIsNotNone(dlpack_capsule)
+        
+        # Test __dlpack__ method with stream parameter
+        dlpack_capsule_with_stream = ortvalue.__dlpack__(stream=None)
+        self.assertIsNotNone(dlpack_capsule_with_stream)
+        
+        # Test __dlpack_device__ method
+        device_info = ortvalue.__dlpack_device__()
+        self.assertIsInstance(device_info, tuple)
+        self.assertEqual(len(device_info), 2)
+        self.assertEqual((1, 0), device_info)  # Expected device for CPU
+        
+        # Test to_dlpack method
+        dlpack_capsule2 = ortvalue.to_dlpack()
+        self.assertIsNotNone(dlpack_capsule2)
+
+    def test_from_dlpack_automatic_call(self):
+        """Test that from_dlpack can automatically call __dlpack__ on objects."""
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue1 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        
+        # Test creating OrtValue from another OrtValue using from_dlpack
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(ortvalue1)
+        
+        # Verify the data is the same
+        array1 = ortvalue1.numpy()
+        array2 = ortvalue2.numpy()
+        assert_almost_equal(array1, array2)
+        
+        # Test with explicit dlpack capsule
+        dlpack_capsule = ortvalue1.__dlpack__()
+        ortvalue3 = onnxrt.OrtValue.from_dlpack(dlpack_capsule)
+        array3 = ortvalue3.numpy()
+        assert_almost_equal(array1, array3)
+
+    def test_dlpack_backward_compatibility(self):
+        """Test that existing dlpack functionality still works with new methods."""
+        numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        ortvalue = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input)
+        
+        # Test old way of accessing dlpack methods still works
+        dlpack_old = ortvalue._ortvalue.to_dlpack()
+        dlpack_new = ortvalue.to_dlpack()
+        self.assertIsNotNone(dlpack_old)
+        self.assertIsNotNone(dlpack_new)
+        
+        # Test old from_dlpack still works with is_bool_tensor parameter
+        ortvalue2 = onnxrt.OrtValue.from_dlpack(dlpack_old, is_bool_tensor=False)
+        result_array = ortvalue2.numpy()
+        assert_almost_equal(numpy_arr_input, result_array)
+        
+        # Test new from_dlpack works without explicit dlpack call
+        ortvalue3 = onnxrt.OrtValue.from_dlpack(ortvalue)  # Should auto-call __dlpack__
+        result_array3 = ortvalue3.numpy()
+        assert_almost_equal(numpy_arr_input, result_array3)
+
 
 if __name__ == "__main__":
     unittest.main()

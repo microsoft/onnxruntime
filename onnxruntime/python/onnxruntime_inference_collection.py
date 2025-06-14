@@ -14,8 +14,10 @@ from typing import Any
 
 from onnxruntime.capi import _pybind_state as C
 
+# Import numpy for runtime use
+import numpy as np
+
 if typing.TYPE_CHECKING:
-    import numpy as np
     import numpy.typing as npt
 
     import onnxruntime
@@ -974,6 +976,28 @@ class OrtValue:
         """
         return cls(C.OrtValue.ort_value_from_sparse_tensor(sparse_tensor._get_c_tensor()))
 
+    @classmethod
+    def from_dlpack(cls, data, is_bool_tensor: bool = False) -> OrtValue:
+        """
+        Creates an OrtValue from a DLPack structure or an object that supports the DLPack protocol.
+        
+        This method can accept:
+        1. A DLPack capsule directly
+        2. Any object that has a __dlpack__ method (e.g., PyTorch tensors, CuPy arrays, etc.)
+        
+        :param data: DLPack capsule or an object with __dlpack__ method
+        :param is_bool_tensor: Whether the tensor represents boolean data (needed for backward compatibility)
+        :return: OrtValue wrapping the tensor data
+        """
+        # Check if the object has __dlpack__ method and call it automatically
+        if hasattr(data, '__dlpack__'):
+            dlpack_capsule = data.__dlpack__()
+        else:
+            # Assume it's already a DLPack capsule
+            dlpack_capsule = data
+            
+        return cls(C.OrtValue.from_dlpack(dlpack_capsule, is_bool_tensor))
+
     def as_sparse_tensor(self) -> SparseTensor:
         """
         The function will return SparseTensor contained in this OrtValue
@@ -1060,6 +1084,37 @@ class OrtValue:
         the memory address can not be changed.
         """
         self._ortvalue.update_inplace(np_arr)
+
+    def __array__(self) -> np.ndarray:
+        """
+        Support for numpy array protocol. This allows OrtValue to be used
+        wherever a numpy array is expected, such as np.array(ort_value).
+        """
+        return self.numpy()
+
+    def __dlpack__(self, stream=None):
+        """
+        Returns a DLPack representing the tensor (part of __dlpack__ protocol).
+        This method does not copy the pointer shape, instead, it copies the pointer value.
+        The OrtValue must persist until the dlpack structure is consumed.
+        
+        :param stream: Optional stream parameter for DLPack protocol
+        """
+        return self._ortvalue.__dlpack__(stream)
+
+    def __dlpack_device__(self):
+        """
+        Returns a tuple of integers, (device, device index) (part of __dlpack__ protocol).
+        """
+        return self._ortvalue.__dlpack_device__()
+
+    def to_dlpack(self):
+        """
+        Returns a DLPack representing the tensor. This method does not copy the pointer shape,
+        instead, it copies the pointer value. The OrtValue must persist until the dlpack structure
+        is consumed.
+        """
+        return self._ortvalue.to_dlpack()
 
 
 class OrtDevice:
