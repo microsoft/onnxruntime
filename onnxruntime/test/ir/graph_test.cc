@@ -2238,6 +2238,81 @@ TEST(GraphGetOrtValueInitializerTest, ReturnsOrtValueFromOuterScope) {
   EXPECT_EQ(t.Shape().Size(), kTensorSize);
 }
 
+TEST(GraphTest, OuterScopeInitializerTypeInference) {
+  // This test verifies that initializers from outer scope are properly recognized
+  // during type inference, even without explicit value_info in the subgraph
+  
+  // Create parent graph with initializer
+  Model parent_model("ParentModel", false, ModelMetaData(), PathString(), IOnnxRuntimeOpSchemaRegistryList(), {}, {},
+                     DefaultLoggingManager().DefaultLogger());
+  Graph& parent_graph = parent_model.MainGraph();
+
+  const std::string outer_init_name = "outer_init";
+  // Create a simple TensorProto initializer in parent graph
+  TensorProto tensor_proto;
+  tensor_proto.set_name(outer_init_name);
+  tensor_proto.set_data_type(TensorProto_DataType_FLOAT);
+  tensor_proto.add_dims(1);
+  tensor_proto.add_float_data(42.0f);
+  
+  parent_graph.AddInitializedTensor(tensor_proto);
+  
+  // Create a node in parent graph that will be the parent node for the subgraph
+  TypeProto tensor_type;
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_BOOL);
+  auto& condition_arg = parent_graph.GetOrCreateNodeArg("condition", &tensor_type);
+  
+  tensor_type.mutable_tensor_type()->set_elem_type(TensorProto_DataType_FLOAT);
+  auto& output_arg = parent_graph.GetOrCreateNodeArg("output", &tensor_type);
+  
+  NodeArg* inputs[] = {&condition_arg};
+  NodeArg* outputs[] = {&output_arg};
+
+  // Create an "If" node that will contain the subgraph
+  auto& parent_node = parent_graph.AddNode("if_node", "If", "test if node", inputs, outputs);
+  
+  // Create subgraph
+  GraphProto subgraph_proto;
+  subgraph_proto.set_name("TestSubgraph");
+  Graph subgraph(parent_model, &subgraph_proto, parent_graph.DomainToVersionMap(), 
+                 parent_model.IrVersion(), nullptr, &parent_graph, &parent_node, 
+                 DefaultLoggingManager().DefaultLogger(), false);
+
+  // Add a node in the subgraph that uses the outer scope initializer
+  // Deliberately do NOT add a value_info for the outer_initializer in the subgraph
+  auto& outer_init_nodearg = subgraph.GetOrCreateNodeArg(outer_init_name, nullptr);  // No type info
+  auto& subgraph_output = subgraph.GetOrCreateNodeArg("subgraph_out", &tensor_type);
+  
+  NodeArg* sub_inputs[] = {&outer_init_nodearg};
+  NodeArg* sub_outputs[] = {&subgraph_output};
+  
+  // Create an Identity node that uses the outer scope initializer
+  auto& sub_node = subgraph.AddNode("identity_node", "Identity", "uses outer scope init", 
+                                    sub_inputs, sub_outputs);
+  
+  // Set the subgraph as an attribute of the parent node
+  subgraph_proto.set_name("then_branch");
+  *(subgraph_proto.add_node()) = sub_node.ToProto();
+  subgraph_proto.add_output()->set_name("subgraph_out");
+  
+  parent_node.AddAttribute("then_branch", subgraph_proto);
+  parent_node.AddAttribute("else_branch", subgraph_proto);  // Same for simplicity
+  
+  // Add the initializer name to the parent node's implicit input defs
+  NodeArg* outer_init_nodearg_parent = parent_graph.GetNodeArg(outer_init_name);
+  ASSERT_NE(outer_init_nodearg_parent, nullptr);
+  {
+    // Test hack to tweak an internal structure.
+    auto& node_wrapper = static_cast<NodeWrapper&>(parent_node);
+    node_wrapper.MutableDefinitions().implicit_input_defs.push_back(outer_init_nodearg_parent);
+  }
+  
+  // With the fix, this should NOT fail with "does not have type information set by parent node"
+  // The outer scope initializer should be properly recognized
+  Status result = parent_graph.Resolve();
+  EXPECT_TRUE(result.IsOK()) << "Graph resolution failed: " << result.ErrorMessage();
+}
+
 TEST_F(GraphTest, AddInitializedOrtValueWithExternalData) {
   Model model("TestAddInitializedOrtValue", false, *logger_);
   Graph& graph = model.MainGraph();
