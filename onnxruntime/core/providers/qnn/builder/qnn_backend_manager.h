@@ -30,6 +30,7 @@
 namespace onnxruntime {
 namespace qnn {
 
+class ProfilingEventStore;
 class QnnModel;
 
 class QnnSerializerConfig {
@@ -99,6 +100,7 @@ struct QnnBackendManagerConfig {
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
+  std::shared_ptr<ProfilingEventStore> profiling_event_store;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -114,7 +116,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Note: Creation should be done via Create(). This constructor is public so that it can be called from
   // std::make_shared().
   QnnBackendManager(const QnnBackendManagerConfig& config, PrivateConstructorTag)
-      : backend_path_(config.backend_path),
+      : profiling_event_store_(config.profiling_event_store),
+        backend_path_(config.backend_path),
         profiling_level_etw_(config.profiling_level_etw),
         profiling_level_(config.profiling_level),
         profiling_file_path_(config.profiling_file_path),
@@ -198,6 +201,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ParseLoraConfig(std::string lora_config);
 
   QnnSerializerConfig* GetQnnSerializerConfig();
+
+  ProfilingEventStore* GetProfilingEventStore() { return profiling_event_store_.get(); }
 
  private:
   Status LoadBackend();
@@ -315,6 +320,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   };
 
  private:
+  std::shared_ptr<ProfilingEventStore> profiling_event_store_ = nullptr;
+
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
   const logging::Logger* logger_ = nullptr;

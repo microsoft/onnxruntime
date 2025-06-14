@@ -12,6 +12,7 @@
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/profiling_utils.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/shared_context.h"
 
@@ -224,6 +225,10 @@ static Status BindQnnTensorMemoryToOrtValueMemory(const logging::Logger& logger,
 
 Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
                               const logging::Logger& logger) {
+  profiling_utils::DurationTrace trace(qnn_backend_manager_->GetProfilingEventStore(),
+                                       profiling::KERNEL_EVENT,
+                                       "QnnModel::ExecuteGraph");
+
   LOGS(logger, VERBOSE) << "QnnModel::ExecuteGraphs";
   const size_t num_inputs = context.GetInputCount();
   const size_t num_outputs = context.GetOutputCount();
@@ -298,13 +303,19 @@ Status QnnModel::ExecuteGraph(const Ort::KernelContext& context,
 
     LOGS(logger, VERBOSE) << "Start execute QNN graph:" << graph_info_->Name();
     auto profile_backend_handle = qnn_backend_manager_->GetQnnProfileHandle();
-    execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
-                                                qnn_inputs.data(),
-                                                static_cast<uint32_t>(qnn_inputs.size()),
-                                                qnn_outputs.data(),
-                                                static_cast<uint32_t>(qnn_outputs.size()),
-                                                profile_backend_handle,
-                                                nullptr);
+    {
+      profiling_utils::DurationTrace graph_execute_trace{qnn_backend_manager_->GetProfilingEventStore(),
+                                                         profiling::API_EVENT,
+                                                         "qnn_interface.graphExecute"};
+
+      execute_status = qnn_interface.graphExecute(graph_info_->Graph(),
+                                                  qnn_inputs.data(),
+                                                  static_cast<uint32_t>(qnn_inputs.size()),
+                                                  qnn_outputs.data(),
+                                                  static_cast<uint32_t>(qnn_outputs.size()),
+                                                  profile_backend_handle,
+                                                  nullptr);
+    }
 
     // NOTE: This function returns immediately when profiling is disabled.
     // Extracting profiling data can be expensive, but it is typically only enabled for debugging purposes
