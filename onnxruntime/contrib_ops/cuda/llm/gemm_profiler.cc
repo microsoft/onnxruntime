@@ -108,6 +108,7 @@ template <typename Config, typename RunnerPtr, typename GemmIdType, typename Gem
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTactics(
     RunnerPtr const& runner, nvinfer::DataType const& type, GemmDims const& dims, GemmIdType const& gemmId,
     bool hasWeightOnlyCudaKernel) {
+  ORT_LLM_LOG_ENTRY();
   writer_lock lock(mMNKProfileMap->mutex);
 
   if (!dims.isInitialized()) {
@@ -194,15 +195,17 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   std::cout << "cudaStreamDestroy" << std::endl;
   CUDA_CALL_THROW(cudaStreamDestroy(mStream));
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfig(
     int m, GemmIdType const& gemmId) const {
+  ORT_LLM_LOG_ENTRY();
   reader_lock lock(mMNKProfileMap->mutex);
 
   if (mSkip) {
-    ORT_LLM_LOG_TRACE("Skip is set, no best config is set for this instance");
+    ORT_LLM_LOG_DEBUG("Skip is set, no best config is set for this instance");
     return std::nullopt;
   }
 
@@ -219,6 +222,7 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
     ORT_LLM_LOG_WARNING(msg.str());
     return std::nullopt;
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -230,14 +234,16 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocate
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData() {
+  ORT_LLM_LOG_ENTRY();
   auto const status = cudaFree(mWorkspaceTmp);
   ORT_ENFORCE(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticsForProblem(
     int m, int n, int k, std::vector<Config> const& tactics) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   float bestTime = std::numeric_limits<float>::max();
   Config bestConfig;
@@ -293,12 +299,14 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 
   std::cout << "Best config:" << bestConfig.toString() << std::endl;
 
+  ORT_LLM_LOG_EXIT();
   return {bestConfig};
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileTacticForProblem(
     int m, int n, int k, Config const& tactic) {
+  ORT_LLM_LOG_ENTRY();
   constexpr int warmup = 5;
   constexpr int runs = 10;
 
@@ -331,6 +339,7 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
   CUDA_CALL_THROW(cudaEventDestroy(start));
   CUDA_CALL_THROW(cudaEventDestroy(stop));
 
+  ORT_LLM_LOG_EXIT();
   return elapsed / runs;
 }
 

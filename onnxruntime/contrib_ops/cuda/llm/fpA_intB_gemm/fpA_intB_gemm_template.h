@@ -59,7 +59,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
                                        ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                        int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                                        cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   static_assert(
 #ifdef ENABLE_FP8
@@ -192,6 +192,7 @@ void generic_mixed_gemm_kernelLauncher(ActivationType const* A, WeightType const
     std::string err_msg = "Failed to run cutlass fpA_intB gemm. Error: " + std::string(cutlassGetStatusString(run_status));
     ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 // This filters out invalid template combinations that we DON'T want instantiated in CUTLASS. For example,
@@ -204,7 +205,7 @@ void filter_and_run_mixed_gemm(ActivationType const* A, WeightType const* B, Sca
                                ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                                cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   if constexpr (Stages > 2 && arch::kMinComputeCapability < 80) {
     // Multistage only supported on Ampere
     std::string err_msg = "Cutlass fpA_intB gemm not supported for arch " + std::to_string(arch::kMinComputeCapability) + " with stages set to " + std::to_string(Stages);
@@ -222,6 +223,7 @@ void filter_and_run_mixed_gemm(ActivationType const* A, WeightType const* B, Sca
                                       QuantOp, EpilogueTag, ThreadblockShape, WarpShape, Stages>(A, B, weight_scales, weight_zero_points, biases,
                                                                                                  alpha, C, m, n, k, group_size, gemm_config, workspace, workspace_bytes, stream, occupancy);
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, typename ScaleZeroType, typename BiasType, typename OutputType,
@@ -231,7 +233,7 @@ void dispatch_gemm_config(ActivationType const* A, WeightType const* B, ScaleZer
                           ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                           int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                           cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   switch (gemm_config.stages) {
     case 2:
       filter_and_run_mixed_gemm<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, arch, QuantOp,
@@ -253,6 +255,7 @@ void dispatch_gemm_config(ActivationType const* A, WeightType const* B, ScaleZer
       ORT_THROW("[fpA_intB_gemm] Error:", err_msg);
       break;
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename T>
@@ -266,7 +269,7 @@ void dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B, Scal
                               ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                               int k, int const group_size, char* workspace, size_t workspace_bytes, tkc::CutlassGemmConfig gemm_config,
                               cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   // Don't instantiate configs that are not supported pre-hopper. Produce a sensible error instead.
   constexpr bool any_is_fp8 = is_fp8<ActivationType>() || is_fp8<WeightType>() || is_fp8<ScaleZeroType>() || is_fp8<BiasType>() || is_fp8<OutputType>();
@@ -329,22 +332,25 @@ void dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B, Scal
     std::string err_msg = "The activation type must equal the scale, bias and output types on Ampere and earlier.";
     ORT_THROW("[fpA_intB_gemm] Error: [dispatch_gemm_to_cutlass] ", err_msg);
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
           typename BiasType, typename OutputType>
 CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType,
                          OutputType>::CutlassFpAIntBGemmRunner() {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   sm_ = ::onnxruntime::llm::common::getSMVersion();
   multi_processor_count_ = ::onnxruntime::llm::common::getMultiProcessorCount();
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
           typename BiasType, typename OutputType>
 CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType,
                          OutputType>::~CutlassFpAIntBGemmRunner() {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
@@ -355,7 +361,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
                                                                          ScaleZeroType const* weight_scales, ScaleZeroType const* weight_zero_points, BiasType const* biases,
                                                                          float const alpha, OutputType* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig gemm_config,
                                                                          char* workspace_ptr, const size_t workspace_bytes, cudaStream_t stream, int* occupancy) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   // std::string config_str = gemm_config.toString();
   // printf("######## sm=%d, alpha: %f m:%d n:%d, k:%d, group_size:%d, workspace_bytes:%zu config:%s\n", sm_, alpha, m, n, k, group_size, workspace_bytes, config_str.c_str());
@@ -388,6 +394,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
                              QuantOp, EpilogueTag>(A, B, weight_scales, weight_zero_points, biases, alpha, C, m, n, k, group_size,
                                                    workspace_ptr, workspace_bytes, gemm_config, stream, occupancy);
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
@@ -396,7 +403,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     void const* A, void const* B, void const* weight_scales, void const* weight_zero_points, void const* biases,
     float const alpha, void* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig gemmConfig,
     char* workspace_ptr, const size_t workspace_bytes, cudaStream_t stream) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   if constexpr ((QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) || (QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY)) {
     dispatch_to_arch<tkc::EpilogueOpBias>((ActivationType const*)A, (WeightType const*)B,
                                           (ScaleZeroType const*)weight_scales, (ScaleZeroType const*)weight_zero_points, (BiasType const*)biases,
@@ -404,6 +411,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
   } else {
     ORT_THROW("Overload with scale, zero and group size only supported for fine grained bias template.");
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
@@ -412,9 +420,10 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
     void const* A, void const* B, void const* weight_scales, void const* weight_zero_points, void const* biases,
     void* C, int m, int n, int k, int const group_size, tkc::CutlassGemmConfig gemmConfig, char* workspace_ptr,
     const size_t workspace_bytes, cudaStream_t stream) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   gemm(A, B, weight_scales, weight_zero_points, biases, 1.f, C, m, n, k, group_size, gemmConfig, workspace_ptr,
        workspace_bytes, stream);
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
@@ -422,7 +431,7 @@ template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuant
 void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType, OutputType>::gemm(
     void const* A, void const* B, void const* weight_scales, float const alpha, void* C, int m, int n, int k,
     tkc::CutlassGemmConfig gemmConfig, char* workspace_ptr, const size_t workspace_bytes, cudaStream_t stream) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   if constexpr (QuantOp == cutlass::WeightOnlyQuantOp::PER_COLUMN_SCALE_ONLY) {
     dispatch_to_arch<tkc::EpilogueOpBias>((ActivationType const*)A, (WeightType const*)B,
@@ -431,6 +440,7 @@ void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType
   } else {
     ORT_THROW("Overload with scale only (and no group size) only supported for per column scaling.");
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
@@ -438,14 +448,16 @@ template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuant
 void CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType, OutputType>::gemm(
     void const* A, void const* B, void const* weight_scales, void* C, int m, int n, int k,
     tkc::CutlassGemmConfig gemmConfig, char* workspace_ptr, const size_t workspace_bytes, cudaStream_t stream) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   gemm(A, B, weight_scales, 1.f, C, m, n, k, gemmConfig, workspace_ptr, workspace_bytes, stream);
+  ORT_LLM_LOG_EXIT();
 }
 
 template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuantOp QuantOp, typename ScaleZeroType,
           typename BiasType, typename OutputType>
 std::vector<tkc::CutlassGemmConfig>
 CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType, OutputType>::getConfigs() const {
+  ORT_LLM_LOG_ENTRY();
   static constexpr bool is_weight_only = !std::is_same<ActivationType, WeightType>::value;
   tkc::CutlassGemmConfig::CandidateConfigTypeParam config_type_param = tkc::CutlassGemmConfig::CandidateConfigTypeParam::HOPPER;
   if (is_weight_only) {
@@ -453,6 +465,7 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
         config_type_param | tkc::CutlassGemmConfig::CandidateConfigTypeParam::WEIGHT_ONLY);
   }
   std::vector<tkc::CutlassGemmConfig> candidateConfigs = get_candidate_configs(sm_, SPLIT_K_LIMIT, config_type_param);
+  ORT_LLM_LOG_EXIT();
   return candidateConfigs;
 }
 
@@ -461,7 +474,7 @@ template <typename ActivationType, typename WeightType, cutlass::WeightOnlyQuant
 size_t
 CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, BiasType, OutputType>::getWorkspaceSize(
     int const m, int const n, int const /*k*/) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   // For Hopper, we have to allocate large memory size in case for stream-K
   if (sm_ == 90) {
     // https://github.com/NVIDIA/cutlass/blob/19b4c5e065e7e5bbc8082dfc7dbd792bdac850fc/include/cutlass/gemm/kernel/tile_scheduler_params.h#L878-L892
@@ -486,6 +499,7 @@ CutlassFpAIntBGemmRunner<ActivationType, WeightType, QuantOp, ScaleZeroType, Bia
   int const max_grid_m = cutlass::ceil_div(m, MIN_M_TILE);
   int const max_grid_n = cutlass::ceil_div(n, MIN_N_TILE);
   // We need 4 bytes per block in the worst case. We launch split_k_limit in z dim.
+  ORT_LLM_LOG_EXIT();
   return static_cast<size_t>(max_grid_m * max_grid_n * SPLIT_K_LIMIT * 4);
 }
 

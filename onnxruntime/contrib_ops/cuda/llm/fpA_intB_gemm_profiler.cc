@@ -25,6 +25,7 @@ namespace onnxruntime::llm::kernels::weight_only {
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
     int m, int n, int k,
     WeightOnlyGroupwiseQuantGemmPluginProfiler::Config const& tactic, char* workspace, cudaStream_t const& stream) {
+  ORT_LLM_LOG_ENTRY();
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   half* actPtr = reinterpret_cast<half*>(workspace);
   void* weightPtr = nextWorkspacePtr(reinterpret_cast<int8_t*>(actPtr), m * k * sizeof(half));
@@ -66,6 +67,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
                     outputPtr, m, originalN, k, mGroupSize, tactic, workspacePtr, wsSize, stream);
     }
   }
+  ORT_LLM_LOG_EXIT();
 }
 
 void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
