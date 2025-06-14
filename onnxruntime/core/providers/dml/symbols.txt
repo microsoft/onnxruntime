@@ -1,2 +1,0 @@
-OrtSessionOptionsAppendExecutionProvider_DML
-OrtSessionOptionsAppendExecutionProviderEx_DML

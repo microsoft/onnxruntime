@@ -1,24 +1,0 @@
-onnx-helper:“
-
-a
-b
-cy"Gemm
-
-yz"	LeakyRelugemm_activation_fusionZ
-a
-
-
-Z
-b
-
-
-Z
-c
-
-
-b
-z
-
-
-B
-ai.onnx	

@@ -1,26 +1,0 @@
-:Ç
-5	const_two"Constant*
-value*:B	const_two 
-$
-X
-	const_twotop_f32top_i"TopK
-#
-top_f32top_int"Cast*	
-to 
-
-top_f32mul_f32"MulTop:v2
-
-top_intmul_int"MulTop:v2
-
-mul_f32Y"Identity
-
-mul_intZ"IdentitygraphZ
-X
-
-ÿÿÿÿÿÿÿÿÿb
-Y
-
-ÿÿÿÿÿÿÿÿÿb
-Z
-
-ÿÿÿÿÿÿÿÿÿB

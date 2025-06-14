@@ -1,3 +1,0 @@
-LIBRARY "custom_op_local_function.dll"
-EXPORTS
- RegisterCustomOps @1

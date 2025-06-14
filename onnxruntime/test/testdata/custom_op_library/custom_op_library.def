@@ -1,5 +1,0 @@
-LIBRARY "custom_op_library.dll"
-EXPORTS
- RegisterCustomOps @1
- RegisterCustomOpsAltName @2
- 

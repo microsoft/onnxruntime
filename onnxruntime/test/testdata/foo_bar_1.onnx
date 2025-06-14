@@ -1,23 +1,0 @@
-onnx-example:r
-
-X1
-X2
-X3Y"FooBar:test
-test-modelZ
-X1
-
-
-Z
-X2
-
-
-Z
-X3
-
-
-b
-Y
-
-
-BB
-test

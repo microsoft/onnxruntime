@@ -1,1 +1,0 @@
-The model sklearn_bin_voting_classifier_soft.onnx is from the scikit-learn onnx converter tests
