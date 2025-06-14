@@ -14,11 +14,20 @@ namespace webgpu {
 
 class WebGpuContext;
 
+// For command capture and replay
+enum class SessionState {
+  Default,
+  Capturing,
+  Replaying
+};
+
 enum class BufferCacheMode {
   Disabled,
   LazyRelease,
   Simple,
-  Bucket
+  Bucket,
+  Graph,
+  GraphSimple,
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 
@@ -26,12 +35,13 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // IBufferCacheManager is an interface for buffer cache management.
 //
 // By implementing this interface, we can have different buffer cache management strategies.
-// Currently, we have 3 strategies:
+// Currently, we have 5 strategies:
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
 // - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
-//
+// - Graph: a session-aware buckets cache that each session has its own buckets. Buffers in the same session can be reused across session runs and in one run.
+// - GraphSimple: a session-aware simple cache that each session has its own cache. Buffers in the same session can be reused across session runs but can't be reused in one run.
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;
@@ -40,7 +50,7 @@ class IBufferCacheManager {
   virtual size_t CalculateBufferSize(size_t request_size) = 0;
 
   // return a buffer if available in cache. otherwise empty.
-  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) = 0;
+  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t session_id) = 0;
 
   // register a newly created buffer
   virtual void RegisterBuffer(WGPUBuffer buffer, size_t request_size) = 0;
@@ -48,8 +58,11 @@ class IBufferCacheManager {
   // release a buffer
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
+  // release captured buffers
+  virtual void ReleaseCapturedBuffers(uint32_t session_id) = 0;
+
   // when a stream refresh is requested
-  virtual void OnRefresh() = 0;
+  virtual void OnRefresh(SessionState session_status, uint32_t session_id) = 0;
 };
 
 //
@@ -61,13 +74,13 @@ class BufferManager {
 
   void Upload(void* src, WGPUBuffer dst, size_t size);
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+  WGPUBuffer Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   // Create a buffer mapped for writing.
-  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                                                              wgpu::BufferUsage::CopyDst);
+  WGPUBuffer CreateUMA(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   void Release(WGPUBuffer buffer);
   void Download(WGPUBuffer src, void* dst, size_t size);
-  void RefreshPendingBuffers();
+  void RefreshPendingBuffers(SessionState session_status, uint32_t session_id);
+  void ReleaseCapturedBuffers(uint32_t session_id);
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
