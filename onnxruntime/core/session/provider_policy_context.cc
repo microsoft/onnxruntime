@@ -6,10 +6,12 @@
 #include "core/session/provider_policy_context.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -18,6 +20,9 @@
 
 namespace onnxruntime {
 namespace {
+// TODO(adrianlizarraga): Use better solution when PR 25036 is merged.
+using UniqueOrtStatus = std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)>;
+
 bool MatchesEpVendor(const OrtEpDevice* d) {
   // TODO: Would be better to match on Id. Should the EP add that in EP metadata?
   return d->device->vendor == d->ep_vendor;
@@ -281,26 +286,24 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
-    OrtStatus* status = internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                                   info.devices.size(), &options, &logger,
-                                                                   &ep);
+    UniqueOrtStatus status(internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
+                                                                      info.devices.size(), &options, &logger,
+                                                                      &ep),
+                           OrtApis::ReleaseStatus);
     if (status != nullptr) {
-      return ToStatus(status);
+      return ToStatus(status.get());
     }
   } else {
-    // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
-    // and we would add that IExecutionProvider to the InferenceSession.
-    // but first we need OrtEp and the OrtEpApi to be implemented.
-    ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
+    OrtEp* api_ep = nullptr;
+    UniqueOrtStatus status(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
+                                                     info.devices.size(), &options, &logger,
+                                                     &api_ep),
+                           OrtApis::ReleaseStatus);
+    if (status != nullptr) {
+      return ToStatus(status.get());
+    }
 
-    // OrtEp* api_ep = nullptr;
-    //// add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-    // auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-    //                                         info.devices.size(), &options, &logger,
-    //                                         &api_ep);
-    // if (status != nullptr) {
-    //   return ToStatus(status);
-    // }
+    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)));
   }
 
   return Status::OK();
