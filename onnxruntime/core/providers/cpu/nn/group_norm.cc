@@ -26,10 +26,12 @@ namespace onnxruntime {
 REGISTER_ONNX_KERNEL_TYPED_VERSIONED(float)
 REGISTER_ONNX_KERNEL_TYPED_VERSIONED(double)
 REGISTER_ONNX_KERNEL_TYPED_VERSIONED(MLFloat16)
+REGISTER_ONNX_KERNEL_TYPED_VERSIONED(BFloat16)
 
 REGISTER_ONNX_KERNEL_TYPED_21(float)
 REGISTER_ONNX_KERNEL_TYPED_21(double)
 REGISTER_ONNX_KERNEL_TYPED_21(MLFloat16)
+REGISTER_ONNX_KERNEL_TYPED_21(BFloat16)
 
 GroupNorm::GroupNorm(const OpKernelInfo& op_kernel_info) : OpKernel(op_kernel_info) {
   ORT_ENFORCE(op_kernel_info.GetAttr("epsilon", &epsilon_).IsOK());
@@ -86,17 +88,20 @@ Status GroupNorm::ComputeImpl(OpKernelContext* context, const Tensor* X, const T
         const int64_t group_start_channel = group_idx * channels_per_group;
         const int64_t group_end_channel = group_start_channel + channels_per_group;
         
-        // Calculate mean and variance for this group
+        // Stage 1: Calculate mean and variance in the precision specified by stash_type
+        // According to ONNX spec, when stash_type=1, cast to float32 for computation
         double sum = 0.0;
         double sum_sq = 0.0;
         const int64_t group_size = channels_per_group * spatial_size;
         
+        // Stage 1: Compute mean and variance (using float32 precision when stash_type=1)
         for (int64_t c = group_start_channel; c < group_end_channel; ++c) {
           const T* channel_data = x_data + batch_idx * C * spatial_size + c * spatial_size;
           for (int64_t s = 0; s < spatial_size; ++s) {
-            const double val = static_cast<double>(channel_data[s]);
-            sum += val;
-            sum_sq += val * val;
+            // Cast to float for precision as per stash_type=1 specification
+            const float val = static_cast<float>(channel_data[s]);
+            sum += static_cast<double>(val);
+            sum_sq += static_cast<double>(val * val);
           }
         }
         
@@ -104,7 +109,8 @@ Status GroupNorm::ComputeImpl(OpKernelContext* context, const Tensor* X, const T
         const double variance = sum_sq / group_size - mean * mean;
         const double inv_std = 1.0 / std::sqrt(variance + static_cast<double>(epsilon_));
         
-        // Apply normalization: y = scale * (x - mean) / std + bias
+        // Stage 2: Apply normalization with scale and bias (in original precision)
+        // y = scale * (x - mean) / sqrt(variance + epsilon) + bias
         for (int64_t c = group_start_channel; c < group_end_channel; ++c) {
           const T* channel_x_data = x_data + batch_idx * C * spatial_size + c * spatial_size;
           T* channel_y_data = y_data + batch_idx * C * spatial_size + c * spatial_size;
@@ -113,9 +119,13 @@ Status GroupNorm::ComputeImpl(OpKernelContext* context, const Tensor* X, const T
           const T bias_val = bias_data[c];
           
           for (int64_t s = 0; s < spatial_size; ++s) {
-            const double normalized = (static_cast<double>(channel_x_data[s]) - mean) * inv_std;
-            const double result = normalized * static_cast<double>(scale_val) + static_cast<double>(bias_val);
-            channel_y_data[s] = static_cast<T>(static_cast<float>(result));
+            // Normalize using float32 precision as per stash_type=1
+            const float x_float = static_cast<float>(channel_x_data[s]);
+            const float normalized = (x_float - static_cast<float>(mean)) * static_cast<float>(inv_std);
+            
+            // Apply scale and bias in original type precision
+            const float result = normalized * static_cast<float>(scale_val) + static_cast<float>(bias_val);
+            channel_y_data[s] = static_cast<T>(result);
           }
         }
       },
@@ -133,9 +143,12 @@ Status GroupNorm::ComputeHelper(OpKernelContext* context, const Tensor* X, const
     return ComputeImpl<double>(context, X, scale, bias);
   } else if (element_type == DataTypeImpl::GetType<MLFloat16>()) {
     return ComputeImpl<MLFloat16>(context, X, scale, bias);
+  } else if (element_type == DataTypeImpl::GetType<BFloat16>()) {
+    return ComputeImpl<BFloat16>(context, X, scale, bias);
   }
   
-  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "GroupNorm only supports float, double, and float16 data types");
+  return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, 
+                         "GroupNorm only supports float, double, float16, and bfloat16 data types");
 }
 
 }  // namespace onnxruntime
