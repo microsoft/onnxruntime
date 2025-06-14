@@ -5849,7 +5849,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
-ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
+ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInfo& vi) {
   // the model builder API checks that the OrtValueInfo has a complete and valid OrtTypeInfo instance and that the
   // name is not null/empty.
   ORT_ENFORCE(vi.type_info->type == ONNX_TYPE_TENSOR,
@@ -5891,7 +5891,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<OrtValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -5901,7 +5901,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     std::vector<const NodeArg*> node_args;
     node_args.reserve(graph_inputs_or_outputs.size());
     for (auto& ort_value_info : graph_inputs_or_outputs) {
-      ValueInfoProto value_info = OrtValueInfoToOnnx(*ort_value_info);
+      ValueInfoProto value_info = ModelEditorValueInfoToOnnx(*ort_value_info);
 
       name_to_type_map[value_info.name()] = value_info.type();
       node_args.push_back(&GetOrCreateNodeArg(value_info.name(), &value_info.type()));
@@ -5954,19 +5954,22 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
-  add_graph_inputs_outputs(api_graph.inputs, /*input*/ true);
+  const auto* editor_graph = onnxruntime::ModelEditorGraph::ToInternal(&api_graph);
+  ORT_RETURN_IF(editor_graph == nullptr, "Invalid OrtGraph variant for use in the model editor API.");
+
+  add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 
   // add initializers
-  ortvalue_initializers_.reserve(api_graph.external_initializers.size());
-  add_initializers(api_graph.external_initializers, /*is_external*/ true);
-  add_initializers(api_graph.initializers, /*is_external*/ false);
+  ortvalue_initializers_.reserve(editor_graph->external_initializers.size());
+  add_initializers(editor_graph->external_initializers, /*is_external*/ true);
+  add_initializers(editor_graph->initializers, /*is_external*/ false);
 
   // add graph outputs
-  add_graph_inputs_outputs(api_graph.outputs, /*input*/ false);
+  add_graph_inputs_outputs(editor_graph->outputs, /*input*/ false);
 
   // add nodes
-  for (const auto& ort_node : api_graph.nodes) {
-    const OrtNode& node = *ort_node;
+  for (const auto& editor_node : editor_graph->nodes) {
+    const onnxruntime::ModelEditorNode& node = *editor_node;
 
     // convert Constant nodes to initializers
     if (node.operator_name == "Constant" && node.domain_name == kOnnxDomain) {
