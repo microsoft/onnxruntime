@@ -67,12 +67,17 @@ Status UnsqueezeBase::PrepareCompute(OpKernelContext* ctx, Prepare& p) const {
   size_t num_inputs = ctx->InputCount();
   if (num_inputs == 2) {  // axes is an input
     const Tensor* axes_tensor = ctx->Input<Tensor>(1);
-    ORT_ENFORCE(axes_tensor != nullptr, "Axes input is null");
-    ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
-                    axes_tensor->Shape().NumDimensions() == 1,
-                "An axes tensor must be a scalar or a 1-D tensor.");
-    auto data_span = axes_tensor->template DataAsSpan<int64_t>();
-    axes.assign(data_span.begin(), data_span.end());
+    if (axes_tensor != nullptr && axes_tensor->Shape().Size() > 0) {
+      // Use axes from input tensor
+      ORT_ENFORCE(axes_tensor->Shape().NumDimensions() == 0 ||
+                      axes_tensor->Shape().NumDimensions() == 1,
+                  "An axes tensor must be a scalar or a 1-D tensor.");
+      auto data_span = axes_tensor->template DataAsSpan<int64_t>();
+      axes.assign(data_span.begin(), data_span.end());
+    } else {
+      // Treat as no axes provided - use attribute axes
+      axes.assign(axes_.begin(), axes_.end());
+    }
   } else {
     axes.assign(axes_.begin(), axes_.end());
   }
