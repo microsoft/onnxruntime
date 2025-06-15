@@ -6,7 +6,7 @@
 #ifdef DEBUG_GENERATION
 #define DUMP_TENSOR_LEVEL 2
 #else
-#define DUMP_TENSOR_LEVEL 1  // change it to 1 or 2 if want to enable dumping for code not in generation.
+#define DUMP_TENSOR_LEVEL 0  // change it to 1 or 2 if want to enable dumping for code not in generation.
 #endif
 
 #define DUMP_CPU_TENSOR_LEVEL DUMP_TENSOR_LEVEL
