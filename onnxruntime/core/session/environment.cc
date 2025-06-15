@@ -412,6 +412,12 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 Environment::~Environment() = default;
 
+OrtAllocator* Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info) {
+  // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
+  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
+  return it != shared_ort_allocators_.end() ? *it : nullptr;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
@@ -623,12 +629,6 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   shared_allocators_.push_back(std::move(shared_allocator));
 
   return Status::OK();
-}
-
-OrtAllocator* Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info) {
-  // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
-  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
-  return it != shared_ort_allocators_.end() ? *it : nullptr;
 }
 
 Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type) {

@@ -32,7 +32,7 @@ class DataTransfer : public IDataTransfer {
     return CopyTensorImpl(src, dst, nullptr);
   }
 
-  Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const {
+  Status CopyTensorAsync(const Tensor& src, Tensor& dst, Stream& stream) const override {
     return CopyTensorImpl(src, dst, &stream);
   }
 

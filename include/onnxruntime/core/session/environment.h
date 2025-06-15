@@ -124,15 +124,15 @@ class Environment {
     return execution_devices_;
   }
 
-  // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
-  OrtAllocator* GetSharedAllocator(const OrtMemoryInfo& mem_info);
-
   Status CreateSharedAllocator(const OrtEpDevice& ep_device,
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
-
 #endif  // !defined(ORT_MINIMAL_BUILD)
+
+  // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
+  OrtAllocator* GetSharedAllocator(const OrtMemoryInfo& mem_info);
+
   ~Environment();
 
  private:

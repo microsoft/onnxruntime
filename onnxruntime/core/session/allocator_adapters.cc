@@ -245,9 +245,15 @@ ORT_API(OrtAllocator*, OrtApis::GetSharedAllocator, _In_ OrtEnv* ort_env, _In_ c
   return env.GetSharedAllocator(*mem_info);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
-                    _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
-                    _In_opt_ const OrtKeyValuePairs* allocator_options, _Outptr_opt_ OrtAllocator** allocator) {
+ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,
+                    [[maybe_unused]] _In_ OrtEnv* ort_env,
+                    [[maybe_unused]] _In_ const OrtEpDevice* ep_device,
+                    [[maybe_unused]] _In_ OrtDeviceMemoryType mem_type,
+                    [[maybe_unused]] _In_ OrtAllocatorType allocator_type,
+                    [[maybe_unused]] _In_opt_ const OrtKeyValuePairs* allocator_options,
+                    _Outptr_opt_ OrtAllocator** allocator) {
+#if !defined(ORT_MINIMAL_BUILD)
+
   if (ort_env == nullptr || ep_device == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
   }
@@ -257,10 +263,18 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator, _In_ OrtEnv* ort_env, _In_ c
                                                             allocator));
 
   return nullptr;
+#else
+  // there's no support for plugin EPs in a minimal build so you can't get an OrtEpDevice
+  *allocator = nullptr;
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+#endif
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ReleaseSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtEpDevice* ep_device,
-                    _In_ OrtDeviceMemoryType mem_type) {
+ORT_API_STATUS_IMPL(OrtApis::ReleaseSharedAllocator,
+                    [[maybe_unused]] _In_ OrtEnv* ort_env,
+                    [[maybe_unused]] _In_ const OrtEpDevice* ep_device,
+                    [[maybe_unused]] _In_ OrtDeviceMemoryType mem_type) {
+#if !defined(ORT_MINIMAL_BUILD)
   if (ort_env == nullptr || ep_device == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtEpDevice must be provided");
   }
@@ -269,4 +283,8 @@ ORT_API_STATUS_IMPL(OrtApis::ReleaseSharedAllocator, _In_ OrtEnv* ort_env, _In_ 
   ORT_API_RETURN_IF_STATUS_NOT_OK(env.ReleaseSharedAllocator(*ep_device, mem_type));
 
   return nullptr;
+#else
+  // there's no support for plugin EPs in a minimal build so you can't get an OrtEpDevice
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+#endif
 }
