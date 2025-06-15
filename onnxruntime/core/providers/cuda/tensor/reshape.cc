@@ -18,7 +18,7 @@ TensorShape InferReshapeOutputShape(
 TensorShape InferReshapeOutputShape(const Tensor* src, const Tensor* shape, bool allow_zero) {
   ORT_ENFORCE(shape != nullptr, "Cannot reshape to a null shape.");
   ORT_ENFORCE(shape->Shape().NumDimensions() == 1, "Shape must be an 1-D tensor.");
-  ORT_ENFORCE(shape->Location().device.Type() == OrtDevice::CPU, "Shape must be on CPU.");
+  ORT_ENFORCE(shape->Location().device.UsesCpuMemory(), "Shape must be on CPU.");
 
   return InferReshapeOutputShape(
       src->Shape(),
@@ -39,7 +39,7 @@ Status FuncReshape(
     return ORT_MAKE_STATUS(
         ONNXRUNTIME, FAIL, "The shape tensor for reshaping must be a vector, but got ", shape->Shape(), ".");
   }
-  if (shape->Location().device.Type() != OrtDevice::CPU) {
+  if (!shape->Location().device.UsesCpuMemory()) {
     return Status(common::ONNXRUNTIME, common::FAIL, "Shape tensor must be on CPU.");
   }
 
@@ -65,8 +65,9 @@ std::unique_ptr<Tensor> FuncReshape(
 
   ORT_ENFORCE(X != nullptr, "Missing data tensor to be reshaped.");
   ORT_ENFORCE(shape != nullptr, "Missing shape tensor for reshaping.");
-  ORT_ENFORCE(shape->Shape().NumDimensions() == 1, "The shape tensor for reshaping must be a vector, but got ", shape->Shape(), ".");
-  ORT_ENFORCE(shape->Location().device.Type() == OrtDevice::CPU, "Shape tensor must be on CPU.");
+  ORT_ENFORCE(shape->Shape().NumDimensions() == 1, "The shape tensor for reshaping must be a vector, but got ",
+              shape->Shape(), ".");
+  ORT_ENFORCE(shape->Location().device.UsesCpuMemory(), "Shape tensor must be on CPU.");
 
   // Calculate output's shape.
   auto dst_shape = InferReshapeOutputShape(X, shape, allow_zero);

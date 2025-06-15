@@ -2064,7 +2064,7 @@ for model inference.)pbdoc");
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA_PINNED, type,
-          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                     static_cast<OrtDevice::DeviceId>(id)),
           mem_type);
     } else {
