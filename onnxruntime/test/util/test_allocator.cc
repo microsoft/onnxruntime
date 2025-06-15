@@ -10,6 +10,10 @@ MockedOrtAllocator::MockedOrtAllocator() {
   OrtAllocator::Free = [](OrtAllocator* this_, void* p) { static_cast<MockedOrtAllocator*>(this_)->Free(p); };
   OrtAllocator::Info = [](const OrtAllocator* this_) { return static_cast<const MockedOrtAllocator*>(this_)->Info(); };
   OrtAllocator::Reserve = [](OrtAllocator* this_, size_t size) { return static_cast<MockedOrtAllocator*>(this_)->Reserve(size); };
+  OrtAllocator::GetStats = [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+    *stats = static_cast<const MockedOrtAllocator*>(this_)->Stats();
+    return nullptr;
+  };
   Ort::ThrowOnError(Ort::GetApi().CreateCpuMemoryInfo(OrtDeviceAllocator, OrtMemTypeDefault, &cpu_memory_info));
 }
 
@@ -54,6 +58,18 @@ void MockedOrtAllocator::Free(void* p) {
 
 const OrtMemoryInfo* MockedOrtAllocator::Info() const {
   return cpu_memory_info;
+}
+
+OrtKeyValuePairs* MockedOrtAllocator::Stats() const {
+  Ort::KeyValuePairs kvps;
+
+  auto str = std::to_string(num_allocations.load());
+  kvps.Add("NumAllocs", str.c_str());
+
+  str = std::to_string(num_reserve_allocations.load());
+  kvps.Add("NumReserves", str.c_str());
+
+  return kvps.release();
 }
 
 size_t MockedOrtAllocator::NumAllocations() const {
