@@ -156,6 +156,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   auto profileTactics = [&mProfileMap, &isAllocated, &skipRemaining, this](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
+      std::cout << "Profiling tactics for m=" << m << ", n=" << n << ", k=" << k << std::endl;
       if (!isAllocated) {
         // Allocate tmp data to run GEMMs
         // inline IAllocatorUniquePtr<char> = IAllocator::MakeUniquePtr<char>(mAllocator, count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
@@ -168,7 +169,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
         isAllocated = true;
       }
 
-      std::cout << "Init workspace of bytes before profiling: " << mTmpWorkspaceSizeInBytes << std::endl;
+      // std::cout << "Init workspace of bytes before profiling: " << mTmpWorkspaceSizeInBytes << std::endl;
       initTmpData(m, n, k, this->mWorkspaceTmp.get(), mTmpWorkspaceSizeInBytes, this->mStream);
 
       auto tactics = this->getTactics(m, n, k);
