@@ -12,7 +12,7 @@ namespace test {
 TestGraph::TestGraph(std::shared_ptr<Model> model)
     : model(model), graph_viewer(model->MainGraph()) {
   std::unique_ptr<EpGraph> ep_graph = nullptr;
-  ORT_ENFORCE(EpGraph::Create(graph_viewer, /*parent_node*/ nullptr, ep_graph).IsOK());
+  ORT_ENFORCE(EpGraph::Create(graph_viewer, ep_graph).IsOK());
   api_graph = std::move(ep_graph);
 }
 

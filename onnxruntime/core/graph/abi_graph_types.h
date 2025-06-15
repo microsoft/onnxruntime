@@ -36,7 +36,16 @@ struct OrtValueInfo {
   explicit OrtValueInfo(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtValueInfo() = default;
 
+  /// <summary>
+  /// Returns the value's name.
+  /// </summary>
+  /// <returns>The value's name.</returns>
   virtual const std::string& Name() const = 0;
+
+  /// <summary>
+  /// Return's an object describing the value's type and shape.
+  /// </summary>
+  /// <returns>OrtTypeInfo with the type and shape.</returns>
   virtual const OrtTypeInfo* TypeInfo() const = 0;
 
   struct ProducerInfo {
@@ -45,6 +54,12 @@ struct OrtValueInfo {
     const OrtNode* node = nullptr;
     size_t output_index = 0;
   };
+
+  /// <summary>
+  /// Returns the node (and output index) that produced the value.
+  /// </summary>
+  /// <param name="producer_info">Output parameter set to the node and the output index that produced the value.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetProducerInfo(ProducerInfo& producer_info) const = 0;
 
   struct ConsumerInfo {
@@ -53,8 +68,30 @@ struct OrtValueInfo {
     const OrtNode* node = nullptr;
     int64_t input_index = 0;  // Negative if it is an implicit input to a node that contains a subgraph (e.g., If).
   };
+
+  /// <summary>
+  /// Returns information on the nodes that consume the value. Includes each consumer node's input index,
+  /// which could be -1 for an implicit input to the node (e.g., If or Loop node).
+  /// </summary>
+  /// <param name="consumer_infos">Output parameter set to the array of ConsumerInfo objects that describe the
+  ///                              use of this value (consumer node and input index).</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetConsumerInfos(std::vector<ConsumerInfo>& consumer_infos) const = 0;
+
+  /// <summary>
+  /// Returns the number of consumers for this value. In this context, a consumer is a tuple of the node and the input
+  /// index that uses the value.
+  /// </summary>
+  /// <param name="num_consumers">Output parameter set to the number of consumers.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetNumConsumerInfos(size_t& num_consumers) const = 0;
+
+  /// <summary>
+  /// Returns the associated initializer value if this value represents an initializer (constant or non-constant).
+  /// </summary>
+  /// <param name="value">Output parameter set to the initializer value or nullptr if this value is not
+  ///                     an initializer.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetInitializerValue(const OrtValue*& value) const = 0;
 
   virtual bool IsGraphInput() const = 0;
@@ -79,11 +116,37 @@ struct OrtNode {
   explicit OrtNode(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtNode() = default;
 
+  /// <summary>
+  /// Returns the ID (aka NodeIndex) of the node, which is unique in its subgraph.
+  /// </summary>
+  /// <returns>The node's ID</returns>
   virtual size_t Id() const = 0;
+
+  /// <summary>
+  /// Returns the node's name.
+  /// </summary>
+  /// <returns>The node's name.</returns>
   virtual const std::string& Name() const = 0;
+
+  /// <summary>
+  /// Returns the node's operator type (e.g., Conv).
+  /// </summary>
+  /// <returns>The node's operator type.</returns>
   virtual const std::string& OpType() const = 0;
+
+  /// <summary>
+  /// Returns the node's domain name.
+  /// </summary>
+  /// <returns>The node's domain name.</returns>
   virtual const std::string& Domain() const = 0;
+
+  /// <summary>
+  /// Returns the opset version in which the operator type was first defined.
+  /// </summary>
+  /// <param name="since_version">Output parameter set to the node's "since_version".</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetSinceVersion(int& since_version) const = 0;
+
   virtual size_t NumInputs() const = 0;
   virtual size_t NumOutputs() const = 0;
   virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;

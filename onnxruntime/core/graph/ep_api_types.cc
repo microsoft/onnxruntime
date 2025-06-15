@@ -66,7 +66,7 @@ static void ConvertNodeArgsToValueInfos(const EpGraph* ep_graph,
 //
 
 EpNode::EpNode(const EpGraph* ep_graph, const Node& node, PrivateTag)
-    : OrtNode(OrtGraphIrApi::kEpApi), ep_graph(ep_graph), node(node) {}
+    : OrtNode(OrtGraphIrApi::kEpApi), ep_graph_(ep_graph), node_(node) {}
 
 Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
                       std::unordered_map<std::string, std::unique_ptr<EpValueInfo>>& value_infos_map,
@@ -95,72 +95,88 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
       SubgraphState subgraph_state;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, ep_node.get(), subgraph_state.ep_subgraph));
+      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
+      subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
     }
   }
 
-  ep_node->inputs = std::move(ep_node_inputs);
-  ep_node->outputs = std::move(ep_node_outputs);
-  ep_node->implicit_inputs = std::move(ep_node_implicit_inputs);
-  ep_node->subgraphs = std::move(ep_node_subgraphs);
+  ep_node->inputs_ = std::move(ep_node_inputs);
+  ep_node->outputs_ = std::move(ep_node_outputs);
+  ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
+  ep_node->subgraphs_ = std::move(ep_node_subgraphs);
   result = std::move(ep_node);
   return Status::OK();
 }
 
-size_t EpNode::Id() const { return node.Index(); }
-const std::string& EpNode::Name() const { return node.Name(); }
-const std::string& EpNode::OpType() const { return node.OpType(); }
-const std::string& EpNode::Domain() const { return node.Domain(); }
+size_t EpNode::Id() const { return node_.Index(); }
+const std::string& EpNode::Name() const { return node_.Name(); }
+const std::string& EpNode::OpType() const { return node_.OpType(); }
+const std::string& EpNode::Domain() const { return node_.Domain(); }
+
 Status EpNode::GetSinceVersion(int& since_version) const {
-  since_version = node.SinceVersion();
+  since_version = node_.SinceVersion();
   return Status::OK();
 }
+size_t EpNode::NumInputs() const { return inputs_.size(); }
+size_t EpNode::NumOutputs() const { return outputs_.size(); }
 Status EpNode::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(inputs.size());
-  for (size_t i = 0; i < inputs.size(); i++) {
-    result[i] = inputs[i];
+  result.resize(inputs_.size());
+  for (size_t i = 0; i < inputs_.size(); i++) {
+    result[i] = inputs_[i];
   }
   return Status::OK();
 }
 
 Status EpNode::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(outputs.size());
-  for (size_t i = 0; i < outputs.size(); i++) {
-    result[i] = outputs[i];
+  result.resize(outputs_.size());
+  for (size_t i = 0; i < outputs_.size(); i++) {
+    result[i] = outputs_[i];
   }
   return Status::OK();
 }
 
 Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
-  num_implicit_inputs = implicit_inputs.size();
+  num_implicit_inputs = implicit_inputs_.size();
   return Status::OK();
 }
 
 Status EpNode::GetImplicitInputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(implicit_inputs.size());
-  for (size_t i = 0; i < implicit_inputs.size(); i++) {
-    result[i] = implicit_inputs[i];
+  result.resize(implicit_inputs_.size());
+  for (size_t i = 0; i < implicit_inputs_.size(); i++) {
+    result[i] = implicit_inputs_[i];
   }
   return Status::OK();
 }
 
 Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
-  num_subgraphs = subgraphs.size();
+  num_subgraphs = subgraphs_.size();
   return Status::OK();
 }
 
 Status EpNode::GetSubgraphs(InlinedVector<const OrtGraph*>& result) const {
-  result.resize(subgraphs.size());
-  for (size_t i = 0; i < subgraphs.size(); i++) {
-    result[i] = subgraphs[i].ep_subgraph->ToExternal();
+  result.resize(subgraphs_.size());
+  for (size_t i = 0; i < subgraphs_.size(); i++) {
+    result[i] = subgraphs_[i].ep_subgraph->ToExternal();
   }
   return Status::OK();
 }
 
 Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
-  parent_graph = ep_graph->ToExternal();
+  parent_graph = ep_graph_->ToExternal();
   return Status::OK();
+}
+
+gsl::span<const EpValueInfo* const> EpNode::GetInputsSpan() const {
+  return inputs_;
+}
+
+gsl::span<const EpValueInfo* const> EpNode::GetImplicitInputsSpan() const {
+  return implicit_inputs_;
+}
+
+gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
+  return outputs_;
 }
 
 //
@@ -190,8 +206,8 @@ static Status GetInputIndices(const EpNode& consumer_node,
     }
   };
 
-  add_input_indices(consumer_node.inputs, false);
-  add_input_indices(consumer_node.implicit_inputs, true);
+  add_input_indices(consumer_node.GetInputsSpan(), false);
+  add_input_indices(consumer_node.GetImplicitInputsSpan(), true);
 
   ORT_RETURN_IF_NOT(found, "Did not find OrtValueInfo with name ", value_info_name);
   return Status::OK();
@@ -201,8 +217,10 @@ static Status GetOutputIndex(const EpNode& producer_node,
                              const std::string& value_info_name,
                              /*out*/ size_t& index) {
   bool found = false;
-  for (size_t i = 0; i < producer_node.outputs.size(); i++) {
-    if (producer_node.outputs[i]->Name() == value_info_name) {
+  gsl::span<const EpValueInfo* const> outputs = producer_node.GetOutputsSpan();
+
+  for (size_t i = 0; i < outputs.size(); i++) {
+    if (outputs[i]->Name() == value_info_name) {
       index = i;
       found = true;
     }
@@ -222,12 +240,12 @@ Status EpValueInfo::GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) c
                            "' that is not owned by a OrtGraph.");
   }
 
-  const Node* node = graph_->graph_viewer.GetProducerNode(name_);
+  const Node* node = graph_->GetGraphViewer().GetProducerNode(name_);
   if (node == nullptr) {
     return Status::OK();
   }
 
-  const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
+  const EpNode* ep_node = graph_->GetNode(node->Index());
   if (ep_node == nullptr) {
     return Status::OK();  // Node is not in this GraphViewer
   }
@@ -252,7 +270,7 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& re
                            "' that is not owned by a OrtGraph.");
   }
 
-  std::vector<const Node*> nodes = graph_->graph_viewer.GetConsumerNodes(name_);
+  std::vector<const Node*> nodes = graph_->GetGraphViewer().GetConsumerNodes(name_);
   if (nodes.empty()) {
     return Status::OK();
   }
@@ -260,7 +278,7 @@ Status EpValueInfo::GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& re
   std::vector<OrtValueInfo::ConsumerInfo> consumer_infos;
   consumer_infos.reserve(nodes.size());
   for (const Node* node : nodes) {
-    const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
+    const EpNode* ep_node = graph_->GetNode(node->Index());
     if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
@@ -292,13 +310,13 @@ Status EpValueInfo::GetNumConsumerInfos(size_t& num_consumers) const {
                            "' that is not owned by a OrtGraph.");
   }
 
-  std::vector<const Node*> nodes = graph_->graph_viewer.GetConsumerNodes(name_);
+  std::vector<const Node*> nodes = graph_->GetGraphViewer().GetConsumerNodes(name_);
   if (nodes.empty()) {
     return Status::OK();
   }
 
   for (const Node* node : nodes) {
-    const EpNode* ep_node = graph_->index_to_ep_node.GetEpNode(node->Index());
+    const EpNode* ep_node = graph_->GetNode(node->Index());
     if (ep_node == nullptr) {
       continue;  // Node is not in this GraphViewer
     }
@@ -325,22 +343,13 @@ Status EpValueInfo::GetInitializerValue(const OrtValue*& result) const {
     return Status::OK();
   }
 
-  const EpGraph* curr_graph = graph_;
+  ORT_RETURN_IF(graph_ == nullptr, "Unable to get initializer value named '", name_, "': parent graph is NULL");
 
-  while (curr_graph != nullptr) {
-    auto map_iter = curr_graph->initializer_values.find(name_);
-
-    if (map_iter != curr_graph->initializer_values.end()) {
-      result = map_iter->second.get();
-      return Status::OK();
-    }
-
-    const EpNode* parent_node = curr_graph->parent_node;
-    curr_graph = parent_node != nullptr ? parent_node->ep_graph : nullptr;
-  }
-
-  result = nullptr;
-  return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unable to find initializer value named '", name_, "'.");
+  // This gets an initializer value defined in this graph or in a parent graph (as long as the value
+  // is used in this graph).
+  result = graph_->GetInitializerValue(name_);
+  ORT_RETURN_IF(result == nullptr, "Unable to find initializer value named '", name_, "'.");
+  return Status::OK();
 }
 
 //
@@ -367,8 +376,8 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
   nodes_[i] = ep_node;
 }
 
-EpGraph::EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag)
-    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer(graph_viewer), parent_node(parent_node) {}
+EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
 
 static ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor) {
   ONNX_NAMESPACE::TypeProto t;
@@ -381,10 +390,10 @@ static ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::
 }
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node,
-                       /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, parent_ep_node, PrivateTag{});
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
 
+  AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
   // Process graph inputs.
@@ -399,21 +408,37 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
   ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_output_node_args, graph_output_value_infos,
                               EpValueInfo::kIsGraphOutput);
 
-  // If this is a subgraph (has parent node), add the value infos that come from the outer scope.
-  if (parent_ep_node != nullptr) {
-    const auto parent_implicit_inputs = parent_ep_node->node.ImplicitInputDefs();
-    for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_implicit_inputs) {
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values;
+
+  // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.
+  if (graph_viewer.IsSubgraph()) {
+    gsl::not_null<const Graph*> parent_graph = graph_viewer.GetGraph().ParentGraph();
+    gsl::not_null<const Node*> parent_node = graph_viewer.ParentNode();
+
+    for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_node->ImplicitInputDefs()) {
       const std::string& implicit_name = implicit_node_arg->Name();
-      const GraphViewer& parent_graph_viewer = parent_ep_node->ep_graph->graph_viewer;
-      bool is_outer_scope_initializer = parent_graph_viewer.GetGraph().GetInitializer(implicit_name, true) != nullptr;
+      const ONNX_NAMESPACE::TensorProto* outer_scope_initializer = parent_graph->GetInitializer(implicit_name, true);
       size_t flags = EpValueInfo::kIsOuterScope;
 
-      if (is_outer_scope_initializer) {
+      if (outer_scope_initializer != nullptr) {
         flags |= EpValueInfo::kIsInitializer;
       }
 
       assert(value_infos_map.count(implicit_name) == 0);  // Should not have added these yet.
-      value_infos_map.emplace(implicit_node_arg->Name(), CreateValueInfo(*implicit_node_arg, ep_graph.get(), flags));
+      std::unique_ptr<EpValueInfo> unique_outer_value_info = CreateValueInfo(*implicit_node_arg, ep_graph.get(), flags);
+      EpValueInfo* outer_value_info = unique_outer_value_info.get();
+      value_infos_map.emplace(implicit_name, std::move(unique_outer_value_info));
+
+      // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
+      // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
+      // OrtValue instances is merged.
+      if (outer_scope_initializer != nullptr) {
+        auto initializer_value = std::make_unique<OrtValue>();
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                         *outer_scope_initializer, initializer_allocator,
+                                                         *initializer_value));
+        outer_scope_initializer_values.emplace(outer_value_info->Name(), std::move(initializer_value));
+      }
     }
   }
 
@@ -421,7 +446,6 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
   const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
   std::vector<EpValueInfo*> initializer_value_infos;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
-  AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
 
   initializer_value_infos.reserve(initializers.size());
   initializer_values.reserve(initializers.size());
@@ -477,65 +501,90 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_
   // Iterate through nodes again and update the map of NodeIndex to EpNode*
   index_to_ep_node.Resize(min_node_index, max_node_index);
   for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
-    index_to_ep_node.SetEpNode(ep_node->node.Index(), ep_node.get());
+    index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
   }
 
-  ep_graph->nodes = std::move(ep_nodes);
-  ep_graph->index_to_ep_node = std::move(index_to_ep_node);
-  ep_graph->value_infos = std::move(value_infos_map);
-  ep_graph->initializer_value_infos = std::move(initializer_value_infos);
-  ep_graph->initializer_values = std::move(initializer_values);
-  ep_graph->inputs = std::move(graph_input_value_infos);
-  ep_graph->outputs = std::move(graph_output_value_infos);
+  ep_graph->nodes_ = std::move(ep_nodes);
+  ep_graph->index_to_ep_node_ = std::move(index_to_ep_node);
+  ep_graph->value_infos_ = std::move(value_infos_map);
+  ep_graph->initializer_value_infos_ = std::move(initializer_value_infos);
+  ep_graph->initializer_values_ = std::move(initializer_values);
+  ep_graph->outer_scope_initializer_values_ = std::move(outer_scope_initializer_values);
+  ep_graph->inputs_ = std::move(graph_input_value_infos);
+  ep_graph->outputs_ = std::move(graph_output_value_infos);
   result = std::move(ep_graph);
   return Status::OK();
 }
 
-const std::string& EpGraph::Name() const { return graph_viewer.Name(); }
-int64_t EpGraph::OnnxIRVersion() const { return graph_viewer.GetOnnxIRVersion(); }
-size_t EpGraph::NumInputs() const { return inputs.size(); }
-size_t EpGraph::NumOutputs() const { return outputs.size(); }
-size_t EpGraph::NumInitializers() const { return initializer_value_infos.size(); }
+const std::string& EpGraph::Name() const { return graph_viewer_.Name(); }
+int64_t EpGraph::OnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
+size_t EpGraph::NumInputs() const { return inputs_.size(); }
+size_t EpGraph::NumOutputs() const { return outputs_.size(); }
+size_t EpGraph::NumInitializers() const { return initializer_value_infos_.size(); }
 
 Status EpGraph::GetInputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(inputs.size());
-  for (size_t i = 0; i < inputs.size(); i++) {
-    result[i] = inputs[i];
+  result.resize(inputs_.size());
+  for (size_t i = 0; i < inputs_.size(); i++) {
+    result[i] = inputs_[i];
   }
   return Status::OK();
 }
 
 Status EpGraph::GetOutputs(InlinedVector<const OrtValueInfo*>& result) const {
-  result.resize(outputs.size());
-  for (size_t i = 0; i < outputs.size(); i++) {
-    result[i] = outputs[i];
+  result.resize(outputs_.size());
+  for (size_t i = 0; i < outputs_.size(); i++) {
+    result[i] = outputs_[i];
   }
   return Status::OK();
 }
 
 Status EpGraph::GetInitializers(std::vector<const OrtValueInfo*>& result) const {
-  result.resize(initializer_value_infos.size());
-  for (size_t i = 0; i < initializer_value_infos.size(); i++) {
-    result[i] = initializer_value_infos[i];
+  result.resize(initializer_value_infos_.size());
+  for (size_t i = 0; i < initializer_value_infos_.size(); i++) {
+    result[i] = initializer_value_infos_[i];
   }
   return Status::OK();
 }
 
-size_t EpGraph::NumNodes() const { return nodes.size(); }
+size_t EpGraph::NumNodes() const { return nodes_.size(); }
 
 std::vector<const OrtNode*> EpGraph::GetNodes() const {
   std::vector<const OrtNode*> result;
-  result.reserve(nodes.size());
+  result.reserve(nodes_.size());
 
-  for (const std::unique_ptr<EpNode>& ep_node : nodes) {
+  for (const std::unique_ptr<EpNode>& ep_node : nodes_) {
     result.push_back(ep_node->ToExternal());
   }
   return result;
 }
 
 Status EpGraph::GetParentNode(const OrtNode*& result) const {
-  result = parent_node != nullptr ? parent_node->ToExternal() : nullptr;
+  result = parent_node_ != nullptr ? parent_node_->ToExternal() : nullptr;
   return Status::OK();
 }
 
+void EpGraph::SetParentNode(const EpNode* node) { parent_node_ = node; }
+
+const GraphViewer& EpGraph::GetGraphViewer() const { return graph_viewer_; }
+
+const EpNode* EpGraph::GetNode(NodeIndex node_index) const {
+  return index_to_ep_node_.GetEpNode(node_index);
+}
+
+const OrtValue* EpGraph::GetInitializerValue(std::string_view name) const {
+  // Check for initializer value in the graph's scope.
+  if (auto iter = initializer_values_.find(name);
+      iter != initializer_values_.end()) {
+    return iter->second.get();
+  }
+
+  // Check for the initializer value in an outer scope.
+  // Only finds a value if the outer initializer value is used within this graph.
+  if (auto iter = outer_scope_initializer_values_.find(name);
+      iter != outer_scope_initializer_values_.end()) {
+    return iter->second.get();
+  }
+
+  return nullptr;
+}
 }  // namespace onnxruntime

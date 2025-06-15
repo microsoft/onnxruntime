@@ -40,25 +40,35 @@ struct EpValueInfo : public OrtValueInfo {
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, EpValueInfo, OrtGraphIrApi::kEpApi)
 
   const std::string& Name() const override { return name_; }
+
   const OrtTypeInfo* TypeInfo() const override { return type_info_.get(); }
+
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
+
   Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
+
   Status GetNumConsumerInfos(size_t& num_consumers) const override;
+
   Status GetInitializerValue(const OrtValue*& value) const override;
+
   bool IsGraphInput() const override {
     return IsFlagSet(kIsGraphInput);
   }
+
   bool IsGraphOutput() const override {
     return IsFlagSet(kIsGraphOutput);
   }
+
   bool IsInitializer() const override {
     return IsFlagSet(kIsInitializer);
   }
+
   bool IsFromOuterScope() const override {
     return IsFlagSet(kIsOuterScope);
   }
 
   void SetFlag(EpValueInfo::Flags flag) { flags_ |= flag; }
+
   bool IsFlagSet(EpValueInfo::Flags flag) const { return flags_ & flag; }
 
  private:
@@ -107,32 +117,54 @@ struct EpNode : public OrtNode {
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, EpNode, OrtGraphIrApi::kEpApi)
 
   size_t Id() const override;
+
   const std::string& Name() const override;
+
   const std::string& OpType() const override;
+
   const std::string& Domain() const override;
+
   Status GetSinceVersion(int& since_version) const override;
-  size_t NumInputs() const override { return inputs.size(); }
-  size_t NumOutputs() const override { return outputs.size(); }
+
+  size_t NumInputs() const override;
+
+  size_t NumOutputs() const override;
+
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+
   Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
+
   Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
+
   Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
+
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
 
+  const Node& GetInternalNode() const { return node_; }
+
+  gsl::span<const EpValueInfo* const> GetInputsSpan() const;
+
+  gsl::span<const EpValueInfo* const> GetImplicitInputsSpan() const;
+
+  gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
+
+ private:
   // Back pointer to containing graph. Useful when traversing through nested subgraphs.
   // Will be nullptr if the EpNode was created without an owning graph.
   // (e.g., OrtNode instances created for fused nodes in OrtEp::Compile()).
-  const EpGraph* ep_graph = nullptr;
-  const Node& node;
-  InlinedVector<EpValueInfo*> inputs;
-  InlinedVector<EpValueInfo*> outputs;
+  const EpGraph* ep_graph_ = nullptr;
+  const Node& node_;
+  InlinedVector<EpValueInfo*> inputs_;
+  InlinedVector<EpValueInfo*> outputs_;
 
   // Storing data related to implicit inputs and subgraphs in std::vector instead of InlinedVector
   // because sizeof(InlinedVector) > sizeof(std::vector) and most nodes will *NOT* have this data.
-  std::vector<EpValueInfo*> implicit_inputs;
-  std::vector<SubgraphState> subgraphs;
+  std::vector<EpValueInfo*> implicit_inputs_;
+  std::vector<SubgraphState> subgraphs_;
 };
 
 /// <summary>
@@ -160,37 +192,57 @@ struct EpGraph : public OrtGraph {
   };
 
  public:
-  EpGraph(const GraphViewer& graph_viewer, const EpNode* parent_node, PrivateTag);
+  EpGraph(const GraphViewer& graph_viewer, PrivateTag);
 
-  static Status Create(const GraphViewer& graph_viewer, const EpNode* parent_ep_node,
-                       /*out*/ std::unique_ptr<EpGraph>& result);
+  static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
 
+  // Overridden OrtGraph interface functions.
   const std::string& Name() const override;
+
   int64_t OnnxIRVersion() const override;
+
   size_t NumInputs() const override;
+
   size_t NumOutputs() const override;
+
   size_t NumInitializers() const override;
+
   Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+
   Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+
   Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const override;
+
   size_t NumNodes() const override;
+
   std::vector<const OrtNode*> GetNodes() const override;
+
   Status GetParentNode(const OrtNode*& parent_node) const override;
 
-  const GraphViewer& graph_viewer;
-  const EpNode* parent_node = nullptr;
-  std::vector<std::unique_ptr<EpNode>> nodes;
-  IndexToEpNodeMap index_to_ep_node;
+  void SetParentNode(const EpNode* node);
 
-  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;  // All value infos in the graph
+  const GraphViewer& GetGraphViewer() const;
 
-  std::vector<EpValueInfo*> initializer_value_infos;
-  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
+  const EpNode* GetNode(NodeIndex node_index) const;
 
-  InlinedVector<EpValueInfo*> inputs;
-  InlinedVector<EpValueInfo*> outputs;
+  const OrtValue* GetInitializerValue(std::string_view name) const;
+
+ private:
+  const GraphViewer& graph_viewer_;
+  const EpNode* parent_node_ = nullptr;
+  std::vector<std::unique_ptr<EpNode>> nodes_;
+  IndexToEpNodeMap index_to_ep_node_;
+
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_;  // All value infos in the graph
+
+  std::vector<EpValueInfo*> initializer_value_infos_;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values_;
+
+  InlinedVector<EpValueInfo*> inputs_;
+  InlinedVector<EpValueInfo*> outputs_;
 };
 }  // namespace onnxruntime

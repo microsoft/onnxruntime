@@ -108,7 +108,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   ORT_UNUSED_PARAMETER(kernel_lookup);             // TODO: Add support? Not used by prioritized EPs, so probably not needed?
 
   std::unique_ptr<EpGraph> ep_graph = nullptr;
-  if (Status status = EpGraph::Create(graph_viewer, /*parent_node*/ nullptr, ep_graph); !status.IsOK()) {
+  if (Status status = EpGraph::Create(graph_viewer, ep_graph); !status.IsOK()) {
     LOGS_DEFAULT(ERROR) << "Failed to create OrtGraph: " << status.ToString();
     return {};
   }
@@ -135,13 +135,13 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->node.Index());
+      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       std::unordered_set<const Node*> node_set;
       node_set.reserve(node_grouping.nodes.size());
       for (const EpNode* ep_node : node_grouping.nodes) {
-        node_set.insert(&ep_node->node);
+        node_set.insert(&ep_node->GetInternalNode());
       }
 
       // We now require the OrtEp to only provide individual groups of supported nodes that each maps to exactly
@@ -207,7 +207,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     const Node& fused_node = node_and_graph.fused_node;
 
     std::unique_ptr<EpGraph> ep_graph = nullptr;
-    ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, /*parent_node*/ nullptr, ep_graph));
+    ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, ep_graph));
     api_graphs.push_back(ep_graph->ToExternal());
     api_graphs_holder.push_back(std::move(ep_graph));
 
