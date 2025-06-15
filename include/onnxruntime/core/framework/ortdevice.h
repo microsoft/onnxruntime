@@ -101,6 +101,11 @@ struct OrtDevice {
     return alignment;
   }
 
+  // CPU or HOST_ACCESSIBLE memory.
+  bool UsesCpuMemory() const noexcept {
+    return device_type == CPU || memory_type == MemType::HOST_ACCESSIBLE;
+  }
+
   std::string ToString() const {
     std::ostringstream ostr;
     ostr << "Device:["

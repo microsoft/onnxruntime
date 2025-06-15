@@ -112,7 +112,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
-    ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
+    ORT_ENFORCE(dst_location.device.UsesCpuMemory(), "Copy destination is not CPU memory");
 
     // Current CUDA device.
     int device;
