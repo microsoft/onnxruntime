@@ -11,7 +11,7 @@
 #define PRETTY_FUNCTION __PRETTY_FUNCTION__
 #endif
 
-#define TRACE_ENTRY_EXIT 1
+#define TRACE_ENTRY_EXIT 0
 
 #if defined(TRACE_ENTRY_EXIT) && TRACE_ENTRY_EXIT
 #include <iostream>
