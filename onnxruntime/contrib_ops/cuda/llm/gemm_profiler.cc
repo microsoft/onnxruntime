@@ -111,28 +111,32 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   int maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
 
-  auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
+  AllocatorStats stats;
+  mAllocator->GetStats(&stats);
+  std::cout << "Allocator stats: " << stats.DebugString();
 
   // Check whether there is enough free GPU memory.
   size_t bytes = computeTmpSize(maxM, dims.n, dims.k);
-  if (bytes > freeMemory) {
-    ORT_LLM_LOG_WARNING(
-        "Not enough free memory to profile GEMM tactics. "
-        "Free memory: ",
-        freeMemory, ", required: ", bytes);
-    std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << bytes << std::endl;
-  }
 
-  // Adjust maxM to fit free memory size
-  while (bytes > freeMemory && maxM > 1) {
-    maxM /= 2;
-    bytes = computeTmpSize(maxM, dims.n, dims.k);
-  }
+  // auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
+  // if (bytes > freeMemory) {
+  //   ORT_LLM_LOG_WARNING(
+  //       "Not enough free memory to profile GEMM tactics. "
+  //       "Free memory: ",
+  //       freeMemory, ", required: ", bytes);
+  //   std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << bytes << std::endl;
+  // }
 
-  if (bytes > freeMemory) {
-    mSkip = true;  // no memory to run m=1
-    return;
-  }
+  // // Adjust maxM to fit free memory size
+  // while (bytes > freeMemory && maxM > 1) {
+  //   maxM /= 2;
+  //   bytes = computeTmpSize(maxM, dims.n, dims.k);
+  // }
+
+  // if (bytes > freeMemory) {
+  //   mSkip = true;  // no memory to run m=1
+  //   return;
+  // }
 
   setTmpWorkspaceSizeInBytes(bytes);
 
@@ -154,14 +158,20 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
         // Allocate tmp data to run GEMMs
-        allocateTmpData();
+        // inline IAllocatorUniquePtr<char> = IAllocator::MakeUniquePtr<char>(mAllocator, count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
+        std::cout << "Allocate tmp workspace: " << mTmpWorkspaceSizeInBytes << " bytes" << std::endl;
+        this->mWorkspaceTmp = IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
+        AllocatorStats new_stats;
+        mAllocator->GetStats(&new_stats);
+        std::cout << "Allocator stats: " << new_stats.DebugString();
+
         isAllocated = true;
       }
-      initTmpData(m, n, k, mWorkspaceTmp, mTmpWorkspaceSizeInBytes, mStream);
+
+      std::cout << "Init workspace of bytes before profiling: " << mTmpWorkspaceSizeInBytes << std::endl;
+      initTmpData(m, n, k, this->mWorkspaceTmp.get(), mTmpWorkspaceSizeInBytes, this->mStream);
+
       auto tactics = this->getTactics(m, n, k);
-
-      std::cout << "profileTactics workspace=" << mTmpWorkspaceSizeInBytes << std::endl;
-
       // Profile different tactics for particular m and insert best config to the map
       mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
     }
@@ -232,15 +242,16 @@ std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHa
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::allocateTmpData() {
   ORT_ENFORCE(mTmpWorkspaceSizeInBytes > 0, "tmpWorkspaceSizeInBytes must be larger than 0");
-  auto const status = cudaMalloc(&mWorkspaceTmp, mTmpWorkspaceSizeInBytes);
-  ORT_ENFORCE(status == cudaSuccess, "Can't allocate tmp workspace for GEMM tactics profiling.");
+  // Allocate transient buffer.
+  mWorkspaceTmp = IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
 }
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::freeTmpData() {
   ORT_LLM_LOG_ENTRY();
-  auto const status = cudaFree(mWorkspaceTmp);
-  ORT_ENFORCE(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
+  // auto const status = cudaFree(mWorkspaceTmp);
+  // ORT_ENFORCE(status == cudaSuccess, "Can't free tmp workspace for GEMM tactics profiling.");
+  mWorkspaceTmp.reset();  // Free the tmp workspace
   ORT_LLM_LOG_EXIT();
 }
 

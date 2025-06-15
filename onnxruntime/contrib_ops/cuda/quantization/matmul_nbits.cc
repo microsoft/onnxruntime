@@ -72,6 +72,9 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
+
+  auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  gemmProfiler_->setAllocator(allocator);
 }
 
 template <typename T>

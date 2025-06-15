@@ -198,6 +198,10 @@ class GemmPluginProfiler {
     mSkip = mSkip || skip;
   }
 
+  void setAllocator(onnxruntime::AllocatorPtr allocator) {
+    mAllocator = std::move(allocator);
+  }
+
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
 
   virtual int getMaxProfileM() const;
@@ -244,13 +248,16 @@ class GemmPluginProfiler {
 
   size_t mTmpWorkspaceSizeInBytes{0};
 
-  char* mWorkspaceTmp{nullptr};
+  IAllocatorUniquePtr<char> mTmpWorkspace{nullptr};
+  // char* mWorkspaceTmp{nullptr};
 
   cudaStream_t mStream;
 
   GemmDims mDims{};
 
   bool mSkip{false};
+
+  onnxruntime::AllocatorPtr mAllocator;
 };
 
 template <typename GemmPluginProfilerType>
