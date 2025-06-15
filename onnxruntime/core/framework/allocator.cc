@@ -1,7 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/narrow.h"
 #include "core/common/safeint.h"
+#include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/framework/utils.h"
@@ -14,6 +16,61 @@
 #endif
 
 #include "core/framework/bfc_arena.h"
+
+using Status = onnxruntime::common::Status;
+
+Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg) {
+  cfg = OrtArenaCfg{};  // reset to default values
+
+  const auto from_string = [](const std::string& key, const std::string& str, int64_t& value) -> Status {
+    auto result = std::from_chars(str.data(), str.data() + str.size(), value);
+
+    if (result.ec != std::errc()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Failed to parse value for ", key, " from ", str);
+    }
+
+    return Status::OK();
+  };
+
+  int64_t value = 0;
+  if (auto it = kvps.entries.find(ConfigKeyNames::ArenaExtendStrategy); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.arena_extend_strategy = onnxruntime::narrow<int32_t>(value);
+  }
+
+  if (auto it = kvps.entries.find(ConfigKeyNames::InitialChunkSizeBytes); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.initial_chunk_size_bytes = onnxruntime::narrow<int32_t>(value);
+  }
+
+  if (auto it = kvps.entries.find(ConfigKeyNames::MaxDeadBytesPerChunk); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.max_dead_bytes_per_chunk = onnxruntime::narrow<int32_t>(value);
+  }
+
+  if (auto it = kvps.entries.find(ConfigKeyNames::InitialGrowthChunkSizeBytes); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.initial_growth_chunk_size_bytes = onnxruntime::narrow<int32_t>(value);
+  }
+
+  if (auto it = kvps.entries.find(ConfigKeyNames::MaxPowerOfTwoExtendBytes); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.max_power_of_two_extend_bytes = onnxruntime::narrow<int64_t>(value);
+  }
+
+  if (auto it = kvps.entries.find(ConfigKeyNames::MaxMem); it != kvps.entries.end()) {
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
+    cfg.max_mem = onnxruntime::narrow<size_t>(value);
+  }
+
+  if (!cfg.IsValid()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Invalid arena configuration. Please check the values provided.");
+  }
+
+  return Status::OK();
+}
 
 namespace onnxruntime {
 

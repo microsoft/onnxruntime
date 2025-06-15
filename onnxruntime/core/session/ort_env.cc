@@ -105,10 +105,17 @@ void OrtEnv::Release(OrtEnv* env_ptr) {
         instance_to_delete = p_instance_;  // Point to the instance to be deleted.
         p_instance_ = nullptr;             // Set the static instance pointer to nullptr under the lock.
       } else {
+#if !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
         // Process is shutting down, let it leak.
         // p_instance_ remains as is (though ref_count_ is 0), future CreateEnv calls
         // would increment ref_count_ on this "leaked" instance.
         // This behavior matches the requirement to "just let the memory leak out".
+#else
+        // we're tracing for memory leaks so we want to avoid as many leaks as possible and the leaks are considered
+        // as failures for test apps.
+        instance_to_delete = p_instance_;
+        p_instance_ = nullptr;
+#endif
       }
     }
   }  // Mutex m_ is released here when lock_guard goes out of scope.
@@ -124,23 +131,4 @@ onnxruntime::logging::LoggingManager* OrtEnv::GetLoggingManager() const {
 
 void OrtEnv::SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager) {
   value_->SetLoggingManager(std::move(logging_manager));
-}
-
-onnxruntime::common::Status OrtEnv::RegisterAllocator(AllocatorPtr allocator) {
-  auto status = value_->RegisterAllocator(allocator);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
-                                                               const OrtArenaCfg* arena_cfg) {
-  auto status = value_->CreateAndRegisterAllocator(mem_info, arena_cfg);
-  return status;
-}
-
-onnxruntime::common::Status OrtEnv::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
-  return value_->UnregisterAllocator(mem_info);
-}
-
-onnxruntime::common::Status OrtEnv::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg) {
-  return value_->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
 }

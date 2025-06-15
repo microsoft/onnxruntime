@@ -8,11 +8,11 @@ namespace onnxruntime {
 // used by EpFactoryInternal and EpFactoryProviderBridge.
 template <typename TFactory>
 struct ForwardToFactory {
-  static const char* ORT_API_CALL GetFactoryName(const OrtEpFactory* this_ptr) {
+  static const char* ORT_API_CALL GetFactoryName(const OrtEpFactory* this_ptr) noexcept {
     return static_cast<const TFactory*>(this_ptr)->GetName();
   }
 
-  static const char* ORT_API_CALL GetVendor(const OrtEpFactory* this_ptr) {
+  static const char* ORT_API_CALL GetVendor(const OrtEpFactory* this_ptr) noexcept {
     return static_cast<const TFactory*>(this_ptr)->GetVendor();
   }
 
@@ -21,7 +21,7 @@ struct ForwardToFactory {
                                                      size_t num_devices,
                                                      OrtEpDevice** ep_devices,
                                                      size_t max_ep_devices,
-                                                     size_t* num_ep_devices) {
+                                                     size_t* num_ep_devices) noexcept {
     return static_cast<TFactory*>(this_ptr)->GetSupportedDevices(devices, num_devices, ep_devices,
                                                                  max_ep_devices, num_ep_devices);
   }
@@ -32,12 +32,12 @@ struct ForwardToFactory {
                                           size_t num_devices,
                                           const OrtSessionOptions* session_options,
                                           const OrtLogger* logger,
-                                          OrtEp** ep) {
+                                          OrtEp** ep) noexcept {
     return static_cast<TFactory*>(this_ptr)->CreateEp(devices, ep_metadata_pairs, num_devices,
                                                       session_options, logger, ep);
   }
 
-  static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) {
+  static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {
     static_cast<TFactory*>(this_ptr)->ReleaseEp(ep);
   }
 };
