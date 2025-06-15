@@ -78,7 +78,7 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
 }
 
 template <typename T>
-void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m) {
+bool MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m) {
   // Number of 16-bit elements after casting int8/int4 to fp16.
   int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
 
@@ -86,6 +86,7 @@ void MatMulNBits<T>::RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int
 
   GemmDims dims = {min_m, max_m, n_16b, K_};
   gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, hasWeightOnlyCudaKernel);
+  return !(gemmProfiler_->getSkip());
 }
 
 template <typename T>
@@ -312,24 +313,24 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
 
   if constexpr (std::is_same<T, MLFloat16>::value) {
     if (has_fpA_intB_gemm_) {
-//       if (m > max_m_) {
-//         auto next_m = nextPowerOfTwo(m);
+      //       if (m > max_m_) {
+      //         auto next_m = nextPowerOfTwo(m);
 
-// #ifdef FPA_INTB_GEMM_LATENCY
-//         std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=" << max_m_ << "~" << next_m << std::endl;
-//         auto latency_us = measure_latency([&]() {
-// #endif
-//           int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
-//           GemmDims dims = {max_m_, next_m, n_16b, K_};
-//           gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, has_fpA_intB_gemv_);
+      // #ifdef FPA_INTB_GEMM_LATENCY
+      //         std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=" << max_m_ << "~" << next_m << std::endl;
+      //         auto latency_us = measure_latency([&]() {
+      // #endif
+      //           int n_16b = N_ / (nbits_ == 8 ? 2 : 4);
+      //           GemmDims dims = {max_m_, next_m, n_16b, K_};
+      //           gemmProfiler_->profileTactics(weightOnlyGemmRunner_, gemmId_.dtype, dims, gemmId_, has_fpA_intB_gemv_);
 
-// #ifdef FPA_INTB_GEMM_LATENCY
-//         });
-//         std::cout << "Latency: " << latency_us << " microseconds" << std::endl;
-// #endif
+      // #ifdef FPA_INTB_GEMM_LATENCY
+      //         });
+      //         std::cout << "Latency: " << latency_us << " microseconds" << std::endl;
+      // #endif
 
-//         max_m_ = next_m;
-//       }
+      //         max_m_ = next_m;
+      //       }
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
       bool run_gemv = m < 16;

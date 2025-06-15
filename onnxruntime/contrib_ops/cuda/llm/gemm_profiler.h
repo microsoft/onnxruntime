@@ -199,6 +199,10 @@ class GemmPluginProfiler {
     mSkip = mSkip || skip;
   }
 
+  bool getSkip() const {
+    return mSkip;
+  }
+
   void setAllocator(onnxruntime::AllocatorPtr allocator) {
     mAllocator = std::move(allocator);
   }

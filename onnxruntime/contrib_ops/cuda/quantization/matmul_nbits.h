@@ -89,7 +89,7 @@ class MatMulNBits final : public CudaKernel {
         std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=1~" << max_m << std::endl;
         auto latency_us = measure_latency([&]() {
 #endif
-          RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
+          has_fpA_intB_gemm_ = RunGemmProfile(has_fpA_intB_gemv_, 1, max_m);
 
 #ifdef FPA_INTB_GEMM_LATENCY
         });
@@ -97,7 +97,6 @@ class MatMulNBits final : public CudaKernel {
         ;
 #endif
 
-        has_fpA_intB_gemm_ = true;
         max_m_ = max_m;
       }
     }
@@ -118,7 +117,7 @@ class MatMulNBits final : public CudaKernel {
 
  private:
   void InitGemmProfiler(int sm);
-  void RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
+  bool RunGemmProfile(bool hasWeightOnlyCudaKernel, int min_m, int max_m);
 
   Status PrePack_B(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);
   Status PrePack_Scale(const Tensor& tensor, AllocatorPtr alloc, cudaStream_t stream);

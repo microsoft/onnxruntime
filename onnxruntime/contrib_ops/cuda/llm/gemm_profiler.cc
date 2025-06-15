@@ -111,107 +111,127 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   int maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
 
-  AllocatorStats stats;
-  mAllocator->GetStats(&stats);
-  std::cout << "Allocator stats: " << stats.DebugString();
-
   // Check whether there is enough free GPU memory.
   size_t bytes = computeTmpSize(maxM, dims.n, dims.k);
 
-  // auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
-  // if (bytes > freeMemory) {
-  //   ORT_LLM_LOG_WARNING(
-  //       "Not enough free memory to profile GEMM tactics. "
-  //       "Free memory: ",
-  //       freeMemory, ", required: ", bytes);
-  //   std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << bytes << std::endl;
-  // }
+// // Adjust maxM to fit free memory size
+// while (bytes > freeMemory && maxM > 1) {
+//   maxM /= 2;
+//   bytes = computeTmpSize(maxM, dims.n, dims.k);
+// }
 
-  // // Adjust maxM to fit free memory size
-  // while (bytes > freeMemory && maxM > 1) {
-  //   maxM /= 2;
-  //   bytes = computeTmpSize(maxM, dims.n, dims.k);
-  // }
+// if (bytes > freeMemory) {
+//   mSkip = true;  // no memory to run m=1
+//   return;
+// }
 
-  // if (bytes > freeMemory) {
-  //   mSkip = true;  // no memory to run m=1
-  //   return;
-  // }
+setTmpWorkspaceSizeInBytes(bytes);
 
-  setTmpWorkspaceSizeInBytes(bytes);
+if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
+  // Create map for GEMM ID
+  std::cout << "Create map for GEMM ID" << std::endl;
+  mMNKProfileMap->createMProfileMap(gemmId);
+}
 
-  if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
-    // Create map for GEMM ID
-    std::cout << "Create map for GEMM ID" << std::endl;
-    mMNKProfileMap->createMProfileMap(gemmId);
-  }
+if (mSkip) {
+  return;
+}
 
-  if (mSkip) {
-    return;
-  }
+auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
+bool isAllocated{false};
+bool skipRemaining{false};
 
-  auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
-  bool isAllocated{false};
-  bool skipRemaining{false};
+auto profileTactics = [&mProfileMap, &isAllocated, &skipRemaining, this](int m, int n, int k) {
+  if (mProfileMap->count(m) == 0 && !(this->mSkip)) {
+    std::cout << "Profiling tactics for m=" << m << ", n=" << n << ", k=" << k << std::endl;
+    if (!isAllocated) {
+      // Allocate tmp data to run GEMMs
+      // inline IAllocatorUniquePtr<char> = IAllocator::MakeUniquePtr<char>(mAllocator, count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
 
-  auto profileTactics = [&mProfileMap, &isAllocated, &skipRemaining, this](int m, int n, int k) {
-    if (mProfileMap->count(m) == 0) {
-      std::cout << "Profiling tactics for m=" << m << ", n=" << n << ", k=" << k << std::endl;
-      if (!isAllocated) {
-        // Allocate tmp data to run GEMMs
-        // inline IAllocatorUniquePtr<char> = IAllocator::MakeUniquePtr<char>(mAllocator, count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
-        std::cout << "Allocate tmp workspace: " << mTmpWorkspaceSizeInBytes << " bytes" << std::endl;
-        this->mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
-        AllocatorStats new_stats;
-        mAllocator->GetStats(&new_stats);
-        std::cout << "Allocator stats: " << new_stats.DebugString();
+      AllocatorStats stats;
+      this->mAllocator->GetStats(&stats);
+      std::cout << "Allocator stats: " << stats.DebugString();
 
-        isAllocated = true;
+      auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
+
+      // Note that this is a sanity check since there might not be a continous memory block of this size.
+      size_t bytes = mTmpWorkspaceSizeInBytes;
+      size_t total_allocated = std::min(static_cast<size_t>(stats.total_allocated_bytes), totalMemory);
+      if (static_cast<size_t>(stats.bytes_in_use) + bytes > total_allocated) {
+        // Make sure there is enough GPU memory (not UVM) to run GEMM tactics.
+        constexpr size_t extraMemory = 16 * 1024 * 1024;  // 16 MB extra memory for safety
+        if (freeMemory + total_allocated < bytes + static_cast<size_t>(stats.bytes_in_use) + extraMemory) {
+          ORT_LLM_LOG_WARNING(
+              onnxruntime::MakeString(
+                  "Not enough free GPU memory to profile GEMM tactics. "
+                  "Free memory: ", freeMemory,
+                  ", bytes_in_use: ", static_cast<size_t>(stats.bytes_in_use),
+                  ", requested: ", bytes, " Extra: ", extraMemory));
+          mSkip = true;
+          return;
+        }
+      }
+    }
+
+
+      std::cout << "Allocate tmp workspace: " << mTmpWorkspaceSizeInBytes << " bytes" << std::endl;
+      this->mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
+      if (!this->mWorkspaceTmp) {
+        std::cout << "Failed to allocate tmp workspace: " << mTmpWorkspaceSizeInBytes << " bytes" << std::endl;
+        this->mSkip = true;
+        return;
       }
 
-      // std::cout << "Init workspace of bytes before profiling: " << mTmpWorkspaceSizeInBytes << std::endl;
-      initTmpData(m, n, k, this->mWorkspaceTmp.get(), mTmpWorkspaceSizeInBytes, this->mStream);
+      AllocatorStats new_stats;
+      mAllocator->GetStats(&new_stats);
+      std::cout << "Allocator stats: " << new_stats.DebugString();
 
-      auto tactics = this->getTactics(m, n, k);
-      // Profile different tactics for particular m and insert best config to the map
-      mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
-    }
-  };
-
-  CUDA_CALL_THROW(cudaStreamCreate(&mStream));
-
-  int const startMinMRounded = nextPowerOfTwo(dims.minM);
-
-  if (hasWeightOnlyCudaKernel) {
-    // Profile tactics for finer granularity of M,
-    // if CUDA kernel is enabled for weight-only plugins
-    int minM = dims.minM;
-    for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
-      profileTactics(m, dims.n, dims.k);
+      isAllocated = true;
     }
 
-    for (int m = 16; m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
-  } else {
-    // Profile tactics for CUTLASS kernel only
-    for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
-      profileTactics(m, dims.n, dims.k);
-    }
+    // std::cout << "Init workspace of bytes before profiling: " << mTmpWorkspaceSizeInBytes << std::endl;
+    initTmpData(m, n, k, this->mWorkspaceTmp.get(), mTmpWorkspaceSizeInBytes, this->mStream);
+
+    auto tactics = this->getTactics(m, n, k);
+    // Profile different tactics for particular m and insert best config to the map
+    mProfileMap->insert({m, this->profileTacticsForProblem(m, n, k, tactics)});
+  }
+};
+
+CUDA_CALL_THROW(cudaStreamCreate(&mStream));
+
+int const startMinMRounded = nextPowerOfTwo(dims.minM);
+
+if (hasWeightOnlyCudaKernel) {
+  // Profile tactics for finer granularity of M,
+  // if CUDA kernel is enabled for weight-only plugins
+  int minM = dims.minM;
+  for (int m = std::max(1, minM); m < std::min(16, maxM); m += 1) {
+    profileTactics(m, dims.n, dims.k);
   }
 
-  profileTactics(maxM, dims.n, dims.k);
-
-  if (isAllocated) {
-    // Free tmp data
-    std::cout << "free temp data" << std::endl;
-    freeTmpData();
+  for (int m = 16; m < maxM; m *= 2) {
+    profileTactics(m, dims.n, dims.k);
   }
-
-  std::cout << "cudaStreamDestroy" << std::endl;
-  CUDA_CALL_THROW(cudaStreamDestroy(mStream));
-  ORT_LLM_LOG_EXIT();
+} else {
+  // Profile tactics for CUTLASS kernel only
+  for (int m = std::max(1, startMinMRounded); m < maxM; m *= 2) {
+    profileTactics(m, dims.n, dims.k);
+  }
 }
+
+profileTactics(maxM, dims.n, dims.k);
+
+if (isAllocated) {
+  // Free tmp data
+  std::cout << "free temp data" << std::endl;
+  freeTmpData();
+}
+
+std::cout << "cudaStreamDestroy" << std::endl;
+CUDA_CALL_THROW(cudaStreamDestroy(mStream));
+ORT_LLM_LOG_EXIT();
+5}
 
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 std::optional<Config> GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::getBestConfig(
