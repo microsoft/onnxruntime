@@ -52,8 +52,9 @@ extern "C" {
 #define _In_opt_
 #define _In_opt_z_
 #define _Out_
-#define _Outptr_
 #define _Out_opt_
+#define _Outptr_
+#define _Outptr_opt_
 #define _Inout_
 #define _Inout_opt_
 #define _Frees_ptr_opt_
