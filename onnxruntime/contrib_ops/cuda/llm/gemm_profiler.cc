@@ -160,7 +160,7 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
         // Allocate tmp data to run GEMMs
         // inline IAllocatorUniquePtr<char> = IAllocator::MakeUniquePtr<char>(mAllocator, count_or_bytes, false, stream, WaitCudaNotificationOnDevice);
         std::cout << "Allocate tmp workspace: " << mTmpWorkspaceSizeInBytes << " bytes" << std::endl;
-        this->mWorkspaceTmp = IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
+        this->mWorkspaceTmp = onnxruntime::IAllocator::MakeUniquePtr<char>(mAllocator, mTmpWorkspaceSizeInBytes, true);
         AllocatorStats new_stats;
         mAllocator->GetStats(&new_stats);
         std::cout << "Allocator stats: " << new_stats.DebugString();
@@ -329,7 +329,7 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
 
   // Warmup the execution
   for (int i = 0; i < warmup; ++i) {
-    runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
+    runTactic(m, n, k, tactic, mWorkspaceTmp.get(), stream);
   }
 
   cudaEvent_t start;
@@ -341,7 +341,7 @@ float GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profile
 
   // Profile GEMM
   for (int i = 0; i < runs; ++i) {
-    runTactic(m, n, k, tactic, mWorkspaceTmp, stream);
+    runTactic(m, n, k, tactic, mWorkspaceTmp.get(), stream);
   }
 
   CUDA_CALL_THROW(cudaEventRecord(stop, stream));

@@ -30,6 +30,7 @@
 
 #include "contrib_ops/cuda/llm/nv_infer_datatype.h"
 #include "core/common/common.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime::llm::kernels::weight_only {
 
@@ -248,7 +249,7 @@ class GemmPluginProfiler {
 
   size_t mTmpWorkspaceSizeInBytes{0};
 
-  IAllocatorUniquePtr<char> mTmpWorkspace{nullptr};
+  onnxruntime::IAllocatorUniquePtr<char> mWorkspaceTmp{nullptr};
   // char* mWorkspaceTmp{nullptr};
 
   cudaStream_t mStream;
