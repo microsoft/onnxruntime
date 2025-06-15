@@ -49,8 +49,8 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
     RETURN_IF_ERROR(impl.ort_api.GetTensorData(src_tensors[i], &src_data));
     RETURN_IF_ERROR(impl.ort_api.GetTensorMutableData(dst_tensors[i], &dst_data));
 
-    bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
-                                       dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE;
+    // bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
+    //                                    dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE;
 
     if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
       if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
@@ -62,7 +62,6 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
       // GPU -> CPU
     } else {
       // CPU -> CPU involves copy to/from pinned memory and a synchronize may be required first
-      assert(copy_involves_pinned_memory);
     }
   }
 

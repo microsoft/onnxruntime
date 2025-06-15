@@ -6192,7 +6192,7 @@ ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(SyncStream);
 
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
-struct OrtDataTransferImpl {
+typedef struct OrtDataTransferImpl {
   uint32_t version;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Release the OrtDataTransferImpl instance.
@@ -6240,12 +6240,12 @@ struct OrtDataTransferImpl {
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
                   _In_reads_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
-};
+} OrtDataTransferImpl;
 
 /// <summary>
 /// Functions that a plugin EP needs to call from its implementation.
 /// </summary>
-struct OrtEpApi {
+typedef struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
    * \param[in] ep_factory Execution provider factory that is creating the instance.
    * \param[in] hardware_device Hardware device that the EP can utilize.
@@ -6335,13 +6335,13 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
-};
+} OrtEpApi;
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
-struct OrtEp {
+typedef struct OrtEp {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
    * Implementation should set to ORT_API_VERSION.
@@ -6370,7 +6370,7 @@ struct OrtEp {
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
-};
+} OrtEp;
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
  *
@@ -6410,7 +6410,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
  * \since Version 1.22.
  */
-struct OrtEpFactory {
+typedef struct OrtEpFactory {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
    * Implementation should set to ORT_API_VERSION.
@@ -6540,7 +6540,7 @@ struct OrtEpFactory {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
-};
+} OrtEpFactory;
 
 /*
  * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality

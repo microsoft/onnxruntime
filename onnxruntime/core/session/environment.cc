@@ -435,7 +435,6 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       // add shared allocators so they're available without an inference session being required.
       // we don't replace an existing allocator as we just need one to exist for the OrtMemoryInfo and we don't want
       // to blow away any custom allocators previously added by the user.
-      const auto end_it = shared_ort_allocators_.end();
       if (ed->device_memory_info != nullptr) {
         ORT_RETURN_IF_ERROR(CreateSharedAllocatorImpl(*ed, *ed->device_memory_info, OrtDeviceAllocator, nullptr,
                                                       nullptr, /*replace_existing*/ false));
@@ -543,8 +542,8 @@ Status Environment::CreateSharedAllocator(const OrtEpDevice& ep_device,
                                           OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                           const OrtKeyValuePairs* allocator_options,
                                           OrtAllocator** allocator_out) {
-  auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info
-                                                    : ep_device.host_accessible_memory_info;
+  auto* memory_info = mem_type == OrtDeviceMemoryType_DEFAULT ? ep_device.device_memory_info
+                                                              : ep_device.host_accessible_memory_info;
   if (memory_info == nullptr) {
     return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
   }
@@ -633,8 +632,8 @@ OrtAllocator* Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info) {
 }
 
 Status Environment::ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type) {
-  auto* memory_info = mem_type == OrtMemTypeDefault ? ep_device.device_memory_info
-                                                    : ep_device.host_accessible_memory_info;
+  auto* memory_info = mem_type == OrtDeviceMemoryType_DEFAULT ? ep_device.device_memory_info
+                                                              : ep_device.host_accessible_memory_info;
   if (memory_info == nullptr) {
     return Status(ONNXRUNTIME, ORT_INVALID_ARGUMENT, "Invalid memory type for OrtEpDevice.");
   }

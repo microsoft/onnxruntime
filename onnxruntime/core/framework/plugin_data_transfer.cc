@@ -1,6 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
-#pragma once
 
 #include "core/framework/plugin_data_transfer.h"
 
@@ -59,7 +58,7 @@ Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor
   dst.Init(reinterpret_cast<void*>(&dst_tensor), ml_tensor_type, no_op_deleter);
   const OrtValue* src_ptr = &src;
   OrtValue* dst_ptr = &dst;
-  OrtSyncStream* stream_ptr = nullptr; // static_cast<OrtSyncStream*>(stream);
+  OrtSyncStream* stream_ptr = nullptr;  // static_cast<OrtSyncStream*>(stream);
   auto* status = impl_.CopyTensors(&impl_, &src_ptr, &dst_ptr, &stream_ptr, 1);
 
   return status == nullptr ? Status::OK() : ToStatus(status);
