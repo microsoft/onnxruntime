@@ -29,15 +29,6 @@ namespace onnxruntime::llm::kernels::weight_only {
 template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
 GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::GemmPluginProfiler() {
   mMNKProfileMap = std::make_shared<MNKProfileMap>();
-
-  // set SKIP_GEMM_PLUGIN_PROFILINGS=1 to avoid tactics profilings
-  auto const skipEnv = std::getenv("SKIP_GEMM_PLUGIN_PROFILINGS");
-  mSkip = (skipEnv != NULL && std::stoi(skipEnv));
-  if (mSkip) {
-    ORT_LLM_LOG_DEBUG(
-        "SKIP_GEMM_PLUGIN_PROFILINGS is set. Skipping GEMM plugin profilings. It could result in runtime error "
-        "if default tactic is not defined.");
-  }
 }
 
 // template <typename Config, typename RunnerPtr, typename GemmIdType, typename GemmIdHashType>
@@ -118,8 +109,32 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
   mRunner = runner;
   mType = type;
 
-  int const maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
-  computeTmpSize(maxM, dims.n, dims.k);
+  int maxM = std::min(nextPowerOfTwo(dims.maxM), getMaxProfileM());
+
+  auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
+
+  // Check whether there is enough free GPU memory.
+  size_t bytes = computeTmpSize(maxM, dims.n, dims.k);
+  if (bytes > freeMemory) {
+    ORT_LLM_LOG_WARNING(
+        "Not enough free memory to profile GEMM tactics. "
+        "Free memory: ",
+        freeMemory, ", required: ", bytes);
+    std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << bytes << std::endl;
+  }
+
+  // Adjust maxM to fit free memory size
+  while (bytes > freeMemory && maxM > 1) {
+    maxM /= 2;
+    bytes = computeTmpSize(maxM, dims.n, dims.k);
+  }
+
+  if (bytes > freeMemory) {
+    mSkip = true;  // no memory to run m=1
+    return;
+  }
+
+  setTmpWorkspaceSizeInBytes(bytes);
 
   if (!mMNKProfileMap->existsMProfileMap(gemmId)) {
     // Create map for GEMM ID
@@ -133,22 +148,11 @@ void GemmPluginProfiler<Config, RunnerPtr, GemmIdType, GemmIdHashType>::profileT
 
   auto mProfileMap = mMNKProfileMap->getMProfileMap(gemmId);
   bool isAllocated{false};
+  bool skipRemaining{false};
 
-  auto profileTactics = [&mProfileMap, &isAllocated, this](int m, int n, int k) {
+  auto profileTactics = [&mProfileMap, &isAllocated, &skipRemaining, this](int m, int n, int k) {
     if (mProfileMap->count(m) == 0) {
       if (!isAllocated) {
-        // Check whether there is enough free GPU memory.
-        auto const [freeMemory, totalMemory] = ::onnxruntime::llm::common::getDeviceMemoryInfo(false, false);
-        if (freeMemory < mTmpWorkspaceSizeInBytes) {
-          ORT_LLM_LOG_WARNING(
-              "Not enough free memory to profile GEMM tactics. "
-              "Free memory: ",
-              freeMemory, ", required: ", mTmpWorkspaceSizeInBytes);
-          mSkip = true;
-          return;
-        }
-        std::cout << "Free memory: " << freeMemory << ", total memory: " << totalMemory << ", Temp Space to allocate: " << mTmpWorkspaceSizeInBytes << std::endl;
-
         // Allocate tmp data to run GEMMs
         allocateTmpData();
         isAllocated = true;

@@ -83,7 +83,7 @@ class MatMulNBits final : public CudaKernel {
 
         InitGemmProfiler(sm_);
 
-        int max_m = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmInitM, 16);
+        int max_m = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmInitM, 2048);
 
 #ifdef FPA_INTB_GEMM_LATENCY
         std::cout << "Gemm Profile for N=" << N_ << ", K=" << K_ << ", M=1~" << max_m << std::endl;

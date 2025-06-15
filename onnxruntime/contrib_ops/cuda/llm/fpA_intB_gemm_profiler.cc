@@ -71,7 +71,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::runTactic(
   ORT_LLM_LOG_EXIT();
 }
 
-void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
+size_t WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, size_t n, size_t k) {
   // Quantized weights are packed in FP16 format (INT4*4 -> FP16, INT8*2 -> FP16)
   int const originalN = mQuantBits == 8 ? n * FP16_INT8_RATIO : n * FP16_INT4_RATIO;
   std::vector<size_t> workspaces = {
@@ -84,7 +84,7 @@ void WeightOnlyGroupwiseQuantGemmPluginProfiler::computeTmpSize(size_t maxM, siz
       mRunner->getWorkspaceSize(maxM, originalN, k)  // workspace
   };
   size_t bytes = calculateTotalWorkspaceSize(workspaces.data(), workspaces.size());
-  setTmpWorkspaceSizeInBytes(bytes);
+  return bytes;
 }
 
 std::vector<WeightOnlyGroupwiseQuantGemmPluginProfiler::Config> WeightOnlyGroupwiseQuantGemmPluginProfiler::getTactics(

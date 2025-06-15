@@ -205,7 +205,7 @@ class GemmPluginProfiler {
  protected:
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
 
-  virtual void computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
+  virtual size_t computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
 
   virtual bool checkTactic(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/) const {
     return true;
