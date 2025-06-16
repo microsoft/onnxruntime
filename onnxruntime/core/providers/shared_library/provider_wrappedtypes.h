@@ -1038,6 +1038,9 @@ struct Graph final {
   const std::unordered_map<std::string, int>& DomainToVersionMap() const noexcept { return g_host->Graph__DomainToVersionMap(this); }
   Status Resolve() { return g_host->Graph__Resolve(this); }
   void AddInitializedTensor(const ONNX_NAMESPACE::TensorProto& tensor) { return g_host->Graph__AddInitializedTensor(this, tensor); }
+  Status AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor, const OrtValue& ort_value) {
+    return g_host->Graph__AddInitializedOrtValue(this, tensor, ort_value);
+  }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, const NodeAttributes* attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, attributes, domain); }
   Node& AddNode(const std::string& name, const std::string& op_type, const std::string& description, gsl::span<NodeArg* const> input_args, gsl::span<NodeArg* const> output_args, NodeAttributes&& attributes, const std::string& domain) { return g_host->Graph__AddNode(this, name, op_type, description, input_args, output_args, std::move(attributes), domain); }
   Node& AddNode(const Node& other) { return g_host->Graph__AddNode(this, other); }
@@ -1175,6 +1178,69 @@ struct ConstGraphNodes final {
   bool empty() const noexcept { return g_host->ConstGraphNodes__empty(this); }
 
   PROVIDER_DISALLOW_ALL(ConstGraphNodes)
+};
+
+class Initializer {
+ public:
+  Initializer(ONNX_NAMESPACE::TensorProto_DataType data_type,
+              std::string_view name,
+              gsl::span<const int64_t> dims) {
+    this_ptr_ = g_host->Initializer__constructor(data_type, name, dims);
+  }
+
+  Initializer(const Graph& graph, const ONNX_NAMESPACE::TensorProto& tensor_proto,
+              const std::filesystem::path& model_path = {},
+              bool check_outer_scope = false) {
+    this_ptr_ = g_host->Initializer__constructor(graph, tensor_proto, model_path, check_outer_scope);
+  }
+
+  ~Initializer() {
+    g_host->Initializer__destructor(this_ptr_);
+  }
+
+  PROVIDER_DISALLOW_ALL(Initializer);
+
+  void ToProto(ONNX_NAMESPACE::TensorProto& tensor_proto) const {
+    g_host->Initializer__ToProto(*this_ptr_, tensor_proto);
+  }
+
+  void ToProtoWithOrtValue(ONNX_NAMESPACE::TensorProto& tensor_proto, OrtValue& ort_value) const {
+    g_host->Initializer__ToProtoWithOrtValue(*this_ptr_, tensor_proto, ort_value);
+  }
+
+  int data_type() const {
+    return g_host->Initializer__data_type(*this_ptr_);
+  }
+
+  const std::string& name() const {
+    return g_host->Initializer__name(*this_ptr_);
+  }
+
+  gsl::span<const int64_t> dims() const {
+    return g_host->Initializer__dims(*this_ptr_);
+  }
+
+  size_t size() const {
+    return g_host->Initializer__size(*this_ptr_);
+  }
+
+  // See definition for the below templates in provider_api.h
+  template <class T>
+  const T* data() const;
+
+  template <class T>
+  T* data();
+
+  const void* data_raw() const {
+    return g_host->Initializer__data_raw(*this_ptr_);
+  }
+
+  void* mutable_data_raw() {
+    return g_host->Initializer__mutable_data_raw(*this_ptr_);
+  }
+
+ private:
+  Initializer* this_ptr_;
 };
 
 struct OpKernelContext final {

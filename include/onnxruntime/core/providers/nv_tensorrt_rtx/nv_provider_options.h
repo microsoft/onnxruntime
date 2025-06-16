@@ -8,6 +8,7 @@
  * - `kHasUserComputeStream`: Indicates whether a user-provided compute stream is used.
  * - `kUserComputeStream`: Specifies the user-provided compute stream.
  * - `kMaxWorkspaceSize`: Sets the maximum workspace size for GPU memory allocation.
+ * - 'kMaxSharedMemSize': Sets the maximum amount of shared memory that TensorRT kernels are allowed to use
  * - `kDumpSubgraphs`: Enables or disables dumping of subgraphs for debugging.
  * - `kDetailedBuildLog`: Enables or disables detailed build logs for debugging.
  * - `kProfilesMinShapes`: Specifies the minimum shapes for profiling.
@@ -24,6 +25,7 @@ constexpr const char* kDeviceId = "device_id";
 constexpr const char* kHasUserComputeStream = "has_user_compute_stream";
 constexpr const char* kUserComputeStream = "user_compute_stream";
 constexpr const char* kMaxWorkspaceSize = "nv_max_workspace_size";
+constexpr const char* kMaxSharedMemSize = "nv_max_shared_mem_size";
 constexpr const char* kDumpSubgraphs = "nv_dump_subgraphs";
 constexpr const char* kDetailedBuildLog = "nv_detailed_build_log";
 constexpr const char* kProfilesMinShapes = "nv_profile_min_shapes";

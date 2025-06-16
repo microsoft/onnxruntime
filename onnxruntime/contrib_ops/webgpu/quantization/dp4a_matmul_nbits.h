@@ -42,10 +42,11 @@ class DP4AMatMulNBitsProgram final : public Program<DP4AMatMulNBitsProgram> {
 
 class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMProgram> {
  public:
-  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"DP4AMatMulNBitsSmallMProgram"},
-                                                                                           tile_size_(tile_size),
-                                                                                           nbits_(nbits),
-                                                                                           has_zero_points_(has_zero_points) {}
+  DP4AMatMulNBitsSmallMProgram(uint32_t tile_size_k_vec, uint32_t tile_size, uint32_t nbits, bool has_zero_points) : Program{"DP4AMatMulNBitsSmallMProgram"},
+                                                                                                                     tile_size_k_vec_(tile_size_k_vec),
+                                                                                                                     tile_size_(tile_size),
+                                                                                                                     nbits_(nbits),
+                                                                                                                     has_zero_points_(has_zero_points) {}
   Status GenerateShaderCode(ShaderHelper& sh) const override;
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES(
       {"M", ProgramUniformVariableDataType::Uint32},
@@ -58,6 +59,7 @@ class DP4AMatMulNBitsSmallMProgram final : public Program<DP4AMatMulNBitsSmallMP
       {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32});
 
  private:
+  uint32_t tile_size_k_vec_;
   uint32_t tile_size_;
   uint32_t nbits_;
   bool has_zero_points_;

@@ -7,7 +7,7 @@
 #include "core/framework/execution_provider.h"
 #include <mutex>
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
-#include "core/providers/migraphx/migraphx_inc.h"
+#include "core/providers/migraphx/migraphx_call.h"
 
 #include <map>
 #include <unordered_map>
@@ -17,15 +17,16 @@ namespace onnxruntime {
 
 namespace migraphx_env_vars {
 static const char kFP16Enable[] = "ORT_MIGRAPHX_FP16_ENABLE";
+static const char kFP8Enable[] = "ORT_MIGRAPHX_FP8_ENABLE";
 static const char kINT8Enable[] = "ORT_MIGRAPHX_INT8_ENABLE";
 static const char dumpModelOps[] = "ORT_MIGRAPHX_DUMP_MODEL_OPS";
 static const char kINT8CalibrationTableName[] = "ORT_MIGRAPHX_INT8_CALIBRATION_TABLE_NAME";
 static const char kCachePath[] = "ORT_MIGRAPHX_CACHE_PATH";
 static const char kINT8UseNativeMIGraphXCalibrationTable[] = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
 static const char kSaveCompiledModel[] = "ORT_MIGRAPHX_SAVE_COMPILED_MODEL";
-static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILE_PATH";
+static const char kSavedModelPath[] = "ORT_MIGRAPHX_SAVE_COMPILED_PATH";
 static const char kLoadCompiledModel[] = "ORT_MIGRAPHX_LOAD_COMPILED_MODEL";
-static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILE_PATH";
+static const char kLoadModelPath[] = "ORT_MIGRAPHX_LOAD_COMPILED_PATH";
 static const char kExhaustiveTune[] = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
 
 };  // namespace migraphx_env_vars
@@ -43,6 +44,7 @@ struct MIGraphXFuncState {
   std::mutex* mgx_mu_ptr = nullptr;
   bool no_input_shape = false;
   bool fp16_enable = false;
+  bool fp8_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   std::unordered_map<std::string, float> dynamic_range_map;
@@ -59,6 +61,10 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
   ~MIGraphXExecutionProvider();
+
+  void get_flags_from_session_info(const MIGraphXExecutionProviderInfo& info);
+  void get_flags_from_env();
+  void print_migraphx_ep_flags();
 
   Status Sync() const override;
 
@@ -78,6 +84,9 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
   std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
 
+  static AllocatorPtr CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t migx_mem_limit, ArenaExtendStrategy arena_extend_strategy,
+                                              MIGraphXExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
+
   std::unique_ptr<IndexedSubGraph> GetSubGraph(const std::vector<std::size_t>& graph_nodes_index, const GraphViewer& graph) const;
   void RegisterStreamHandlers(IStreamCommandHandleRegistry& stream_handle_registry, AllocatorMap& allocators) const override;
   OrtDevice GetOrtDeviceByMemType(OrtMemType mem_type) const override;
@@ -91,6 +100,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
  private:
   MIGraphXExecutionProviderInfo info_;
   bool fp16_enable_ = false;
+  bool fp8_enable_ = false;
   bool int8_enable_ = false;
   std::string int8_calibration_cache_name_;
   bool int8_calibration_cache_available_ = false;

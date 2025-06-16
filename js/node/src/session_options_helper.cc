@@ -31,6 +31,7 @@ const std::unordered_map<std::string, GraphOptimizationLevel> GRAPH_OPT_LEVEL_NA
     {"disabled", ORT_DISABLE_ALL},
     {"basic", ORT_ENABLE_BASIC},
     {"extended", ORT_ENABLE_EXTENDED},
+    {"layout", ORT_ENABLE_LAYOUT},
     {"all", ORT_ENABLE_ALL}};
 
 const std::unordered_map<std::string, ExecutionMode> EXECUTION_MODE_NAME_TO_ID_MAP = {{"sequential", ORT_SEQUENTIAL},

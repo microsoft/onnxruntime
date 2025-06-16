@@ -390,11 +390,14 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
   uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
-  // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
-  if (M >= kMinMForTileOptimization &&
-      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, nbits, zero_blocks_per_col, context, y);
+#if !defined(__wasm__)
+  int32_t subgroup_matrix_config_index = -1;
+  // apple|intel - Experimental dawn support for subgroup matrix matmul.
+  if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, nbits, zero_blocks_per_col, subgroup_matrix_config_index, context, y);
   }
+#endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||

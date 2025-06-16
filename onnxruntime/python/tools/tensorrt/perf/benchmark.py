@@ -36,6 +36,7 @@ from perf_utils import (
     is_benchmark_mode,
     is_standalone,
     is_validate_mode,
+    layout,
     memory_ending,
     model_title,
     ort_provider_list,
@@ -116,6 +117,8 @@ def get_graph_opt_level(enablement):
 
     if enablement == enable_all:
         opt_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_ALL
+    elif enablement == layout:
+        opt_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_LAYOUT
     elif enablement == extended:
         opt_level = onnxruntime.GraphOptimizationLevel.ORT_ENABLE_EXTENDED
     elif enablement == basic:
@@ -2197,7 +2200,7 @@ def parse_arguments():
         "--graph_enablement",
         required=False,
         default=enable_all,
-        choices=[disable, basic, extended, enable_all],
+        choices=[disable, basic, extended, layout, enable_all],
         help="Choose graph optimization enablement.",
     )
 
