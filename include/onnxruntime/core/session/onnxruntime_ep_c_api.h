@@ -267,7 +267,7 @@ struct OrtEpFactory {
    */
   uint32_t ort_version_supported;
 
-  /** \brief Get the name the of the execution provider that the factory creates.
+  /** \brief Get the name of the execution provider that the factory creates.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \return The name of the execution provider the factory creates.
