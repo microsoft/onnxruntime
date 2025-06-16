@@ -5388,9 +5388,65 @@ struct OrtApi {
   // OrtConstPointerArray
   //
 
+  /** \brief Get a tag that represents the type of the elements stored in a OrtConstPointerArray instance.
+   *
+   * Refer to OrtTypeTag for valid values.
+   *
+   * \param[in] array The OrtConstPointerArray instance.
+   * \param[out] type_tag Output parameter set to the type tag that corresponds to the element's type.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
   ORT_API2_STATUS(ConstPointerArray_GetElementType, _In_ const OrtConstPointerArray* array, _Out_ OrtTypeTag* type_tag);
+
+  /** \brief Get a pointer to the data buffer of contiguous elements.
+   *
+   * Caller must cast the elements to the appropriate type indicated by ConstPointerArray_GetElementType.
+   * Example:
+   *    const void* const* raw_data = nullptr;
+   *    OrtStatus status = ort_api.ConstPointerArray_GetData(array, &raw_data);
+   *
+   *    // Assume OrtTypeTag is ORT_TYPE_TAG_OrtNode and there is at least one node in the array.
+   *    const OrtNode* node0 = static_cast<const OrtNode*>(raw_data[0]);
+   *
+   * \param[in] array The OrtConstPointerArray instance.
+   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
   ORT_API2_STATUS(ConstPointerArray_GetData, _In_ const OrtConstPointerArray* array, _Outptr_ const void* const** data);
+
+  /** \brief Get the number of elements contained by the given OrtConstPointerArray instance.
+   *
+   * \param[in] array The OrtConstPointerArray instance.
+   * \param[out] size Output parameter set to the number of elements in the array.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
   ORT_API2_STATUS(ConstPointerArray_GetSize, _In_ const OrtConstPointerArray* array, _Out_ size_t* size);
+
+  /** \brief Get the element at the given index. Returns an error status if index is out of bounds.
+   *
+   * Caller must cast the element to the appropriate type indicated by ConstPointerArray_GetElementType.
+   * Example:
+   *    // Assume OrtTypeTag is ORT_TYPE_TAG_OrtNode and there is at least one node in the array.
+   *    const OrtNode* node = nullptr;
+   *    OrtStatus status = ort_api.ConstPointerArray_GetElementAt(nodes, 0, reinterpret_cast<const void**>(&node)));
+   *
+   * \param[in] array The OrtConstPointerArray instance.
+   * \param[in] index The index of the element.
+   * \param[out] out Output parameter set to the element at the given index.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
   ORT_API2_STATUS(ConstPointerArray_GetElementAt, _In_ const OrtConstPointerArray* array, _In_ size_t index,
                   _Outptr_ const void** out);
 
