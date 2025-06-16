@@ -65,13 +65,20 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* input_data = input + block_offset;
       T* output_data = output + block_offset;
 
-      // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-      const int position_id = (position_ids_format == 0)
-                                  ? static_cast<int>(position_ids[0]) + s
-                                  : static_cast<int>(position_ids[b * sequence_length + s]);
-      const int cache_offset = position_id * half_rotary_emb_dim;
-      const T* cos_data = cos_cache + cache_offset;
-      const T* sin_data = sin_cache + cache_offset;
+      const T* cos_data;
+      const T* sin_data;
+      int cache_offset;
+      if (position_ids_format == -1) {
+        cache_offset = (b * sequence_length + s) * half_rotary_emb_dim;
+      } else {
+        // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
+        const int position_id = (position_ids_format == 0)
+                                    ? static_cast<int>(position_ids[0]) + s
+                                    : static_cast<int>(position_ids[b * sequence_length + s]);
+        cache_offset = position_id * half_rotary_emb_dim;
+      }
+      cos_data = cos_cache + cache_offset;
+      sin_data = sin_cache + cache_offset;
 
       MlasRotaryEmbedOneRow<T>(input_data, sin_data, cos_data, rotary_emb_dim, interleaved, output_data);
 
@@ -101,30 +108,6 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const Tensor* sin_cache = context->Input<Tensor>(2);
   const Tensor* position_ids = context->Input<Tensor>(3);  // Optional, can be nullptr
 
-  std::unique_ptr<Tensor> default_position_ids_tensor;
-
-  if (nullptr == position_ids) {
-    // Get input shape info
-    const auto& input_shape = X->Shape();
-    int batch_size = static_cast<int>(input_shape[0]);
-    int sequence_length = static_cast<int>(input_shape[1]);
-
-    // Allocate tensor
-    AllocatorPtr allocator;
-    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
-    TensorShape pos_shape({batch_size, sequence_length});
-    default_position_ids_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(), pos_shape, allocator);
-
-    // Fill with [0, 1, ..., sequence_length-1] for each batch
-    int64_t* pos_data = default_position_ids_tensor->MutableData<int64_t>();
-    for (int b = 0; b < batch_size; ++b) {
-      for (int s = 0; s < sequence_length; ++s) {
-        pos_data[b * sequence_length + s] = s;
-      }
-    }
-    position_ids = default_position_ids_tensor.get();
-  }
-
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(X,
                                                                    position_ids,
@@ -142,7 +125,7 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   }
 
   const T* x_src = X->Data<T>();
-  const int64_t* pos_ids_data = position_ids->Data<int64_t>();
+  const int64_t* pos_ids_data = (nullptr == position_ids) ? nullptr : position_ids->Data<int64_t>();
   const T* cos_cache_data = cos_cache->Data<T>();
   const T* sin_cache_data = sin_cache->Data<T>();
   T* output_dest = output->MutableData<T>();
