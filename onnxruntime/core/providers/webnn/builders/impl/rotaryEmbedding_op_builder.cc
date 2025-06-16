@@ -436,9 +436,10 @@ bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
   }
 
   // Check if the input data type is supported by each decomposed WebNN op.
-  // Decomposed ops include: "add", "concat", "gather", "mul", "reshape" and "split".
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  // Decomposed ops include: "Add", "Concat", "Gather", "Mul", "Reshape" and "Split".
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(
             op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "input", logger)) {
       return false;
@@ -459,7 +460,8 @@ bool RotaryEmbeddingOpBuilder::HasSupportedOutputsImpl(const Node& node,
   }
 
   // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
     const std::string_view webnn_output_name = webnn_op_type == "split" ? "outputs" : "output";
     if (!IsDataTypeSupportedByWebNNOp(
             op_type, webnn_op_type, output_type, wnn_limits, webnn_output_name, "output", logger)) {

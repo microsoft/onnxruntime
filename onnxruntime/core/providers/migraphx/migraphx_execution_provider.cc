@@ -13,11 +13,12 @@
 #include "core/common/safeint.h"
 #include "core/common/logging/severity.h"
 #include "migraphx_execution_provider.h"
+#include "migraphx_execution_provider_info.h"
 #include "migraphx_execution_provider_utils.h"
 #include "migraphx_allocator.h"
 #include "gpu_data_transfer.h"
-#include "migraphx_inc.h"
 #include <hip/hip_version.h>
+#include "migraphx_call.h"
 
 #include "migraphx_stream_handle.h"
 
@@ -105,7 +106,10 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 }
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, info.device_id)}, info_(info) {
+    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+                                   info.device_id)},
+      info_(info) {
   InitProviderOrtApi();
   get_flags_from_session_info(info);
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();
@@ -290,12 +294,50 @@ void MIGraphXExecutionProvider::print_migraphx_ep_flags() {
                         << "\n migraphx_load_compiled_model_path: " << load_compiled_path_;
 }
 
+AllocatorPtr MIGraphXExecutionProvider::CreateMIGraphXAllocator(OrtDevice::DeviceId device_id,
+                                                                size_t migx_mem_limit,
+                                                                ArenaExtendStrategy arena_extend_strategy,
+                                                                MIGraphXExecutionProviderExternalAllocatorInfo
+                                                                    external_allocator_info,
+                                                                const OrtArenaCfg* default_memory_arena_cfg) {
+  if (external_allocator_info.UseExternalAllocator()) {
+    AllocatorCreationInfo default_memory_info(
+        [external_allocator_info](OrtDevice::DeviceId id) {
+          return std::make_unique<MIGraphXExternalAllocator>(id, HIP,
+                                                             external_allocator_info.alloc,
+                                                             external_allocator_info.free,
+                                                             external_allocator_info.empty_cache);
+        },
+        device_id,
+        false);
+
+    return CreateAllocator(default_memory_info);
+  } else {
+    AllocatorCreationInfo default_memory_info(
+        [](OrtDevice::DeviceId id) {
+          return std::make_unique<MIGraphXAllocator>(id, HIP);
+        },
+        device_id,
+        true,
+        {default_memory_arena_cfg ? *default_memory_arena_cfg
+                                  : OrtArenaCfg(migx_mem_limit, static_cast<int>(arena_extend_strategy),
+                                                -1, -1, -1, -1L)},
+        // make it stream aware
+        true,
+        // enable cross stream sharing?
+        false);
+
+    // ROCM malloc/free is expensive so always use an arena
+    return CreateAllocator(default_memory_info);
+  }
+}
+
 std::vector<AllocatorPtr> MIGraphXExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return CreateMIGraphXAllocator(device_id, onnxruntime::CUDA); }, info_.device_id);
+      [](OrtDevice::DeviceId device_id) { return std::make_unique<MIGraphXAllocator>(device_id, onnxruntime::CUDA); }, info_.device_id);
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return CreateMIGraphXPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
+        return std::make_unique<HIPPinnedAllocator>(device_id, onnxruntime::CUDA_PINNED);
       },
       0);
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
@@ -1575,8 +1617,11 @@ void MIGraphXExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
 }
 
 OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                     0 /*CPU device id always be 0*/);
   return default_device_;
 }
 

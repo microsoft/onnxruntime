@@ -365,7 +365,8 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
 TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
   std::string dtype_name = this->getTypeAsName();
   ASSERT_FALSE(dtype_name.empty());
-  PathString model_name = ORT_TSTR("nv_execution_provider_" + dtype_name + ".onnx");
+  const std::string model_name_str = "nv_execution_provider_" + dtype_name + ".onnx";
+  const PathString model_name = ToPathString(model_name_str);
   std::string graph_name = "test" + dtype_name;
   std::vector<int> dims = {1, -1, -1};
 

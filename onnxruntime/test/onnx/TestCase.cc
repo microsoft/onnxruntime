@@ -632,7 +632,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
@@ -683,7 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
-    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {

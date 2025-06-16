@@ -289,6 +289,16 @@ TEST_F(QnnHTPBackendTests, Expand_HTP_int64) {
                                      19);  // Opset
 }
 
+// Test that bool Expand runs on HTP backend.
+TEST_F(QnnHTPBackendTests, Expand_HTP_bool) {
+  RunReshapeExpandTestOnHTP<bool>("Expand",
+                                  TestInputDef<bool>({1}, false, {true}),
+                                  TestInputDef<int64_t>({3}, true, {1, 2, 3}),
+                                  {},  // Attributes
+                                  ExpectedEPNodeAssignment::All,
+                                  19);  // Opset
+}
+
 // Test QDQ Expand
 TEST_F(QnnHTPBackendTests, Expand_4D) {
   RunQDQReshapeExpandTestOnHTP<uint8_t>("Expand",

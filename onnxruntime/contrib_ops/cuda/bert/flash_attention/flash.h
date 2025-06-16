@@ -70,6 +70,7 @@ struct Flash_fwd_params : public Qkv_params {
   int seqlen_k_rounded = 0;
   int d_rounded = 0;
   int rotary_dim = 0;
+  int total_q = 0;
 
   // The scaling factors for the kernel.
   float scale_softmax = 0.0;
@@ -129,6 +130,7 @@ struct Flash_fwd_params : public Qkv_params {
   void* __restrict__ alibi_slopes_ptr = nullptr;
   index_t alibi_slopes_batch_stride = 0;
 
+  bool unpadded_lse = false;
   const cudaDeviceProp* dprops = nullptr;
 };
 

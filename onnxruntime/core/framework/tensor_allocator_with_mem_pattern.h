@@ -47,12 +47,13 @@ class TensorAllocatorWithMemPattern : public ITensorAllocator {
       } else {
         buffer = alloc->Alloc(peak_size);
       }
-      weights_buffers_.push_back(BufferUniquePtr(buffer, BufferDeleter(alloc)));
+
+      auto buffer_ptr = BufferUniquePtr(buffer, BufferDeleter(std::move(alloc)));
       auto kvp = buffers_.insert(std::make_pair(location, buffer));
       if (!kvp.second) {
-        alloc->Free(buffer);
         return Status(common::ONNXRUNTIME, common::FAIL, "duplicated location");
       }
+      weights_buffers_.push_back(std::move(buffer_ptr));
 
       planned_memory_sizes_in_byte[location] += peak_size;
     }
