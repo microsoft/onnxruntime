@@ -20,7 +20,7 @@ ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name,
 }
 
 /*static*/
-const char* ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
+const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept {
   const auto* ep = static_cast<const ExampleEp*>(this_ptr);
   return ep->name_.c_str();
 }

@@ -16,7 +16,7 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   ~ExampleEp() = default;
 
  private:
-  static const char* GetNameImpl(const OrtEp* this_ptr) noexcept;
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
 
   ExampleEpFactory& factory_;
   std::string name_;
