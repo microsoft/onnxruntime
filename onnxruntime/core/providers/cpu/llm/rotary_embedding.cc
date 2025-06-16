@@ -12,26 +12,23 @@ using namespace onnxruntime::rotary_embedding_helper;
 
 namespace onnxruntime {
 
-// These ops are internal-only, so register outside of onnx
-#define REGISTER_KERNEL_TYPED(T)                                        \
-  ONNX_OPERATOR_TYPED_KERNEL_EX(                                        \
+#define REGISTER_ONNX_KERNEL_TYPED(T)                                   \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                       \
       RotaryEmbedding,                                                  \
-      kMSDomain,                                                        \
       23,                                                               \
       T,                                                                \
-      kCpuExecutionProvider,                                            \
       KernelDefBuilder()                                                \
           .TypeConstraint("T", DataTypeImpl::GetTensorType<T>())        \
           .TypeConstraint("M", DataTypeImpl::GetTensorType<int64_t>()), \
       RotaryEmbedding<T>);
 
-REGISTER_KERNEL_TYPED(float)
-REGISTER_KERNEL_TYPED(MLFloat16)
+REGISTER_ONNX_KERNEL_TYPED(float)
+REGISTER_ONNX_KERNEL_TYPED(MLFloat16)
 
 template <typename T>
 RotaryEmbedding<T>::RotaryEmbedding(const OpKernelInfo& info) : OpKernel(info) {
-  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
   num_heads = static_cast<int>(info.GetAttrOrDefault<int64_t>("num_heads", 0));
+  rotary_embedding_dim = static_cast<int>(info.GetAttrOrDefault<int64_t>("rotary_embedding_dim", 0));
   interleaved = (info.GetAttrOrDefault<int64_t>("interleaved", 0) == 1);  // Turn 0/1 into bool
 
   if (rotary_embedding_dim > 0) {
@@ -103,6 +100,30 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const Tensor* cos_cache = context->Input<Tensor>(1);
   const Tensor* sin_cache = context->Input<Tensor>(2);
   const Tensor* position_ids = context->Input<Tensor>(3);  // Optional, can be nullptr
+
+  std::unique_ptr<Tensor> default_position_ids_tensor;
+
+  if (nullptr == position_ids) {
+    // Get input shape info
+    const auto& input_shape = X->Shape();
+    int batch_size = static_cast<int>(input_shape[0]);
+    int sequence_length = static_cast<int>(input_shape[1]);
+
+    // Allocate tensor
+    AllocatorPtr allocator;
+    ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
+    TensorShape pos_shape({batch_size, sequence_length});
+    default_position_ids_tensor = std::make_unique<Tensor>(DataTypeImpl::GetType<int64_t>(), pos_shape, allocator);
+
+    // Fill with [0, 1, ..., sequence_length-1] for each batch
+    int64_t* pos_data = default_position_ids_tensor->MutableData<int64_t>();
+    for (int b = 0; b < batch_size; ++b) {
+      for (int s = 0; s < sequence_length; ++s) {
+        pos_data[b * sequence_length + s] = s;
+      }
+    }
+    position_ids = default_position_ids_tensor.get();
+  }
 
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(X,

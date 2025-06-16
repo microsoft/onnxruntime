@@ -45,13 +45,19 @@ static void RunTest(
   int hidden_size = num_heads * head_size;
   std::vector<int64_t> input_dims = {batch_size, sequence_length, hidden_size};
   std::vector<int64_t> pos_dims;
-  std::vector<int64_t> cache_dims = {max_sequence_length, rotary_embedding_dim > 0
-                                                              ? rotary_embedding_dim / 2
-                                                              : head_size / 2};
+
+  std::vector<int64_t> cache_dims;
+  if (position_ids.size() != 0) {
+    cache_dims = {max_sequence_length, rotary_embedding_dim > 0 ? rotary_embedding_dim / 2 : head_size / 2};
+  } else {
+    cache_dims = {batch_size, sequence_length, rotary_embedding_dim > 0 ? rotary_embedding_dim / 2 : head_size / 2};
+  }
 
   assert(hidden_size != 0 && head_size != 0 && num_heads != 0 && max_sequence_length != 0);
   assert(max_sequence_length >= sequence_length);
-  if (position_ids.size() == 1) {
+  if (position_ids.size() == 0) {
+    pos_dims = {};
+  } else if (position_ids.size() == 1) {
     pos_dims = {1};
   } else {
     pos_dims = {batch_size, sequence_length};
@@ -86,31 +92,43 @@ static void RunTest(
   }
 
   for (auto& ep : execution_providers) {
-    OpTester test(op_type.c_str(), 1, onnxruntime::kMSDomain);
+    OpTester test(op_type.c_str(), 23, onnxruntime::kOnnxDomain);
     test.AddAttribute<int64_t>("interleaved", interleaved);
+    test.AddAttribute<int64_t>("num_heads", num_heads);
 
     if (rotary_embedding_dim > 0) {
       test.AddAttribute<int64_t>("rotary_embedding_dim", rotary_embedding_dim);
-      test.AddAttribute<int64_t>("num_heads", num_heads);
     }
 
     if (tensor_type == TensorType::kFloat) {
       test.AddInput<float>("input", input_dims, input_data);
       test.AddInput<float>("cos_cache", cache_dims, cos_cache);
       test.AddInput<float>("sin_cache", cache_dims, sin_cache);
-      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      if (position_ids.size()) {
+        test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      } else {
+        test.AddOptionalInputEdge<int64_t>();
+      }
       test.AddOutput<float>("output", input_dims, output_data);
     } else if (tensor_type == TensorType::kFloat16) {
       test.AddInput<MLFloat16>("input", input_dims, ToFloat16(input_data));
       test.AddInput<MLFloat16>("cos_cache", cache_dims, ToFloat16(cos_cache));
       test.AddInput<MLFloat16>("sin_cache", cache_dims, ToFloat16(sin_cache));
-      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      if (position_ids.size()) {
+        test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      } else {
+        test.AddOptionalInputEdge<int64_t>();
+      }
       test.AddOutput<MLFloat16>("output", input_dims, ToFloat16(output_data));
     } else {
       test.AddInput<BFloat16>("input", input_dims, FloatsToBFloat16s(input_data));
       test.AddInput<BFloat16>("cos_cache", cache_dims, FloatsToBFloat16s(cos_cache));
       test.AddInput<BFloat16>("sin_cache", cache_dims, FloatsToBFloat16s(sin_cache));
-      test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      if (position_ids.size()) {
+        test.AddInput<int64_t>("position_ids", pos_dims, position_ids);
+      } else {
+        test.AddOptionalInputEdge<int64_t>();
+      }
       test.AddOutput<BFloat16>("output", input_dims, FloatsToBFloat16s(output_data));
     }
     if (tensor_type == TensorType::kBFloat16) {
@@ -707,6 +725,93 @@ TEST(RotaryEmbeddingTest, RotaryEmbedding_CustomRotaryDim_SmallData_Phi) {
            max_sequence_length,
            interleaved,
            true /*use_fp16*/);
+}
+
+TEST(RotaryEmbeddingTest, RotaryEmbedding_NotInterleaved_NoPosIds_SmallData_LlamaMSFT) {
+  int batch_size = 1;
+  int sequence_length = 2;
+  int num_heads = 3;
+  int head_size = 6;
+  int rotary_embedding_dim = 0;
+  int max_sequence_length = 4;
+  int64_t interleaved = 0;  // false
+
+  std::vector<float> input_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f, 1.0076f, -0.7529f,
+      -0.2250f, -0.4327f, -1.5071f, -0.4586f, -0.8663f, -0.2656f, 0.1665f, 0.7911f,
+      -0.9320f, -0.8579f, -1.0574f, -0.1188f, -0.9078f, 0.3452f, -0.5713f, -0.2351f,
+      -0.8480f, 0.5266f, -1.2944f, -0.0243f, -0.2354f, -0.7087f, -0.9647f, -0.0991f,
+      -0.2994f, -0.0650f, -1.5720f, -1.3211f};
+
+  std::vector<float> cos_cache = {
+      1.0000f, 1.0000f, 1.0000f, 0.5403f, 0.9989f, 1.0000f};
+
+  std::vector<float> sin_cache = {
+      0.0000f, 0.0000f, 0.0000f, 0.8415f, 0.0464f, 0.0022f};
+
+  std::vector<int64_t> position_ids = {};
+
+  std::vector<float> output_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -1.2188f, 1.1676f, 1.0076f, -0.7529f,
+      -0.2250f, -0.4327f, -1.5071f, -0.4586f, -0.8663f, -0.2656f, 0.1665f, 0.7911f,
+      -0.9320f, -0.8579f, -0.8618f, -0.0922f, -0.9073f, -0.7032f, -0.5762f, -0.2371f,
+      -0.4377f, 0.5370f, -1.2929f, -0.7267f, -0.2107f, -0.7115f, -0.4666f, -0.0261f,
+      -0.2965f, -0.8469f, -1.5749f, -1.3217f};
+
+  RunTests(input_data,
+           position_ids,
+           cos_cache,
+           sin_cache,
+           output_data,
+           batch_size,
+           sequence_length,
+           head_size,
+           rotary_embedding_dim,
+           num_heads,
+           max_sequence_length,
+           interleaved);
+}
+
+// Interleaved = true, pos ids = nullptr
+TEST(RotaryEmbeddingTest, RotaryEmbedding_Interleaved_NoPosIds_SmallData_LlamaMSFT) {
+  int batch_size = 1;
+  int sequence_length = 3;
+  int num_heads = 2;
+  int head_size = 4;
+  int rotary_embedding_dim = 0;
+  int max_sequence_length = 8;
+  int64_t interleaved = 1;  // true
+
+  std::vector<float> input_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -0.1320f, -0.2751f, -0.2350f, 0.0937f,
+      -1.2188f, 1.1676f, -1.0574f, -0.1188f, -0.7396f, -1.2425f, -0.1752f, 0.6990f,
+      -0.8110f, 0.6737f, -1.1233f, -0.0919f, -0.6861f, 0.7202f, 0.1963f, 0.6142f};
+
+  std::vector<float> cos_cache = {
+      1.0000f, 1.0000f, 0.5403f, 0.9999f, -0.4161f, 0.9998f};
+
+  std::vector<float> sin_cache = {
+      0.0000f, 0.0000f, 0.8415f, 0.0100f, 0.9093f, 0.0200f};
+
+  std::vector<float> output_data = {
+      -1.0408f, 0.9166f, -1.3042f, -1.1097f, -0.1320f, -0.2751f, -0.2350f, 0.0937f,
+      -1.6411f, -0.3948f, -1.0561f, -0.1294f, 0.6460f, -1.2937f, -0.1822f, 0.6972f,
+      -0.2751f, -1.0178f, -1.1212f, -0.1143f, -0.3694f, -0.9235f, 0.1840f, 0.6180f};
+
+  std::vector<int64_t> position_ids = {};
+
+  RunTests(input_data,
+           position_ids,
+           cos_cache,
+           sin_cache,
+           output_data,
+           batch_size,
+           sequence_length,
+           head_size,
+           rotary_embedding_dim,
+           num_heads,
+           max_sequence_length,
+           interleaved);
 }
 
 }  // namespace test
