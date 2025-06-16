@@ -72,12 +72,8 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
     if (internal_factory) {
       // this is a factory we created and registered. internal or provider bridge EP.
-      OrtStatus* status = internal_factory->CreateIExecutionProvider(
-          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep);
-
-      if (status != nullptr) {
-        return ToStatus(status);
-      }
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(internal_factory->CreateIExecutionProvider(
+          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep)));
     } else {
       // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
       // and we would add that IExecutionProvider to the InferenceSession.
@@ -85,13 +81,9 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
       /*
       OrtEp* api_ep = nullptr;
-      auto status = ep_device->ep_factory->CreateEp(
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
-          &ort_so, &api_session_logger, &api_ep);
-
-      if (status != nullptr) {
-        return ToStatus(status);
-      }
+          &ort_so, &api_session_logger, &api_ep)));
       */
     }
 
@@ -274,17 +266,18 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
 
   if (model_compile_options.InputModelComesFromFile()) {
     PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
-    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env,
-                                                               input_model_path.c_str(),
-                                                               nullptr, 0, session)));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                                         input_model_path.c_str(),
+                                                                         nullptr, 0, session)));
   } else {
-    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                               model_compile_options.GetInputModelData(),
-                                                               model_compile_options.GetInputModelDataSize(),
-                                                               session)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                         model_compile_options.GetInputModelData(),
+                                                         model_compile_options.GetInputModelDataSize(),
+                                                         session)));
   }
 
-  ORT_RETURN_IF_ERROR(ToStatus(InitializeSession(session_options, *session)));
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
   return Status::OK();
 }
 

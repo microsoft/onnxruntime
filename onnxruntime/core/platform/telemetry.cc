@@ -52,7 +52,11 @@ void Telemetry::LogEvaluationStart() const {
 void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                    const std::string& model_producer_version, const std::string& model_domain,
                                    const std::unordered_map<std::string, int>& domain_to_version_map,
+                                   const std::string& model_file_name,
                                    const std::string& model_graph_name,
+                                   const std::string& model_weight_type,
+                                   const std::string& model_graph_hash,
+                                   const std::string& model_weight_hash,
                                    const std::unordered_map<std::string, std::string>& model_metadata,
                                    const std::string& loadedFrom, const std::vector<std::string>& execution_provider_ids,
                                    bool use_fp16, bool captureState) const {
@@ -62,7 +66,11 @@ void Telemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, cons
   ORT_UNUSED_PARAMETER(model_producer_version);
   ORT_UNUSED_PARAMETER(model_domain);
   ORT_UNUSED_PARAMETER(domain_to_version_map);
+  ORT_UNUSED_PARAMETER(model_file_name);
   ORT_UNUSED_PARAMETER(model_graph_name);
+  ORT_UNUSED_PARAMETER(model_weight_type);
+  ORT_UNUSED_PARAMETER(model_graph_hash);
+  ORT_UNUSED_PARAMETER(model_weight_hash);
   ORT_UNUSED_PARAMETER(model_metadata);
   ORT_UNUSED_PARAMETER(loadedFrom);
   ORT_UNUSED_PARAMETER(execution_provider_ids);
@@ -79,10 +87,12 @@ void Telemetry::LogRuntimeError(uint32_t session_id, const common::Status& statu
   ORT_UNUSED_PARAMETER(line);
 }
 
-void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
+void Telemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
+                               std::unordered_map<int64_t, long long> duration_per_batch_size) const {
   ORT_UNUSED_PARAMETER(session_id);
   ORT_UNUSED_PARAMETER(total_runs_since_last);
   ORT_UNUSED_PARAMETER(total_run_duration_since_last);
+  ORT_UNUSED_PARAMETER(duration_per_batch_size);
 }
 
 void Telemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {

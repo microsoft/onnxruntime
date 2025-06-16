@@ -20,9 +20,6 @@
 
 namespace onnxruntime {
 namespace {
-// TODO(adrianlizarraga): Use better solution when PR 25036 is merged.
-using UniqueOrtStatus = std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)>;
-
 bool MatchesEpVendor(const OrtEpDevice* d) {
   // TODO: Would be better to match on Id. Should the EP add that in EP metadata?
   return d->device->vendor == d->ep_vendor;
@@ -286,23 +283,15 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
-    UniqueOrtStatus status(internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                                      info.devices.size(), &options, &logger,
-                                                                      &ep),
-                           OrtApis::ReleaseStatus);
-    if (status != nullptr) {
-      return ToStatus(status.get());
-    }
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
+                                                   info.devices.size(), &options, &logger,
+                                                   &ep)));
   } else {
     OrtEp* api_ep = nullptr;
-    UniqueOrtStatus status(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-                                                     info.devices.size(), &options, &logger,
-                                                     &api_ep),
-                           OrtApis::ReleaseStatus);
-    if (status != nullptr) {
-      return ToStatus(status.get());
-    }
-
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(),
+                                                                     info.ep_metadata.data(), info.devices.size(),
+                                                                     &options, &logger, &api_ep)));
     ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)));
   }
 

@@ -1346,6 +1346,10 @@ Graph::Graph(const Model& owning_model,
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
     }
 
+    if (tensor.has_data_type() && (tensor.data_type() < TensorProto_DataType_DataType_ARRAYSIZE)) {
+      weight_data_type_freq_[tensor.data_type()]++;
+    }
+
     if (ir_version_ < 4) {
       // initializers can have matching graph inputs but are treated as constant,
       // so we prefer the shape from the initializer

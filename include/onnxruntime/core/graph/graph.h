@@ -1539,6 +1539,8 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Graph);
 
+  int32_t weight_data_type_freq_[ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE] = {0};
+
  private:
   void InitializeStateFromModelFileGraphProto();
 
