@@ -21,8 +21,6 @@ class QDQOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
@@ -120,13 +118,22 @@ Status QDQOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   return Status::OK();
 }
 
-// Operator support related.
-bool QDQOpBuilder::IsOpSupportedImpl(const GraphViewer&,
-                                     const Node& node,
-                                     const WebnnDeviceType /* device_type */,
-                                     const logging::Logger& logger) const {
+bool QDQOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
+                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  const std::string_view op_type = node.OpType();
+  int32_t input0_type = 0;  // input data type
+  int32_t input1_type = 0;  // x_scale data type
+  int32_t input2_type = 0;  // x_zero_point data type
+  bool has_input2 = TensorExists(input_defs, 2);
 
+  if (!GetType(*input_defs[0], input0_type, logger) ||
+      !GetType(*input_defs[1], input1_type, logger) ||
+      (has_input2 && !GetType(*input_defs[2], input2_type, logger))) {
+    return false;
+  }
+
+  // inputs rank check
   std::vector<int64_t> input_shape;
   std::vector<int64_t> scale_shape;
 
@@ -149,25 +156,7 @@ bool QDQOpBuilder::IsOpSupportedImpl(const GraphViewer&,
     }
   }
 
-  return true;
-}
-
-bool QDQOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
-                                          const emscripten::val& wnn_limits, const logging::Logger& logger) const {
-  const auto& input_defs = node.InputDefs();
-  const std::string_view op_type = node.OpType();
-  int32_t input0_type = 0;  // input data type
-  int32_t input1_type = 0;  // x_scale data type
-  int32_t input2_type = 0;  // x_zero_point data type
-  bool has_input2 = TensorExists(input_defs, 2);
-
-  if (!GetType(*input_defs[0], input0_type, logger) ||
-      !GetType(*input_defs[1], input1_type, logger) ||
-      (has_input2 && !GetType(*input_defs[2], input2_type, logger))) {
-    return false;
-  }
-
-  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "x", logger) &&
          IsDataTypeSupportedByOp(op_type, input1_type, wnn_limits, "scale", "x_scale", logger) &&
          (!has_input2 || IsDataTypeSupportedByOp(op_type, input2_type, wnn_limits, "zeroPoint", "x_zero_point", logger));
 }

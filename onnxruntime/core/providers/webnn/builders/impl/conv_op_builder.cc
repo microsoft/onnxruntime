@@ -448,7 +448,8 @@ bool ConvOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     // we only need to ensure it supports the input0_type.
     return IsDataTypeSupportedByOp("DequantizeLinear", input0_type, wnn_limits, "input", "x", logger);
   } else {
-    return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+    // Directly check inputs for `Conv` & `ConvTranspose` onnx op type
+    return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
   }
 }
 

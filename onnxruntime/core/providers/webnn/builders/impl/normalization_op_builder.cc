@@ -361,7 +361,8 @@ bool NormalizationOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const No
     }
     return true;
   } else {
-    return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+    // for the rest normalization ops, we could directly check inputs rank with common function
+    return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
   }
 }
 

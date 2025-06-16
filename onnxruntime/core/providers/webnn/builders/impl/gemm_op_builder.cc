@@ -268,7 +268,10 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  if (op_type == "MatMulInteger") {
+  // common op inputs check for `Gemm` onnx op type, could also consider to hard-coding `input.size == 2` here
+  if (op_type == "Gemm") {
+    return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
+  } else if (op_type == "MatMulInteger") {
     // The first decomposed op of MatMulInteger is DequantizeLinear, and so
     // we only need to ensure it supports the input0_type.
     return IsDataTypeSupportedByOp("DequantizeLinear", input0_type, wnn_limits, "input", "x", logger);
