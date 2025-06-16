@@ -20,8 +20,6 @@ class GatherOpBuilder : public BaseOpBuilder {
                                const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
   // Operator support related.
-  bool IsOpSupportedImpl(const GraphViewer&, const Node& node,
-                         const WebnnDeviceType /* device_type */, const logging::Logger& logger) const override;
   bool HasSupportedInputsImpl(const GraphViewer&, const Node& node,
                               const emscripten::val& wnn_limits, const logging::Logger& logger) const override;
 };
