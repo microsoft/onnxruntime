@@ -3326,8 +3326,10 @@ ORT_API_STATUS_IMPL(OrtApis::GetMIGraphXProviderOptionsAsString,
 ORT_API(void, OrtApis::ReleaseMIGraphXProviderOptions, _Frees_ptr_opt_ OrtMIGraphXProviderOptions* ptr) {
 #ifdef USE_MIGRAPHX
   std::unique_ptr<OrtMIGraphXProviderOptions> p(ptr);
+  OrtAllocator* allocator;
+  GetAllocatorWithDefaultOptions(&allocator);
   if(ptr->migraphx_cache_dir != nullptr) {
-    onnxruntime::AllocatorDefaultFree(const_cast<char*>(ptr->migraphx_cache_dir));
+    allocator->Free(allocator, const_cast<char*>(ptr->migraphx_cache_dir));
   }
 #else
   ORT_UNUSED_PARAMETER(ptr);
