@@ -1325,12 +1325,15 @@ endif()
   # shared lib
   if (onnxruntime_BUILD_SHARED_LIB)
     if(WIN32)
-        AddTest(DYN
-                TARGET onnxruntime_shared_lib_dlopen_test
-                SOURCES ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/dlopen_main.cc
-                LIBS onnxruntime
-                DEPENDS ${all_dependencies}
-        )
+      onnxruntime_add_executable(onnxruntime_shared_lib_dlopen_test ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/dlopen_main.cc)
+      add_dependencies(onnxruntime_shared_lib_dlopen_test ${all_dependencies} onnxruntime)
+      add_test(NAME onnxruntime_shared_lib_dlopen_test COMMAND onnxruntime_shared_lib_dlopen_test WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
+      set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES FOLDER "ONNXRuntimeTest")
+
+      if (MSVC)
+        # set VS debugger working directory to the test program's directory
+        set_target_properties(onnxruntime_shared_lib_dlopen_test PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY $<TARGET_FILE_DIR:onnxruntime_shared_lib_dlopen_test>)
+      endif()
     endif()
     onnxruntime_add_static_library(onnxruntime_mocked_allocator ${TEST_SRC_DIR}/util/test_allocator.cc)
     target_include_directories(onnxruntime_mocked_allocator PUBLIC ${TEST_SRC_DIR}/util/include)

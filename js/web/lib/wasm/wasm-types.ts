@@ -39,6 +39,7 @@ export declare namespace JSEP {
   ) => Promise<MLTensor>;
   type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
   type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+  type RegisterMLTensorFunction = (sessionId: number, mlContext: MLContext) => void;
 
   export interface Module extends WebGpuModule, WebNnModule {
     /**
@@ -71,6 +72,7 @@ export declare namespace JSEP {
         ensureTensor: EnsureTensorFunction,
         uploadTensor: UploadTensorFunction,
         downloadTensor: DownloadTensorFunction,
+        registerMLTensor: RegisterMLTensorFunction,
         enableTraceEvent: boolean,
       ],
     ): void;

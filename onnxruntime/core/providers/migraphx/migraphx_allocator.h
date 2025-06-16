@@ -14,8 +14,9 @@ class MIGraphXAllocator : public IAllocator {
   MIGraphXAllocator(const int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device_id)),
-                          device_id, OrtMemTypeDefault)) {}
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                          OrtMemTypeDefault)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
@@ -54,8 +55,9 @@ class MIGraphXPinnedAllocator final : public IAllocator {
   MIGraphXPinnedAllocator(const int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HIP_PINNED, static_cast<OrtDevice::DeviceId>(device_id)),
-                          device_id, OrtMemTypeCPUOutput)) {}
+                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;

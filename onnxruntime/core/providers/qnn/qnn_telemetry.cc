@@ -55,7 +55,6 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
 #include "core/providers/qnn/ort_api.h"
-#include <unordered_map>
 
 namespace onnxruntime {
 namespace qnn {
@@ -67,7 +66,7 @@ uint32_t QnnTelemetry::global_register_count_ = 0;
 bool QnnTelemetry::enabled_ = true;
 UCHAR QnnTelemetry::level_ = 0;
 UINT64 QnnTelemetry::keyword_ = 0;
-std::unordered_map<std::string, QnnTelemetry::EtwInternalCallback> QnnTelemetry::callbacks_;
+std::vector<const QnnTelemetry::EtwInternalCallback*> QnnTelemetry::callbacks_;
 std::mutex QnnTelemetry::callbacks_mutex_;
 #endif  // !BUILD_QNN_EP_STATIC_LIB
 
@@ -158,21 +157,25 @@ void QnnTelemetry::LogQnnProfileEvent(uint64_t timestamp,
       TraceLoggingString(eventIdentifier, "Event Identifier"));
 }
 
-void QnnTelemetry::RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {
+void QnnTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_QNN_EP_STATIC_LIB
-  WindowsTelemetry::RegisterInternalCallback(cb_key, std::move(callback));
+  WindowsTelemetry::RegisterInternalCallback(callback);
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.insert_or_assign(cb_key, std::move(callback));
+  callbacks_.push_back(&callback);
 #endif
 }
 
-void QnnTelemetry::UnregisterInternalCallback(const std::string& cb_key) {
+void QnnTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
 #if BUILD_QNN_EP_STATIC_LIB
-  WindowsTelemetry::UnregisterInternalCallback(cb_key);
+  WindowsTelemetry::UnregisterInternalCallback(callback);
 #else
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  callbacks_.erase(cb_key);
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 #endif
 }
 
@@ -185,12 +188,10 @@ void NTAPI QnnTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
-  {
-    std::lock_guard<std::mutex> lock(provider_change_mutex_);
-    enabled_ = (IsEnabled != 0);
-    level_ = Level;
-    keyword_ = MatchAnyKeyword;
-  }
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
+  enabled_ = (IsEnabled != 0);
+  level_ = Level;
+  keyword_ = MatchAnyKeyword;
 
   InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
@@ -199,9 +200,8 @@ void QnnTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR Leve
                                    ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                    PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  for (const auto& entry : callbacks_) {
-    const auto& cb = entry.second;
-    cb(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+  for (const auto& callback : callbacks_) {
+    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 #endif  // !BUILD_QNN_EP_STATIC_LIB

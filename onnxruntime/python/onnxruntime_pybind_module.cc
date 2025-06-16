@@ -7,6 +7,7 @@
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
+#include "core/session/environment.h"
 #include "core/session/ort_env.h"
 #include "core/session/inference_session.h"
 #include "core/session/provider_bridge_ort.h"
@@ -21,6 +22,8 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     const ProviderOptionsMap& provider_options_map);
 bool InitArray();
 static OrtEnv* ort_env = nullptr;
+static OrtThreadingOptions global_tp_options;
+static bool use_global_tp = false;
 onnxruntime::Environment& GetEnv() {
   return ort_env->GetEnvironment();
 }
@@ -32,7 +35,7 @@ static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
   Status status;
-  ort_env = OrtEnv::GetInstance(lm_info, status);
+  ort_env = OrtEnv::GetInstance(lm_info, status, use_global_tp ? &global_tp_options : nullptr);
   if (!status.IsOK()) return status;
   // Keep the ort_env alive, don't free it. It's ok to leak the memory.
 #if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
@@ -42,6 +45,17 @@ static Status CreateOrtEnv() {
   }
 #endif
   return Status::OK();
+}
+
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options) {
+  if (ort_env != nullptr) {
+    OrtPybindThrowIfError(GetEnv().SetGlobalThreadingOptions(tp_options));
+  }
+  global_tp_options = tp_options;
+  use_global_tp = true;
+}
+bool CheckIfUsingGlobalThreadPool() {
+  return use_global_tp;
 }
 
 namespace py = pybind11;
