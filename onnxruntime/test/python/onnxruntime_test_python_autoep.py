@@ -227,6 +227,7 @@ class TestAutoEP(AutoEpTestCase):
 
         # Test adding this EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
+        sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
 
         self.unregister_execution_provider_library(ep_name)
 
