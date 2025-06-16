@@ -50,7 +50,16 @@ Status SaveInitializerOrtFormat(flatbuffers::FlatBufferBuilder& builder,
     string_data = builder.CreateVectorOfStrings(string_data_vec);
   } else {
     std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+    // We can not convert this in place, because the session may be used
+    // after the model was saved in ort format. If the session is continued to be used, then
+    // we continue with initializers in memory with wrong endianess
+    if constexpr (endian::native != endian::little) {
+      auto be_copy{initializer};
+      onnxruntime::utils::ConvertRawDataInTensorProto(be_copy);
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(be_copy, model_path, unpacked_tensor));
+    } else {
+      ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, model_path, unpacked_tensor));
+    }
 
     if (external_writer && unpacked_tensor.size() >= kMinimumSizeForExternalData) {
       // write bytes to external buffer/file and record offset for the start of the data

@@ -96,7 +96,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #if defined(_WIN32)
-  std::string callback_ETWSink_key_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
   bool dump_json_qnn_graph_ = false;

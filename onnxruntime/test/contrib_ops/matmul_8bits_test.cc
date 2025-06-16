@@ -159,6 +159,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
     test.AddOptionalInputEdge<uint8_t>();
   }
 
+  // Account for deprecated "g_idx" input
   test.AddOptionalInputEdge<int32_t>();
 
   if (bias.has_value()) {
@@ -284,11 +285,52 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
 }
 
+TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
+  // At the time of writing these tests, Fp32 activations + 8 bit weights + Accuracy level 1
+  // do not have MLAS optimized kernels on any platform and hence this will use the "unpacked"
+  // compute mode (i.e.) de-quantize the 8 bit weights to fp32 and invoke vanilla fp32 Gemm
+  // in MLAS. This test helps keep that path tested.
+  TestMatMul8BitsTyped<float, 1, 1, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 2, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 32, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 4, 32, 16, 1>();
+  TestMatMul8BitsTyped<float, 2, 4, 32, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 4, 64, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 32, 16, 128, 1>();
+  TestMatMul8BitsTyped<float, 1, 256, 32, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 1024, 16, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 1024, 128, 1>();
+  TestMatMul8BitsTyped<float, 2, 288, 1024, 128, 1>();
+  TestMatMul8BitsTyped<float, 1, 40, 576, 32, 1>();
+  TestMatMul8BitsTyped<float, 2, 40, 576, 32, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 93, 32, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 93, 128, 1>();
+  TestMatMul8BitsTyped<float, 1, 288, 1234, 16, 1>();
+  TestMatMul8BitsTyped<float, 2, 1, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 2, 2, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 1, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 2, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 32, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 32, 32, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 32, 16, 128, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 16, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 1024, 16, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 1024, 128, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 192, 64, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 93, 32, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 93, 128, 1>();
+  TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 1>();
+  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 1>();
+}
+
 #if defined(USE_CUDA) || defined(USE_WEBGPU)
 TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
   constexpr float abs_error = 0.055f;
   constexpr float rel_error = 0.02f;
   TestMatMul8BitsTyped<MLFloat16, 2, 4, 32, 16, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 64, 32, 32, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 100, 128, 128, 32, 4>(abs_error, rel_error);
   TestMatMul8BitsTyped<MLFloat16, 199, 40, 576, 32, 4>(abs_error, rel_error);
 }
 #endif

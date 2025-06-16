@@ -251,10 +251,10 @@ Status GetMinimalBuildOptimizationHandling(
 }  // namespace
 
 std::atomic<uint32_t> InferenceSession::global_session_id_{1};
+std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
 #ifdef _WIN32
 std::mutex InferenceSession::active_sessions_mutex_;  // Protects access to active_sessions_
-std::map<uint32_t, InferenceSession*> InferenceSession::active_sessions_;
-const std::string InferenceSession::callback_etw_provider_key_{"InferenceSessionML_ORT_provider"};
+onnxruntime::WindowsTelemetry::EtwInternalCallback InferenceSession::callback_ML_ORT_provider_;
 #endif
 
 static Status FinalizeSessionOptions(const SessionOptions& user_provided_session_options,
@@ -375,6 +375,7 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   session_id_ = global_session_id_.fetch_add(1);
 
   SetLoggingManager(session_options, session_env);
+
   // The call to InitLogger depends on the final state of session_options_. Hence it should be invoked
   // after the invocation of FinalizeSessionOptions.
   InitLogger(logging_manager_);  // this sets session_logger_ so that it can be used for logging after this point.
@@ -507,43 +508,87 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
   telemetry_ = {};
 
 #ifdef _WIN32
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  active_sessions_[session_id_] = this;
 
-  {
-    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-    auto result = active_sessions_.insert_or_assign(session_id_, this);
-    ORT_ENFORCE(result.second, "active_sessions has not been cleaned up for session_id", session_id_);
-  }
+  // Register callback for ETW capture state (rundown) for Microsoft.ML.ONNXRuntime provider
+  callback_ML_ORT_provider_ = onnxruntime::WindowsTelemetry::EtwInternalCallback(
+      [](LPCGUID SourceId,
+         ULONG IsEnabled,
+         UCHAR Level,
+         ULONGLONG MatchAnyKeyword,
+         ULONGLONG MatchAllKeyword,
+         PEVENT_FILTER_DESCRIPTOR FilterData,
+         PVOID CallbackContext) {
+        (void)SourceId;
+        (void)Level;
+        (void)MatchAnyKeyword;
+        (void)MatchAllKeyword;
+        (void)FilterData;
+        (void)CallbackContext;
+        ORT_UNUSED_PARAMETER(SourceId);
+        ORT_UNUSED_PARAMETER(Level);
+        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+        ORT_UNUSED_PARAMETER(MatchAllKeyword);
+        ORT_UNUSED_PARAMETER(FilterData);
+        ORT_UNUSED_PARAMETER(CallbackContext);
 
-  WindowsTelemetry::RegisterInternalCallback(callback_etw_provider_key_, EtwProviderCallbackLogAllSessions);
-
-  // If the __ctor does not finish for some reason, make sure that we still unregister
-  // whatever has been registered.
-  auto_etw_unregistrar_.emplace([this]() { UnregisterEtwCallbacks(); });
+        // Check if this callback is for capturing state
+        if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
+            ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
+          InferenceSession::LogAllSessions();
+        }
+      });
+  WindowsTelemetry::RegisterInternalCallback(callback_ML_ORT_provider_);
 
   // Register callback for ETW start / stop so that LOGS tracing can be adjusted dynamically after session start
-  callback_etw_sink_key_ = "InferenceSession_Start_Stop_";
-  callback_etw_sink_key_.append(std::to_string(session_id_));
   auto& etwRegistrationManager = logging::EtwRegistrationManager::Instance();
+  callback_ETWSink_provider_ = onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback(
+      [&etwRegistrationManager, this](LPCGUID SourceId,
+                                      ULONG IsEnabled,
+                                      UCHAR Level,
+                                      ULONGLONG MatchAnyKeyword,
+                                      ULONGLONG MatchAllKeyword,
+                                      PEVENT_FILTER_DESCRIPTOR FilterData,
+                                      PVOID CallbackContext) {
+        ORT_UNUSED_PARAMETER(SourceId);
+        ORT_UNUSED_PARAMETER(Level);
+        ORT_UNUSED_PARAMETER(MatchAnyKeyword);
+        ORT_UNUSED_PARAMETER(MatchAllKeyword);
+        ORT_UNUSED_PARAMETER(FilterData);
+        ORT_UNUSED_PARAMETER(CallbackContext);
+
+        if (logging_manager_ != nullptr) {
+          auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
+
+          if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
+              IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
+            LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+            logging_manager_->AddSinkOfType(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
+            onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
+                onnxruntime::logging::SinkType::EtwSink,
+                []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
+                ortETWSeverity);
+            LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
+          }
+          if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
+            LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
+            logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
+            LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
+          }
+        }
+      });
 
   // Register callback for ETW capture state (rundown)
-  etwRegistrationManager.RegisterInternalCallback(callback_etw_sink_key_,
-                                                  [&etwRegistrationManager, this](
-                                                      LPCGUID SourceId,
-                                                      ULONG IsEnabled,
-                                                      UCHAR Level,
-                                                      ULONGLONG MatchAnyKeyword,
-                                                      ULONGLONG MatchAllKeyword,
-                                                      PEVENT_FILTER_DESCRIPTOR FilterData,
-                                                      PVOID CallbackContext) {
-                                                    EtwProviderSinkControlCallback(etwRegistrationManager, SourceId, IsEnabled, Level,
-                                                                                   MatchAnyKeyword, MatchAllKeyword, FilterData,
-                                                                                   CallbackContext);
-                                                  });
+  etwRegistrationManager.RegisterInternalCallback(callback_ETWSink_provider_);
+
 #endif
 }
 
-void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState,
-                                           const logging::Logger& logger) {
+void InferenceSession::TraceSessionOptions(const SessionOptions& session_options, bool captureState, const logging::Logger& logger) {
   ORT_UNUSED_PARAMETER(captureState);  // Otherwise Linux build error
 
   LOGS(logger, INFO) << session_options;
@@ -691,6 +736,18 @@ InferenceSession::~InferenceSession() {
       LOGS(*session_logger_, ERROR) << "Unknown error during EndProfiling()";
     }
   }
+
+  // Unregister the session and ETW callbacks
+#ifdef _WIN32
+  std::lock_guard<std::mutex> lock(active_sessions_mutex_);
+  if (callback_ML_ORT_provider_ != nullptr) {
+    WindowsTelemetry::UnregisterInternalCallback(callback_ML_ORT_provider_);
+  }
+  if (callback_ETWSink_provider_ != nullptr) {
+    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_ETWSink_provider_);
+  }
+#endif
+  active_sessions_.erase(session_id_);
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   if (session_activity_started_)
@@ -1300,7 +1357,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                       std::move(cpu_allocator), debug_graph_fn));
@@ -1673,6 +1730,131 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+[[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
+  std::string data_type_list;
+
+  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
+    if (graph.weight_data_type_freq_[i] > 0) {
+      if (!data_type_list.empty()) {
+        data_type_list += ", ";
+      }
+      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += ": ";
+      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+    }
+  }
+
+  return data_type_list;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
+  std::size_t hash = 0;
+  std::hash<std::string> hasher;
+  const uint64_t golden_ratio = 0x9e3779b9;
+
+  /*
+    Combine the current string's hash into the final hash using a mixing function.
+    The mixing function ensures that the order of the string affects the final hash
+    and reduces the likelihood of hash collisions.
+    Here's the breakdown:
+    - hasher(string): The hash of the current string being processed.
+    - 0x9e3779b9: A constant derived from the golden ratio, often used in hash functions
+                  to improve distribution and reduce collisions.
+    - (prev_hash << 6) + (prev_hash >> 2): A bitwise operation that shifts the bits to
+                                           introduce additional entropy.
+  */
+
+  hash = hasher(string) + golden_ratio + (prev_hash << 6) + (prev_hash >> 2);
+  return hash;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Graph Hash
+  const auto& nodes = graph.Nodes();
+  const std::size_t total_nodes = graph.NumberOfNodes();
+  const std::size_t node_step = (total_nodes > node_hash_count) ? (total_nodes / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& node : nodes) {
+    if (index % node_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each node component using GetStringHash
+    final_hash = GetStringHash(node.Name(), final_hash);
+    final_hash = GetStringHash(node.OpType(), final_hash);
+    final_hash = GetStringHash(node.Domain(), final_hash);
+
+    // Hash the input definitions
+    for (const auto& input : node.InputDefs()) {
+      if (input->Exists()) {
+        final_hash = GetStringHash(input->Name(), final_hash);
+      }
+    }
+
+    // Hash the output definitions
+    for (const auto& output : node.OutputDefs()) {
+      if (output->Exists()) {
+        final_hash = GetStringHash(output->Name(), final_hash);
+      }
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Weight Hash
+  const size_t total_initializers = initializers.size();
+  const size_t initializer_step = (total_initializers > node_hash_count) ? (total_initializers / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& [tensor_name, tensor] : initializers) {
+    if (index % initializer_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each tensor component using GetStringHash
+    final_hash = GetStringHash(tensor_name, final_hash);
+
+    if (tensor->has_data_type()) {
+      final_hash = GetStringHash(std::to_string(tensor->data_type()), final_hash);
+    }
+
+    if (tensor->has_raw_data()) {
+      final_hash = GetStringHash(tensor->raw_data(), final_hash);
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
 common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
   if (prepacked_weights_container == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -1716,7 +1898,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
         [](Graph& graph_to_transform, bool& modified,
            const IExecutionProvider& execution_provider,
            const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       return layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                          std::move(cpu_allocator), debug_graph_fn);
     };
@@ -1749,8 +1931,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
     const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep,
-    concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    concurrency::ThreadPool* intra_op_thread_pool) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
@@ -1758,7 +1939,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
         static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep, logger,
-        optimizers_to_disable, intra_op_thread_pool, p_buffered_tensors);
+        optimizers_to_disable, intra_op_thread_pool);
 
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
@@ -1838,10 +2019,11 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
-      if (utils::HasExternalData(*it.second)) {
+      if (utils::HasExternalData(*it.second) && !utils::HasExternalDataInMemory(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
                               "Initializer tensors with external data is not allowed.");
       }
@@ -1883,6 +2065,23 @@ common::Status InferenceSession::Initialize() {
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
+#endif
+    // Generate and cache telemetry data for the model when caller framework is WinAI
+    std::string model_weight_type, model_graph_hash, model_weight_hash;
+#ifdef ORT_CALLER_FRAMEWORK
+    if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
+      InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+#if !defined(ORT_MINIMAL_BUILD)
+      model_weight_type = ModelWeightDataType(graph);
+      SetWeightDataType(model_weight_type);
+#endif
+#ifdef _WIN32
+      model_graph_hash = ComputeModelGraphHash(graph);
+      model_weight_hash = ComputeModelWeightHash(initializers);
+      SetGraphHash(model_graph_hash);
+      SetWeightHash(model_weight_hash);
+#endif
+    }
 #endif
 
     // now that we have all the execution providers, create the session state
@@ -2193,8 +2392,7 @@ common::Status InferenceSession::Initialize() {
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep, GetIntraOpThreadPoolToUse(),
-                                                  session_state_->GetMutableBufferedTensors()));
+                                                  cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -2267,14 +2465,17 @@ common::Status InferenceSession::Initialize() {
     session_state_->PruneRemovableAttributes();
 
     // and log telemetry
+    std::filesystem::path model_path = graph.ModelPath();
+    std::string model_file_name = model_path.filename().string();
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
+
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -2460,6 +2661,7 @@ common::Status InferenceSession::ValidateInputsOutputs(gsl::span<const std::stri
       }
     } else if (input_output_ml_value.IsSparseTensor()) {
 #if !defined(DISABLE_SPARSE_TENSORS)
+
       const SparseTensor& sparse_tensor = input_output_ml_value.Get<SparseTensor>();
       if (expected_type->IsSparseTensorType()) {
         auto expected_element_type = expected_type->AsSparseTensorType()->GetElementType();
@@ -2670,7 +2872,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
-  TimePoint tp;
+  TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
@@ -2838,18 +3040,40 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  int64_t batch_size = 1;
+  for (const auto& feed : feeds) {
+    if (!feed.IsTensor()) {
+      continue;
+    }
+
+    const Tensor& tensor = feed.Get<Tensor>();
+    const TensorShape& shape = tensor.Shape();
+    if (shape.NumDimensions() > 0) {
+      batch_size = shape[0];  // Extract batch size
+    }
+    // Exit the loop after finding the first tensor since subsequent feeds will have the same batch size.
+    break;
+  }
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
+  {
+    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    ++telemetry_.total_runs_since_last_;
+    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
+      // send the telemetry
+      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                telemetry_.total_run_duration_since_last_,
+                                                telemetry_.duration_per_batch_size_);
+      // reset counters
+      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+      telemetry_.total_runs_since_last_ = 0;
+      telemetry_.total_run_duration_since_last_ = 0;
+      telemetry_.duration_per_batch_size_.clear();
+    }
   }
 
   // log evaluation stop to trace logging provider
@@ -3228,19 +3452,22 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
     }
 
     // Shrink if it is an arena based allocator
-    auto alloc = session_state_->GetAllocator(OrtDevice(device_type, memory_type, device_id));
-
-    if (alloc == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Did not find an arena based allocator registered for device-id ",
-                             " combination in the memory arena shrink list: ", device_id_pair);
+    // Iterate through the registered allocators as we could have multiple allocators for the device+type
+    // if they differ by vendor_id.
+    for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
+      if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
+        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+          arenas_to_shrink.push_back(allocator_ptr);
+          break;
+        }
+      }
     }
 
-    if (alloc->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The registered allocator for device-id ",
-                             " combination is not an arena based allocator: ", device_id_pair);
+    if (arenas_to_shrink.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Did not find an arena based allocator registered for device-id ",
+                             "combination in the memory arena shrink list: ", device_id_pair);
     }
-
-    arenas_to_shrink.push_back(std::move(alloc));
   }
 
   return Status::OK();
@@ -3397,8 +3624,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         if (use_full_build_optimizations) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse(),
-                                                       session_state_->GetMutableBufferedTensors());
+                                                       GetIntraOpThreadPoolToUse());
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
@@ -3409,8 +3635,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       logger,
                                                                       optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse(),
-                                                                      session_state_->GetMutableBufferedTensors());
+                                                                      GetIntraOpThreadPoolToUse());
         }
       }();
 
@@ -3462,32 +3687,6 @@ IOBinding* SessionIOBinding::Get() {
 }
 
 #ifdef _WIN32
-
-void InferenceSession::UnregisterEtwCallbacks() {
-  if (!callback_etw_sink_key_.empty()) {
-    logging::EtwRegistrationManager::Instance().UnregisterInternalCallback(callback_etw_sink_key_);
-  }
-  WindowsTelemetry::UnregisterInternalCallback(callback_etw_provider_key_);
-  {
-    std::lock_guard<std::mutex> lock(active_sessions_mutex_);
-    active_sessions_.erase(session_id_);
-  }
-}
-
-void InferenceSession::EtwProviderCallbackLogAllSessions(LPCGUID /* SourceId */,
-                                                         ULONG IsEnabled,
-                                                         UCHAR /* Level */,
-                                                         ULONGLONG MatchAnyKeyword,
-                                                         ULONGLONG /* MatchAllKeyword */,
-                                                         PEVENT_FILTER_DESCRIPTOR /* FilterData */,
-                                                         PVOID /* CallbackContext */) {
-  // Check if this callback is for capturing state
-  if ((IsEnabled == EVENT_CONTROL_CODE_CAPTURE_STATE) &&
-      ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)) != 0)) {
-    InferenceSession::LogAllSessions();
-  }
-}
-
 void InferenceSession::LogAllSessions() {
   const Env& env = Env::Default();
 
@@ -3501,45 +3700,22 @@ void InferenceSession::LogAllSessions() {
 
     auto model = session->model_;
     if (nullptr != model) {
-      const onnxruntime::Graph& graph = model->MainGraph();
-      const bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      onnxruntime::Graph& graph = model->MainGraph();
+      std::filesystem::path model_path = graph.ModelPath();
+      std::string model_file_name = model_path.filename().string();
+      bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      std::string model_weight_type = session->GetWeightDataType();
+      std::string model_graph_hash = session->GetGraphHash();
+      std::string model_weight_hash = session->GetWeightHash();
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
-          graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
-          session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+          graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);
   }
 }
-
-void InferenceSession::EtwProviderSinkControlCallback(logging::EtwRegistrationManager& etwRegistrationManager,
-                                                      LPCGUID, ULONG IsEnabled, UCHAR, ULONGLONG MatchAnyKeyword,
-                                                      ULONGLONG, PEVENT_FILTER_DESCRIPTOR, PVOID) {
-  if (logging_manager_ != nullptr) {
-    auto ortETWSeverity = etwRegistrationManager.MapLevelToSeverity();
-
-    if ((MatchAnyKeyword & static_cast<ULONGLONG>(onnxruntime::logging::ORTTraceLoggingKeyword::Logs)) != 0 &&
-        IsEnabled == EVENT_CONTROL_CODE_ENABLE_PROVIDER) {
-      LOGS(*session_logger_, VERBOSE) << "Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-      logging_manager_->AddSinkOfType(
-          onnxruntime::logging::SinkType::EtwSink,
-          []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
-          ortETWSeverity);
-      onnxruntime::logging::LoggingManager::GetDefaultInstance()->AddSinkOfType(
-          onnxruntime::logging::SinkType::EtwSink,
-          []() -> std::unique_ptr<onnxruntime::logging::ISink> { return std::make_unique<onnxruntime::logging::EtwSink>(); },
-          ortETWSeverity);
-      LOGS(*session_logger_, INFO) << "Done Adding ETW Sink to logger with severity level: " << (ULONG)ortETWSeverity;
-    }
-    if (IsEnabled == EVENT_CONTROL_CODE_DISABLE_PROVIDER) {
-      LOGS(*session_logger_, INFO) << "Removing ETW Sink from logger";
-      logging_manager_->RemoveSink(onnxruntime::logging::SinkType::EtwSink);
-      LOGS(*session_logger_, VERBOSE) << "Done Removing ETW Sink from logger";
-    }
-  }
-}
-
 #endif
 
 }  // namespace onnxruntime

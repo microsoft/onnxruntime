@@ -127,7 +127,7 @@ struct ReadDataForBigEndian {
 // If BE, we a allocate memory within the tensor and copy there swapping bytes
 [[maybe_unused]] static Status CreateOrtValueForBePlatforms(const Parameter& param, const MLDataType elem_type,
                                                             gsl::span<const int64_t> shape, OrtValue& result) {
-  static const AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+  static const AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
 
   auto src_span = ReinterpretAsSpan<const unsigned char>(
       gsl::make_span<const uint8_t>(param.raw_data()->data(), param.raw_data()->size()));

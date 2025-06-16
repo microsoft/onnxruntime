@@ -46,7 +46,8 @@ using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::logging;
 namespace {
 // Check if cycle exists in the graph after partitioning
-bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
+bool FindCycleHelper(size_t i, gsl::span<const InlinedVector<size_t>> adjacency_map, gsl::span<bool> visited, gsl::span<bool> st,
+                     InlinedVector<size_t>& cycles) {
   if (!visited[i]) {
     visited[i] = true;
     st[i] = true;
@@ -263,7 +264,6 @@ struct ShutdownProtobuf {
 } g_protobuf;
 
 namespace onnxruntime {
-
 namespace cuda {
 template <>
 void Impl_Cast(
@@ -1332,7 +1332,7 @@ std::vector<nvinfer1::PreviewFeature> ParseTrtPreviewFeatures(const std::string&
 
 TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kTensorrtExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
@@ -2204,28 +2204,22 @@ SubGraphCollection_t TensorrtExecutionProvider::GetSupportedList(SubGraphCollect
         // subgraph's output list
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
+          // Initializers that refer to a memory location in OrtValue
+          // can not be handled by TRT (unlike those that are on disk).
+          // This prevents us from sharing the data and we have to make a copy here.
+          constexpr const bool load_initializers_inline_true = true;
           const auto& node = graph.GetNode(node_index[index]);
           std::vector<onnxruntime::NodeArg*> inputs, outputs;
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
@@ -2471,7 +2465,7 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
 
     // Create adjacency list
     size_t graph_size = node_to_index_map.size();
-    std::list<size_t>* adjacency_map = new std::list<size_t>[graph_size];
+    std::vector<InlinedVector<size_t>> adjacency_map(graph_size);
     for (const auto& node : node_to_outputs_map) {
       for (auto iter = node.second.begin(); iter != node.second.end(); ++iter) {
         const auto& loc = input_to_nodes_map.find(*iter);
@@ -2486,14 +2480,14 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
     }
 
     // Check cycle in the graph
-    bool* visited = new bool[graph_size];
-    bool* st = new bool[graph_size];
+    InlinedVector<bool> visited(graph_size);
+    InlinedVector<bool> st(graph_size);
     for (size_t i = 0; i < graph_size; ++i) {
       visited[i] = false;
       st[i] = false;
     }
 
-    std::vector<size_t> cycles;
+    InlinedVector<size_t> cycles;
     bool has_cycle = false;
     for (size_t i = 0; i < graph_size; ++i) {
       if (FindCycleHelper(i, adjacency_map, visited, st, cycles)) {
@@ -2514,10 +2508,6 @@ bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& 
         }
       }
     }
-
-    delete[] adjacency_map;
-    delete[] visited;
-    delete[] st;
   }
   return cycle_detected;
 }
@@ -3638,8 +3628,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     bool context_update = false;
     std::unordered_set<std::string> input_names;
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -4315,8 +4306,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(con
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -4522,8 +4514,11 @@ void TensorrtExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegis
 }
 
 OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     0 /*CPU device id always be 0*/);
   return default_device_;
 }
 
