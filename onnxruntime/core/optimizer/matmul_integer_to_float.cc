@@ -170,13 +170,18 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
 
     // Find bias node
     Node* p_add_node = nullptr;
+    int idx = 0;
     if (optimizer_utils::CheckOutputEdges(graph, mul_node, 1)) {
       const Node* tmp_add_node = graph_utils::FirstChildByType(mul_node, "Add");
       if (nullptr != tmp_add_node) {
-        const NodeArg& tmp_add_node_B = *(tmp_add_node->InputDefs()[1]);
-        if (graph_utils::IsConstantInitializer(graph, tmp_add_node_B.Name(), true) &&
-            CheckBiasShape(tmp_add_node_B.Shape())) {
-          p_add_node = graph.GetNode(tmp_add_node->Index());
+        // check both "inputs" to find bias, caters for edge case where bias index in InputDefs is not what is expected
+        for (idx = 0; idx < 2; ++idx) {
+          const NodeArg& candidate = *(tmp_add_node->InputDefs()[idx]);
+          if (graph_utils::IsConstantInitializer(graph, candidate.Name(), true) &&
+              CheckBiasShape(candidate.Shape())) {
+              p_add_node = graph.GetNode(tmp_add_node->Index());
+              break;
+          }
         }
       }
     }
@@ -203,7 +208,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
 
     if (p_add_node != nullptr) {
-      input_defs.push_back(p_add_node->MutableInputDefs()[1]);
+    input_defs.push_back(p_add_node->MutableInputDefs()[idx]);
     }
 
     std::string op_type = "MatMulIntegerToFloat";

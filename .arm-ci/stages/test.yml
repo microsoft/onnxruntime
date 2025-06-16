@@ -4,7 +4,7 @@
 # SPDX-License-Identifier: MIT
 #
 
-test_release_ubuntu:
+test_release_ubuntu_mlas:
   extends:
     - .default_settings
     - .default_settings_test
@@ -18,6 +18,23 @@ test_release_ubuntu:
   artifacts:
     paths:
       - build/Linux/Release/report.xml
+    expire_in: 1h
+
+test_release_ubuntu_ort_testall:
+  extends:
+    - .default_settings
+    - .default_settings_test
+  stage: test
+  image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
+  needs:
+    - job: build_release_ubuntu
+      artifacts: true
+  script:
+    - cd build/Linux/Release && ./onnxruntime_test_all --gtest_output=xml:report_all.xml
+  allow_failure: true
+  artifacts:
+    paths:
+      - build/Linux/Release/report_all.xml
     expire_in: 1h
 
 # test_debug_ubuntu:
@@ -37,7 +54,7 @@ test_release_ubuntu:
 #     expire_in: 1h
 
 
-test_release_mac:
+test_release_mac_mlas:
   extends:
     - .mac_common
   stage: test
@@ -48,10 +65,26 @@ test_release_mac:
       artifacts: true
   script:
     - cd build/MacOS/Release/Release && ./onnxruntime_mlas_test --gtest_output=xml:report.xml
-  allow_failure: true
   artifacts:
     paths:
       - build/MacOS/Release/Release/report.xml
+    expire_in: 1h
+
+test_release_mac_ort_testall:
+  extends:
+    - .mac_common
+  stage: test
+  tags:
+    - mac-mini
+  needs:
+    - job: mac_release_build
+      artifacts: true
+  script:
+    - cd build/MacOS/Release/Release && ./onnxruntime_test_all --gtest_output=xml:report_all.xml
+  allow_failure: true
+  artifacts:
+    paths:
+      - build/MacOS/Release/Release/report_all.xml
     expire_in: 1h
 
 # test_debug_mac:

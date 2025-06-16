@@ -1,5 +1,8 @@
+//
 // SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
-// Licensed under the MIT License.
+//
+// SPDX-License-Identifier: MIT
+//
 
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p16vlx1b_1x16vl_sme2_mla.h"
 #include "kai/ukernels/matmul/matmul_clamp_f32_f32_f32p/kai_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla.h"
@@ -153,12 +156,23 @@ ARMKleidiAI::MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
+
     if (M == 0 || N == 0 || K == 0) {
         //no computation to do
         return;
     }
 
+    const bool GEMV = (N == 1) &&        // GEMV target case
+                      (M >= 64) &&       // enough rows to make it worth packing A
+                      (K >= 16 && K <= 1024); // K not too small or too large
+
     if (TransA == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+
+        if(GEMV)
+        {
+            MlasGemmBatch_SME2_N1(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        }
+
         const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t sr = kai_get_sr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
@@ -273,17 +287,67 @@ ARMKleidiAI::MlasGemmBatch(
                 NIdx * n_step * sizeof(float)
             );
 
-            kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
+                kai_run_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa(
                 TileSizeM,
                 TileSizeN,
                 K,
                 ATile, BTile, CTile,
                 Data[BIdx].ldc * sizeof(float), sizeof(float),
                 -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-            );
+                );
         });
+    }
 
-    } else {
+
+    else {
         throw ARMKleidiAI::NotSupported();
     }
+}
+
+inline void MLASCALL
+ARMKleidiAI::MlasGemmBatch_SME2_N1(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+)
+{
+    const size_t nr = kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
+    const size_t kr = kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
+    const size_t sr = kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
+
+    const size_t packed_rhs_size = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(M, K);
+
+    // Ensure packed_rhs_size is 64-byte aligned
+    const size_t aligned_size = (packed_rhs_size + 63) & ~size_t(63);
+
+    // Allocate shared packed buffer once
+    std::unique_ptr<void, decltype(&std::free)> packed_A(
+        std::aligned_alloc(64, aligned_size), &std::free
+    );
+
+    std::vector<float> bias(M, 0.0f);
+
+    MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
+        const float* A = static_cast<const float*>(Data[batch_idx].A);  // [M x K]
+        const float* B = static_cast<const float*>(Data[batch_idx].B);  // [K x 1]
+        float* C = static_cast<float*>(Data[batch_idx].C);              // [M x 1]
+
+        kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(
+            1, M, K, nr, kr, sr, K,
+            A, bias.data(),
+            nullptr, packed_A.get(), 0, nullptr
+        );
+
+        kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla(
+            1, M, K,
+            B, 1, packed_A.get(), C,
+            0, 0,
+            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
+        );
+    });
 }

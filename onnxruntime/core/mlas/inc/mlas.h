@@ -632,6 +632,40 @@ MlasGemm(
     MlasGemmBatch(Shape, &DataParams, 1, ThreadPool);
 }
 
+struct MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS {
+    size_t M = 0;                  /**< Supplies the row size of matrix A */
+    size_t N = 0;                  /**< Supplies the column size of matrix B */
+    size_t K = 0;                  /**< Supplies the column size of matrix A and row size of matrix B */
+};
+
+struct MLAS_GEMM_DYN_QUANT_DATA_PARAMS {
+    const float* A = nullptr;
+    size_t lda = 0;
+    const void* PackedB = 0;
+    size_t ldb = 0;
+    float *C = nullptr;
+    size_t ldc = 0;
+};
+
+void
+MLASCALL
+MlasDynamicQGemmBatch (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+inline void
+MlasDynamicQGemm (
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    MLAS_THREADPOOL* ThreadPool
+) {
+    MlasDynamicQGemmBatch(Shape, DataParams, 1, ThreadPool);
+}
+
+
 //
 // Symmetric QGEMM has limited buffer overrun.
 // Currently only supported in ARM64
@@ -752,6 +786,26 @@ MlasSymmQgemmPackB(
     int32_t ZeroPointA,
     void* PackedB
     );
+
+
+size_t
+MLASCALL
+MlasDynamicQgemmPackBSize(
+    size_t N,
+    size_t K
+);
+
+void
+MLASCALL
+MlasDynamicQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
+    void* PackedB
+);
+
 
 //
 // Convolution routines.

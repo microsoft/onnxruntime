@@ -1,5 +1,8 @@
+//
 // SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
-// Licensed under the MIT License.
+//
+// SPDX-License-Identifier: MIT
+//
 
 #pragma once
 
@@ -8,6 +11,7 @@
 namespace ARMKleidiAI {
 
 class NotSupported : public std::exception{};
+
 
 #if (defined(USE_KLEIDIAI) && (defined(__aarch64__) || defined(__APPLE__))) && !defined(_MSVC_LANG)
 
@@ -29,6 +33,7 @@ class NotSupported : public std::exception{};
 #define kai_check_if_supported(check)
 
 #endif
+
 
 //
 // Buffer packing routines.
@@ -65,6 +70,47 @@ MlasGemmBatch(
     size_t K,
     const MLAS_SGEMM_DATA_PARAMS* Data,
     size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+void MLASCALL
+MlasGemmBatch_SME2_N1(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool
+);
+
+size_t
+MLASCALL
+MlasDynamicQgemmPackBSize(
+    size_t N,
+    size_t K
+);
+
+void
+MLASCALL
+MlasDynamicQgemmPackB(
+    size_t N,
+    size_t K,
+    const int8_t* B,
+    const float* Scales,
+    const float* Bias,
+    void* PackedB
+);
+
+
+//pack symmetric quantized B and dynamic quantized A
+void
+MLASCALL
+MlasDynamicQGemmBatch(
+    const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
+    const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
+    const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
     );
 

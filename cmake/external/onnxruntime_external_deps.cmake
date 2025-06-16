@@ -1,3 +1,6 @@
+# Copyright (c) Microsoft Corporation. All rights reserved.
+# Licensed under the MIT License.
+
 message(STATUS "Loading Dependencies URLs ...")
 
 include(external/helper_functions.cmake)

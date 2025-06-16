@@ -35,7 +35,7 @@ Abstract:
 #endif
 #endif  // MLAS_NO_EXCEPTION
 
-#include "mlas.h"
+#include "core/mlas/inc/mlas.h"
 
 #if defined(_WIN32)
 #ifndef WIN32_LEAN_AND_MEAN
@@ -118,9 +118,8 @@ Abstract:
 
 #ifdef MLAS_NO_EXCEPTION
 
-MLAS_FORCEINLINE
-void
-MlasPrintFinalMessage(const std::string& msg)
+MLAS_FORCEINLINE void
+    MlasPrintFinalMessage(const std::string& msg)
 {
 #if defined(__ANDROID__)
     __android_log_print(ANDROID_LOG_ERROR, "mlas", "%s", msg.c_str());
@@ -133,6 +132,7 @@ MlasPrintFinalMessage(const std::string& msg)
     std::cerr << msg << std::endl;
 #endif
 }
+
 
 #define MLAS_THROW_EX(ex, what)     \
     do {                            \
