@@ -208,17 +208,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   // create thread pools
   if (create_global_thread_pools) {
-    create_global_thread_pools_ = true;
-    OrtThreadPoolParams to = tp_options->intra_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("intra-op");
-    }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-    to = tp_options->inter_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("inter-op");
-    }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+    ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
 
   ORT_TRY {
@@ -343,6 +333,24 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
+}
+
+Status Environment::SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options) {
+  if (create_global_thread_pools_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Global thread pools have already been created, cannot replace them");
+  }
+  create_global_thread_pools_ = true;
+  OrtThreadPoolParams to = tp_options.intra_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("intra-op");
+  }
+  intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  to = tp_options.inter_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("inter-op");
+  }
+  inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+  return Status::OK();
 }
 
 Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info,
