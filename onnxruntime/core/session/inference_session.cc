@@ -2268,7 +2268,8 @@ common::Status InferenceSession::Initialize() {
           onnxruntime::kRocmExecutionProvider,
           onnxruntime::kJsExecutionProvider,
           onnxruntime::kWebGpuExecutionProvider,
-          onnxruntime::kDmlExecutionProvider};
+          onnxruntime::kDmlExecutionProvide,
+          onnxruntime::kNvTensorRTRTXExecutionProvider};
 
       for (auto& it : graph_support_ep_list) {
         auto* target_ep = execution_providers_.Get(it);
