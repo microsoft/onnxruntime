@@ -24,9 +24,9 @@ struct ModelEditorValueInfo : public OrtValueInfo {
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and ModelEditorValueInfo.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, ModelEditorValueInfo, OrtGraphIrApi::kModelEditorApi)
 
-  const std::string& Name() const override { return name; }
+  const std::string& GetName() const override { return name; }
 
-  const OrtTypeInfo* TypeInfo() const override { return type_info.get(); }
+  const OrtTypeInfo* GetTypeInfo() const override { return type_info.get(); }
 
   Status GetProducerInfo(ProducerInfo& /*producer_info*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
@@ -43,35 +43,38 @@ struct ModelEditorValueInfo : public OrtValueInfo {
                            "OrtModelEditorApi does not support getting the number of consumers for a OrtValueInfo");
   }
 
-  Status GetInitializerValue(const OrtValue*& value) const override {
-    if (!IsInitializer()) {
-      value = nullptr;
-      return Status::OK();
-    }
+  Status GetInitializerValue(const OrtValue*& /*value*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the initializer value for a OrtValueInfo");
   }
 
-  bool IsGraphInput() const override {
-    return is_graph_input;
+  Status IsRequiredGraphInput(bool& /*is_required_graph_input*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support querying if a graph input is required for OrtValueInfo");
   }
 
-  bool IsGraphOutput() const override {
-    return is_graph_output;
+  Status IsOptionalGraphInput(bool& /*is_optional_graph_input*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support querying if OrtValueInfo is an optional graph input.");
   }
 
-  bool IsInitializer() const override {
-    return false;  // ModelEditorApi doesn't currently create OrtValueInfo objects for initializers.
+  Status IsGraphOutput(bool& /*is_graph_output*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support querying if a OrtValueInfo is a graph output.");
   }
 
-  bool IsFromOuterScope() const override {
-    return false;  // ModelEditorApi doesn't currently create subgraphs.
+  Status IsConstantInitializer(bool& /*is_const_initializer*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support querying if a OrtValueInfo is a constant initializer.");
+  }
+
+  Status IsFromOuterScope(bool& /*is_outer_scope*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support querying if a OrtValueInfo is defined in an outer scope.");
   }
 
   std::string name;
   std::unique_ptr<OrtTypeInfo> type_info;
-  bool is_graph_input = false;
-  bool is_graph_output = false;
 };
 
 /// <summary>
@@ -83,39 +86,30 @@ struct ModelEditorNode : public OrtNode {
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and ModelEditorNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, ModelEditorNode, OrtGraphIrApi::kModelEditorApi)
 
-  size_t Id() const override { return id; }
+  size_t GetId() const override { return id; }
 
-  const std::string& Name() const override { return node_name; }
+  const std::string& GetName() const override { return node_name; }
 
-  const std::string& OpType() const override { return operator_name; }
+  const std::string& GetOpType() const override { return operator_name; }
 
-  const std::string& Domain() const override { return domain_name; }
+  const std::string& GetDomain() const override { return domain_name; }
 
   Status GetSinceVersion(int& /*since_version*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting an OrtNode's opset version");
   }
 
-  size_t NumInputs() const override { return input_names.size(); }
-
-  size_t NumOutputs() const override { return output_names.size(); }
-
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& /*inputs*/) const override {
+  Status GetInputs(const OrtConstPointerArray*& /*inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting input OrtValueInfos for OrtNode");
   }
 
-  Status GetOutputs(InlinedVector<const OrtValueInfo*>& /*outputs*/) const override {
+  Status GetOutputs(const OrtConstPointerArray*& /*outputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
 
-  Status GetNumImplicitInputs(size_t& /*num_implicit_inputs*/) const override {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "OrtModelEditorApi does not support getting the number of implicit inputs for OrtNode");
-  }
-
-  Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& /*inputs*/) const override {
+  Status GetImplicitInputs(const OrtConstPointerArray*& /*implicit_inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
   }
@@ -159,48 +153,30 @@ struct ModelEditorGraph : public OrtGraph {
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and ModelEditorGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, ModelEditorGraph, OrtGraphIrApi::kModelEditorApi)
 
-  const std::string& Name() const override { return name; }
+  const std::string& GetName() const override { return name; }
 
-  int64_t OnnxIRVersion() const override {
+  int64_t GetOnnxIRVersion() const override {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }
 
-  size_t NumInputs() const override { return inputs.size(); }
-
-  size_t NumOutputs() const override { return outputs.size(); }
-
-  size_t NumInitializers() const override { return initializers.size() + external_initializers.size(); }
-
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& result) const override {
-    result.resize(inputs.size());
-    for (size_t i = 0; i < inputs.size(); i++) {
-      result[i] = inputs[i]->ToExternal();
-    }
-    return Status::OK();
-  }
-
-  Status GetOutputs(InlinedVector<const OrtValueInfo*>& result) const override {
-    result.resize(outputs.size());
-    for (size_t i = 0; i < outputs.size(); i++) {
-      result[i] = outputs[i]->ToExternal();
-    }
-    return Status::OK();
-  }
-
-  Status GetInitializers(std::vector<const OrtValueInfo*>& /*initializers*/) const override {
+  Status GetInputs(const OrtConstPointerArray*& /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "OrtModelEditorApi does not support getting the OrtValueInfos for initializers");
+                           "OrtModelEditorApi does not support getting the graph inputs.");
   }
 
-  size_t NumNodes() const override { return nodes.size(); }
+  Status GetOutputs(const OrtConstPointerArray*& /*result*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph outputs.");
+  }
 
-  std::vector<const OrtNode*> GetNodes() const override {
-    std::vector<const OrtNode*> result;
-    result.reserve(nodes.size());
-    for (const auto& n : nodes) {
-      result.push_back(n.get());
-    }
-    return result;
+  Status GetInitializers(const OrtConstPointerArray*& /*result*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph initializers.");
+  }
+
+  Status GetNodes(const OrtConstPointerArray*& /*result*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph nodes.");
   }
 
   Status GetParentNode(const OrtNode*& /*parent_node*/) const override {

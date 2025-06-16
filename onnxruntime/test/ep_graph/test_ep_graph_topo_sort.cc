@@ -1,11 +1,13 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <gsl/gsl>
 #include <functional>
 #include <gtest/gtest.h>
 #include <string_view>
 #include <vector>
 
+#include "core/common/common.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
 #include "test/ep_graph/test_ep_graph_utils.h"
@@ -45,13 +47,18 @@ struct VisitorPriorityQueue {
 static Ort::Status GetNodeInputEdgeCount(const OrtNode* node, size_t& num_input_edges) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  const size_t num_inputs = ort_api.Node_NumInputs(node);
-  std::vector<const OrtValueInfo*> inputs(num_inputs, nullptr);
-  RETURN_IF_API_ERROR(ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
+  const OrtConstPointerArray* inputs = nullptr;
+  RETURN_IF_API_ERROR(ort_api.Node_GetInputs(node, &inputs));
+
+  size_t num_inputs = 0;
+  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(inputs, &num_inputs));
 
   // Sum the number of inputs with a producer node.
   num_input_edges = 0;
-  for (const OrtValueInfo* input : inputs) {
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    const OrtValueInfo* input = nullptr;
+    RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetElementAt(inputs, i, reinterpret_cast<const void**>(&input)));
     if (input == nullptr) continue;  // Skip missing optional input
 
     const OrtNode* producer_node = nullptr;
@@ -66,15 +73,19 @@ static Ort::Status GetNodeInputEdgeCount(const OrtNode* node, size_t& num_input_
 static Ort::Status GetOutputNodes(const OrtNode* node, std::vector<const OrtNode*>& result) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  const size_t num_outputs = ort_api.Node_NumOutputs(node);
-  std::vector<const OrtValueInfo*> outputs(num_outputs, nullptr);
-  RETURN_IF_API_ERROR(ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
+  const OrtConstPointerArray* outputs = nullptr;
+  RETURN_IF_API_ERROR(ort_api.Node_GetOutputs(node, &outputs));
+
+  size_t num_outputs = 0;
+  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(outputs, &num_outputs));
 
   std::vector<const OrtNode*> output_nodes;
   output_nodes.reserve(num_outputs);  // May have more than `num_outputs`
 
   // Gather the OrtNode consumers of every output.
-  for (const OrtValueInfo* output : outputs) {
+  for (size_t i = 0; i < num_outputs; ++i) {
+    const OrtValueInfo* output = nullptr;
+    RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetElementAt(outputs, i, reinterpret_cast<const void**>(&output)));
     if (output == nullptr) continue;  // Skip missing optional output
 
     size_t num_consumers = 0;
@@ -102,14 +113,22 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   const OrtApi& ort_api = Ort::GetApi();
 
   // Get all nodes
-  const size_t num_nodes = ort_api.Graph_NumNodes(&graph);
-  std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size()));
+  const OrtConstPointerArray* nodes_array = nullptr;
+  size_t num_nodes = 0;
+  const void* const* nodes_raw_data = nullptr;
+
+  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, &nodes_array));
+  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
+  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetData(nodes_array, &nodes_raw_data));
+
+  auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_raw_data), num_nodes);
 
   // Get the maximum node ID. Not really required if we chose to represent the `in_degree` as a map instead of vector.
   size_t max_node_id = 0;
-  for (const OrtNode* node : nodes) {
-    max_node_id = std::max(max_node_id, ort_api.Node_Id(node));
+  for (const OrtNode* node : nodes_span) {
+    size_t node_id = 0;
+    RETURN_IF_API_ERROR(ort_api.Node_GetId(node, &node_id));
+    max_node_id = std::max(max_node_id, node_id);
   }
 
   std::vector<size_t> in_degree(max_node_id + 1, 0);
@@ -119,37 +138,47 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   topo_order.reserve(num_nodes);
 
   // Initialize in_degree and initial nodes to visit first.
-  for (const OrtNode* node : nodes) {
+  for (const OrtNode* node : nodes_span) {
     size_t input_edge_count = 0;
     RETURN_IF_API_ERROR(GetNodeInputEdgeCount(node, input_edge_count));
-    in_degree[ort_api.Node_Id(node)] = input_edge_count;
+
+    size_t node_id = 0;
+    RETURN_IF_API_ERROR(ort_api.Node_GetId(node, &node_id));
+
+    in_degree[node_id] = input_edge_count;
     if (input_edge_count == 0) {
       to_visit.push(node);
     }
   }
 
   while (!to_visit.empty()) {
-    const OrtNode* current = to_visit.top();
+    const OrtNode* current_node = to_visit.top();
     to_visit.pop();
 
-    if (!current) continue;
+    if (!current_node) continue;
 
     if (enter) {
-      enter(current);
+      enter(current_node);
     }
 
     std::vector<const OrtNode*> output_nodes;
-    GetOutputNodes(current, output_nodes);
+    GetOutputNodes(current_node, output_nodes);
 
     for (const OrtNode* output_node : output_nodes) {
-      auto& node_in_degree = in_degree[ort_api.Node_Id(output_node)];
+      size_t output_node_id = 0;
+      RETURN_IF_API_ERROR(ort_api.Node_GetId(output_node, &output_node_id));
+
+      auto& node_in_degree = in_degree[output_node_id];
       node_in_degree--;
 
       if (node_in_degree == 0) {
         to_visit.push(output_node);
       }
     }
-    topo_order.push_back(ort_api.Node_Id(current));
+
+    size_t current_node_id = 0;
+    RETURN_IF_API_ERROR(ort_api.Node_GetId(current_node, &current_node_id));
+    topo_order.push_back(current_node_id);
   }
 
   if (num_nodes != topo_order.size()) {
@@ -166,8 +195,11 @@ struct PriorityNodeCompare {
     static constexpr std::string_view shape_op("Shape");
     static constexpr std::string_view size_op("Size");
 
-    const std::string_view op_type = Ort::GetApi().Node_OperatorType(n);
-    return op_type == shape_op || op_type == size_op;
+    const char* op_type = nullptr;
+    Ort::Status status(Ort::GetApi().Node_GetOperatorType(n, &op_type));
+    ORT_ENFORCE(status.IsOK());
+
+    return shape_op == op_type || size_op == op_type;
   }
 
   // Used for std::priority_queue
@@ -189,7 +221,15 @@ struct PriorityNodeCompare {
     }
 
     // otherwise, nodes with lower index will be output first
-    return Ort::GetApi().Node_Id(n1) > Ort::GetApi().Node_Id(n2);
+    size_t n1_id = 0;
+    Ort::Status status1(Ort::GetApi().Node_GetId(n1, &n1_id));
+    ORT_ENFORCE(status1.IsOK());
+
+    size_t n2_id = 0;
+    Ort::Status status2(Ort::GetApi().Node_GetId(n2, &n2_id));
+    ORT_ENFORCE(status2.IsOK());
+
+    return n1_id > n2_id;
   }
 };
 
@@ -201,8 +241,12 @@ TEST(EpGraphTest, BasicKahnTopoSort) {
   std::vector<size_t> api_nodes_topo_sort_with_priority;
   Ort::Status status(KahnsTopologicalSort(
       test_graph->GetOrtGraph(),
-      [&](const OrtNode* n) {
-        api_nodes_topo_sort_with_priority.push_back(Ort::GetApi().Node_Id(n));
+      [&](const OrtNode* node) {
+        size_t node_id = 0;
+        Ort::Status status(Ort::GetApi().Node_GetId(node, &node_id));
+        ORT_ENFORCE(status.IsOK());
+
+        api_nodes_topo_sort_with_priority.push_back(node_id);
       },
       PriorityNodeCompare()));
   ASSERT_TRUE(status.IsOK()) << status.GetErrorMessage();

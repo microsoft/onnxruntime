@@ -147,6 +147,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // We now require the OrtEp to only provide individual groups of supported nodes that each maps to exactly
       // one ComputeCapability. Calling utils::CreateSupportedPartitions() may create multiple ComputeCapability
       // instances, and if so, log an error and return.
+      //
+      // TODO(adrianlizarraga): Do not use the heavy-weight CreateSupportedPartitions just to check if the user
+      // provided a single partition. Use utils::MakeCapability() and create a new helper to check that there are no
+      // unsupported nodes in any path between supported nodes.
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
           this->Type(), this->Type(), /*node_unit_map*/ nullptr);
@@ -158,9 +162,18 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
         return {};
       }
 
-      for (auto& capability : capabilities) {
-        result.push_back(std::move(capability));
-      }
+      // Enforce that the nodes in node_set match the nodes in capabilities[0]
+      // TODO(adrianlizarraga): This check can be removed when we stop using utils::CreateSupportedPartitions() above.
+      std::vector<NodeIndex>& capability_node_indices = capabilities[0]->sub_graph->nodes;
+      std::unordered_set<NodeIndex> capability_node_indices_set(capability_node_indices.begin(),
+                                                                capability_node_indices.end());
+
+      ORT_ENFORCE(node_set.size() == capability_node_indices_set.size());
+      ORT_ENFORCE(std::all_of(node_set.begin(), node_set.end(), [&capability_node_indices_set](const Node* node) {
+        return capability_node_indices_set.count(node->Index()) != 0;
+      }));
+
+      result.push_back(std::move(capabilities[0]));
     } else {
       LOGS_DEFAULT(ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "
                           << static_cast<int>(node_grouping.kind);
@@ -169,13 +182,6 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
   }
 
   return result;
-}
-
-PluginExecutionProvider::FusedNodeState& PluginExecutionProvider::PushFusedNodeState(size_t num_fused_nodes) {
-  fused_node_states_.push_back(FusedNodeState());
-  FusedNodeState& fused_node_state = fused_node_states_.back();
-  fused_node_state.nodes.reserve(num_fused_nodes);
-  return fused_node_state;
 }
 
 Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node) {
@@ -194,8 +200,13 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
   std::vector<const OrtGraph*> api_graphs;
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos(num_graphs, nullptr);
   std::vector<const OrtNode*> api_fused_nodes;
-  FusedNodeState& fused_node_state = PushFusedNodeState(num_graphs);
 
+  // Push a new FusedNodeState to store the EpNode instances that we'll create to wrap the original fused nodes.
+  // Fused nodes must be valid throughout model inference because they may be cached in NodeComputeInfo instances.
+  fused_node_states_.push_back(FusedNodeState());
+  FusedNodeState& fused_node_state = fused_node_states_.back();
+
+  fused_node_state.nodes.reserve(num_graphs);
   api_graphs_holder.reserve(num_graphs);
   api_graphs.reserve(num_graphs);
   api_fused_nodes.reserve(num_graphs);
@@ -238,9 +249,9 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     NodeComputeInfo compute_info;
     compute_info.create_state_func = [api_node_compute_info, logger](ComputeContext* context,
                                                                      FunctionState* compute_state) -> int {
-      UniqueOrtStatus status(api_node_compute_info->CreateComputeState(api_node_compute_info,
-                                                                       reinterpret_cast<OrtNodeComputeContext*>(context),
-                                                                       compute_state),
+      UniqueOrtStatus status(api_node_compute_info->CreateState(api_node_compute_info,
+                                                                reinterpret_cast<OrtNodeComputeContext*>(context),
+                                                                compute_state),
                              OrtApis::ReleaseStatus);
       const bool success = status == nullptr;
       if (!success) {
@@ -251,7 +262,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     };
 
     compute_info.release_state_func = [api_node_compute_info](FunctionState compute_state) -> void {
-      api_node_compute_info->DestroyComputeState(api_node_compute_info, compute_state);
+      api_node_compute_info->ReleaseState(api_node_compute_info, compute_state);
     };
 
     compute_info.compute_func = [api_node_compute_info](FunctionState compute_state,

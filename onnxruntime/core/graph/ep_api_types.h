@@ -12,6 +12,7 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
+#include "core/framework/abi_pointer_array.h"
 #include "core/framework/allocator.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
@@ -27,10 +28,11 @@ struct EpValueInfo : public OrtValueInfo {
  public:
   enum Flags {
     kFlagNone = 0,
-    kIsGraphInput = 1 << 0,
-    kIsGraphOutput = 1 << 1,
-    kIsInitializer = 1 << 2,
-    kIsOuterScope = 1 << 3,
+    kIsRequiredGraphInput = 1 << 0,
+    kIsOptionalGraphInput = 1 << 1,
+    kIsGraphOutput = 1 << 2,
+    kIsConstantInitializer = 1 << 3,
+    kIsOuterScope = 1 << 4,
   };
 
   EpValueInfo(const EpGraph* graph, const std::string& name, std::unique_ptr<OrtTypeInfo>&& type_info,
@@ -39,36 +41,54 @@ struct EpValueInfo : public OrtValueInfo {
   // Defines ToExternal() and ToInternal() functions to convert between OrtValueInfo and EpValueInfo.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtValueInfo, EpValueInfo, OrtGraphIrApi::kEpApi)
 
-  const std::string& Name() const override { return name_; }
+  //
+  // Publicly accessible overrides defined by OrtValueInfo.
+  //
 
-  const OrtTypeInfo* TypeInfo() const override { return type_info_.get(); }
+  // Returns the value's name in the graph.
+  const std::string& GetName() const override { return name_; }
 
+  // Returns the value's type information, which includes both type and shape.
+  const OrtTypeInfo* GetTypeInfo() const override { return type_info_.get(); }
+
+  // Gets the information (OrtNode and output index) about the node that produces this value.
   Status GetProducerInfo(OrtValueInfo::ProducerInfo& producer_info) const override;
 
+  // Gets information (OrtNode and input index) about the consumer nodes that use this value as an input.
+  // An OrtNode instance may appear multiple times if it uses the value as an input more than once (e.g., Mul(x, x)).
+  // The input index is set to -1 if the consumer node uses the value as an "implicit input".
   Status GetConsumerInfos(std::vector<OrtValueInfo::ConsumerInfo>& consumer_infos) const override;
 
+  // Gets the number of ConsumerInfo instances that will be returned by GetConsumerInfos.
   Status GetNumConsumerInfos(size_t& num_consumers) const override;
 
+  // Gets the initializer OrtValue associated with this OrtValueInfo. Returns nullptr if this does not
+  // represent an initializer (either constant or non-constant).
   Status GetInitializerValue(const OrtValue*& value) const override;
 
-  bool IsGraphInput() const override {
-    return IsFlagSet(kIsGraphInput);
-  }
+  // Check if this value is a required graph input.
+  Status IsRequiredGraphInput(bool& is_required_graph_input) const override;
 
-  bool IsGraphOutput() const override {
-    return IsFlagSet(kIsGraphOutput);
-  }
+  // Check if this value is an optional graph input.
+  Status IsOptionalGraphInput(bool& is_optional_graph_input) const override;
 
-  bool IsInitializer() const override {
-    return IsFlagSet(kIsInitializer);
-  }
+  // Check if this value is a graph output.
+  Status IsGraphOutput(bool& is_graph_output) const override;
 
-  bool IsFromOuterScope() const override {
-    return IsFlagSet(kIsOuterScope);
-  }
+  // Check if this value is a constant initializer.
+  Status IsConstantInitializer(bool& is_const_initializer) const override;
 
+  // Check if this value is defined in an outer scope (i.e., an outer graph).
+  Status IsFromOuterScope(bool& is_outer_scope) const override;
+
+  //
+  // Helper functions used when working directly with an EpValueInfo.
+  //
+
+  // Helper to set a flag.
   void SetFlag(EpValueInfo::Flags flag) { flags_ |= flag; }
 
+  // Helper to check if a flag is set.
   bool IsFlagSet(EpValueInfo::Flags flag) const { return flags_ & flag; }
 
  private:
@@ -116,40 +136,57 @@ struct EpNode : public OrtNode {
   // Defines ToExternal() and ToInternal() functions to convert between OrtNode and EpNode.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtNode, EpNode, OrtGraphIrApi::kEpApi)
 
-  size_t Id() const override;
+  //
+  // Publicly accessible overrides defined by OrtNode.
+  //
 
-  const std::string& Name() const override;
+  // Returns the node's ID (i.e., NodeIndex).
+  size_t GetId() const override;
 
-  const std::string& OpType() const override;
+  // Returns the node's name.
+  const std::string& GetName() const override;
 
-  const std::string& Domain() const override;
+  // Returns the node's operator type (e.g., "Conv").
+  const std::string& GetOpType() const override;
 
+  // Returns the node's domain name.
+  const std::string& GetDomain() const override;
+
+  // Gets the opset version in which this node's operator was first defined.
   Status GetSinceVersion(int& since_version) const override;
 
-  size_t NumInputs() const override;
+  // Gets the node's inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  Status GetInputs(const OrtConstPointerArray*& inputs) const override;
 
-  size_t NumOutputs() const override;
+  // Gets the node's outputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  Status GetOutputs(const OrtConstPointerArray*& outputs) const override;
 
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+  // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  Status GetImplicitInputs(const OrtConstPointerArray*& inputs) const override;
 
-  Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
-
-  Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
-
-  Status GetImplicitInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
-
+  // Gets the number of subgraphs contained by this node (e.g., if this node is an If or Loop).
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
+  // Gets the subgraphs contained by this node.
   Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
 
+  // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
 
+  //
+  // Helper functions used when working directly with an EpNode.
+  //
+
+  // Returns the internal onnxruntime::Node& that this OrtNode wraps.
   const Node& GetInternalNode() const { return node_; }
 
+  // Helper that retuns this node's inputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetInputsSpan() const;
 
+  // Helper that returns this node's implicit inputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetImplicitInputsSpan() const;
 
+  // Helper that retuns this node's outputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
 
  private:
@@ -158,12 +195,11 @@ struct EpNode : public OrtNode {
   // (e.g., OrtNode instances created for fused nodes in OrtEp::Compile()).
   const EpGraph* ep_graph_ = nullptr;
   const Node& node_;
-  InlinedVector<EpValueInfo*> inputs_;
-  InlinedVector<EpValueInfo*> outputs_;
 
-  // Storing data related to implicit inputs and subgraphs in std::vector instead of InlinedVector
-  // because sizeof(InlinedVector) > sizeof(std::vector) and most nodes will *NOT* have this data.
-  std::vector<EpValueInfo*> implicit_inputs_;
+  OrtConstPointerArray inputs_;
+  OrtConstPointerArray outputs_;
+
+  OrtConstPointerArray implicit_inputs_;
   std::vector<SubgraphState> subgraphs_;
 };
 
@@ -194,55 +230,80 @@ struct EpGraph : public OrtGraph {
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag);
 
+  /// <summary>
+  /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// </summary>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
 
-  // Overridden OrtGraph interface functions.
-  const std::string& Name() const override;
+  //
+  // Publicly accessible overrides defined by OrtGraph.
+  //
 
-  int64_t OnnxIRVersion() const override;
+  // Returns the graph's name.
+  const std::string& GetName() const override;
 
-  size_t NumInputs() const override;
+  // Returns the model's ONNX IR version.
+  int64_t GetOnnxIRVersion() const override;
 
-  size_t NumOutputs() const override;
+  // Gets the graph's inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  // Includes initializers that are graph inputs.
+  Status GetInputs(const OrtConstPointerArray*& inputs) const override;
 
-  size_t NumInitializers() const override;
+  // Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  Status GetOutputs(const OrtConstPointerArray*& outputs) const override;
 
-  Status GetInputs(InlinedVector<const OrtValueInfo*>& inputs) const override;
+  // Gets the graph's initializers as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  // Includes both constant initializers and non-constant initializers (aka optional graph inputs).
+  Status GetInitializers(const OrtConstPointerArray*& initializers) const override;
 
-  Status GetOutputs(InlinedVector<const OrtValueInfo*>& outputs) const override;
+  // Gets the graph's nodes as OrtNode instances wrapped in an OrtConstPointerArray.
+  // The nodes are sorted in a default "reverse DFS" topological order.
+  Status GetNodes(const OrtConstPointerArray*& nodes) const override;
 
-  Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const override;
-
-  size_t NumNodes() const override;
-
-  std::vector<const OrtNode*> GetNodes() const override;
-
+  // Gets the graph's parent node or nullptr if this is not a nested subgraph.
   Status GetParentNode(const OrtNode*& parent_node) const override;
 
+  //
+  // Helper functions used when working directly with an EpGraph.
+  //
+
+  // Sets this graph's parent node.
   void SetParentNode(const EpNode* node);
 
+  // Returns the onnxruntime::GraphViewer& wrapped by this OrtGraph.
   const GraphViewer& GetGraphViewer() const;
 
+  // Returns the EpNode with the given ID (i.e., a NodeIndex).
+  // Retuns nullptr if this graph does not directly contain a node with the given ID.
   const EpNode* GetNode(NodeIndex node_index) const;
 
+  // Retuns the OrtValue for an OrtValueInfo that represents an initializer.
+  // Considers both constant and non-constant initializers.
+  // Supports initializers defined in an outer scope as long as that initializer is used
+  // within this graph.
   const OrtValue* GetInitializerValue(std::string_view name) const;
 
  private:
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
-  std::vector<std::unique_ptr<EpNode>> nodes_;
+
+  std::vector<std::unique_ptr<EpNode>> nodes_holder_;
+  OrtConstPointerArray nodes_;
   IndexToEpNodeMap index_to_ep_node_;
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_;  // All value infos in the graph
 
-  std::vector<EpValueInfo*> initializer_value_infos_;
+  OrtConstPointerArray initializer_value_infos_;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values_;
 
-  InlinedVector<EpValueInfo*> inputs_;
-  InlinedVector<EpValueInfo*> outputs_;
+  OrtConstPointerArray inputs_;
+  OrtConstPointerArray outputs_;
 };
 }  // namespace onnxruntime

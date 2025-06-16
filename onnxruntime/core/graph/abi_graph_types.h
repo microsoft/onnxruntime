@@ -40,13 +40,13 @@ struct OrtValueInfo {
   /// Returns the value's name.
   /// </summary>
   /// <returns>The value's name.</returns>
-  virtual const std::string& Name() const = 0;
+  virtual const std::string& GetName() const = 0;
 
   /// <summary>
   /// Return's an object describing the value's type and shape.
   /// </summary>
   /// <returns>OrtTypeInfo with the type and shape.</returns>
-  virtual const OrtTypeInfo* TypeInfo() const = 0;
+  virtual const OrtTypeInfo* GetTypeInfo() const = 0;
 
   struct ProducerInfo {
     ProducerInfo() = default;
@@ -94,10 +94,42 @@ struct OrtValueInfo {
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetInitializerValue(const OrtValue*& value) const = 0;
 
-  virtual bool IsGraphInput() const = 0;
-  virtual bool IsGraphOutput() const = 0;
-  virtual bool IsInitializer() const = 0;
-  virtual bool IsFromOuterScope() const = 0;
+  /// <summary>
+  /// Determine if the value is a required graph input.
+  /// </summary>
+  /// <param name="is_required_graph_input">Output parameter set to true if the value is a required graph input.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status IsRequiredGraphInput(bool& is_required_graph_input) const = 0;
+
+  /// <summary>
+  /// Determine if the value is an optional graph input.
+  /// </summary>
+  /// <param name="is_optional_graph_input">Output parameter set to true if the value is an optional graph
+  ///                                       input.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status IsOptionalGraphInput(bool& is_optional_graph_input) const = 0;
+
+  /// <summary>
+  /// Determine if a the value is a graph output.
+  /// </summary>
+  /// <param name="is_graph_output">Output parameter set to true if the value is a graph output.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status IsGraphOutput(bool& is_graph_output) const = 0;
+
+  /// <summary>
+  /// Determine if the value is a constant initializer.
+  /// </summary>
+  /// <param name="is_const_initializer">Output parameter set to true if the value is a constant
+  ///                                    initializer.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status IsConstantInitializer(bool& is_const_initializer) const = 0;
+
+  /// <summary>
+  /// Determine if the value is defined in an outer scope (i.e., a parent graph).
+  /// </summary>
+  /// <param name="is_outer_scope">Output parameter set to true if the value is defined in an outer scope.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status IsFromOuterScope(bool& is_outer_scope) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
 };
@@ -117,44 +149,78 @@ struct OrtNode {
   virtual ~OrtNode() = default;
 
   /// <summary>
-  /// Returns the ID (aka NodeIndex) of the node, which is unique in its subgraph.
+  /// Returns the node's ID, which is unique in it's graph.
   /// </summary>
-  /// <returns>The node's ID</returns>
-  virtual size_t Id() const = 0;
+  /// <returns>The node's ID.</returns>
+  virtual size_t GetId() const = 0;
 
   /// <summary>
   /// Returns the node's name.
   /// </summary>
-  /// <returns>The node's name.</returns>
-  virtual const std::string& Name() const = 0;
+  /// <returns>The node's name</returns>
+  virtual const std::string& GetName() const = 0;
 
   /// <summary>
-  /// Returns the node's operator type (e.g., Conv).
+  /// Returns the node's operator type (e.g., "Conv").
   /// </summary>
   /// <returns>The node's operator type.</returns>
-  virtual const std::string& OpType() const = 0;
+  virtual const std::string& GetOpType() const = 0;
 
   /// <summary>
   /// Returns the node's domain name.
   /// </summary>
   /// <returns>The node's domain name.</returns>
-  virtual const std::string& Domain() const = 0;
+  virtual const std::string& GetDomain() const = 0;
 
   /// <summary>
-  /// Returns the opset version in which the operator type was first defined.
+  /// Gets the opset version in which the node's operator type was first defined.
   /// </summary>
-  /// <param name="since_version">Output parameter set to the node's "since_version".</param>
+  /// <param name="since_version">Output parameter set to the node's operator "since version".</param>
   /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetSinceVersion(int& since_version) const = 0;
 
-  virtual size_t NumInputs() const = 0;
-  virtual size_t NumOutputs() const = 0;
-  virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
-  virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
-  virtual onnxruntime::Status GetNumImplicitInputs(size_t& num_implicit_inputs) const = 0;
-  virtual onnxruntime::Status GetImplicitInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
+  /// <summary>
+  /// Gets the node's inputs as an array of OrtValueInfo elements wrapped in an OrtConstPointerArray.
+  /// </summary>
+  /// <param name="inputs">Output parameter set to the node's inputs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetInputs(const OrtConstPointerArray*& inputs) const = 0;
+
+  /// <summary>
+  /// Gets the node's outputs as an array of OrtValueInfo elements wrapped in an OrtConstPointerArray.
+  /// </summary>
+  /// <param name="outputs">Output parameter set to the node's outputs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetOutputs(const OrtConstPointerArray*& outputs) const = 0;
+
+  /// <summary>
+  /// Gets the node's implicit inputs as an array of OrtValueInfo elements wrapped in an OrtConstPointerArray.
+  /// Applies to a node that contains a subgraph (e.g., If or Loop). An implicit input is a value consumed by an
+  /// internal subgraph node that is not defined in the subgraph.
+  /// </summary>
+  /// <param name="implicit_inputs">Output parameter set to the node's implicit inputs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetImplicitInputs(const OrtConstPointerArray*& implicit_inputs) const = 0;
+
+  /// <summary>
+  /// Gets the node's number of subgraphs.
+  /// </summary>
+  /// <param name="num_subgraphs">Output parameter set to number of subgraphs contained by the node.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetNumSubgraphs(size_t& num_subgraphs) const = 0;
+
+  /// <summary>
+  /// Gets the node's subgraphs (e.g., subgraphs contained by an If or Loop node).
+  /// </summary>
+  /// <param name="subgraphs">Output parameter set to the node's subgraphs as OrtGraph instances.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetSubgraphs(onnxruntime::InlinedVector<const OrtGraph*>& subgraphs) const = 0;
+
+  /// <summary>
+  /// Gets the node's parent graph, which is the graph that contains this node.
+  /// </summary>
+  /// <param name="parent_graph">Output parameter set to the node's parent graph.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetParentGraph(const OrtGraph*& parent_graph) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;
@@ -167,16 +233,54 @@ struct OrtGraph {
   explicit OrtGraph(OrtGraphIrApi graph_ir_api) : graph_ir_api(graph_ir_api) {}
   virtual ~OrtGraph() = default;
 
-  virtual const std::string& Name() const = 0;
-  virtual int64_t OnnxIRVersion() const = 0;
-  virtual size_t NumInputs() const = 0;
-  virtual size_t NumOutputs() const = 0;
-  virtual size_t NumInitializers() const = 0;
-  virtual onnxruntime::Status GetInputs(onnxruntime::InlinedVector<const OrtValueInfo*>& inputs) const = 0;
-  virtual onnxruntime::Status GetOutputs(onnxruntime::InlinedVector<const OrtValueInfo*>& outputs) const = 0;
-  virtual onnxruntime::Status GetInitializers(std::vector<const OrtValueInfo*>& initializers) const = 0;
-  virtual size_t NumNodes() const = 0;
-  virtual std::vector<const OrtNode*> GetNodes() const = 0;
+  /// <summary>
+  /// Returns the graph's name.
+  /// </summary>
+  /// <returns>The graph's name.</returns>
+  virtual const std::string& GetName() const = 0;
+
+  /// <summary>
+  /// Retuns the model's ONNX IR version. Important in checking for optional graph inputs
+  /// (aka non-constant initializers), which were introduced in ONNX IR version 4.
+  /// </summary>
+  /// <returns>The model's ONNX IR version.</returns>
+  virtual int64_t GetOnnxIRVersion() const = 0;
+
+  /// <summary>
+  /// Gets the graph's inputs (including initializers) as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  /// </summary>
+  /// <param name="inputs">Output parameter set to the graph's inputs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetInputs(const OrtConstPointerArray*& inputs) const = 0;
+
+  /// <summary>
+  /// Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  /// </summary>
+  /// <param name="inputs">Output parameter set to the graph's outputs.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetOutputs(const OrtConstPointerArray*& outputs) const = 0;
+
+  /// <summary>
+  /// Gets the graph's initializers (both constant and non-constant) as OrtValueInfo instances wrapped in an
+  /// OrtConstPointerArray.
+  /// </summary>
+  /// <param name="initializers">Output parameter set to the graph's initializers.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetInitializers(const OrtConstPointerArray*& initializers) const = 0;
+
+  /// <summary>
+  /// Gets the graph's nodes as OrtNode instances wrapped in an OrtConstPointerArray. The nodes are sorted in
+  /// a default "reverse DFS" topological order.
+  /// </summary>
+  /// <param name="nodes">Output parameter set to the graph's nodes.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNodes(const OrtConstPointerArray*& nodes) const = 0;
+
+  /// <summary>
+  /// Gets the graph's parent node, if any. The parent_node is nullptr if this is not a nested subgraph.
+  /// </summary>
+  /// <param name="parent_node">Output parameter set to the parent node.</param>
+  /// <returns>A status indicating success or an error.</returns>
   virtual onnxruntime::Status GetParentNode(const OrtNode*& parent_node) const = 0;
 
   OrtGraphIrApi graph_ir_api = OrtGraphIrApi::kInvalid;

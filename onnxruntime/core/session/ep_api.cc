@@ -43,7 +43,7 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
                     _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes) {
   API_IMPL_BEGIN
   if (ort_graph_support_info == nullptr) {
@@ -93,7 +93,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpDevice,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
-    &OrtExecutionProviderApi::EpGraphSupportInfo_AddFusedNodes,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddNodesToFuse,
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSingleNode,
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
 };

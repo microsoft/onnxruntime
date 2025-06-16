@@ -123,12 +123,12 @@ struct MulKernel {
 struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
   explicit ExampleNodeComputeInfo(ExampleEp& ep);
 
-  static OrtStatus* ORT_API_CALL CreateComputeStateImpl(OrtNodeComputeInfo* this_ptr,
-                                                        OrtNodeComputeContext* compute_context,
-                                                        void** compute_state);
+  static OrtStatus* ORT_API_CALL CreateStateImpl(OrtNodeComputeInfo* this_ptr,
+                                                 OrtNodeComputeContext* compute_context,
+                                                 void** compute_state);
   static OrtStatus* ORT_API_CALL ComputeImpl(OrtNodeComputeInfo* this_ptr, void* compute_state,
                                              OrtKernelContext* kernel_context);
-  static void ORT_API_CALL DestroyComputeStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state);
+  static void ORT_API_CALL ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state);
 
   ExampleEp& ep;
 };
@@ -168,7 +168,7 @@ static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
   ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, session_options_{session_options}, logger_{logger} {
+      : ApiPtrs(apis), name_{name}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -176,6 +176,11 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                             ORT_FILE, __LINE__, __FUNCTION__);
     // ignore status for now
     (void)status;
+
+    // Can get configurations from the session options.
+    // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
+    // EP should copy any configurations or settings it needs.
+    (void)session_options;
 
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
     GetName = GetNameImpl;
@@ -197,35 +202,50 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                                    OrtEpGraphSupportInfo* graph_support_info) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-    size_t num_nodes = ep->ort_api.Graph_NumNodes(graph);
+    const OrtConstPointerArray* nodes_array = nullptr;
+    size_t num_nodes = 0;
+
+    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, &nodes_array));
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
+
     if (num_nodes == 0) {
       return nullptr;  // No nodes to process
     }
 
-    std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size()));
+    const void* const* nodes_data = nullptr;
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(nodes_array, &nodes_data));
+    auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_data), num_nodes);
 
     std::vector<const OrtNode*> supported_nodes;
 
-    for (const OrtNode* node : nodes) {
-      const char* op_type = ep->ort_api.Node_OperatorType(node);
+    for (const OrtNode* node : nodes_span) {
+      const char* op_type = nullptr;
+      RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node, &op_type));
 
       if (std::strncmp(op_type, "Mul", 4) == 0) {
         // Check that Mul has inputs/output of type float
-        size_t num_inputs = ep->ort_api.Node_NumInputs(node);
-        size_t num_outputs = ep->ort_api.Node_NumOutputs(node);
+        const OrtConstPointerArray* inputs_array = nullptr;
+        const OrtConstPointerArray* outputs_array = nullptr;
+
+        RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, &inputs_array));
+        RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, &outputs_array));
+
+        size_t num_inputs = 0;
+        size_t num_outputs = 0;
+        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(inputs_array, &num_inputs));
+        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(outputs_array, &num_outputs));
         RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
-        std::vector<const OrtValueInfo*> inputs(num_inputs, nullptr);
-        std::vector<const OrtValueInfo*> outputs(num_outputs, nullptr);
-        RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
-        RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
+        const void* const* inputs_data = nullptr;
+        const void* const* outputs_data = nullptr;
+        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(inputs_array, &inputs_data));
+        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(outputs_array, &outputs_data));
 
-        std::array<bool, 3> is_float_tensor = {false, false, false};
-        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[0], is_float_tensor[0]));
-        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[1], is_float_tensor[1]));
-        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, outputs[0], is_float_tensor[2]));
-        if (!is_float_tensor[0] || !is_float_tensor[1] || !is_float_tensor[2]) {
+        std::array<bool, 3> is_float = {false, false, false};
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(inputs_data[0]), is_float[0]));
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(inputs_data[1]), is_float[1]));
+        RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(outputs_data[0]), is_float[2]));
+        if (!is_float[0] || !is_float[1] || !is_float[2]) {
           continue;  // Input or output is not of type float
         }
 
@@ -233,8 +253,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
         break;
       }
     }
-    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddFusedNodes(graph_support_info, supported_nodes.data(),
-                                                                supported_nodes.size()));
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
+                                                                 supported_nodes.size()));
     return nullptr;
   }
 
@@ -246,24 +266,33 @@ struct ExampleEp : OrtEp, ApiPtrs {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
     }
 
-    size_t num_nodes = ep->ort_api.Graph_NumNodes(graphs[0]);
+    const OrtConstPointerArray* nodes_array = nullptr;
+    size_t num_nodes = 0;
 
-    std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], nodes.data(), nodes.size()));
+    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], &nodes_array));
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
 
     if (num_nodes != 1) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
-    const char* node_op_type = ep->ort_api.Node_OperatorType(nodes[0]);
+    const OrtNode* node_to_compile = nullptr;
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetElementAt(nodes_array, 0,
+                                                               reinterpret_cast<const void**>(&node_to_compile)));
+
+    const char* node_op_type = nullptr;
+    RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node_to_compile, &node_op_type));
+
     if (std::strncmp(node_op_type, "Mul", 4) != 0) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
     // Now we know we're compiling a single Mul node.
     // Associate the name of the fused node with our MulKernel.
-    const char* fused_node_name = ep->ort_api.Node_Name(fused_nodes[0]);
-    ep->kernels[fused_node_name] = std::make_unique<MulKernel>(ep->ort_api, ep->logger_);
+    const char* fused_node_name = nullptr;
+    RETURN_IF_ERROR(ep->ort_api.Node_GetName(fused_nodes[0], &fused_node_name));
+
+    ep->kernels.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
@@ -283,7 +312,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
   std::string name_;
   std::vector<const OrtHardwareDevice*> hardware_devices_;
-  const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
 };
@@ -293,14 +321,14 @@ struct ExampleEp : OrtEp, ApiPtrs {
 //
 ExampleNodeComputeInfo::ExampleNodeComputeInfo(ExampleEp& ep) : ep(ep) {
   ort_version_supported = ORT_API_VERSION;
-  CreateComputeState = CreateComputeStateImpl;
+  CreateState = CreateStateImpl;
   Compute = ComputeImpl;
-  DestroyComputeState = DestroyComputeStateImpl;
+  ReleaseState = ReleaseStateImpl;
 }
 
-OrtStatus* ExampleNodeComputeInfo::CreateComputeStateImpl(OrtNodeComputeInfo* this_ptr,
-                                                          OrtNodeComputeContext* compute_context,
-                                                          void** compute_state) {
+OrtStatus* ExampleNodeComputeInfo::CreateStateImpl(OrtNodeComputeInfo* this_ptr,
+                                                   OrtNodeComputeContext* compute_context,
+                                                   void** compute_state) {
   auto* node_compute_info = static_cast<ExampleNodeComputeInfo*>(this_ptr);
   ExampleEp& ep = node_compute_info->ep;
 
@@ -323,7 +351,7 @@ OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, voi
   return kernel.Compute(kernel_context);
 }
 
-void ExampleNodeComputeInfo::DestroyComputeStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
+void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
   MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
   kernel.ReleaseResources();

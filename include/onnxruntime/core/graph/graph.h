@@ -815,6 +815,18 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
 
+  /// <summary>
+  /// Returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable).
+  /// If the initializer is not found, a nullptr is returned. An output parameter is set to true if the initializer
+  /// is constant.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="check_outer_scope">Checks outer scope if set to true and the graph is a subgraph.</param>
+  /// <param name="is_constant">Output parameter set to true if the initializer is a constant.</param>
+  /// <returns>The initializer's TensorProto or nullptr.</returns>
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope,
+                                                    bool& is_constant) const;
+
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.
   @remarks Contains no nullptr values. */

@@ -82,8 +82,6 @@ class PluginExecutionProvider : public IExecutionProvider {
     std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
   };
 
-  FusedNodeState& PushFusedNodeState(size_t num_fused_nodes);
-
   UniqueOrtEp ort_ep_;
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
 

@@ -27,23 +27,25 @@ struct OrtNodeComputeInfo {
    */
   uint32_t ort_version_supported;
 
-  /** \brief Creates an opaque computation state object that is then passed to the Compute() function during inference.
+  /** \brief Creates an opaque compute state object that is then passed to the Compute() function during inference.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
    * \param[in] compute_context OrtNodeComputeContext instance that contains compiled/fused node's name and host
    *                            memory allocation functions. Can optionally be used to build the compute state.
-   * \param[out] compute_state Output parameter that is assigned the opaque computation state.
+   * \param[out] compute_state Output parameter that is assigned the opaque computation state. ONNX Runtime calls
+   *                           ReleaseState() (after calling Compute()) to allow the implementer to release the
+   *                           compute state.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* CreateComputeState)(_In_ OrtNodeComputeInfo* this_ptr,
-                                               _In_ OrtNodeComputeContext* compute_context,
-                                               _Outptr_ void** compute_state);
+  OrtStatus*(ORT_API_CALL* CreateState)(_In_ OrtNodeComputeInfo* this_ptr,
+                                        _In_ OrtNodeComputeContext* compute_context,
+                                        _Outptr_ void** compute_state);
 
   /** \brief Computation function called to execute the fused node compiled by an OrtEp instance.
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
-   * \param[in] compute_state The opaque computation state returned by CreateComputeState().
+   * \param[in] compute_state The opaque computation state returned by CreateState().
    * \param[in] kernel_context The OrtKernelContext instance used to access inputs/outputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -53,13 +55,13 @@ struct OrtNodeComputeInfo {
   OrtStatus*(ORT_API_CALL* Compute)(_In_ OrtNodeComputeInfo* this_ptr, _In_ void* compute_state,
                                     _In_ OrtKernelContext* kernel_context);
 
-  /** \brief Releases the compute state returned by CreateComputeState().
+  /** \brief Releases the compute state returned by CreateState().
    * \param[in] this_ptr The OrtNodeComputeInfo instance.
-   * \param[inout] compute_state The opaque computation state returned by CreateComputeState().
+   * \param[inout] compute_state The opaque compute state returned by CreateState().
    *
    * \since Version 1.23.
    */
-  void(ORT_API_CALL* DestroyComputeState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
+  void(ORT_API_CALL* ReleaseState)(_In_ OrtNodeComputeInfo* this_ptr, _Frees_ptr_opt_ void* compute_state);
 };
 
 struct OrtEpApi {
@@ -86,8 +88,11 @@ struct OrtEpApi {
 
   /** \brief Specify nodes that are supported by an OrtEp and should be fused into one node.
    *
+   * IMPORTANT: This is not the final version of this API function. This is currently experimental but will
+   * be stabilized by the ONNX Runtime 1.23 release.
+   *
    * Because the nodes will be fused into one "fused node", there must not exist an unsupported node in
-   * a path between two of the provided nodes. Otherwise, the graph will have a cycle after node fusion is performed.
+   * a path between two of the provided nodes. Otherwise, the graph will become invalid.
    *
    * This function can be called multiple times. A subsequent call to this function will force the next set of
    * nodes to be fused into a different node.
@@ -100,7 +105,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(EpGraphSupportInfo_AddFusedNodes, _In_ OrtEpGraphSupportInfo* graph_support_info,
+  ORT_API2_STATUS(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
                   _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes
                   /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
 
@@ -155,10 +160,15 @@ struct OrtEp {
    */
   const char*(ORT_API_CALL* GetName)(_In_ const OrtEp* this_ptr);
 
-  /** \brief Get information about the nodes/subgraphs supported by the OrtEp instance.
+  /** \brief Get information about the nodes supported by the OrtEp instance.
+   *
+   * IMPORTANT: This is not the final version of this API function. This is currently experimental but will
+   * be stabilized by the ONNX Runtime 1.23 release.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graph The top-level OrtGraph instance containing all nodes in the graph.
+   * \param[in] graph The OrtGraph instance for which to populate node support. The OrtGraph could be a nested subgraph
+   *                  contained by a node (e.g., an If or Loop node). ONNX Runtime calls this function separately
+   *                  for each nested subgraph.
    * \param[inout] graph_support_info OrtEpGraphSupportInfo instance that the implementer must fill out in order to
    *                                  specify the supported nodes.
    *
@@ -173,7 +183,9 @@ struct OrtEp {
    * for each OrtGraph in order to define its computation function.
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[in] graphs Array of `count` OrtGraph instances to be compiled.
+   * \param[in] graphs Array of `count` OrtGraph instances to compile. Each graph contains only the nodes for
+   *                   which the execution provider indicated support. Nested subgraphs contained by a
+   *                   node, such as an If or Loop, have separate OrtGraph instances.
    * \param[in] fused_nodes Array of `count` fused nodes that will replace the compiled graphs.
    *                        Each fused node is an OrtNode initialized with the intended fused node name and
    *                        input/output information.
@@ -273,7 +285,7 @@ struct OrtEpFactory {
    */
   const char*(ORT_API_CALL* GetVendor)(const OrtEpFactory* this_ptr);  // return EP vendor
 
-  /** \brief Get information from the execution provider if it supports the OrtHardwareDevice.
+  /** \brief Get information from the execution provider about OrtHardwareDevice support.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    *                     Non-const as the factory is passed through to the CreateEp call via the OrtEpDevice.
@@ -287,8 +299,6 @@ struct OrtEpFactory {
    *                           Current default is 8. This can be increased if needed.
    * \param[out] num_ep_devices The number of EP devices added to ep_devices.
    * \return true if the factory can create an execution provider that uses `device`.
-   *
-   * \note ORT will take ownership or ep_metadata and/or ep_options if they are not null.
    *
    * \since Version 1.22.
    */
@@ -305,6 +315,8 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices The OrtHardwareDevice instances that the execution provider was selected to use.
+   *                    May be a subset of the OrtHardwareDevice instances that the execution provider's factory
+   *                    set as supported in the call to OrtEpFactory::GetSupportedDevices.
    * \param[in] ep_metadata_pairs Execution provider metadata that was provided to OrtEpApi::CreateEpDevice, for each
    *                              device.
    * \param[in] num_devices The number of devices the execution provider was selected for.
@@ -319,7 +331,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version [coming soon]. This is a placeholder.
+   * \since Version 1.22.
    */
   OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -333,7 +345,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep The OrtEp instance to release.
    *
-   * \since Version [coming soon]. This is a placeholder.
+   * \since Version 1.22.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 };
