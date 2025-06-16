@@ -104,7 +104,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
                 tile_A[row * tile_k + col + col_offset] = component_type(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
             }
         }
-    )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");;
+    )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -417,14 +417,14 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   if (has_zero_points_) {
-      shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   if (!vendor_.compare("apple")) {
     return GenerateShaderCodeOnApple(shader, nbits_, has_zero_points_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_);
+    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
@@ -447,7 +447,7 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
   const bool has_zero_points = zero_points != nullptr;
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points };
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points};
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     tile_size_a = 64;
     work_group_size = 256;
