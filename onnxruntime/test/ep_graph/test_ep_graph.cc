@@ -42,14 +42,17 @@ static void GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
 static void CheckNode(const Node* node, const OrtNode* api_node) {
   const OrtApi& ort_api = Ort::GetApi();
 
+  size_t api_node_id = 0;
   const char* api_node_name = nullptr;
   const char* api_op_type = nullptr;
   const char* api_domain = nullptr;
 
+  ASSERT_ORTSTATUS_OK(ort_api.Node_GetId(api_node, &api_node_id));
   ASSERT_ORTSTATUS_OK(ort_api.Node_GetName(api_node, &api_node_name));
   ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(api_node, &api_op_type));
   ASSERT_ORTSTATUS_OK(ort_api.Node_GetDomain(api_node, &api_domain));
 
+  ASSERT_EQ(api_node_id, node->Index());
   ASSERT_EQ(std::string(api_node_name), node->Name());
   ASSERT_EQ(std::string(api_op_type), node->OpType());
   ASSERT_EQ(std::string(api_domain), node->Domain());
@@ -309,7 +312,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     // Check basic node properties.
     const Node* node = graph_viewer.GetNode(node_indices[node_idx]);
     const OrtNode* api_node = nullptr;
-    ort_api.ConstPointerArray_GetElementAt(api_nodes_container, node_idx, reinterpret_cast<const void**>(&api_node));
+    ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetElementAt(api_nodes_container, node_idx,
+                                                               reinterpret_cast<const void**>(&api_node)));
     CheckNode(node, api_node);
 
     int api_since_version = 0;

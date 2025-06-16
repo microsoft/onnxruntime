@@ -5469,6 +5469,9 @@ struct OrtApi {
 
   /** \brief Get the number of consumers of a value as a node input.
    *
+   * Only nodes are considered "consumers" by this function. To check if an OrtValueInfo is a graph output,
+   * call ValueInfo_IsGraphOutput().
+   *
    * A single OrtNode may use a single value for more than one input (e.g., Mul(x, x)), so the returned
    * `num_consumers` may be larger than the number of unique OrtNode instances that consume the value.
    *
@@ -5526,7 +5529,7 @@ struct OrtApi {
 
   /** \brief Returns a boolean indicating if the given value is a required graph input.
    *
-   * For ONNX IR version < 4, all graph inputs are required.
+   * For ONNX IR version < 4, all graph inputs without a matching initializer are required.
    *
    * For ONNX IR version >=4, a graph input with a matching initializer is an optional graph input
    * with the initializer serving as the default value.
@@ -5626,7 +5629,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
-  /** \brief Returns the graph's inputs as an array of OrtValueInfo instances.
+  /** \brief Returns the graph's inputs as OrtValueInfo instances contained in an OrtConstPointerArray.
    *
    * Includes constant and non-constant initializers.
    *
@@ -5639,7 +5642,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph, _Outptr_ const OrtConstPointerArray** inputs);
 
-  /** \brief Returns the graph's outputs as an array of OrtValueInfo instances.
+  /** \brief Returns the graph's outputs as OrtValueInfo instances contained in an OrtConstPointerArray.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] outputs Output parameter set to the OrtConstPointerArray instance containing the graph outputs.
@@ -5650,8 +5653,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph, _Outptr_ const OrtConstPointerArray** outputs);
 
-  /** \brief Returns the graph's initializers as an array of OrtValueInfo instances.
-   *
+  /** \brief Returns the graph's initializers OrtValueInfo instances contained in an OrtConstPointerArray.
    * Includes constant and non-constant initializers.
    *
    * For ONNX IR version < 4, all initializers are constant.
@@ -5670,9 +5672,10 @@ struct OrtApi {
   ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph,
                   _Outptr_ const OrtConstPointerArray** initializers);
 
-  /** \brief Returns the nodes in the given graph as an array of OrtNode instances.
+  /** \brief Returns the graph's nodes as OrtNode instances contained in an OrtConstPointerArray.
    *
-   * The nodes are sorted using a default topological ordering.
+   * The nodes are sorted using a stable topological ordering. Callers are responsible for maintaining their
+   * own node ordering if a different order is required.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] nodes Output parameter set to the OrtConstPointerArray instance containing the graph's nodes.
@@ -5702,7 +5705,7 @@ struct OrtApi {
   // OrtNode
   //
 
-  /** \brief Returns the given node's identifier.
+  /** \brief Returns a node's identifier.
    *
    * The node's identifier is only unique in the node's parent graph. Different nested subgraphs
    * (e.g., subgraphs contained by If and Loop nodes) may reuse identifiers.
@@ -5716,7 +5719,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetId, _In_ const OrtNode* node, _Out_ size_t* node_id);
 
-  /** \brief Returns the given node's name. Can be an empty string.
+  /** \brief Returns a node's name. Can be an empty string.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] Output parameter set to the node's name.
@@ -5727,7 +5730,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetName, _In_ const OrtNode* node, _Outptr_ const char** node_name);
 
-  /** \brief Returns the given node's operator type (e.g., "Conv").
+  /** \brief Returns a node's operator type (e.g., "Conv").
    *
    * \param[in] node The OrtNode instance.
    * \param[out] Output parameter set to the name of the node's operator type.
@@ -5738,7 +5741,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetOperatorType, _In_ const OrtNode* node, _Outptr_ const char** operator_type);
 
-  /** \brief Returns the domain name for the given node.
+  /** \brief Returns a node's domain name.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] Output parameter set to the node's domain name.
@@ -5760,7 +5763,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
 
-  /** \brief Returns the given node's inputs as an array of OrtValueInfo instances.
+  /** \brief Returns a node's inputs as OrtValueInfo instances contained in an OrtConstPointerArray.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] inputs Output parameter set to the OrtConstPointerArray instance containing the node's inputs.
@@ -5771,7 +5774,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node, _Outptr_ const OrtConstPointerArray** inputs);
 
-  /** \brief Returns the given node's outputs as an array of OrtValueInfo instances.
+  /** \brief Returns a node's outputs as OrtValueInfo instances contained in an OrtConstPointerArray.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] outputs Output parameter set to the OrtConstPointerArray instance containing the node's outputs.
