@@ -227,11 +227,6 @@ class TestAutoEP(AutoEpTestCase):
 
         # Test adding this EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
-        with self.assertRaises(InvalidArgument) as context:
-            # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
-            # Actual plugin EPs will be supported in the future.
-            sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
-        self.assertIn("EP is not currently supported", str(context.exception))
 
         self.unregister_execution_provider_library(ep_name)
 
