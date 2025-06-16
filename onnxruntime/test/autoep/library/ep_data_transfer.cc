@@ -41,16 +41,15 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
 
     OrtMemoryInfoDeviceType src_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(src_device);
     OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(dst_device);
-    OrtDeviceMemoryType src_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(src_device);
-    OrtDeviceMemoryType dst_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(dst_device);
+    //  OrtDeviceMemoryType src_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(src_device);
+    //  OrtDeviceMemoryType dst_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(dst_device);
+    //   bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
+    //                                      dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE;
 
     const void* src_data = nullptr;
     void* dst_data = nullptr;
     RETURN_IF_ERROR(impl.ort_api.GetTensorData(src_tensors[i], &src_data));
     RETURN_IF_ERROR(impl.ort_api.GetTensorMutableData(dst_tensors[i], &dst_data));
-
-    // bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
-    //                                    dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE;
 
     if (dst_device_type == OrtMemoryInfoDeviceType_GPU) {
       if (src_device_type == OrtMemoryInfoDeviceType_GPU) {
