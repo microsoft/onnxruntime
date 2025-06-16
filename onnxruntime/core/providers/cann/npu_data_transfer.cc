@@ -20,8 +20,9 @@ bool NPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
     return false;
   }
 
-  // copies between NPU (DEFAULT and HOST_ACCESSIBLE) and CPU are supported.
-  return (src_type == OrtDevice::NPU || src_type == OrtDevice::CPU) &&
+  // copy must involve an NPU, and be device to device or cpu (exclude other device types)
+  return (src_type == OrtDevice::NPU || dst_type == OrtDevice::NPU) &&
+         (src_type == OrtDevice::NPU || src_type == OrtDevice::CPU) &&
          (dst_type == OrtDevice::NPU || dst_type == OrtDevice::CPU);
 }
 

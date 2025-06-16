@@ -16,7 +16,9 @@ bool GPUDataTransfer::CanCopy(const OrtDevice& src_device, const OrtDevice& dst_
     return false;
   }
 
-  return (src_type == OrtDevice::GPU || src_type == OrtDevice::CPU) &&
+  // copy must involve a GPU, and be device to device or cpu (exclude other device types)
+  return (src_type == OrtDevice::GPU || dst_type == OrtDevice::GPU) &&
+         (src_type == OrtDevice::GPU || src_type == OrtDevice::CPU) &&
          (dst_type == OrtDevice::GPU || dst_type == OrtDevice::CPU);
 }
 
