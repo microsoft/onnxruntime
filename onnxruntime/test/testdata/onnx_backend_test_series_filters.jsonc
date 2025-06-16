@@ -331,7 +331,7 @@
         "^test_rms_normalization_4d_axis_negative_4_expanded",
         "^test_rms_normalization_default_axis_expanded",
         // topk uint64 is not implemented in ORT yet.
-        "^test_topk_uint64"
+        "^test_top_k_uint64"
     ],
     "current_failing_tests_x86": [
         "^test_vgg19",
