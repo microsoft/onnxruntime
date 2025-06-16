@@ -124,6 +124,9 @@ class BaseOpBuilder : public IOpBuilder {
     } else if (std::is_same<T, int32_t>::value) {
       qnn_scalar.dataType = QNN_DATATYPE_INT_32;
       qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+    } else if (std::is_same<T, int64_t>::value) {
+      qnn_scalar.dataType = QNN_DATATYPE_INT_64;
+      qnn_scalar.int64Value = static_cast<int64_t>(scalar);
     } else if (std::is_same<T, bool>::value) {
       qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
       qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);

@@ -24,6 +24,7 @@
 #include "System/QnnSystemInterface.h"
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 
@@ -99,6 +100,7 @@ struct QnnBackendManagerConfig {
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
+  std::vector<std::vector<std::string>> op_packages;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -122,7 +124,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         qnn_serializer_config_(config.qnn_serializer_config),
         device_id_(config.device_id),
         htp_arch_(config.htp_arch),
-        soc_model_(config.soc_model) {
+        soc_model_(config.soc_model),
+        op_packages_(config.op_packages) {
   }
 
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(QnnBackendManager);
@@ -314,6 +317,79 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
 
+  Status LoadOpPackage() {
+    // assume op_packages passed in represented in
+    // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
+    for (const auto& op_package : op_packages_) {
+      std::string op_type = op_package[0];
+      std::filesystem::path op_package_path = op_package[1];
+      std::string op_package_interface = op_package[2];
+      std::string op_package_target;
+
+      if (op_package.size() > 3) {
+        op_package_target = op_package[3];
+      }
+
+      ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
+
+      Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
+          backend_handle_,
+          op_package_path.string().c_str(),
+          op_package_interface.c_str(),
+          op_package_target.c_str());
+
+      if (result != QNN_SUCCESS) {
+        switch (result) {
+          case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
+            LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
+            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package_path.string();
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
+            LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
+            LOGS(*logger_, ERROR) << "Op package registration failed.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
+            LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
+            break;
+          case QNN_BACKEND_ERROR_NOT_SUPPORTED:
+            LOGS(*logger_, ERROR) << "Op package registration is not supported.";
+            break;
+          case QNN_BACKEND_ERROR_INVALID_HANDLE:
+            LOGS(*logger_, ERROR) << "backend is not a valid handle.";
+            break;
+          case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
+            LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+  QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
+            break;
+          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
+            LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
+            break;
+          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
+            LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
+            break;
+          default:
+            LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
+            break;
+        }
+      }
+      ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
+      // TODO: remove lib prefix in Linux
+      LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
+      std::string op_package_for_registeration = op_package_path.stem().string();
+      std::string prefix = "lib";
+      if (op_package_for_registeration.compare(0, prefix.size(), prefix) == 0) {
+        op_package_for_registeration = op_package_for_registeration.substr(prefix.size());
+      }
+      qnn::RegisterUDOBuilder(op_type, op_package_for_registeration);
+    }
+
+    return Status::OK();
+  }
+
  private:
   const std::string backend_path_;
   std::recursive_mutex logger_recursive_mutex_;
@@ -357,6 +433,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
+  const std::vector<std::vector<std::string>> op_packages_;
 };
 
 }  // namespace qnn
