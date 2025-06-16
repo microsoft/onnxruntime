@@ -408,7 +408,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, session_id_, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -693,9 +693,13 @@ void WebGpuContext::Flush() {
 
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  BufferManager().RefreshPendingBuffers();
+  BufferManager().RefreshPendingBuffers(session_status_, session_id_);
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
+}
+
+void WebGpuContext::OnSessionInitializationStart(uint32_t session_id) {
+  session_id_ = session_id;
 }
 
 void WebGpuContext::OnRunEnd() {
@@ -711,28 +715,93 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z) {
   uint32_t entry_index = 0;
-  std::vector<WGPUBindGroupEntry> bind_group_entries;
+  std::vector<wgpu::BindGroupEntry> bind_group_entries;
   for (WGPUBuffer buffer : bind_buffers) {
     bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
   }
 
-  WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
-  WGPUBindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = bind_group_layout;
+  wgpu::BindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = program_artifact.compute_pipeline.GetBindGroupLayout(0);
   bind_group_desc.entryCount = bind_group_entries.size();
   bind_group_desc.entries = bind_group_entries.data();
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
+  auto bind_group = Device().CreateBindGroup(&bind_group_desc);
 
-  auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
+  if (session_status_ == SessionState::Capturing) {
+    captured_commands_map_[session_id_].push_back({program_artifact.compute_pipeline,
+                                                   bind_group,
+                                                   {x, y, z}});
+  } else {
+    // Execute the command directly
+    compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
+    compute_pass_encoder.SetBindGroup(0, bind_group);
+    compute_pass_encoder.DispatchWorkgroups(x, y, z);
+  }
+}
 
-  // TODO support graph capture
+void WebGpuContext::CaptureBegin(uint32_t session_id) {
+  LOGS_DEFAULT(VERBOSE) << "CaptureBegin: " << session_id;
+  session_id_ = session_id;
+  captured_commands_map_.emplace(session_id_, std::vector<CapturedCommandInfo>());
 
-  compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-  wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
-  compute_pass_encoder.DispatchWorkgroups(x, y, z);
+  // TODO: support profiling with graph capture.
+  ORT_ENFORCE(!is_profiling_, "profiing is not supported yet under graph capture mode");
 
-  wgpuBindGroupRelease(bind_group);
-  wgpuBindGroupLayoutRelease(bind_group_layout);
+  // Flush any pending commands before we change the status
+  Flush();
+
+  // Change to capturing mode
+  session_status_ = SessionState::Capturing;
+}
+
+void WebGpuContext::CaptureEnd() {
+  LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
+
+  // Flush any pending commands before we change the status
+  Flush();
+
+  // Change back to default mode
+  session_status_ = SessionState::Default;
+}
+
+void WebGpuContext::Replay(uint32_t session_id) {
+  LOGS_DEFAULT(VERBOSE) << "Replay: " << session_id;
+  session_id_ = session_id;
+  session_status_ = SessionState::Replaying;
+
+  // Replay all captured commands
+  auto command_list = captured_commands_map_[session_id_];
+  const size_t command_count = command_list.size();
+  for (size_t i = 0; i < command_count; ++i) {
+    auto& command = command_list[i];
+    const auto& compute_pass_encoder = GetComputePassEncoder();
+    WriteTimestamp(num_pending_dispatches_ * 2);
+    compute_pass_encoder.SetPipeline(command.compute_pipeline);
+    compute_pass_encoder.SetBindGroup(0, command.bind_group);
+    compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
+    WriteTimestamp(num_pending_dispatches_ * 2 + 1);
+    ++num_pending_dispatches_;
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
+        (is_profiling_ && query_type_ == TimestampQueryType::AtPasses)) {
+      EndComputePass();
+    }
+    if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
+      Flush();
+      num_pending_dispatches_ = 0;
+    }
+  }
+
+  // Flush any remaining commands
+  Flush();
+
+  // Change back to default mode
+  session_status_ = SessionState::Default;
+}
+
+void WebGpuContext::OnReleaseSession(uint32_t session_id) {
+  LOGS_DEFAULT(VERBOSE) << "OnReleaseSession: " << session_id;
+  captured_commands_map_.erase(session_id);
+  buffer_mgr_->ReleaseCapturedBuffers(session_id);
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
