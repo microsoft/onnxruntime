@@ -816,7 +816,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
 
   /// <summary>
-  /// Returns the initializer's TensorProto if 'name' is an initializer (both constant and overridable).
+  /// Returns the initializer's TensorProto if 'name' is an initializer (either constant and overridable).
   /// If the initializer is not found, a nullptr is returned. An output parameter is set to true if the initializer
   /// is constant.
   /// </summary>
