@@ -299,17 +299,16 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::vector<int64_t> dims_mul_x_B = {4, 3};
 
   auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-#if defined(USE_WEBGPU)
-  // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
-  // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
-  // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
-  OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
-  auto gpu_alloc = session_object.GetAllocator(mem_info);
-#elif defined(USE_CUDA) || defined(USE_ROCM)
-  auto gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
-#else
   onnxruntime::AllocatorPtr gpu_alloc = nullptr;
-#endif
+  if (allocation_provider == kWebGpuExecutionProvider) {
+    // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
+    // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
+    // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
+    OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
+    gpu_alloc = session_object.GetAllocator(mem_info);
+  } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+    gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
+  }
   if (enable_graph_capture) {
     // For graph capture, all inputs/outputs should be in preallocated gpu memory.
     ASSERT_TRUE(is_preallocate_output_vec);
