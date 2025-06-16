@@ -338,7 +338,7 @@ class CallableDispatchableHelper {
 // Other policies may set the second result argument accordingly.
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
-[[noreturn]] void operator()(int32_t dt_type, Ret& /*result*/) const {
+  [[noreturn]] void operator()(int32_t dt_type, Ret& /*result*/) const {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4702)
