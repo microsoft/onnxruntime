@@ -6245,7 +6245,7 @@ typedef struct OrtDataTransferImpl {
 /// <summary>
 /// Functions that a plugin EP needs to call from its implementation.
 /// </summary>
-typedef struct OrtEpApi {
+struct OrtEpApi {
   /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
    * \param[in] ep_factory Execution provider factory that is creating the instance.
    * \param[in] hardware_device Hardware device that the EP can utilize.
@@ -6335,13 +6335,13 @@ typedef struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
-} OrtEpApi;
+};
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
-typedef struct OrtEp {
+struct OrtEp {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
    * Implementation should set to ORT_API_VERSION.
@@ -6370,7 +6370,7 @@ typedef struct OrtEp {
   //                    size_t count, OrtNodeComputeInfo* node_compute_infos);
 
   // TODO: Implement OrtEpApi and the complete OrtEp interface as the next step.
-} OrtEp;
+};
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
  *
@@ -6410,7 +6410,7 @@ typedef OrtStatus* (*ReleaseEpApiFactoryFn)(_In_ OrtEpFactory* factory);
  * \brief The OrtEpFactory provides functions to create and manage execution providers.
  * \since Version 1.22.
  */
-typedef struct OrtEpFactory {
+struct OrtEpFactory {
   /** \brief The ONNX Runtime version the execution provider was compiled with.
    *
    * Implementation should set to ORT_API_VERSION.
@@ -6540,7 +6540,7 @@ typedef struct OrtEpFactory {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
-} OrtEpFactory;
+};
 
 /*
  * This is the old way to add the CUDA provider to the session, please use SessionOptionsAppendExecutionProvider_CUDA above to access the latest functionality
