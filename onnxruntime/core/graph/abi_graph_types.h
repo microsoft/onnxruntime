@@ -240,7 +240,7 @@ struct OrtGraph {
   virtual const std::string& GetName() const = 0;
 
   /// <summary>
-  /// Retuns the model's ONNX IR version. Important in checking for optional graph inputs
+  /// Returns the model's ONNX IR version. Important in checking for optional graph inputs
   /// (aka non-constant initializers), which were introduced in ONNX IR version 4.
   /// </summary>
   /// <returns>The model's ONNX IR version.</returns>

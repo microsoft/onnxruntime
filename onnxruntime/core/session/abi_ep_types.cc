@@ -13,6 +13,7 @@
 onnxruntime::Status OrtEpGraphSupportInfo::AddFusedNodes(gsl::span<const OrtNode* const> nodes) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.reserve(nodes.size());
+
   for (const OrtNode* node : nodes) {
     const auto* ep_node = onnxruntime::EpNode::ToInternal(node);
     ORT_RETURN_IF(ep_node == nullptr, "Invalid OrtNode variant for use in OrtEpApi.");

@@ -180,13 +180,13 @@ struct EpNode : public OrtNode {
   // Returns the internal onnxruntime::Node& that this OrtNode wraps.
   const Node& GetInternalNode() const { return node_; }
 
-  // Helper that retuns this node's inputs as a span of EpValueInfo pointers.
+  // Helper that returns this node's inputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetInputsSpan() const;
 
   // Helper that returns this node's implicit inputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetImplicitInputsSpan() const;
 
-  // Helper that retuns this node's outputs as a span of EpValueInfo pointers.
+  // Helper that returns this node's outputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
 
  private:
@@ -280,10 +280,10 @@ struct EpGraph : public OrtGraph {
   const GraphViewer& GetGraphViewer() const;
 
   // Returns the EpNode with the given ID (i.e., a NodeIndex).
-  // Retuns nullptr if this graph does not directly contain a node with the given ID.
+  // Returns nullptr if this graph does not directly contain a node with the given ID.
   const EpNode* GetNode(NodeIndex node_index) const;
 
-  // Retuns the OrtValue for an OrtValueInfo that represents an initializer.
+  // Returns the OrtValue for an OrtValueInfo that represents an initializer.
   // Considers both constant and non-constant initializers.
   // Supports initializers defined in an outer scope as long as that initializer is used
   // within this graph.
