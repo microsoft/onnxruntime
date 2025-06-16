@@ -134,6 +134,12 @@ class InferenceSession {
   };
 
   using InputOutputDefMetaMap = InlinedHashMap<std::string_view, InputOutputDefMetaData>;
+  static std::map<uint32_t, InferenceSession*> active_sessions_;
+#ifdef _WIN32
+  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
+  static onnxruntime::WindowsTelemetry::EtwInternalCallback callback_ML_ORT_provider_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_;
+#endif
 
  public:
 #if !defined(ORT_MINIMAL_BUILD)
@@ -600,6 +606,30 @@ class InferenceSession {
   const Model& GetModel() const;
   const Environment& GetEnvironment() const;
 
+  void SetWeightDataType(const std::string& type) {
+    weight_data_type_ = type;
+  }
+
+  const std::string& GetWeightDataType() const {
+    return weight_data_type_;
+  }
+
+  void SetGraphHash(const std::string& hash) {
+    graph_hash_ = hash;
+  }
+
+  const std::string& GetGraphHash() const {
+    return graph_hash_;
+  }
+
+  void SetWeightHash(const std::string& hash) {
+    weight_hash_ = hash;
+  }
+
+  const std::string& GetWeightHash() const {
+    return weight_hash_;
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 
@@ -671,6 +701,17 @@ class InferenceSession {
 
   // The file path of where the model was loaded. e.g. /tmp/test_squeezenet/model.onnx
   PathString model_location_;
+
+  // Input, Output and Weight tensor data types
+  std::string input_data_type_;
+  std::string output_data_type_;
+  std::string weight_data_type_;
+
+  // Graph hash of the model
+  std::string graph_hash_;
+
+  // Weight hash of the model
+  std::string weight_hash_;
 
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(InferenceSession);
@@ -757,6 +798,10 @@ class InferenceSession {
    * The `arenas_to_shrink` parameter is got from ValidateAndParseShrinkArenaString()
    */
   void ShrinkMemoryArenas(gsl::span<const AllocatorPtr> arenas_to_shrink);
+
+#ifdef _WIN32
+  static void LogAllSessions();
+#endif
 
 #if !defined(ORT_MINIMAL_BUILD)
   virtual common::Status AddPredefinedTransformers(
@@ -873,14 +918,17 @@ class InferenceSession {
 
   struct Telemetry {
     Telemetry() : time_sent_last_() {}
-    uint32_t total_runs_since_last_ = 0;           // the total number of Run() calls since the last report
-    long long total_run_duration_since_last_ = 0;  // the total duration (us) of Run() calls since the last report
-    std::string event_name_;                       // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    uint32_t total_runs_since_last_ = 0;                              // the total number of Run() calls since the last report
+    long long total_run_duration_since_last_ = 0;                     // the total duration (us) of Run() calls since the last report
+    std::string event_name_;                                          // where the model is loaded from: ["model_loading_uri", "model_loading_proto", "model_loading_istream"]
+    std::unordered_map<int64_t, long long> duration_per_batch_size_;  // the duration (us) of Run() calls per batch size since the last report
 
     TimePoint time_sent_last_;  // the TimePoint of the last report
     // Event Rate per provider < 20 peak events per second
     constexpr static long long kDurationBetweenSending = 1000 * 1000 * 60 * 10;  // duration in (us).  send a report every 10 mins
   } telemetry_;
+
+  mutable std::mutex telemetry_mutex_;  // to ensure thread-safe access to telemetry data
 
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
   bool session_activity_started_ = false;
@@ -973,57 +1021,6 @@ class InferenceSession {
 #if !defined(ORT_MINIMAL_BUILD)
   // Enable nodestats collection
   std::optional<NodeStatsRecorder> node_stats_recorder_;
-#endif
-
-#ifdef _WIN32
-  static std::mutex active_sessions_mutex_;  // Protects access to active_sessions_
-  static std::map<uint32_t, InferenceSession*> active_sessions_;
-  // Single callback for all sessions. Registers when the first session comes up
-  // and unregister when the last session goes away.
-  static const std::string callback_etw_provider_key_;
-  std::string callback_etw_sink_key_;  // Session Start Stop
-
-  void UnregisterEtwCallbacks();
-
-  struct AutoEtwUnregistrar {
-    std::function<void()> unregister_callback;
-    explicit AutoEtwUnregistrar(std::function<void()> func)
-        : unregister_callback(std::move(func)) {}
-    ~AutoEtwUnregistrar() {
-      if (unregister_callback) {
-        unregister_callback();
-      }
-    }
-  };
-
-  // Automatically cleans up all outstanding registrations
-  // in case session loading fails and ETW callbacks are already registered.
-  // We want callbacks to stop before any other members of the object are
-  // destroyed.
-  std::optional<AutoEtwUnregistrar> auto_etw_unregistrar_;
-
-  // This callback is registered globally for all sessions
-  // It is unregistered when the last session goes away.
-  static void EtwProviderCallbackLogAllSessions(LPCGUID SourceId,
-                                                ULONG IsEnabled,
-                                                UCHAR Level,
-                                                ULONGLONG MatchAnyKeyword,
-                                                ULONGLONG MatchAllKeyword,
-                                                PEVENT_FILTER_DESCRIPTOR FilterData,
-                                                PVOID CallbackContext);
-
-  static void LogAllSessions();
-
-  // This callback is registered per session
-  void EtwProviderSinkControlCallback(logging::EtwRegistrationManager& etwRegistrationManager,
-                                      LPCGUID /*SourceId */,
-                                      ULONG IsEnabled,
-                                      UCHAR /* Level */,
-                                      ULONGLONG MatchAnyKeyword,
-                                      ULONGLONG /* MatchAllKeyword */,
-                                      PEVENT_FILTER_DESCRIPTOR /* FilterData */,
-                                      PVOID /* CallbackContext */);
-
 #endif
 };
 

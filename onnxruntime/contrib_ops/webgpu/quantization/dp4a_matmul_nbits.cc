@@ -325,15 +325,19 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
+
+  ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_ % 4 == 0, "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
+  const uint32_t sub_tile_count = WorkgroupSizeX() / tile_size_k_vec_;
+  ORT_ENFORCE(tile_size_ % sub_tile_count == 0, "tile_size_ must be divisible by sub_tile_count");
+
   // This algorithm works to compute dot product of k parallelly, by processing k at each step amongst tile_size_k_vec threads,
   // and utilizing the remaining threads in the workgroup to process additional rows of b in parallel (such that the values in shared memory for A can be reused).
   // For each load of k, the tile_size_k_vec threads also reload B tile_size/num_concurrent_b_rows times to compute partial dot products of other B rows
   // in order to complete all tile_size b rows in this workgroup and also reusing the loaded in register values of a.
 
-  // 1. Each workgroup handles tile_size_k_vec (16) * k_vectorization_in_b (32) columns (total 512) and num_concurrent_b_rows of matrix B at a time,
+  // 1. Each workgroup handles tile_size_k_vec * k_vectorization_in_b (32) columns and num_concurrent_b_rows of matrix B at a time,
   // iterating over the columns to compute a partial dot product.
   // 2. Uses vec4 vectorization where each K represents 32 elements of matrix B
-  constexpr uint32_t tile_size_k_vec = 16;
 
   // 1. Workgroup Responsibility:
   //    - Processes one row of matrix A
@@ -346,18 +350,19 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   //    - Iterates through columns accumulating results in inter_results
   //    - Performs final reduction sum in inter_results for output
   shader.AdditionalImplementation() << "  const tile_size = " << tile_size_ << "u;\n"
-                                    << "  const tile_size_k_vec = " << tile_size_k_vec << "u;\n"
-                                    << "  const double_tile_size_k_vec = " << 2 * tile_size_k_vec << "u;\n"
+                                    << "  const tile_size_k_vec = " << tile_size_k_vec_ << "u;\n"
+                                    << "  const double_tile_size_k_vec = " << 2 * tile_size_k_vec_ << "u;\n"
                                     // sub_tile_count is the number of concurrent b rows processed by the workgroup.
-                                    << "  const sub_tile_count = " << WorkgroupSizeX() / tile_size_k_vec << "u;\n"
-                                    << "  var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;\n";
+                                    << "  const sub_tile_count = " << sub_tile_count << "u;\n";
 
   shader.AdditionalImplementation() << CommonFunctions(nbits_)
                                     << R"ADDNL_FN(
-    // Need 2 * tile_size_k_vec (32) to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
-    var<workgroup> tile_A : array<vec4<u32>, 32>;
-    // Need 4 scales value since each tile_A includes 512 (4x4x32) scalars and the block_size is 128.
-    var<workgroup> scale_A : array<output_element_t, 4>;
+    var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
+    // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
+    var<workgroup> tile_A : array<vec4<u32>, double_tile_size_k_vec>;
+    // double_tile_size_k_vec * 16 / 128
+    const scale_a_size_in_tile_a = double_tile_size_k_vec / 8;
+    var<workgroup> scale_A : array<output_element_t, scale_a_size_in_tile_a>;
     fn loadSHMA(a_global: u32, kidx_v: u32, col: u32)
     {
       let k_offset = kidx_v + col;
@@ -366,7 +371,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       }
 
       tile_A[col] = input_a[a_global*uniforms.K16+k_offset];
-      if (col < 4)
+      if (col < scale_a_size_in_tile_a)
       {
         // kidx_v - covers 16 values of k in input_a
         scale_A[col] = scales_a[a_global*(uniforms.K/128) + kidx_v/8 + col];
@@ -391,8 +396,6 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       var own_a: vec4<u32> = tile_A[local_col * 2];
       var own_a1: vec4<u32> = tile_A[local_col * 2 + 1];
       var own_scale_a = scale_A[local_col / 4];
-      var own_b = vec4<u32>(0);
-      var own_b1 = vec4<u32>(0);
       let k_offset = kidx_v + local_col;
       // calculate intermediate results into inter_results.
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
@@ -404,13 +407,13 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   if (nbits_ == 4) {
     shader.MainFunctionBody() << R"MAIN_FN(
           let b_value = input_b[b_offset];
-          own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
-          own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
+          let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
+          let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
   )MAIN_FN";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
-          own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
-          own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
+          let own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
+          let own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
   )MAIN_FN";
   }
   shader.MainFunctionBody() << R"MAIN_FN(
@@ -466,9 +469,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
 
   if (M < min_M_for_tile_optimization) {
-    constexpr uint32_t kTileSize = 32;
-    DP4AMatMulNBitsSmallMProgram mul_program{kTileSize, nbits};
-    uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
+    uint32_t tile_size_k_vec = 16;
+    uint32_t tile_size = 32;
+
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size, nbits};
+    uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
     mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
@@ -477,7 +482,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
         .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits);
+        .CacheHint(nbits, tile_size_k_vec, tile_size);
     return context.RunProgram(mul_program);
   }
 
