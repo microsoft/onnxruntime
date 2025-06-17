@@ -60,6 +60,7 @@ export declare namespace JSEP {
         ensureTensor: WebNN.EnsureTensorFunction,
         uploadTensor: WebNN.UploadTensorFunction,
         downloadTensor: WebNN.DownloadTensorFunction,
+        registerMLTensor: WebNN.RegisterMLTensorFunction,
         enableTraceEvent: boolean,
       ],
     ): void;
