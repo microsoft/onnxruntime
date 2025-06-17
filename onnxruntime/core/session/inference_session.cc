@@ -2020,6 +2020,14 @@ common::Status InferenceSession::Initialize() {
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
 
+    // Check compiled EP context model compatibility
+    for (auto ep: execution_providers_) {
+      bool valid = ep->isValidCompiledModel(graph);
+      if(!valid)
+        return ORT_MAKE_STATUS(ONNXRUNTIME, MODEL_REQUIRES_COMPILATION, "The compiled EP Context blob is incompitable",
+                                 ep, "Please recompile the model");
+    }
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
@@ -3063,17 +3071,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
     telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
     telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
 
-    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-      // send the telemetry
-      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                                telemetry_.total_run_duration_since_last_,
-                                                telemetry_.duration_per_batch_size_);
-      // reset counters
-      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-      telemetry_.total_runs_since_last_ = 0;
-      telemetry_.total_run_duration_since_last_ = 0;
-      telemetry_.duration_per_batch_size_.clear();
-    }
+  // time to send telemetry?
+  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
+    // send the telemetry
+    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                              telemetry_.total_run_duration_since_last_);
+    // reset counters
+    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+    telemetry_.total_runs_since_last_ = 0;
+    telemetry_.total_run_duration_since_last_ = 0;
   }
 
   // log evaluation stop to trace logging provider
