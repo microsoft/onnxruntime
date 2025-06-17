@@ -484,7 +484,7 @@ static size_t GemmQuantKernelNx8Impl(
                 }
                 wasm_v128_store(c[r] + 0, Acc[r][0]);
                 wasm_v128_store(c[r] + 4, Acc[r][1]);
-                a[r] -= PackedCountK * 4; // rewind for next N‑tile
+                a[r] -= PackedCountK * 4; // Rewind a[r] for next N‑tile (PackedCountK * 4 bytes each).
                 c[r] += ColBlock;
             }
             CountN -= ColBlock;
