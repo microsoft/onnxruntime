@@ -324,7 +324,14 @@ class CallableDispatchableHelper {
   int Invoke(Fn&& fn, Args&&... args) {
     if (utils::ToTensorProtoElementType<T>() == dt_type_) {
       std::forward<Fn>(fn)(std::forward<Args>(args)...);
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4702)
+#endif
       ++called_;
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
     }
     return 0;
   }
@@ -339,14 +346,7 @@ class CallableDispatchableHelper {
 template <class Ret>
 struct UnsupportedTypeDefaultPolicy {
   [[noreturn]] void operator()(int32_t dt_type, Ret& /*result*/) const {
-#if defined(_MSC_VER)
-#pragma warning(push)
-#pragma warning(disable : 4702)
-#endif
     ORT_THROW("Unsupported data type: ", dt_type);
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
   }
 };
 
