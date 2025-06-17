@@ -210,6 +210,7 @@ float run_cutlass_kernel(wo::Params& params, int warmup, int repeats) {
   cudaEventCreate(&end);
 
   auto configs = get_configs(gemm, params.k);
+  std::cout << "total " << configs.size() << " configurations" << std::endl;
   int ws_bytes = gemm.getWorkspaceSize(params.m, params.n, params.k);
   char* ws_ptr = nullptr;
   if (ws_bytes)
@@ -280,18 +281,13 @@ float run_matmul_n_bits_kernel(T* output,                   // Output C [1, N]
                                int k,                       // Columns of A / Rows of B
                                int group_size,              // Quantization block size for B
                                int bits,                    // Bits per element in B (4 or 8)
-                               int warmup, int repeats) {
-  int device;
-  CUDA_CALL_THROW(cudaGetDevice(&device));
-
-  cudaDeviceProp prop;
-  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device));
-  std::cout << "Device " << device << " has " << prop.sharedMemPerBlock << " bytes of shared memory per block." << std::endl;
-
-  cudaStream_t s;
+                               int warmup, int repeats,
+                               const cudaDeviceProp prop) {
+  ORT_ENFORCE(m == 1, "Only support m = 1 for matmul_n_bits kernel");  cudaStream_t s;
   cudaStreamCreate(&s);
 
-  bool has_gemv = onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points, m, n, k, group_size, prop.sharedMemPerBlock, s);
+  bool has_gemv = onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points,
+                                                             m, n, k, group_size, prop.sharedMemPerBlock, s);
   if (!has_gemv) {
     std::cerr << "Failed to run matmul" << bits << "bits kernel." << std::endl;
     return 0.0f;
@@ -300,11 +296,13 @@ float run_matmul_n_bits_kernel(T* output,                   // Output C [1, N]
     cudaEventCreate(&begin);
     cudaEventCreate(&end);
     for (int i = 0; i < warmup; ++i) {
-      onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points, m, n, k, group_size, prop.sharedMemPerBlock, s);
+      onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points,
+                                                 m, n, k, group_size, prop.sharedMemPerBlock, s);
     }
     cudaEventRecord(begin, s);
     for (int i = 0; i < repeats; ++i) {
-      onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points, m, n, k, group_size, prop.sharedMemPerBlock, s);
+      onnxruntime::contrib::cuda::TryMatMulNBits(bits, output, a_data, b_data, scales_data, zero_points,
+                                                 m, n, k, group_size, prop.sharedMemPerBlock, s);
     }
     cudaEventRecord(end, s);
     cudaEventSynchronize(end);
@@ -317,7 +315,8 @@ float run_matmul_n_bits_kernel(T* output,                   // Output C [1, N]
 }
 
 template <wo::KernelType KT, bool has_bias = false, bool has_act_scale = false>
-bool benchmark_and_verify(int m, int n, int k, int group_size, int warmup, int repeats) {
+bool benchmark_and_verify(int m, int n, int k, int group_size, int warmup, int repeats,
+  [[maybe_unused]] const cudaDeviceProp& prop) {
   std::srand(20240123);
   ORT_ENFORCE(m <= 16);
   if (cutlassTypeMapper<KT>::QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
@@ -407,7 +406,7 @@ bool benchmark_and_verify(int m, int n, int k, int group_size, int warmup, int r
           k,
           group_size,
           WSizeInBits,
-          warmup, repeats);
+          warmup, repeats, prop);
       printf("matmul %d bits kernel cost time %.3f us, fpA speedup %.2f\n\n", WSizeInBits, time3 * 1000, time3 / time1);
     }
   }
@@ -425,21 +424,31 @@ TEST(KernelTest, FpA_IntB_Gemm_Fp16) {
   bool pass;
   constexpr int warmup = 10;
   constexpr int repeats = 30;
-  std::vector<int> ms{1, 2, 4, 6, 8, 10, 12, 14};
-  std::vector<int> ns{4096};
-  std::vector<int> ks{2048};
+  std::vector<int> ms{1, 2, 4, 8, 10, 14};
+
+  std::vector<std::pair<int, int>> n_k_list = {
+      {5120, 3072},
+      {8192, 3072},
+      {3072, 8192},
+      {200064, 3072}};
+
+  int device;
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+
+  cudaDeviceProp prop;
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device));
+
+
   for (auto m : ms) {
-    for (auto n : ns) {
-      for (auto k : ks) {
-        pass = benchmark_and_verify<wo::KernelType::FP16Int8Groupwise>(m, n, k, 64, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::FP16Int8Groupwise>(m, n, k, 128, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::FP16Int4Groupwise>(m, n, k, 64, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::FP16Int4Groupwise>(m, n, k, 128, warmup, repeats);
-        EXPECT_TRUE(pass);
-      }
+    for (const auto& [n, k] : n_k_list) {
+      pass = benchmark_and_verify<wo::KernelType::FP16Int8Groupwise>(m, n, k, 64, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::FP16Int8Groupwise>(m, n, k, 128, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::FP16Int4Groupwise>(m, n, k, 64, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::FP16Int4Groupwise>(m, n, k, 128, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
     }
   }
 }
@@ -454,21 +463,29 @@ TEST(KernelTest, FpA_IntB_Gemm_BF16) {
   bool pass;
   constexpr int warmup = 10;
   constexpr int repeats = 30;
-  std::vector<int> ms{1, 2, 4, 6, 8, 10, 12, 14};
-  std::vector<int> ns{4096};
-  std::vector<int> ks{2048};
+  std::vector<int> ms{1, 2, 4, 8, 10, 14};
+  std::vector<std::pair<int, int>> n_k_list = {
+      {5120, 3072},
+      {8192, 3072},
+      {3072, 8192},
+      {200064, 3072}};
+
+  int device;
+  CUDA_CALL_THROW(cudaGetDevice(&device));
+
+  cudaDeviceProp prop;
+  CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device));
+
   for (auto m : ms) {
-    for (auto n : ns) {
-      for (auto k : ks) {
-        pass = benchmark_and_verify<wo::KernelType::BF16Int8Groupwise>(m, n, k, 64, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::BF16Int8Groupwise>(m, n, k, 128, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::BF16Int4Groupwise>(m, n, k, 64, warmup, repeats);
-        EXPECT_TRUE(pass);
-        pass = benchmark_and_verify<wo::KernelType::BF16Int4Groupwise>(m, n, k, 128, warmup, repeats);
-        EXPECT_TRUE(pass);
-      }
+    for (const auto& [n, k] : n_k_list) {
+      pass = benchmark_and_verify<wo::KernelType::BF16Int8Groupwise>(m, n, k, 64, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::BF16Int8Groupwise>(m, n, k, 128, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::BF16Int4Groupwise>(m, n, k, 64, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
+      pass = benchmark_and_verify<wo::KernelType::BF16Int4Groupwise>(m, n, k, 128, warmup, repeats, prop);
+      EXPECT_TRUE(pass);
     }
   }
 }
