@@ -318,7 +318,7 @@ std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc)
     // Enable NCHW support
     ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
                                               webgpu::options::kPreferredLayout_NCHW)
-                   .IsOK());
+                    .IsOK());
   }
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
