@@ -172,16 +172,6 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
   }
 }
 
-static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
-  TypeProto t;
-  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-  for (auto dim : tensor.dims())
-    shape->add_dim()->set_dim_value(dim);
-
-  return t;
-}
-
 static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
   return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
                     subgraph_ptr.GetMetaDef()->name, "_",
@@ -1256,7 +1246,7 @@ Graph::Graph(const Model& owning_model,
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
-      TypeProto t{TypeProtoFromTensorProto(*tensor)};
+      TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
       const NodeArg& node_arg = GetOrCreateNodeArg(tensor->name(), &t);
       *(graph_proto_->add_input()) = node_arg.ToProto();
     }
@@ -1340,7 +1330,7 @@ Graph::Graph(const Model& owning_model,
     }
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
-    TypeProto t{TypeProtoFromTensorProto(tensor)};
+    TypeProto t{utils::TypeProtoFromTensorProto(tensor)};
 
     if (!utils::HasElemType(t.tensor_type())) {
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
@@ -5059,7 +5049,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(),
               " conflicts with graph initializer. Check that the node names have been made unique.");
   if (GetNodeArg(tensor->name()) == nullptr) {
-    TypeProto t{TypeProtoFromTensorProto(*tensor)};
+    TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
   }
 
@@ -5510,7 +5500,7 @@ Status Graph::InlineFunction(Node& callnode) {
       ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " in inlined subgraph: ",
                   subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
       if (GetNodeArg(tensor->name()) == nullptr) {
-        TypeProto t{TypeProtoFromTensorProto(*tensor)};
+        TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
       }
     }
@@ -5968,7 +5958,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         tensor_proto.set_raw_data(t.DataRaw(), t.SizeInBytes());
       }
 
-      TypeProto type_proto{TypeProtoFromTensorProto(tensor_proto)};
+      TypeProto type_proto{utils::TypeProtoFromTensorProto(tensor_proto)};
       ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(name, &type_proto));
 
       name_to_initial_tensor_.emplace(name, &tensor_proto);

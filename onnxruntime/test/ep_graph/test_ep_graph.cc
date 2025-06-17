@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "core/common/common.h"
+#include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
@@ -22,6 +23,55 @@ extern std::unique_ptr<Ort::Env> ort_env;
 namespace onnxruntime {
 namespace test {
 
+// forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
+// to a graph represented by the internal ORT GraphViewer class.
+static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
+
+//
+//  Tests
+//
+
+// Checks that an OrtGraph is initialized correctly and tests basic usage of the C API
+// by traversing the OrtGraph and checking validity of nodes and value infos.
+TEST(EpGraphTest, BasicCApiUse) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph for a model with subgraphs is correct.
+// Traverse OrtGraph with Scan nodes, which tests handling of subgraphs, implicit inputs, and variadic I/O.
+TEST(EpGraphTest, CheckModelWithSubgraphs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+// Use public C APIs to check that the OrtGraph for bart_tiny.onnx is correct.
+// This model is used in an example topological sort implementation.
+TEST(EpGraphTest, CheckModelBartTiny) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/bart_tiny.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, Check3LayerNestedSubgraph) {
+  // The main graph contains a 'If' node: 'graph_0__if_0'
+  // Inside the then-branch of 'graph_0__if_0', there is a nested 'If' node: 'graph_0__if_0__else__if_0'
+  // This 3-layer nested graph consumes the same initializer in different subgraphs.
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+//
+// Utils for traversing an OrtGraph and checking against GraphViewer.
+//
+
 // Convert an OrtConstPointerArray into a span of Ort___ pointers.
 template <typename T>
 static void GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
@@ -36,6 +86,46 @@ static void GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
 
   auto data = reinterpret_cast<const T* const*>(raw_data);
   span = gsl::span<const T* const>(data, size);
+}
+
+// Checks that the OrtTypeInfo obtained from the public C API matches another OrtTypeInfo
+// obtained from the internal ORT graph IR.
+static void CheckTypeInfo(const OrtTypeInfo* api_type_info, const OrtTypeInfo* type_info) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  ASSERT_NE(api_type_info, nullptr);
+  ASSERT_NE(type_info, nullptr);
+
+  ONNXType api_onnx_type = ONNX_TYPE_UNKNOWN;
+  ASSERT_ORTSTATUS_OK(ort_api.GetOnnxTypeFromTypeInfo(api_type_info, &api_onnx_type));
+  ASSERT_EQ(api_onnx_type, type_info->type);
+
+  if (api_onnx_type == ONNX_TYPE_TENSOR) {
+    // Only validating Tensors (not checking Map, Sequence, etc.) values because these C APIs for getting
+    // type/shape information existed long before the new ORT graph IR APIs and are tested elsewhere.
+    const OrtTensorTypeAndShapeInfo* api_type_shape = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.CastTypeInfoToTensorInfo(api_type_info, &api_type_shape));
+    ASSERT_NE(api_type_shape, nullptr);
+
+    ONNXTensorElementDataType api_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    ASSERT_ORTSTATUS_OK(ort_api.GetTensorElementType(api_type_shape, &api_elem_type));
+    ASSERT_EQ(api_elem_type, type_info->tensor_type_info->type);
+
+    size_t api_num_dims = 0;
+    ASSERT_ORTSTATUS_OK(ort_api.GetDimensionsCount(api_type_shape, &api_num_dims));
+    ASSERT_EQ(api_num_dims, type_info->tensor_type_info->shape.NumDimensions());
+
+    std::vector<int64_t> api_dims(api_num_dims, 0);
+    ASSERT_ORTSTATUS_OK(ort_api.GetDimensions(api_type_shape, api_dims.data(), api_dims.size()));
+    ASSERT_EQ(gsl::span<const int64_t>(api_dims), type_info->tensor_type_info->shape.GetDims());
+
+    std::vector<const char*> api_dim_syms(api_num_dims, nullptr);
+    ASSERT_ORTSTATUS_OK(ort_api.GetSymbolicDimensions(api_type_shape, api_dim_syms.data(), api_dim_syms.size()));
+    const std::vector<std::string>& dim_syms = type_info->tensor_type_info->dim_params;
+    for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
+      ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
+    }
+  }
 }
 
 // Checks that the given OrtNode matches the onnxruntime::Node.
@@ -115,30 +205,48 @@ static void CheckValueInfoConsumers(const GraphViewer& graph_viewer, const OrtVa
   }
 }
 
-static void CheckInitializerValueInfosCApi(const GraphViewer& graph_viewer,
-                                           gsl::span<const OrtValueInfo* const> initializer_value_infos,
+static void CheckInitializerValueInfo(const OrtValueInfo* api_value_info,
+                                      const ONNX_NAMESPACE::TensorProto* tensor_proto) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  const OrtValue* api_initializer_value = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
+  ASSERT_NE(api_initializer_value, nullptr);
+
+  const char* api_initializer_name = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
+  ASSERT_NE(api_initializer_name, nullptr);
+
+  // Check initializer type.
+  const ONNX_NAMESPACE::TypeProto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
+  auto type_info = OrtTypeInfo::FromTypeProto(type_proto);
+
+  const OrtTypeInfo* api_type_info = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoTypeInfo(api_value_info, &api_type_info));
+  CheckTypeInfo(api_type_info, type_info.get());
+}
+
+static void CheckInitializerValueInfosCApi(gsl::span<const OrtValueInfo* const> initializer_value_infos,
                                            const InitializedTensorSet& initializer_tensor_protos) {
   const OrtApi& ort_api = Ort::GetApi();
-  (void)graph_viewer;
 
   for (size_t i = 0; i < initializer_value_infos.size(); i++) {
     const OrtValueInfo* api_value_info = initializer_value_infos[i];
-    const OrtValue* api_initializer_value = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(api_value_info, &api_initializer_value));
-    ASSERT_NE(api_initializer_value, nullptr);
 
     const char* api_initializer_name = nullptr;
     ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoName(api_value_info, &api_initializer_name));
     ASSERT_NE(api_initializer_name, nullptr);
 
-    auto iter = initializer_tensor_protos.find(api_initializer_name);
-    ASSERT_NE(iter, initializer_tensor_protos.end());
+    auto tensor_proto_iter = initializer_tensor_protos.find(api_initializer_name);
+    ASSERT_NE(tensor_proto_iter, initializer_tensor_protos.end());
 
-    const ONNX_NAMESPACE::TensorProto* tensor_proto = iter->second;
+    const ONNX_NAMESPACE::TensorProto* tensor_proto = tensor_proto_iter->second;
     ASSERT_NE(tensor_proto, nullptr);
-    // TODO(adrianlizarraga): Check initializer type and first couple of values.
+
+    CheckInitializerValueInfo(api_value_info, tensor_proto);
   }
 }
+
 // Checks that the OrtValueInfos obtained from the public C API are "equivalent" to the NodeArgs
 // in the original graph.
 static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const OrtValueInfo* const> value_infos,
@@ -186,55 +294,22 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsGraphOutput(value_info, &api_is_graph_output));
       ASSERT_EQ(api_is_graph_output, is_graph_output);
 
-      bool api_is_const_initializer = false;
-      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsConstantInitializer(value_info, &api_is_const_initializer));
-      ASSERT_EQ(api_is_const_initializer, is_const_initializer);
-
-      if (is_const_initializer || api_is_opt_graph_input) {
-        const OrtValue* api_initializer_value = nullptr;
-        ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_GetInitializerValue(value_info, &api_initializer_value));
-        ASSERT_NE(api_initializer_value, nullptr);
-      }
-
       bool is_outer_scope = graph_viewer.GetGraph().IsOuterScopeValue(node_arg->Name());
       bool api_is_outer_scope = false;
       ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsFromOuterScope(value_info, &api_is_outer_scope));
       ASSERT_EQ(api_is_outer_scope, is_outer_scope);
 
-      auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
-      const OrtTypeInfo* api_type_info = nullptr;
-      ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoTypeInfo(value_info, &api_type_info));
-      ASSERT_NE(api_type_info, nullptr);
+      bool api_is_const_initializer = false;
+      ASSERT_ORTSTATUS_OK(ort_api.ValueInfo_IsConstantInitializer(value_info, &api_is_const_initializer));
+      ASSERT_EQ(api_is_const_initializer, is_const_initializer);
 
-      ONNXType api_onnx_type = ONNX_TYPE_UNKNOWN;
-      ASSERT_ORTSTATUS_OK(ort_api.GetOnnxTypeFromTypeInfo(api_type_info, &api_onnx_type));
-      ASSERT_EQ(api_onnx_type, node_arg_type_info->type);
-
-      if (api_onnx_type == ONNX_TYPE_TENSOR) {
-        // Only validating Tensors (not checking Map, Sequence, etc.) values because these C APIs for getting
-        // type/shape information existed long before the new ORT graph IR APIs and are tested elsewhere.
-        const OrtTensorTypeAndShapeInfo* api_type_shape = nullptr;
-        ASSERT_ORTSTATUS_OK(ort_api.CastTypeInfoToTensorInfo(api_type_info, &api_type_shape));
-        ASSERT_NE(api_type_shape, nullptr);
-
-        ONNXTensorElementDataType api_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-        ASSERT_ORTSTATUS_OK(ort_api.GetTensorElementType(api_type_shape, &api_elem_type));
-        ASSERT_EQ(api_elem_type, node_arg_type_info->tensor_type_info->type);
-
-        size_t api_num_dims = 0;
-        ASSERT_ORTSTATUS_OK(ort_api.GetDimensionsCount(api_type_shape, &api_num_dims));
-        ASSERT_EQ(api_num_dims, node_arg_type_info->tensor_type_info->shape.NumDimensions());
-
-        std::vector<int64_t> api_dims(api_num_dims, 0);
-        ASSERT_ORTSTATUS_OK(ort_api.GetDimensions(api_type_shape, api_dims.data(), api_dims.size()));
-        ASSERT_EQ(gsl::span<const int64_t>(api_dims), node_arg_type_info->tensor_type_info->shape.GetDims());
-
-        std::vector<const char*> api_dim_syms(api_num_dims, nullptr);
-        ASSERT_ORTSTATUS_OK(ort_api.GetSymbolicDimensions(api_type_shape, api_dim_syms.data(), api_dim_syms.size()));
-        const std::vector<std::string>& dim_syms = node_arg_type_info->tensor_type_info->dim_params;
-        for (size_t dim_idx = 0; dim_idx < api_num_dims; dim_idx++) {
-          ASSERT_EQ(std::string(api_dim_syms[dim_idx]), dim_syms[dim_idx]);
-        }
+      if (is_const_initializer || api_is_opt_graph_input) {
+        CheckInitializerValueInfo(value_info, initializer);
+      } else {
+        auto node_arg_type_info = OrtTypeInfo::FromTypeProto(*node_arg->TypeAsProto());
+        const OrtTypeInfo* api_type_info = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.GetValueInfoTypeInfo(value_info, &api_type_info));
+        CheckTypeInfo(api_type_info, node_arg_type_info.get());
       }
 
       CheckValueInfoProducer(graph_viewer, value_info, node_arg);
@@ -284,7 +359,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   GetSpanFromConstPointerArray<OrtValueInfo>(api_initializers_container, api_initializers);
 
   ASSERT_EQ(api_initializers.size(), graph_initializers.size());
-  CheckInitializerValueInfosCApi(graph_viewer, api_initializers, graph_initializers);
+  CheckInitializerValueInfosCApi(api_initializers, graph_initializers);
 
   // Check if it has a parent node.
   const Node* parent_node = graph_viewer.ParentNode();
@@ -373,28 +448,5 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   }
 }
 
-// Checks that an OrtGraph is initialized correctly and tests basic usage of the C API
-// by traversing the OrtGraph and checking validity of nodes and value infos.
-TEST(EpGraphTest, BasicCApiUse) {
-  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
-  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
-
-  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
-}
-
-// Traverse OrtGraph with Scan nodes, which tests handling of subgraphs, implicit inputs, and variadic I/O.
-TEST(EpGraphTest, CheckModelWithSubgraphs) {
-  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/scan_1.onnx"));
-  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
-
-  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
-}
-
-TEST(EpGraphTest, CheckModelBartTiny) {
-  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/bart_tiny.onnx"));
-  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
-
-  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
-}
 }  // namespace test
 }  // namespace onnxruntime

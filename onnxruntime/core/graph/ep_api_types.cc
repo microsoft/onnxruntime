@@ -413,19 +413,6 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
 EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
 
-static ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor) {
-  ONNX_NAMESPACE::TypeProto t;
-
-  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-
-  for (auto dim : tensor.dims()) {
-    shape->add_dim()->set_dim_value(dim);
-  }
-
-  return t;
-}
-
 // Static class function to create a std::unique_ptr<EpGraph>.
 Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
@@ -474,7 +461,7 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
       value_info = iter->second.get();
       value_info->SetFlag(flag);
     } else {
-      auto type_proto = TypeProtoFromTensorProto(*tensor_proto);
+      auto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
       std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
       auto unique_value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),
                                                              flag);
@@ -542,7 +529,8 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
       bool is_constant = false;
-      const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name, true,
+      const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
+                                                                                          /*check_outer_scope*/ true,
                                                                                           is_constant);
       outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
 
