@@ -203,6 +203,20 @@ struct OrtNode {
   virtual onnxruntime::Status GetImplicitInputs(const OrtConstPointerArray*& implicit_inputs) const = 0;
 
   /// <summary>
+  /// Gets the node's number of attributes.
+  /// </summary>
+  /// <param name="num_attrs">Output parameter set to number of attributes contained by the node.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNumAttributes(size_t& num_attrs) const = 0;
+
+  /// <summary>
+  /// Gets the node's attributes as an array of OrtValueInfo elements wrapped in an OrtConstPointerArray.
+  /// </summary>
+  /// <param name="attrs">Output parameter set to the node's attributes.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetAttributes(const OrtConstPointerArray*& attrs) const = 0;
+
+  /// <summary>
   /// Gets the node's number of subgraphs.
   /// </summary>
   /// <param name="num_subgraphs">Output parameter set to number of subgraphs contained by the node.</param>

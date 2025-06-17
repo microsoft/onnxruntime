@@ -22,6 +22,21 @@
 
 using namespace onnxruntime;
 
+// Convert an OrtConstPointerArray into a span of Ort___ pointers.
+template <typename T>
+OrtStatus* GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
+                                         /*out*/ gsl::span<const T* const>& span) {
+  size_t size = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(ort_array, &size));
+
+  const void* const* raw_data = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetData(ort_array, &raw_data));
+
+  auto data = reinterpret_cast<const T* const*>(raw_data);
+  span = gsl::span<const T* const>(data, size);
+  return nullptr;
+}
+
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
                     _Outptr_ OrtValueInfo** value_info) {
   API_IMPL_BEGIN
@@ -363,6 +378,88 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::FinalizeModelEditorSession, _In_ OrtSessi
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::GetSubGraph, _In_ const OrtGraph* ort_graph, _In_ const OrtConstPointerArray* ort_nodes_container, _Outptr_ OrtGraph** ort_subgraph) {
+  API_IMPL_BEGIN
+  OrtGraph* graph = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateGraph(&graph));
+
+  size_t num_nodes = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(ort_nodes_container, &num_nodes));
+
+  // Iterates the nodes
+  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
+    const OrtNode* node = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetElementAt(ort_nodes_container, node_idx,
+                                                                    reinterpret_cast<const void**>(&node)));
+    // Gets node's inputs as OrtValueInfo in gsl::span
+    const OrtConstPointerArray* node_inputs_container = nullptr;
+    gsl::span<const OrtValueInfo* const> node_inputs{};
+
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetInputs(node, &node_inputs_container));
+    auto status = GetSpanFromConstPointerArray<OrtValueInfo>(node_inputs_container, node_inputs);
+
+    // Gets node's inputs as vector of const char*
+    size_t num_node_inputs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(node_inputs_container, &num_node_inputs));
+    std::vector<const char*> node_input_names(num_node_inputs, nullptr);
+    for (size_t i = 0; i < num_node_inputs; i++) {
+      node_input_names[i] = node_inputs[i]->GetName().c_str();
+    }
+
+    // Gets node's outputs as OrtValueInfo in gsl::span
+    const OrtConstPointerArray* node_outputs_container = nullptr;
+    gsl::span<const OrtValueInfo* const> node_outputs{};
+
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetOutputs(node, &node_outputs_container));
+    status = GetSpanFromConstPointerArray<OrtValueInfo>(node_outputs_container, node_outputs);
+
+    // Gets node's outputs as vector of const char*
+    size_t num_node_outputs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(node_outputs_container, &num_node_outputs));
+    std::vector<const char*> node_output_names(num_node_outputs, nullptr);
+    for (size_t i = 0; i < num_node_outputs; i++) {
+      node_output_names[i] = node_outputs[i]->GetName().c_str();
+    }
+
+    // Creates the node
+    const char* node_name = nullptr;
+    const char* op_type = nullptr;
+    const char* domain_name = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetName(node, &node_name));
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetOperatorType(node, &op_type));
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetDomain(node, &domain_name));
+
+    OrtNode* new_node = nullptr;
+    const OrtConstPointerArray* node_attrs_container = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetAttributes(node, &node_attrs_container));
+    size_t num_node_attrs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(node_attrs_container, &num_node_attrs));
+    std::vector<std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> node_attributes_holder;
+    std::vector<OrtOpAttr*> node_attributes(num_node_attrs, nullptr);
+    for (size_t i = 0; i < num_node_attrs; i++) {
+      const OrtOpAttr* attr = nullptr;
+      ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetElementAt(node_attrs_container, i,
+                                                                  reinterpret_cast<const void**>(&attr)));
+      auto attr_proto = std::make_unique<ONNX_NAMESPACE::AttributeProto>(attr->attr_proto);
+      node_attributes[i] = reinterpret_cast<OrtOpAttr*>(attr_proto.get());
+      node_attributes_holder.emplace_back(std::move(attr_proto));
+    }
+
+    ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateNode(op_type, domain_name, node_name,
+                                                          node_input_names.data(), node_input_names.size(),
+                                                          node_output_names.data(), node_output_names.size(),
+                                                          node_attributes.data(), node_attributes.size(),
+                                                          &new_node));
+
+    ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::AddNodeToGraph(graph, new_node));
+  }
+
+  // Check outer scope value infos
+  *ort_subgraph = graph;
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtModelEditorApi ort_model_editor_api = {
     // NOTE: The C# bindings depend on the API order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -393,6 +490,9 @@ static constexpr OrtModelEditorApi ort_model_editor_api = {
     &OrtModelEditorAPI::SessionGetOpsetForDomain,
     &OrtModelEditorAPI::ApplyModelToModelEditorSession,
     &OrtModelEditorAPI::FinalizeModelEditorSession,
+    // End of Version 22 - DO NOT MODIFY ABOVE (see above text for more information)
+
+    &OrtModelEditorAPI::GetSubGraph,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

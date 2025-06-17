@@ -656,6 +656,9 @@ ORT_API_STATUS_IMPL(Node_GetOutputs, _In_ const OrtNode* node, _Outptr_ const Or
 ORT_API_STATUS_IMPL(Node_GetImplicitInputs, _In_ const OrtNode* node,
                     _Outptr_ const OrtConstPointerArray** implicit_inputs);
 ORT_API_STATUS_IMPL(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
+ORT_API_STATUS_IMPL(Node_GetNumAttributes, _In_ const OrtNode* node, _Out_ size_t* num_attrs);
+ORT_API_STATUS_IMPL(Node_GetAttributes, _In_ const OrtNode* node,
+                    _Outptr_ const OrtConstPointerArray** attrs);
 ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
                     _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs, _In_ size_t max_num_subgraphs);
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,

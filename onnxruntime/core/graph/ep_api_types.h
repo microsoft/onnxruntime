@@ -164,6 +164,12 @@ struct EpNode : public OrtNode {
   // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
   Status GetImplicitInputs(const OrtConstPointerArray*& inputs) const override;
 
+  // Gets the number of attributes contained by this node.
+  Status GetNumAttributes(size_t& num_subgraphs) const override;
+
+  // Gets the node's attributes as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  Status GetAttributes(const OrtConstPointerArray*& attrs) const override;
+
   // Gets the number of subgraphs contained by this node (e.g., if this node is an If or Loop).
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
@@ -200,6 +206,8 @@ struct EpNode : public OrtNode {
   OrtConstPointerArray outputs_;
 
   OrtConstPointerArray implicit_inputs_;
+  OrtConstPointerArray attributes_;
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> attributes_map_;
   std::vector<SubgraphState> subgraphs_;
 };
 

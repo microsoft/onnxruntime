@@ -343,6 +343,23 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
     CheckValueInfosCApi(graph_viewer, api_node_outputs, output_node_args);
 
+    // Check node attributes
+    const auto& node_attrs = node->GetAttributes();
+    size_t api_num_attrs = 0;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumAttributes(api_node, &api_num_attrs));
+    ASSERT_EQ(api_num_attrs, node_attrs.size());
+
+    if (api_num_attrs > 0) {
+      const OrtConstPointerArray* api_node_attrs_container = nullptr;
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(api_node, &api_node_attrs_container));
+      for (size_t i = 0; i < api_num_attrs; i++) {
+        const OrtOpAttr* api_node_attr = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetElementAt(api_node_attrs_container, i,
+                                                                   reinterpret_cast<const void**>(&api_node_attr)));
+        ASSERT_NE(api_node_attr, nullptr);
+      }
+    }
+
     // Check node subgraphs
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
     size_t api_num_subgraphs = 0;
