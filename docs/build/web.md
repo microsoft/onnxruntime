@@ -168,7 +168,7 @@ This is the last stage in the build process, please follow the sections in a seq
 
    - Download artifacts from pipeline manually.
 
-     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifact "Release_wasm" and unzip. See instructions below to put files into destination folders.
+     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://github.com/microsoft/onnxruntime/actions/workflows/web.yml). Select a build, download artifact "Release_wasm" and unzip. See instructions below to put files into destination folders.
 
    - Build WebAssembly artifacts.
 
