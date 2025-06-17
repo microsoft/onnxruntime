@@ -5,5 +5,5 @@ transformers==4.48.0
 torch>=2.7.0
 onnx==1.17.0
 datasets>=2.8.0
-protobuf==3.20.2
+protobuf==4.25.8
 psutil
