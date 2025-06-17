@@ -178,6 +178,7 @@ export declare namespace WebNN {
         ensureTensor: EnsureTensorFunction,
         uploadTensor: UploadTensorFunction,
         downloadTensor: DownloadTensorFunction,
+        registerMLTensor: RegisterMLTensorFunction,
         enableTraceEvent: boolean,
       ],
     ): void;

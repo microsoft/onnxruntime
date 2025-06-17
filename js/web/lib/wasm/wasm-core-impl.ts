@@ -168,21 +168,23 @@ export const initEp = async (env: Env, epName: string): Promise<void> => {
       const backend = new (require('./jsep/backend-webnn').WebNNBackend)(env);
       getInstance().webnnInit!([
         backend,
-        // jsepReserveTensorId
+        // webnnReserveTensorId
         () => backend.reserveTensorId(),
-        // jsepReleaseTensorId,
+        // webnnReleaseTensorId,
         (tensorId: number) => backend.releaseTensorId(tensorId),
-        // jsepEnsureTensor
+        // webnnEnsureTensor
         async (sessionId: number | undefined, tensorId: number, onnxDataType: number, shape: number[], copyOld) =>
           backend.ensureTensor(sessionId, tensorId, onnxDataType, shape, copyOld),
-        // jsepUploadTensor
+        // webnnUploadTensor
         (tensorId: number, data: Uint8Array) => {
           backend.uploadTensor(tensorId, data);
         },
-        // jsepDownloadTensor
+        // webnnDownloadTensor
         async (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) =>
           backend.downloadTensor(tensorId, dstBuffer),
-        // jsepEnableTraceEvent
+        // webnnRegisterMLContext
+        (sessionId: number, mlContext: MLContext) => backend.registerMLContext(sessionId, mlContext),
+        // webnnEnableTraceEvent
         !!env.trace,
       ]);
     }
