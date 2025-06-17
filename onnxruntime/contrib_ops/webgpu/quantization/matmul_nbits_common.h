@@ -4,6 +4,7 @@
 #pragma once
 
 #include <string>
+#include <cstdint>
 
 namespace onnxruntime {
 namespace contrib {
