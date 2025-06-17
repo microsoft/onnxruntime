@@ -8,11 +8,13 @@
 #include "core/session/onnxruntime_c_api.h"
 
 namespace onnxruntime {
+
 // Convert onnxruntime::common::Status to OrtStatus*.
 _Ret_notnull_ OrtStatus* ToOrtStatus(const onnxruntime::common::Status& st);
 
-// Convert OrtStatus* to onnxruntime::common::Status.
-Status ToStatus(const OrtStatus* ort_status, common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
+// Convert OrtStatus* to onnxruntime::common::Status and release the OrtStatus*.
+Status ToStatusAndRelease(OrtStatus* ort_status,
+                          common::StatusCategory category = common::StatusCategory::ONNXRUNTIME);
 };  // namespace onnxruntime
 
 #ifndef ORT_NO_EXCEPTIONS

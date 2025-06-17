@@ -527,7 +527,7 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
 
     std::array<OrtEpDevice*, 8> ep_devices{nullptr};
     size_t num_ep_devices = 0;
-    ORT_RETURN_IF_ERROR(ToStatus(
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
         factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
                                     ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 

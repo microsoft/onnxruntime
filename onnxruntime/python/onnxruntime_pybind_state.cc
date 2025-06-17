@@ -326,6 +326,7 @@ const char* GetDeviceName(const OrtDevice& device) {
       if (device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
         return CANN;
       }
+      return "NPU";
 #else
       return "NPU";
 #endif
@@ -2082,7 +2083,7 @@ for model inference.)pbdoc");
             ORT_THROW("OrtEpDevices are not supported in this build");
 #endif
           },
-          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances 
+          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances
 must refer to the same execution provider.)pbdoc")
       .def(
           // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
