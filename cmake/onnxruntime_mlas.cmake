@@ -442,7 +442,6 @@ else()
             ${MLAS_SRC_DIR}/aarch64/QgemmS8S8KernelSmmla.S
             ${MLAS_SRC_DIR}/aarch64/QgemmU8X8KernelUmmla.S
             ${MLAS_SRC_DIR}/aarch64/SbgemmKernelNeon.S
-            ${MLAS_SRC_DIR}/aarch64/SConvKernelNeon.S
             ${MLAS_SRC_DIR}/activate_fp16.cpp
             ${MLAS_SRC_DIR}/dwconv.cpp
             ${MLAS_SRC_DIR}/halfgemm_kernel_neon.cpp
@@ -450,6 +449,7 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_smmla.cpp
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp
