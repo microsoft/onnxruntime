@@ -82,6 +82,7 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
@@ -102,6 +103,7 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_present_sequence_length_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
