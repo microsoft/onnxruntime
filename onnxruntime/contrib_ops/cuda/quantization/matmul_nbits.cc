@@ -174,6 +174,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
         {static_cast<size_t>(k), static_cast<size_t>(n)},
         quant_type);
 
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
@@ -381,31 +382,19 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
-    bool done = (nbits_ == 8) ? TryMatMul8Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream)
-                              : TryMatMul4Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream);
-    if (done) {
+    if (TryMatMulNBits(
+            nbits_,
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
       return Status::OK();
     }
   }

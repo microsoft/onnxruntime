@@ -395,6 +395,7 @@ bool TryMatMul8Bits(
   return true;
 }
 
+
 // --- Template Instantiations ---
 template bool TryMatMul8Bits<float>(
     float* output,
