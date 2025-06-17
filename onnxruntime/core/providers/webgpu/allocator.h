@@ -16,8 +16,8 @@ class GpuBufferAllocator : public IAllocator {
   GpuBufferAllocator(const WebGpuContext& context)
       : IAllocator(
             OrtMemoryInfo(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, 0),
-                          0, OrtMemTypeDefault)),
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
+                          OrtMemTypeDefault)),
         context_{context} {
   }
 

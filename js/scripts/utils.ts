@@ -11,37 +11,61 @@ import { JSZipObject } from 'jszip';
 // See https://github.com/gajus/global-agent/blob/v3.0.0/README.md#environment-variables for details.
 globalAgentBootstrap();
 
-export const downloadZip = async (url: string): Promise<Buffer> =>
-  new Promise<Buffer>((resolve, reject) => {
-    https.get(url, (res) => {
-      const { statusCode } = res;
-      const contentType = res.headers['content-type'];
+export const downloadZip = async (url: string, maxRetryTimes = 3): Promise<Buffer> => {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  let lastError: any;
 
-      if (statusCode === 301 || statusCode === 302) {
-        downloadZip(res.headers.location!).then(
-          (buffer) => resolve(buffer),
-          (reason) => reject(reason),
-        );
-        return;
-      } else if (statusCode !== 200) {
-        throw new Error(`Failed to download build list. HTTP status code = ${statusCode}`);
-      }
-      if (!contentType || !/^application\/zip/.test(contentType)) {
-        throw new Error(`unexpected content type: ${contentType}`);
-      }
+  for (let attempt = 0; attempt <= maxRetryTimes; attempt++) {
+    try {
+      return await new Promise<Buffer>((resolve, reject) => {
+        https
+          .get(url, (res) => {
+            const { statusCode } = res;
+            const contentType = res.headers['content-type'];
 
-      const chunks: Buffer[] = [];
-      res.on('data', (chunk) => {
-        chunks.push(chunk);
+            if (statusCode === 301 || statusCode === 302) {
+              downloadZip(res.headers.location!, maxRetryTimes).then(
+                (buffer) => resolve(buffer),
+                (reason) => reject(reason),
+              );
+              return;
+            } else if (statusCode !== 200) {
+              reject(new Error(`Failed to download build list. HTTP status code = ${statusCode}`));
+              return;
+            }
+            if (!contentType || !/^application\/zip/.test(contentType)) {
+              reject(new Error(`unexpected content type: ${contentType}`));
+              return;
+            }
+
+            const chunks: Buffer[] = [];
+            res.on('data', (chunk) => {
+              chunks.push(chunk);
+            });
+            res.on('end', () => {
+              resolve(Buffer.concat(chunks));
+            });
+            res.on('error', (err) => {
+              reject(err);
+            });
+          })
+          .on('error', (err) => {
+            reject(err);
+          });
       });
-      res.on('end', () => {
-        resolve(Buffer.concat(chunks));
-      });
-      res.on('error', (err) => {
-        reject(`${err}`);
-      });
-    });
-  });
+    } catch (error) {
+      lastError = error;
+      if (attempt < maxRetryTimes) {
+        // Wait before retrying (exponential backoff)
+        const delay = Math.pow(2, attempt) * 10000; // 10s, 20s, 40s, etc.
+        await new Promise((resolve) => setTimeout(resolve, delay));
+        console.warn(`Download attempt ${attempt + 1} failed, retrying in ${delay}ms...`);
+      }
+    }
+  }
+
+  throw lastError || new Error(`Failed to download after ${maxRetryTimes + 1} attempts`);
+};
 
 export const extractFile = async (entry: JSZipObject, ostream: WriteStream): Promise<void> =>
   new Promise<void>((resolve, reject) => {

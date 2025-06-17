@@ -27,7 +27,7 @@ constexpr const char* VITISAI = "VITISAI";
 VitisAIExecutionProvider::VitisAIExecutionProvider(
     const ProviderOptions& info)
     : IExecutionProvider{onnxruntime::kVitisAIExecutionProvider,
-                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
                                    DEFAULT_CPU_ALLOCATOR_DEVICE_ID,
                                    kAlloc4KAlignment)},
       info_(info) {
@@ -155,7 +155,7 @@ std::vector<AllocatorPtr> VitisAIExecutionProvider::CreatePreferredAllocators() 
         return std::make_unique<CPUAllocator>(
             OrtMemoryInfo(
                 onnxruntime::CPU_ALIGNED_4K, OrtAllocatorType::OrtDeviceAllocator,
-                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT,
+                OrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE,
                           device_id,
                           kAlloc4KAlignment)));
       },

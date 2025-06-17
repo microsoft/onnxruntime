@@ -372,7 +372,7 @@ if (onnxruntime_USE_ROCM)
     if (HIPIFY_PERL_PATH-NOTFOUND)
       MESSAGE(FATAL_ERROR "hipify-perl not found")
     endif()
-    MESSAGE("HIPIFY PATH:"${HIPIFY_PERL_PATH}/hipify-perl)
+    MESSAGE("HIPIFY PATH: ${HIPIFY_PERL_PATH}/hipify-perl")
     set(onnxruntime_HIPIFY_PERL ${HIPIFY_PERL_PATH}/hipify-perl)
   endif()
 
@@ -1667,6 +1667,10 @@ endif()
 
 if (onnxruntime_ENABLE_DLPACK)
   add_compile_definitions(ENABLE_DLPACK)
+endif()
+
+if (onnxruntime_CALLER_FRAMEWORK)
+  add_definitions(-DORT_CALLER_FRAMEWORK="${onnxruntime_CALLER_FRAMEWORK}")
 endif()
 
 if (UNIX OR onnxruntime_USE_NCCL)

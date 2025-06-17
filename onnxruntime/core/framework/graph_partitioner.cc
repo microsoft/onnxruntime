@@ -17,6 +17,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
@@ -902,9 +903,9 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   // handle initializers
-  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
-    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+  for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }
   }
 

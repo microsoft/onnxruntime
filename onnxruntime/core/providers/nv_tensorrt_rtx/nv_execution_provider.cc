@@ -1022,7 +1022,7 @@ NvExecutionProvider::PerThreadContext& NvExecutionProvider::GetPerThreadContext(
 
 NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNvTensorRTRTXExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
@@ -1584,6 +1584,11 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // Add node and node args
         // If node output is also parent graph output, the output will be added to the
         // subgraph's output list
+        //
+        // Initializers that refer to a memory location in OrtValue
+        // can not be handled by TRT (unlike those that are on disk).
+        // This prevents us from sharing the data and we have to make a copy here.
+        constexpr const bool load_initializers_inline_true = true;
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
@@ -1591,24 +1596,15 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
+
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
             outputs.push_back(&n_output);
@@ -2682,8 +2678,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -3061,8 +3058,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -3259,8 +3257,11 @@ void NvExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& s
 }
 
 OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     0 /*CPU device id always be 0*/);
   return default_device_;
 }
 

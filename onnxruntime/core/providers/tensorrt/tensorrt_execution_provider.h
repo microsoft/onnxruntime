@@ -540,7 +540,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * and save those information in subgraph context data structure. It's useful for building a valid graph and
    * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
    */
-  void BuildSubGraphContext(const Graph& build_graph) const;
+  void BuildSubGraphContext(Graph& build_graph) const;
 
   /**
    * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.
