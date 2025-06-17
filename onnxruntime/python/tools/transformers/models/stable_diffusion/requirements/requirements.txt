@@ -7,7 +7,7 @@ onnx==1.17.0
 coloredlogs
 packaging
 # Use newer version of protobuf might cause crash
-protobuf==3.20.3
+protobuf==4.25.8
 psutil
 sympy
 nvtx==0.2.5
