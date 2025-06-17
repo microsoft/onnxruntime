@@ -270,4 +270,9 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   return Status::OK();
 }
+
+const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() const {
+  return {};
+}
+
 }  // namespace onnxruntime

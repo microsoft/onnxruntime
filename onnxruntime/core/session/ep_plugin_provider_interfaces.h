@@ -71,6 +71,8 @@ class PluginExecutionProvider : public IExecutionProvider {
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
+
  private:
   struct FusedNodeState {
     FusedNodeState() = default;
