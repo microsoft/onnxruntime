@@ -61,13 +61,13 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
     return Status::OK();
   }
 
-  Initializer bn_scale{*bn_scale_tensor_proto, graph.ModelPath()};
-  Initializer bn_B{*bn_B_tensor_proto, graph.ModelPath()};
-  Initializer bn_mean{*bn_mean_tensor_proto, graph.ModelPath()};
-  Initializer bn_var{*bn_var_tensor_proto, graph.ModelPath()};
-  Initializer conv_W{*conv_W_tensor_proto, graph.ModelPath()};
+  Initializer bn_scale{graph, *bn_scale_tensor_proto, graph.ModelPath()};
+  Initializer bn_B{graph, *bn_B_tensor_proto, graph.ModelPath()};
+  Initializer bn_mean{graph, *bn_mean_tensor_proto, graph.ModelPath()};
+  Initializer bn_var{graph, *bn_var_tensor_proto, graph.ModelPath()};
+  Initializer conv_W{graph, *conv_W_tensor_proto, graph.ModelPath()};
 
-  std::unique_ptr<Initializer> conv_B = nullptr;
+  std::optional<Initializer> conv_B;
   const ONNX_NAMESPACE::TensorProto* conv_B_tensor_proto = nullptr;
   if (conv_inputs.size() == 3) {
     conv_B_tensor_proto = graph_utils::GetConstantInitializer(graph, conv_inputs[2]->Name());
@@ -79,7 +79,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         conv_B_tensor_proto->data_type() != bn_B_tensor_proto->data_type()) {
       return Status::OK();
     }
-    conv_B = std::make_unique<Initializer>(*conv_B_tensor_proto, graph.ModelPath());
+    conv_B.emplace(graph, *conv_B_tensor_proto, graph.ModelPath());
   }
 
   // Calculate new value of initializers of conv node
@@ -98,7 +98,7 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   }
 
   // Create new initializers of conv
-  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto(*conv_W_tensor_proto);
+  ONNX_NAMESPACE::TensorProto new_conv_W_tensor_proto;
   conv_W.ToProto(new_conv_W_tensor_proto);
 
   ONNX_NAMESPACE::TensorProto new_conv_B_tensor_proto;
@@ -120,10 +120,10 @@ Status ConvBNFusion::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
   new_conv_W_tensor_proto.set_name(new_W_name);
   new_conv_B_tensor_proto.set_name(new_B_name);
 
-  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializer(graph, new_conv_W_tensor_proto);
+  NodeArg& new_conv_W_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_conv_W_tensor_proto);
   graph_utils::ReplaceNodeInput(node, 1, new_conv_W_node_arg);
 
-  auto& new_conv_B_node_arg = graph_utils::AddInitializer(graph, new_conv_B_tensor_proto);
+  auto& new_conv_B_node_arg = graph_utils::AddInitializerWithExternalData(graph, new_conv_B_tensor_proto);
 
   if (conv_inputs.size() == 3) {
     graph_utils::ReplaceNodeInput(node, 2, new_conv_B_node_arg);

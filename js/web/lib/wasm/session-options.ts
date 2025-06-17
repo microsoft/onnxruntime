@@ -14,6 +14,8 @@ const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): num
       return 1;
     case 'extended':
       return 2;
+    case 'layout':
+      return 3;
     case 'all':
       return 99;
     default:

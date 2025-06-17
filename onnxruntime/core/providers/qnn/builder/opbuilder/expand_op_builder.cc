@@ -20,6 +20,11 @@ class ExpandOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger,
                        std::vector<std::string>& input_names,
                        bool do_op_validation) const override ORT_MUST_USE_RESULT;
+  Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                     const NodeUnit& node_unit,
+                                     std::vector<std::string>&& input_names,
+                                     const logging::Logger& logger,
+                                     bool do_op_validation) const override ORT_MUST_USE_RESULT;
   Status OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wrapper,
                                   const NodeUnit& node_unit,
                                   const logging::Logger& logger,
@@ -47,7 +52,6 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
   ORT_UNUSED_PARAMETER(do_op_validation);
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF(inputs.size() != 2, "Expand should has 2 inputs!");
-
   ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
 
   // Process shape input
@@ -124,6 +128,10 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
         FillShapeInputData(shape_data, shape_size, static_cast<uint32_t>(1));
         break;
       }
+      case QNN_DATATYPE_BOOL_8: {
+        FillShapeInputData(shape_data, shape_size, static_cast<uint8_t>(1));
+        break;
+      }
       default:
         return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Type not supported.");
     }  // switch
@@ -135,9 +143,26 @@ Status ExpandOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                        std::move(quantize_param), std::move(input_shape),
                                        std::move(shape_data));
   ORT_RETURN_IF_NOT(qnn_model_wrapper.AddTensorWrapper(std::move(input_tensorwrapper)), "Failed to add tensor.");
-
   input_names.push_back(shape_input_name);
 
+  return Status::OK();
+}
+
+Status ExpandOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
+                                                    const NodeUnit& node_unit,
+                                                    std::vector<std::string>&& input_names,
+                                                    const logging::Logger& logger,
+                                                    bool do_op_validation) const {
+  if (input_names.size() < 1) {
+    return Status::OK();
+  }
+  const auto* input_proto = node_unit.Inputs()[0].node_arg.TypeAsProto();
+  Qnn_DataType_t qnn_data_type{};
+  ORT_RETURN_IF_ERROR(utils::GetQnnDataType(false, input_proto, qnn_data_type));
+  // Boolean expand is implemented as an element-wise and operation, element-wise multiply otherwise.
+  const std::string target_op = qnn_data_type == QNN_DATATYPE_BOOL_8 ? "And" : node_unit.OpType();
+  ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit, std::move(input_names), {},
+                                     logger, do_op_validation, GetQnnOpType(target_op)));
   return Status::OK();
 }
 

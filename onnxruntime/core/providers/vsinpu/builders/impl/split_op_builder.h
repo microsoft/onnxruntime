@@ -63,7 +63,7 @@ class SplitOpBuilder : public BaseOpBuilder {
         LOGS_DEFAULT(WARNING) << "Optional input 'split' must be a constant initializer if provided.";
         return false;
       }
-      Initializer unpacked_tensor(*splits);
+      Initializer unpacked_tensor(graph_viewer.GetGraph(), *splits);
       auto split_sizes_ = unpacked_tensor.DataAsSpan<int64_t>();
       splits_list.assign(split_sizes_.begin(), split_sizes_.end());
       split_provided = true;

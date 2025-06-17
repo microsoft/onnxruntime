@@ -236,9 +236,45 @@ export const importWasmModule = async (
   urlOverride: string | undefined,
   prefixOverride: string | undefined,
   isMultiThreaded: boolean,
+  isWasmOverridden: boolean,
 ): Promise<[undefined | string, EmscriptenModuleFactory<OrtWasmModule>]> => {
-  if (!urlOverride && !prefixOverride && embeddedWasmModule && scriptSrc && isSameOrigin(scriptSrc)) {
-    return [undefined, embeddedWasmModule];
+  //
+  // Check if we should use the embedded module.
+  //
+
+  // To use the embedded module, it should be available, and no URL override or prefix override should be specified.
+  let useEmbeddedModule = embeddedWasmModule && !(urlOverride || prefixOverride);
+  if (useEmbeddedModule) {
+    if (!scriptSrc) {
+      // no URL info available.
+      //
+      // Note: when the embedded module is available, it means the current script is ESM. Usually, in ESM, the
+      // `import.meta.url` is available. But in some cases (eg. Cloudflare Workers), the value of `import.meta.url`
+      // can be `null` or `undefined`. In this case, we can only load the embedded module when:
+      //
+      // 1. The WebAssembly module binary is overridden:
+      //    ```js
+      //    env.wasm.wasmPaths = undefined;  // or not specified
+      //    env.wasm.wasmBinary = /* a Uint8Array containing the WebAssembly binary */;
+      //    ```
+      //
+      // 2. The ".wasm" only is overridden.
+      //    ```js
+      //    env.wasm.wasmPaths = { wasm: /* URL of the .wasm file */ };
+      //    ```
+      //
+      if (isWasmOverridden && !isMultiThreaded) {
+        useEmbeddedModule = true;
+      } else {
+        throw new Error('cannot determine the script source URL.');
+      }
+    } else {
+      // if the script source is available, we can check if it is from the same origin.
+      useEmbeddedModule = isSameOrigin(scriptSrc);
+    }
+  }
+  if (useEmbeddedModule) {
+    return [undefined, embeddedWasmModule!];
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
       ? 'ort-wasm-simd-threaded.jsep.mjs'

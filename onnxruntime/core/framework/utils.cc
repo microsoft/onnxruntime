@@ -32,14 +32,6 @@
 
 namespace onnxruntime {
 namespace utils {
-void* DefaultAlloc(size_t size) {
-  return onnxruntime::AllocatorDefaultAlloc(size);
-}
-
-void DefaultFree(void* p) {
-  onnxruntime::AllocatorDefaultFree(p);
-}
-
 void ConstructStrings(void* p_data, int64_t elements) {
   auto* ptr = static_cast<std::string*>(p_data);
   for (int64_t i = 0; i < elements; ++i) {

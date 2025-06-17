@@ -121,7 +121,7 @@ void Conv1dToMatmul(Graph& graph, Node& conv, const std::string transformer_name
     initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
     InlinedVector<int64_t> initializer_proto_value{weight_squeeze_axis};
     initializer_proto.set_raw_data(initializer_proto_value.data(), initializer_proto_value.size() * sizeof(int64_t));
-    auto& axes_input = graph_utils::AddInitializer(graph, initializer_proto);
+    auto& axes_input = graph_utils::AddInitializerWithExternalData(graph, initializer_proto);
     // Squeeze node doesn't have opschema here, so we need to set input args count manually
     weight_squeeze.MutableInputArgsCount().resize(2);
     graph_utils::AddNodeInput(weight_squeeze, 1, axes_input);

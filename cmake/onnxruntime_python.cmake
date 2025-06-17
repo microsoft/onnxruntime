@@ -189,7 +189,10 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-
+if(WIN32)
+  # onnxruntime_pybind11_state is a DLL
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
+endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
@@ -1062,12 +1065,6 @@ if (onnxruntime_USE_QNN)
     TARGET onnxruntime_pybind11_state POST_BUILD
     COMMAND ${CMAKE_COMMAND} -E copy
         ${QNN_LIB_FILES}
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:ep_weight_sharing_ctx_gen>
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
