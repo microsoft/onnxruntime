@@ -323,11 +323,11 @@ class CallableDispatchableHelper {
   template <class T, class Fn, class... Args>
   int Invoke(Fn&& fn, Args&&... args) {
     if (utils::ToTensorProtoElementType<T>() == dt_type_) {
-      std::forward<Fn>(fn)(std::forward<Args>(args)...);
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4702)
 #endif
+      std::forward<Fn>(fn)(std::forward<Args>(args)...);
       ++called_;
 #if defined(_MSC_VER)
 #pragma warning(pop)
