@@ -1,5 +1,8 @@
+//
 // SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
-// Licensed under the MIT License.
+//
+// SPDX-License-Identifier: MIT
+//
 
 #include <cassert>
 #include <map>
