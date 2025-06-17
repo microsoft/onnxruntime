@@ -139,6 +139,21 @@ class BaseOpBuilder : public IOpBuilder {
     return Status::OK();
   }
 
+  Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                      const NodeIndex& node_index,
+                      const std::string& node_name,
+                      const std::string& scalar,
+                      const std::string& qnn_scalar_param_name,
+                      std::vector<std::string>& param_names) const {
+    Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+    qnn_scalar.dataType = QNN_DATATYPE_STRING;
+    qnn_scalar.stringValue = scalar.c_str();
+    QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+    param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+    qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+    return Status::OK();
+  }
+
   Status SetOutputQParamEqualToInputIfNearlyEqual(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   const logging::Logger& logger,

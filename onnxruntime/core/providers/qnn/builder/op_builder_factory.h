@@ -3,7 +3,9 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <utility>
 #include "op_builder.h"
 namespace onnxruntime {
 namespace qnn {
@@ -122,6 +124,6 @@ void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateUDOBuilder(const std::string& op_type, const std::string& op_pacakge, OpBuilderRegistrations& op_registrations);
+void CreateUDOBuilder(const std::string& op_type, const std::string& op_package, OpBuilderRegistrations& op_registrations);
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -89,6 +89,13 @@ class QnnSerializerConfig {
   std::string graph_name_{"graph"};
 };
 
+struct OpPackage {
+  std::string op_type;
+  std::string path;
+  std::string interface;
+  std::string target;
+};
+
 // configuration values for QnnBackendManager creation
 struct QnnBackendManagerConfig {
   std::string backend_path;
@@ -100,7 +107,7 @@ struct QnnBackendManagerConfig {
   uint32_t device_id;
   QnnHtpDevice_Arch_t htp_arch;
   uint32_t soc_model;
-  std::vector<std::vector<std::string>> op_packages;
+  std::vector<OpPackage> op_packages;
 };
 
 class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager> {
@@ -321,22 +328,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     // assume op_packages passed in represented in
     // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
     for (const auto& op_package : op_packages_) {
-      std::string op_type = op_package[0];
-      std::filesystem::path op_package_path = op_package[1];
-      std::string op_package_interface = op_package[2];
-      std::string op_package_target;
-
-      if (op_package.size() > 3) {
-        op_package_target = op_package[3];
-      }
-
       ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
 
       Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
           backend_handle_,
-          op_package_path.string().c_str(),
-          op_package_interface.c_str(),
-          op_package_target.c_str());
+          op_package.path.c_str(),
+          op_package.interface.c_str(),
+          op_package.target.c_str());
 
       if (result != QNN_SUCCESS) {
         switch (result) {
@@ -344,7 +342,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
             LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
             break;
           case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
-            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package_path.string();
+            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
             break;
           case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
             LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
@@ -377,14 +375,14 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
         }
       }
       ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
-      // TODO: remove lib prefix in Linux
       LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
-      std::string op_package_for_registeration = op_package_path.stem().string();
+      std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
+      // remove lib prefix in Linux
       std::string prefix = "lib";
-      if (op_package_for_registeration.compare(0, prefix.size(), prefix) == 0) {
-        op_package_for_registeration = op_package_for_registeration.substr(prefix.size());
+      if (op_package_for_registration.compare(0, prefix.size(), prefix) == 0) {
+        op_package_for_registration = op_package_for_registration.substr(prefix.size());
       }
-      qnn::RegisterUDOBuilder(op_type, op_package_for_registeration);
+      qnn::RegisterUDOBuilder(op_package.op_type, op_package_for_registration);
     }
 
     return Status::OK();
@@ -423,7 +421,6 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;
-  std::vector<std::string> op_package_paths_;
   ContextPriority context_priority_;
   std::string sdk_build_version_ = "";
 #ifdef _WIN32
@@ -433,7 +430,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   uint32_t device_id_ = 0;
   QnnHtpDevice_Arch_t htp_arch_ = QNN_HTP_DEVICE_ARCH_NONE;
   uint32_t soc_model_ = QNN_SOC_MODEL_UNKNOWN;
-  const std::vector<std::vector<std::string>> op_packages_;
+  const std::vector<OpPackage> op_packages_;
 };
 
 }  // namespace qnn

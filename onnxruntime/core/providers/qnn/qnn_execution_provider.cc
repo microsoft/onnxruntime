@@ -179,11 +179,11 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
   }
 }
 
-static void ParseOpPackages(const std::string& op_packages_string, std::vector<std::vector<std::string>>& op_packages) {
+static void ParseOpPackages(const std::string& op_packages_string, std::vector<onnxruntime::qnn::OpPackage>& op_packages) {
   for (const auto& op_package : utils::SplitString(op_packages_string, ",", true)) {
     auto splitStrings = utils::SplitString(op_package, ":", true);
     if (splitStrings.size() < 3 || splitStrings.size() > 4) {
-      LOGS_DEFAULT(WARNING) << "Invalid op_package passed, expected <OpTpye>:<PackagePath>:<InterfaceSymbolName>, got " << op_package;
+      LOGS_DEFAULT(WARNING) << "Invalid op_package passed, expected <OpType>:<PackagePath>:<InterfaceSymbolName>[:<Target>], got " << op_package;
       LOGS_DEFAULT(WARNING) << "Skip registration.";
       continue;
     }
@@ -479,7 +479,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   }
 
   static const std::string QNN_OP_PACKAGES = "op_packages";
-  std::vector<std::vector<std::string>> op_packages;
+  std::vector<onnxruntime::qnn::OpPackage> op_packages;
   auto op_packages_pos = provider_options_map.find(QNN_OP_PACKAGES);
   if (op_packages_pos != provider_options_map.end()) {
     ParseOpPackages(op_packages_pos->second, op_packages);
