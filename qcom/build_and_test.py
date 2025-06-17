@@ -22,7 +22,7 @@ from ep_build.plan import (
     task,
 )
 from ep_build.task import (
-    ExtractZipTask,
+    ExtractArchiveTask,
     ListTasksTask,
     NoOpTask,
 )
@@ -176,6 +176,19 @@ class TaskLibrary:
             raise NotImplementedError("Archiving for Android on this host is not supported.")
 
     @task
+    @depends(["build_ort_linux"])
+    def archive_ort_linux(self, plan: Plan) -> str:
+        return plan.add_step(
+            BuildEpLinuxTask(
+                "Archiving ONNX Runtime for Linux",
+                self.__venv_path,
+                "linux",
+                self.__qairt_sdk_root,
+                "archive",
+            )
+        )
+
+    @task
     @depends(["build_ort_windows_arm64"])
     def archive_ort_windows_arm64(self, plan: Plan) -> str:
         return plan.add_step(
@@ -301,9 +314,19 @@ class TaskLibrary:
         return plan.add_step(CreateVenvTask(self.__python_executable, self.__venv_path))
 
     @task
+    def extract_ort_linux(self, plan: Plan) -> str:
+        return plan.add_step(
+            ExtractArchiveTask(
+                "Extracting ONNX Runtime for Linux",
+                REPO_ROOT / "build" / "onnxruntime-tests-linux.tar.bz2",
+                REPO_ROOT / "build" / "linux" / "Release",
+            )
+        )
+
+    @task
     def extract_ort_windows_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
-            ExtractZipTask(
+            ExtractArchiveTask(
                 "Extracting ONNX Runtime for Windows on x86_64",
                 REPO_ROOT / "build" / "onnxruntime-tests-windows-x86_64.zip",
                 REPO_ROOT / "build" / "windows-x86_64" / "RelWithDebInfo",

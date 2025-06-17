@@ -32,8 +32,6 @@ jobs:
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-android.zip
 
-  # The build isn't yet capable of archiving and extracting Linux builds; take that up separately:
-  # TODO: [AISW-138979] Run unit tests with HTP simulator
   build-linux:
     runs-on: ["self-hosted", "X64", "Linux", "Build"]
     steps:
@@ -43,7 +41,13 @@ jobs:
 
       - name: Build Linux
         run: |
-          python3 qcom/build_and_test.py build_ort_linux
+          python3 qcom/build_and_test.py archive_ort_linux
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Linux Tests
+          path: |
+            ${{ github.workspace }}/build/onnxruntime-tests-linux.tar.bz2
 
   build-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64", "Build"]
@@ -73,6 +77,37 @@ jobs:
       - name: Run Linting Tool
         run: |
           python3 qcom/build_and_test.py lint
+
+  test-linux:
+    runs-on: ["self-hosted", "Linux", "X64", "Build"]
+    needs: [build-linux]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: false
+
+      - uses: actions/download-artifact@v3
+        with:
+          name: ORT Linux Tests
+          path: |
+            ${{ github.workspace }}/build
+
+      - name: Test Linux
+        run: |
+          python3 qcom/build_and_test.py create_venv extract_ort_linux test_ort_linux --only
+
+      - name: Publish Test Report
+        uses: mikepenz/action-junit-report@v4.0.4
+        if: always() # always run even if the previous step fails
+        with:
+          check_name: linux-test-results
+          report_paths: ${{ github.workspace }}/build/linux/Release/*.results.xml
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Linux Test Results
+          path: |
+            ${{ github.workspace }}/build/linux/Release/*.results.xml
 
   test-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64", "Build"]

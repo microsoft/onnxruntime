@@ -141,9 +141,12 @@ $CommonArgs = `
 $Actions = @()
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
 $MakeTestArchive = $false
+$RunTests = $false
+$TestRunner = $null
 
 switch ($TargetPlatform) {
     "windows" {
+        $TestRunner = "$RepoRoot\qcom\scripts\windows\run_tests.ps1"
         switch ($Mode) {
             "build" {
                 if ($BuildIsDirty) {
@@ -154,11 +157,7 @@ switch ($TargetPlatform) {
                 $PlatformArgs = $ArchArg
             }
             "test" {
-                $Actions += "--test"
-                if ($Arch -ne "arm64") {
-                    Write-Host "Disabling QNN tests on $Arch."
-                    $QnnArgs = @()
-                }
+                $RunTests = $true
             }
             "archive" {
                 $MakeTestArchive = $true
@@ -227,7 +226,6 @@ Push-Location $RepoRoot
 
 if ($MakeTestArchive) {
     python.exe "$RepoRoot\qcom\scripts\all\archive_tests.py" `
-        "--cmake-bin-dir=$CmakeBinDir" `
         "--config=$Config" `
         "--qairt-sdk-root=$QairtSdkRoot" `
         "--target-platform=$TargetPlatformArch"
@@ -246,11 +244,25 @@ else {
         $env:Path = "$(Get-PackageBinDir ninja_windows_x86_64);" + $env:Path
     }
 
-    .\build.bat `
-        $Actions `
-        $CommonArgs `
-        $QnnArgs `
-        $PlatformArgs
+    # This platform supports running tests on the host. Prep the build directory
+    # to run with our ctest wrapper
+    if ($TestRunner) {
+        Copy-Item -Path $TestRunner -Destination "$BuildDir\$Config"
+        Copy-Item "$CMakeBinDir\ctest.exe" -Destination "$BuildDir\$Config"
+    }
+
+    if ($Actions.Count -gt 0) {
+        .\build.bat `
+            $Actions `
+            $CommonArgs `
+            $QnnArgs `
+            $PlatformArgs
+    }
+
+    if ($RunTests) {
+        Push-Location "$BuildDir\$Config"
+        & .\run_tests.ps1
+    }
 }
 
 if (-not $?) {

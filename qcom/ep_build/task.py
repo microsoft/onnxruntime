@@ -3,10 +3,11 @@
 
 import logging
 import shutil
+import tarfile
+import zipfile
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterable, Mapping
 from pathlib import Path
-from zipfile import ZipFile
 
 from .github import end_group, start_group
 from .util import BASH_EXECUTABLE, run_with_venv
@@ -47,23 +48,30 @@ class Task(ABC):
             end_group()
 
 
-class ExtractZipTask(Task):
+class ExtractArchiveTask(Task):
     def __init__(
         self,
         group_name: str | None,
-        zip_path: Path,
+        archive_path: Path,
         dest_dir: Path,
     ) -> None:
         super().__init__(group_name)
-        self.__zip_path = zip_path
+        self.__archive_path = archive_path
         self.__dest_dir = dest_dir
 
     def does_work(self) -> bool:
         return True
 
     def run_task(self) -> None:
-        with ZipFile(self.__zip_path, "r") as zip:
-            zip.extractall(self.__dest_dir)
+        logging.debug(f"Extracting archive {self.__archive_path} to {self.__dest_dir}.")
+        if tarfile.is_tarfile(self.__archive_path):
+            with tarfile.TarFile.open(self.__archive_path) as tar:
+                tar.extractall(self.__dest_dir)
+        elif zipfile.is_zipfile(self.__archive_path):
+            with zipfile.ZipFile(self.__archive_path, "r") as zip:
+                zip.extractall(self.__dest_dir)
+        else:
+            raise NotImplementedError(f"Unsupported archive type: {self.__archive_path}.")
 
 
 class FailTask(Task):
