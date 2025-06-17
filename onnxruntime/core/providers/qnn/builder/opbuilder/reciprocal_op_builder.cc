@@ -43,9 +43,6 @@ Status ReciprocalOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   const auto& outputs = node_unit.Outputs();
   ORT_RETURN_IF_NOT(outputs.size() == 1, "Reciprocal operator must have exactly 1 output.");
 
-  // Check input type is float for CPU. Can't use QNN Op validation API since it's before layout transformation
-  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
-
   return Status::OK();
 }
 
