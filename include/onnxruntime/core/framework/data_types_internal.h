@@ -319,22 +319,22 @@ class CallableDispatchableHelper {
  public:
   explicit CallableDispatchableHelper(int32_t dt_type) noexcept : dt_type_(dt_type), called_(0) {}
 
-  // Must return integer to be in a expandable context
-  template <class T, class Fn, class... Args>
-  int Invoke(Fn&& fn, Args&&... args) {
-    if (utils::ToTensorProtoElementType<T>() == dt_type_) {
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4702)
 #endif
+  // Must return integer to be in a expandable context
+  template <class T, class Fn, class... Args>
+  int Invoke(Fn&& fn, Args&&... args) {
+    if (utils::ToTensorProtoElementType<T>() == dt_type_) {
       std::forward<Fn>(fn)(std::forward<Args>(args)...);
       ++called_;
-#if defined(_MSC_VER)
-#pragma warning(pop)
-#endif
     }
     return 0;
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   void CheckCalledOnce() const {
     ORT_ENFORCE(called_ == 1, "Unsupported data type: ", dt_type_);
