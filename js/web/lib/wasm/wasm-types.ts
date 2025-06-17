@@ -28,6 +28,18 @@ export declare namespace JSEP {
   type CaptureBeginFunction = () => void;
   type CaptureEndFunction = () => void;
   type ReplayFunction = () => void;
+  type ReserveTensorIdFunction = () => number;
+  type ReleaseTensorIdFunction = (tensorId: number) => void;
+  type EnsureTensorFunction = (
+    sessionId: number | undefined,
+    tensorId: number,
+    dataType: DataType,
+    shape: readonly number[],
+    copyOld: boolean,
+  ) => Promise<MLTensor>;
+  type UploadTensorFunction = (tensorId: number, data: Uint8Array) => void;
+  type DownloadTensorFunction = (tensorId: number, dstBuffer: ArrayBufferView | ArrayBuffer) => Promise<undefined>;
+  type RegisterMLTensorFunction = (sessionId: number, mlContext: MLContext) => void;
 
   export interface Module extends WebGpuModule, WebNN.Module {
     /**
@@ -54,12 +66,13 @@ export declare namespace JSEP {
     jsepInit(
       name: 'webnn',
       initParams: [
-        backend: WebNN.BackendType,
-        reserveTensorId: WebNN.ReserveTensorIdFunction,
-        releaseTensorId: WebNN.ReleaseTensorIdFunction,
-        ensureTensor: WebNN.EnsureTensorFunction,
-        uploadTensor: WebNN.UploadTensorFunction,
-        downloadTensor: WebNN.DownloadTensorFunction,
+        backend: BackendType,
+        reserveTensorId: ReserveTensorIdFunction,
+        releaseTensorId: ReleaseTensorIdFunction,
+        ensureTensor: EnsureTensorFunction,
+        uploadTensor: UploadTensorFunction,
+        downloadTensor: DownloadTensorFunction,
+        registerMLTensor: RegisterMLTensorFunction,
         enableTraceEvent: boolean,
       ],
     ): void;
