@@ -26,7 +26,7 @@ Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader)
   shader.MainFunctionBody() << "  let batch = workgroup_idx / uniforms.x_shape[1];\n"
                             << "  let channel = workgroup_idx % uniforms.x_shape[1];\n"
                             << "  let height = uniforms.x_shape[2];\n"
-                            << "   // initialize workgroup memory<< \n"
+                            << "   // initialize workgroup memory\n"
                             << "  var sum = f32_val_t(0);\n"
                             << "  var squared_sum = f32_val_t(0);\n"
                             << "  for (var h = local_idx; h < height; h += workgroup_size) {\n"
