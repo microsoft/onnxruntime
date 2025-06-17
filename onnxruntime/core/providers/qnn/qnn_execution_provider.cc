@@ -775,7 +775,6 @@ static void PartitionCtxModel(const onnxruntime::GraphViewer& graph_viewer,
                               std::vector<std::unique_ptr<ComputeCapability>>& result,
                               const std::function<std::string()>& gen_metadef_name,
                               const logging::Logger& logger) {
-
   std::unordered_set<const Node*> supported_nodes{};
   std::vector<std::vector<const Node*>> supported_groups{};
 
