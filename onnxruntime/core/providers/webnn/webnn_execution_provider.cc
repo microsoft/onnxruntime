@@ -31,6 +31,7 @@ WebNNExecutionProvider::WebNNExecutionProvider(const std::string& webnn_device_f
           OrtDevice(
               webnn::IsMLTensorSupported() ? OrtDevice::GPU : OrtDevice::CPU,
               OrtDevice::MemType::DEFAULT,
+              OrtDevice::VendorIds::NONE,
               0)},
       wnn_device_type_(webnn::DeviceTypeFromString(webnn_device_flags)) {
   wnn_context_ = emscripten::val::module_property("currentContext");

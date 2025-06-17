@@ -1669,6 +1669,10 @@ if (onnxruntime_ENABLE_DLPACK)
   add_compile_definitions(ENABLE_DLPACK)
 endif()
 
+if (onnxruntime_CALLER_FRAMEWORK)
+  add_definitions(-DORT_CALLER_FRAMEWORK="${onnxruntime_CALLER_FRAMEWORK}")
+endif()
+
 if (UNIX OR onnxruntime_USE_NCCL)
   # Find NCCL
   if (onnxruntime_USE_NCCL)

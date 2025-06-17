@@ -20,7 +20,6 @@
 #include <atomic>
 #include <iostream>
 #include <string>
-#include <unordered_map>
 #include <vector>
 
 #include "core/common/logging/capture.h"
@@ -78,9 +77,9 @@ class EtwRegistrationManager {
   // Get the ETW registration status
   HRESULT Status() const;
 
-  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback);
+  void RegisterInternalCallback(const EtwInternalCallback& callback);
 
-  void UnregisterInternalCallback(const std::string& cb_key);
+  void UnregisterInternalCallback(const EtwInternalCallback& callback);
 
  private:
   EtwRegistrationManager();
@@ -101,11 +100,11 @@ class EtwRegistrationManager {
       _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
       _In_opt_ PVOID CallbackContext);
 
-  std::mutex init_mutex_;
-  std::atomic<InitializationStatus> initialization_status_ = InitializationStatus::NotInitialized;
-  std::unordered_map<std::string, EtwInternalCallback> callbacks_;
+  std::vector<const EtwInternalCallback*> callbacks_;
   std::mutex callbacks_mutex_;
   mutable std::mutex provider_change_mutex_;
+  std::mutex init_mutex_;
+  InitializationStatus initialization_status_ = InitializationStatus::NotInitialized;
   bool is_enabled_;
   UCHAR level_;
   ULONGLONG keyword_;
@@ -134,8 +133,8 @@ class EtwRegistrationManager {
   Severity MapLevelToSeverity() { return Severity::kFATAL; }
   uint64_t Keyword() const { return 0; }
   HRESULT Status() const { return 0; }
-  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {}
-  void UnregisterInternalCallback(const std::string& cb_key) {}
+  void RegisterInternalCallback(const EtwInternalCallback& callback) {}
+  void UnregisterInternalCallback(const EtwInternalCallback& callback) {}
 
  private:
   EtwRegistrationManager() = default;
