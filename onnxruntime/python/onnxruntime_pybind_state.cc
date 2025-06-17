@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <mutex>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -39,6 +40,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "core/session/lora_adapters.h"
 
@@ -76,6 +78,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <utility>
 
 namespace onnxruntime {
 namespace python {
@@ -323,6 +326,7 @@ const char* GetDeviceName(const OrtDevice& device) {
       if (device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
         return CANN;
       }
+      return "NPU";
 #else
       return "NPU";
 #endif
@@ -1627,6 +1631,16 @@ static void LogDeprecationWarning(
 #endif
 
 void addGlobalMethods(py::module& m) {
+  m.def("set_global_thread_pool_sizes", [](int intra_op_num_threads, int inter_op_num_threads) {
+          static std::mutex global_thread_pool_mutex;
+          OrtThreadingOptions to;
+          to.intra_op_thread_pool_params.thread_pool_size = intra_op_num_threads;
+          to.inter_op_thread_pool_params.thread_pool_size = inter_op_num_threads;
+          std::lock_guard<std::mutex> lock(global_thread_pool_mutex);
+          SetGlobalThreadingOptions(std::move(to)); },
+        py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
+        py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
+        "Set the number of threads used by the global thread pools for intra and inter op parallelism.");
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
@@ -2102,7 +2116,7 @@ for model inference.)pbdoc");
             ORT_THROW("OrtEpDevices are not supported in this build");
 #endif
           },
-          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances 
+          R"pbdoc(Adds the execution provider that is responsible for the selected OrtEpDevice instances. All OrtEpDevice instances
 must refer to the same execution provider.)pbdoc")
       .def(
           // Equivalent to the C API's SessionOptionsSetEpSelectionPolicy.
@@ -2241,6 +2255,13 @@ Serialized model format will default to ONNX unless:
           },
           R"pbdoc(VLOG level if DEBUG build and session_log_severity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
+      .def_property(
+          "use_per_session_threads",
+          [](const PySessionOptions* options) -> bool { return options->value.use_per_session_threads; },
+          [](PySessionOptions* options, bool use_per_session_threads) -> void {
+            options->value.use_per_session_threads = use_per_session_threads;
+          },
+          R"pbdoc(Whether to use per-session thread pool. Default is True.)pbdoc")
       .def_property(
           "intra_op_num_threads",
           [](const PySessionOptions* options) -> int { return options->value.intra_op_param.thread_pool_size; },
@@ -2522,6 +2543,14 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
                        bool load_config_from_model = false) {
         std::unique_ptr<PyInferenceSession> sess;
+
+        if (CheckIfUsingGlobalThreadPool() && so.value.use_per_session_threads) {
+          ORT_THROW("use_per_session_threads must be false when using a global thread pool");
+        }
+
+        if (CheckIfUsingGlobalThreadPool() && (so.value.intra_op_param.thread_pool_size != 0 || so.value.inter_op_param.thread_pool_size != 0)) {
+          LOGS_DEFAULT(WARNING) << "session options intra_op_param.thread_pool_size and inter_op_param.thread_pool_size are ignored when using a global thread pool";
+        }
 
         // separate creation of the session from model loading unless we have to read the config from the model.
         // in a minimal build we only support load via Load(...) and not at session creation time
