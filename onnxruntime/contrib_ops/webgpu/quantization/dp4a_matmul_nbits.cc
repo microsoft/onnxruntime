@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "core/providers/webgpu/shader_helper.h"
 
 namespace onnxruntime {
@@ -9,18 +10,21 @@ namespace contrib {
 namespace webgpu {
 namespace {
 
-std::string CommonFunctions(uint32_t nbits) {
+std::string CommonFunctions(uint32_t nbits, bool has_zero_points) {
+  std::stringstream ss;
+  ss << GenerateZeroPointReadingCode(nbits, has_zero_points, "i32");
+
   if (nbits == 4) {
-    return R"ADDNL_FN(
-        fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>) -> vec4<u32>
+    ss << R"ADDNL_FN(
+        fn DequantizedFrom4BitsTo8Bits(in: vec2<u32>, zero: i32) -> vec4<u32>
         {
             var out = vec4<u32>(0);
-            var value_lower = vec4<i32>(unpack4xU8(in[0] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            var value_upper = vec4<i32>(unpack4xU8((in[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            var value_lower = vec4<i32>(unpack4xU8(in[0] & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+            var value_upper = vec4<i32>(unpack4xU8((in[0] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(zero);
             out[0] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
             out[1] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
-            value_lower = vec4<i32>(unpack4xU8(in[1] & 0x0F0F0F0Fu)) - vec4<i32>(8);
-            value_upper = vec4<i32>(unpack4xU8((in[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(8);
+            value_lower = vec4<i32>(unpack4xU8(in[1] & 0x0F0F0F0Fu)) - vec4<i32>(zero);
+            value_upper = vec4<i32>(unpack4xU8((in[1] >> 4) & 0x0F0F0F0Fu)) - vec4<i32>(zero);
             out[2] = pack4xI8(vec4<i32>(value_lower[0], value_upper[0], value_lower[1], value_upper[1]));
             out[3] = pack4xI8(vec4<i32>(value_lower[2], value_upper[2], value_lower[3], value_upper[3]));
             return out;
@@ -41,10 +45,7 @@ std::string CommonFunctions(uint32_t nbits) {
         }
   )ADDNL_FN";
   } else {
-    ORT_ENFORCE(nbits == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
-    // For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
-    // Then do the scale. Finally, convert to output element type.
-    return R"ADDNL_FN(
+    ss << R"ADDNL_FN(
         fn AlignWithZeroPoint(in: vec4<u32>) -> vec4<u32>
         {
             var out = vec4<u32>(0);
@@ -54,7 +55,40 @@ std::string CommonFunctions(uint32_t nbits) {
             out[3] = pack4xI8(vec4<i32>(unpack4xU8(in[3])) - vec4<i32>(128));
             return out;
         }
-
+  )ADDNL_FN";
+    // For 8bits, in case data overflow when converting from int32 (output of dot4I8Packed) to f16, we force it convert to f32.
+    // Then do the scale. Finally, convert to output element type.
+    if (has_zero_points) {
+      // If has_zero_points is true, vec4<i32>(unpack4xU8(b_data)) - vec4<i32>(zero) may be out of the range [-128, 127] since zero can be any value between [0, 255].
+      // To avoid the data overflow when use pack4xI8, we still use |pack4xI8(vec4<i32>(unpack4xU8(xxx)) - vec4<i32>(128))| to process the b data. In SDP8AI, we use the
+      // dp4a's result of a and b to subtract dot(vec4<i32>(unpack4xI8(a)), vec4<i32>(zero - 128)) to get the correct result.
+      ss << R"ADDNL_FN(
+        // Scaled dot product of 8 packed unsigned integers.
+        fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t, zero: i32) -> output_element_t
+        {
+            let bias_zero = zero - 128;
+            var local_sum = dot4I8Packed(a1[0], b1[0]);
+            var dequantized_a_sum = vec4<i32>(unpack4xI8(a1[0]));
+            local_sum += dot4I8Packed(a1[1], b1[1]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a1[1]));
+            local_sum += dot4I8Packed(a1[2], b1[2]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a1[2]));
+            local_sum += dot4I8Packed(a1[3], b1[3]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a1[3]));
+            local_sum += dot4I8Packed(a2[0], b2[0]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a2[0]));
+            local_sum += dot4I8Packed(a2[1], b2[1]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a2[1]));
+            local_sum += dot4I8Packed(a2[2], b2[2]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a2[2]));
+            local_sum += dot4I8Packed(a2[3], b2[3]);
+            dequantized_a_sum += vec4<i32>(unpack4xI8(a2[3]));
+            local_sum -= dot(dequantized_a_sum, vec4<i32>(bias_zero));
+            return output_element_t(f32(local_sum) * f32(scale));
+        }
+  )ADDNL_FN";
+    } else {
+      ss << R"ADDNL_FN(
         // Scaled dot product of 8 packed unsigned integers.
         fn SDP8AI(a1:vec4<u32>, b1:vec4<u32>, a2:vec4<u32>, b2:vec4<u32>, scale:output_element_t) -> output_element_t
         {
@@ -69,7 +103,9 @@ std::string CommonFunctions(uint32_t nbits) {
             return output_element_t(f32(local_sum) * f32(scale));
         }
   )ADDNL_FN";
+    }
   }
+  return ss.str();
 }
 
 }  // namespace
@@ -104,6 +140,9 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   // This shader implements co-operative matrix multiply. The key idea here is to
@@ -131,7 +170,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // this shader require A to be int8 quantized with block size 64. B is regular
   // matmulnbits input with block size 32.
 
-  shader.AdditionalImplementation() << CommonFunctions(nbits_)
+  shader.AdditionalImplementation() << CommonFunctions(nbits_, has_zero_points_)
                                     << "  const block_size = " << block_size_ << ";";
 
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -147,7 +186,11 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         var<workgroup> scale_A : array<output_element_t, tile_size>;                                     // 64 x 1
         var<workgroup> tile_B : array<array<vec4<u32>, tile_size>, tile_size_k_vec>;                     // 64 x 32
         var<workgroup> scale_B : array<output_element_t, tile_size>;                                     // 64 x 1
-
+    )ADDNL_FN";
+  if (nbits_ == 8 && has_zero_points_) {
+    shader.AdditionalImplementation() << "        var<workgroup> zeroes : array<i32, tile_size>;";
+  }
+  shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMA(a_global_base:u32, kidx_v:u32, row: u32, col: u32)
         {
             let a_global = a_global_base + row;
@@ -174,11 +217,13 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             }
 
             let b_value = input_b[b_global*uniforms.K16+kidx_v+col];
-            tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value);
+            let block_idx = kidx_v/(block_size/16);
+            let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+            tile_B[col][row] = DequantizedFrom4BitsTo8Bits(b_value, zero);
             if (col == 0)
             {
                 // kidx_v - each kidx_v covers 16 values of k
-                scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + kidx_v/(block_size/16)];
+                scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
             }
         }
     )ADDNL_FN";
@@ -198,7 +243,13 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             if (col == 0)
             {
                 // kidx_v - each kidx_v covers 16 values of k
-                scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + kidx_v/(block_size/16)];
+                let block_idx = kidx_v/(block_size/16);
+                scale_B[row] = scales_b[b_global*(uniforms.K/block_size) + block_idx];
+    )ADDNL_FN";
+    if (has_zero_points_) {
+      shader.AdditionalImplementation() << "                zeroes[row] = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);\n";
+    }
+    shader.AdditionalImplementation() << R"ADDNL_FN(
             }
         }
     )ADDNL_FN";
@@ -248,6 +299,64 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             var own_a0: vec4<u32> = tile_A[0][base_A + a_idx];
             var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
             var own_scale_a: output_element_t = scale_A[base_A + a_idx];
+    )MAIN_FN";
+  if (nbits_ == 8 && has_zero_points_) {
+    shader.MainFunctionBody() << R"MAIN_FN(
+            if (sg_size == 16)
+            {
+                var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
+                var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
+                var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
+                var zero = zeroes[base_B + sg_id];
+                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+                lane_output1[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0), subgroupShuffle(own_scale_b, 0) * own_scale_a, subgroupShuffle(zero, 0));
+                lane_output1[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1), subgroupShuffle(own_scale_b, 1) * own_scale_a, subgroupShuffle(zero, 1));
+                lane_output1[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2), subgroupShuffle(own_scale_b, 2) * own_scale_a, subgroupShuffle(zero, 2));
+                lane_output1[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b1, 3), subgroupShuffle(own_scale_b, 3) * own_scale_a, subgroupShuffle(zero, 3));
+
+                lane_output2[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b1, 4), subgroupShuffle(own_scale_b, 4) * own_scale_a, subgroupShuffle(zero, 4));
+                lane_output2[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b1, 5), subgroupShuffle(own_scale_b, 5) * own_scale_a, subgroupShuffle(zero, 5));
+                lane_output2[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b1, 6), subgroupShuffle(own_scale_b, 6) * own_scale_a, subgroupShuffle(zero, 6));
+                lane_output2[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b1, 7), subgroupShuffle(own_scale_b, 7) * own_scale_a, subgroupShuffle(zero, 7));
+
+                lane_output3[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b1, 8), subgroupShuffle(own_scale_b, 8) * own_scale_a, subgroupShuffle(zero, 8));
+                lane_output3[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b1, 9), subgroupShuffle(own_scale_b, 9) * own_scale_a, subgroupShuffle(zero, 9));
+                lane_output3[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b1, 10), subgroupShuffle(own_scale_b, 10) * own_scale_a, subgroupShuffle(zero, 10));
+                lane_output3[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b1, 11), subgroupShuffle(own_scale_b, 11) * own_scale_a, subgroupShuffle(zero, 11));
+
+                lane_output4[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b1, 12), subgroupShuffle(own_scale_b, 12) * own_scale_a, subgroupShuffle(zero, 12));
+                lane_output4[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13), subgroupShuffle(own_scale_b, 13) * own_scale_a, subgroupShuffle(zero, 13));
+                lane_output4[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14), subgroupShuffle(own_scale_b, 14) * own_scale_a, subgroupShuffle(zero, 14));
+                lane_output4[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15), subgroupShuffle(own_scale_b, 15) * own_scale_a, subgroupShuffle(zero, 15));
+            }
+            else
+            {
+                // Code for other subgroup sizes, simply doesnt use subgroups at all.
+                // Relies on reads from single location tile_B[][base_B + col] by all
+                // being optimized by the hardware.
+                lane_output1[0] += SDP8AI(own_a0, tile_B[0][base_B + 0], own_a1, tile_B[1][base_B + 0],  own_scale_a * scale_B[base_B + 0], zeroes[base_B + 0]);
+                lane_output1[1] += SDP8AI(own_a0, tile_B[0][base_B + 1], own_a1, tile_B[1][base_B + 1],  own_scale_a * scale_B[base_B + 1], zeroes[base_B + 1]);
+                lane_output1[2] += SDP8AI(own_a0, tile_B[0][base_B + 2], own_a1, tile_B[1][base_B + 2],  own_scale_a * scale_B[base_B + 2], zeroes[base_B + 2]);
+                lane_output1[3] += SDP8AI(own_a0, tile_B[0][base_B + 3], own_a1, tile_B[1][base_B + 3],  own_scale_a * scale_B[base_B + 3], zeroes[base_B + 3]);
+
+                lane_output2[0] += SDP8AI(own_a0, tile_B[0][base_B + 4], own_a1, tile_B[1][base_B + 4],  own_scale_a * scale_B[base_B + 4], zeroes[base_B + 4]);
+                lane_output2[1] += SDP8AI(own_a0, tile_B[0][base_B + 5], own_a1, tile_B[1][base_B + 5],  own_scale_a * scale_B[base_B + 5], zeroes[base_B + 5]);
+                lane_output2[2] += SDP8AI(own_a0, tile_B[0][base_B + 6], own_a1, tile_B[1][base_B + 6],  own_scale_a * scale_B[base_B + 6], zeroes[base_B + 6]);
+                lane_output2[3] += SDP8AI(own_a0, tile_B[0][base_B + 7], own_a1, tile_B[1][base_B + 7],  own_scale_a * scale_B[base_B + 7], zeroes[base_B + 7]);
+
+                lane_output3[0] += SDP8AI(own_a0, tile_B[0][base_B + 8], own_a1, tile_B[1][base_B + 8],  own_scale_a * scale_B[base_B + 8], zeroes[base_B + 8]);
+                lane_output3[1] += SDP8AI(own_a0, tile_B[0][base_B + 9], own_a1, tile_B[1][base_B + 9],  own_scale_a * scale_B[base_B + 9], zeroes[base_B + 9]);
+                lane_output3[2] += SDP8AI(own_a0, tile_B[0][base_B + 10], own_a1, tile_B[1][base_B + 10],  own_scale_a * scale_B[base_B + 10], zeroes[base_B + 10]);
+                lane_output3[3] += SDP8AI(own_a0, tile_B[0][base_B + 11], own_a1, tile_B[1][base_B + 11],  own_scale_a * scale_B[base_B + 11], zeroes[base_B + 11]);
+
+                lane_output4[0] += SDP8AI(own_a0, tile_B[0][base_B + 12], own_a1, tile_B[1][base_B + 12],  own_scale_a * scale_B[base_B + 12], zeroes[base_B + 12]);
+                lane_output4[1] += SDP8AI(own_a0, tile_B[0][base_B + 13], own_a1, tile_B[1][base_B + 13],  own_scale_a * scale_B[base_B + 13], zeroes[base_B + 13]);
+                lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14], zeroes[base_B + 14]);
+                lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15], zeroes[base_B + 15]);
+            }
+    )MAIN_FN";
+  } else {
+    shader.MainFunctionBody() << R"MAIN_FN(
             if (sg_size == 16)
             {
                 var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
@@ -299,6 +408,9 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                 lane_output4[2] += SDP8AI(own_a0, tile_B[0][base_B + 14], own_a1, tile_B[1][base_B + 14],  own_scale_a * scale_B[base_B + 14]);
                 lane_output4[3] += SDP8AI(own_a0, tile_B[0][base_B + 15], own_a1, tile_B[1][base_B + 15],  own_scale_a * scale_B[base_B + 15]);
             }
+    )MAIN_FN";
+  }
+  shader.MainFunctionBody() << R"MAIN_FN(
             workgroupBarrier();
         }
 
@@ -324,6 +436,9 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
   shader.AddInput("scales_a", ShaderUsage::UseUniform);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   ORT_ENFORCE(WorkgroupSizeX() % tile_size_k_vec_ == 0 && tile_size_k_vec_ % 4 == 0, "tile_size_k_vec_ must evenly divide workgroup size X and be divisible by 4");
@@ -355,7 +470,7 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
                                     // sub_tile_count is the number of concurrent b rows processed by the workgroup.
                                     << "  const sub_tile_count = " << sub_tile_count << "u;\n";
 
-  shader.AdditionalImplementation() << CommonFunctions(nbits_)
+  shader.AdditionalImplementation() << CommonFunctions(nbits_, has_zero_points_)
                                     << R"ADDNL_FN(
     var<workgroup> inter_results: array<array<output_element_t, tile_size_k_vec>, tile_size>;
     // Need 2 * tile_size_k_vec to store a tile_A since b is quantized as 4 bits and a is quantized as 8 bits.
@@ -397,29 +512,36 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
       var own_a1: vec4<u32> = tile_A[local_col * 2 + 1];
       var own_scale_a = scale_A[local_col / 4];
       let k_offset = kidx_v + local_col;
+      // k_offset - covers 32 values of k in input_b
+      let block_idx = k_offset * 32 / uniforms.block_size;
       // calculate intermediate results into inter_results.
       for (var row_offset = 0u; row_offset < tile_size; row_offset += sub_tile_count) {
         let b_global = b_global_base + row_offset + local_row;
         if (b_global < uniforms.N && k_offset < uniforms.K32)
         {
           let b_offset = b_global * uniforms.K32 + k_offset;
+          let zero = mm_read_zero(b_global, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+          let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + block_idx];
   )MAIN_FN";
   if (nbits_ == 4) {
     shader.MainFunctionBody() << R"MAIN_FN(
           let b_value = input_b[b_offset];
-          let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy);
-          let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw);
+          let own_b = DequantizedFrom4BitsTo8Bits(b_value.xy, zero);
+          let own_b1 = DequantizedFrom4BitsTo8Bits(b_value.zw, zero);
+          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
   )MAIN_FN";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
           let own_b = AlignWithZeroPoint(input_b[b_offset * 2]);
           let own_b1 = AlignWithZeroPoint(input_b[b_offset * 2 + 1]);
   )MAIN_FN";
+    if (has_zero_points_) {
+      shader.MainFunctionBody() << "          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b, zero);\n";
+    } else {
+      shader.MainFunctionBody() << "          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);\n";
+    }
   }
   shader.MainFunctionBody() << R"MAIN_FN(
-          // k_offset - covers 32 values of k in input_b
-          let own_scale_b = scales_b[b_global * uniforms.K / uniforms.block_size + k_offset * 32 / uniforms.block_size];
-          inter_results[row_offset + local_row][local_col] += SDP8AI(own_a, own_b, own_a1, own_b1, own_scale_a * own_scale_b);
         }
       }
       workgroupBarrier();
@@ -443,10 +565,12 @@ Status DP4AMatMulNBitsSmallMProgram::GenerateShaderCode(ShaderHelper& shader) co
 }
 
 Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
+                                  const Tensor* zero_points,
                                   uint32_t M,
                                   uint32_t N,
                                   uint32_t K,
                                   uint32_t block_size,
+                                  uint32_t zero_blocks_per_col,
                                   uint32_t min_M_for_tile_optimization,
                                   uint32_t nbits,
                                   onnxruntime::webgpu::ComputeContext& context,
@@ -467,12 +591,12 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
       .AddOutputs({{&a_quant, ProgramTensorMetadataDependency::Rank, a_quant.Shape(), 1},
                    {&a_scale, ProgramTensorMetadataDependency::Rank, a_scale.Shape(), 1}});
   ORT_RETURN_IF_ERROR(context.RunProgram(quantize_program));
-
+  const bool has_zero_points = zero_points != nullptr;
   if (M < min_M_for_tile_optimization) {
     uint32_t tile_size_k_vec = 16;
     uint32_t tile_size = 32;
 
-    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size, nbits};
+    DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size, nbits, has_zero_points};
     uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
     mul_program.SetWorkgroupSize(128);
     mul_program.SetDispatchGroupSize(M * num_N_tile);
@@ -480,9 +604,12 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                            {&a_scale, ProgramTensorMetadataDependency::TypeAndRank, 1},
                            {b, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components * kU32Components)},
                            {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
-        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile})
+        .AddUniformVariables({M, N, K, K / 16, K / 32, block_size, num_N_tile, zero_blocks_per_col})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, 1})
-        .CacheHint(nbits, tile_size_k_vec, tile_size);
+        .CacheHint(nbits, tile_size_k_vec, tile_size, has_zero_points);
+    if (has_zero_points) {
+      mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+    }
     return context.RunProgram(mul_program);
   }
 
@@ -490,7 +617,7 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
   TensorShape reshaped_y_shape{1, M, N / kVec4Components};
   uint32_t num_M_tile = (M + kTileSize - 1) / kTileSize;
   uint32_t num_N_tile = (N + kTileSize - 1) / kTileSize;
-  DP4AMatMulNBitsProgram mul_program{block_size, nbits};
+  DP4AMatMulNBitsProgram mul_program{block_size, nbits, has_zero_points};
   mul_program.SetWorkgroupSize(256);
   mul_program.SetDispatchGroupSize(num_M_tile * num_N_tile);
   mul_program.AddInputs({{&a_quant, ProgramTensorMetadataDependency::TypeAndRank, static_cast<int>(kVec4Components)},
@@ -502,9 +629,13 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
                             {static_cast<uint32_t>(K)},
                             {static_cast<uint32_t>(K / 8)},
                             {static_cast<uint32_t>(K / 16)},
-                            {num_N_tile}})
+                            {num_N_tile},
+                            {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, static_cast<int>(kVec4Components)})
-      .CacheHint("Block" + std::to_string(block_size), nbits);
+      .CacheHint("Block" + std::to_string(block_size), nbits, has_zero_points);
+  if (has_zero_points) {
+    mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+  }
   return context.RunProgram(mul_program);
 }
 
@@ -514,8 +645,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                                    uint32_t batch_count,
                                    uint32_t N,
                                    uint32_t K,
-                                   uint32_t components_k,
-                                   bool has_zero_points) {
+                                   uint32_t components_k) {
   // macOS - Avoid using dp4a on Metal, as it does not appear to have native dp4a support.
   // https://github.com/gpuweb/gpuweb/issues/2677#issuecomment-1713292226
   // Use 'vendor' to check for metal; 'backend' is always WEBGPU when running under wasm.
@@ -523,7 +653,7 @@ bool CanApplyDP4AMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& context,
                   context.AdapterInfo().vendor != std::string_view{"apple"};
   return (accuracy_level == 4 && block_size % 32 == 0 &&
           batch_count == 1 && components_k == 4 && K % 128 == 0 && N % 16 == 0 &&
-          !has_zero_points && use_dp4a);
+          use_dp4a);
 }
 
 }  // namespace webgpu
