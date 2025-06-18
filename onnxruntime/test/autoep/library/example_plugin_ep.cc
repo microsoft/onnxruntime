@@ -215,9 +215,9 @@ struct ExampleEp : OrtEp, ApiPtrs {
       return nullptr;  // No nodes to process
     }
 
-    const void** nodes_data = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(nodes_array, &nodes_data));
-    auto nodes_span = gsl::span<const OrtNode*>(reinterpret_cast<const OrtNode**>(nodes_data), num_nodes);
+    const void* const* nodes_data = nullptr;
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetConstData(nodes_array, &nodes_data));
+    auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_data), num_nodes);
 
     std::vector<const OrtNode*> supported_nodes;
 

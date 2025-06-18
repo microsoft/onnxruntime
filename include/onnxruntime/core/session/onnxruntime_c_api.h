@@ -5425,8 +5425,7 @@ struct OrtApi {
   ORT_API2_STATUS(ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
                   _Out_ OrtTypeTag* type_tag);
 
-  /** \brief Get a pointer to the data buffer of contiguous elements. The returned data pointer can be used to
-   * modify the elements of the array.
+  /** \brief Get a pointer to the data buffer of contiguous elements.
    *
    * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetElementType.
    *
@@ -5438,6 +5437,20 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
+
+  /** \brief Get a pointer to a constant data buffer of contiguous elements.
+   *
+   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetElementType.
+   *
+   * \param[in] array The OrtArrayOfConstObjects instance.
+   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ArrayOfConstObjects_GetConstData, _In_ const OrtArrayOfConstObjects* array,
+                  _Outptr_ const void* const** data);
 
   /** \brief Get the number of elements contained by the given OrtArrayOfConstObjects instance.
    *

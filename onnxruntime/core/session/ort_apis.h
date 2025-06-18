@@ -615,6 +615,8 @@ ORT_API(void, ReleaseArrayOfConstObjects, _Frees_ptr_opt_ OrtArrayOfConstObjects
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
                     _Out_ OrtTypeTag* type_tag);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
+ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetConstData, _In_ const OrtArrayOfConstObjects* array,
+                    _Outptr_ const void* const** data);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetSize, _In_ const OrtArrayOfConstObjects* array, _Out_ size_t* size);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetElementAt, _In_ const OrtArrayOfConstObjects* array, _In_ size_t index,
                     _Outptr_ const void** out);
