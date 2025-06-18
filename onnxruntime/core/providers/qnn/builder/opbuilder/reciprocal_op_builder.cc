@@ -19,7 +19,6 @@ class ReciprocalOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
-
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
                                      std::vector<std::string>&& input_names,
