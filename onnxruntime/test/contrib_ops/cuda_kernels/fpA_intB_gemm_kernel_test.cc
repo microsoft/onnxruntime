@@ -103,15 +103,17 @@ float compare(void* a, void* b, int size, float scale) {
 
   float diff_threshold = max_val * scale;
   if constexpr (std::is_same_v<T, __nv_bfloat16>) {
-    // bfloat16 has fewer mantissa digits so the cumulative error will be larger.
-    // fp16 precision is about 3.3 decimal digits, and bf16 is about 2.0–2.3 decimal digits.
+    // fp16 precision is about 3.3 decimal digits, and bf16 is about 2.0–2.3 decimal digits, so we use 10x threshold.
     diff_threshold *= 15.f;
   } else {
     diff_threshold *= 1.5f;
   }
 
-  printf("max diff %f (threshold %f), avg diff %f, diff count %d/%d\n",
-         max_diff, diff_threshold, total_diff / diff_count, diff_count, size);
+  bool passed = max_diff <= diff_threshold;
+  if (!passed) {
+    printf("max diff %f (threshold %f), avg diff %f, diff count %d/%d\n",
+           max_diff, diff_threshold, total_diff / diff_count, diff_count, size);
+  }
 
   return max_diff <= diff_threshold;
 }
@@ -339,7 +341,7 @@ class KernelTestFixture : public ::testing::Test {
   }
 
   bool BenchmarkAndVerifyKernel() {
-    printf("Kernel %s\n", cutlassTypeMapper<KT>::str(m_, n_, k_, group_size_).c_str());
+    printf("%s\n", cutlassTypeMapper<KT>::str(m_, n_, k_, group_size_).c_str());
 
     void* p_act_scale = nullptr;
     void* p_zeros = nullptr;
