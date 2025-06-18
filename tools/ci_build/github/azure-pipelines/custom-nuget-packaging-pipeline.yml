@@ -6,7 +6,7 @@ parameters:
 - name: QnnSdk
   displayName: QNN SDK Version
   type: string
-  default: 2.33.2.250410
+  default: 2.35.0.250530
 
 - name: IsReleaseBuild
   displayName: Is a release build? Set it to true if you are doing an Onnx Runtime release.
@@ -72,9 +72,6 @@ extends:
           DoEsrp: true
           ArtifactName: 'drop-nuget-qnn-arm64'
           # Add --use_webgpu to enable WebGPU
-          buildParameter: '--arm64'
-          buildPlatform: 'ARM64'
-          buildArch: 'ARM64'
           StageName: 'OnnxRuntime_QNN_Nuget_Win_Arm64'
           build_config: 'RelWithDebInfo'
           PublishArchive: true
@@ -87,7 +84,7 @@ extends:
           DoEsrp: true
 
       - stage: NugetPackaging
-        dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64, MacOS_C_API_Packaging_CPU]
+        dependsOn: [Windows_Packaging_CUDA, OnnxRuntime_QNN_Nuget_Win_Arm64, MacOS_C_API_Package_Publish]
         jobs:
         - job: CreateNugetPackage
           pool: 'Onnxruntime-Win2022-GPU-A10'
@@ -105,7 +102,7 @@ extends:
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - managed nuget'
             inputs:
-              artifactName: 'drop-nuget-qnn-arm64'
+              artifactName: 'drop-signed-nuget-qnn'
               targetPath: '$(Build.BinariesDirectory)/managed-nuget'
 
           - task: DownloadPipelineArtifact@0
@@ -117,20 +114,25 @@ extends:
           - task: DownloadPipelineArtifact@0
             displayName: 'Download Pipeline Artifact - win-arm64'
             inputs:
-              artifactName: 'onnxruntime-win-ARM64-qnn'
+              artifactName: 'onnxruntime-win-arm64x-qnn'
               targetPath: '$(Build.BinariesDirectory)/win-arm64'
 
           - task: DownloadPipelineArtifact@0
-            displayName: 'Download Pipeline Artifact - osx-x64'
+            displayName: 'Download Pipeline Artifact - osx'
             inputs:
-              artifactName: 'onnxruntime-osx-x86_64'
-              targetPath: '$(Build.BinariesDirectory)/osx-x64'
+              artifactName: 'onnxruntime-osx'
+              targetPath: '$(Build.BinariesDirectory)/osx'
 
-          - task: DownloadPipelineArtifact@0
-            displayName: 'Download Pipeline Artifact - osx-arm64'
+          - task: PowerShell@2
+            displayName: 'Create osx directories'
             inputs:
-              artifactName: 'onnxruntime-osx-arm64'
-              targetPath: '$(Build.BinariesDirectory)/osx-arm64'
+              targetType: 'inline'
+              script: |
+                mkdir -p $(Build.BinariesDirectory)/osx-x64
+                 Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-x86_64* -Destination $(Build.BinariesDirectory)/osx-x64
+
+                mkdir -p $(Build.BinariesDirectory)/osx-arm64
+                Move-Item -Path $(Build.BinariesDirectory)/osx/onnxruntime-osx-arm64* -Destination $(Build.BinariesDirectory)/osx-arm64
 
           - task: PowerShell@2
             displayName: 'List all files downloaded'
@@ -180,13 +182,13 @@ extends:
               targetType: 'inline'
               script: |
                 Expand-Archive -Path $(Build.BinariesDirectory)/win-x64/onnxruntime-win-x64-cuda*.zip -DestinationPath $(Build.BinariesDirectory)/win-x64
-                Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-ARM64-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
+                Expand-Archive -Path $(Build.BinariesDirectory)/win-arm64/onnxruntime-win-arm64x-qnn*.zip -DestinationPath $(Build.BinariesDirectory)/win-arm64
                 $osx_x64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64_archive = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 tar -xzf $osx_x64_archive -C $(Build.BinariesDirectory)/osx-x64 2>$null
                 tar -xzf $osx_arm64_archive -C $(Build.BinariesDirectory)/osx-arm64 2>$null
                 $win_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-x64 -Filter onnxruntime-win-x64-cuda*)[0].FullName
-                $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-ARM64-qnn*)[0].FullName
+                $win_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/win-arm64 -Filter onnxruntime-win-arm64x-qnn*)[0].FullName
                 $osx_x64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-x64 -Filter onnxruntime-osx-x86_64*)[0].FullName
                 $osx_arm64 = (Get-ChildItem -Path $(Build.BinariesDirectory)/osx-arm64 -Filter onnxruntime-osx-arm64*)[0].FullName
                 Write-Host "##vso[task.setvariable variable=win_x64;]$win_x64"

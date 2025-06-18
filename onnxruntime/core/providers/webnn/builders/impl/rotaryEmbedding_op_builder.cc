@@ -70,20 +70,34 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   const auto& input_defs = node.InputDefs();
   int32_t input_data_type;
   ORT_RETURN_IF_NOT(GetType(*input_defs[0], input_data_type, logger), "Cannot get input type");
+
+  const bool is_onnx_domain = IsOnnxDomain(node.Domain());
+  // The input indexes for the onnx domain and the microsoft domain are different.
+  const size_t cos_cache_idx = is_onnx_domain ? 1 : 2;
+  const size_t sin_cache_idx = is_onnx_domain ? 2 : 3;
+  const size_t position_ids_idx = is_onnx_domain ? 3 : 1;
   std::vector<int64_t> input_shape;
   std::vector<int64_t> position_ids_shape;
   std::vector<int64_t> cos_cache_shape;
+  // Since opset 23, the position_ids input is optional.
+  const bool has_position_ids = TensorExists(input_defs, position_ids_idx);
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input shape");
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[1], position_ids_shape, logger), "Cannot get position_ids shape");
-  ORT_RETURN_IF_NOT(GetShape(*input_defs[2], cos_cache_shape, logger), "Cannot get cos_cache shape");
+  ORT_RETURN_IF_NOT(GetShape(*input_defs[cos_cache_idx], cos_cache_shape, logger), "Cannot get cos_cache shape");
+  if (has_position_ids) {
+    ORT_RETURN_IF_NOT(GetShape(*input_defs[position_ids_idx], position_ids_shape, logger),
+                      "Cannot get position_ids shape");
+  }
   const bool input_is_4d = input_shape.size() == 4;
   // When position_ids is a 1D tensor, it represents the start offset for each sequence.
-  const bool position_ids_is_offset = position_ids_shape.size() == 1;
+  const bool position_ids_is_offset = has_position_ids && position_ids_shape.size() == 1;
 
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
-  emscripten::val position_ids = model_builder.GetOperand(input_defs[1]->Name());
-  emscripten::val cos_cache = model_builder.GetOperand(input_defs[2]->Name());
-  emscripten::val sin_cache = model_builder.GetOperand(input_defs[3]->Name());
+  emscripten::val position_ids;
+  if (has_position_ids) {
+    position_ids = model_builder.GetOperand(input_defs[position_ids_idx]->Name());
+  }
+  emscripten::val cos_cache = model_builder.GetOperand(input_defs[cos_cache_idx]->Name());
+  emscripten::val sin_cache = model_builder.GetOperand(input_defs[sin_cache_idx]->Name());
 
   const auto node_name = node.Name();
   emscripten::val wnn_builder = model_builder.GetBuilder();
@@ -97,19 +111,34 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   // - 3D: [batch_size, sequence_length, hidden_size]
   // - 4D: [batch_size, num_heads, sequence_length, head_size]
   const uint32_t batch_size = static_cast<uint32_t>(input_shape[0]);
-  const uint32_t sequence_length = input_is_4d ? static_cast<uint32_t>(input_shape[2])
-                                               : static_cast<uint32_t>(input_shape[1]);
-  const uint32_t hidden_size = input_is_4d ? static_cast<uint32_t>(input_shape[1] * input_shape[3])
-                                           : static_cast<uint32_t>(input_shape[2]);
-  const uint32_t head_size = num_heads == 0 ? static_cast<uint32_t>(cos_cache_shape[1]) * 2
-                                            : hidden_size / num_heads;
-  if (num_heads == 0) {
-    num_heads = hidden_size / head_size;
+  uint32_t sequence_length, hidden_size, head_size;
+  if (input_is_4d) {
+    sequence_length = static_cast<uint32_t>(input_shape[2]);
+    hidden_size = static_cast<uint32_t>(input_shape[1] * input_shape[3]);
+    num_heads = static_cast<uint32_t>(input_shape[1]);
+    head_size = static_cast<uint32_t>(input_shape[3]);
+  } else {
+    sequence_length = static_cast<uint32_t>(input_shape[1]);
+    hidden_size = static_cast<uint32_t>(input_shape[2]);
+    // Since opset 23, if the input is 3D, the num_heads must be provided.
+    if (is_onnx_domain) {
+      assert(num_heads != 0);
+      head_size = hidden_size / num_heads;
+    } else {
+      if (num_heads == 0) {
+        head_size = static_cast<uint32_t>(cos_cache_shape[1]) * 2;
+        num_heads = hidden_size / head_size;
+      } else {
+        head_size = hidden_size / num_heads;
+      }
+    }
   }
+
   if (rotary_embedding_dim == 0) {
     rotary_embedding_dim = head_size;
   }
 
+  const uint32_t half_rotary_embedding_dim = rotary_embedding_dim / 2;
   emscripten::val transpose_options = emscripten::val::object();
 
   // Ensure the input is reshaped to: [batch_size, sequence_length, num_heads, head_size].
@@ -147,8 +176,8 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
   // Split the partial input0 data into 2 equal parts.
   // Firstly reshape the partial input0.
   const std::vector<uint32_t> new_partial_input0_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, num_heads, rotary_embedding_dim / 2, 2})
-                  : std::vector<uint32_t>({batch_size, sequence_length, num_heads, 2, rotary_embedding_dim / 2});
+      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, num_heads, half_rotary_embedding_dim, 2})
+                  : std::vector<uint32_t>({batch_size, sequence_length, num_heads, 2, half_rotary_embedding_dim});
   emscripten::val reshape_partial_input0_options = emscripten::val::object();
   reshape_partial_input0_options.set("label", node_name + "_reshape_partial_input0");
   partial_input0 = wnn_builder.call<emscripten::val>(
@@ -196,19 +225,34 @@ Status RotaryEmbeddingOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_build
         "add", position_ids, position_ids_range, position_ids_add_range_options);
   }
 
-  // Gather the cosine/sine values based on the position_ids.
-  emscripten::val gather_cos_sin_options = emscripten::val::object();
-  gather_cos_sin_options.set("label", node_name + "_gather_cos_sin");
-  gather_cos_sin_options.set("axis", 0);
-  emscripten::val gather_cos = wnn_builder.call<emscripten::val>(
-      "gather", cos_cache, position_ids, gather_cos_sin_options);
-  emscripten::val gather_sin = wnn_builder.call<emscripten::val>(
-      "gather", sin_cache, position_ids, gather_cos_sin_options);
+  // Gather the cosine/sine values based on the position_ids (if it presents).
+  emscripten::val gather_cos = cos_cache;
+  emscripten::val gather_sin = sin_cache;
+  if (has_position_ids) {
+    emscripten::val gather_cos_sin_options = emscripten::val::object();
+    gather_cos_sin_options.set("label", node_name + "_gather_cos_sin");
+    gather_cos_sin_options.set("axis", 0);
+    gather_cos = wnn_builder.call<emscripten::val>("gather", gather_cos, position_ids, gather_cos_sin_options);
+    gather_sin = wnn_builder.call<emscripten::val>("gather", gather_sin, position_ids, gather_cos_sin_options);
+  }
 
-  // After gathering cosine/sine, reshape and broadcast them to match the number of heads of the input data.
+  // If it is full rotation, we need to slice the gathered cosine/sine
+  // to get the shape [batch_size, sequence_length, rotary_embedding_dim / 2].
+  if (cos_cache_shape.back() != static_cast<int64_t>(half_rotary_embedding_dim)) {
+    emscripten::val slice_gather_cos_sin_options = emscripten::val::object();
+    slice_gather_cos_sin_options.set("label", node_name + "_slice_gather_cos_sin");
+    const std::vector<uint32_t> starts{0, 0, 0};
+    const std::vector<uint32_t> sizes{batch_size, sequence_length, half_rotary_embedding_dim};
+    gather_cos = wnn_builder.call<emscripten::val>("slice", gather_cos, emscripten::val::array(starts),
+                                                   emscripten::val::array(sizes), slice_gather_cos_sin_options);
+    gather_sin = wnn_builder.call<emscripten::val>("slice", gather_sin, emscripten::val::array(starts),
+                                                   emscripten::val::array(sizes), slice_gather_cos_sin_options);
+  }
+
+  // Reshape and broadcast them to match the number of heads of the input data.
   const std::vector<uint32_t> reshaped_cos_sin_shape =
-      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, 1, rotary_embedding_dim / 2, 1})
-                  : std::vector<uint32_t>({batch_size, sequence_length, 1, 1, rotary_embedding_dim / 2});
+      interleaved ? std::vector<uint32_t>({batch_size, sequence_length, 1, half_rotary_embedding_dim, 1})
+                  : std::vector<uint32_t>({batch_size, sequence_length, 1, 1, half_rotary_embedding_dim});
   emscripten::val reshape_gather_cos_sin_options = emscripten::val::object();
   reshape_gather_cos_sin_options.set("label", node_name + "_reshape_gather_cos_sin");
   gather_cos = wnn_builder.call<emscripten::val>(
@@ -312,10 +356,13 @@ bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node&
                                                  const WebnnDeviceType /* device_type */,
                                                  const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
+  const bool is_onnx_domain = IsOnnxDomain(node.Domain());
+  // The input indexes for the onnx domain and the microsoft domain are different.
+  const size_t cos_cache_idx = is_onnx_domain ? 1 : 2;
   std::vector<int64_t> input_shape;
   std::vector<int64_t> cos_cache_shape;
   if (!GetShape(*input_defs[0], input_shape, logger)) return false;
-  if (!GetShape(*input_defs[2], cos_cache_shape, logger)) return false;
+  if (!GetShape(*input_defs[cos_cache_idx], cos_cache_shape, logger)) return false;
   const auto input_size = input_shape.size();
   if (input_size != 3 && input_size != 4) {
     LOGS(logger, VERBOSE) << "RotaryEmbedding only supports 3D or 4D input shape, input is " << input_size << "D shape";
@@ -326,21 +373,28 @@ bool RotaryEmbeddingOpBuilder::IsOpSupportedImpl(const GraphViewer&, const Node&
   const int is_packed_batching = helper.Get("is_packed_batching", 0);
   const int num_heads = helper.Get("num_heads", 0);
   const int rotary_embedding_dim = helper.Get("rotary_embedding_dim", 0);
-
   const auto sequence_length = input_size == 4 ? input_shape[2] : input_shape[1];
-  if (is_packed_batching == 0 && sequence_length > cos_cache_shape[0]) {
-    LOGS(logger, VERBOSE) << "RotaryEmbedding: updating cos_cache and sin_cache is not currently supported";
-    return false;
+
+  if (is_onnx_domain) {
+    if (input_size == 3 && num_heads == 0) {
+      LOGS(logger, VERBOSE) << "RotaryEmbedding: num_heads must be provided if input is 3D";
+      return false;
+    }
+  } else {
+    if (is_packed_batching == 0 && sequence_length > cos_cache_shape[0]) {
+      LOGS(logger, VERBOSE) << "RotaryEmbedding: updating cos_cache and sin_cache is not currently supported";
+      return false;
+    }
+
+    if (rotary_embedding_dim > 0 && num_heads == 0) {
+      LOGS(logger, VERBOSE) << "RotaryEmbedding: num_heads must be provided if rotary_embedding_dim is specified";
+      return false;
+    }
   }
 
   if (input_size == 4 && num_heads != 0 && num_heads != input_shape[1]) {
     LOGS(logger, VERBOSE) << "RotaryEmbedding: when input has 4 dimensions, num_heads must be 0 or have the same value "
                              "as the second dimension of the input";
-    return false;
-  }
-
-  if (rotary_embedding_dim > 0 && num_heads == 0) {
-    LOGS(logger, VERBOSE) << "RotaryEmbedding: num_heads must be provided if rotary_embedding_dim is specified";
     return false;
   }
 
@@ -353,14 +407,22 @@ bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
                                                       const logging::Logger& logger) const {
   const auto& input_defs = node.InputDefs();
   const std::string_view op_type = node.OpType();
+  const bool is_onnx_domain = IsOnnxDomain(node.Domain());
+  // The input indexes for the onnx domain and the microsoft domain are different.
+  const size_t cos_cache_idx = is_onnx_domain ? 1 : 2;
+  const size_t sin_cache_idx = is_onnx_domain ? 2 : 3;
+  const size_t position_ids_idx = is_onnx_domain ? 3 : 1;
   int32_t input_type = 0;
   int32_t position_ids_type = 0;
   int32_t cos_cache_type = 0;
   int32_t sin_cache_type = 0;
+  // Since opset 23, the position_ids is an optional input.
+  const bool has_position_ids = TensorExists(input_defs, position_ids_idx);
+
   if (!GetType(*input_defs[0], input_type, logger) ||
-      !GetType(*input_defs[1], position_ids_type, logger) ||
-      !GetType(*input_defs[2], cos_cache_type, logger) ||
-      !GetType(*input_defs[3], sin_cache_type, logger)) {
+      (has_position_ids && !GetType(*input_defs[position_ids_idx], position_ids_type, logger)) ||
+      !GetType(*input_defs[cos_cache_idx], cos_cache_type, logger) ||
+      !GetType(*input_defs[sin_cache_idx], sin_cache_type, logger)) {
     return false;
   }
 
@@ -369,14 +431,15 @@ bool RotaryEmbeddingOpBuilder::HasSupportedInputsImpl(const GraphViewer&,
     return false;
   }
 
-  if (position_ids_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
+  if (has_position_ids && position_ids_type != ONNX_NAMESPACE::TensorProto_DataType_INT64) {
     return false;
   }
 
   // Check if the input data type is supported by each decomposed WebNN op.
-  // Decomposed ops include: "add", "concat", "gather", "mul", "reshape" and "split".
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  // Decomposed ops include: "Add", "Concat", "Gather", "Mul", "Reshape" and "Split".
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(
             op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "input", logger)) {
       return false;
@@ -397,7 +460,8 @@ bool RotaryEmbeddingOpBuilder::HasSupportedOutputsImpl(const Node& node,
   }
 
   // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
     const std::string_view webnn_output_name = webnn_op_type == "split" ? "outputs" : "output";
     if (!IsDataTypeSupportedByWebNNOp(
             op_type, webnn_op_type, output_type, wnn_limits, webnn_output_name, "output", logger)) {

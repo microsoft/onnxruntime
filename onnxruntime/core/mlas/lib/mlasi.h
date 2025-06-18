@@ -261,6 +261,22 @@ struct MLFloat16 {
     MLFloat16() = default;
     explicit constexpr MLFloat16(uint16_t x) : val(x) {}
     explicit MLFloat16(float ff) : val(MLAS_Float2Half(ff)) {}
+    constexpr static MLFloat16 FromBits(uint16_t x) noexcept { return MLFloat16(x); }
+
+    MLFloat16 Abs() const noexcept {
+        return MLFloat16(static_cast<uint16_t>(val & ~kSignMask));
+    }
+    bool IsNaN() const noexcept {
+        return Abs().val > kPositiveInfinityBits;
+    }
+    bool IsNegative() const noexcept {
+        return static_cast<int16_t>(val) < 0;
+    }
+    MLFloat16 Negate() const {
+        return MLFloat16(IsNaN() ? val : static_cast<uint16_t>(val ^ kSignMask));
+    }
+    static constexpr uint16_t kSignMask = 0x8000U;
+    static constexpr uint16_t kPositiveInfinityBits = 0x7C00U;
 
     float ToFloat() const { return MLAS_Half2Float(val); }
 

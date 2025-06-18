@@ -79,7 +79,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (packed_) {
         shader.MainFunctionBody()
             << "let zero_point_index = " << output.IndicesGet("output_indices", "uniforms.axis") << ";\n"
-            << "let zero_point_input = " << zero_point.GetByOffset("zero_point_index / 4") << ";\n"
+            << "let zero_point_input = " << zero_point.GetByOffset("u32(zero_point_index / 4)") << ";\n"
             << "let zero_point_vec = " << unpack << ";\n"
             << "let zero_point_value = zero_point_vec[zero_point_index % 4];\n";
       } else {
@@ -92,7 +92,7 @@ Status DequantizeLinearProgram::GenerateShaderCode(ShaderHelper& shader) const {
       if (packed_) {
         shader.MainFunctionBody()
             << "let zero_point_offset = " << scale.GetByIndices("scale_indices") << ";\n"
-            << "let zero_point_input = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
+            << "let zero_point_input = " << zero_point.GetByOffset("u32(zero_point_offset / 4)") << ";\n"
             << "let zero_point_vec = " << unpack << ";\n"
             << "let zero_point_value = zero_point_vec[zero_point_offset % 4];\n";
       } else {

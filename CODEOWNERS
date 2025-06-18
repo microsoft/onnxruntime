@@ -3,12 +3,6 @@
 # Mobile
 /onnxruntime/core/flatbuffers/schema/ort.fbs @microsoft/onnxruntime-mobile
 
-# MLAS and related contrib ops
-/onnxruntime/core/graph/contrib_ops/nhwc_schema_defs.cc @microsoft/onnxruntime-mlas
-/onnxruntime/core/graph/contrib_ops/nchwc_schema_defs.cc @microsoft/onnxruntime-mlas
-/onnxruntime/core/graph/contrib_ops/quantization_defs.* @microsoft/onnxruntime-mlas
-/onnxruntime/core/mlas/** @microsoft/onnxruntime-mlas
-
 # Dependencies
 requirements-dev.txt @microsoft/onnxruntime-admin
 requirements-doc.txt @microsoft/onnxruntime-admin

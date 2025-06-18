@@ -9,8 +9,13 @@
 namespace onnxruntime {
 struct Provider;
 
+enum class ProviderLibraryPathType {
+  Default,
+  Absolute,
+};
+
 struct ProviderLibrary {
-  ProviderLibrary(const ORTCHAR_T* filename, bool unload = true);
+  ProviderLibrary(const ORTCHAR_T* filename, bool unload = true, ProviderLibraryPathType pathType = ProviderLibraryPathType::Default);
   ~ProviderLibrary();
 
   Status Load();
@@ -19,8 +24,9 @@ struct ProviderLibrary {
 
  private:
   std::mutex mutex_;
-  const ORTCHAR_T* filename_;
+  const ORTCHAR_T* const filename_;
   bool unload_;
+  const bool absolute_;
   bool initialized_{};
   Provider* provider_{};
   void* handle_{};

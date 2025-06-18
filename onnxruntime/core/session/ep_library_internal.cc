@@ -3,11 +3,13 @@
 
 #include "core/session/ep_library_internal.h"
 
+#include "core/framework/error_code_helper.h"
 #include "core/framework/session_options.h"
 #include "core/providers/cpu/cpu_execution_provider.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_logger.h"
 #include "core/session/abi_session_options_impl.h"
+#include "core/session/ep_api.h"
 #include "core/session/ort_apis.h"
 
 #if defined(USE_DML)
@@ -20,17 +22,27 @@
 
 namespace onnxruntime {
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
-  const auto is_supported = [](const OrtHardwareDevice* device,
-                               OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** /*ep_options*/) -> bool {
-    if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
-      return true;
+  const auto get_supported = [](OrtEpFactory* factory,
+                                const OrtHardwareDevice* const* devices,
+                                size_t num_devices,
+                                OrtEpDevice** ep_devices,
+                                size_t max_ep_devices,
+                                size_t* p_num_ep_devices) -> OrtStatus* {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (device.type == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
+        ORT_API_RETURN_IF_ERROR(
+            OrtExecutionProviderApi::CreateEpDevice(factory, &device, nullptr, nullptr,
+                                                    &ep_devices[num_ep_devices++]));
+      }
     }
 
-    return false;
+    return nullptr;
   };
 
-  const auto create_cpu_ep = [](const OrtHardwareDevice* const* /*devices*/,
+  const auto create_cpu_ep = [](OrtEpFactory* /*factory*/,
+                                const OrtHardwareDevice* const* /*devices*/,
                                 const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                 size_t num_devices,
                                 const OrtSessionOptions* session_options,
@@ -49,33 +61,47 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   };
 
   std::string ep_name = kCpuExecutionProvider;
-  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", is_supported, create_cpu_ep);
+  auto cpu_factory = std::make_unique<EpFactoryInternal>(ep_name, "Microsoft", get_supported, create_cpu_ep);
   return std::make_unique<EpLibraryInternal>(std::move(cpu_factory));
 }
 
 #if defined(USE_DML)
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
   static const std::string ep_name = kDmlExecutionProvider;
-  const auto is_supported = [](const OrtHardwareDevice* device,
-                               OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** ep_options) -> bool {
-    if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice as that is associated with
-      //       a specific device.
-      //       How would we know what options should not allow user overrides if set in OrtEpDevice?
-      if (auto it = device->metadata.entries.find("DxgiAdapterNumber"); it != device->metadata.entries.end()) {
-        auto options = std::make_unique<OrtKeyValuePairs>();
-        options->Add("device_id", it->second.c_str());
-        *ep_options = options.release();
-      }
+  const auto is_supported = [](OrtEpFactory* factory,
+                               const OrtHardwareDevice* const* devices,
+                               size_t num_devices,
+                               OrtEpDevice** ep_devices,
+                               size_t max_ep_devices,
+                               size_t* p_num_ep_devices) -> OrtStatus* {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (device.type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+        std::unique_ptr<OrtKeyValuePairs> ep_options;
 
-      return true;
+        // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice as that is associated with
+        //       a specific device.
+        //       How would we know what options should not allow user overrides if set in OrtEpDevice?
+        if (auto it = device.metadata.entries.find("DxgiAdapterNumber"); it != device.metadata.entries.end()) {
+          ep_options = std::make_unique<OrtKeyValuePairs>();
+          ep_options->Add("device_id", it->second.c_str());
+        }
+
+        auto* api_status = OrtExecutionProviderApi::CreateEpDevice(factory, &device, nullptr, ep_options.get(),
+                                                                   &ep_devices[num_ep_devices++]);
+
+        if (api_status != nullptr) {
+          return api_status;
+        }
+      }
     }
 
-    return false;
+    return nullptr;
   };
 
-  const auto create_dml_ep = [](const OrtHardwareDevice* const* /*devices*/,
+  const auto create_dml_ep = [](OrtEpFactory* /*factory*/,
+                                const OrtHardwareDevice* const* /*devices*/,
                                 const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                 size_t num_devices,
                                 const OrtSessionOptions* session_options,
@@ -106,20 +132,27 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {
   static const std::string ep_name = kWebGpuExecutionProvider;
 
-  const auto is_supported = [](const OrtHardwareDevice* device,
-                               OrtKeyValuePairs** /*ep_metadata*/,
-                               OrtKeyValuePairs** /*ep_options*/) -> bool {
-    if (device->type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-      // What is the correct behavior here to match the device if there are multiple GPUs?
-      // Should WebGPU default to picking the GPU with HighPerformanceIndex of 0?
-      // Or should we be setting the 'deviceId', 'webgpuInstance' and 'webgpuDevice' options for each GPU?
-      return true;
+  const auto is_supported = [](OrtEpFactory* factory,
+                               const OrtHardwareDevice* const* devices,
+                               size_t num_devices,
+                               OrtEpDevice** ep_devices,
+                               size_t max_ep_devices,
+                               size_t* p_num_ep_devices) -> OrtStatus* {
+    size_t& num_ep_devices = *p_num_ep_devices;
+    for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
+      const OrtHardwareDevice& device = *devices[i];
+      if (device.type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
+        // TODO: any metadata or options to add?
+        ORT_API_RETURN_IF_ERROR(OrtExecutionProviderApi::CreateEpDevice(factory, &device, nullptr, nullptr,
+                                                                        &ep_devices[num_ep_devices++]));
+      }
     }
 
-    return false;
+    return nullptr;
   };
 
-  const auto create_webgpu_ep = [](const OrtHardwareDevice* const* /*devices*/,
+  const auto create_webgpu_ep = [](OrtEpFactory* /*factory*/,
+                                   const OrtHardwareDevice* const* /*devices*/,
                                    const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                    size_t num_devices,
                                    const OrtSessionOptions* session_options,
@@ -150,12 +183,12 @@ std::vector<std::unique_ptr<EpLibraryInternal>> EpLibraryInternal::CreateInterna
   // CPU EP
   internal_eps.push_back(CreateCpuEp());
 
-#if defined(USE_DML)
-  internal_eps.push_back(CreateDmlEp());
-#endif
-
 #if defined(USE_WEBGPU)
   internal_eps.push_back(CreateWebGpuEp());
+#endif
+
+#if defined(USE_DML)
+  internal_eps.push_back(CreateDmlEp());
 #endif
 
   return internal_eps;

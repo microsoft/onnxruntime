@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
@@ -169,31 +170,31 @@ void NvExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_build,
     }
     std::string unique_graph_name = GetUniqueGraphName(*top_level_graph);
     if (subgraph_context_map_.find(unique_graph_name) == subgraph_context_map_.end()) {
-      LOGS_DEFAULT(ERROR) << "[Nv EP] Can't find top-level graph context. \
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Can't find top-level graph context. \
                               Please check BuildSubGraphContext() has built the graph context correctly.";
       return;
     }
 
     SubGraphContext* context = subgraph_context_map_.at(unique_graph_name).get();
 
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Subgraph name is " << graph_build.Name();
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Its parent node is " << graph.ParentNode()->Name();
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Its parent node's implicit inputs:";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Subgraph name is " << graph_build.Name();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Its parent node is " << graph.ParentNode()->Name();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Its parent node's implicit inputs:";
 
     // Iterate all the implicit inputs to set outer scope value for the newly built subgraph
     for (const auto& input : graph.ParentNode()->ImplicitInputDefs()) {
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] \t" << input->Name();
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] \t" << input->Name();
 
       // The node arg in parent node's implicit inputs could be used for parent node's other subgraph, for example
       // "If" op has two subgraphs. So we need to make sure that the node arg is used in current subgraph only.
       // (GetNodeArg searches for specific node arg in all node args in the graph)
       if (graph_build.GetNodeArg(input->Name())) {
         graph_build.AddOuterScopeNodeArg(input->Name());
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] \t" << input->Name() << " is used in this subgraph";
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] \t" << input->Name() << " is used in this subgraph";
 
         if (context &&
             (context->manually_added_graph_inputs.find(input->Name()) != context->manually_added_graph_inputs.end())) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] \t" << input->Name() << " is already been added as an explicit input to graph";
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] \t" << input->Name() << " is already been added as an explicit input to graph";
           continue;
         }
 
@@ -213,7 +214,7 @@ void NvExecutionProvider::SetGraphOuterScopeValuesAndInputs(Graph& graph_build,
               type_proto->copy_from(input->TypeAsProto());
               auto& n_input = top_level_graph->GetOrCreateNodeArg(name, type_proto.get());
               context->manually_added_graph_inputs[n_input.Name()] = &n_input;
-              LOGS_DEFAULT(VERBOSE) << "[Nv EP] \t" << n_input.Name() << " is added as an explicit input into the newly built graph";
+              LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] \t" << n_input.Name() << " is added as an explicit input into the newly built graph";
             }
           }
         }

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include <iostream>
@@ -213,7 +214,7 @@ void DumpCtxModel(ONNX_NAMESPACE::ModelProto* model_proto,
                   const std::string& ctx_model_path) {
   std::fstream dump(ctx_model_path, std::ios::out | std::ios::trunc | std::ios::binary);
   model_proto->SerializeToOstream(dump);
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] Dumped " + ctx_model_path;
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Dumped " + ctx_model_path;
 }
 
 bool IsAbsolutePath(const std::string& path_string) {
@@ -285,7 +286,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     const std::string& context_binary = attrs.at(EP_CACHE_CONTEXT).s();
     *(trt_engine_) = std::unique_ptr<nvinfer1::ICudaEngine>(trt_runtime_->deserializeCudaEngine(const_cast<char*>(context_binary.c_str()),
                                                                                                 static_cast<size_t>(context_binary.length())));
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Read engine as binary data from \"ep_cache_context\" attribute of ep context node and deserialized it";
     if (!(*trt_engine_)) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP could not deserialize engine from binary data");
@@ -324,7 +325,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     // The engine cache and context model (current model) should be in the same directory
     std::filesystem::path ctx_model_dir(GetPathOrParentPathOfCtxModel(ep_context_model_path_));
     auto engine_cache_path = ctx_model_dir.append(cache_path);
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] GetEpContextFromGraph engine_cache_path: " + engine_cache_path.string();
 
     // If it's a weight-stripped engine cache, it needs to be refitted even though the refit flag is not enabled
     if (!weight_stripped_engine_refit_) {
@@ -335,7 +336,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
     if (weight_stripped_engine_refit_) {
       const std::filesystem::path refitted_engine_cache_path = GetWeightRefittedEnginePath(engine_cache_path.string());
       if (std::filesystem::exists(refitted_engine_cache_path)) {
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] " + refitted_engine_cache_path.string() + " exists.";
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " + refitted_engine_cache_path.string() + " exists.";
         engine_cache_path = refitted_engine_cache_path.string();
         weight_stripped_engine_refit_ = false;
       }
@@ -358,7 +359,7 @@ Status TensorRTCacheModelHandler::GetEpContextFromGraph(const GraphViewer& graph
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
                              "Nv EP could not deserialize engine from cache: " + engine_cache_path.string());
     }
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] DeSerialized " + engine_cache_path.string();
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] DeSerialized " + engine_cache_path.string();
 
     if (weight_stripped_engine_refit_) {
       const std::string onnx_model_filename = attrs.at(ONNX_MODEL_FILENAME).s();
@@ -394,14 +395,14 @@ bool TensorRTCacheModelHandler::ValidateEPCtxNode(const GraphViewer& graph_viewe
     std::string model_compute_capability = attrs.at(COMPUTE_CAPABILITY).s();
     // Verify if engine was compiled with ampere+ hardware compatibility enabled
     if (model_compute_capability == "80+") {
-      LOGS_DEFAULT(WARNING) << "[Nv EP] Engine is compatible to all Ampere+ GPU (except Jetson)";
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine is compatible to all Ampere+ GPU (except Jetson)";
       if (std::stoi(compute_capability_) < 80) {
-        LOGS_DEFAULT(WARNING) << "[Nv EP] However, this GPU doesn't match. The compute capability of the GPU: " << compute_capability_;
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] However, this GPU doesn't match. The compute capability of the GPU: " << compute_capability_;
       }
     } else if (model_compute_capability != compute_capability_) {
-      LOGS_DEFAULT(WARNING) << "[Nv EP] Engine was compiled for a different compatibility level and might not work or perform suboptimal";
-      LOGS_DEFAULT(WARNING) << "[Nv EP] The compute capability of the engine: " << model_compute_capability;
-      LOGS_DEFAULT(WARNING) << "[Nv EP] The compute capability of the GPU: " << compute_capability_;
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Engine was compiled for a different compatibility level and might not work or perform suboptimal";
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The compute capability of the engine: " << model_compute_capability;
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] The compute capability of the GPU: " << compute_capability_;
     }
   }
 

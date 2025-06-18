@@ -330,16 +330,42 @@ typedef OrtStatus* OrtStatusPtr;
  * When an allocator is passed to any function, be sure that the allocator object is not destroyed until the last allocated object using it is freed.
  */
 typedef struct OrtAllocator {
-  uint32_t version;                                                                   ///< Must be initialized to ORT_API_VERSION
-  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);                ///< Returns a pointer to an allocated block of `size` bytes
-  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);                      ///< Free a block of memory previously allocated with OrtAllocator::Alloc
-  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);  ///< Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+
+  /// Returns a pointer to an allocated block of `size` bytes
+  void*(ORT_API_CALL* Alloc)(struct OrtAllocator* this_, size_t size);
+
+  /// Free a block of memory previously allocated with OrtAllocator::Alloc
+  void(ORT_API_CALL* Free)(struct OrtAllocator* this_, void* p);
+
+  /// Return a pointer to an ::OrtMemoryInfo that describes this allocator
+  const struct OrtMemoryInfo*(ORT_API_CALL* Info)(const struct OrtAllocator* this_);
   /**
    * @brief Optional allocation function to use for memory allocations made during session initialization.
    * Use this function if you want to separate allocations made by ORT during Run() calls from
    * those made during session initialization. This allows for separate memory management strategies for these allocations.
    */
   void*(ORT_API_CALL* Reserve)(struct OrtAllocator* this_, size_t size);  ///< Returns a pointer to an allocated block of `size` bytes
+
+  /**
+   * @brief Function used to get the statistics of the allocator.
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   * Supported keys are:
+   * - Limit: Bytes limit of the allocator. -1 if no limit is set.
+   * - InUse: Number of bytes in use.
+   * - TotalAllocated: The total number of allocated bytes by the allocator.
+   * - MaxInUse: The maximum bytes in use.
+   * - NumAllocs: Number of allocations.
+   * - NumReserves: Number of reserves. (Number of calls to Reserve() in arena-based allocators)
+   * - NumArenaExtensions: Number of arena extensions (Relevant only for arena based allocators)
+   * - NumArenaShrinkages: Number of arena shrinkages (Relevant only for arena based allocators)
+   * - MaxAllocSize: The max single allocation seen.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   */
+  ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
@@ -355,6 +381,7 @@ typedef enum GraphOptimizationLevel {
   ORT_DISABLE_ALL = 0,
   ORT_ENABLE_BASIC = 1,
   ORT_ENABLE_EXTENDED = 2,
+  ORT_ENABLE_LAYOUT = 3,
   ORT_ENABLE_ALL = 99
 } GraphOptimizationLevel;
 
@@ -399,12 +426,19 @@ typedef enum OrtMemType {
   OrtMemTypeDefault = 0,                ///< The default allocator for execution provider
 } OrtMemType;
 
+/** \brief This matches OrtDevice::MemoryType values */
+typedef enum OrtDeviceMemoryType {
+  OrtDeviceMemoryType_DEFAULT = 0,          ///< Device memory
+  OrtDeviceMemoryType_HOST_ACCESSIBLE = 5,  ///< Shared/pinned memory for transferring between CPU and the device
+} OrtDeviceMemoryType;
+
 /** \brief This mimics OrtDevice type constants so they can be returned in the API
  */
 typedef enum OrtMemoryInfoDeviceType {
   OrtMemoryInfoDeviceType_CPU = 0,
   OrtMemoryInfoDeviceType_GPU = 1,
-  OrtMemoryInfoDeviceType_FPGA = 2
+  OrtMemoryInfoDeviceType_FPGA = 2,
+  OrtMemoryInfoDeviceType_NPU = 3,
 } OrtMemoryInfoDeviceType;
 
 typedef enum OrtHardwareDeviceType {
@@ -424,6 +458,34 @@ typedef enum OrtExecutionProviderDevicePolicy {
   OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY,
   OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER,
 } OrtExecutionProviderDevicePolicy;
+
+/** \brief Delegate to allow providing custom OrtEpDevice selection logic
+ *
+ * This delegate is called by the EP selection code to allow the user to provide custom device selection logic.
+ * The user can use this to select OrtEpDevice instances from the list of available devices.
+ *
+ * \param ep_devices The list of available devices.
+ * \param num_devices The number of available devices.
+ * \param model_metadata The model metadata.
+ * \param runtime_metadata The runtime metadata. May be nullptr.
+ * \param selected Pre-allocated array to populate with selected OrtEpDevice pointers from ep_devices.
+ * \param max_selected The maximum number of devices that can be selected in the pre-allocated array.
+                       Currently the maximum is 8.
+ * \param num_selected The number of selected devices.
+ * \param state Opaque pointer. Required to use the delegate from other languages like C# and python.
+ *
+ * \return OrtStatus* Selection status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** ep_devices,
+                                                      _In_ size_t num_devices,
+                                                      _In_ const OrtKeyValuePairs* model_metadata,
+                                                      _In_opt_ const OrtKeyValuePairs* runtime_metadata,
+                                                      _Inout_ const OrtEpDevice** selected,
+                                                      _In_ size_t max_selected,
+                                                      _Out_ size_t* num_selected,
+                                                      _In_ void* state);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -546,7 +608,7 @@ typedef struct OrtROCMProviderOptions {
    */
   int device_id;
 
-  /** \brief ROCM MIOpen Convolution algorithm exaustive search option.
+  /** \brief ROCM MIOpen Convolution algorithm exhaustive search option.
    *   Defaults to 0 (false).
    */
   int miopen_conv_exhaustive_search;
@@ -644,6 +706,7 @@ typedef struct OrtTensorRTProviderOptions {
 typedef struct OrtMIGraphXProviderOptions {
   int device_id;                                     // hip device id.
   int migraphx_fp16_enable;                          // MIGraphX FP16 precision. Default 0 = false, nonzero = true
+  int migraphx_fp8_enable;                           // MIGraphX FP8 precision. Default 0 = false, nonzero = true
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
@@ -652,6 +715,21 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
   const char* migraphx_load_model_path;              // migraphx model path name
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
+
+  /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)
+   *   Defaults to SIZE_MAX.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  size_t migraphx_mem_limit;
+
+  /** \brief Strategy used to grow the memory arena
+   *   0 = kNextPowerOfTwo<br>
+   *   1 = kSameAsRequested<br>
+   *   Defaults to 0.
+   *   \note If a ::OrtArenaCfg has been applied, it will override this field
+   */
+  int migraphx_arena_extend_strategy;
+
 } OrtMIGraphXProviderOptions;
 
 /** \brief OpenVINO Provider Options
@@ -699,6 +777,9 @@ typedef struct OrtModelEditorApi OrtModelEditorApi;
 
 struct OrtCompileApi;
 typedef struct OrtCompileApi OrtCompileApi;
+
+struct OrtEpApi;
+typedef struct OrtEpApi OrtEpApi;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -2334,6 +2415,8 @@ struct OrtApi {
 
   /** \brief Create an allocator for an ::OrtSession following an ::OrtMemoryInfo
    *
+   * The allocator wraps the internal allocator from the OrtSession and becomes invalid when the session does.
+   *
    * \param[in] session
    * \param[in] mem_info valid ::OrtMemoryInfo instance
    * \param[out] out Newly created ::OrtAllocator. Must be freed with OrtApi::ReleaseAllocator
@@ -2844,7 +2927,7 @@ struct OrtApi {
    *  crossing which the current chunk is chunked into 2.
    * "initial_growth_chunk_size_bytes": (Possible) Size of the second allocation in the arena.
    *  Only relevant if arena strategy is `kNextPowerOfTwo`. Use -1 to allow ORT to choose the default.
-   * "max_power_of_two_extend_bytes": The maximum enxtend size if arena strategy is `kNextPowerOfTwo`.
+   * "max_power_of_two_extend_bytes": The maximum extend size if arena strategy is `kNextPowerOfTwo`.
    *  It is not an allocation limit, it is only a limit for extension when requested byte is less than the limit.
    *  When requested bytes is more than the limit, allocator will still return as requested.
    *  Use -1 to allow ORT to choose the default 1GB for max_power_of_two_extend_bytes.
@@ -3605,9 +3688,9 @@ struct OrtApi {
    * \param[in] op_name Operator name
    * \param[in] domain Operator domain
    * \param[in] version Operator opset version
-   * \param[in] type_constraint_names Name of the type contraints, such as "T" or "T1"
-   * \param[in] type_constraint_values Type of each contraints
-   * \param[in] type_constraint_count Number of contraints
+   * \param[in] type_constraint_names Name of the type constraints, such as "T" or "T1"
+   * \param[in] type_constraint_values Type of each constraints
+   * \param[in] type_constraint_count Number of constraints
    * \param[in] attr_values Attributes used to initialize the operator
    * \param[in] attr_count Number of the attributes
    * \param[in] input_count Number of inputs
@@ -3688,6 +3771,7 @@ struct OrtApi {
    *      -# "gpu"
    *      -# "htp": Default.
    *      -# "saver"
+   *      -# "ir"
    *   "backend_path": File path to QNN backend library. Mutually exclusive with "backend_type".
    *   "profiling_level": QNN profiling level.
    *      Available options:
@@ -3709,6 +3793,14 @@ struct OrtApi {
    *      -# "low_power_saver"
    *      -# "power_saver"
    *      -# "sustained_high_performance"
+   *   "dump_qnn_ir_dlc": Use the QnnIr backend library to write .dlc files for each subgraph dispatched to QNN. When
+   *       enabled, inference results will be incorrect. Use only for debugging.
+   *      -# "0": Default: disabled
+   *      -# "1": enabled
+   *   "dump_qnn_ir_dlc_dir": Set the directory into which QnnIr will be configured to write QNN graphs as .dlc files.
+   *      Default is current working directory.
+   *   "qnn_ir_backend_path": File path to the QnnIr backend library. If "dump_qnn_ir_dlc" is enabled, use this path
+   *      instead of looking for the Ir backend in the standard location.
    *   "qnn_saver_path": File path to the QNN Saver backend library. If specified, QNN Saver will be enabled and will
    *      dump QNN API calls to disk for replay/debugging. QNN Saver produces incorrect model inference results and
    *      may alter model/EP partitioning. Use only for debugging.
@@ -4295,7 +4387,7 @@ struct OrtApi {
 
   /** \brief Get the logging severity level of the ::OrtLogger.
    *
-   * Can be used in a custom operator to get the logging serverity level of the ::OrtLogger associated with
+   * Can be used in a custom operator to get the logging severity level of the ::OrtLogger associated with
    * the ::OrtKernelInfo.
    *
    * \param[in] logger The ::OrtLogger instance.
@@ -4713,12 +4805,12 @@ struct OrtApi {
                   _In_reads_(num_keys) const char* const* provider_options_values,
                   _In_ size_t num_keys);
 
-  /** \brief Get scratch buffer from the corresponding allocator under the sepcific OrtMemoryInfo object.
+  /** \brief Get scratch buffer from the corresponding allocator under the specific OrtMemoryInfo object.
    *         NOTE: callers are responsible to release this scratch buffer from the corresponding allocator
    *  \param[in] context OrtKernelContext instance
    *  \param[in] mem_info OrtMemoryInfo instance
    *  \param[in] count_or_bytes How many bytes is this scratch buffer
-   *  \param[out] out A pointer to the scrach buffer
+   *  \param[out] out A pointer to the scratch buffer
    *
    *  \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5070,7 +5162,8 @@ struct OrtApi {
   ORT_API2_STATUS(GetEpDevices, _In_ const OrtEnv* env,
                   _Outptr_ const OrtEpDevice* const** ep_devices, _Out_ size_t* num_ep_devices);
 
-  /** \brief Append execution provider to the session options by name.
+  /** \brief Append the execution provider that is responsible for the selected OrtEpDevice instances
+   *         to the session options.
    *
    * \param[in] session_options Session options to add execution provider to.
    * \param[in] env Environment that execution providers were registered with.
@@ -5094,6 +5187,33 @@ struct OrtApi {
                   _In_reads_(num_op_options) const char* const* ep_option_keys,
                   _In_reads_(num_op_options) const char* const* ep_option_vals,
                   size_t num_ep_options);
+
+  /** \brief Set the execution provider selection policy for the session.
+   *
+   * Allows users to specify a device selection policy for automatic execution provider (EP) selection.
+   * If custom selection is required please use SessionOptionsSetEpSelectionPolicyDelegate instead.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] policy The device selection policy to use (see OrtExecutionProviderDevicePolicy).
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* session_options,
+                  _In_ OrtExecutionProviderDevicePolicy policy);
+
+  /** \brief Set the execution provider selection policy delegate for the session.
+   *
+   * Allows users to provide a custom device selection policy for automatic execution provider (EP) selection.
+   *
+   * \param[in] session_options The OrtSessionOptions instance.
+   * \param[in] delegate Delegate callback for custom selection.
+   * \param[in] delegate_state Optional state that will be passed to the delegate callback. nullptr if not required.
+   *
+   * \since Version 1.22
+   */
+  ORT_API2_STATUS(SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* session_options,
+                  _In_ EpSelectionDelegate delegate,
+                  _In_opt_ void* delegate_state);
 
   /** \brief Get the hardware device type.
    *
@@ -5186,6 +5306,67 @@ struct OrtApi {
    * \since Version 1.22.
    */
   const OrtHardwareDevice*(ORT_API_CALL* EpDevice_Device)(_In_ const OrtEpDevice* ep_device);
+
+  /** \brief Get the OrtEpApi instance for implementing an execution provider.
+   *
+   * \since Version 1.22.
+   */
+  const OrtEpApi*(ORT_API_CALL* GetEpApi)();
+
+  /** \brief Compute total size in bytes of the tensor data contained in an OrtValue.
+   *
+   * Returns the total number of bytes used to store the tensor data. For numeric tensors,
+   * this is sizeof(element_type) * total_element_count. OrtValues that are not tensors or
+   * that are tensors that contain strings will cause an error to be returned.
+   *
+   * \param[in] ort_value OrtValue instance containing a tensor
+   * \param[out] size The total size of the tensor data in bytes
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorSizeInBytes, _In_ const OrtValue* ort_value, _Out_ size_t* size);
+
+  /** \brief Calls OrtAllocator::GetStats function
+   *
+   * Return a pointer to the OrtKeyValuePairs structure that contains the statistics of the allocator
+   * and the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
+   *
+   * \param[in] ort_allocator The allocator to get stats from
+   * \param[out] out A pointer to the OrtKeyValuePairs instance that contains the stats
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(AllocatorGetStats, _In_ const OrtAllocator* ort_allocator, _Outptr_ OrtKeyValuePairs** out);
+
+  /** \brief Create an ::OrtMemoryInfo
+   *
+   * \param[in] name Arbitrary name.
+   * \param[in] device_type Device type.
+   * \param[in] vendor_id PCI Vendor ID. Use 0 for a generic allocator (e.g. WebGPU).
+   * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
+   * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
+   *                                  OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer
+   *                                  between the device and the CPU.
+   * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
+   * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
+   *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
+   *                           allocators via CreateAllocator/CreateAndRegisterAllocator/CreateAndRegisterAllocatorV2.
+   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtAPi::ReleaseMemoryInfo
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMemoryInfoDeviceType device_type,
+                  _In_ uint32_t vendor_id, _In_ int16_t device_id, _In_ enum OrtDeviceMemoryType mem_type,
+                  _In_ size_t alignment, enum OrtAllocatorType allocator_type,
+                  _Outptr_ OrtMemoryInfo** out);
 };
 
 /*
@@ -5248,7 +5429,7 @@ struct OrtCustomOp {
   // Returns the memory type of the input tensors. This API allows the custom op
   // to place the inputs on specific devices. By default, it returns
   // OrtMemTypeDefault, which means the input is placed on the default device for
-  // the execution provider. If the inputs need to be with different memory tyeps,
+  // the execution provider. If the inputs need to be with different memory types,
   // this function can be overridden to return the specific memory types.
   OrtMemType(ORT_API_CALL* GetInputMemoryType)(_In_ const struct OrtCustomOp* op, _In_ size_t index);
 
@@ -5702,6 +5883,21 @@ struct OrtModelEditorApi {
  * ORT Compile API
  */
 
+/** \brief Flags representing options to enable when compiling a model.
+ */
+typedef enum OrtCompileApiFlags {
+  // Default. Do not enable any additional compilation options.
+  OrtCompileApiFlags_NONE = 0,
+
+  // Force compilation to return an error (ORT_FAIL) if no nodes were compiled.
+  // Otherwise, a model with basic optimizations (ORT_ENABLE_BASIC) is still generated by default.
+  OrtCompileApiFlags_ERROR_IF_NO_NODES_COMPILED = 1 << 0,
+
+  // Force compilation to return an error (ORT_FAIL) if a file with the same filename as the output model exists.
+  // Otherwise, compilation will automatically overwrite the output file if it exists.
+  OrtCompileApiFlags_ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+} OrtCompileApiFlags;
+
 /**
  * \brief The OrtCompileApi struct provides functions to compile ONNX models.
  *
@@ -5884,10 +6080,45 @@ struct OrtCompileApi {
    * \since Version 1.22.
    */
   ORT_API2_STATUS(CompileModel, _In_ const OrtEnv* env, _In_ const OrtModelCompilationOptions* model_options);
+
+  /** \brief Sets flags from OrtCompileApiFlags that represent one or more boolean options to enable.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] flags bitwise OR of flags in OrtCompileApiFlags to enable.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
+                  size_t flags);
 };
 
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
+
+struct OrtEpApi {
+  /** \brief Create an OrtEpDevice for the EP and an OrtHardwareDevice.
+   * \param[in] ep_factory Execution provider factory that is creating the instance.
+   * \param[in] hardware_device Hardware device that the EP can utilize.
+   * \param[in] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
+   *                        during execution provider selection and passed to CreateEp.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
+   * \param[in] ep_options  Optional OrtKeyValuePairs instance for execution provider options that will be added
+   *                        to the Session configuration options if the execution provider is selected.
+   *                        ep_device will copy this instance and the user should call ReleaseKeyValuePairs.
+   * \param ep_device OrtExecutionDevice that is created.
+   *
+   * \since Version 1.22.
+   */
+  ORT_API2_STATUS(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
+                  _In_ const OrtHardwareDevice* hardware_device,
+                  _In_opt_ const OrtKeyValuePairs* ep_metadata,
+                  _In_opt_ const OrtKeyValuePairs* ep_options,
+                  _Out_ OrtEpDevice** ep_device);
+
+  ORT_CLASS_RELEASE(EpDevice);
+};
 
 /**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
@@ -5993,21 +6224,28 @@ struct OrtEpFactory {
   /** \brief Get information from the execution provider if it supports the OrtHardwareDevice.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] device The OrtHardwareDevice instance.
-   * \param[out] ep_metadata Optional OrtKeyValuePairs instance for execution provider metadata that may be used
-   *                         during execution provider selection and/or CreateEp.
-   * \param[out] ep_options Optional OrtKeyValuePairs instance for execution provider options that will be added
-   *                        to the Session configuration options if the execution provider is selected.
+   *                     Non-const as the factory is passed through to the CreateEp call via the OrtEpDevice.
+   * \param[in] devices The OrtHardwareDevice instances that are available.
+   * \param[in] num_devices The number of OrtHardwareDevice instances.
+   * \param[out] ep_devices OrtEpDevice instances for each OrtHardwareDevice that the EP can use.
+   *                        The implementation should call OrtEpApi::CreateEpDevice to create, and add the OrtEpDevice
+   *                        instances to this pre-allocated array. ORT will take ownership of the values returned.
+   *                        i.e. usage is `ep_devices[0] = <ptr to OrtEpDevice created with OrtEpApi::CreateEpDevice>;`
+   * \param[in] max_ep_devices The maximum number of OrtEpDevices that can be added to ep_devices.
+   *                           Current default is 8. This can be increased if needed.
+   * \param[out] num_ep_devices The number of EP devices added to ep_devices.
    * \return true if the factory can create an execution provider that uses `device`.
    *
    * \note ORT will take ownership or ep_metadata and/or ep_options if they are not null.
    *
    * \since Version 1.22.
    */
-  bool(ORT_API_CALL* GetDeviceInfoIfSupported)(const OrtEpFactory* this_ptr,
-                                               _In_ const OrtHardwareDevice* device,
-                                               _Out_opt_ OrtKeyValuePairs** ep_metadata,
-                                               _Out_opt_ OrtKeyValuePairs** ep_options);
+  OrtStatus*(ORT_API_CALL* GetSupportedDevices)(_In_ OrtEpFactory* this_ptr,
+                                                _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                                _In_ size_t num_devices,
+                                                _Inout_ OrtEpDevice** ep_devices,
+                                                _In_ size_t max_ep_devices,
+                                                _Out_ size_t* num_ep_devices);
 
   /** \brief Function to create an OrtEp instance for use in a Session.
    *
@@ -6015,13 +6253,13 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] devices The OrtHardwareDevice instances that the execution provider was selected to use.
-   * \param[in] ep_metadata_pairs Execution provider metadata that was returned in GetDeviceInfoIfSupported, for each
+   * \param[in] ep_metadata_pairs Execution provider metadata that was provided to OrtEpApi::CreateEpDevice, for each
    *                              device.
    * \param[in] num_devices The number of devices the execution provider was selected for.
    * \param[in] session_options The OrtSessionOptions instance that contains the configuration options for the
-   *                            session. This will include ep_options from GetDeviceInfoIfSupported as well as any
+   *                            session. This will include ep_options from GetSupportedDevices as well as any
    *                            user provided overrides.
-   *                            Execution provider options will have been added with a prefix of 'ep.<ep name>.'.
+   *                            Execution provider options will have been added with a prefix of 'ep.[ep name].'.
    *                            The OrtSessionOptions instance will NOT be valid after this call and should not be
    *                            stored for later use.
    * \param[in] logger The OrtLogger instance for the session that the execution provider should use for logging.
@@ -6029,7 +6267,7 @@ struct OrtEpFactory {
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
-   * \since Version 1.22.
+   * \since Version [coming soon]. This is a placeholder.
    */
   OrtStatus*(ORT_API_CALL* CreateEp)(_In_ OrtEpFactory* this_ptr,
                                      _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -6043,7 +6281,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] ep The OrtEp instance to release.
    *
-   * \since Version 1.22.
+   * \since Version [coming soon]. This is a placeholder.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
 };

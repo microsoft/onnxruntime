@@ -33,12 +33,27 @@
     PATH_SUFFIXES include)
 
   file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
-  string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
-  string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
-  string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
-  string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+
+  # Starting TRT 10.11, TRT version macros have changed
+  string(REGEX MATCH "TRT_MAJOR_ENTERPRISE" TRT_VER_CHECK "${NVINFER_VER_CONTENT}")
+  # Pre TRT 10.11
+  if("${TRT_VER_CHECK}" STREQUAL "")
+    string(REGEX MATCH "define NV_TENSORRT_MAJOR * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define NV_TENSORRT_MAJOR * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
+    string(REGEX MATCH "define NV_TENSORRT_MINOR * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define NV_TENSORRT_MINOR * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
+    string(REGEX MATCH "define NV_TENSORRT_PATCH * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define NV_TENSORRT_PATCH * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+  # TRT 10.11+
+  else()
+    string(REGEX MATCH "define TRT_MAJOR_ENTERPRISE * +([0-9]+)" NV_TENSORRT_MAJOR "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define TRT_MAJOR_ENTERPRISE * +([0-9]+)" "\\1" NV_TENSORRT_MAJOR "${NV_TENSORRT_MAJOR}")
+    string(REGEX MATCH "define TRT_MINOR_ENTERPRISE * +([0-9]+)" NV_TENSORRT_MINOR "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define TRT_MINOR_ENTERPRISE * +([0-9]+)" "\\1" NV_TENSORRT_MINOR "${NV_TENSORRT_MINOR}")
+    string(REGEX MATCH "define TRT_PATCH_ENTERPRISE * +([0-9]+)" NV_TENSORRT_PATCH "${NVINFER_VER_CONTENT}")
+    string(REGEX REPLACE "define TRT_PATCH_ENTERPRISE * +([0-9]+)" "\\1" NV_TENSORRT_PATCH "${NV_TENSORRT_PATCH}")
+  endif()
+
   math(EXPR NV_TENSORRT_MAJOR_INT "${NV_TENSORRT_MAJOR}")
   math(EXPR NV_TENSORRT_MINOR_INT "${NV_TENSORRT_MINOR}")
   math(EXPR NV_TENSORRT_PATCH_INT "${NV_TENSORRT_PATCH}")
@@ -166,7 +181,14 @@
   )
 
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_tensorrt_cc_srcs})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_cc_srcs})
+
+  set(onnxruntime_providers_tensorrt_all_srcs ${onnxruntime_providers_tensorrt_cc_srcs})
+  if(WIN32)
+    # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+    list(APPEND onnxruntime_providers_tensorrt_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/tensorrt/onnxruntime_providers_tensorrt.rc")
+  endif()
+
+  onnxruntime_add_shared_library_module(onnxruntime_providers_tensorrt ${onnxruntime_providers_tensorrt_all_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_tensorrt onnxruntime_common)
   target_link_libraries(onnxruntime_providers_tensorrt PRIVATE Eigen3::Eigen  onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface Eigen3::Eigen)
   add_dependencies(onnxruntime_providers_tensorrt onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
@@ -183,6 +205,12 @@
   set_target_properties(onnxruntime_providers_tensorrt PROPERTIES FOLDER "ONNXRuntime")
   target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE ONNXIFI_BUILD_LIBRARY=1)
   target_compile_options(onnxruntime_providers_tensorrt PRIVATE ${DISABLED_WARNINGS_FOR_TRT})
+
+  if(WIN32)
+    # FILE_NAME preprocessor definition is used in onnxruntime_providers_tensorrt.rc
+    target_compile_definitions(onnxruntime_providers_tensorrt PRIVATE FILE_NAME=\"onnxruntime_providers_tensorrt.dll\")
+  endif()
+
   if (WIN32)
     target_compile_options(onnxruntime_providers_tensorrt INTERFACE /wd4456)
   endif()

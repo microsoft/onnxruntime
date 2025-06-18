@@ -8,13 +8,13 @@
 #include <string_view>
 #include <unordered_set>
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
 #include "core/providers/qnn/builder/qnn_model_wrapper.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/rpcmem_library.h"
@@ -36,18 +36,21 @@ const std::string kDefaultCpuBackendPath = MakeSharedLibraryPath("QnnCpu");
 const std::string kDefaultGpuBackendPath = MakeSharedLibraryPath("QnnGpu");
 const std::string kDefaultHtpBackendPath = MakeSharedLibraryPath("QnnHtp");
 const std::string kDefaultSaverBackendPath = MakeSharedLibraryPath("QnnSaver");
+const std::string kDefaultIrBackendPath = MakeSharedLibraryPath("QnnIr");
 
 static bool ParseBackendTypeName(std::string_view backend_type_name, std::string& backend_path) {
   constexpr std::string_view kCpuBackendTypeName{"cpu"};
   constexpr std::string_view kGpuBackendTypeName{"gpu"};
   constexpr std::string_view kHtpBackendTypeName{"htp"};
   constexpr std::string_view kSaverBackendTypeName{"saver"};
+  constexpr std::string_view kIrBackendTypeName{"ir"};
 
   constexpr std::array kAllowedBackendTypeNames{
       kCpuBackendTypeName,
       kGpuBackendTypeName,
       kHtpBackendTypeName,
       kSaverBackendTypeName,
+      kIrBackendTypeName,
   };
 
   std::optional<std::string> associated_backend_path{};
@@ -59,6 +62,8 @@ static bool ParseBackendTypeName(std::string_view backend_type_name, std::string
     associated_backend_path = kDefaultHtpBackendPath;
   } else if (backend_type_name == kSaverBackendTypeName) {
     associated_backend_path = kDefaultSaverBackendPath;
+  } else if (backend_type_name == kIrBackendTypeName) {
+    associated_backend_path = kDefaultIrBackendPath;
   }
 
   if (associated_backend_path.has_value()) {
@@ -204,6 +209,51 @@ qnn::ProfilingLevel QNNExecutionProvider::GetProfilingLevelFromETWLevel(unsigned
   }
 }
 
+static std::unique_ptr<qnn::QnnSerializerConfig> ParseSerializerBackendOptions(const ProviderOptions& provider_options_map) {
+  // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
+  static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
+  auto qnn_saver_path_pos = provider_options_map.find(QNN_SAVER_PATH_KEY);
+  if (qnn_saver_path_pos != provider_options_map.end()) {
+    LOGS_DEFAULT(VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path_pos->second;
+    return qnn::QnnSerializerConfig::CreateSaver(qnn_saver_path_pos->second);
+  }
+
+  static const std::string DUMP_QNN_IR_DLC = "dump_qnn_ir_dlc";
+  auto dump_qnn_ir_dlc = ParseBoolOption(DUMP_QNN_IR_DLC, false, provider_options_map);
+
+  static const std::string DUMP_QNN_IR_DLC_DIR = "dump_qnn_ir_dlc_dir";
+  std::string qnn_ir_dlc_dir;
+  auto qnn_ir_dlc_dir_pos = provider_options_map.find(DUMP_QNN_IR_DLC_DIR);
+  if (qnn_ir_dlc_dir_pos != provider_options_map.end()) {
+    qnn_ir_dlc_dir = qnn_ir_dlc_dir_pos->second;
+    if (dump_qnn_ir_dlc) {
+      LOGS_DEFAULT(INFO) << "IR DLC directory: " << qnn_ir_dlc_dir;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a directory for dumping QNN graphs to DLC, "
+                            << "but did not set dump_qnn_ir_dlc to 1.";
+    }
+  }
+
+  static const std::string QNN_IR_BACKEND_PATH = "qnn_ir_backend_path";
+  std::string qnn_ir_backend_path = kDefaultIrBackendPath;
+  auto qnn_ir_backend_path_pos = provider_options_map.find(QNN_IR_BACKEND_PATH);
+  if (qnn_ir_backend_path_pos != provider_options_map.end()) {
+    qnn_ir_backend_path = qnn_ir_backend_path_pos->second;
+    if (dump_qnn_ir_dlc) {
+      LOGS_DEFAULT(INFO) << "IR backend path: " << qnn_ir_backend_path;
+    } else {
+      LOGS_DEFAULT(WARNING) << "Provided a path to the Ir backend for dumping QNN graphs to DLC, "
+                            << "but did not set dump_qnn_ir_dlc to 1.";
+    }
+  }
+
+  if (dump_qnn_ir_dlc) {
+    return qnn::QnnSerializerConfig::CreateIr(std::move(qnn_ir_backend_path), std::move(qnn_ir_dlc_dir));
+  }
+
+  return nullptr;
+}
+
 QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_options_map,
                                            const ConfigOptions* config_options)
     : IExecutionProvider{onnxruntime::kQnnExecutionProvider} {
@@ -283,6 +333,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     LOGS_DEFAULT(VERBOSE) << "Using backend path: " << backend_path;
   }
 
+  std::unique_ptr<qnn::QnnSerializerConfig> qnn_serializer_config = ParseSerializerBackendOptions(provider_options_map);
+
   std::string profiling_file_path;
   static const std::string PROFILING_LEVEL = "profiling_level";
   qnn::ProfilingLevel profiling_level = qnn::ProfilingLevel::OFF;
@@ -335,15 +387,6 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
   auto htp_graph_finalization_opt_mode_pos = provider_options_map.find(HTP_GRAPH_FINALIZATION_OPT_MODE);
   if (htp_graph_finalization_opt_mode_pos != provider_options_map.end()) {
     ParseHtpGraphFinalizationOptimizationMode(htp_graph_finalization_opt_mode_pos->second);
-  }
-
-  // Enable use of QNN Saver if the user provides a path the QNN Saver backend library.
-  static const std::string QNN_SAVER_PATH_KEY = "qnn_saver_path";
-  std::string qnn_saver_path;
-  auto qnn_saver_path_pos = provider_options_map.find(QNN_SAVER_PATH_KEY);
-  if (qnn_saver_path_pos != provider_options_map.end()) {
-    qnn_saver_path = qnn_saver_path_pos->second;
-    LOGS_DEFAULT(VERBOSE) << "User specified QNN Saver path: " << qnn_saver_path;
   }
 
   static const std::string QNN_CONTEXT_PRIORITY = "qnn_context_priority";
@@ -464,7 +507,7 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      profiling_level,
                                      profiling_file_path,
                                      context_priority,
-                                     qnn_saver_path,
+                                     std::move(qnn_serializer_config),
                                      device_id_,
                                      htp_arch,
                                      soc_model});
@@ -912,7 +955,7 @@ Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& nod
   return Status::OK();
 }
 
-void QNNExecutionProvider::InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const {
+void QNNExecutionProvider::InitQnnHtpGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const {
   if (qnn_backend_manager_->GetQnnBackendType() == qnn::QnnBackendType::HTP) {
     if (htp_graph_finalization_opt_mode_ != qnn::HtpGraphFinalizationOptimizationMode::kDefault) {
       gsl::not_null<QnnHtpGraph_CustomConfig_t*> htp_graph_opt_config = configs_builder.PushCustomConfig();
@@ -956,9 +999,39 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
 
     std::unique_ptr<qnn::QnnModel> qnn_model = std::make_unique<qnn::QnnModel>(qnn_backend_manager_.get());
 
-    qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> graph_configs_builder(QNN_GRAPH_CONFIG_INIT,
-                                                                                                QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
-    InitQnnGraphConfigs(graph_configs_builder);
+    std::vector<const QnnGraph_Config_t*> all_graph_configs;
+
+    qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t> htp_graph_configs_builder(QNN_GRAPH_CONFIG_INIT,
+                                                                                                    QNN_HTP_GRAPH_CUSTOM_CONFIG_INIT);
+    InitQnnHtpGraphConfigs(htp_graph_configs_builder);
+
+    const QnnGraph_Config_t** htp_configs = htp_graph_configs_builder.GetQnnConfigs();
+    if (htp_configs) {
+      // Reserve enough for configs + nullptr
+      all_graph_configs.reserve(htp_graph_configs_builder.GetSize() + 1);
+      for (const QnnGraph_Config_t** config = htp_configs; *config; ++config) {
+        all_graph_configs.push_back(*config);
+      }
+    }
+
+    qnn::QnnSerializerConfig* qnn_serializer_config = qnn_backend_manager_->GetQnnSerializerConfig();
+    if (qnn_serializer_config) {
+      // We don't bother reserving here to keep the API simpler. Also note that if we're here,
+      // we're likely debugging and not waiting for inference.
+      qnn_serializer_config->SetGraphName(fused_node.Name());
+      const QnnGraph_Config_t** serializer_configs = qnn_serializer_config->Configure();
+      if (serializer_configs) {
+        for (const QnnGraph_Config_t** config = serializer_configs; *config; ++config) {
+          all_graph_configs.push_back(*config);
+        }
+      }
+    }
+
+    const QnnGraph_Config_t** all_graph_configs_ptr = nullptr;
+    if (!all_graph_configs.empty()) {
+      all_graph_configs.push_back(nullptr);
+      all_graph_configs_ptr = all_graph_configs.data();
+    }
 
     std::string json_graph_filepath;
 
@@ -969,7 +1042,7 @@ Status QNNExecutionProvider::CompileFromOrtGraph(const std::vector<FusedNodeAndG
     }
 
     ORT_RETURN_IF_ERROR(qnn_model->ComposeGraph(graph_viewer, fused_node, model_settings_, logger,
-                                                graph_configs_builder.GetQnnConfigs(), json_graph_filepath));
+                                                all_graph_configs_ptr, json_graph_filepath));
     ORT_RETURN_IF_ERROR(qnn_model->FinalizeGraphs(logger));
     ORT_RETURN_IF_ERROR(qnn_model->SetupQnnInputOutput(logger));
 

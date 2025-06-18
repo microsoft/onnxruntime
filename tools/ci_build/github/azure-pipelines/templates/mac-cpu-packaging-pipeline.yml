@@ -107,12 +107,12 @@ stages:
           ls -l
           popd
         displayName: tgz to zip
+
       - template: mac-esrp-dylib.yml
         parameters:
           FolderPath: '$(Build.ArtifactStagingDirectory)'
-          DisplayName: 'ESRP - Sign Mac'
-          DoEsrp: true
           Pattern: '*.zip'
+
       - script: |
           pushd '$(Build.ArtifactStagingDirectory)'
           find . '*.zip' -exec unzip {} \;
@@ -136,5 +136,3 @@ stages:
         targetPath: '$(Build.ArtifactStagingDirectory)'
         artifactName: 'onnxruntime-osx'
         condition: 'succeededOrFailed()'
-
-

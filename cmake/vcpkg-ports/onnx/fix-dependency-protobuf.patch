@@ -1,17 +1,17 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index d81ac1d..9f97998 100644
+index 6fe5c96e..ae828752 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -149,6 +149,7 @@ if(ONNX_BUILD_TESTS)
+@@ -141,6 +141,7 @@ if(ONNX_BUILD_TESTS)
    set(googletest_STATIC_LIBRARIES GTest::gtest)
  endif()
  
 +find_package(protobuf CONFIG REQUIRED)
+ if(NOT ONNX_BUILD_CUSTOM_PROTOBUF)
  if((ONNX_USE_LITE_PROTO AND TARGET protobuf::libprotobuf-lite) OR ((NOT ONNX_USE_LITE_PROTO) AND TARGET protobuf::libprotobuf))
    # Sometimes we need to use protoc compiled for host architecture while linking
-   # libprotobuf against target architecture. See https://github.com/caffe2/caffe
 diff --git a/cmake/ONNXConfig.cmake.in b/cmake/ONNXConfig.cmake.in
-index d588f8a..dbd4398 100644
+index d588f8ae..dbd43986 100644
 --- a/cmake/ONNXConfig.cmake.in
 +++ b/cmake/ONNXConfig.cmake.in
 @@ -6,9 +6,8 @@

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -9,6 +10,8 @@
 #include "test/common/trt_op_test_utils.h"
 
 #include <onnxruntime_cxx_api.h>
+#include <onnxruntime_run_options_config_keys.h>
+#include <onnxruntime_session_options_config_keys.h>
 #include <string>
 #include <thread>
 #include <filesystem>
@@ -22,9 +25,48 @@ namespace onnxruntime {
 
 namespace test {
 
-std::string WideToUTF8(const std::wstring& wstr) {
+template <typename T>
+class NvExecutionProviderTest : public ::testing::Test {
+ protected:
+  std::string getTypeAsName() {
+    std::string dtype_name = "";
+    if constexpr (std::is_same<T, double>::value) {
+      dtype_name = "fp64";
+    } else if constexpr (std::is_same<T, float>::value) {
+      dtype_name = "fp32";
+    } else if constexpr (std::is_same<T, BFloat16>::value) {
+      dtype_name = "fp16";
+    } else if constexpr (std::is_same<T, MLFloat16>::value) {
+      dtype_name = "bf16";
+    } else if constexpr (std::is_same<T, int8_t>::value) {
+      dtype_name = "int8";
+    } else if constexpr (std::is_same<T, uint8_t>::value) {
+      dtype_name = "uint8";
+    } else if constexpr (std::is_same<T, int32_t>::value) {
+      dtype_name = "int32";
+    } else if constexpr (std::is_same<T, int64_t>::value) {
+      dtype_name = "int64";
+    }
+    return dtype_name;
+  }
+};
+
+using NvExecutionProviderTestTypes = ::testing::Types<double, float, MLFloat16, BFloat16, uint8_t, int8_t, int32_t, int64_t>;  // double,
+TYPED_TEST_SUITE(NvExecutionProviderTest, NvExecutionProviderTestTypes);
+
+std::string PathToUTF8(const PathString& path) {
+#ifdef WIN32
   std::wstring_convert<std::codecvt_utf8<wchar_t>> converter;
-  return converter.to_bytes(wstr);
+  return converter.to_bytes(path);
+#else
+  return path.c_str();
+#endif
+}
+
+void clearFileIfExists(PathString path) {
+  if (std::filesystem::exists(path)) {
+    std::filesystem::remove(path);
+  }
 }
 
 template <typename T>
@@ -74,10 +116,11 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
  *    /
  *   "O"
  */
-void CreateBaseModel(const PathString& model_name,
-                     std::string graph_name,
-                     std::vector<int> dims,
-                     bool add_fast_gelu = false) {
+static void CreateBaseModel(const PathString& model_name,
+                            std::string graph_name,
+                            std::vector<int> dims,
+                            bool add_fast_gelu = false,
+                            ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -85,13 +128,13 @@ void CreateBaseModel(const PathString& model_name,
 
   // FLOAT tensor
   ONNX_NAMESPACE::TypeProto float_tensor;
-  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->set_elem_type(dtype);
 
   for (auto dim : dims) {
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
   }
   ONNX_NAMESPACE::TypeProto dyn_float_tensor;
-  dyn_float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  dyn_float_tensor.mutable_tensor_type()->set_elem_type(dtype);
 
   auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
   auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
@@ -127,7 +170,7 @@ void CreateBaseModel(const PathString& model_name,
   }
 
   ONNX_NAMESPACE::TypeProto float_scalar;
-  float_scalar.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_scalar.mutable_tensor_type()->set_elem_type(dtype);
   float_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   auto& input_scalar = graph.GetOrCreateNodeArg("S", &float_scalar);
   inputs.push_back(&input_scalar);
@@ -143,7 +186,7 @@ void CreateBaseModel(const PathString& model_name,
   status = onnxruntime::Model::Save(model, model_name);
 }
 
-Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
+static Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
   Ort::IoBinding binding(session);
   auto allocator = Ort::AllocatorWithDefaultOptions();
   for (int input_idx = 0; input_idx < int(session.GetInputCount()); ++input_idx) {
@@ -178,6 +221,8 @@ Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, 
 TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
   PathString model_name = ORT_TSTR("nv_execution_provider_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
+  clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, 3, 2};
 
@@ -192,9 +237,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
@@ -208,9 +253,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    Ort::Session session_object(env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -222,6 +267,8 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReload) {
 TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
   PathString model_name = ORT_TSTR("nv_execution_provider_dyn_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_dyn_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
+  clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
 
@@ -236,9 +283,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
@@ -252,9 +299,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    Ort::Session session_object(env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -269,6 +316,8 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDynamic) {
 TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
   PathString model_name = ORT_TSTR("nv_execution_provider_data_dyn_test.onnx");
   PathString model_name_ctx = ORT_TSTR("nv_execution_provider_data_dyn_test_ctx.onnx");
+  auto model_name_ctx_str = PathToUTF8(model_name_ctx);
+  clearFileIfExists(model_name_ctx);
   std::string graph_name = "test";
   std::vector<int> dims = {1, -1, -1};
 
@@ -283,9 +332,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AddConfigEntry("ep.context_file_path", WideToUTF8(model_name_ctx).c_str());
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, model_name_ctx_str.c_str());
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
     Ort::Session session_object(env, model_name.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation AOT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
@@ -299,9 +348,9 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     auto start = std::chrono::high_resolution_clock::now();
     Ort::SessionOptions so;
     Ort::RunOptions run_options;
-    so.AddConfigEntry("ep.context_enable", "1");
-    so.AppendExecutionProvider("NvTensorRtRtx", {});
-    Ort::Session session_object(env, model_name.c_str(), so);
+    so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    Ort::Session session_object(env, model_name_ctx.c_str(), so);
     auto stop = std::chrono::high_resolution_clock::now();
     std::cout << "Session creation JIT: " << std::chrono::duration_cast<std::chrono::milliseconds>((stop - start)).count() << " ms" << std::endl;
 
@@ -309,6 +358,32 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     shape_overwrites["X"] = {1, 5, 5};
     shape_overwrites["Y"] = {1, 5, 5};
     auto io_binding = generate_io_binding(session_object, shape_overwrites);
+    session_object.Run(run_options, io_binding);
+  }
+}
+
+TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
+  std::string dtype_name = this->getTypeAsName();
+  ASSERT_FALSE(dtype_name.empty());
+  const std::string model_name_str = "nv_execution_provider_" + dtype_name + ".onnx";
+  const PathString model_name = ToPathString(model_name_str);
+  std::string graph_name = "test" + dtype_name;
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  // AOT time
+  {
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+
+    auto io_binding = generate_io_binding(session_object);
     session_object.Run(run_options, io_binding);
   }
 }

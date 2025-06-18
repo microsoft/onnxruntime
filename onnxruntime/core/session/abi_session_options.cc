@@ -63,18 +63,17 @@ onnxruntime::Status OrtSessionOptions::RegisterCustomOpsLibrary(onnxruntime::Pat
   ORT_RETURN_IF_ERROR(platform_env.GetSymbolFromLibrary(library_handle, "RegisterCustomOps",
                                                         (void**)&RegisterCustomOps));
 
-  // Call the exported RegisterCustomOps function and store the return value in a unique_ptr.
-  const std::unique_ptr<OrtStatus, decltype(&OrtApis::ReleaseStatus)> status(RegisterCustomOps(this, OrtGetApiBase()),
-                                                                             OrtApis::ReleaseStatus);
+  // Call the exported RegisterCustomOps function.
+  auto status = onnxruntime::ToStatusAndRelease(RegisterCustomOps(this, OrtGetApiBase()));
 
-  if (status) {  // A non-nullptr status indicates an error registering custom ops.
+  if (!status.IsOK()) {
     auto unload_status = platform_env.UnloadDynamicLibrary(library_handle);
     if (!unload_status.IsOK()) {
       LOGS_DEFAULT(WARNING) << "Failed to unload handle for dynamic library "
                             << onnxruntime::PathToUTF8String(library_name) << ": " << unload_status;
     }
 
-    return onnxruntime::ToStatus(status.get());
+    return status;
   }
 
   // The internal onnxruntime::SessionOptions will manage the lifetime of library handles.
@@ -204,6 +203,9 @@ ORT_API_STATUS_IMPL(OrtApis::SetSessionGraphOptimizationLevel, _In_ OrtSessionOp
       break;
     case ORT_ENABLE_EXTENDED:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
+      break;
+    case ORT_ENABLE_LAYOUT:
+      options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
       break;
     case ORT_ENABLE_ALL:
       options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
@@ -362,6 +364,29 @@ ORT_API_STATUS_IMPL(OrtApis::AddExternalInitializersFromFilesInMemory, _In_ OrtS
 ORT_API_STATUS_IMPL(OrtApis::SetDeterministicCompute, _Inout_ OrtSessionOptions* options, bool value) {
   API_IMPL_BEGIN
   options->value.use_deterministic_compute = value;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicy, _In_ OrtSessionOptions* options,
+                    _In_ OrtExecutionProviderDevicePolicy policy) {
+  API_IMPL_BEGIN
+  options->value.ep_selection_policy.enable = true;
+  options->value.ep_selection_policy.policy = policy;
+  options->value.ep_selection_policy.delegate = nullptr;
+  options->value.ep_selection_policy.state = nullptr;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsSetEpSelectionPolicyDelegate, _In_ OrtSessionOptions* options,
+                    _In_opt_ EpSelectionDelegate delegate,
+                    _In_opt_ void* state) {
+  API_IMPL_BEGIN
+  options->value.ep_selection_policy.enable = true;
+  options->value.ep_selection_policy.policy = OrtExecutionProviderDevicePolicy_DEFAULT;
+  options->value.ep_selection_policy.delegate = delegate;
+  options->value.ep_selection_policy.state = state;
   return nullptr;
   API_IMPL_END
 }

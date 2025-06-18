@@ -23,11 +23,8 @@ Status EpLibraryPlugin::Load() {
       std::vector<OrtEpFactory*> factories{4, nullptr};
 
       size_t num_factories = 0;
-      OrtStatus* ort_status = create_fn_(registration_name_.c_str(), OrtGetApiBase(),
-                                         factories.data(), factories.size(), &num_factories);
-      if (ort_status != nullptr) {
-        return ToStatus(ort_status);
-      }
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(create_fn_(registration_name_.c_str(), OrtGetApiBase(),
+                                                        factories.data(), factories.size(), &num_factories)));
 
       for (size_t i = 0; i < num_factories; ++i) {
         factories_.push_back(factories[i]);
@@ -51,6 +48,8 @@ Status EpLibraryPlugin::Load() {
 }
 
 Status EpLibraryPlugin::Unload() {
+  std::lock_guard<std::mutex> lock{mutex_};
+
   // Call ReleaseEpFactory for all factories and unload the library.
   // Current implementation assumes any error is permanent so does not leave pieces around to re-attempt Unload.
   if (handle_) {
@@ -62,11 +61,11 @@ Status EpLibraryPlugin::Unload() {
             continue;
           }
 
-          OrtStatus* status = release_fn_(factory);
-          if (status != nullptr) {
+          auto status = ToStatusAndRelease(release_fn_(factory));
+          if (!status.IsOK()) {
             // log it and treat it as released
             LOGS_DEFAULT(ERROR) << "ReleaseEpFactory failed for: " << library_path_ << " with error: "
-                                << ToStatus(status).ErrorMessage();
+                                << status.ErrorMessage();
           }
 
           factories_[idx] = nullptr;  // clear the pointer in case there's a failure before all are released

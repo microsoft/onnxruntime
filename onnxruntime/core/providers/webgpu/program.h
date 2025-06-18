@@ -233,13 +233,21 @@ struct ProgramInput {
 };
 
 struct ProgramOutput {
+ private:
+  struct AtomicTag {};
+
+ public:
+  constexpr static const AtomicTag Atomic{};
+
   ProgramOutput(Tensor* tensor);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, int component = 1);
+  ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, AtomicTag);
   ProgramOutput(Tensor* tensor, ProgramTensorMetadataDependency dependency, const TensorShape& override_shape, int component);
 
   Tensor* tensor;
   ProgramTensorMetadataDependency dependency;
   ProgramVariableDataType var_type;
+  bool is_atomic;
   bool use_override_shape;
   TensorShape override_shape;
 };

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/providers/shared_library/provider_api.h"
@@ -30,7 +31,7 @@ struct ProviderInfo_Nv_Impl final : ProviderInfo_Nv {
   OrtStatus* GetTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>& domain_list, const std::string extra_plugin_lib_paths) override {
     common::Status status = CreateTensorRTCustomOpDomainList(domain_list, extra_plugin_lib_paths);
     if (!status.IsOK()) {
-      return CreateStatus(ORT_FAIL, "[Nv EP] Can't create custom ops for TRT plugins.");
+      return CreateStatus(ORT_FAIL, "[NvTensorRTRTX EP] Can't create custom ops for TRT plugins.");
     }
     return nullptr;
   }
@@ -79,7 +80,7 @@ std::unique_ptr<IExecutionProvider> NvProviderFactory::CreateProvider(const OrtS
       provider_options[key.substr(key_prefix.size())] = value;
     }
   }
-  NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(provider_options);
+  NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(provider_options, config_options);
 
   auto ep = std::make_unique<NvExecutionProvider>(info);
   ep->SetLogger(reinterpret_cast<const logging::Logger*>(&session_logger));
@@ -91,14 +92,26 @@ struct Nv_Provider : Provider {
   std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(int device_id) override {
     NvExecutionProviderInfo info;
     info.device_id = device_id;
-    info.has_trt_options = false;
 
     return std::make_shared<NvProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* options) {
-    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(options);
-    NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(*provider_options);
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+    if (param == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    std::array<const void*, 2> pointers_array = *reinterpret_cast<const std::array<const void*, 2>*>(param);
+    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(pointers_array[0]);
+    const ConfigOptions* config_options = reinterpret_cast<const ConfigOptions*>(pointers_array[1]);
+
+    if (provider_options == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    NvExecutionProviderInfo info = onnxruntime::NvExecutionProviderInfo::FromProviderOptions(*provider_options, *config_options);
     return std::make_shared<NvProviderFactory>(info);
   }
 

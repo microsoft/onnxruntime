@@ -16,9 +16,9 @@ namespace onnxruntime {
 /// </summary>
 class EpLibraryPlugin : public EpLibrary {
  public:
-  EpLibraryPlugin(const std::string& registration_name, const ORTCHAR_T* library_path)
+  EpLibraryPlugin(const std::string& registration_name, std::filesystem::path library_path)
       : registration_name_{registration_name},
-        library_path_{library_path} {
+        library_path_{std::move(library_path)} {
   }
 
   const char* RegistrationName() const override {

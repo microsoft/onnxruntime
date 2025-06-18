@@ -16,12 +16,14 @@ struct ForwardToFactory {
     return static_cast<const TFactory*>(this_ptr)->GetVendor();
   }
 
-  static bool ORT_API_CALL GetDeviceInfoIfSupported(const OrtEpFactory* this_ptr,
-                                                    const OrtHardwareDevice* device,
-                                                    OrtKeyValuePairs** ep_device_metadata,
-                                                    OrtKeyValuePairs** ep_options_for_device) {
-    return static_cast<const TFactory*>(this_ptr)->GetDeviceInfoIfSupported(device, ep_device_metadata,
-                                                                            ep_options_for_device);
+  static OrtStatus* ORT_API_CALL GetSupportedDevices(OrtEpFactory* this_ptr,
+                                                     const OrtHardwareDevice* const* devices,
+                                                     size_t num_devices,
+                                                     OrtEpDevice** ep_devices,
+                                                     size_t max_ep_devices,
+                                                     size_t* num_ep_devices) {
+    return static_cast<TFactory*>(this_ptr)->GetSupportedDevices(devices, num_devices, ep_devices,
+                                                                 max_ep_devices, num_ep_devices);
   }
 
   static OrtStatus* ORT_API_CALL CreateEp(OrtEpFactory* this_ptr,

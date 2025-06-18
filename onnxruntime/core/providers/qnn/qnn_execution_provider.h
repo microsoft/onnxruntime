@@ -68,7 +68,7 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   void ParseHtpGraphFinalizationOptimizationMode(const std::string& htp_graph_finalization_opt_mode_string);
 
-  void InitQnnGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
+  void InitQnnHtpGraphConfigs(qnn::QnnConfigsBuilder<QnnGraph_Config_t, QnnHtpGraph_CustomConfig_t>& configs_builder) const;
 
   qnn::ProfilingLevel GetProfilingLevelFromETWLevel(unsigned char level);
 

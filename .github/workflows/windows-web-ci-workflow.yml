@@ -205,6 +205,14 @@ jobs:
           log_file_path: ${{ runner.temp }}\web\test\07\chrome_debug.log
           is_chromium_log: true
 
+      # this step is added to help investigate the shader validation failure which is hard to reproduce
+      - name: Upload WebGPU shader validation log on failure
+        if: ${{ failure() && inputs.run_webgpu_tests == true && inputs.build_config == 'Debug' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: webgpu-shader-validation-logs
+          path: ${{ runner.temp }}\web\test\07\chrome_debug.log
+
       - name: E2E package consuming test
         if: ${{ inputs.build_config == 'Release' }}
         run: npm run test:e2e -- --browser=Chrome_default

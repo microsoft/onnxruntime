@@ -12,6 +12,7 @@
 
 #include "core/common/cpuid_info.h"
 #include "core/common/logging/logging.h"
+#include "core/platform/env.h"
 #include "core/session/abi_devices.h"
 
 //// For SetupApi info
@@ -56,6 +57,26 @@ struct DeviceInfo {
   std::unordered_map<std::wstring, std::wstring> metadata;
 };
 
+struct DriverInfo {
+  std::wstring driver_versions;
+  std::wstring driver_names;
+
+  void AddDevice(const std::wstring& driver_version, const std::wstring& driver_name) {
+    if (!driver_version.empty()) {
+      if (!driver_versions.empty()) {
+        driver_versions += L", ";
+      }
+      driver_versions += driver_version;
+    }
+    if (!driver_name.empty()) {
+      if (!driver_names.empty()) {
+        driver_names += L", ";
+      }
+      driver_names += driver_name;
+    }
+  }
+};
+
 uint64_t GetDeviceKey(uint32_t vendor_id, uint32_t device_id) {
   return (uint64_t(vendor_id) << 32) | device_id;
 }
@@ -68,6 +89,20 @@ uint64_t GetLuidKey(LUID luid) {
   return (uint64_t(luid.HighPart) << 32) | luid.LowPart;
 }
 
+// Converts a wide string (up to 4 characters) representing a hardware ID component (e.g., "ABCD" from "VEN_ABCD")
+// into a uint32_t. The conversion is done in a little-endian manner, meaning the first character
+// of the string becomes the least significant byte of the integer, and the fourth character
+// becomes the most significant byte.
+uint32_t WStringToUint32Id(const std::wstring& vendor_name) {
+  uint32_t vendor_id = 0;
+  for (size_t i = 0; i < 4 && i < vendor_name.size(); ++i) {
+    // For little-endian, place each character at the appropriate byte position
+    // First character goes into lowest byte, last character into highest byte
+    vendor_id |= static_cast<unsigned char>(vendor_name[i] & 0xFF) << (i * 8);
+  }
+  return vendor_id;
+}
+
 // returns info for display and processor entries. key is (vendor_id << 32 | device_id)
 // npus: (vendor_id << 32 | device_id) for devices we think are NPUs from DXCORE
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus) {
@@ -75,11 +110,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
 
   const GUID local_DXCORE_ADAPTER_ATTRIBUTE_D3D12_GENERIC_ML = {0xb71b0d41, 0x1088, 0x422f, 0xa2, 0x7c, 0x2, 0x50, 0xb7, 0xd3, 0xa9, 0x88};
   const GUID local_DXCORE_HARDWARE_TYPE_ATTRIBUTE_NPU = {0xd46140c4, 0xadd7, 0x451b, 0x9e, 0x56, 0x6, 0xfe, 0x8c, 0x3b, 0x58, 0xed};
+  const GUID local_GUID_DEVCLASS_COMPUTEACCELERATOR = {0xf01a9d53, 0x3ff6, 0x48d2, 0x9f, 0x97, 0xc8, 0xa7, 0x00, 0x4b, 0xe1, 0x0c};
+
+  std::unordered_map<OrtHardwareDeviceType, DriverInfo> device_version_info;
 
   std::array<GUID, 3> guids = {
       GUID_DEVCLASS_DISPLAY,
       GUID_DEVCLASS_PROCESSOR,
-      GUID_DEVCLASS_SYSTEM,
+      local_GUID_DEVCLASS_COMPUTEACCELERATOR,
   };
 
   for (auto guid : guids) {
@@ -103,23 +141,34 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
       //// Get hardware ID (contains VEN_xxxx&DEV_xxxx)
       if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_HARDWAREID, &regDataType,
                                             (PBYTE)buffer, sizeof(buffer), &size)) {
+        uint32_t vendor_id = 0;
+        uint32_t device_id = 0;
+
         // PCI\VEN_xxxx&DEV_yyyy&...
         // ACPI\VEN_xxxx&DEV_yyyy&... if we're lucky.
         // ACPI values seem to be very inconsistent, so we check fairly carefully and always require a device id.
         const auto get_id = [](const std::wstring& hardware_id, const std::wstring& prefix) -> uint32_t {
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
             auto id = hardware_id.substr(idx + prefix.size(), 4);
-            if (std::all_of(id.begin(), id.end(), iswxdigit)) {
-              return std::stoul(id, nullptr, 16);
+            if (id.size() == 4) {
+              // DXCore reports vendor and device IDs as 32-bit integer representations of the ASCII string.
+              return WStringToUint32Id(id);
             }
           }
 
           return 0;
         };
 
-        uint32_t vendor_id = get_id(buffer, L"VEN_");
-        uint32_t device_id = get_id(buffer, L"DEV_");
-        // won't always have a vendor id from an ACPI entry. need at least a device id to identify the hardware
+        // Processor ID should come from CPUID mapping.
+        if (guid == GUID_DEVCLASS_PROCESSOR) {
+          vendor_id = CPUIDInfo::GetCPUIDInfo().GetCPUVendorId();
+        } else {
+          vendor_id = get_id(buffer, L"VEN_");
+        }
+
+        device_id = get_id(buffer, L"DEV_");
+
+        // Won't always have a vendor id from an ACPI entry.  ACPI is not defined for this purpose.
         if (vendor_id == 0 && device_id == 0) {
           continue;
         }
@@ -138,8 +187,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         entry = &device_info[key];
         entry->vendor_id = vendor_id;
         entry->device_id = device_id;
-        // put the first hardware id string in the metadata. ignore the other lines.
-        entry->metadata.emplace(L"SPDRP_HARDWAREID", std::wstring(buffer, wcslen(buffer)));
+        // put the first hardware id string in the metadata. ignore the other lines. not sure if this is of value.
+        // entry->metadata.emplace(L"SPDRP_HARDWAREID", std::wstring(buffer, wcslen(buffer)));
       } else {
         // need valid ids
         continue;
@@ -156,14 +205,14 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
                                             (PBYTE)buffer, sizeof(buffer), &size)) {
         std::wstring desc{buffer};
 
-        // Should we require the NPU to be found by DXCore or do we want to allow this vague matching?
-        // Probably depends on whether we always attempt to run DXCore or not.
-        const auto possible_npu = [](const std::wstring& desc) {
-          return (desc.find(L"NPU") != std::wstring::npos ||
-                  desc.find(L"Neural") != std::wstring::npos ||
-                  desc.find(L"AI Engine") != std::wstring::npos ||
-                  desc.find(L"VPU") != std::wstring::npos);
-        };
+        // For now, require dxcore to identify an NPU.
+        // If we want to try and infer it from the description this _may_ work but is untested.
+        // const auto possible_npu = [](const std::wstring& desc) {
+        //  return (desc.find(L"NPU") != std::wstring::npos ||
+        //           desc.find(L"Neural") != std::wstring::npos ||
+        //           desc.find(L"AI Engine") != std::wstring::npos ||
+        //           desc.find(L"VPU") != std::wstring::npos);
+        // };
 
         // use description if no friendly name
         if (entry->description.empty()) {
@@ -171,15 +220,15 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         }
 
         uint64_t npu_key = GetDeviceKey(*entry);
-        bool is_npu = npus.count(npu_key) > 0 || possible_npu(desc);
+        bool is_npu = npus.count(npu_key) > 0;  // rely on dxcore to determine if something is an NPU
 
         if (guid == GUID_DEVCLASS_DISPLAY) {
           entry->type = OrtHardwareDeviceType_GPU;
         } else if (guid == GUID_DEVCLASS_PROCESSOR) {
           entry->type = is_npu ? OrtHardwareDeviceType_NPU : OrtHardwareDeviceType_CPU;
-        } else if (guid == GUID_DEVCLASS_SYSTEM) {
+        } else if (guid == local_GUID_DEVCLASS_COMPUTEACCELERATOR) {
           if (!is_npu) {
-            // we're only iterating system devices to look for NPUs so drop anything else
+            // we're only iterating compute accelerator devices to look for NPUs so drop anything else
             device_info.erase(key);
             continue;
           }
@@ -194,26 +243,62 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
         continue;
       }
 
-      if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_MFG, nullptr,
-                                            (PBYTE)buffer, sizeof(buffer), &size)) {
-        entry->vendor = std::wstring(buffer, wcslen(buffer));
+      if (entry->type == OrtHardwareDeviceType_CPU) {
+        // get 12 byte string from CPUID. easier for a user to match this if they are explicitly picking a device.
+        std::string_view cpuid_vendor = CPUIDInfo::GetCPUIDInfo().GetCPUVendor();
+        entry->vendor = std::wstring(cpuid_vendor.begin(), cpuid_vendor.end());
       }
 
-      // Add the UI number if GPU. Helpful if user has integrated and discrete GPUs
-      if (entry->type == OrtHardwareDeviceType_GPU) {
-        DWORD ui_number = 0;
-        if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_UI_NUMBER, nullptr,
-                                              (PBYTE)&ui_number, sizeof(ui_number), &size)) {
-          // use value read.
-        } else {
-          // infer it as 0 if not set.
+      if (entry->vendor.empty()) {
+        if (SetupDiGetDeviceRegistryPropertyW(devInfo, &devData, SPDRP_MFG, nullptr,
+                                              (PBYTE)buffer, sizeof(buffer), &size)) {
+          entry->vendor = std::wstring(buffer, wcslen(buffer));
         }
+      }
 
-        entry->metadata.emplace(L"SPDRP_UI_NUMBER", std::to_wstring(ui_number));
+      // Generate telemetry event to log the GPU and NPU driver name and version.
+      if (entry->type == OrtHardwareDeviceType_CPU) {
+        // Skip processor entries for telemetry.
+        continue;
+      }
+
+      // Open the device's driver registry key
+      HKEY dev_reg_key = SetupDiOpenDevRegKey(devInfo, &devData,
+                                              DICS_FLAG_GLOBAL,
+                                              0,
+                                              DIREG_DRV,
+                                              KEY_READ);
+
+      if (dev_reg_key != INVALID_HANDLE_VALUE) {
+        // Query the "DriverVersion" string
+        std::wstring driver_version_str;
+        wchar_t driver_version[256];
+        DWORD str_size = sizeof(driver_version);
+        DWORD type = 0;
+        if (RegQueryValueExW(dev_reg_key, L"DriverVersion",
+                             nullptr, &type,
+                             reinterpret_cast<LPBYTE>(driver_version),
+                             &str_size) == ERROR_SUCCESS &&
+            type == REG_SZ) {
+          // Ensure proper null termination of a string retrieved from the Windows Registry API.
+          driver_version[(str_size / sizeof(wchar_t)) - 1] = 0;
+          driver_version_str = driver_version;
+        }
+        RegCloseKey(dev_reg_key);
+        device_version_info[entry->type].AddDevice(driver_version_str, entry->description);
       }
     }
 
     SetupDiDestroyDeviceInfoList(devInfo);
+  }
+
+  // Log driver information for GPUs and NPUs
+  const Env& env = Env::Default();
+  for (const auto& [type, info] : device_version_info) {
+    if (!info.driver_versions.empty() || !info.driver_names.empty()) {
+      const std::string_view driver_class = (type == OrtHardwareDeviceType_GPU) ? "GPU" : "NPU";
+      env.GetTelemetryProvider().LogDriverInfoEvent(driver_class, info.driver_names, info.driver_versions);
+    }
   }
 
   return device_info;
@@ -252,9 +337,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     info.description = std::wstring(desc.Description);
 
     info.metadata[L"DxgiAdapterNumber"] = std::to_wstring(i);
-    info.metadata[L"VideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
-    info.metadata[L"SystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
-    info.metadata[L"SharedSystemMemory"] = std::to_wstring(desc.DedicatedSystemMemory / (1024 * 1024)) + L" MB";
+    info.metadata[L"DxgiVideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
   }
 
   // iterate by high-performance GPU preference to add that info
@@ -272,20 +355,38 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     auto it = device_info.find(key);
     if (it != device_info.end()) {
       DeviceInfo& info = it->second;
-      info.metadata[L"HighPerformanceIndex"] = std::to_wstring(i);
+      info.metadata[L"DxgiHighPerformanceIndex"] = std::to_wstring(i);
     }
   }
 
   return device_info;
 }
 
+typedef HRESULT(WINAPI* PFN_DXCoreCreateAdapterFactory)(REFIID riid, void** ppvFactory);
+
 // returns LUID to DeviceInfo
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
+  // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
+  wil::unique_hmodule dxcore_lib{LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)};
+  if (!dxcore_lib) {
+    LOGS_DEFAULT(INFO) << "Failed to load dxcore.dll. Expected on older Windows version that do not support dxcore.";
+    return device_info;
+  }
+
+  auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
+      GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
+
+  if (!pfnDXCoreCreateAdapterFactory) {
+    // this isn't expected to fail so ERROR not WARNING
+    LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
+    return device_info;
+  }
+
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
-  if (FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
+  if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
     return device_info;
   }
 
@@ -365,6 +466,20 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
 
   return device_info;
 }
+
+DeviceInfo GetDeviceInfoCPUID() {
+  DeviceInfo cpu_info{};
+  cpu_info.type = OrtHardwareDeviceType_CPU;
+
+  auto& cpuinfo = CPUIDInfo::GetCPUIDInfo();
+  cpu_info.vendor_id = cpuinfo.GetCPUVendorId();
+
+  std::string_view cpuid_vendor = cpuinfo.GetCPUVendor();
+  cpu_info.vendor = std::wstring(cpuid_vendor.begin(), cpuid_vendor.end());
+  cpu_info.description = cpu_info.vendor;
+
+  return cpu_info;
+}
 }  // namespace
 
 // Get devices from various sources and combine them into a single set of devices.
@@ -386,6 +501,22 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
   // setupapi_info. key is vendor_id+device_id
   std::unordered_map<uint64_t, DeviceInfo> setupapi_info = GetDeviceInfoSetupApi(npus);
 
+  // Ensure we have at least one CPU
+  bool found_cpu = false;
+  for (auto& [key, device] : setupapi_info) {
+    if (device.type == OrtHardwareDeviceType_CPU) {
+      found_cpu = true;
+      break;
+    }
+  }
+
+  // If no CPU was found via SetupApi, add one from CPUID
+  if (!found_cpu) {
+    DeviceInfo device = GetDeviceInfoCPUID();
+    uint64_t key = GetDeviceKey(device);
+    setupapi_info[key] = std::move(device);
+  }
+
   // add dxcore info for any devices that are not in d3d12.
   // d3d12 info is more complete and has a good description and metadata.
   // dxcore has 'Discrete' in metadata so add that if found
@@ -405,25 +536,40 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     }
   }
 
-  std::wstring_convert<std::codecvt_utf8<wchar_t> > converter;  // wstring to string
-  const auto device_to_ortdevice = [&converter](
+  // our log output to std::wclog breaks with UTF8 chars that are not supported by the current code page.
+  // e.g. (TM) symbol. that stops ALL logging working on at least arm64.
+  // safest way to avoid that is to keep it to single byte chars.
+  // process the OrtHardwareDevice values this way so it can be safely logged.
+  // only the 'description' metadata is likely to be affected and that is mainly for diagnostic purposes.
+  const auto to_safe_string = [](const std::wstring& wstr) -> std::string {
+    std::string str(wstr.size(), ' ');
+    std::transform(wstr.begin(), wstr.end(), str.begin(), [](wchar_t wchar) {
+      if (wchar >= 0 && wchar <= 127) {
+        return static_cast<char>(wchar);
+      }
+      return ' ';
+    });
+    return str;
+  };
+
+  const auto device_to_ortdevice = [&to_safe_string](
                                        DeviceInfo& device,
                                        std::unordered_map<std::wstring, std::wstring>* extra_metadata = nullptr) {
-    OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, converter.to_bytes(device.vendor)};
+    OrtHardwareDevice ortdevice{device.type, device.vendor_id, device.device_id, to_safe_string(device.vendor)};
 
     if (!device.description.empty()) {
-      ortdevice.metadata.Add("Description", converter.to_bytes(device.description));
+      ortdevice.metadata.Add("Description", to_safe_string(device.description));
     }
 
     for (auto& [key, value] : device.metadata) {
-      ortdevice.metadata.Add(converter.to_bytes(key), converter.to_bytes(value));
+      ortdevice.metadata.Add(to_safe_string(key), to_safe_string(value));
     }
 
     if (extra_metadata) {
       // add any extra metadata from the dxcore info
       for (auto& [key, value] : *extra_metadata) {
         if (device.metadata.find(key) == device.metadata.end()) {
-          ortdevice.metadata.Add(converter.to_bytes(key), converter.to_bytes(value));
+          ortdevice.metadata.Add(to_safe_string(key), to_safe_string(value));
         }
       }
     }
@@ -431,6 +577,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
     std::ostringstream oss;
     oss << "Adding OrtHardwareDevice {vendor_id:0x" << std::hex << ortdevice.vendor_id
         << ", device_id:0x" << ortdevice.device_id
+        << ", vendor:" << ortdevice.vendor
         << ", type:" << std::dec << static_cast<int>(ortdevice.type)
         << ", metadata: [";
     for (auto& [key, value] : ortdevice.metadata.entries) {

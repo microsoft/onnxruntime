@@ -1360,13 +1360,20 @@ class TestInferenceSession(unittest.TestCase):
         )
 
     def test_ort_value(self):
+        providers_to_test = onnxrt.get_available_providers()
         numpy_arr_input = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
         numpy_arr_output = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
 
-        def test_session_with_ortvalue_input(ortvalue):
-            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=onnxrt.get_available_providers())
+        def test_session_with_ortvalue_input(ortvalue, providers):
+            sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), providers=providers)
             res = sess.run(["Y"], {"X": ortvalue})
-            self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
+            if "QNNExecutionProvider" in providers:
+                # QNN runs float32 with fp16 precision, so relax accuracy expectations
+                np.testing.assert_allclose(numpy_arr_output, res[0], rtol=1e-04, atol=1e-06)
+            else:
+                self.assertTrue(np.array_equal(res[0], numpy_arr_output))
+
             vect = sess._sess.run_with_ort_values({"X": ortvalue._get_c_value()}, ["Y"], RunOptions())
             self.assertIsInstance(vect, OrtValueVector)
 
@@ -1375,10 +1382,12 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(ortvalue1.shape(), [3, 2])
         self.assertEqual(ortvalue1.data_type(), "tensor(float)")
         self.assertEqual(ortvalue1.is_tensor(), True)
+        # Assumes float32 and shape {3, 2} as above
+        self.assertEqual(ortvalue1.tensor_size_in_bytes(), 4 * 2 * 3)
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
 
         # Pass in the constructed OrtValue to a session via Run() and check results
-        test_session_with_ortvalue_input(ortvalue1)
+        test_session_with_ortvalue_input(ortvalue1, providers_to_test)
 
         # The constructed OrtValue should still be valid after being used in a session
         self.assertTrue(np.array_equal(ortvalue1.numpy(), numpy_arr_input))
@@ -1392,7 +1401,7 @@ class TestInferenceSession(unittest.TestCase):
         self.assertEqual(float_tensor_data_type, ort_value_with_type.element_type())
         self.assertEqual([3, 2], ort_value_with_type.shape())
 
-        if "CUDAExecutionProvider" in onnxrt.get_available_providers():
+        if "CUDAExecutionProvider" in providers_to_test:
             ortvalue2 = onnxrt.OrtValue.ortvalue_from_numpy(numpy_arr_input, "cuda", 0)
             self.assertEqual(ortvalue2.device_name(), "cuda")
             self.assertEqual(ortvalue2.shape(), [3, 2])
@@ -1401,7 +1410,7 @@ class TestInferenceSession(unittest.TestCase):
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))
 
             # Pass in the constructed OrtValue to a session via Run() and check results
-            test_session_with_ortvalue_input(ortvalue2)
+            test_session_with_ortvalue_input(ortvalue2, providers_to_test)
 
             # The constructed OrtValue should still be valid after being used in a session
             self.assertTrue(np.array_equal(ortvalue2.numpy(), numpy_arr_input))

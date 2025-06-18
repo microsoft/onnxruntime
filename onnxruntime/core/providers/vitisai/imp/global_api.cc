@@ -268,10 +268,10 @@ void initialize_vitisai_ep() {
 }
 
 void deinitialize_vitisai_ep() {
+  vaip::deregister_xir_ops(s_domains_vitisaiep);
   if (s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep) {
     s_library_vitisaiep.deinitialize_onnxruntime_vitisai_ep();
   }
-  vaip::deregister_xir_ops(s_domains_vitisaiep);
   // kernel registry would be repopulated, no need to delete kernel registry
   s_domains_vitisaiep.clear();
 

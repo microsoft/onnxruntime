@@ -8,10 +8,10 @@
 #include <gsl/gsl>
 #include "QnnOpDef.h"
 
-#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
-#include "core/providers/qnn/builder/qnn_node_group.h"
+#include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
+#include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/shared_context.h"
 
@@ -180,14 +180,16 @@ Status QnnModel::SetupQnnInputOutput(const logging::Logger& logger) {
   auto result = SetupTensors(qnn_input_infos_, graph_info_->InputTensors());
 
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN input tensors!");
+    const std::string message = "Failed to setup QNN input tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   result = SetupTensors(qnn_output_infos_, graph_info_->OutputTensors(), false);
   if (Status::OK() != result) {
-    LOGS(logger, ERROR) << "Failed to setup QNN input output tensors for graph: " << graph_info_->Name();
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to setup QNN output tensors!");
+    const std::string message = "Failed to setup QNN output tensors for graph: " + graph_info_->Name();
+    LOGS(logger, ERROR) << message;
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, message);
   }
 
   return Status::OK();
@@ -329,7 +331,15 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
                               bool is_input) {
   size_t tensor_count = tensor_wrappers.size();
   ORT_RETURN_IF(0 == tensor_count, "Zero tensor size!");
-  qnn_tensor_infos.resize(tensor_count);
+  if (is_input) {
+    // Resize qnn_tensor_infos according to the number of graph inputs.
+    auto input_count = GetGraphInputCount();
+    ORT_RETURN_IF(input_count < tensor_count,
+                  "The count of graph inputs should be at least the count of tensor_wrapper!");
+    qnn_tensor_infos.resize(input_count);
+  } else {
+    qnn_tensor_infos.resize(tensor_count);
+  }
 
   for (auto& tensor_wrapper : tensor_wrappers) {
     ORT_RETURN_IF(utils::QnnTensorHasDynamicShape(tensor_wrapper.GetQnnTensor()),
@@ -345,6 +355,18 @@ Status QnnModel::SetupTensors(std::vector<QnnTensorInfo>& qnn_tensor_infos,
     qnn_tensor_info.tensor_wrapper = &tensor_wrapper;
     qnn_tensor_info.tensor_byte_size = static_cast<uint32_t>(length);
     qnn_tensor_info.ort_index = ort_index;
+  }
+  // The number of graph inputs and the number of tensor wrappers may not match.
+  // - For example, for ResizeNearestNeighbor op, Qnn only cares about the 1st input,
+  //   so the rest of the inputs are not converted to tensor wrappers.
+  // - However, these remaining inputs still appear in the graph inputs, resulting in
+  //   a discrepancy in the input quantities.
+  // If not all inputs are used, erase the empty allocations in qnn_tensor_infos.
+  if (is_input) {
+    qnn_tensor_infos.erase(std::remove_if(qnn_tensor_infos.begin(),
+                                          qnn_tensor_infos.end(),
+                                          [](QnnTensorInfo qnn_tensor_info) { return qnn_tensor_info.tensor_wrapper == nullptr; }),
+                           qnn_tensor_infos.end());
   }
   return Status::OK();
 }

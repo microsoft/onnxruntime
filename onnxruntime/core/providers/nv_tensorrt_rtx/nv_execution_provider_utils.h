@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include <fstream>
@@ -153,22 +154,22 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::pair<int64_t, in
  *
  */
 void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>>& shape_ranges) {
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] In SerializeProfileV2()";
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] In SerializeProfileV2()";
   // Serialize profile
   flexbuffers::Builder builder;
   auto tensor_map_start = builder.StartMap();
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] input tensor is '" << tensor_it->first.c_str() << "'";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] input tensor is '" << tensor_it->first.c_str() << "'";
     builder.TypedVector(tensor_it->first.c_str(), [&] {
       for (auto dim_it = tensor_it->second.begin(); dim_it != tensor_it->second.end(); dim_it++) {
         size_t num_profiles = dim_it->second.size();
         for (size_t i = 0; i < num_profiles; i++) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] profile #" << i << ", dim is " << dim_it->first;
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] profile #" << i << ", dim is " << dim_it->first;
           builder.Int(dim_it->first);
           builder.Int(dim_it->second[i][0]);
           builder.Int(dim_it->second[i][1]);
           builder.Int(dim_it->second[i][2]);
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << dim_it->first << ", " << dim_it->second[i][0] << ", " << dim_it->second[i][1] << ", " << dim_it->second[i][2];
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << dim_it->first << ", " << dim_it->second[i][0] << ", " << dim_it->second[i][1] << ", " << dim_it->second[i][2];
         }
       }
     });
@@ -233,7 +234,7 @@ void SerializeProfileV2(const std::string& file_name, std::unordered_map<std::st
  * }
  */
 std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> DeserializeProfileV2(std::ifstream& infile) {
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] In DeserializeProfileV2()";
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] In DeserializeProfileV2()";
   // Load flexbuffer
   infile.seekg(0, std::ios::end);
   size_t length = infile.tellg();
@@ -248,7 +249,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
   auto keys = tensors_range_entries.Keys();
   auto values = tensors_range_entries.Values();
   for (size_t i = 0, end = keys.size(); i < end; ++i) {  // iterate tensors
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] input tensor is '" << keys[i].AsString().c_str() << "'";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] input tensor is '" << keys[i].AsString().c_str() << "'";
     auto dim_range_vector = values[i].AsTypedVector();
     std::unordered_map<size_t, std::vector<std::vector<int64_t>>> inner_map;
     std::vector<std::vector<int64_t>> profile_vector;
@@ -265,7 +266,7 @@ std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vect
         inner_map[dim] = profile_vector;
       }
       inner_map[dim].push_back(shape_vector);
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << dim << ", " << shape_vector[0] << ", " << shape_vector[1] << ", " << shape_vector[2];
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << dim << ", " << shape_vector[0] << ", " << shape_vector[1] << ", " << shape_vector[2];
     }
     shape_ranges[keys[i].AsString().c_str()] = inner_map;
   }
@@ -283,7 +284,7 @@ bool CompareProfiles(const std::string& file_name,
                      std::unordered_map<std::string, std::vector<std::vector<int64_t>>>& profile_opt_shapes) {
   std::ifstream profile_file(file_name, std::ios::binary | std::ios::in);
   if (!profile_file) {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << file_name << " doesn't exist.";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << file_name << " doesn't exist.";
     return true;
   }
 
@@ -313,7 +314,7 @@ bool CompareProfiles(const std::string& file_name,
 
   // Check number of dynamic shape inputs
   if (profile_min_shapes.size() != shape_ranges.size()) {
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Numbers of dynamic shape inputs are not the same.";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Numbers of dynamic shape inputs are not the same.";
     return true;
   }
 
@@ -321,7 +322,7 @@ bool CompareProfiles(const std::string& file_name,
   for (auto tensor_it = shape_ranges.begin(); tensor_it != shape_ranges.end(); tensor_it++) {  // iterate tensors
     auto tensor_name = tensor_it->first;
     if (profile_min_shapes.find(tensor_name) == profile_min_shapes.end()) {
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes.";
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Tensor name '" << tensor_name << "' doesn't exist in trt_profile_min_shapes.";
       return true;
     }
 
@@ -330,35 +331,35 @@ bool CompareProfiles(const std::string& file_name,
       auto num_profiles = GetNumProfiles(profile_min_shapes);
 
       if (dim_it->second.size() != static_cast<size_t>(num_profiles)) {
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] Numbers of profiles are not the same.";
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Numbers of profiles are not the same.";
         return true;
       }
 
       for (size_t i = 0; i < dim_it->second.size(); i++) {  // iterate (multiple) profile(s)
         auto shape_values = dim_it->second[i];
         if (dim > (profile_min_shapes[tensor_name][i].size() - 1)) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] dimension " << dim << " of '" << tensor_name << "' in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] dimension " << dim << " of '" << tensor_name << "' in " << file_name << " exceeds the total dimension of trt_profile_min_shapes.";
           return true;
         }
 
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_min_shapes[tensor_name][i][dim];
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[0] << " in " << file_name;
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_min_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] min shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[0] << " in " << file_name;
         if (profile_min_shapes[tensor_name][i][dim] != shape_values[0]) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] min shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] min shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
 
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_max_shapes[tensor_name][i][dim];
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[1] << " in " << file_name;
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_max_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] max shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[1] << " in " << file_name;
         if (profile_max_shapes[tensor_name][i][dim] != shape_values[1]) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] max shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] max shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
 
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_opt_shapes[tensor_name][i][dim];
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[2] << " in " << file_name;
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << profile_opt_shapes[tensor_name][i][dim];
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] opt shape value of dimension " << dim << " of '" << tensor_name << "' is " << shape_values[2] << " in " << file_name;
         if (profile_opt_shapes[tensor_name][i][dim] != shape_values[2]) {
-          LOGS_DEFAULT(VERBOSE) << "[Nv EP] opt shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
+          LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] opt shape values of dimension " << dim << " of '" << tensor_name << "' are not the same";
           return true;
         }
       }
@@ -461,7 +462,7 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version
   if (main_graph.ModelPath().has_filename()) {
     std::string model_name = PathToUTF8String(main_graph.ModelPath().filename());
 
-    LOGS_DEFAULT(INFO) << "[Nv EP] Model name is " << model_name;
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Model name is " << model_name;
     // Ensure enough characters are hashed in case model names are too short
     const size_t model_name_length = model_name.size();
     constexpr size_t hash_string_length = 500;
@@ -471,7 +472,7 @@ HashValue TRTGenerateId(const GraphViewer& graph_viewer, std::string trt_version
     }
     hash_str(repeat_model_name);
   } else {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Model path is empty";
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Model path is empty";
   }
 
   // fingerprint current graph by hashing graph inputs
@@ -567,7 +568,7 @@ bool MakeInputNameShapePair(std::string pair_string, std::pair<std::string, std:
     return true;
   }
 
-  LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << pair_string;
+  LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << pair_string;
 
   std::stringstream input_string_stream(pair_string);
   char first_delim = ':';
@@ -626,13 +627,13 @@ bool ParseProfileShapes(std::string profile_shapes_string, std::unordered_map<st
     }
     profile_shapes[input_name].push_back(pair.second);
 
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << input_name;
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << input_name;
     std::string shape_string = "";
     for (auto v : pair.second) {
       shape_string += std::to_string(v);
       shape_string += ", ";
     }
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << shape_string;
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << shape_string;
   }
 
   return true;

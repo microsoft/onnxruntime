@@ -60,7 +60,7 @@ Status ReshapeOpBuilder::OverrideOutputQuantParam(QnnModelWrapper& qnn_model_wra
   }
 
   // Force Reshape output to use the same quantization parameters as the input if nearly equal.
-  // This helps the HTP backend emply certain optimizations.
+  // This helps the HTP backend employ certain optimizations.
   return SetOutputQParamEqualToInputIfNearlyEqual(qnn_model_wrapper, node_unit, logger, input_names,
                                                   0 /*input_index*/, output_index, qnn_data_type, quant_param);
 }

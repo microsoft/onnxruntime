@@ -54,6 +54,17 @@ bool CheckIfBothInputShapesMatch(const Node& node, const logging::Logger& logger
                     y_shape_proto->dim().begin(), y_shape_proto->dim().end(),
                     dim_eq);
 }
+
+bool ShouldUseFloorDiv(const Node& node, const logging::Logger& logger) {
+  // since ONNX spec requires both inputs to have the same type, we only need
+  // to check the first input type
+  const auto& input0 = *node.InputDefs()[0];
+  int32_t input_type0 = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
+  GetType(input0, input_type0, logger);
+
+  return input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT32 ||
+         input_type0 == ONNX_NAMESPACE::TensorProto_DataType_INT64;
+}
 }  // namespace
 
 static std::vector<int64_t> InferOutputShape(const std::vector<int64_t>& a, const std::vector<int64_t>& b) {
@@ -131,9 +142,13 @@ Status BinaryOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
     } else if (op_type == "Sub") {
       coreml_op_type = "sub";
     } else if (op_type == "Div") {
-      // we support fp32/fp16 currently. when we add support for integers we need to check the type and use
-      // "floor_div" or "real_div" accordingly
-      coreml_op_type = "real_div";
+      // Use "floor_div" op for integer division (int32 or int64)
+      // use "real_div" for float division (fp16 or fp32)
+      if (ShouldUseFloorDiv(node, logger)) {
+        coreml_op_type = "floor_div";
+      } else {
+        coreml_op_type = "real_div";
+      }
     } else if (op_type == "Pow") {
       coreml_op_type = "pow";
     } else {

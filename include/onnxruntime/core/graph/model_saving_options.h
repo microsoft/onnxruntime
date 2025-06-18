@@ -21,7 +21,7 @@ struct ModelSavingOptions {
   explicit ModelSavingOptions(size_t size_threshold)
       : initializer_size_threshold(size_threshold) {}
 
-  // Mimimal initializer size in bytes to be externalized on disk
+  // Minimal initializer size in bytes to be externalized on disk
   size_t initializer_size_threshold;
   // Offset will always be page aligned and allocation granularity aligned for
   // mmap support. This is done by padding previous tensor data with zeros

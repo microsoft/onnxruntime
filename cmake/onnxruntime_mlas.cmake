@@ -282,6 +282,9 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -793,7 +796,7 @@ if (PLATFORM_NAME STREQUAL "macabi")
 endif()
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_mlas
+    install(TARGETS onnxruntime_mlas EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

@@ -632,7 +632,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
@@ -683,7 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
-    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {
@@ -1448,11 +1448,19 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
     broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
     // Fails with QNN SDK 2.17.0:
     // expected 7.70947 (40f6b3f3), got 7.84096 (40fae920), diff: 0.131491, tol=0.00870947 idx=419. 100 of 1715 differ
     broken_tests->insert({"facedetection_op8_qdq", "result differs"});
+    // Fails with QNN SDK 2.34.0:
+    // expected 2.18661 (400bf164), got 1.48898 (3fbe96ce), diff: 0.697631, tol=0.00318661 idx=0. 8 of 8 differ
+    broken_tests->insert({"gemm_default_vector_bias", "result differs with 2.34"});
+    // expected 0.0505495 (3d4f0d00), got 0.0506369 (3d4f68ae), diff: 8.74326e-05, tol=6.05495e-05 idx=448
+    broken_tests->insert({"mobilenetv2-1.0", "result differs with 2.34"});
+    broken_tests->insert({"facedetection_op8", "segfault with CPU backend, will be fixed by QNN 2.36"});
 
 #if defined(_WIN32) && defined(_M_AMD64)
     // Fails with QNN SDK 2.17.0 on Windows x64:

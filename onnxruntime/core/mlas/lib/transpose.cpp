@@ -484,20 +484,20 @@ MlasTranspose8x8Block(
     __m128i c3 = __lsx_vilvh_h(b3, b2);
 
     __m128 d0 = (__m128)(__lsx_vilvl_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 0], 0), __lsx_vpickve2gr_d(d0, 0), 0), (__m128i *)&Output[OutputStride * 0], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 1], 0), __lsx_vpickve2gr_d(d0, 1), 0), (__m128i *)&Output[OutputStride * 1], 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 0], 0, 0);
+    __lsx_vstelm_d(d0, &Output[OutputStride * 1], 0, 1);
 
     __m128 d1 = (__m128)(__lsx_vilvh_w(c2, c0));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 2], 0), __lsx_vpickve2gr_d(d1, 0), 0), (__m128i *)&Output[OutputStride * 2], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 3], 0), __lsx_vpickve2gr_d(d1, 1), 0), (__m128i *)&Output[OutputStride * 3], 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 2], 0, 0);
+    __lsx_vstelm_d(d1, &Output[OutputStride * 3], 0, 1);
 
     __m128 d2 = (__m128)(__lsx_vilvl_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 4], 0), __lsx_vpickve2gr_d(d2, 0), 0), (__m128i *)&Output[OutputStride * 4], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 5], 0), __lsx_vpickve2gr_d(d2, 1), 0), (__m128i *)&Output[OutputStride * 5], 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 4], 0, 0);
+    __lsx_vstelm_d(d2, &Output[OutputStride * 5], 0, 1);
 
     __m128 d3 = (__m128)(__lsx_vilvh_w(c3, c1));
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 6], 0), __lsx_vpickve2gr_d(d3, 0), 0), (__m128i *)&Output[OutputStride * 6], 0);
-    __lsx_vst(__lsx_vinsgr2vr_d(__lsx_vld((__m128i *)&Output[OutputStride * 7], 0), __lsx_vpickve2gr_d(d3, 1), 0), (__m128i *)&Output[OutputStride * 7], 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 6], 0, 0);
+    __lsx_vstelm_d(d3, &Output[OutputStride * 7], 0, 1);
 }
 
 #endif

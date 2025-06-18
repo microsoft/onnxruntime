@@ -330,7 +330,7 @@ class QuantBMmaTensorOp {
                  FragmentB const& B,
                  FragmentQScale const& scales,
                  FragmentQOffset const& offsets) const {
-    Array<uint8_t, FragmentB::kElements* 2> const* ptr_B =
+    Array<uint8_t, FragmentB::kElements * 2> const* ptr_B =
         reinterpret_cast<Array<uint8_t, FragmentB::kElements * 2> const*>(&B);
     IteratorQMeta::dequant(scales, offsets, *ptr_B, dst_B);
   }

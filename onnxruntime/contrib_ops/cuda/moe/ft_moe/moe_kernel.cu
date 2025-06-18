@@ -65,7 +65,13 @@ __launch_bounds__(TPB) __global__
 
     const int thread_row_offset = blockIdx.x * num_cols;
 
+#if CUDA_VERSION >= 12090
+    ::cuda::std::plus sum;
+#else
+    // Deprecated on CUDA 12.9
     cub::Sum sum;
+#endif
+
     float threadData(-FLT_MAX);
 
     // Don't touch finished rows.
@@ -1041,7 +1047,7 @@ void initialize_moe_routing_kernelLauncher(const T *unpermuted_input, T *permute
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ < 530
 template <typename T, int RESIDUAL_NUM>
 __global__ void finalize_moe_routing_kernel(const T *, T *, const T *, const T *, const T *, const T *, const int *,
-                                            const int *, int, const int) {
+                                            const int *, int, int) {
     // Does not support pre-Kepler architectures
     ;
 }

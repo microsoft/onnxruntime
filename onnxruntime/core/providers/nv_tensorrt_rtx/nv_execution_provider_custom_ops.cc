@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include <unordered_set>
@@ -58,9 +59,9 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     while (std::getline(extra_plugin_libs, lib, ';')) {
       auto status = LoadDynamicLibrary(ToPathString(lib));
       if (status == Status::OK()) {
-        LOGS_DEFAULT(VERBOSE) << "[Nv EP] Successfully load " << lib;
+        LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Successfully load " << lib;
       } else {
-        LOGS_DEFAULT(WARNING) << "[Nv EP]" << status.ToString();
+        LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP]" << status.ToString();
       }
     }
     is_loaded = true;
@@ -68,7 +69,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
 
   try {
     // Get all registered TRT plugins from registry
-    LOGS_DEFAULT(VERBOSE) << "[Nv EP] Getting all registered TRT plugins from TRT plugin registry ...";
+    LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] Getting all registered TRT plugins from TRT plugin registry ...";
     TensorrtLogger trt_logger = GetTensorrtLogger(false);
     void* library_handle = nullptr;
     const auto& env = onnxruntime::GetDefaultEnv();
@@ -79,14 +80,14 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     bool (*dyn_initLibNvInferPlugins)(void* logger, char const* libNamespace);
     ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "initLibNvInferPlugins", (void**)&dyn_initLibNvInferPlugins));
     dyn_initLibNvInferPlugins(&trt_logger, "");
-    LOGS_DEFAULT(INFO) << "[Nv EP] Default plugins successfully loaded.";
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Default plugins successfully loaded.";
 
 #if defined(_MSC_VER)
 #pragma warning(push)
 #pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
 #endif
   } catch (const std::exception&) {
-    LOGS_DEFAULT(INFO) << "[Nv EP] Default plugin library is not on the path and is therefore ignored";
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Default plugin library is not on the path and is therefore ignored";
   }
   try {
     int num_plugin_creator = 0;
@@ -96,7 +97,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     for (int i = 0; i < num_plugin_creator; i++) {
       auto plugin_creator = plugin_creators[i];
       std::string plugin_name(plugin_creator->getPluginName());
-      LOGS_DEFAULT(VERBOSE) << "[Nv EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
+      LOGS_DEFAULT(VERBOSE) << "[NvTensorRTRTX EP] " << plugin_name << ", version : " << plugin_creator->getPluginVersion();
 
       // plugin has different versions and we only register once
       if (registered_plugin_names.find(plugin_name) != registered_plugin_names.end()) {
@@ -116,7 +117,7 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     custom_op_domain->domain_ = "trt.plugins";
     domain_list.push_back(custom_op_domain.get());
   } catch (const std::exception&) {
-    LOGS_DEFAULT(WARNING) << "[Nv EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
+    LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to get TRT plugins from TRT plugin registration. Therefore, TRT EP can't create custom ops for TRT plugins";
   }
   return Status::OK();
 }

@@ -113,6 +113,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetConvOpVersionsMap() {
 static const OpVersionsAndSelector::OpVersionsMap GetConvTransposeOpVersionsMap() {
   return {{"ConvTranspose", {}}};
 }
+static const OpVersionsAndSelector::OpVersionsMap GetEinsumOpVersionsMap() {
+  return {{"Einsum", {}}};
+}
 static const OpVersionsAndSelector::OpVersionsMap GetMatMulOpVersionsMap() {
   return {{"MatMul", {}}};
 }
@@ -142,6 +145,9 @@ static const OpVersionsAndSelector::OpVersionsMap GetPadOpVersionsMap() {
 
 static const OpVersionsAndSelector::OpVersionsMap GetTopKOpVersionsMap() {
   return {{"TopK", {}}};
+}
+static const OpVersionsAndSelector::OpVersionsMap GetCumSumOpVersionsMap() {
+  return {{"CumSum", {}}};
 }
 
 /* Selector rules registration related */
@@ -202,6 +208,13 @@ void RegisterConvTransposeSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterEinsumSelector(Selectors& qdq_selectors) {
+  /* register selector for einsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<EinsumNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetEinsumOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void RegisterMatMulSelector(Selectors& qdq_selectors) {
   /* register selector for matmul op */
   std::unique_ptr<NodeGroupSelector> selector = std::make_unique<MatMulNodeGroupSelector>();
@@ -258,6 +271,13 @@ void RegisterTopKSelector(Selectors& qdq_selectors) {
                                  std::move(selector));
 }
 
+void RegisterCumSumSelector(Selectors& qdq_selectors) {
+  /* register selector for cumsum op */
+  std::unique_ptr<NodeGroupSelector> selector = std::make_unique<CumSumNodeGroupSelector>();
+  qdq_selectors.RegisterSelector(GetCumSumOpVersionsMap(),
+                                 std::move(selector));
+}
+
 void SelectorManager::CreateSelectors() {
   RegisterMiscSelectors(qdq_selectors_);
   RegisterDropDQSelectors(qdq_selectors_);
@@ -267,6 +287,7 @@ void SelectorManager::CreateSelectors() {
   RegisterSplitSelector(qdq_selectors_);
   RegisterConvSelector(qdq_selectors_);
   RegisterConvTransposeSelector(qdq_selectors_);
+  RegisterEinsumSelector(qdq_selectors_);
   RegisterMatMulSelector(qdq_selectors_);
   RegisterGemmSelector(qdq_selectors_);
   RegisterInstanceAndLayerNormalizationSelector(qdq_selectors_);
@@ -275,6 +296,7 @@ void SelectorManager::CreateSelectors() {
   RegisterWhereSelectors(qdq_selectors_);
   RegisterPadSelectors(qdq_selectors_);
   RegisterTopKSelector(qdq_selectors_);
+  RegisterCumSumSelector(qdq_selectors_);
 }
 
 void SelectorManager::InitializeSelectorsMap() {

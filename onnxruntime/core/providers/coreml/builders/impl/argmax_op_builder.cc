@@ -41,9 +41,7 @@ Status ArgMaxOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     AddOperationInput(*op, "axis", model_builder.AddScalarConstant(op->type(), "axis", axis));
     AddOperationInput(*op, "keep_dims", model_builder.AddScalarConstant(op->type(), "keep_dims", bool(keepdims)));
 
-    int32_t output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    // the output of ArgMax must be int32
-    AddOperationOutput(*op, *node.OutputDefs()[0], output_datatype);
+    AddOperationOutput(*op, *node.OutputDefs()[0]);
     model_builder.AddOperation(std::move(op));
   } else {
     auto* coreml_argmax = layer->mutable_argmax();

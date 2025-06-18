@@ -318,7 +318,6 @@ def generate_vcpkg_install_options(build_dir, args):
     elif "RUNNER_TEMP" in os.environ:
         temp_dir = os.environ["RUNNER_TEMP"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
-        vcpkg_install_options.append("--binarysource=clear\\;x-gha,readwrite")
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
@@ -382,6 +381,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
+
+        if args.caller_framework:
+            cmake_args.append("-Donnxruntime_CALLER_FRAMEWORK=" + args.caller_framework)
         if args.winml_root_namespace_override:
             cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
         if args.disable_memleak_checker or args.enable_address_sanitizer:
@@ -444,6 +446,7 @@ def generate_build_tree(
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
+        "-Donnxruntime_USE_NV_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_OPENVINO_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_VITISAI_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_QNN_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -1227,9 +1230,62 @@ def generate_build_tree(
             ]
         env = {}
         if args.use_vcpkg:
-            env["VCPKG_KEEP_ENV_VARS"] = "TRT_UPLOAD_AUTH_TOKEN;EMSDK;EMSDK_NODE;EMSDK_PYTHON"
+            vcpkg_keep_env_vars = ["TRT_UPLOAD_AUTH_TOKEN"]
+
             if args.build_wasm:
-                env["EMSDK"] = emsdk_dir
+                emsdk_vars = ["EMSDK", "EMSDK_NODE", "EMSDK_PYTHON"]
+
+                # If environment variables 'EMSDK' is not set, run emsdk_env to set them
+                if "EMSDK" not in os.environ:
+                    if is_windows():
+                        # Run `cmd /s /c call .\\emsdk_env && set` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["cmd", "/s", "/c", "call .\\emsdk_env && set"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+                    else:
+                        # Run `sh -c ". ./emsdk_env.sh && printenv"` to run emsdk_env and dump the environment variables
+                        emsdk_env = run_subprocess(
+                            ["sh", "-c", ". ./emsdk_env.sh && printenv"],
+                            cwd=emsdk_dir,
+                            capture_stdout=True,
+                        )
+
+                    # check for EMSDK environment variables and set them in the environment
+                    for line in emsdk_env.stdout.decode().splitlines():
+                        if "=" in line:
+                            key, value = line.rstrip().split("=", 1)
+                            if key in emsdk_vars:
+                                os.environ[key] = value
+
+                for var in emsdk_vars:
+                    if var in os.environ:
+                        env[var] = os.environ[var]
+                    elif var == "EMSDK":
+                        # EMSDK must be set, but EMSDK_NODE and EMSDK_PYTHON are optional
+                        raise BuildError(
+                            "EMSDK environment variable is not set correctly. Please run `emsdk_env` to set them."
+                        )
+
+                vcpkg_keep_env_vars += emsdk_vars
+
+            #
+            # Workaround for vcpkg failed to find the correct path of Python
+            #
+            # Since vcpkg does not inherit the environment variables `PATH` from the parent process, CMake will fail to
+            # find the Python executable if the Python executable is not in the default location. This usually happens
+            # to the Python installed by Anaconda.
+            #
+            # To minimize the impact of this problem, we set the `Python3_ROOT_DIR` environment variable to the
+            # directory of current Python executable.
+            #
+            # see https://cmake.org/cmake/help/latest/module/FindPython3.html
+            #
+            env["Python3_ROOT_DIR"] = str(Path(os.path.dirname(sys.executable)).resolve())
+            vcpkg_keep_env_vars += ["Python3_ROOT_DIR"]
+
+            env["VCPKG_KEEP_ENV_VARS"] = ";".join(vcpkg_keep_env_vars)
 
         run_subprocess(
             [*temp_cmake_args, f"-DCMAKE_BUILD_TYPE={config}"],
@@ -1666,6 +1722,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
 
+            log.info("Testing Global Thread Pool feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
+
+            log.info("Testing AutoEP feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)
+
             if not args.disable_contrib_ops:
                 run_subprocess([sys.executable, "onnxruntime_test_python_sparse_matmul.py"], cwd=cwd, dll_path=dll_path)
 
@@ -1759,6 +1821,12 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
                     ],
                     cwd=cwd,
                 )
+
+                if not args.disable_contrib_ops:
+                    log.info("Testing Python Compile API")
+                    run_subprocess(
+                        [sys.executable, "onnxruntime_test_python_compile_api.py"], cwd=cwd, dll_path=dll_path
+                    )
 
                 if not args.skip_onnx_tests:
                     run_subprocess([os.path.join(cwd, "onnx_test_runner"), "test_models"], cwd=cwd)
@@ -2188,19 +2256,7 @@ def main():
 
     cmake_extra_defines = normalize_arg_list(args.cmake_extra_defines)
 
-    # When this flag is enabled, it is possible ONNXRuntime shared library is build separately, expecting some compatible EP
-    # shared lib being build in a separate process. So we skip the testing if none of the primary EPs are built with ONNXRuntime
-    # shared lib
-    if args.enable_generic_interface and not (
-        args.use_nv_tensorrt_rtx
-        or args.use_tensorrt
-        or args.use_openvino
-        or args.use_vitisai
-        or (args.use_qnn and args.use_qnn != "static_lib")
-    ):
-        args.test = False
-
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         args.use_cuda = True
 
     if args.build_wheel or args.gen_doc or args.enable_training:

@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/webgpu/math/gemm.h"
+#include "core/providers/webgpu/math/gemm_packed.h"
 
 #include <vector>
 
@@ -37,118 +38,43 @@ WEBGPU_GEMM_VERSIONED_KERNEL(9, 10)
 WEBGPU_GEMM_VERSIONED_KERNEL(11, 12)
 WEBGPU_GEMM_KERNEL(13)
 
-Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const uint32_t TILE_SIZE = 16;
-
-  // Add shared memory arrays
-  shader.AdditionalImplementation() << "var<workgroup> tile_a: array<array<output_value_t, " << TILE_SIZE << ">, " << TILE_SIZE << ">;\n"
-                                    << "var<workgroup> tile_b: array<array<output_value_t, " << TILE_SIZE << ">, " << TILE_SIZE << ">;\n\n";
-
+Status GemmNaiveProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const ShaderVariableHelper& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
 
-  shader.MainFunctionBody() << "  var value = output_value_t(0);\n\n"
-                            << "  let tile_col_start = (workgroup_idx % uniforms.num_tile_n) * " << TILE_SIZE << "u;\n"
-                            << "  let tile_row_start = (workgroup_idx / uniforms.num_tile_n) * " << TILE_SIZE << "u;\n";
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
+                            << "  let m = global_idx / uniforms.N;\n"
+                            << "  let n = global_idx % uniforms.N;\n"
+                            << "  var value = output_value_t(0);\n"
+                            << "\n";
 
   // When A or B is empty, we don't bind A and B. Because WebGPU doesn't support binding a zero-sized buffer.
   if (need_handle_matmul_) {
     const ShaderVariableHelper& A = shader.AddInput("A", ShaderUsage::UseUniform);
     const ShaderVariableHelper& B = shader.AddInput("B", ShaderUsage::UseUniform);
 
-    shader.MainFunctionBody()
-        << "  let num_tiles = (uniforms.K - 1u) / " << TILE_SIZE << "u + 1u;\n"
-        << "  var k_start = 0u;\n"
-        << "  for (var t = 0u; t < num_tiles; t = t + 1u) {\n";
-
-    // Fill workgroup shared memory
-    if (transA_ && transB_) {
-      shader.MainFunctionBody() << "    var col = tile_row_start + local_id.x;\n"
-                                << "    var row = k_start + local_id.y;\n"
-                                << "    if (col < uniforms.M && row < uniforms.K) {\n"
-                                << "      tile_a[local_id.y][local_id.x] = " << A.GetByOffset("row * uniforms.M + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_a[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n\n"
-                                << "    col = k_start + local_id.x;\n"
-                                << "    row = tile_col_start + local_id.y;\n"
-                                << "    if (col < uniforms.K && row < uniforms.N) {\n"
-                                << "      tile_b[local_id.y][local_id.x] = " << B.GetByOffset("row * uniforms.K + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_b[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n";
-    } else if (transA_ && !transB_) {
-      shader.MainFunctionBody() << "    var col = tile_row_start + local_id.x;\n"
-                                << "    var row = k_start + local_id.y;\n"
-                                << "    if (col < uniforms.M && row < uniforms.K) {\n"
-                                << "      tile_a[local_id.y][local_id.x] = " << A.GetByOffset("row * uniforms.M + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_a[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n\n"
-                                << "    col = tile_col_start + local_id.x;\n"
-                                << "    row = k_start + local_id.y;\n"
-                                << "    if (col < uniforms.N && row < uniforms.K) {\n"
-                                << "      tile_b[local_id.y][local_id.x] = " << B.GetByOffset("row * uniforms.N + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_b[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n";
-    } else if (!transA_ && transB_) {
-      shader.MainFunctionBody() << "    var col = k_start + local_id.x;\n"
-                                << "    var row = tile_row_start + local_id.y;\n"
-                                << "    if (col < uniforms.K && row < uniforms.M) {\n"
-                                << "      tile_a[local_id.y][local_id.x] = " << A.GetByOffset("row * uniforms.K + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_a[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n\n"
-                                << "    col = k_start + local_id.x;\n"
-                                << "    row = tile_col_start + local_id.y;\n"
-                                << "    if (col < uniforms.K && row < uniforms.N) {\n"
-                                << "      tile_b[local_id.y][local_id.x] = " << B.GetByOffset("row * uniforms.K + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_b[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n";
-    } else {
-      shader.MainFunctionBody() << "    var col = k_start + local_id.x;\n"
-                                << "    var row = tile_row_start + local_id.y;\n"
-                                << "    if (col < uniforms.K && row < uniforms.M) {\n"
-                                << "      tile_a[local_id.y][local_id.x] = " << A.GetByOffset("row * uniforms.K + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_a[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n\n"
-                                << "    col = tile_col_start + local_id.x;\n"
-                                << "    row = k_start + local_id.y;\n"
-                                << "    if (col < uniforms.N && row < uniforms.K) {\n"
-                                << "      tile_b[local_id.y][local_id.x] = " << B.GetByOffset("row * uniforms.N + col") << ";\n"
-                                << "    } else {\n"
-                                << "      tile_b[local_id.y][local_id.x] = output_value_t(0);\n"
-                                << "    }\n";
-    }
-
-    shader.MainFunctionBody() << "    k_start = k_start + " << TILE_SIZE << "u;\n"
-                              << "    workgroupBarrier();\n\n"
-                              << "    for (var k = 0u; k < " << TILE_SIZE << "u; k = k + 1u) {\n";
+    shader.MainFunctionBody() << "  for (var k = 0u; k < uniforms.K; k = k + 1u) {\n";
 
     if (transA_ && transB_) {
-      shader.MainFunctionBody() << "      value = value + tile_a[k][local_id.y] * tile_b[local_id.x][k];\n";
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
+                                << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
     } else if (transA_ && !transB_) {
-      shader.MainFunctionBody() << "      value = value + tile_a[k][local_id.y] * tile_b[k][local_id.x];\n";
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("k * uniforms.M + m")
+                                << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
     } else if (!transA_ && transB_) {
-      shader.MainFunctionBody() << "      value = value + tile_a[local_id.y][k] * tile_b[local_id.x][k];\n";
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
+                                << " * " << B.GetByOffset("n * uniforms.K + k") << ";\n";
     } else {
-      shader.MainFunctionBody() << "      value = value + tile_a[local_id.y][k] * tile_b[k][local_id.x];\n";
+      shader.MainFunctionBody() << "    value = value + " << A.GetByOffset("m * uniforms.K + k")
+                                << " * " << B.GetByOffset("k * uniforms.N + n") << ";\n";
     }
-
-    shader.MainFunctionBody() << "    }\n"
-                              << "    workgroupBarrier();\n"
-                              << "  }\n\n";
+    shader.MainFunctionBody() << "  }\n"
+                              << "\n";
   }
 
   // Calculate Alpha
   if (alpha_) {
     shader.MainFunctionBody() << "  value = value * output_value_t(uniforms.alpha);\n";
   }
-
-  shader.MainFunctionBody() << "  let m = tile_row_start + local_id.y;\n"
-                            << "  let n = tile_col_start + local_id.x;\n";
 
   // Calculate Bias
   if (need_handle_bias_) {
@@ -157,10 +83,7 @@ Status GemmProgram::GenerateShaderCode(ShaderHelper& shader) const {
                               << C.GetByOffset(C.BroadcastedIndicesToOffset("vec2(m, n)", output)) << ";\n";
   }
 
-  // Write output
-  shader.MainFunctionBody() << "  if (m < uniforms.M && n < uniforms.N) {\n"
-                            << "    " << output.SetByOffset("m * uniforms.N + n", "value") << "\n"
-                            << "  }\n";
+  shader.MainFunctionBody() << output.SetByOffset("global_idx", "value") << "\n";
 
   return Status::OK();
 }
@@ -181,13 +104,13 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input tensors A and B must be 2 dimensional.");
   }
 
-  uint32_t M = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[1] : A_shape[0]);
-  uint32_t K = onnxruntime::narrow<uint32_t>(transA_ ? A_shape[0] : A_shape[1]);
-  uint32_t N = onnxruntime::narrow<uint32_t>(transB_ ? B_shape[0] : B_shape[1]);
-
   if ((transA_ ? A_shape[0] : A_shape[1]) != (transB_ ? B_shape[1] : B_shape[0])) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inner dimensions of A and B must match.");
   }
+
+  int64_t M = transA_ ? A_shape[1] : A_shape[0];
+  int64_t K = transA_ ? A_shape[0] : A_shape[1];
+  int64_t N = transB_ ? B_shape[0] : B_shape[1];
 
   std::vector<int64_t> output_dims{M, N};
   auto* Y = context.Output(0, output_dims);
@@ -201,35 +124,32 @@ Status Gemm::ComputeInternal(ComputeContext& context) const {
   bool need_handle_matmul = A_shape.Size() > 0 && B_shape.Size() > 0;
   bool need_handle_bias = C && beta_;
 
-  GemmProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
+  if (M <= 8 && N <= 8 && K <= 8) {
+    // Use naive implementation for small matrices
+    GemmNaiveProgram program{transA_, transB_, alpha_, need_handle_bias, need_handle_matmul};
+    if (need_handle_matmul) {
+      program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
+                         {B, ProgramTensorMetadataDependency::Type}});
+    }
 
-  if (need_handle_matmul) {
-    program.AddInputs({{A, ProgramTensorMetadataDependency::Type},
-                       {B, ProgramTensorMetadataDependency::Type}});
+    if (need_handle_bias) {
+      program.AddInput({C, ProgramTensorMetadataDependency::Rank});
+    }
+
+    program.CacheHint(alpha_, transA_, transB_)
+        .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .SetWorkgroupSize(WORKGROUP_SIZE)
+        .AddUniformVariables({{static_cast<uint32_t>(output_size)},
+                              {static_cast<uint32_t>(M)},
+                              {static_cast<uint32_t>(N)},
+                              {static_cast<uint32_t>(K)},
+                              {alpha_},
+                              {beta_}});
+    return context.RunProgram(program);
   }
 
-  if (need_handle_bias) {
-    program.AddInput({C, ProgramTensorMetadataDependency::Rank});
-  }
-
-  const uint32_t TILE_SIZE = 16;
-  const uint32_t num_tile_n = (N + TILE_SIZE - 1) / TILE_SIZE;
-  const uint32_t num_tile_m = (M + TILE_SIZE - 1) / TILE_SIZE;
-
-  program.CacheHint(alpha_, transA_, transB_)
-      .AddOutputs({{Y, ProgramTensorMetadataDependency::Type}})
-      .SetDispatchGroupSize(num_tile_n * num_tile_m)
-      .SetWorkgroupSize(TILE_SIZE, TILE_SIZE)
-      .AddUniformVariables({
-          {static_cast<uint32_t>(num_tile_n)},  // num_tile_n
-          {static_cast<uint32_t>(M)},           // M
-          {static_cast<uint32_t>(N)},           // N
-          {static_cast<uint32_t>(K)},           // K
-          {alpha_},                             // alpha
-          {beta_}                               // beta
-      });
-
-  return context.RunProgram(program);
+  return ApplyGemmPacked(A, B, C, transA_, transB_, alpha_, beta_, context);
 }
 
 }  // namespace webgpu

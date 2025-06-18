@@ -243,6 +243,12 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
   return ConstMemoryInfo{out};
 }
 
+template <typename T>
+inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
+  OrtKeyValuePairs* out;
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
+  return KeyValuePairs(out);
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
@@ -593,6 +599,11 @@ inline ConstHardwareDevice EpDeviceImpl<T>::Device() const {
 }
 }  // namespace detail
 
+inline EpDevice::EpDevice(OrtEpFactory& ep_factory, ConstHardwareDevice& hardware_device,
+                          ConstKeyValuePairs ep_metadata, ConstKeyValuePairs ep_options) {
+  ThrowOnError(GetEpApi().CreateEpDevice(&ep_factory, hardware_device, ep_metadata, ep_options, &p_));
+}
+
 inline Env::Env(OrtLoggingLevel logging_level, _In_ const char* logid) {
   ThrowOnError(GetApi().CreateEnv(logging_level, logid, &p_));
   if (strcmp(logid, "onnxruntime-node") == 0) {
@@ -824,6 +835,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
       this->p_,
       embed_ep_context_in_model));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
   return *this;
 }
 
@@ -1141,6 +1157,18 @@ inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::AppendExecutionProvider_V2(
 
   SessionOptionsAppendEP(*this, env, ep_devices, ep_options_keys, ep_options_values);
 
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy policy) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicy(this->p_, policy));
+  return *this;
+}
+
+template <typename T>
+inline SessionOptionsImpl<T>& SessionOptionsImpl<T>::SetEpSelectionPolicy(EpSelectionDelegate delegate, void* state) {
+  ThrowOnError(GetApi().SessionOptionsSetEpSelectionPolicyDelegate(this->p_, delegate, state));
   return *this;
 }
 
@@ -1803,6 +1831,13 @@ template <typename T>
 inline size_t ConstValueImpl<T>::GetStringTensorElementLength(size_t element_index) const {
   size_t out;
   ThrowOnError(GetApi().GetStringTensorElementLength(this->p_, element_index, &out));
+  return out;
+}
+
+template <typename T>
+inline size_t ConstValueImpl<T>::GetTensorSizeInBytes() const {
+  size_t out;
+  ThrowOnError(GetApi().GetTensorSizeInBytes(this->p_, &out));
   return out;
 }
 

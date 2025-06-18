@@ -189,7 +189,10 @@ set(onnxruntime_pybind11_state_static_providers
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
 endif()
-
+if(WIN32)
+  # onnxruntime_pybind11_state is a DLL
+  target_sources(onnxruntime_pybind11_state PRIVATE "${ONNXRUNTIME_ROOT}/core/dll/dllmain.cc")
+endif()
 target_link_libraries(onnxruntime_pybind11_state PRIVATE
     onnxruntime_session
     ${onnxruntime_libs}
@@ -453,6 +456,9 @@ endif()
 file(GLOB onnxruntime_python_tools_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/*.py"
 )
+file(GLOB onnxruntime_python_tools_qnn_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/qnn/*.py"
+)
 file(GLOB onnxruntime_python_quantization_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/*.py"
 )
@@ -467,6 +473,9 @@ file(GLOB onnxruntime_python_quantization_fusions_src CONFIGURE_DEPENDS
 )
 file(GLOB onnxruntime_python_quantization_ep_qnn_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/quantization/execution_providers/qnn/*.py"
+)
+file(GLOB onnxruntime_python_quantization_neural_compressor_src CONFIGURE_DEPENDS
+    "${ONNXRUNTIME_ROOT}/python/tools/quantization/neural_compressor/*.py"
 )
 file(GLOB onnxruntime_python_transformers_src CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/python/tools/transformers/*.py"
@@ -561,6 +570,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qdq_helpers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/models/bart
@@ -581,6 +591,7 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/fusions
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn
+  COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/quantization
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers
   COMMAND ${CMAKE_COMMAND} -E make_directory $<TARGET_FILE_DIR:${build_output_target}>/transformers/test_data/models
@@ -646,6 +657,9 @@ add_custom_command(
       ${ONNXRUNTIME_ROOT}/core/flatbuffers/ort_flatbuffers_py
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/ort_format_model/ort_flatbuffers_py
   COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_tools_qnn_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/tools/qnn/
+  COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/
   COMMAND ${CMAKE_COMMAND} -E copy
@@ -660,6 +674,9 @@ add_custom_command(
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_quantization_ep_qnn_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/execution_providers/qnn/
+  COMMAND ${CMAKE_COMMAND} -E copy
+      ${onnxruntime_python_quantization_neural_compressor_src}
+      $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/quantization/neural_compressor/
   COMMAND ${CMAKE_COMMAND} -E copy
       ${onnxruntime_python_transformers_src}
       $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/transformers/
@@ -1050,18 +1067,46 @@ if (onnxruntime_USE_QNN)
         ${QNN_LIB_FILES}
         $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
   )
-  add_custom_command(
-    TARGET onnxruntime_pybind11_state POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy
-        $<TARGET_FILE:ep_weight_sharing_ctx_gen>
-        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
-  )
   if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
       COMMAND ${CMAKE_COMMAND} -E copy
           "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf"
           $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/
+    )
+  endif()
+endif()
+
+if (onnxruntime_USE_WEBGPU)
+  if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
+    # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+    # until we figure out how to resolve the packaging pipeline failures
+    #
+    # if (onnxruntime_USE_VCPKG)
+    if (FALSE)
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE:Microsoft::DXIL>
+            $<TARGET_FILE:Microsoft::DirectXShaderCompiler>
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    else()
+      add_custom_command(
+        TARGET onnxruntime_pybind11_state POST_BUILD
+        COMMAND ${CMAKE_COMMAND} -E copy
+            $<TARGET_FILE_DIR:dxcompiler>/dxil.dll
+            $<TARGET_FILE_DIR:dxcompiler>/dxcompiler.dll
+            $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+      )
+    endif()
+  endif()
+  if (onnxruntime_BUILD_DAWN_MONOLITHIC_LIBRARY)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+          $<TARGET_FILE:dawn::webgpu_dawn>
+          $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
     )
   endif()
 endif()

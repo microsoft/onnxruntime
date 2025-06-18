@@ -16,7 +16,108 @@ concurrency:
   group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
+permissions:
+  contents: read
+  packages: write
+  attestations: write
+  id-token: write
+
 jobs:
+  AndroidBinarySizeCheckJob_MinimalBaseline:
+    runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        submodules: false
+
+    - name: Setup Android NDK
+      uses: ./.github/actions/setup-android-ndk
+      with:
+        ndk-version: 28.0.13004108
+
+    - name: Get Docker Image using Action
+      uses: microsoft/onnxruntime-github-actions/build-docker-image@v0.0.7
+      id: build_docker_image_step
+      with:
+        dockerfile: ${{ github.workspace }}/tools/ci_build/github/linux/docker/inference/x86_64/default/cpu/Dockerfile
+        image-name: ghcr.io/microsoft/onnxruntime/onnxruntimecpubuildcix64
+        push: true
+        azure-container-registry-name: onnxruntimebuildcache
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Set variables from config file
+      id: set_vars
+      run: |
+        import json, os
+
+        config_file_path = "tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
+        with open(config_file_path, mode="r") as config_file:
+            config = json.load(config_file)
+
+        def set_var(name, value):
+            print(f"Setting variable: {name} = '{value}'")
+            # Use GITHUB_ENV for setting environment variables
+            with open(os.environ['GITHUB_ENV'], 'a') as f:
+                f.write(f"{name}={value}\n")
+
+        set_var("BuildConfigType", config["type"])
+        set_var("BuildConfigOs", config["os"])
+      shell: python
+      working-directory: ${{ github.workspace }}
+
+    - name: Export GitHub Actions cache environment variables
+      uses: actions/github-script@v7
+      with:
+        script: |
+          core.exportVariable('ACTIONS_CACHE_URL', process.env.ACTIONS_CACHE_URL || '');
+          core.exportVariable('ACTIONS_RUNTIME_TOKEN', process.env.ACTIONS_RUNTIME_TOKEN || '');
+
+    - name: 1a. Build onnxruntime
+      run: |
+        set -e -x
+        BINARY_SIZE_THRESHOLD_ARGS=""
+        echo "Binary size threshold in bytes: 1306224"
+        BINARY_SIZE_THRESHOLD_ARGS="--threshold_size_in_bytes 1306224"
+
+        # Ensure ANDROID_NDK_HOME is available and get its real path
+        if [ -z "$ANDROID_NDK_HOME" ]; then
+          echo "ANDROID_NDK_HOME is not set."
+          exit 1
+        fi
+        NDK_HOME_REALPATH=$(realpath $ANDROID_NDK_HOME)
+
+        # Ensure ANDROID_HOME is available
+        if [ -z "$ANDROID_HOME" ]; then
+          echo "ANDROID_HOME is not set. Using default /usr/local/lib/android/sdk"
+          export ANDROID_HOME=/usr/local/lib/android/sdk
+        fi
+
+        docker run -e SYSTEM_COLLECTIONURI --rm \
+          --volume ${{ github.workspace }}:/onnxruntime_src \
+          --volume ${{ runner.temp }}:/build \
+          --volume $ANDROID_HOME:/android_home \
+          --volume $NDK_HOME_REALPATH:/ndk_home \
+          -w /onnxruntime_src \
+          -e ALLOW_RELEASED_ONNX_OPSET_ONLY=1 \
+          -e NIGHTLY_BUILD=1 \
+          -e BUILD_BUILDNUMBER=${{ github.run_number }} \
+          -e BUILD_SOURCEVERSION=${{ github.sha }} \
+          -e BUILD_ID=${{ github.run_id }} \
+          -e BUILD_REASON=${{ github.event_name }} \
+          -e BUILD_BRANCH=${{ github.ref }} \
+          -e ACTIONS_CACHE_URL \
+          -e ACTIONS_RUNTIME_TOKEN \
+          -e RUNNER_TEMP=/build \
+          ${{ steps.build_docker_image_step.outputs.full-image-name }} \
+            bash -c "python3 -m pip install -r /onnxruntime_src/tools/ci_build/requirements/pybind/requirements.txt && \
+                     python3 tools/ci_build/github/linux/ort_minimal/build_ort_and_check_binary_size.py \
+                       --build_dir /build/1a \
+                       ${BINARY_SIZE_THRESHOLD_ARGS} \
+                       tools/ci_build/github/linux/ort_minimal/build_check_binsize_config/android_minimal_baseline.config"
+      shell: bash
+
   android_nnapi_ep:
     runs-on: ["self-hosted", "1ES.Pool=onnxruntime-github-Ubuntu2204-AMD-CPU"]
     steps:
@@ -30,10 +131,10 @@ jobs:
           architecture: x64
 
 
-      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.6
+      - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
-          vcpkg-version: '2025.03.19'
-          vcpkg-hash: '17e96169cd3f266c4716fcdc1bb728e6a64f103941ece463a2834d50694eba4fb48f30135503fd466402afa139abc847ef630733c442595d1c34979f261b0114'
+          vcpkg-version: '2025.04.09'
+          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
@@ -71,7 +172,9 @@ jobs:
 
 
       - name: Build Minimal ORT with NNAPI and run tests
-        run: tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh "$(pwd)"
+        run:
+          tools/ci_build/github/linux/ort_minimal/nnapi_minimal_build_minimal_ort_and_run_tests.sh
+          "$(pwd)"
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py

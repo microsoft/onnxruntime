@@ -122,6 +122,7 @@
   if (onnxruntime_REDUCED_OPS_BUILD)
     substitute_op_reduction_srcs(onnxruntime_providers_cuda_src)
   endif()
+
   if(onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
     # cuda_provider_interface.cc is removed from the object target: onnxruntime_providers_cuda_obj and
     # added to the lib onnxruntime_providers_cuda separately.
@@ -129,10 +130,30 @@
     set(cuda_provider_interface_src ${ONNXRUNTIME_ROOT}/core/providers/cuda/cuda_provider_interface.cc)
     list(REMOVE_ITEM onnxruntime_providers_cuda_src ${cuda_provider_interface_src})
     onnxruntime_add_object_library(onnxruntime_providers_cuda_obj ${onnxruntime_providers_cuda_src})
-    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${cuda_provider_interface_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
+
+    set(onnxruntime_providers_cuda_all_srcs ${cuda_provider_interface_src})
+    if(WIN32)
+      # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+      list(APPEND onnxruntime_providers_cuda_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+    endif()
+
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_all_srcs}
+                                                                     $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   else()
-    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_src})
+    set(onnxruntime_providers_cuda_all_srcs ${onnxruntime_providers_cuda_src})
+    if(WIN32)
+      # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
+      list(APPEND onnxruntime_providers_cuda_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/cuda/onnxruntime_providers_cuda.rc")
+    endif()
+
+    onnxruntime_add_shared_library_module(onnxruntime_providers_cuda ${onnxruntime_providers_cuda_all_srcs})
   endif()
+
+  if(WIN32)
+    # FILE_NAME preprocessor definition is used in onnxruntime_providers_cuda.rc
+    target_compile_definitions(onnxruntime_providers_cuda PRIVATE FILE_NAME=\"onnxruntime_providers_cuda.dll\")
+  endif()
+
   # config_cuda_provider_shared_module can be used to config onnxruntime_providers_cuda_obj, onnxruntime_providers_cuda & onnxruntime_providers_cuda_ut.
   # This function guarantees that all 3 targets have the same configurations.
   function(config_cuda_provider_shared_module target)
@@ -158,7 +179,7 @@
       set(onnxruntime_NVCC_THREADS "1" CACHE STRING "Number of threads that NVCC can use for compilation.")
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--threads \"${onnxruntime_NVCC_THREADS}\">")
     endif()
-    
+
     # Since CUDA 12.8, compiling diagnostics become stricter
     if (CMAKE_CUDA_COMPILER_VERSION VERSION_GREATER_EQUAL 12.8)
       target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--relocatable-device-code=true>")
@@ -239,6 +260,16 @@
     # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found
     set_target_properties(${target} PROPERTIES LINKER_LANGUAGE CUDA)
     set_target_properties(${target} PROPERTIES FOLDER "ONNXRuntime")
+
+    if("90" IN_LIST CMAKE_CUDA_ARCHITECTURES_ORIG)
+      target_compile_options(${target} PRIVATE $<$<COMPILE_LANGUAGE:CUDA>:-Xptxas=-w>)
+      target_compile_definitions(${target} PRIVATE COMPILE_HOPPER_TMA_GEMMS)
+      if (MSVC)
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /bigobj>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:--diag-suppress=177>")
+        target_compile_options(${target} PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:-Xcompiler /wd4172>")
+      endif()
+    endif()
 
     if (onnxruntime_ENABLE_CUDA_PROFILING) # configure cupti for cuda profiling
       target_link_libraries(${target} PRIVATE CUDA::cupti)

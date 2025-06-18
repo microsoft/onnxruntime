@@ -158,6 +158,11 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
                                             const InlinedHashMap<std::string, OnnxTensorData>& outputs) {
   auto webnnEnsureTensor = emscripten::val::module_property("webnnEnsureTensor");
   auto promises = emscripten::val::array();
+  bool trace = emscripten::val::module_property("webnnEnableTraceEvent").as<bool>();
+  emscripten::val console = emscripten::val::global("console");
+  if (trace) {
+    console.call<void>("time", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
+  }
   for (const auto& [_, tensor] : inputs) {
     emscripten::val shape = emscripten::val::array();
     for (const auto& dim : tensor.tensor_info.shape) {
@@ -175,6 +180,9 @@ onnxruntime::common::Status Model::Dispatch(const InlinedHashMap<std::string, On
     }
     auto ml_tensor = webnnEnsureTensor(emscripten::val::undefined(), reinterpret_cast<intptr_t>(tensor.buffer), tensor.tensor_info.data_type, shape, false);
     promises.call<void>("push", ml_tensor);
+  }
+  if (trace) {
+    console.call<void>("timeEnd", emscripten::val("ORT::Dispatch::webnnEnsureTensor"));
   }
   auto ml_tensors = emscripten::val::global("Promise").call<emscripten::val>("all", promises).await();
   for (const auto& [name, _] : inputs) {

@@ -361,7 +361,7 @@ struct TensorArray : public ArgBase {
             tensor = std::make_unique<Custom::Tensor<std::string>>(ctx, ith_input, true);
             break;
           default:
-            ORT_CXX_API_THROW("unknow input type", ORT_RUNTIME_EXCEPTION);
+            ORT_CXX_API_THROW("unknown input type", ORT_RUNTIME_EXCEPTION);
             break;
         }
         tensors_.emplace_back(tensor.release());

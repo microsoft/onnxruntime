@@ -593,7 +593,7 @@ void InferenceSession::TraceSessionOptions(const SessionOptions& session_options
 
   LOGS(logger, INFO) << session_options;
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   std::string optimized_model_filepath = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.optimized_model_filepath);
   std::string profile_file_prefix = ORT_TSTR_CONVERT_TO_PRINTABLE_STRING(session_options.profile_file_prefix);
 
@@ -1286,7 +1286,9 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   // 4. partition nodes based on EP capabilities. EPs may fuse nodes during this process.
   // 5. run level 2+ optimizations. level 2 and 3 optimizations use contrib ops.
   // 6. insert cast nodes (required transformer).
-  // 7. insert copy nodes (required transformer).
+  // 7. run level 4 optimizations.
+  // 8. Repeat steps 5 to 7 depending on the graph optimizations loop level.
+  // 9. insert copy nodes (required transformer).
 
   // Create GraphOptimizerRegistry instance for providing predefined graph optimizers and selection functions for EPs to lookup
   auto graph_optimizer_registry = std::make_unique<GraphOptimizerRegistry>(&session_options_,
@@ -1307,9 +1309,24 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
   }
 
   auto apply_transformer_once = [](const GraphTransformer& transformer, const logging::Logger& logger,
-                                   Graph& graph) {
+                                   Graph& graph, bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
     bool modified = false;
-    return transformer.Apply(graph, modified, logger);
+    auto status = transformer.Apply(graph, modified, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || modified;
+    }
+    return status;
+  };
+
+  auto apply_transformer_at_level = [](onnxruntime::GraphTransformerManager& graph_transformer_mgr,
+                                       const TransformerLevel& level, const logging::Logger& logger, Graph& graph,
+                                       bool* is_graph_modified = nullptr) -> onnxruntime::common::Status {
+    graph_transformer_mgr.ClearGraphModified();
+    auto status = graph_transformer_mgr.ApplyTransformers(graph, level, logger);
+    if (is_graph_modified) {
+      *is_graph_modified = *is_graph_modified || graph_transformer_mgr.IsGraphModified();
+    }
+    return status;
   };
 
   // ensure potential QDQ node units have unique DQ nodes
@@ -1340,7 +1357,7 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
     transform_layout_fn = [this](Graph& graph_to_transform, bool& modified,
                                  const IExecutionProvider& execution_provider,
                                  const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       ORT_RETURN_IF_ERROR_SESSIONID_(
           layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                       std::move(cpu_allocator), debug_graph_fn));
@@ -1396,23 +1413,70 @@ common::Status InferenceSession::TransformGraph(onnxruntime::Graph& graph, bool 
                                                        session_options_.config_options, *session_logger_,
                                                        mode, session_options_.GetEpContextGenerationOptions(), debug_graph_fn));
 
-  // apply Level2 and higher transformers.
-  // we do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
-  for (int i = static_cast<int>(TransformerLevel::Level2); i <= static_cast<int>(TransformerLevel::MaxLevel); i++) {
-    ORT_RETURN_IF_ERROR_SESSIONID_(
-        graph_transformer_mgr_.ApplyTransformers(graph, static_cast<TransformerLevel>(i), *session_logger_));
-  }
+  // Get graph optimizations loop level from session config, if not present, set to default value of 1 as per
+  // the definition of kOrtSessionOptionsGraphOptimizationsLoopLevel.
+  unsigned int graph_optimizations_loop_level = static_cast<unsigned int>(std::stoi(
+      session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsGraphOptimizationsLoopLevel, "1")));
 
-  // Insert cast node/s.
-  {
-    const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
-        kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
-    const KernelRegistry* cpu_regs = nullptr;
-    if (!kernel_regs.empty()) {
-      cpu_regs = kernel_regs[0];
+  // Running for an arbitrary number of time to mitigate if graph optimization is stuck in the loop.
+  // Generating warning once we have gone through this loop for more than 3 times, it can be changed in the future
+  for (int steps = 0; steps < 10; steps++) {
+    // Warning that we are running this loop too many times
+    if (steps >= 3) {
+      LOGS(*session_logger_, WARNING) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                      << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
+    } else {
+      LOGS(*session_logger_, INFO) << "Running graph optimizations in loop " << (steps + 1) << " time/s"
+                                   << " (Graph Optimizations Loop Level : " << graph_optimizations_loop_level << ")";
     }
-    InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
-    ORT_RETURN_IF_ERROR_SESSIONID_(apply_transformer_once(insert_cast_transformer, *session_logger_, graph));
+
+    // Flag to check if applying optimizations should be repeated on basis of if the graph is changed.
+    // If graph is not changed it will remain false and we will exit out of this loop.
+    bool is_graph_modified = false;
+
+    // Apply Level2 and higher transformers.
+    // We do not run Level 1 again as those transformers assume partitioning will run later to do node assignment.
+    // Re-Run the Level2+ optimizations. The idea behind re-running Level2 and Level3 graph transforms is that,
+    // after the fusion, the nodes are can be in a format which might be supported by other graph transforms which
+    // were skipped before. Hence, some of the transforms not applied before is now valid and can be applied to
+    // create a more optimal graph for execution.
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level2,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level3,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+
+    // Insert cast node/s.
+    {
+      const InlinedVector<gsl::not_null<const KernelRegistry*>> kernel_regs =
+          kernel_registry_manager_.GetKernelRegistriesByProviderType(kCpuExecutionProvider);
+
+      const KernelRegistry* cpu_regs = nullptr;
+      if (!kernel_regs.empty()) {
+        // NOTE: This assumes that CPU kernels are always at the n-1 index of kernel registries vector as per the design
+        //       of GetKernelRegistriesByProviderType function.
+        cpu_regs = kernel_regs[kernel_regs.size() - 1];
+      }
+
+      InsertCastTransformer insert_cast_transformer{"CastFloat16Transformer", cpu_regs};
+      ORT_RETURN_IF_ERROR_SESSIONID_(
+          apply_transformer_once(insert_cast_transformer, *session_logger_, graph,
+                                 ((graph_optimizations_loop_level > 1) ? &is_graph_modified : nullptr)));
+    }
+
+    // Level 4 Transforms must be run after Insert Cast Node/s
+    ORT_RETURN_IF_ERROR_SESSIONID_(
+        apply_transformer_at_level(graph_transformer_mgr_, TransformerLevel::Level4,
+                                   *session_logger_, graph,
+                                   ((graph_optimizations_loop_level > 0) ? &is_graph_modified : nullptr)));
+
+    // Break if no more optimizations are made
+    if (!is_graph_modified) {
+      break;
+    }
   }
 
   // Insert copy node/s.
@@ -1666,6 +1730,131 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
   return false;
 }
 
+#if !defined(ORT_MINIMAL_BUILD)
+[[maybe_unused]] static std::string ModelWeightDataType(const Graph& graph) {
+  std::string data_type_list;
+
+  for (int i = 0; i < ONNX_NAMESPACE::TensorProto_DataType_DataType_ARRAYSIZE; ++i) {
+    if (graph.weight_data_type_freq_[i] > 0) {
+      if (!data_type_list.empty()) {
+        data_type_list += ", ";
+      }
+      data_type_list += TensorProto_DataType_Name(i);
+      data_type_list += ": ";
+      data_type_list += std::to_string(graph.weight_data_type_freq_[i]);
+    }
+  }
+
+  return data_type_list;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::size_t GetStringHash(const std::string& string, std::size_t prev_hash) {
+  std::size_t hash = 0;
+  std::hash<std::string> hasher;
+  const uint64_t golden_ratio = 0x9e3779b9;
+
+  /*
+    Combine the current string's hash into the final hash using a mixing function.
+    The mixing function ensures that the order of the string affects the final hash
+    and reduces the likelihood of hash collisions.
+    Here's the breakdown:
+    - hasher(string): The hash of the current string being processed.
+    - 0x9e3779b9: A constant derived from the golden ratio, often used in hash functions
+                  to improve distribution and reduce collisions.
+    - (prev_hash << 6) + (prev_hash >> 2): A bitwise operation that shifts the bits to
+                                           introduce additional entropy.
+  */
+
+  hash = hasher(string) + golden_ratio + (prev_hash << 6) + (prev_hash >> 2);
+  return hash;
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Graph Hash
+  const auto& nodes = graph.Nodes();
+  const std::size_t total_nodes = graph.NumberOfNodes();
+  const std::size_t node_step = (total_nodes > node_hash_count) ? (total_nodes / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& node : nodes) {
+    if (index % node_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each node component using GetStringHash
+    final_hash = GetStringHash(node.Name(), final_hash);
+    final_hash = GetStringHash(node.OpType(), final_hash);
+    final_hash = GetStringHash(node.Domain(), final_hash);
+
+    // Hash the input definitions
+    for (const auto& input : node.InputDefs()) {
+      if (input->Exists()) {
+        final_hash = GetStringHash(input->Name(), final_hash);
+      }
+    }
+
+    // Hash the output definitions
+    for (const auto& output : node.OutputDefs()) {
+      if (output->Exists()) {
+        final_hash = GetStringHash(output->Name(), final_hash);
+      }
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
+#ifdef _WIN32
+[[maybe_unused]] static std::string ComputeModelWeightHash(const InitializedTensorSet& initializers) {
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
+
+  // Weight Hash
+  const size_t total_initializers = initializers.size();
+  const size_t initializer_step = (total_initializers > node_hash_count) ? (total_initializers / node_hash_count) : 1;
+
+  size_t index = 0;
+  for (const auto& [tensor_name, tensor] : initializers) {
+    if (index % initializer_step != 0) {
+      ++index;
+      continue;
+    }
+
+    // Combine the hash of each tensor component using GetStringHash
+    final_hash = GetStringHash(tensor_name, final_hash);
+
+    if (tensor->has_data_type()) {
+      final_hash = GetStringHash(std::to_string(tensor->data_type()), final_hash);
+    }
+
+    if (tensor->has_raw_data()) {
+      final_hash = GetStringHash(tensor->raw_data(), final_hash);
+    }
+
+    ++index;
+  }
+
+  // Convert the final hash to a string
+  std::ostringstream hash_stream;
+  hash_stream << std::hex << final_hash;
+  return hash_stream.str();
+}
+#endif
+
 common::Status InferenceSession::AddPrePackedWeightsContainer(PrepackedWeightsContainer* prepacked_weights_container) {
   if (prepacked_weights_container == nullptr) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
@@ -1709,7 +1898,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
         [](Graph& graph_to_transform, bool& modified,
            const IExecutionProvider& execution_provider,
            const layout_transformation::DebugGraphFn& debug_graph_fn) -> Status {
-      AllocatorPtr cpu_allocator = std::make_shared<CPUAllocator>();
+      AllocatorPtr cpu_allocator = CPUAllocator::DefaultInstance();
       return layout_transformation::TransformLayoutForEP(graph_to_transform, modified, execution_provider,
                                                          std::move(cpu_allocator), debug_graph_fn);
     };
@@ -1742,8 +1931,7 @@ Status PartitionOrtFormatModel(onnxruntime::Graph& graph,
 Status ApplyOrtFormatModelRuntimeOptimizations(
     onnxruntime::Graph& graph, const logging::Logger& logger, const SessionOptions& session_options,
     const InlinedHashSet<std::string>& optimizers_to_disable, const IExecutionProvider& cpu_ep,
-    concurrency::ThreadPool* intra_op_thread_pool,
-    std::unordered_map<std::string, std::unique_ptr<Tensor>>* p_buffered_tensors) {
+    concurrency::ThreadPool* intra_op_thread_pool) {
   bool modified = false;
 
   for (int level = static_cast<int>(TransformerLevel::Level2);
@@ -1751,7 +1939,7 @@ Status ApplyOrtFormatModelRuntimeOptimizations(
        ++level) {
     const auto transformers = optimizer_utils::GenerateTransformersForMinimalBuild(
         static_cast<TransformerLevel>(level), session_options, SatRuntimeOptimizationLoadContext{}, cpu_ep, logger,
-        optimizers_to_disable, intra_op_thread_pool, p_buffered_tensors);
+        optimizers_to_disable, intra_op_thread_pool);
 
     for (const auto& transformer : transformers) {
       ORT_RETURN_IF_ERROR(transformer->Apply(graph, modified, logger));
@@ -1831,10 +2019,11 @@ common::Status InferenceSession::Initialize() {
 
     // Verify that there are no external initializers in the graph if external data is disabled.
     onnxruntime::Graph& graph = model_->MainGraph();
+
 #ifdef DISABLE_EXTERNAL_INITIALIZERS
     const InitializedTensorSet& initializers = graph.GetAllInitializedTensors();
     for (const auto& it : initializers) {
-      if (utils::HasExternalData(*it.second)) {
+      if (utils::HasExternalData(*it.second) && !utils::HasExternalDataInMemory(*it.second)) {
         return common::Status(common::ONNXRUNTIME, common::FAIL,
                               "Initializer tensors with external data is not allowed.");
       }
@@ -1876,6 +2065,23 @@ common::Status InferenceSession::Initialize() {
 #ifdef ONNXRUNTIME_ENABLE_INSTRUMENT
     TraceLoggingWriteStart(session_activity, "OrtInferenceSessionActivity");
     session_activity_started_ = true;
+#endif
+    // Generate and cache telemetry data for the model when caller framework is WinAI
+    std::string model_weight_type, model_graph_hash, model_weight_hash;
+#ifdef ORT_CALLER_FRAMEWORK
+    if (std::string_view(ORT_CALLER_FRAMEWORK) == "WinAI") {
+      InitializedTensorSet initializers = graph.GetAllInitializedTensors();
+#if !defined(ORT_MINIMAL_BUILD)
+      model_weight_type = ModelWeightDataType(graph);
+      SetWeightDataType(model_weight_type);
+#endif
+#ifdef _WIN32
+      model_graph_hash = ComputeModelGraphHash(graph);
+      model_weight_hash = ComputeModelWeightHash(initializers);
+      SetGraphHash(model_graph_hash);
+      SetWeightHash(model_weight_hash);
+#endif
+    }
 #endif
 
     // now that we have all the execution providers, create the session state
@@ -2186,8 +2392,7 @@ common::Status InferenceSession::Initialize() {
       const auto& cpu_ep = *execution_providers_.Get(onnxruntime::kCpuExecutionProvider);
       ORT_RETURN_IF_ERROR_SESSIONID_(
           ApplyOrtFormatModelRuntimeOptimizations(graph, *session_logger_, session_options_, optimizers_to_disable_,
-                                                  cpu_ep, GetIntraOpThreadPoolToUse(),
-                                                  session_state_->GetMutableBufferedTensors()));
+                                                  cpu_ep, GetIntraOpThreadPoolToUse()));
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
     }
 
@@ -2260,14 +2465,17 @@ common::Status InferenceSession::Initialize() {
     session_state_->PruneRemovableAttributes();
 
     // and log telemetry
+    std::filesystem::path model_path = graph.ModelPath();
+    std::string model_file_name = model_path.filename().string();
     bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
     env.GetTelemetryProvider().LogSessionCreation(
         session_id_, model_->IrVersion(), model_->ProducerName(), model_->ProducerVersion(), model_->Domain(),
-        graph.DomainToVersionMap(), graph.Name(), model_->MetaData(),
-        telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
+        graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+        model_->MetaData(), telemetry_.event_name_, execution_providers_.GetIds(), model_has_fp16_inputs, false);
 
     LOGS(*session_logger_, INFO) << "Session successfully initialized.";
   }
+
   ORT_CATCH(const NotImplementedException& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Exception during initialization: ", ex.what());
@@ -2664,7 +2872,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
                              gsl::span<const std::string> feed_names, gsl::span<const OrtValue> feeds,
                              gsl::span<const std::string> output_names, std::vector<OrtValue>* p_fetches,
                              const std::vector<OrtDevice>* p_fetches_device_info) {
-  TimePoint tp;
+  TimePoint tp = std::chrono::high_resolution_clock::now();
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
@@ -2832,18 +3040,40 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // keep track of telemetry
-  ++telemetry_.total_runs_since_last_;
-  telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+  int64_t batch_size = 1;
+  for (const auto& feed : feeds) {
+    if (!feed.IsTensor()) {
+      continue;
+    }
+
+    const Tensor& tensor = feed.Get<Tensor>();
+    const TensorShape& shape = tensor.Shape();
+    if (shape.NumDimensions() > 0) {
+      batch_size = shape[0];  // Extract batch size
+    }
+    // Exit the loop after finding the first tensor since subsequent feeds will have the same batch size.
+    break;
+  }
 
   // time to send telemetry?
-  if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
-    // send the telemetry
-    env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
-                                              telemetry_.total_run_duration_since_last_);
-    // reset counters
-    telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
-    telemetry_.total_runs_since_last_ = 0;
-    telemetry_.total_run_duration_since_last_ = 0;
+  {
+    // Adding lock_guard here to ensure that telemetry updates are thread-safe.
+    std::lock_guard<std::mutex> telemetry_lock(telemetry_mutex_);
+    ++telemetry_.total_runs_since_last_;
+    telemetry_.total_run_duration_since_last_ += TimeDiffMicroSeconds(tp);
+    telemetry_.duration_per_batch_size_[batch_size] += TimeDiffMicroSeconds(tp);
+
+    if (TimeDiffMicroSeconds(telemetry_.time_sent_last_) > Telemetry::kDurationBetweenSending) {
+      // send the telemetry
+      env.GetTelemetryProvider().LogRuntimePerf(session_id_, telemetry_.total_runs_since_last_,
+                                                telemetry_.total_run_duration_since_last_,
+                                                telemetry_.duration_per_batch_size_);
+      // reset counters
+      telemetry_.time_sent_last_ = std::chrono::high_resolution_clock::now();
+      telemetry_.total_runs_since_last_ = 0;
+      telemetry_.total_run_duration_since_last_ = 0;
+      telemetry_.duration_per_batch_size_.clear();
+    }
   }
 
   // log evaluation stop to trace logging provider
@@ -3222,19 +3452,22 @@ common::Status InferenceSession::ValidateAndParseShrinkArenaString(const std::st
     }
 
     // Shrink if it is an arena based allocator
-    auto alloc = session_state_->GetAllocator(OrtDevice(device_type, memory_type, device_id));
-
-    if (alloc == nullptr) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Did not find an arena based allocator registered for device-id ",
-                             " combination in the memory arena shrink list: ", device_id_pair);
+    // Iterate through the registered allocators as we could have multiple allocators for the device+type
+    // if they differ by vendor_id.
+    for (const auto& [device, allocator_ptr] : session_state_->GetAllocators()) {
+      if (device.Type() == device_type && device.MemType() == memory_type && device.Id() == device_id) {
+        if (allocator_ptr->Info().alloc_type == OrtAllocatorType::OrtArenaAllocator) {
+          arenas_to_shrink.push_back(allocator_ptr);
+          break;
+        }
+      }
     }
 
-    if (alloc->Info().alloc_type != OrtAllocatorType::OrtArenaAllocator) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "The registered allocator for device-id ",
-                             " combination is not an arena based allocator: ", device_id_pair);
+    if (arenas_to_shrink.empty()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Did not find an arena based allocator registered for device-id ",
+                             "combination in the memory arena shrink list: ", device_id_pair);
     }
-
-    arenas_to_shrink.push_back(std::move(alloc));
   }
 
   return Status::OK();
@@ -3266,6 +3499,7 @@ common::Status InferenceSession::SaveModelMetadata(const onnxruntime::Model& mod
 
   // save model metadata
   model_metadata_.producer_name = model.ProducerName();
+  model_metadata_.producer_version = model.ProducerVersion();
   model_metadata_.description = model.DocString();
   model_metadata_.graph_description = model.GraphDocString();
   model_metadata_.domain = model.Domain();
@@ -3390,8 +3624,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
         if (use_full_build_optimizations) {
           return optimizer_utils::GenerateTransformers(level, session_options_, cpu_ep, logger,
                                                        optimizers_to_disable_,
-                                                       GetIntraOpThreadPoolToUse(),
-                                                       session_state_->GetMutableBufferedTensors());
+                                                       GetIntraOpThreadPoolToUse());
         } else {
           const auto sat_context =
               minimal_build_optimization_handling ==
@@ -3402,8 +3635,7 @@ common::Status InferenceSession::AddPredefinedTransformers(
           return optimizer_utils::GenerateTransformersForMinimalBuild(level, session_options_, sat_context, cpu_ep,
                                                                       logger,
                                                                       optimizers_to_disable_,
-                                                                      GetIntraOpThreadPoolToUse(),
-                                                                      session_state_->GetMutableBufferedTensors());
+                                                                      GetIntraOpThreadPoolToUse());
         }
       }();
 
@@ -3428,6 +3660,10 @@ common::Status InferenceSession::WaitForNotification(Notification* p_executor_do
 
 const Model& InferenceSession::GetModel() const {
   return *model_;
+}
+
+const Environment& InferenceSession::GetEnvironment() const {
+  return environment_;
 }
 
 SessionIOBinding::SessionIOBinding(InferenceSession* session) : sess_(session) {
@@ -3465,11 +3701,16 @@ void InferenceSession::LogAllSessions() {
     auto model = session->model_;
     if (nullptr != model) {
       onnxruntime::Graph& graph = model->MainGraph();
+      std::filesystem::path model_path = graph.ModelPath();
+      std::string model_file_name = model_path.filename().string();
       bool model_has_fp16_inputs = ModelHasFP16Inputs(graph);
+      std::string model_weight_type = session->GetWeightDataType();
+      std::string model_graph_hash = session->GetGraphHash();
+      std::string model_weight_hash = session->GetWeightHash();
       env.GetTelemetryProvider().LogSessionCreation(
           session->session_id_, model->IrVersion(), model->ProducerName(), model->ProducerVersion(), model->Domain(),
-          graph.DomainToVersionMap(), graph.Name(), model->MetaData(),
-          session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
+          graph.DomainToVersionMap(), model_file_name, graph.Name(), model_weight_type, model_graph_hash, model_weight_hash,
+          model->MetaData(), session->telemetry_.event_name_, session->execution_providers_.GetIds(), model_has_fp16_inputs, true);
     }
 
     InferenceSession::TraceSessionOptions(session->session_options_, true, *session->session_logger_);

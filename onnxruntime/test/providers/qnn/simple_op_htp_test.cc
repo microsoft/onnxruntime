@@ -991,6 +991,22 @@ TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test ScatterND op on HTP
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {},
+                     17,
+                     ExpectedEPNodeAssignment::All);
+}
+
 // Test that Or is not yet supported on CPU backend.
 TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
   RunOpTest<bool>("Or",
@@ -999,6 +1015,78 @@ TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
                   {},
                   17,
                   ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction ADD on HTP
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_add) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "add"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction Mul on HTP
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_mul) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "mul"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction Max on CPU Fallback
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_max) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "max"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::None);
+}
+
+// Test ScatterND with reduction Min on CPU Fallback
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_min) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "min"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::None);
 }
 
 // Test 8-bit QDQ GridSample with bilinear

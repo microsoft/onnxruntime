@@ -59,7 +59,7 @@ Status PrepareSliceComputeMetadata(const Node& slice_node,
 
     const auto* tensor_proto = graph_viewer.GetConstantInitializer(input_defs[input_idx]->Name());
     ORT_RETURN_IF_NOT(tensor_proto, "Failed to get constant initializer.");
-    Initializer unpacked_tensor(*tensor_proto, graph_viewer.ModelPath());
+    Initializer unpacked_tensor(graph_viewer.GetGraph(), *tensor_proto, graph_viewer.ModelPath());
     const auto data_type = unpacked_tensor.data_type();
     if (data_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
       auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
@@ -143,21 +143,6 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
       }
     }
 
-    // Int32, float and float16 are supported by CoreML slice_by_index.
-    // We convert any int64 model input to int32 when running the CoreML model for the partition.
-    // Any other integer data created at runtime is the output from CoreML operations, and should int32 not int64.
-    // Based on that, we assume that the actual input when running will be int32, so we override the output data
-    // type to reflect this.
-    // If we were to leave it as TensorProto_DataType_INT64 the CoreML model would be invalid.
-    std::optional<int32_t> output_datatype;
-
-    int32_t input_type;
-    ORT_RETURN_IF_NOT(GetType(*node.InputDefs()[0], input_type, logger), "Failed to get input type");
-
-    if (input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64) {
-      output_datatype = ONNX_NAMESPACE::TensorProto_DataType_INT32;
-    }
-
     auto op = model_builder.CreateOperation(node, "slice_by_index");
 
     auto begin = model_builder.AddConstant(op->type(), "begin", AsSpan(compute_metadata.starts_));
@@ -173,7 +158,7 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     AddOperationInput(*op, "begin_mask", begin_mask);
     AddOperationInput(*op, "end_mask", end_mask);
 
-    AddOperationOutput(*op, *output_defs[0], output_datatype);
+    AddOperationOutput(*op, *output_defs[0]);
 
     model_builder.AddOperation(std::move(op));
 

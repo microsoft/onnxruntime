@@ -30,6 +30,11 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
+        OrtCompileApiFlags,  # noqa: F401
+        OrtEpDevice,  # noqa: F401
+        OrtExecutionProviderDevicePolicy,  # noqa: F401
+        OrtHardwareDevice,  # noqa: F401
+        OrtHardwareDeviceType,  # noqa: F401
         OrtMemoryInfo,  # noqa: F401
         OrtMemType,  # noqa: F401
         OrtSparseFormat,  # noqa: F401
@@ -44,11 +49,15 @@ try:
         get_available_providers,  # noqa: F401
         get_build_info,  # noqa: F401
         get_device,  # noqa: F401
+        get_ep_devices,  # noqa: F401
         get_version_string,  # noqa: F401
         has_collective_ops,  # noqa: F401
+        register_execution_provider_library,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
+        set_global_thread_pool_sizes,  # noqa: F401
         set_seed,  # noqa: F401
+        unregister_execution_provider_library,  # noqa: F401
     )
 
     import_capi_exception = None
@@ -64,6 +73,7 @@ from onnxruntime.capi.onnxruntime_inference_collection import (
     AdapterFormat,  # noqa: F401
     InferenceSession,  # noqa: F401
     IOBinding,  # noqa: F401
+    ModelCompiler,  # noqa: F401
     OrtDevice,  # noqa: F401
     OrtValue,  # noqa: F401
     SparseTensor,  # noqa: F401

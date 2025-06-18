@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.event_name == 'workflow_dispatch' }}
+  group: ${{ github.workflow }}-${{ github.event_name == 'pull_request' && github.ref || github.sha }}
   cancel-in-progress: true
 
 jobs:
@@ -109,18 +109,7 @@ jobs:
           github_token: ${{ secrets.github_token }}
           reporter: github-pr-check
           level: info
-          flags: --linelength=120
-            --exclude=java/src/main/native/*.c
-            --exclude=onnxruntime/core/mlas/inc/*
-            --exclude=onnxruntime/core/mlas/lib/*
-            --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/*
-            --exclude=build/Debug/*
-            --exclude=cmake/*
-            --exclude=csharp/test/*
-            --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/*
-            --exclude=orttraining/orttraining/test/*
-            --exclude=onnxruntime/test/*
-            --exclude=winml/*
+          flags: --linelength=120 --exclude=java/src/main/native/*.c --exclude=onnxruntime/core/mlas/inc/* --exclude=onnxruntime/core/mlas/lib/* --exclude=onnxruntime/contrib_ops/cuda/bert/flash_attention/* --exclude=build/Debug/* --exclude=cmake/* --exclude=csharp/test/* --exclude=onnxruntime/core/providers/dml/DmlExecutionProvider/src/Operators/GeneratedShaders/* --exclude=orttraining/orttraining/test/* --exclude=onnxruntime/test/* --exclude=winml/*
           filter: "-runtime/references"
 
   lint-js:

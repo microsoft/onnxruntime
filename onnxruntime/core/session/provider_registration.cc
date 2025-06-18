@@ -26,7 +26,7 @@
 #include "core/providers/dml/dml_provider_factory_creator.h"
 #endif
 
-#if defined(USE_NV)
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
 #include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #endif
 using namespace onnxruntime;
@@ -132,7 +132,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     return status;
   }
 
-#ifdef _WIN32
+#if defined(_WIN32) && defined(ONNXRUNTIME_ENABLE_INSTRUMENT)
   for (const auto& config_pair : provider_options) {
     TraceLoggingWrite(
         telemetry_provider_handle,
@@ -148,6 +148,11 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
   auto create_not_supported_status = [&provider_name]() {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  (std::string(provider_name) + " execution provider is not supported in this build. ").c_str());
+  };
+
+  auto create_failed_to_load_provider_status = [&provider_name]() {
+    return OrtApis::CreateStatus(ORT_FAIL,
+                                 (std::string("Failed to load provider ") + provider_name).c_str());
   };
 
   auto create_unknown_provider_status = [&provider_name](gsl::span<const EpToAppend> supported_eps) -> OrtStatus* {
@@ -200,17 +205,24 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::QNN: {
-#if defined(USE_QNN)
-      options->provider_factories.push_back(QNNProviderFactoryCreator::Create(provider_options, &(options->value)));
+#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
+      if (auto ep_factory = QNNProviderFactoryCreator::Create(provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
       status = create_not_supported_status();
 #endif
       break;
     }
     case EpID::OpenVINO: {
-#if defined(USE_OPENVINO)
-      options->provider_factories.push_back(OpenVINOProviderFactoryCreator::Create(&provider_options,
-                                                                                   &(options->value)));
+#if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
+      if (auto ep_factory = OpenVINOProviderFactoryCreator::Create(&provider_options, &(options->value)); ep_factory) {
+        options->provider_factories.push_back(std::move(ep_factory));
+      } else {
+        status = create_failed_to_load_provider_status();
+      }
 #else
       status = create_not_supported_status();
 #endif
@@ -271,7 +283,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::VitisAI: {
-#ifdef USE_VITISAI
+#if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)
       status = OrtApis::SessionOptionsAppendExecutionProvider_VitisAI(options, provider_options_keys,
                                                                       provider_options_values, num_keys);
 #else
@@ -288,12 +300,13 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
       break;
     }
     case EpID::NvTensorRtRtx: {
-#if defined(USE_NV)
-      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options);
-      if (!factory) {
-        return OrtApis::CreateStatus(ORT_FAIL, "SessionOptionsAppendExecutionProvider_Nv_TensorRT_RTX: Failed to load shared library");
+#if defined(USE_NV) || defined(USE_NV_PROVIDER_INTERFACE)
+      auto factory = onnxruntime::NvProviderFactoryCreator::Create(provider_options, &(options->value));
+      if (factory) {
+        options->provider_factories.push_back(factory);
+      } else {
+        status = create_failed_to_load_provider_status();
       }
-      options->provider_factories.push_back(factory);
 #else
       status = create_not_supported_status();
 #endif
@@ -301,6 +314,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider,
     }
     default:
       ORT_UNUSED_PARAMETER(options);
+      ORT_UNUSED_PARAMETER(create_failed_to_load_provider_status);
       status = create_unknown_provider_status(supported_eps);
   }
 

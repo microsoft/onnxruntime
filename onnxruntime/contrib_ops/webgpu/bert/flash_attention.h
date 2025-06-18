@@ -37,11 +37,13 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
   FlashAttentionProgram(const std::string& kernel_name,
                         bool has_attention_bias,
                         bool is_qualcomm,
+                        bool is_fp16,
                         int qkv_head_size,
                         int qkv_num_heads)
       : Program{kernel_name},
         has_attention_bias_(has_attention_bias),
         is_qualcomm_(is_qualcomm),
+        is_fp16_(is_fp16),
         qkv_head_size_(qkv_head_size),
         qkv_num_heads_(qkv_num_heads) {
   }
@@ -60,6 +62,7 @@ class FlashAttentionProgram final : public Program<FlashAttentionProgram> {
  private:
   bool has_attention_bias_;
   bool is_qualcomm_;
+  bool is_fp16_;
   int qkv_head_size_;
   int qkv_num_heads_;
 };
@@ -78,7 +81,8 @@ class FlashAttentionDecodeQKTProgram final : public Program<FlashAttentionDecode
                                           {"alpha", ProgramUniformVariableDataType::Float32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   bool has_attention_bias_;
@@ -97,7 +101,8 @@ class FlashAttentionDecodeSplitVxProgram final : public Program<FlashAttentionDe
                                           {"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"present_sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"n_reps", ProgramUniformVariableDataType::Uint32},
-                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;
@@ -114,7 +119,8 @@ class FlashAttentionDecodeVxReduceProgram final : public Program<FlashAttentionD
 
   WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"head_size_vec", ProgramUniformVariableDataType::Uint32},
                                           {"num_total_seq_length_tile", ProgramUniformVariableDataType::Uint32},
-                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32});
+                                          {"num_head_size_tile", ProgramUniformVariableDataType::Uint32},
+                                          {"num_heads", ProgramUniformVariableDataType::Uint32});
 
  private:
   uint32_t tile_size_;

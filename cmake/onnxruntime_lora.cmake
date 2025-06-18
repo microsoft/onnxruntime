@@ -22,7 +22,7 @@ add_dependencies(onnxruntime_lora ${onnxruntime_EXTERNAL_DEPENDENCIES})
 set_target_properties(onnxruntime_lora PROPERTIES FOLDER "ONNXRuntime")
 
 if (NOT onnxruntime_BUILD_SHARED_LIB)
-    install(TARGETS onnxruntime_lora
+    install(TARGETS onnxruntime_lora EXPORT ${PROJECT_NAME}Targets
             ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}
             RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}

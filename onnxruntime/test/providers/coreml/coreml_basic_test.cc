@@ -137,7 +137,7 @@ TEST(CoreMLExecutionProviderTest, FunctionTest) {
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f};
   OrtValue ml_value_x;
 
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
   OrtValue ml_value_y;
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_y);
@@ -169,7 +169,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxCastTest) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
@@ -198,7 +198,7 @@ TEST(CoreMLExecutionProviderTest, ArgMaxUnsupportedCastTest) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;
@@ -338,7 +338,7 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
   std::vector<int64_t> dims_mul_x = {3, 2, 2};
   std::vector<float> values_mul_x = {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f, 12.0f};
   OrtValue ml_value_x;
-  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+  AllocatorPtr allocator = CPUAllocator::DefaultInstance();
   CreateMLValue<float>(allocator, dims_mul_x, values_mul_x, &ml_value_x);
 
   NameMLValMap feeds;

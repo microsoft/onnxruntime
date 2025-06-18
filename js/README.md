@@ -307,7 +307,7 @@ From ORT v1.19 onwards, the ONNX Runtime Mobile packages are no longer published
 
    3. In `<ORT_ROOT>`, run the below python script to build the ONNX Runtime Android archive file. On a Windows machine, this requires an admin account to build.
 
-   You can build a 'full' package that supports all operators and types, or a reduced size package that supports a limited set of operators and types based on your model/s to miminize the binary size.
+   You can build a 'full' package that supports all operators and types, or a reduced size package that supports a limited set of operators and types based on your model/s to minimize the binary size.
    See [here](https://onnxruntime.ai/docs/build/custom.html) for information about how the reduced build works, including creating the configuration file using your model/s.
    The instructions here show how to build a 'full' package.
 

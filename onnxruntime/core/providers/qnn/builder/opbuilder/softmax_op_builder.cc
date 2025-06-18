@@ -39,12 +39,12 @@ constexpr int32_t GetDefaultAxisAttribute(int opset_version) {
   return opset_version < 13 ? 1 : -1;
 }
 
-std::vector<uint32_t> FlattenShapeFromAxis(std::vector<uint32_t>& input_shape, int32_t axis) {
+std::vector<uint32_t> FlattenShapeFromAxis(const std::vector<uint32_t>& input_shape, int32_t axis) {
   /*
   Return the shape with all dimensions multiplied onward from the specified axis. If axis is 0, the returned shape
   will include an additional batch of size 1 as the first dimension.
   */
-  assert(axis >= 0 && axis < input_shape.size());
+  assert(axis >= 0 && static_cast<size_t>(axis) < input_shape.size());
   std::vector<uint32_t> output_shape(input_shape.begin(), input_shape.begin() + axis);
 
   if (axis == 0) {
@@ -54,22 +54,6 @@ std::vector<uint32_t> FlattenShapeFromAxis(std::vector<uint32_t>& input_shape, i
       std::accumulate(input_shape.begin() + axis, input_shape.end(), 1, std::multiplies<uint32_t>()));
 
   return output_shape;
-}
-
-std::vector<uint32_t> GetTransposePermToUseLastAxis(uint32_t input_rank, uint32_t axis) {
-  assert(axis < input_rank);
-  std::vector<uint32_t> transpose_perm;
-  transpose_perm.reserve(input_rank);
-
-  for (uint32_t dim = 0; dim < input_rank; dim++) {
-    transpose_perm.push_back(dim);
-  }
-
-  // Swap axis dim with last dim.
-  transpose_perm[axis] = input_rank - 1;
-  transpose_perm[input_rank - 1] = axis;
-
-  return transpose_perm;
 }
 
 Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
@@ -131,8 +115,10 @@ Status SoftmaxOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
     QNN EP is able to support arbitrary axis attribute by wrapping transposes around the operator.
     */
     std::string transpose_output_name = input_name + "_ort_qnn_ep_transpose";
-    std::vector<uint32_t> transpose_perm = GetTransposePermToUseLastAxis(static_cast<uint32_t>(input_rank),
-                                                                         static_cast<uint32_t>(axis));
+    std::vector<uint32_t> transpose_perm;
+    ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
+                                                 static_cast<uint32_t>(input_rank),
+                                                 transpose_perm));
 
     std::vector<uint32_t> transpose_output_shape = input_info.shape;
     transpose_output_shape[input_rank - 1] = input_info.shape[axis];
@@ -243,8 +229,10 @@ Status SoftmaxOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_
                       "Failed to add node.");
 
     const bool is_graph_output = qnn_model_wrapper.IsGraphOutput(orig_output_name);
-    std::vector<uint32_t> transpose_perm = GetTransposePermToUseLastAxis(static_cast<uint32_t>(output_rank),
-                                                                         static_cast<uint32_t>(axis));
+    std::vector<uint32_t> transpose_perm;
+    ORT_RETURN_IF_ERROR(utils::GetPermToLastAxis(static_cast<uint32_t>(axis),
+                                                 static_cast<uint32_t>(output_rank),
+                                                 transpose_perm));
 
     ORT_RETURN_IF_ERROR(qnn_model_wrapper.AddTransposeNode(node_unit.Index(),
                                                            transpose_input_name,

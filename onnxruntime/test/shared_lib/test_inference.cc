@@ -425,6 +425,39 @@ TEST_P(CApiTestWithProvider, simple) {
                        nullptr, nullptr);
 }
 
+template <class T, size_t element_count_to_create>
+void TestGetTensorSizeInBytes(Ort::ConstMemoryInfo cpu_meminfo) {
+  constexpr const size_t expected_size_in_bytes = sizeof(T) * element_count_to_create;
+  constexpr const std::array<int64_t, 2> dims = {1, static_cast<int64_t>(element_count_to_create)};
+  std::array<T, element_count_to_create> data;
+  std::fill(data.begin(), data.end(), T{1});
+
+  auto value = Ort::Value::CreateTensor<T>(cpu_meminfo, data.data(),
+                                           data.size(), dims.data(), dims.size());
+
+  auto type_info = value.GetTypeInfo();
+  ASSERT_EQ(type_info.GetONNXType(), ONNX_TYPE_TENSOR);
+  auto tensor_type_info = type_info.GetTensorTypeAndShapeInfo();
+  const auto element_count = tensor_type_info.GetElementCount();
+  ASSERT_EQ(expected_size_in_bytes / sizeof(T), element_count);
+  ASSERT_EQ(expected_size_in_bytes, value.GetTensorSizeInBytes());
+}
+
+TEST(CApiTest, TestGetTensorSizeInBytes) {
+  Ort::MemoryInfo cpu_meminfo("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  TestGetTensorSizeInBytes<float, 1>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 2>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 3>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 4>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<float, 5>(cpu_meminfo.GetConst());
+
+  TestGetTensorSizeInBytes<int64_t, 1>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 2>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 3>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 4>(cpu_meminfo.GetConst());
+  TestGetTensorSizeInBytes<int64_t, 5>(cpu_meminfo.GetConst());
+}
+
 TEST(CApiTest, dim_param) {
   Ort::SessionOptions session_options;
   Ort::Session session(*ort_env, NAMED_AND_ANON_DIM_PARAM_URI, session_options);
@@ -1959,6 +1992,27 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cpu_allocator.GetStats();
+
+  // CPU allocator may not support arena usage.
+  // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
+  if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
+    ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+    ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+    ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+    // We don't check values of the following stats
+    ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
+  } else {
+    // If the allocator is not an arena allocator, we expect the stats to be empty.
+    ASSERT_EQ(0, stats.GetKeyValuePairs().size());
+  }
 }
 
 #ifdef USE_CUDA
@@ -1981,6 +2035,20 @@ TEST(CApiTest, get_allocator_cuda) {
   auto mem_allocation = cuda_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cuda_allocator.GetStats();
+
+  ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+  ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+  ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+  // We don't check values of the following stats
+  ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
 }
 #endif
 
@@ -3898,7 +3966,7 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
  * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
  */
 INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
-                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
+                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2", "trt_bf16_enable=1"));
 #endif
 
 #ifdef USE_CUDA

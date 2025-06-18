@@ -3,8 +3,11 @@
 
 #include "core/session/environment.h"
 
+#include <array>
+
 #include "core/common/basic_types.h"
 #include "core/framework/allocator_utils.h"
+#include "core/framework/error_code_helper.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
@@ -53,7 +56,7 @@
 #include "orttraining/core/optimizer/graph_transformer_registry.h"
 #endif
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 #include "core/providers/cuda/cuda_provider_factory.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #endif
@@ -62,9 +65,9 @@ using namespace ::onnxruntime::common;
 using namespace ONNX_NAMESPACE;
 
 std::once_flag schemaRegistrationOnceFlag;
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 ProviderInfo_CUDA& GetProviderInfo_CUDA();
-#endif  // USE_CUDA
+#endif  // defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
                            std::unique_ptr<Environment>& environment,
@@ -87,7 +90,6 @@ static bool AreOrtMemoryInfosEquivalent(
     return left == right;
   } else {
     return left.mem_type == right.mem_type &&
-           left.id == right.id &&
            left.device == right.device &&
            strcmp(left.name, right.name) == 0;
   }
@@ -206,17 +208,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   // create thread pools
   if (create_global_thread_pools) {
-    create_global_thread_pools_ = true;
-    OrtThreadPoolParams to = tp_options->intra_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("intra-op");
-    }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-    to = tp_options->inter_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("inter-op");
-    }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+    ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
 
   ORT_TRY {
@@ -284,16 +276,17 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
-    static std::vector<std::string> all_fixed_size_types = []() {
-      std::vector<std::string> all_types;
-      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
-      std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
-      all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
-      all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
-      all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
-                      [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
-      return all_types; }();
+
+    std::vector<std::string> all_fixed_size_types;
+
+    std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
+    std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
+    all_fixed_size_types.insert(all_fixed_size_types.end(), all_tensor_types.begin(), all_tensor_types.end());
+    all_fixed_size_types.insert(all_fixed_size_types.end(), all_sequence_types.begin(), all_sequence_types.end());
+    all_fixed_size_types.emplace_back("seq(tensor(bfloat16))");
+    all_fixed_size_types.erase(std::remove_if(all_fixed_size_types.begin(), all_fixed_size_types.end(),
+                                              [](const std::string& s) { return s.find("string") != std::string::npos; }),
+                               all_fixed_size_types.end());
 
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
@@ -342,6 +335,24 @@ Internal copy node
   return status;
 }
 
+Status Environment::SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options) {
+  if (create_global_thread_pools_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Global thread pools have already been created, cannot replace them");
+  }
+  create_global_thread_pools_ = true;
+  OrtThreadPoolParams to = tp_options.intra_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("intra-op");
+  }
+  intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  to = tp_options.inter_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("inter-op");
+  }
+  inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+  return Status::OK();
+}
+
 Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info,
                                                  const std::unordered_map<std::string, std::string>& options,
                                                  const OrtArenaCfg* arena_cfg) {
@@ -350,7 +361,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
     return CreateAndRegisterAllocator(mem_info, arena_cfg);
   }
 
-#ifdef USE_CUDA
+#if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     CUDAExecutionProviderInfo cuda_ep_info;
     GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
@@ -468,6 +479,28 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
   return status;
 }
 
+namespace {
+std::vector<const OrtHardwareDevice*> SortDevicesByType() {
+  auto& devices = DeviceDiscovery::GetDevices();
+  std::vector<const OrtHardwareDevice*> sorted_devices;
+  sorted_devices.reserve(devices.size());
+
+  const auto select_by_type = [&](OrtHardwareDeviceType type) {
+    for (const auto& device : devices) {
+      if (device.type == type) {
+        sorted_devices.push_back(&device);
+      }
+    }
+  };
+
+  select_by_type(OrtHardwareDeviceType_NPU);
+  select_by_type(OrtHardwareDeviceType_GPU);
+  select_by_type(OrtHardwareDeviceType_CPU);
+
+  return sorted_devices;
+}
+}  // namespace
+
 Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::unique_ptr<EpInfo>& out,
                                    const std::vector<EpFactoryInternal*>& internal_factories) {
   if (!library_in) {
@@ -482,36 +515,25 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
   ORT_RETURN_IF_ERROR(instance.library->Load());
   const auto& factories = instance.library->GetFactories();
 
+  // OrtHardwareDevice instances to pass to GetSupportedDevices. sorted by type to be slightly more structured.
+  // the set of hardware devices is static so this can also be static.
+  const static std::vector<const OrtHardwareDevice*> sorted_devices = SortDevicesByType();
+
   for (auto* factory_ptr : factories) {
     ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",
                 instance.library->RegistrationName());
 
     auto& factory = *factory_ptr;
 
-    // for each device
-    for (const auto& device : DeviceDiscovery::GetDevices()) {
-      OrtKeyValuePairs* ep_metadata = nullptr;
-      OrtKeyValuePairs* ep_options = nullptr;
+    std::array<OrtEpDevice*, 8> ep_devices{nullptr};
+    size_t num_ep_devices = 0;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        factory.GetSupportedDevices(&factory, sorted_devices.data(), sorted_devices.size(),
+                                    ep_devices.data(), ep_devices.size(), &num_ep_devices)));
 
-      if (factory.GetDeviceInfoIfSupported(&factory, &device, &ep_metadata, &ep_options)) {
-        auto ed = std::make_unique<OrtEpDevice>();
-        ed->ep_name = factory.GetName(&factory);
-        ed->ep_vendor = factory.GetVendor(&factory);
-        ed->device = &device;
-
-        if (ep_metadata) {
-          ed->ep_metadata = std::move(*ep_metadata);
-          delete ep_metadata;
-        }
-
-        if (ep_options) {
-          ed->ep_options = std::move(*ep_options);
-          delete ep_options;
-        }
-
-        ed->ep_factory = &factory;
-
-        instance.execution_devices.push_back(std::move(ed));
+    for (size_t i = 0; i < num_ep_devices; ++i) {
+      if (ep_devices[i] != nullptr) {                            // should never happen but just in case...
+        instance.execution_devices.emplace_back(ep_devices[i]);  // take ownership
       }
     }
   }
