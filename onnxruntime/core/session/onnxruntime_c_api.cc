@@ -2386,7 +2386,21 @@ ORT_API(void, OrtApis::ReleaseModel, _Frees_ptr_opt_ OrtModel* model) {
   delete model;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetElementType, _In_ const OrtConstPointerArray* array, _Out_ OrtTypeTag* type_tag) {
+ORT_API_STATUS_IMPL(OrtApis::CreateArrayOfConstObjects, _In_ OrtTypeTag elem_type, _In_ size_t initial_size,
+                    _In_ const void* initial_value, _Outptr_ OrtArrayOfConstObjects** out) {
+  API_IMPL_BEGIN
+  auto array = std::make_unique<OrtArrayOfConstObjects>(elem_type, initial_size, initial_value);
+  *out = array.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, OrtApis::ReleaseArrayOfConstObjects, _Frees_ptr_opt_ OrtArrayOfConstObjects* array) {
+  delete array;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
+                    _Out_ OrtTypeTag* type_tag) {
   API_IMPL_BEGIN
   if (type_tag == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'type_tag' argument is NULL");
@@ -2397,7 +2411,8 @@ ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetElementType, _In_ const OrtCon
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetData, _In_ const OrtConstPointerArray* array, _Outptr_ const void* const** data) {
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array,
+                    _Outptr_ const void*** data) {
   API_IMPL_BEGIN
   if (data == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'data' argument is NULL");
@@ -2408,7 +2423,8 @@ ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetData, _In_ const OrtConstPoint
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetSize, _In_ const OrtConstPointerArray* array, _Out_ size_t* size) {
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetSize, _In_ const OrtArrayOfConstObjects* array,
+                    _Out_ size_t* size) {
   API_IMPL_BEGIN
   if (size == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'size' argument is NULL");
@@ -2419,8 +2435,8 @@ ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetSize, _In_ const OrtConstPoint
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetElementAt, _In_ const OrtConstPointerArray* array, _In_ size_t index,
-                    _Outptr_ const void** out) {
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetElementAt, _In_ const OrtArrayOfConstObjects* array,
+                    _In_ size_t index, _Outptr_ const void** out) {
   API_IMPL_BEGIN
   if (out == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
@@ -2433,6 +2449,28 @@ ORT_API_STATUS_IMPL(OrtApis::ConstPointerArray_GetElementAt, _In_ const OrtConst
   }
 
   *out = array->storage[index];
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_SetElementAt, _In_ OrtArrayOfConstObjects* array, _In_ size_t index,
+                    _In_ const void* element) {
+  API_IMPL_BEGIN
+  if (index >= array->storage.size()) {
+    std::ostringstream oss;
+    oss << "'index' value (" << index << ") is out of bounds for array of size " << array->storage.size();
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
+  }
+
+  array->storage[index] = element;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_AddElement, _In_ OrtArrayOfConstObjects* array,
+                    _In_ const void* element) {
+  API_IMPL_BEGIN
+  array->storage.push_back(element);
   return nullptr;
   API_IMPL_END
 }
@@ -2619,49 +2657,59 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
-                    _Outptr_ const OrtConstPointerArray** inputs) {
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** inputs) {
   API_IMPL_BEGIN
   if (inputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'inputs' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(*inputs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(array));
+
+  *inputs = array.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph,
-                    _Outptr_ const OrtConstPointerArray** outputs) {
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** outputs) {
   API_IMPL_BEGIN
   if (outputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'outputs' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOutputs(*outputs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOutputs(array));
+
+  *outputs = array.release();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetInitializers, _In_ const OrtGraph* graph,
-                    _Outptr_ const OrtConstPointerArray** initializers) {
+                    _Outptr_ OrtArrayOfConstObjects** initializers) {
   API_IMPL_BEGIN
   if (initializers == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'initializers' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInitializers(*initializers));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInitializers(array));
+
+  *initializers = array.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, _Outptr_ const OrtConstPointerArray** nodes) {
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** nodes) {
   API_IMPL_BEGIN
   if (nodes == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'nodes' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetNodes(*nodes));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetNodes(array));
+
+  *nodes = array.release();
   return nullptr;
   API_IMPL_END
 }
@@ -2739,66 +2787,59 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetSinceVersion, _In_ const OrtNode* node, _Ou
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node, _Outptr_ const OrtConstPointerArray** inputs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetInputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** inputs) {
   API_IMPL_BEGIN
   if (inputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'inputs' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(*inputs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetInputs(array));
+
+  *inputs = array.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node, _Outptr_ const OrtConstPointerArray** outputs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetOutputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** outputs) {
   API_IMPL_BEGIN
   if (outputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'outputs' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(*outputs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetOutputs(array));
+
+  *outputs = array.release();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
-                    _Outptr_ const OrtConstPointerArray** implicit_inputs) {
+                    _Outptr_ OrtArrayOfConstObjects** implicit_inputs) {
   API_IMPL_BEGIN
   if (implicit_inputs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'implicit_inputs' argument is NULL");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetImplicitInputs(*implicit_inputs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetImplicitInputs(array));
+
+  *implicit_inputs = array.release();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
-  API_IMPL_BEGIN
-  if (num_subgraphs == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_subgraphs' argument is NULL");
-  }
-  *num_subgraphs = 0;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetNumSubgraphs(*num_subgraphs));
-  return nullptr;
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node,
-                    _Out_writes_all_(max_num_subgraphs) const OrtGraph** subgraphs,
-                    _In_ size_t max_num_subgraphs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs) {
   API_IMPL_BEGIN
   if (subgraphs == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'subgraphs' argument is NULL");
   }
 
-  onnxruntime::InlinedVector<const OrtGraph*> node_subgraphs;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(node_subgraphs));
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(array));
 
-  size_t num_subgraphs = std::min(max_num_subgraphs, node_subgraphs.size());
-  for (size_t i = 0; i < num_subgraphs; i++) {
-    subgraphs[i] = node_subgraphs[i];
-  }
+  *subgraphs = array.release();
   return nullptr;
   API_IMPL_END
 }
@@ -3450,10 +3491,14 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::AllocatorGetStats,
     &OrtApis::CreateMemoryInfo_V2,
 
-    &OrtApis::ConstPointerArray_GetElementType,
-    &OrtApis::ConstPointerArray_GetData,
-    &OrtApis::ConstPointerArray_GetSize,
-    &OrtApis::ConstPointerArray_GetElementAt,
+    &OrtApis::CreateArrayOfConstObjects,
+    &OrtApis::ReleaseArrayOfConstObjects,
+    &OrtApis::ArrayOfConstObjects_GetElementType,
+    &OrtApis::ArrayOfConstObjects_GetData,
+    &OrtApis::ArrayOfConstObjects_GetSize,
+    &OrtApis::ArrayOfConstObjects_GetElementAt,
+    &OrtApis::ArrayOfConstObjects_SetElementAt,
+    &OrtApis::ArrayOfConstObjects_AddElement,
 
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,
@@ -3479,7 +3524,6 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetImplicitInputs,
-    &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
