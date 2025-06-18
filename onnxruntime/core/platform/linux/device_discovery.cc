@@ -67,6 +67,8 @@ OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path) {
     gpu_device.vendor_id = ParseStringWithClassicLocale<uint32_t>(vendor_id_text);
   }
 
+  // TODO vendor name
+
   // device id
   {
     const auto device_id_path = sysfs_path / "device" / "device";
