@@ -40,7 +40,7 @@ struct BlkQuantTraits {
   static_assert(kPackSize != 0, "Packing to whole bytes not supported for this qbits!");
 
   using QuantBlk = std::conditional_t<Columnwise, Shape2D<block_size, 1>, Shape2D<1, block_size>>;
-  
+
   using ThreadBlk = Shape2D<QuantBlk::kRow * kPackSize, QuantBlk::kColumn>;
 };
 
@@ -67,6 +67,26 @@ Status Dequantize8Bits(
     int n,
     int block_size,
     cudaStream_t stream);
+
+template <class T, typename ZeroT>
+Status DequantizeNBits(
+    int bits,
+    T* output,
+    const uint8_t* quant_data,
+    const T* scales_data,
+    const ZeroT* zero_points,
+    const int32_t* reorder_idx,
+    int k,
+    int n,
+    int block_size,
+    cudaStream_t stream) {
+  if (bits == 4) {
+    return Dequantize4Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
+  } else {
+    ORT_ENFORCE(bits == 8);
+    return Dequantize8Bits<T, ZeroT>(output, quant_data, scales_data, zero_points, reorder_idx, k, n, block_size, stream);
+  }
+}
 
 /**
  * @brief Dequantize a block-wise quantized matrix, and store the result in a
