@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/common/cpuid_info.h"
-#include "core/common/narrow.h"
 #include "core/common/parse_string.h"
 #include "core/common/string_utils.h"
 
@@ -58,19 +57,25 @@ std::string ReadFileContents(const fs::path& file_path) {
   return contents;
 }
 
-OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path, size_t idx) {
+OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path) {
   OrtHardwareDevice gpu_device{};
 
   // vendor id
   {
-    const auto vendor_file_path = sysfs_path / "device" / "vendor";
-    const auto vendor_id_text = utils::TrimString(ReadFileContents(vendor_file_path));
+    const auto vendor_id_path = sysfs_path / "device" / "vendor";
+    const auto vendor_id_text = utils::TrimString(ReadFileContents(vendor_id_path));
     gpu_device.vendor_id = ParseStringWithClassicLocale<uint32_t>(vendor_id_text);
+  }
+
+  // device id
+  {
+    const auto device_id_path = sysfs_path / "device" / "device";
+    const auto device_id_text = utils::TrimString(ReadFileContents(device_id_path));
+    gpu_device.device_id = ParseStringWithClassicLocale<uint32_t>(device_id_text);
   }
 
   // TODO metadata["Discrete"]
 
-  gpu_device.device_id = narrow<uint32_t>(idx);
   gpu_device.type = OrtHardwareDeviceType_GPU;
 
   return gpu_device;
@@ -79,7 +84,7 @@ OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path, size_t idx) {
 std::vector<OrtHardwareDevice> GetGpuDevices() {
   std::vector<OrtHardwareDevice> gpu_devices{};
 
-  const auto sysfs_class_drm_path = "/sys/class/drm";
+  const fs::path sysfs_class_drm_path = "/sys/class/drm";
 
   if (!fs::exists(sysfs_class_drm_path)) {
     return gpu_devices;
@@ -89,7 +94,7 @@ std::vector<OrtHardwareDevice> GetGpuDevices() {
     const auto& dir_item_path = dir_item.path();
 
     if (size_t idx{}; ParseGpuSysfsPath(dir_item_path, idx)) {
-      auto gpu_device = GetGpuDevice(dir_item_path, idx);
+      auto gpu_device = GetGpuDevice(dir_item_path);
       gpu_devices.emplace_back(std::move(gpu_device));
     }
   }
