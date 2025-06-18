@@ -5,6 +5,7 @@
 #include <gsl/gsl>
 #include <cassert>
 #include <cstring>
+#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -27,15 +28,27 @@
 
 struct ExampleEp;
 
+// Helper to release an Ort object at the end of its scope.
+template <typename T>
+struct DeferOrtRelease {
+  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
+  ~DeferOrtRelease() {
+    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
+      release_func_(*obj_ptr_);
+      *obj_ptr_ = nullptr;
+    }
+  }
+  T** obj_ptr_ = nullptr;
+  std::function<void(T*)> release_func_ = nullptr;
+};
+
 /// <summary>
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
 /// </summary>
 struct MulKernel {
   MulKernel(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}
-  ~MulKernel() { ReleaseResources(); }
 
   OrtStatus* Compute(OrtKernelContext* kernel_context) {
-    ReleaseResources();
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                               "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
@@ -52,8 +65,11 @@ struct MulKernel {
     RETURN_IF_ERROR(ort_api.KernelContext_GetInput(kernel_context, 0, &input0));
     RETURN_IF_ERROR(ort_api.KernelContext_GetInput(kernel_context, 1, &input1));
 
-    type_shape0 = nullptr;
-    type_shape1 = nullptr;
+    OrtTensorTypeAndShapeInfo* type_shape0 = nullptr;
+    OrtTensorTypeAndShapeInfo* type_shape1 = nullptr;
+    DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type0(&type_shape0, ort_api.ReleaseTensorTypeAndShapeInfo);
+    DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type1(&type_shape1, ort_api.ReleaseTensorTypeAndShapeInfo);
+
     RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(input0, &type_shape0));
     RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(input1, &type_shape1));
 
@@ -98,23 +114,8 @@ struct MulKernel {
     return nullptr;
   }
 
-  void ReleaseResources() noexcept {
-    // Note: resource cleanup would be simplified with the C++ ORT API, but sticking to C API for now.
-    if (type_shape0 != nullptr) {
-      ort_api.ReleaseTensorTypeAndShapeInfo(type_shape0);
-      type_shape0 = nullptr;
-    }
-
-    if (type_shape1 != nullptr) {
-      ort_api.ReleaseTensorTypeAndShapeInfo(type_shape1);
-      type_shape1 = nullptr;
-    }
-  }
-
   const OrtApi& ort_api;
   const OrtLogger& logger;
-  OrtTensorTypeAndShapeInfo* type_shape0 = nullptr;
-  OrtTensorTypeAndShapeInfo* type_shape1 = nullptr;
 };
 
 /// <summary>
@@ -202,18 +203,20 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                                    OrtEpGraphSupportInfo* graph_support_info) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-    const OrtConstPointerArray* nodes_array = nullptr;
+    OrtArrayOfConstObjects* nodes_array = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_nodes_array(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
+
     size_t num_nodes = 0;
 
     RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, &nodes_array));
-    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
 
     if (num_nodes == 0) {
       return nullptr;  // No nodes to process
     }
 
     const void* const* nodes_data = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(nodes_array, &nodes_data));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetConstData(nodes_array, &nodes_data));
     auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_data), num_nodes);
 
     std::vector<const OrtNode*> supported_nodes;
@@ -224,22 +227,24 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
       if (std::strncmp(op_type, "Mul", 4) == 0) {
         // Check that Mul has inputs/output of type float
-        const OrtConstPointerArray* inputs_array = nullptr;
-        const OrtConstPointerArray* outputs_array = nullptr;
+        OrtArrayOfConstObjects* inputs_array = nullptr;
+        OrtArrayOfConstObjects* outputs_array = nullptr;
+        DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
+        DeferOrtRelease<OrtArrayOfConstObjects> release_outputs(&outputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
 
         RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, &inputs_array));
         RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, &outputs_array));
 
         size_t num_inputs = 0;
         size_t num_outputs = 0;
-        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(inputs_array, &num_inputs));
-        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(outputs_array, &num_outputs));
+        RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(inputs_array, &num_inputs));
+        RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs));
         RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
-        const void* const* inputs_data = nullptr;
-        const void* const* outputs_data = nullptr;
-        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(inputs_array, &inputs_data));
-        RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetData(outputs_array, &outputs_data));
+        const void** inputs_data = nullptr;
+        const void** outputs_data = nullptr;
+        RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data));
+        RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data));
 
         std::array<bool, 3> is_float = {false, false, false};
         RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(inputs_data[0]), is_float[0]));
@@ -266,19 +271,20 @@ struct ExampleEp : OrtEp, ApiPtrs {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
     }
 
-    const OrtConstPointerArray* nodes_array = nullptr;
+    OrtArrayOfConstObjects* nodes_array = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
     size_t num_nodes = 0;
 
     RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], &nodes_array));
-    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
 
     if (num_nodes != 1) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
     const OrtNode* node_to_compile = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetElementAt(nodes_array, 0,
-                                                               reinterpret_cast<const void**>(&node_to_compile)));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetElementAt(nodes_array, 0,
+                                                                 reinterpret_cast<const void**>(&node_to_compile)));
 
     const char* node_op_type = nullptr;
     RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node_to_compile, &node_op_type));
@@ -354,7 +360,8 @@ OrtStatus* ExampleNodeComputeInfo::ComputeImpl(OrtNodeComputeInfo* this_ptr, voi
 void ExampleNodeComputeInfo::ReleaseStateImpl(OrtNodeComputeInfo* this_ptr, void* compute_state) {
   (void)this_ptr;
   MulKernel& kernel = *reinterpret_cast<MulKernel*>(compute_state);
-  kernel.ReleaseResources();
+  (void)kernel;
+  // Do nothing for this example.
 }
 
 /// <summary>

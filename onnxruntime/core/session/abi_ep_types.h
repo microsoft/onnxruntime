@@ -39,7 +39,7 @@ struct OrtEpGraphSupportInfo {
 
   explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
 
-  onnxruntime::Status AddFusedNodes(gsl::span<const OrtNode* const> nodes);
+  onnxruntime::Status AddNodesToFuse(gsl::span<const OrtNode* const> nodes);
   onnxruntime::Status AddSingleNode(const OrtNode* node);
 
   const onnxruntime::EpGraph& ort_graph;

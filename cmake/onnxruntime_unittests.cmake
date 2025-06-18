@@ -1849,8 +1849,8 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
 
   # test library
-  file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
-                                                "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+  file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
+                                        "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})

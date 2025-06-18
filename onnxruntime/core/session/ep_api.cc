@@ -55,7 +55,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInf
   }
 
   gsl::span<const OrtNode* const> nodes_span(nodes, nodes + num_nodes);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddFusedNodes(nodes_span));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddNodesToFuse(nodes_span));
   return nullptr;
   API_IMPL_END
 }

@@ -47,18 +47,19 @@ struct VisitorPriorityQueue {
 static Ort::Status GetNodeInputEdgeCount(const OrtNode* node, size_t& num_input_edges) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  const OrtConstPointerArray* inputs = nullptr;
+  OrtArrayOfConstObjects* inputs = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs, ort_api.ReleaseArrayOfConstObjects);
   RETURN_IF_API_ERROR(ort_api.Node_GetInputs(node, &inputs));
 
   size_t num_inputs = 0;
-  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(inputs, &num_inputs));
+  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetSize(inputs, &num_inputs));
 
   // Sum the number of inputs with a producer node.
   num_input_edges = 0;
 
   for (size_t i = 0; i < num_inputs; ++i) {
     const OrtValueInfo* input = nullptr;
-    RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetElementAt(inputs, i, reinterpret_cast<const void**>(&input)));
+    RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(inputs, i, reinterpret_cast<const void**>(&input)));
     if (input == nullptr) continue;  // Skip missing optional input
 
     const OrtNode* producer_node = nullptr;
@@ -73,11 +74,12 @@ static Ort::Status GetNodeInputEdgeCount(const OrtNode* node, size_t& num_input_
 static Ort::Status GetOutputNodes(const OrtNode* node, std::vector<const OrtNode*>& result) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  const OrtConstPointerArray* outputs = nullptr;
+  OrtArrayOfConstObjects* outputs = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_outputs(&outputs, ort_api.ReleaseArrayOfConstObjects);
   RETURN_IF_API_ERROR(ort_api.Node_GetOutputs(node, &outputs));
 
   size_t num_outputs = 0;
-  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(outputs, &num_outputs));
+  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetSize(outputs, &num_outputs));
 
   std::vector<const OrtNode*> output_nodes;
   output_nodes.reserve(num_outputs);  // May have more than `num_outputs`
@@ -85,7 +87,7 @@ static Ort::Status GetOutputNodes(const OrtNode* node, std::vector<const OrtNode
   // Gather the OrtNode consumers of every output.
   for (size_t i = 0; i < num_outputs; ++i) {
     const OrtValueInfo* output = nullptr;
-    RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetElementAt(outputs, i, reinterpret_cast<const void**>(&output)));
+    RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(outputs, i, reinterpret_cast<const void**>(&output)));
     if (output == nullptr) continue;  // Skip missing optional output
 
     size_t num_consumers = 0;
@@ -113,13 +115,15 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   const OrtApi& ort_api = Ort::GetApi();
 
   // Get all nodes
-  const OrtConstPointerArray* nodes_array = nullptr;
+  OrtArrayOfConstObjects* nodes_array = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ort_api.ReleaseArrayOfConstObjects);
+
   size_t num_nodes = 0;
-  const void* const* nodes_raw_data = nullptr;
+  const void** nodes_raw_data = nullptr;
 
   RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, &nodes_array));
-  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetSize(nodes_array, &num_nodes));
-  RETURN_IF_API_ERROR(ort_api.ConstPointerArray_GetData(nodes_array, &nodes_raw_data));
+  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetData(nodes_array, &nodes_raw_data));
 
   auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_raw_data), num_nodes);
 

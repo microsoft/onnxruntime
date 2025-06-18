@@ -10,7 +10,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddFusedNodes(gsl::span<const OrtNode* const> nodes) {
+onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNode* const> nodes) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.reserve(nodes.size());
 

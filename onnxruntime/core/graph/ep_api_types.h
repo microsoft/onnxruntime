@@ -155,20 +155,17 @@ struct EpNode : public OrtNode {
   // Gets the opset version in which this node's operator was first defined.
   Status GetSinceVersion(int& since_version) const override;
 
-  // Gets the node's inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
-  Status GetInputs(const OrtConstPointerArray*& inputs) const override;
+  // Gets the node's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
 
-  // Gets the node's outputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
-  Status GetOutputs(const OrtConstPointerArray*& outputs) const override;
+  // Gets the node's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
 
-  // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
-  Status GetImplicitInputs(const OrtConstPointerArray*& inputs) const override;
-
-  // Gets the number of subgraphs contained by this node (e.g., if this node is an If or Loop).
-  Status GetNumSubgraphs(size_t& num_subgraphs) const override;
+  // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(InlinedVector<const OrtGraph*>& subgraphs) const override;
+  Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& subgraphs) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
@@ -196,10 +193,10 @@ struct EpNode : public OrtNode {
   const EpGraph* ep_graph_ = nullptr;
   const Node& node_;
 
-  OrtConstPointerArray inputs_;
-  OrtConstPointerArray outputs_;
+  InlinedVector<EpValueInfo*> inputs_;
+  InlinedVector<EpValueInfo*> outputs_;
 
-  OrtConstPointerArray implicit_inputs_;
+  std::vector<EpValueInfo*> implicit_inputs_;
   std::vector<SubgraphState> subgraphs_;
 };
 
@@ -251,20 +248,20 @@ struct EpGraph : public OrtGraph {
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 
-  // Gets the graph's inputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  // Gets the graph's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
   // Includes initializers that are graph inputs.
-  Status GetInputs(const OrtConstPointerArray*& inputs) const override;
+  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
 
-  // Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtConstPointerArray.
-  Status GetOutputs(const OrtConstPointerArray*& outputs) const override;
+  // Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
 
-  // Gets the graph's initializers as OrtValueInfo instances wrapped in an OrtConstPointerArray.
+  // Gets the graph's initializers as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
   // Includes both constant initializers and non-constant initializers (aka optional graph inputs).
-  Status GetInitializers(const OrtConstPointerArray*& initializers) const override;
+  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const override;
 
-  // Gets the graph's nodes as OrtNode instances wrapped in an OrtConstPointerArray.
+  // Gets the graph's nodes as OrtNode instances wrapped in an OrtArrayOfConstObjects.
   // The nodes are sorted in a default "reverse DFS" topological order.
-  Status GetNodes(const OrtConstPointerArray*& nodes) const override;
+  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& nodes) const override;
 
   // Gets the graph's parent node or nullptr if this is not a nested subgraph.
   Status GetParentNode(const OrtNode*& parent_node) const override;
@@ -293,17 +290,16 @@ struct EpGraph : public OrtGraph {
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
 
-  std::vector<std::unique_ptr<EpNode>> nodes_holder_;
-  OrtConstPointerArray nodes_;
+  std::vector<std::unique_ptr<EpNode>> nodes_;
   IndexToEpNodeMap index_to_ep_node_;
 
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_;  // All value infos in the graph
 
-  OrtConstPointerArray initializer_value_infos_;
+  std::vector<EpValueInfo*> initializer_value_infos_;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
   std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values_;
 
-  OrtConstPointerArray inputs_;
-  OrtConstPointerArray outputs_;
+  InlinedVector<EpValueInfo*> inputs_;
+  InlinedVector<EpValueInfo*> outputs_;
 };
 }  // namespace onnxruntime

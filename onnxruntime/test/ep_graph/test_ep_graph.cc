@@ -72,20 +72,28 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
 // Utils for traversing an OrtGraph and checking against GraphViewer.
 //
 
-// Convert an OrtConstPointerArray into a span of Ort___ pointers.
+// Convert an OrtArrayOfConstObjects into a span of Ort___ pointers.
 template <typename T>
-static void GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
-                                         /*out*/ gsl::span<const T* const>& span) {
+static void GetSpanFromArrayOfConstObjects(const OrtArrayOfConstObjects* ort_array,
+                                           /*out*/ gsl::span<const T* const>& span) {
   const OrtApi& ort_api = Ort::GetApi();
 
   size_t size = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetSize(ort_array, &size));
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetSize(ort_array, &size));
 
   const void* const* raw_data = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetData(ort_array, &raw_data));
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetConstData(ort_array, &raw_data));
 
   auto data = reinterpret_cast<const T* const*>(raw_data);
   span = gsl::span<const T* const>(data, size);
+}
+
+static void CheckArrayObjectType(const OrtArrayOfConstObjects* ort_array, OrtTypeTag expected_object_type) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  OrtTypeTag api_object_type = ORT_TYPE_TAG_Void;
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetObjectType(ort_array, &api_object_type));
+  ASSERT_EQ(api_object_type, expected_object_type);
 }
 
 // Checks that the OrtTypeInfo obtained from the public C API matches another OrtTypeInfo
@@ -328,11 +336,15 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   // Check graph inputs.
   const auto& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
 
-  const OrtConstPointerArray* api_graph_inputs_container = nullptr;
+  OrtArrayOfConstObjects* api_graph_inputs_container = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_graph_inputs(&api_graph_inputs_container,
+                                                               ort_api.ReleaseArrayOfConstObjects);
   gsl::span<const OrtValueInfo* const> api_graph_inputs{};
 
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInputs(&api_graph, &api_graph_inputs_container));
-  GetSpanFromConstPointerArray<OrtValueInfo>(api_graph_inputs_container, api_graph_inputs);
+
+  CheckArrayObjectType(api_graph_inputs_container, ORT_TYPE_TAG_OrtValueInfo);
+  GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_graph_inputs_container, api_graph_inputs);
 
   ASSERT_EQ(api_graph_inputs.size(), graph_input_node_args.size());
   CheckValueInfosCApi(graph_viewer, api_graph_inputs, graph_input_node_args);
@@ -340,11 +352,15 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   // Check graph outputs.
   const auto& graph_output_node_args = graph_viewer.GetOutputs();
 
-  const OrtConstPointerArray* api_graph_outputs_container = nullptr;
+  OrtArrayOfConstObjects* api_graph_outputs_container = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_graph_outputs(&api_graph_outputs_container,
+                                                                ort_api.ReleaseArrayOfConstObjects);
   gsl::span<const OrtValueInfo* const> api_graph_outputs{};
 
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetOutputs(&api_graph, &api_graph_outputs_container));
-  GetSpanFromConstPointerArray<OrtValueInfo>(api_graph_outputs_container, api_graph_outputs);
+
+  CheckArrayObjectType(api_graph_outputs_container, ORT_TYPE_TAG_OrtValueInfo);
+  GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_graph_outputs_container, api_graph_outputs);
 
   ASSERT_EQ(api_graph_outputs.size(), graph_output_node_args.size());
   CheckValueInfosCApi(graph_viewer, api_graph_outputs, graph_output_node_args);
@@ -352,11 +368,15 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   // Check graph initializers
   const auto& graph_initializers = graph_viewer.GetAllInitializedTensors();
 
-  const OrtConstPointerArray* api_initializers_container = nullptr;
+  OrtArrayOfConstObjects* api_initializers_container = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_initializers(&api_initializers_container,
+                                                               ort_api.ReleaseArrayOfConstObjects);
   gsl::span<const OrtValueInfo* const> api_initializers{};
 
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetInitializers(&api_graph, &api_initializers_container));
-  GetSpanFromConstPointerArray<OrtValueInfo>(api_initializers_container, api_initializers);
+
+  CheckArrayObjectType(api_initializers_container, ORT_TYPE_TAG_OrtValueInfo);
+  GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_initializers_container, api_initializers);
 
   ASSERT_EQ(api_initializers.size(), graph_initializers.size());
   CheckInitializerValueInfosCApi(api_initializers, graph_initializers);
@@ -375,11 +395,14 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
   }
 
   // Check all nodes.
-  const OrtConstPointerArray* api_nodes_container = nullptr;
+  OrtArrayOfConstObjects* api_nodes_container = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&api_nodes_container,
+                                                        ort_api.ReleaseArrayOfConstObjects);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, &api_nodes_container));
+  CheckArrayObjectType(api_nodes_container, ORT_TYPE_TAG_OrtNode);
 
   size_t api_num_nodes = 0;
-  ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetSize(api_nodes_container, &api_num_nodes));
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetSize(api_nodes_container, &api_num_nodes));
   ASSERT_EQ(api_num_nodes, graph_viewer.NumberOfNodes());
 
   std::vector<NodeIndex> node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
@@ -387,8 +410,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     // Check basic node properties.
     const Node* node = graph_viewer.GetNode(node_indices[node_idx]);
     const OrtNode* api_node = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetElementAt(api_nodes_container, node_idx,
-                                                               reinterpret_cast<const void**>(&api_node)));
+    ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetElementAt(api_nodes_container, node_idx,
+                                                                 reinterpret_cast<const void**>(&api_node)));
     CheckNode(node, api_node);
 
     int api_since_version = 0;
@@ -398,51 +421,67 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     // Check node inputs
     const auto input_node_args = node->InputDefs();
 
-    const OrtConstPointerArray* api_node_inputs_container = nullptr;
+    OrtArrayOfConstObjects* api_node_inputs_container = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_node_inputs(&api_node_inputs_container,
+                                                                ort_api.ReleaseArrayOfConstObjects);
     gsl::span<const OrtValueInfo* const> api_node_inputs{};
 
     ASSERT_ORTSTATUS_OK(ort_api.Node_GetInputs(api_node, &api_node_inputs_container));
-    GetSpanFromConstPointerArray<OrtValueInfo>(api_node_inputs_container, api_node_inputs);
+
+    CheckArrayObjectType(api_node_inputs_container, ORT_TYPE_TAG_OrtValueInfo);
+    GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_node_inputs_container, api_node_inputs);
     ASSERT_EQ(api_node_inputs.size(), input_node_args.size());
 
     CheckValueInfosCApi(graph_viewer, api_node_inputs, input_node_args);
 
     // Check node outputs
     const auto output_node_args = node->OutputDefs();
-    const OrtConstPointerArray* api_node_outputs_container = nullptr;
+    OrtArrayOfConstObjects* api_node_outputs_container = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_node_outputs(&api_node_outputs_container,
+                                                                 ort_api.ReleaseArrayOfConstObjects);
     gsl::span<const OrtValueInfo* const> api_node_outputs{};
 
     ASSERT_ORTSTATUS_OK(ort_api.Node_GetOutputs(api_node, &api_node_outputs_container));
-    GetSpanFromConstPointerArray<OrtValueInfo>(api_node_outputs_container, api_node_outputs);
+
+    CheckArrayObjectType(api_node_outputs_container, ORT_TYPE_TAG_OrtValueInfo);
+    GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_node_outputs_container, api_node_outputs);
     ASSERT_EQ(api_node_outputs.size(), output_node_args.size());
 
     CheckValueInfosCApi(graph_viewer, api_node_outputs, output_node_args);
 
     // Check node subgraphs
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
-    size_t api_num_subgraphs = 0;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_subgraphs));
-    ASSERT_EQ(api_num_subgraphs, node_subgraphs.size());
 
-    if (api_num_subgraphs > 0) {
+    if (!node_subgraphs.empty()) {
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
-      const OrtConstPointerArray* api_node_implicit_inputs_container = nullptr;
+      OrtArrayOfConstObjects* api_node_implicit_inputs_container = nullptr;
+      DeferOrtRelease<OrtArrayOfConstObjects> release_node_implicit(&api_node_implicit_inputs_container,
+                                                                    ort_api.ReleaseArrayOfConstObjects);
       gsl::span<const OrtValueInfo* const> api_node_implicit_inputs{};
 
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetImplicitInputs(api_node, &api_node_implicit_inputs_container));
-      GetSpanFromConstPointerArray<OrtValueInfo>(api_node_implicit_inputs_container, api_node_implicit_inputs);
+
+      CheckArrayObjectType(api_node_implicit_inputs_container, ORT_TYPE_TAG_OrtValueInfo);
+      GetSpanFromArrayOfConstObjects<OrtValueInfo>(api_node_implicit_inputs_container, api_node_implicit_inputs);
       ASSERT_EQ(api_node_implicit_inputs.size(), implicit_input_node_args.size());
 
       CheckValueInfosCApi(graph_viewer, api_node_implicit_inputs, implicit_input_node_args);
 
       // Recursively check subgraphs.
-      std::vector<const OrtGraph*> api_node_subgraphs(api_num_subgraphs, nullptr);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
+      OrtArrayOfConstObjects* api_node_subgraphs = nullptr;
+      DeferOrtRelease<OrtArrayOfConstObjects> release_node_subgraphs(&api_node_subgraphs,
+                                                                     ort_api.ReleaseArrayOfConstObjects);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, &api_node_subgraphs));
+      CheckArrayObjectType(api_node_subgraphs, ORT_TYPE_TAG_OrtGraph);
 
-      for (size_t subgraph_idx = 0; subgraph_idx < api_num_subgraphs; subgraph_idx++) {
+      for (size_t subgraph_idx = 0; subgraph_idx < node_subgraphs.size(); subgraph_idx++) {
         auto subgraph_viewer = std::make_unique<GraphViewer>(*node_subgraphs[subgraph_idx]);
-        CheckGraphCApi(*subgraph_viewer, *api_node_subgraphs[subgraph_idx]);
+
+        const OrtGraph* api_subgraph = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetElementAt(api_node_subgraphs, subgraph_idx,
+                                                                     reinterpret_cast<const void**>(&api_subgraph)));
+        CheckGraphCApi(*subgraph_viewer, *api_subgraph);
       }
     }
   }

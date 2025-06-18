@@ -99,27 +99,22 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting an OrtNode's opset version");
   }
 
-  Status GetInputs(const OrtConstPointerArray*& /*inputs*/) const override {
+  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting input OrtValueInfos for OrtNode");
   }
 
-  Status GetOutputs(const OrtConstPointerArray*& /*outputs*/) const override {
+  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& /*outputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
 
-  Status GetImplicitInputs(const OrtConstPointerArray*& /*implicit_inputs*/) const override {
+  Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*implicit_inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
   }
 
-  Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
-                           "OrtModelEditorApi does not support getting the number of subgraphs for OrtNode");
-  }
-
-  Status GetSubgraphs(InlinedVector<const OrtGraph*>& /*subgraphs*/) const override {
+  Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& /*subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }
@@ -159,22 +154,22 @@ struct ModelEditorGraph : public OrtGraph {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }
 
-  Status GetInputs(const OrtConstPointerArray*& /*result*/) const override {
+  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph inputs.");
   }
 
-  Status GetOutputs(const OrtConstPointerArray*& /*result*/) const override {
+  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph outputs.");
   }
 
-  Status GetInitializers(const OrtConstPointerArray*& /*result*/) const override {
+  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph initializers.");
   }
 
-  Status GetNodes(const OrtConstPointerArray*& /*result*/) const override {
+  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph nodes.");
   }

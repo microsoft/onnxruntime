@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <functional>
 #include <memory>
 #include <vector>
 
@@ -32,6 +33,27 @@ class TestGraph {
   std::shared_ptr<Model> model;
   GraphViewer graph_viewer;
   std::unique_ptr<OrtGraph> api_graph;
+};
+
+// Helper to release a C API Ort object at the end of its scope.
+// Useful when not using the public C++ API.
+//    Example:
+//      {
+//        OrtTensorTypeAndShapeInfo* info = nullptr;
+//        DeferOrtRelease<OrtTensorTypeAndShapeInfo> defer_release(&info, c_api.ReleaseTensorTypeAndShapeInfo);
+//        ...
+//      } /* Release is called at end of scope*/
+template <typename T>
+struct DeferOrtRelease {
+  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
+  ~DeferOrtRelease() {
+    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
+      release_func_(*obj_ptr_);
+      *obj_ptr_ = nullptr;
+    }
+  }
+  T** obj_ptr_ = nullptr;
+  std::function<void(T*)> release_func_ = nullptr;
 };
 
 struct NodeArgConsumer {
