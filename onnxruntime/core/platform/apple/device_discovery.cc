@@ -7,6 +7,8 @@ namespace onnxruntime {
 std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatform() {
   std::unordered_set<OrtHardwareDevice> devices;
 
+  // TODO implement
+
   // get CPU devices
 
   // get GPU devices
