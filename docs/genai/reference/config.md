@@ -106,7 +106,33 @@ Top-level configuration object.
 Describes the model architecture, files, and tokenization.
 
 - **type**: *(string)*  
-  The type of model (e.g., `"phi3"`, `"llama"`, `"gpt"`, etc.).
+  The type of model.
+  
+  For decoder-only LLMs, this type can be "decoder", or one of the following specific types:
+  - chatglm
+  - gemma
+  - gemma2
+  - gemma3_text
+  - granite
+  - llama
+  - mistral
+  - nemotron
+  - olmo
+  - phi
+  - phimoe
+  - phi3
+  - phi3small
+  - qwen2
+  - qwen3
+
+  For decoder only LLMS that are split into a pipeline of models, use "decoder-pipeline".
+  
+  Other model types:
+  - whisper
+  - phi3v
+  - phi4mm
+  - gemma3
+  - marian-ssru
 
 - **pad_token_id**: *(int)*  
   The id of the padding token.
