@@ -88,7 +88,9 @@ test_runner=
 case "${target_platform}" in
   linux)
     qnn_args=(--use_qnn --qnn_home "${qairt_sdk_root}")
-    platform_args=(--build_shared_lib)
+    platform_args=(--build_shared_lib
+                   --build_wheel)
+
     test_runner="${REPO_ROOT}/qcom/scripts/linux/run_tests.sh"
 
     case "${mode}" in

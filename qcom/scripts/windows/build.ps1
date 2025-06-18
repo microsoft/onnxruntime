@@ -112,15 +112,16 @@ if (-Not ($ValidArchs -contains $Arch)) {
     throw "Invalid arch $Arch. Supported architectures: $ValidArchs"
 }
 
-$ArchArg = $null
+$ArchArgs = @()
 if ($Arch -eq "x86_64")
 {
     $HostArch = [System.Runtime.InteropServices.RuntimeInformation,mscorlib]::OSArchitecture
     if ($HostArch -ne "x64") {
         throw "Cross-compilation to $Arch is not supported on $HostArch host."
     }
+    $ArchArgs += "--build_wheel"
 } else {
-    $ArchArg = "--$Arch"
+    $ArchArgs += "--$Arch"
 }
 
 if (Test-UpdateNeeded) {
@@ -254,6 +255,7 @@ else {
     if ($Actions.Count -gt 0) {
         .\build.bat `
             $Actions `
+            $ArchArgs `
             $CommonArgs `
             $QnnArgs `
             $PlatformArgs

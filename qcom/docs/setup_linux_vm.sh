@@ -16,7 +16,7 @@ fi
 
 set -x
 
-sudo apt install libc++-dev python3.10-venv
+sudo apt install libc++-dev python3.10-dev python3.10-venv
 
 sudo -u ortqnnepci mkdir -p "${runner_home}"
 

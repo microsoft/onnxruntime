@@ -1,5 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
+
+# Python packages required by QCOM internal CI pipeline
 backoff >= 2.2.1, == 2.*
 certifi >= 2025.4.26
 prettytable >= 3.16.0, == 3.*

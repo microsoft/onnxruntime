@@ -205,6 +205,9 @@ else:
 DEFAULT_PYTHON = Path("python.exe") if is_host_windows() else Path("python3.10")
 """Different python distributions have different executable names. Use this for a reasonable default."""
 
+MSFT_CI_REQUIREMENTS_RELPATH = (
+    f"tools/ci_build/github/{'windows' if is_host_windows() else 'linux'}/python/requirements.txt"
+)
 
 REPO_ROOT = Path(run_and_get_output(["git", "rev-parse", "--show-toplevel"], quiet=True))
 

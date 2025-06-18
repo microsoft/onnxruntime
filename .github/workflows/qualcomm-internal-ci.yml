@@ -49,6 +49,12 @@ jobs:
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-linux.tar.bz2
 
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Linux x86_64 Python Wheel
+          path: |
+            ${{ github.workspace }}/build/linux/Release/dist/onnxruntime_qnn*.whl
+
   build-windows-x86_64:
     runs-on: ["self-hosted", "Windows", "X64", "Build"]
     steps:
@@ -66,6 +72,12 @@ jobs:
           name: ORT Windows x86_64 Tests
           path: |
             ${{ github.workspace }}/build/onnxruntime-tests-windows-x86_64.zip
+
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ORT Windows x86_64 Python Wheel
+          path: |
+            ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/dist/onnxruntime_qnn*.whl
 
   lint:
     runs-on: ["self-hosted", "X64", "Linux", "Build"]

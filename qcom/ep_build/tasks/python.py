@@ -11,6 +11,7 @@ from ..task import (
     RunExecutablesWithVenvTask,
 )
 from ..util import (
+    MSFT_CI_REQUIREMENTS_RELPATH,
     REPO_ROOT,
 )
 
@@ -68,6 +69,8 @@ class CreateVenvTask(CompositeTask):
                             "uv",
                             "pip",
                             "install",
+                            "-r",
+                            f"{REPO_ROOT}/{MSFT_CI_REQUIREMENTS_RELPATH}",
                             "-r",
                             f"{REPO_ROOT}/requirements-dev.txt",
                             "--native-tls",
