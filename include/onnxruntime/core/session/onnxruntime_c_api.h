@@ -5396,7 +5396,7 @@ struct OrtApi {
    * to them.
    *
    * An OrtArrayOfConstObjects instance stores elements of type 'const void*'. Users
-   * must check the element's type via ArrayOfConstObjects_GetObjectType before casting elements
+   * must check the object's type via ArrayOfConstObjects_GetObjectType before casting objects
    * to their actual type.
    *
    * \param[in] object_type The object's type as indicated by the OrtTypeTag enum.
@@ -5432,7 +5432,7 @@ struct OrtApi {
   /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a pointer to a
    * constant opaque object (i.e., each element is a 'const void*').
    *
-   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
+   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
    * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
@@ -5446,7 +5446,7 @@ struct OrtApi {
   /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a constant pointer to a
    * constant opaque object (i.e., each element is a 'const void* const').
    *
-   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
+   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
    * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
@@ -5471,7 +5471,7 @@ struct OrtApi {
 
   /** \brief Get the element at the given index. Returns an error status if the index is outside the array bounds.
    *
-   * Caller must cast the element to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
+   * Caller must cast the object to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    * Example:
    *    // Assume OrtTypeTag is ORT_TYPE_TAG_OrtNode and there is at least one node in the array.
    *    const OrtNode* node = nullptr;
