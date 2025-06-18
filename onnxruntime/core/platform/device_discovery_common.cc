@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+// This file contains platform-agnostic device discovery implementation.
+
 #include "core/platform/device_discovery.h"
 
 #include <sstream>
