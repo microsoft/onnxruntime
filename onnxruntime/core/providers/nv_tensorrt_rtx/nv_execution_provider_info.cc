@@ -17,6 +17,7 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   NvExecutionProviderInfo info{};
   void* user_compute_stream = nullptr;
   void* onnx_bytestream = nullptr;
+  void* external_data_bytestream = nullptr;
   ORT_THROW_IF_ERROR(
       ProviderOptionsParser{}
           .AddValueParser(
@@ -58,11 +59,21 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                 return Status::OK();
               })
           .AddAssignmentToReference(nv::provider_option_names::kONNXBytestreamSize, info.onnx_bytestream_size)
+          .AddValueParser(
+              nv::provider_option_names::kExternalDataBytestream,
+              [&external_data_bytestream](const std::string& value_str) -> Status {
+                size_t address;
+                ORT_RETURN_IF_ERROR(ParseStringWithClassicLocale(value_str, address));
+                external_data_bytestream = reinterpret_cast<void*>(address);
+                return Status::OK();
+              })
+          .AddAssignmentToReference(nv::provider_option_names::kExternalDataBytestreamSize, info.external_data_bytestream_size)
           .Parse(options));  // add new provider option here.
 
   info.user_compute_stream = user_compute_stream;
   info.has_user_compute_stream = (user_compute_stream != nullptr);
   info.onnx_bytestream = onnx_bytestream;
+  info.external_data_bytestream = external_data_bytestream;
 
   // EP context settings
   // when EP context is enabled, default is to embed the engine in the context model
@@ -112,6 +123,8 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kCudaGraphEnable, MakeStringWithClassicLocale(info.cuda_graph_enable)},
       {nv::provider_option_names::kONNXBytestream, MakeStringWithClassicLocale(info.onnx_bytestream)},
       {nv::provider_option_names::kONNXBytestreamSize, MakeStringWithClassicLocale(info.onnx_bytestream_size)},
+      {nv::provider_option_names::kExternalDataBytestream, MakeStringWithClassicLocale(info.external_data_bytestream)},
+      {nv::provider_option_names::kExternalDataBytestreamSize, MakeStringWithClassicLocale(info.external_data_bytestream_size)},
   };
   return options;
 }

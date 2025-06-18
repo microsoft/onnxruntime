@@ -141,6 +141,7 @@ struct TensorrtFuncState {
   bool cuda_graph_enable = 0;
   std::string cache_prefix;
   std::string cache_suffix;
+  const GraphViewer* graph_viewer;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -224,9 +225,12 @@ class NvExecutionProvider : public IExecutionProvider {
                                     bool path_check,
                                     const void* onnx_model_bytestream,
                                     size_t onnx_model_bytestream_size,
+                                    const void* onnx_external_data_bytestream,
+                                    size_t onnx_external_data_bytestream_size,
                                     nvinfer1::ICudaEngine* trt_engine,
                                     bool serialize_refitted_engine,
-                                    bool detailed_build_log);
+                                    bool detailed_build_log,
+                                    const GraphViewer* graph_body_viewer = nullptr);
 
  private:
   mutable NvExecutionProviderInfo info_;
@@ -244,6 +248,8 @@ class NvExecutionProvider : public IExecutionProvider {
   std::string onnx_model_folder_path_;
   const void* onnx_model_bytestream_;
   size_t onnx_model_bytestream_size_;
+  const void* onnx_external_data_bytestream_ = nullptr;
+  size_t onnx_external_data_bytestream_size_ = 0;
   bool sparsity_enable_ = false;
   int auxiliary_streams_ = -1;
   std::string cache_path_, engine_decryption_lib_path_;
