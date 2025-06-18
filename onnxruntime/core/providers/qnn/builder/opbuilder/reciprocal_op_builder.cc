@@ -19,11 +19,6 @@ class ReciprocalOpBuilder : public BaseOpBuilder {
                        const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
 
  protected:
-  Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                       const NodeUnit& node_unit,
-                       const logging::Logger& logger,
-                       std::vector<std::string>& input_names,
-                       bool do_op_validation) const override ORT_MUST_USE_RESULT;
 
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                      const NodeUnit& node_unit,
@@ -43,18 +38,8 @@ Status ReciprocalOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
   const auto& outputs = node_unit.Outputs();
   ORT_RETURN_IF_NOT(outputs.size() == 1, "Reciprocal operator must have exactly 1 output.");
 
-  return Status::OK();
-}
-
-Status ReciprocalOpBuilder::ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
-                                          const NodeUnit& node_unit,
-                                          const logging::Logger& logger,
-                                          std::vector<std::string>& input_names,
-                                          bool do_op_validation) const {
-  ORT_UNUSED_PARAMETER(do_op_validation);
-
-  const auto& inputs = node_unit.Inputs();
-  ORT_RETURN_IF_ERROR(ProcessInput(qnn_model_wrapper, inputs[0], logger, input_names));
+  // Check input type is float for CPU.
+  ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
 
   return Status::OK();
 }
@@ -78,35 +63,17 @@ Status ReciprocalOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_mod
   Qnn_DataType_t divisor_qnn_data_type = input_info.qnn_data_type;
 
   if (input_info.quant_param.IsQuantized()) {
-    const auto& encoding = divisor_quant_param.Get().scaleOffsetEncoding;
+    // Create a quantized divisor tensor
     double divisor_value = 1.0;
     int quantized_divisor_value;
-
-    ORT_RETURN_IF_ERROR(utils::Quantize(divisor_value,
-                                        encoding.scale,
-                                        encoding.offset,
-                                        input_info.qnn_data_type,
-                                        quantized_divisor_value));
-
-    size_t element_size = qnn::utils::GetElementSizeByType(input_info.qnn_data_type);
+    ORT_RETURN_IF_ERROR(utils::Quantize(divisor_value, divisor_quant_param.Get().scaleOffsetEncoding.scale,
+                                        divisor_quant_param.Get().scaleOffsetEncoding.offset,
+                                        divisor_qnn_data_type, quantized_divisor_value));
+    size_t element_size = qnn::utils::GetElementSizeByType(divisor_qnn_data_type);
     divisor_data.resize(element_size);
-
-    switch (input_info.qnn_data_type) {
-      case QNN_DATATYPE_UFIXED_POINT_8:
-        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(uint8_t));
-        break;
-      case QNN_DATATYPE_SFIXED_POINT_8:
-        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(int8_t));
-        break;
-      case QNN_DATATYPE_UFIXED_POINT_16:
-        std::memcpy(divisor_data.data(), &quantized_divisor_value, sizeof(uint16_t));
-        break;
-      default:
-        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Unsupported quantized data type for divisor.");
-    }
-
+    std::memcpy(divisor_data.data(), &quantized_divisor_value, element_size);
   } else {
-    // FP32 path
+    // Create a float divisor tensor
     divisor_data.resize(sizeof(float));
     float one = 1.0f;
     std::memcpy(divisor_data.data(), &one, sizeof(float));
