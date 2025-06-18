@@ -10,10 +10,10 @@
 
 struct OrtArrayOfConstObjects {
   OrtArrayOfConstObjects() = default;
-  explicit OrtArrayOfConstObjects(OrtTypeTag elem_type) : elem_type(elem_type) {}
-  OrtArrayOfConstObjects(OrtTypeTag elem_type, size_t size, const void* initial_val = nullptr)
-      : elem_type(elem_type), storage(size, initial_val) {}
+  explicit OrtArrayOfConstObjects(OrtTypeTag object_type) : object_type(object_type) {}
+  OrtArrayOfConstObjects(OrtTypeTag object_type, size_t size, const void* initial_val = nullptr)
+      : object_type(object_type), storage(size, initial_val) {}
 
-  OrtTypeTag elem_type = OrtTypeTag::ORT_TYPE_TAG_Void;
+  OrtTypeTag object_type = OrtTypeTag::ORT_TYPE_TAG_Void;
   std::vector<const void*> storage;
 };

@@ -609,10 +609,10 @@ ORT_API_STATUS_IMPL(CreateMemoryInfo_V2, _In_ const char* name, _In_ enum OrtMem
                     _Outptr_ OrtMemoryInfo** out);
 
 // OrtArrayOfConstObjects
-ORT_API_STATUS_IMPL(CreateArrayOfConstObjects, _In_ OrtTypeTag elem_type, _In_ size_t initial_size,
+ORT_API_STATUS_IMPL(CreateArrayOfConstObjects, _In_ OrtTypeTag object_type, _In_ size_t initial_size,
                     _In_ const void* initial_value, _Outptr_ OrtArrayOfConstObjects** out);
 ORT_API(void, ReleaseArrayOfConstObjects, _Frees_ptr_opt_ OrtArrayOfConstObjects* array);
-ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
+ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetObjectType, _In_ const OrtArrayOfConstObjects* array,
                     _Out_ OrtTypeTag* type_tag);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetConstData, _In_ const OrtArrayOfConstObjects* array,
@@ -622,7 +622,7 @@ ORT_API_STATUS_IMPL(ArrayOfConstObjects_GetElementAt, _In_ const OrtArrayOfConst
                     _Outptr_ const void** out);
 ORT_API_STATUS_IMPL(ArrayOfConstObjects_SetElementAt, _In_ OrtArrayOfConstObjects* array, _In_ size_t index,
                     _In_ const void* element);
-ORT_API_STATUS_IMPL(ArrayOfConstObjects_AddElement, _In_ OrtArrayOfConstObjects* array, _In_ const void* element);
+ORT_API_STATUS_IMPL(ArrayOfConstObjects_AppendElement, _In_ OrtArrayOfConstObjects* array, _In_ const void* element);
 
 // OrtValueInfo
 ORT_API_STATUS_IMPL(ValueInfo_GetValueProducer, _In_ const OrtValueInfo* value_info,

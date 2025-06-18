@@ -5389,15 +5389,19 @@ struct OrtApi {
   // OrtArrayOfConstObjects
   //
 
-  /** \brief Create an OrtArrayOfConstObjects instance, which represents an array of constant opaque objects.
+  /** \brief Create an OrtArrayOfConstObjects instance, which represents an array of
+   * pointers to constant opaque objects (i.e., each element is a 'const void*').
+   *
+   * The OrtArrayOfConstObjects instance does not own the underlying objects, only the pointers
+   * to them.
    *
    * An OrtArrayOfConstObjects instance stores elements of type 'const void*'. Users
-   * must check the element's type via ArrayOfConstObjects_GetElementType before casting elements
+   * must check the element's type via ArrayOfConstObjects_GetObjectType before casting elements
    * to their actual type.
    *
-   * \param[in] elem_type The element's type as indicated by the OrtTypeTag enum.
-   * \param[in] initial_size The backing array's initial size.
-   * \param[in] initial_value Each element's initial value.
+   * \param[in] object_type The object's type as indicated by the OrtTypeTag enum.
+   * \param[in] initial_size The backing array's initial size. Can be set to 0.
+   * \param[in] initial_value Each element's initial value. Can be set to NULL.
    * \param[out] out A pointer to a newly created OrtArrayOfConstObjects instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -5406,28 +5410,29 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateArrayOfConstObjects, _In_ OrtTypeTag elem_type, _In_ size_t initial_size,
+  ORT_API2_STATUS(CreateArrayOfConstObjects, _In_ OrtTypeTag object_type, _In_ size_t initial_size,
                   _In_ const void* initial_value, _Outptr_ OrtArrayOfConstObjects** out);
 
   ORT_CLASS_RELEASE(ArrayOfConstObjects);
 
-  /** \brief Get a tag that represents the type of the elements stored in a OrtArrayOfConstObjects instance.
+  /** \brief Get a tag that represents the type of the opaque objects stored in a OrtArrayOfConstObjects instance.
    *
    * Refer to OrtTypeTag for valid values.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] type_tag Output parameter set to the type tag that corresponds to the element's type.
+   * \param[out] type_tag Output parameter set to the type tag that corresponds to the object type.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
+  ORT_API2_STATUS(ArrayOfConstObjects_GetObjectType, _In_ const OrtArrayOfConstObjects* array,
                   _Out_ OrtTypeTag* type_tag);
 
-  /** \brief Get a pointer to the data buffer of contiguous elements.
+  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a pointer to a
+   * constant opaque object (i.e., each element is a 'const void*').
    *
-   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetElementType.
+   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
    * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
@@ -5438,9 +5443,10 @@ struct OrtApi {
    */
   ORT_API2_STATUS(ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
 
-  /** \brief Get a pointer to a constant data buffer of contiguous elements.
+  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a constant pointer to a
+   * constant opaque object (i.e., each element is a 'const void* const').
    *
-   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetElementType.
+   * Caller must cast the elements to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
    * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
@@ -5465,7 +5471,7 @@ struct OrtApi {
 
   /** \brief Get the element at the given index. Returns an error status if the index is outside the array bounds.
    *
-   * Caller must cast the element to the appropriate type indicated by ArrayOfConstObjects_GetElementType.
+   * Caller must cast the element to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
    * Example:
    *    // Assume OrtTypeTag is ORT_TYPE_TAG_OrtNode and there is at least one node in the array.
    *    const OrtNode* node = nullptr;
@@ -5495,16 +5501,16 @@ struct OrtApi {
   ORT_API2_STATUS(ArrayOfConstObjects_SetElementAt, _In_ OrtArrayOfConstObjects* array, _In_ size_t index,
                   _In_ const void* element);
 
-  /** \brief Adds an element to the end of the array.
+  /** \brief Appends an element to the end of the array, which increases the size of the array by one.
    *
    * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[in] element The element to set.
+   * \param[in] element The element to append.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(ArrayOfConstObjects_AddElement, _In_ OrtArrayOfConstObjects* array, _In_ const void* element);
+  ORT_API2_STATUS(ArrayOfConstObjects_AppendElement, _In_ OrtArrayOfConstObjects* array, _In_ const void* element);
 
   //
   // OrtValueInfo

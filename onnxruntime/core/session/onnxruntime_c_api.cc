@@ -2399,14 +2399,14 @@ ORT_API(void, OrtApis::ReleaseArrayOfConstObjects, _Frees_ptr_opt_ OrtArrayOfCon
   delete array;
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetElementType, _In_ const OrtArrayOfConstObjects* array,
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetObjectType, _In_ const OrtArrayOfConstObjects* array,
                     _Out_ OrtTypeTag* type_tag) {
   API_IMPL_BEGIN
   if (type_tag == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'type_tag' argument is NULL");
   }
 
-  *type_tag = array->elem_type;
+  *type_tag = array->object_type;
   return nullptr;
   API_IMPL_END
 }
@@ -2479,7 +2479,7 @@ ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_SetElementAt, _In_ OrtArrayOfCo
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_AddElement, _In_ OrtArrayOfConstObjects* array,
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_AppendElement, _In_ OrtArrayOfConstObjects* array,
                     _In_ const void* element) {
   API_IMPL_BEGIN
   array->storage.push_back(element);
@@ -3505,13 +3505,13 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::CreateArrayOfConstObjects,
     &OrtApis::ReleaseArrayOfConstObjects,
-    &OrtApis::ArrayOfConstObjects_GetElementType,
+    &OrtApis::ArrayOfConstObjects_GetObjectType,
     &OrtApis::ArrayOfConstObjects_GetData,
     &OrtApis::ArrayOfConstObjects_GetConstData,
     &OrtApis::ArrayOfConstObjects_GetSize,
     &OrtApis::ArrayOfConstObjects_GetElementAt,
     &OrtApis::ArrayOfConstObjects_SetElementAt,
-    &OrtApis::ArrayOfConstObjects_AddElement,
+    &OrtApis::ArrayOfConstObjects_AppendElement,
 
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,
