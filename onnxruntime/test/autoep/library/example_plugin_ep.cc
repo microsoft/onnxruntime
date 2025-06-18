@@ -35,7 +35,7 @@ struct DeferOrtRelease {
   ~DeferOrtRelease() {
     if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
       release_func_(*obj_ptr_);
-      //*obj_ptr_ = nullptr;
+      *obj_ptr_ = nullptr;
     }
   }
   T** obj_ptr_ = nullptr;

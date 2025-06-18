@@ -5389,7 +5389,11 @@ struct OrtApi {
   // OrtArrayOfConstObjects
   //
 
-  /** \brief Create an OrtArrayOfConstObjects instance.
+  /** \brief Create an OrtArrayOfConstObjects instance, which represents an array of constant opaque objects.
+   *
+   * An OrtArrayOfConstObjects instance stores elements of type 'const void*'. Users
+   * must check the element's type via ArrayOfConstObjects_GetElementType before casting elements
+   * to their actual type.
    *
    * \param[in] elem_type The element's type as indicated by the OrtTypeTag enum.
    * \param[in] initial_size The backing array's initial size.
@@ -5670,7 +5674,7 @@ struct OrtApi {
 
   /** \brief Returns the graph's inputs as OrtValueInfo instances.
    *
-   * Includes constant and non-constant initializers.
+   * Includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] inputs Output parameter set to a new OrtArrayOfConstObjects instance containing the graph inputs
