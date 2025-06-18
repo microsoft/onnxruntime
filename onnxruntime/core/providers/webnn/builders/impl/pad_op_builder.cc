@@ -88,7 +88,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     std::vector<int64_t> pads;
     const auto& pads_tensor = *initializers.at(input_defs[1]->Name());
     ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, graph_viewer, logger),
-                      "Error while read pads tensor");
+                      "Error while reading pads tensor");
 
     // Constant value and axes are optional. Make sure they are not empty.
     if (!GetTensorName(input_defs, 2).empty()) {
@@ -103,7 +103,7 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
       ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(axes_tensor, axes, graph_viewer, logger),
-                        "Error while read axes tensor");
+                        "Error while reading axes tensor");
       std::vector<size_t> axes_index;
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_index),
