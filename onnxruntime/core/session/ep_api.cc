@@ -4,6 +4,10 @@
 #include "core/session/ep_api.h"
 
 #include "core/framework/error_code_helper.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
+#include "core/framework/tensor.h"
 #include "core/session/abi_devices.h"
 #include "core/session/ort_apis.h"
 
@@ -38,12 +42,77 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
+ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
+                    _In_ const OrtMemoryInfo* allocator_memory_info) {
+  const OrtDevice& info = allocator_memory_info->device;
+  if (info.MemType() == OrtDevice::MemType::DEFAULT) {
+    ep_device->device_memory_info = allocator_memory_info;
+  } else {
+    ep_device->host_accessible_memory_info = allocator_memory_info;
+  }
+
+  return nullptr;
+}
+
+ORT_API(const OrtMemoryDevice*, OrtMemoryInfo_GetMemoryDevice, _In_ const OrtMemoryInfo* memory_info) {
+  return static_cast<const OrtMemoryDevice*>(&memory_info->device);
+}
+
+ORT_API_STATUS_IMPL(OrtValue_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device) {
+  *device = nullptr;
+  if (value == nullptr || value->IsTensor() == false) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue does not contain an allocated tensor.");
+  }
+
+  auto& tensor = value->Get<Tensor>();
+  *device = static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
+
+  return nullptr;
+}
+
+ORT_API(bool, OrtMemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b) {
+  // don't care if they're both null as you don't need to call this function if they are
+  if (a == nullptr || b == nullptr) {
+    return false;
+  }
+
+  // TODO: Validate this calls OrtDevice::operator== as expected
+  return *a == *b;
+}
+
+ORT_API(OrtMemoryInfoDeviceType, OrtMemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device) {
+  switch (memory_device->Type()) {
+    case OrtDevice::GPU:
+      return OrtMemoryInfoDeviceType_GPU;
+    case OrtDevice::NPU:
+      return OrtMemoryInfoDeviceType_NPU;
+    case OrtDevice::FPGA:
+      return OrtMemoryInfoDeviceType_FPGA;
+    case OrtDevice::CPU:
+    default:  // should never happen. means we're out of sync with CreateMemoryInfo_V2
+      return OrtMemoryInfoDeviceType_CPU;
+  }
+}
+
+ORT_API(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->MemType() == OrtDevice::MemType::DEFAULT ? OrtDeviceMemoryType_DEFAULT
+                                                                 : OrtDeviceMemoryType_HOST_ACCESSIBLE;
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
 
     &OrtExecutionProviderApi::CreateEpDevice,
     &OrtExecutionProviderApi::ReleaseEpDevice,
+    &OrtExecutionProviderApi::EpDevice_AddAllocatorInfo,
+
+    &OrtExecutionProviderApi::OrtMemoryInfo_GetMemoryDevice,
+    &OrtExecutionProviderApi::OrtValue_GetMemoryDevice,
+
+    &OrtExecutionProviderApi::OrtMemoryDevice_AreEqual,
+    &OrtExecutionProviderApi::OrtMemoryDevice_GetDeviceType,
+    &OrtExecutionProviderApi::OrtMemoryDevice_GetMemoryType,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

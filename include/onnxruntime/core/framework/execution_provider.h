@@ -35,6 +35,7 @@ class GraphOptimizerRegistry;
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
+struct OrtEpDevice;
 struct OrtRunOptions;
 
 namespace onnxruntime {
