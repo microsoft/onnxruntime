@@ -49,7 +49,7 @@ std::vector<std::pair<int, int>> get_n_k_list() {
   if (kPipelineMode) {
     return {{5120, 3072}};
   } else {
-    // N and K from phi4 mini
+    // N and K of phi4 mini.
     return {{5120, 3072}, {8192, 3072}, {3072, 8192}, {200064, 3072}};
   }
 }
@@ -149,31 +149,26 @@ template <wo::KernelType KT>
 struct cutlassTypeMapper {
 };
 
-#define CUTLASS_TYPE_MAPPER_REGISTRY(                                                                \
-    CudaKernelType, KernelName, CudaAType, CutlassWType, WElemBits, CutlassQuantOp)                  \
-  template <>                                                                                        \
-  struct cutlassTypeMapper<CudaKernelType> {                                                         \
-    using AType = CudaAType;                                                                         \
-    using WType = CutlassWType;                                                                      \
-    static constexpr cutlass::WeightOnlyQuantOp QuantOp = CutlassQuantOp;                            \
-    static constexpr int WSizeInBits = WElemBits;                                                    \
-    static std::string ATypeStr() { return std::is_same_v<CudaAType, half> ? "Fp16" : "BF16"; }      \
-    static std::string WTypeStr() { return WSizeInBits == 4 ? "Int4" : "Int8"; }                     \
-    static std::string str(int m, int n, int k, int group_size) {                                    \
-      std::stringstream ss;                                                                          \
-      ss << KernelName << " m=" << m << ", n=" << n << ", k=" << k << ", group_size=" << group_size; \
-      return ss.str();                                                                               \
-    }                                                                                                \
+#define CUTLASS_TYPE_MAPPER_REGISTRY(                                                           \
+    CudaKernelType, CudaAType, CutlassWType, WElemBits, CutlassQuantOp)                         \
+  template <>                                                                                   \
+  struct cutlassTypeMapper<CudaKernelType> {                                                    \
+    using AType = CudaAType;                                                                    \
+    using WType = CutlassWType;                                                                 \
+    static constexpr cutlass::WeightOnlyQuantOp QuantOp = CutlassQuantOp;                       \
+    static constexpr int WSizeInBits = WElemBits;                                               \
+    static std::string ATypeStr() { return std::is_same_v<CudaAType, half> ? "Fp16" : "BF16"; } \
+    static std::string WTypeStr() { return WSizeInBits == 4 ? "Int4" : "Int8"; }                \
   };
 
-CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int8Groupwise, "FP16Int8Groupwise", half, uint8_t, 8,
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int8Groupwise, half, uint8_t, 8,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
-CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int8Groupwise, "BF16Int8Groupwise", __nv_bfloat16, uint8_t, 8,
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int8Groupwise, __nv_bfloat16, uint8_t, 8,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
-CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int4Groupwise, "FP16Int4Groupwise", half, cutlass::uint4b_t, 4,
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::FP16Int4Groupwise, half, cutlass::uint4b_t, 4,
                              cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
-CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int4Groupwise, "BF16Int4Groupwise", __nv_bfloat16, cutlass::uint4b_t,
-                             4, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
+CUTLASS_TYPE_MAPPER_REGISTRY(wo::KernelType::BF16Int4Groupwise, __nv_bfloat16, cutlass::uint4b_t, 4,
+                             cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS);
 
 template <typename Func>
 float measure_kernel_time(Func kernel_launcher, int warmup, int repeats, cudaStream_t s) {
@@ -198,8 +193,8 @@ float measure_kernel_time(Func kernel_launcher, int warmup, int repeats, cudaStr
 }
 
 template <wo::KernelType KT, typename Runner, typename Config>
-void exec_cutlass_kernel(
-    [[maybe_unused]] void* scaled_act, Runner& runner, wo::Params& params, Config& config, char* ws, size_t ws_size, cudaStream_t stream) {
+void exec_cutlass_kernel([[maybe_unused]] void* scaled_act, Runner& runner, wo::Params& params, Config& config,
+                         char* ws, size_t ws_size, cudaStream_t stream) {
   static constexpr cutlass::WeightOnlyQuantOp QuantOp = cutlassTypeMapper<KT>::QuantOp;
   void* act = params.act;
   if (params.act_scale) {
@@ -214,31 +209,50 @@ void exec_cutlass_kernel(
 struct BenchmarkResult {
   std::string a_type;
   std::string b_type;
-  int m, n, k, group_size;
+  int m;
+  int n;
+  int k;
+  int block_size;
   float cuda_time_us;
   float cutlass_time_us;
   float nbits_time_us;
+  float naive_time_us;
   float speedup_cuda_vs_cutlass;
   float speedup_cuda_vs_nbits;
-  float speedup_cutlass_vs_nbits;
+  float speedup_best_vs_naive;
+
+  float best_time_us() const {
+    float best = cutlass_time_us;
+    if (cuda_time_us > 0.f) {
+      best = std::min(best, cuda_time_us);
+    }
+    if (nbits_time_us > 0.f) {
+      best = std::min(best, nbits_time_us);
+    }
+    return best;
+  }
 };
 
 void PrintBenchmarkSummary(std::vector<BenchmarkResult>& benchmark_results) {
-  std::cout << "\n--- Benchmark of FpA_IntB_GEMV, FpA_IntB_GEMM and MatMulNBits kernels (latency in microseconds) ---\n";
+  std::cout << "\nBenchmark of FpA_IntB_GEMV, FpA_IntB_GEMM, MatMulNBits, Navie (DQ + GEMM) kernels (latency in microseconds):\n";
+  constexpr size_t kLength = 139;
+  std::cout << std::string(kLength, '-') << std::endl;
   std::cout << std::left << std::setw(6) << "A"
             << std::setw(6) << "W"
             << std::setw(6) << "m"
             << std::setw(8) << "n"
             << std::setw(7) << "k"
-            << std::setw(12) << "group_size"
+            << std::setw(12) << "block_size"
             << std::setw(12) << "gemv (us)"
             << std::setw(12) << "gemm (us)"
             << std::setw(12) << "nbits (us)"
+            << std::setw(12) << "best (us)"
+            << std::setw(12) << "naive (us)"
             << std::setw(12) << "gemm/gemv"
             << std::setw(12) << "nbits/gemv"
-            << std::setw(12) << "nbits/gemm"
+            << std::setw(12) << "best/naive"
             << std::endl;
-  std::cout << std::string(115, '-') << std::endl;
+  std::cout << std::string(kLength, '-') << std::endl;
 
   std::cout << std::fixed << std::setprecision(3);
 
@@ -248,22 +262,24 @@ void PrintBenchmarkSummary(std::vector<BenchmarkResult>& benchmark_results) {
               << std::setw(6) << result.m
               << std::setw(8) << result.n
               << std::setw(7) << result.k
-              << std::setw(12) << result.group_size
+              << std::setw(12) << result.block_size
               << std::setw(12) << result.cuda_time_us
               << std::setw(12) << result.cutlass_time_us
               << std::setw(12) << result.nbits_time_us
+              << std::setw(12) << result.best_time_us()
+              << std::setw(12) << result.naive_time_us
               << std::setw(12) << result.speedup_cuda_vs_cutlass
               << std::setw(12) << result.speedup_cuda_vs_nbits
-              << std::setw(12) << result.speedup_cutlass_vs_nbits
+              << std::setw(12) << result.speedup_best_vs_naive
               << std::endl;
   }
-  std::cout << std::string(115, '-') << std::endl;
+  std::cout << std::string(kLength, '-') << std::endl;
 }
 
 template <wo::KernelType KT, bool has_bias = false, bool has_act_scale = false, bool filter_configs = false>
 class KernelTestFixture : public ::testing::Test {
  protected:
-  int m_, n_, k_, group_size_;
+  int m_, n_, k_, block_size_;
   int warmup_ = 10;
   int repeats_ = 30;
   cudaDeviceProp device_prop_;
@@ -292,15 +308,15 @@ class KernelTestFixture : public ::testing::Test {
     cublasDestroy(cublas_handle_);
   }
 
-  void InitBuffers(int m, int n, int k, int group_size) {
+  void InitBuffers(int m, int n, int k, int block_size) {
     m_ = m;
     n_ = n;
     k_ = k;
-    group_size_ = group_size;
+    block_size_ = block_size;
 
     if (cutlassTypeMapper<KT>::QuantOp == cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS) {
-      ORT_ENFORCE(group_size_ == 64 || group_size_ == 128);
-      ORT_ENFORCE(k_ % group_size_ == 0);
+      ORT_ENFORCE(block_size_ == 64 || block_size_ == 128);
+      ORT_ENFORCE(k_ % block_size_ == 0);
     }
 
     using AType = typename cutlassTypeMapper<KT>::AType;
@@ -308,16 +324,16 @@ class KernelTestFixture : public ::testing::Test {
     d_act_ = std::make_shared<CudaBuffer>(m_ * k_ * sizeof(AType));
     d_act_scale_ = std::make_shared<CudaBuffer>(k_ * sizeof(AType));
     d_weight_ = std::make_shared<CudaBuffer>(k_ * n_ * WSizeInBits / 8);
-    d_scales_ = std::make_shared<CudaBuffer>(n_ * k_ / group_size_ * sizeof(AType));
-    d_zeros_ = std::make_shared<CudaBuffer>(n_ * k_ / group_size_ * sizeof(AType));
+    d_scales_ = std::make_shared<CudaBuffer>(n_ * k_ / block_size_ * sizeof(AType));
+    d_zeros_ = std::make_shared<CudaBuffer>(n_ * k_ / block_size_ * sizeof(AType));
     d_bias_ = std::make_shared<CudaBuffer>(n_ * sizeof(AType));
     d_out_ = std::make_shared<CudaBuffer>(m_ * n_ * sizeof(AType));
 
     h_act_.resize(m_ * k_);
     h_act_scale_.resize(k_);
     h_weight_.resize(k_ * n_);
-    h_scales_.resize(n_ * k_ / group_size_);
-    h_zeros_.resize(n_ * k_ / group_size_);
+    h_scales_.resize(n_ * k_ / block_size_);
+    h_zeros_.resize(n_ * k_ / block_size_);
     h_bias_.resize(n_);
     h_out1_.resize(m_ * n_);
     h_out2_.resize(m_ * n_);
@@ -341,13 +357,13 @@ class KernelTestFixture : public ::testing::Test {
   }
 
   bool BenchmarkAndVerifyKernel() {
-    printf("%s\n", cutlassTypeMapper<KT>::str(m_, n_, k_, group_size_).c_str());
+    std::cout << "m=" << m_ << ", n=" << n_ << ", k=" << k_ << ", block_size=" << block_size_ << std::endl;
 
     void* p_act_scale = nullptr;
     void* p_zeros = nullptr;
     void* p_bias = nullptr;
 
-    if (group_size_ != 0) {
+    if (block_size_ != 0) {
       p_zeros = d_zeros_->data();
       if constexpr (has_bias) {
         p_bias = d_bias_->data();
@@ -358,7 +374,7 @@ class KernelTestFixture : public ::testing::Test {
     }
 
     wo::Params params(d_act_->data(), p_act_scale, d_weight_->data(), d_scales_->data(), p_zeros, p_bias,
-                      d_out_->data(), 1.f, m_, n_, k_, group_size_, KT);
+                      d_out_->data(), 1.f, m_, n_, k_, block_size_, KT);
 
     //------------------------
     // Run FpA_IntB_Gemv CUDA kernel
@@ -394,7 +410,6 @@ class KernelTestFixture : public ::testing::Test {
     float fast_time_ms = std::numeric_limits<float>::max();
     CutlassGemmConfig best_config = configs[0];
 
-    int cfg_i = 0;
     for (auto& config : configs) {
       float time = std::numeric_limits<float>::max();
       try {
@@ -405,13 +420,9 @@ class KernelTestFixture : public ::testing::Test {
             2, 5, s_);
       } catch (std::exception const& e) {
         std::ostringstream msg;
-        msg << "Cannot profile configuration " << cfg_i;
-        if constexpr (std::is_same_v<decltype(config), CutlassGemmConfig>) {
-          msg << ": " << config.toString();
-        }
-        msg << "\n (for"
-            << " m=" << params.m << ", n=" << params.n << ", k=" << params.k << ")"
-            << ", reason: \"" << e.what() << "\". Skipped\n";
+        msg << "Failed to profile m=" << params.m << ", n=" << params.n << ", k=" << params.k << "for configuration:\n";
+        msg << config.toString();
+        msg << "\nException:" << e.what() << "\n";
         std::cout << msg.str();
         cudaGetLastError();  // Reset the last cudaError to cudaSuccess.
         continue;
@@ -420,7 +431,6 @@ class KernelTestFixture : public ::testing::Test {
         fast_time_ms = time;
         best_config = config;
       }
-      cfg_i++;
     }
 
     float cutlass_time_ms = measure_kernel_time(
@@ -442,14 +452,15 @@ class KernelTestFixture : public ::testing::Test {
     // Run MatMulNBits kernel.
     // Note that it runs on random data, so the output is not compared.
     float nbits_time_ms = 0.f;
+    float naive_time_ms = 0.f;
     if constexpr (KT == wo::KernelType::FP16Int8Groupwise || KT == wo::KernelType::FP16Int4Groupwise) {
-      std::vector<uint8_t> h_uint8_zeros(n_ * k_ / group_size_);
+      std::vector<uint8_t> h_uint8_zeros(n_ * k_ / block_size_);
       for (uint8_t& v : h_uint8_zeros) {
         v = rand() % 256;
       }
 
-      ORT_ENFORCE(k_ / group_size_ * WSizeInBits % 8 == 0);
-      CudaBuffer d_uint8_zeros(n_ * k_ / group_size_ * WSizeInBits / 8);
+      ORT_ENFORCE(k_ / block_size_ * WSizeInBits % 8 == 0);
+      CudaBuffer d_uint8_zeros(n_ * k_ / block_size_ * WSizeInBits / 8);
       d_uint8_zeros.from_cpu(h_uint8_zeros.data());
 
       if (m_ == 1) {
@@ -461,51 +472,51 @@ class KernelTestFixture : public ::testing::Test {
                                                          reinterpret_cast<const uint8_t*>(d_weight_->data()),
                                                          reinterpret_cast<const AType*>(d_scales_->data()),
                                                          static_cast<const uint8_t*>(d_uint8_zeros.data()),
-                                                         m_, n_, k_, group_size_, device_prop_.sharedMemPerBlock, s_);
-            },
-            warmup_, repeats_, s_);
-      } else {
-        CudaBuffer d_dequantized_weight(SafeInt<int>(n_) * k_ * sizeof(AType));
-
-        nbits_time_ms = measure_kernel_time(
-            [&]() {
-              auto status = onnxruntime::contrib::cuda::DequantizeNBits<AType, uint8_t>(
-                  WSizeInBits,
-                  reinterpret_cast<AType*>(d_dequantized_weight.data()),
-                  reinterpret_cast<const uint8_t*>(d_weight_->data()),
-                  reinterpret_cast<const AType*>(d_scales_->data()),
-                  reinterpret_cast<const uint8_t*>(d_uint8_zeros.data()),
-                  nullptr,
-                  k_,
-                  n_,
-                  group_size_,
-                  s_);
-
-              ORT_THROW_IF_ERROR(status);
-
-              const AType alpha = AType(1.f);
-              const AType zero = AType(0.f);
-              constexpr bool use_tf32 = false;
-              CUBLAS_CALL_THROW(cublasGemmHelper(
-                  cublas_handle_,
-                  CUBLAS_OP_T,
-                  CUBLAS_OP_N,
-                  n_,
-                  m_,
-                  k_,
-                  &alpha,
-                  reinterpret_cast<const AType*>(d_dequantized_weight.data()),
-                  k_,
-                  reinterpret_cast<const AType*>(d_act_->data()),
-                  k_,
-                  &zero,
-                  reinterpret_cast<AType*>(d_out_->data()),
-                  n_,
-                  device_prop_,
-                  use_tf32));
+                                                         m_, n_, k_, block_size_, device_prop_.sharedMemPerBlock, s_);
             },
             warmup_, repeats_, s_);
       }
+
+      CudaBuffer d_dequantized_weight(SafeInt<int>(n_) * k_ * sizeof(AType));
+
+      naive_time_ms = measure_kernel_time(
+          [&]() {
+            auto status = onnxruntime::contrib::cuda::DequantizeNBits<AType, uint8_t>(
+                WSizeInBits,
+                reinterpret_cast<AType*>(d_dequantized_weight.data()),
+                reinterpret_cast<const uint8_t*>(d_weight_->data()),
+                reinterpret_cast<const AType*>(d_scales_->data()),
+                reinterpret_cast<const uint8_t*>(d_uint8_zeros.data()),
+                nullptr,
+                k_,
+                n_,
+                block_size_,
+                s_);
+
+            ORT_THROW_IF_ERROR(status);
+
+            const AType alpha = AType(1.f);
+            const AType zero = AType(0.f);
+            constexpr bool use_tf32 = false;
+            CUBLAS_CALL_THROW(cublasGemmHelper(
+                cublas_handle_,
+                CUBLAS_OP_T,
+                CUBLAS_OP_N,
+                n_,
+                m_,
+                k_,
+                &alpha,
+                reinterpret_cast<const AType*>(d_dequantized_weight.data()),
+                k_,
+                reinterpret_cast<const AType*>(d_act_->data()),
+                k_,
+                &zero,
+                reinterpret_cast<AType*>(d_out_->data()),
+                n_,
+                device_prop_,
+                use_tf32));
+          },
+          warmup_, repeats_, s_);
     }
 
     // Store benchmark results
@@ -515,14 +526,14 @@ class KernelTestFixture : public ::testing::Test {
     result.m = m_;
     result.n = n_;
     result.k = k_;
-    result.group_size = group_size_;
+    result.block_size = block_size_;
     result.cuda_time_us = cuda_time_ms * 1000.0f;
     result.cutlass_time_us = cutlass_time_ms * 1000.0f;
     result.nbits_time_us = nbits_time_ms * 1000.0f;
+    result.naive_time_us = naive_time_ms * 1000.0f;
     result.speedup_cuda_vs_cutlass = cuda_time_ms > 0.f ? cutlass_time_ms / cuda_time_ms : 0.f;
     result.speedup_cuda_vs_nbits = cuda_time_ms > 0.f ? nbits_time_ms / cuda_time_ms : 0.f;
-    result.speedup_cutlass_vs_nbits = cutlass_time_ms > 0.f ? nbits_time_ms / cutlass_time_ms : 0.f;
-
+    result.speedup_best_vs_naive = result.naive_time_us / result.best_time_us();
     benchmark_results_.push_back(result);
 
     return pass;
