@@ -777,7 +777,7 @@ var<workgroup> qkv_values: array<array<present_value_value_t, tile_size_k_vec>, 
     }
 
     for (var i = local_idx; i < uniforms.head_size_vec; i += workgroup_size_x) {
-      let out_offset = head_idx * uniforms.num_total_seq_length_tile * uniforms.head_size_vec + (workgroup_idx % uniforms.num_total_seq_length_tile) * uniforms.head_size_vec + i;
+      let out_offset = head_idx * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec + (workgroup_idx % uniforms.num_total_seq_length_tile) * uniforms.head_size_vec + i;
       out_split_vx[out_offset] = tile_output[i];
     }
 )MAIN_FN";
@@ -833,7 +833,7 @@ var<workgroup> tile_input: array<array<output_value_t, TILE_SIZE>, TILE_SIZE>;
   shader.MainFunctionBody() << R"MAIN_FN(
     let head_size_offset = (workgroup_idx % uniforms.num_head_size_tile) * TILE_SIZE;
     let head_idx = u32(workgroup_idx / uniforms.num_head_size_tile);
-    let in_offset = head_idx * uniforms.num_total_seq_length_tile * uniforms.head_size_vec;
+    let in_offset = head_idx * uniforms.num_present_sequence_length_tile * uniforms.head_size_vec;
     var value = output_value_t(0);
     let local_row = u32(local_idx / TILE_SIZE);
     let local_col = local_idx % TILE_SIZE;
@@ -870,7 +870,8 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
                                            const Tensor* out_split_vx,
                                            Tensor* output,
                                            const WebgpuAttentionParameters& parameters,
-                                           uint32_t num_total_seq_length_tile) {
+                                           uint32_t num_total_seq_length_tile,
+                                           uint32_t num_present_sequence_length_tile) {
   const int components = 4;
   constexpr int tile_size = 8;
   int tile_head_size = tile_size * components;
@@ -883,6 +884,7 @@ Status ComputeFlashAttentionDecodeVxReduce(onnxruntime::webgpu::ComputeContext& 
       .SetWorkgroupSize(tile_size * tile_size)
       .AddUniformVariables({{static_cast<uint32_t>(parameters.v_head_size_ / components)},
                             num_total_seq_length_tile,
+                            num_present_sequence_length_tile,
                             {num_head_size_tile},
                             {static_cast<uint32_t>(parameters.num_heads_)}});
 
@@ -932,7 +934,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   Tensor qk = context.CreateGPUTensor(Q->DataType(), qk_shape);
   constexpr uint32_t tile_size = 64;
   const uint32_t num_total_seq_length_tile = (parameters.total_sequence_length_ + tile_size - 1) / tile_size;
-  const int num_present_sequence_length_tile = (present_sequence_length + tile_size - 1) / tile_size;
+  const uint32_t num_present_sequence_length_tile = (present_sequence_length + tile_size - 1) / tile_size;
   // The metadata is used to store the max and sum of each tile.
   const TensorShapeVector metadata_dims({parameters.batch_size_, parameters.num_heads_,
                                          num_present_sequence_length_tile, 2});
@@ -941,11 +943,11 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeQKT(context, Q, attention_bias, &qk, present_key, &metadata,
                                                      parameters, num_total_seq_length_tile, num_present_sequence_length_tile, tile_size));
 
-  const TensorShapeVector out_split_vx_dims({parameters.batch_size_, parameters.num_heads_, num_total_seq_length_tile, parameters.head_size_});
+  const TensorShapeVector out_split_vx_dims({parameters.batch_size_, parameters.num_heads_, num_present_sequence_length_tile, parameters.head_size_});
   const TensorShape out_split_vx_shape(out_split_vx_dims);
   Tensor out_split_vx = context.CreateGPUTensor(Q->DataType(), out_split_vx_shape);
   ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeSplitVxScore(context, &metadata, &qk, &out_split_vx, present_value, parameters, num_total_seq_length_tile, num_present_sequence_length_tile, tile_size));
-  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, output, parameters, num_total_seq_length_tile));
+  ORT_RETURN_IF_ERROR(ComputeFlashAttentionDecodeVxReduce(context, &out_split_vx, output, parameters, num_total_seq_length_tile, num_present_sequence_length_tile));
 
   return Status::OK();
 }
