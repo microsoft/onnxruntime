@@ -310,7 +310,6 @@ class QnnParamWrapper {
                   Qnn_DataType_t data_type,
                   std::vector<uint32_t>&& shape,
                   std::vector<uint8_t>&& param_data) : name_(name), shape_(std::move(shape)), param_data_(std::move(param_data)) {
-
     qnn_param_.paramType = QNN_PARAMTYPE_TENSOR;
     qnn_param_.name = name_.c_str();
     std::stringstream ss;
