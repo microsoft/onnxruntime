@@ -93,9 +93,7 @@ bool ReshapeOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
 
   const auto& perm_tensor = *perm_init;
   std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(perm_tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking perm_tensor: " << status.ErrorMessage();
+  if (!UnpackInitializerData(perm_tensor, unpacked_tensor, graph_viewer, logger)) {
     return false;
   }
 
