@@ -53,6 +53,12 @@ enum AttentionKernelType {
   AttentionKernel_Default
 };
 
+enum class QKOutputType : int {
+  NO_OUTPUT = -1,
+  BEFORE_SOFTMAX = 0,
+  AFTER_SOFTMAX = 1
+};
+
 constexpr bool LAYOUT_BSNH = false;
 constexpr bool LAYOUT_BNSH = true;
 
