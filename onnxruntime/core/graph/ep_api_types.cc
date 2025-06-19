@@ -113,10 +113,28 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
     }
   }
 
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> ep_node_attributes_map;
+  std::vector<OrtOpAttr*> ep_node_attributes;
+  const auto& node_attrs = node.GetAttributes();
+
+  if (node_attrs.size() > 0) {
+    ep_node_attributes.resize(node_attrs.size(), nullptr);
+
+    size_t attr_idx = 0;
+    for (const auto& item : node_attrs) {
+      auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second); // Copy AttributeProto and owned by this EpNode object.
+      ep_node_attributes[attr_idx] = reinterpret_cast<OrtOpAttr*>(attr.get());
+      ep_node_attributes_map[item.first] = std::move(attr);
+      attr_idx++;
+    }
+  }
+
   ep_node->inputs_ = std::move(ep_node_inputs);
   ep_node->outputs_ = std::move(ep_node_outputs);
   ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs_ = std::move(ep_node_subgraphs);
+  ep_node->attributes_map_ = std::move(ep_node_attributes_map);
+  ep_node->attributes_ = std::move(ep_node_attributes);
 
   result = std::move(ep_node);
 
@@ -182,6 +200,17 @@ Status EpNode::GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& result) con
 
 Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
   parent_graph = ep_graph_->ToExternal();
+  return Status::OK();
+}
+
+Status EpNode::GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
+  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtOpAttr);
+  result->storage.reserve(attributes_.size());
+
+  for (const OrtOpAttr* attr : attributes_) {
+    result->storage.push_back(attr);
+  }
+
   return Status::OK();
 }
 

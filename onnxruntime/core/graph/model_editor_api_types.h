@@ -124,6 +124,12 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the parent graph for OrtNode");
   }
 
+  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& /*attrs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
+  }
+
+
   size_t id = 0;
   std::string operator_name;
   std::string domain_name;

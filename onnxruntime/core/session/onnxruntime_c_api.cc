@@ -2869,6 +2869,20 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetParentGraph, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attrs) {
+  API_IMPL_BEGIN
+  if (attrs == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'inputs' argument is NULL");
+  }
+
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
+
+  *attrs = array.release();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API(const OrtTrainingApi*, OrtApis::GetTrainingApi, uint32_t version) {
 #ifdef ENABLE_TRAINING_APIS
   if (version >= 13 && version <= ORT_API_VERSION)
@@ -3539,7 +3553,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetImplicitInputs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
-
+    &OrtApis::Node_GetAttributes,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

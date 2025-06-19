@@ -170,6 +170,9 @@ struct EpNode : public OrtNode {
   // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetParentGraph(const OrtGraph*& parent_graph) const override;
 
+  // Gets the node's attributes as OrtOpAttr instances wrapped in an OrtArrayOfConstObjects.
+  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& attrs) const override;
+
   //
   // Helper functions used when working directly with an EpNode.
   //
@@ -198,6 +201,8 @@ struct EpNode : public OrtNode {
 
   std::vector<EpValueInfo*> implicit_inputs_;
   std::vector<SubgraphState> subgraphs_;
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> attributes_map_;
+  std::vector<OrtOpAttr*> attributes_;
 };
 
 /// <summary>

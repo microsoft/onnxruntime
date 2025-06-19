@@ -665,5 +665,6 @@ ORT_API_STATUS_IMPL(Node_GetImplicitInputs, _In_ const OrtNode* node, _Outptr_ O
 ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs);
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,
                     _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+ORT_API_STATUS_IMPL(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attrs);
 
 }  // namespace OrtApis

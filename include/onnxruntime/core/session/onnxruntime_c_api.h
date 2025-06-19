@@ -499,6 +499,7 @@ typedef enum OrtTypeTag {
   ORT_TYPE_TAG_OrtValueInfo,
   ORT_TYPE_TAG_OrtNode,
   ORT_TYPE_TAG_OrtGraph,
+  ORT_TYPE_TAG_OrtOpAttr,
 } OrtTypeTag;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
@@ -5899,6 +5900,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
                   _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+
+  /** \brief Returns a node's attributes as OrtOpAttr instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
+   *                    as OrtOpAttr instances. Must be released by calling ReleaseArrayOfConstObjects.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** inputs);
 };
 
 /*
