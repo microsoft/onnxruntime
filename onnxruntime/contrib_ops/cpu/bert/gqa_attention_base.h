@@ -59,7 +59,8 @@ class GQAAttentionBase {
                         const Tensor* seqlens_k,                    // past sequence lengths tensor
                         GroupQueryAttentionParameters& parameters,  // attention parameters
                         AllocatorPtr allocator,                     // allocator for temporary tensors
-                        OpKernelContext* context) const {
+                        OpKernelContext* context,
+                        Tensor* attention_scores) const {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
@@ -78,8 +79,8 @@ class GQAAttentionBase {
     // Compute the attention score.
     bool gqa_mlas_supported = MlasGQASupported<T>(CblasNoTrans, CblasTrans) &&
                               MlasGQASupported<T>(CblasNoTrans, CblasNoTrans);
-    size_t bytes = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache *
-                   (gqa_mlas_supported ? sizeof(T) : sizeof(float));
+    size_t attention_scores_count = SafeInt<size_t>(batch_size) * num_heads_ * sequence_length * seqlen_present_kv_cache;
+    size_t bytes = SafeInt<size_t>(attention_scores_count) * (gqa_mlas_supported ? sizeof(T) : sizeof(float));
     auto attention_probs = allocator->Alloc(bytes);
     BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
 
@@ -95,11 +96,17 @@ class GQAAttentionBase {
 
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
+    float* attention_scores_buffer = attention_scores != nullptr ? attention_scores->MutableData<float>() : nullptr;
+
     if (gqa_mlas_supported) {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
                             head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
                             tp, allocator);
+
+      if (attention_scores_buffer != nullptr) {
+        MlasConvertHalfToFloatBuffer(static_cast<const MLAS_FP16*>(attention_probs), attention_scores_buffer, attention_scores_count);
+      }
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -113,6 +120,10 @@ class GQAAttentionBase {
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
                             head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
                             tp, allocator);
+
+      if (attention_scores_buffer != nullptr) {
+        std::memcpy(attention_scores_buffer, attention_probs, bytes);
+      }
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
