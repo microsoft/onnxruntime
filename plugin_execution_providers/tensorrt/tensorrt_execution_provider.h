@@ -19,6 +19,21 @@
 #define EXPORT_API
 #endif
 
+#define RETURN_IF_ERROR(fn)   \
+  do {                        \
+    OrtStatus* status = (fn); \
+    if (status != nullptr) {  \
+      return status;          \
+    }                         \
+  } while (0)
+
+#define RETURN_IF(cond, ort_api, msg)                    \
+  do {                                                   \
+    if ((cond)) {                                        \
+      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
+    }                                                    \
+  } while (0)
+
 namespace onnxruntime {
 
 namespace tensorrt_env_vars {
@@ -228,6 +243,11 @@ struct ApiPtrs {
   const OrtEpApi& ep_api;
 };
 
+/// <summary>
+/// 
+/// Plugin TensorRT EP that implements OrtEP
+/// 
+/// </summary>
 struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   TensorrtExecutionProvider(ApiPtrs apis, const std::string& name, const OrtHardwareDevice& device,
                             const OrtSessionOptions& session_options, const OrtLogger& logger);
@@ -238,6 +258,7 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
 
+  /*
   bool IsGraphCaptured(int graph_annotation_id) const { return false; }
 
   static OrtStatusPtr RefitEngine(std::string onnx_model_filename,
@@ -254,6 +275,7 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
                                         const OrtGraph* graph, bool* early_termination) const;
 
   bool DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const OrtGraphViewer* graph, const HashValue& model_hash, bool remove_cycles = true) const;
+  */
 
   /**
   Get a unique_lock object to control the concurrency behavior.
@@ -263,16 +285,14 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   std::unique_lock<std::mutex> GetApiLock() const;
 
   /**Check the graph is the subgraph of control flow op*/
-  bool IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const;
+  //bool IsSubGraphOfControlFlowOp(const OrtGraphViewer* graph) const;
 
   /**Check whether all the nodes of the graph are assigned to specific ep*/
-  bool AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const;
+  //bool AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const;
 
   /**Check whether all the nodes of subgraph are supported*/
-  bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
+  //bool IsSubGraphFullySupported(SubGraphCollection_t supported_nodes_vector, const int number_of_ort_nodes) const;
 
-  static const OrtApi* api_;
-  static const OrtGraphApi* graph_api_;
   std::unordered_map<std::string, std::string> trt_node_name_with_precision_;
   std::unordered_map<std::string, std::unordered_map<std::string, float>> dynamic_range_map_;
   std::unordered_map<std::string, std::string> cache_suffix_;
@@ -379,33 +399,22 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   // to allocate enough memory in Arena before graph capturing.
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
 
-  OrtStatusPtr CreateNodeComputeInfoFromPrecompiledEngine(const OrtGraphViewer* graph_body_viewer, const OrtNode* fused_node,
+  OrtStatus* CreateNodeComputeInfoFromPrecompiledEngine(OrtEp* this_ptr,
+                                                          const OrtGraph** graphs,
+                                                          const OrtNode** fused_nodes,
                                                           std::unordered_map<std::string, size_t>& input_map,
                                                           std::unordered_map<std::string, size_t>& output_map,
-                                                          OrtNodeComputeInfo* node_compute_funcs);
+                                                          OrtNodeComputeInfo** node_compute_infos);
 
-  OrtStatusPtr CreateNodeComputeInfoFromGraph(const OrtGraphViewer* graph_body_viewer,
-                                              const OrtNode* fused_node,
+  OrtStatus* CreateNodeComputeInfoFromGraph(OrtEp* this_ptr,
+                                              const OrtGraph** graphs,
+                                              const OrtNode** fused_nodes,
                                               std::unordered_map<std::string, size_t>& input_map,
                                               std::unordered_map<std::string, size_t>& output_map,
-                                              OrtNodeComputeInfo* node_compute_funcs);
+                                              OrtNodeComputeInfo** node_compute_infos);
 
   bool IsGraphCaptureAllowed() const { return false; };
 
   nvinfer1::IBuilder* GetBuilder(TensorrtLogger& trt_logger) const;
 };
-
-struct TensorrtExecutionProviderFactory : public OrtExecutionProviderFactory {
-  TensorrtExecutionProviderFactory();
-};
 }  // namespace onnxruntime
-
-#ifdef __cplusplus
-extern "C" {
-#endif
-
-EXPORT_API OrtExecutionProviderFactory* RegisterCustomEp();
-
-#ifdef __cplusplus
-}
-#endif

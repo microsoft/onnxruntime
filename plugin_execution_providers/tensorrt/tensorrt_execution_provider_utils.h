@@ -269,16 +269,17 @@ std::string GetTimingCachePath(const std::string& root, std::string& compute_cap
   return GetCachePath(root, timing_cache_name);
 }
 
+/*
 HashValue TRTGenerateId(const OrtApi& api, const OrtGraph* graph, std::string trt_version, std::string cuda_version) {
   HashValue model_hash = 0;
 
-  /*
-  // find the top level graph
-  const Graph* cur_graph = &graph_viewer.GetGraph();
-  while (cur_graph->IsSubgraph()) {
-    cur_graph = cur_graph->ParentGraph();
-  }
-  */
+  
+  //// find the top level graph
+  //const Graph* cur_graph = &graph_viewer.GetGraph();
+  //while (cur_graph->IsSubgraph()) {
+  //  cur_graph = cur_graph->ParentGraph();
+  //}
+  
 
   uint32_t hash[4] = {0, 0, 0, 0};
 
@@ -343,13 +344,6 @@ HashValue TRTGenerateId(const OrtApi& api, const OrtGraph* graph, std::string tr
   hash_str("WINDOWS");
 #endif
 
-// TODO:(Chi) Get ORT version
-/*
-#ifdef ORT_VERSION
-  hash_str(ORT_VERSION);
-#endif
-*/
-
 #ifdef CUDA_VERSION
   hash_str(cuda_version);
 #endif
@@ -363,6 +357,7 @@ HashValue TRTGenerateId(const OrtApi& api, const OrtGraph* graph, std::string tr
   // return the current unique id
   return model_hash;
 }
+*/
 
 std::vector<std::string> split(const std::string& str, char delimiter) {
   std::vector<std::string> tokens;

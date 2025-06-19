@@ -4,11 +4,11 @@
 #include <functional>
 #include <iostream>
 #include <cuda_runtime.h>
-//#include "core/session/onnxruntime_cxx_api.h"  // TODO(leca): we should be able to use cxx APIs which are built upon C API
+
 #include "tensorrt_execution_provider.h"
 #include "tensorrt_execution_provider_utils.h"
 #include "tensorrt_cuda_allocator.h"
-#include "onnx_ctx_model_helper.h"
+//#include "onnx_ctx_model_helper.h"
 #include "onnx/onnx_pb.h"
 #include "cuda/unary_elementwise_ops_impl.h"
 
@@ -31,6 +31,7 @@ void CUDA_RETURN_IF_ERROR(cudaError_t res) {
 namespace onnxruntime {
 
 static const std::string tensorrtEp = "tensorrtEp";
+const OrtApi& ort_api = Ort::GetApi();
 
 struct MemcpyFromHost : OrtCustomOp {
   MemcpyFromHost() {
@@ -78,8 +79,6 @@ struct MemcpyFromHost : OrtCustomOp {
 
 template <typename T>
 using IAllocatorUniquePtr = std::unique_ptr<T, std::function<void(T*)>>;
-const OrtApi* TensorrtExecutionProvider::api_ = OrtGetApiBase()->GetApi(ORT_API_VERSION);
-const OrtGraphApi* TensorrtExecutionProvider::graph_api_ = TensorrtExecutionProvider::api_->GetGraphApi(ORT_API_VERSION);
 
 // Check if cycle exists in the graph after partitioning
 bool FindCycleHelper(size_t i, const std::list<size_t>* adjacency_map, bool visited[], bool* st, std::vector<size_t>& cycles) {
@@ -577,7 +576,7 @@ OrtStatusPtr ApplyProfileShapesFromInputTensorValue(std::vector<nvinfer1::IOptim
           break;
         }
         default: {
-          return TensorrtExecutionProvider::api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
+          return ort_api.CreateStatus(OrtErrorCode::ORT_EP_FAIL, std::string("TensorRT shape tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
         }
       }
 
@@ -781,7 +780,7 @@ OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
           std::string error_msg =
               "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
               error_input_name + "'";
-          return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+          return ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
         }
         break;
       }
@@ -801,13 +800,13 @@ OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
           std::string error_msg =
               "TensorRT EP failed to call nvinfer1::IExecutionContext::setTensorAddress() for shape input '" +
               error_input_name + "'";
-          return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, error_msg.c_str());
+          return ort_api.CreateStatus(ORT_EP_FAIL, error_msg.c_str());
         }
         break;
       }
       default: {
         std::string error_input_name = input_name;
-        return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("The data type of shape tensor should be INT32 or INT64. Please check the data type of " + error_input_name).c_str());
+        return ort_api.CreateStatus(ORT_EP_FAIL, std::string("The data type of shape tensor should be INT32 or INT64. Please check the data type of " + error_input_name).c_str());
       }
     }
   } else {
@@ -819,7 +818,7 @@ OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
     }
     if (!trt_context->setInputShape(input_name, dims)) {
       std::string error_input_name = input_name;
-      return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'").c_str());
+      return ort_api.CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP failed to call nvinfer1::IExecutionContext::setInputShape() for input '" + error_input_name + "'").c_str());
     }
 
     // Bind "execution tensor" input buffer
@@ -844,7 +843,7 @@ OrtStatusPtr BindContextInput(Ort::KernelContext& ctx,
       // Cast double input to float because TensorRT doesn't support double
       CASE_GET_CAST_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
-        return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
+        return ort_api.CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP input onnx tensor data type: " + std::to_string(tensor_type) + " not supported.").c_str());
       }
     }
     trt_context->setTensorAddress(input_name, data);
@@ -914,7 +913,7 @@ OrtStatusPtr BindContextOutput(Ort::KernelContext& ctx,
       // Allocate float CUDA memory for double output type because TensorRT doesn't support double
       CASE_GET_CAST_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, double, float)
       default: {
-        return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.").c_str());
+        return ort_api.CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.").c_str());
       }
     }
     trt_context->setTensorAddress(output_name, buffers[output_name]);
@@ -973,12 +972,13 @@ OrtStatusPtr BindKernelOutput(Ort::KernelContext& ctx,
       // The allocation buffer holds the float output data since TRT doesn't support double. So, we need to cast the data (float -> double) for ORT kernel output.
       //    CASE_CAST_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_DOUBLE, float, double)
     default: {
-      return TensorrtExecutionProvider::api_->CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.").c_str());
+      return ort_api.CreateStatus(ORT_EP_FAIL, std::string("TensorRT EP output tensor data type: " + std::to_string(output_type) + " not supported.").c_str());
     }
   }
   return nullptr;
 }
 
+/*
 // Detect and remove cycles from supported node list
 bool TensorrtExecutionProvider::DetectTensorRTGraphCycles(SubGraphCollection_t& supported_nodes_vector, const OrtGraphViewer* graph, const HashValue& model_hash, bool remove_cycles) const {
   const size_t* nodes_index = nullptr;
@@ -1135,7 +1135,7 @@ bool TensorrtExecutionProvider::IsSubGraphOfControlFlowOp(const OrtGraphViewer* 
 bool TensorrtExecutionProvider::AllNodesAssignedToSpecificEP(const OrtGraphViewer* graph, const std::string& provider_type) const {
   size_t num_nodes = ort_api_.Graph_NumNodes(graph);
   std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-  RETURN_IF_ERROR(ort_api_.Graph_GetNodes(graph, /*order*/ 1, nodes.data(), nodes.size()));
+  RETURN_IF_ERROR(ort_api_.Graph_GetNodes(graph, 1, nodes.data(), nodes.size()));
 
   for (const OrtNode* node : nodes) {
     const char* node_ep_type = ort_api_.Node_GetExecutionProviderType(node);
@@ -1324,6 +1324,36 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
   return sub_graph;
 }
 
+*/
+// Helper to release an Ort object at the end of its scope.
+template <typename T>
+struct DeferOrtRelease {
+  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
+  ~DeferOrtRelease() {
+    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
+      release_func_(*obj_ptr_);
+      *obj_ptr_ = nullptr;
+    }
+  }
+  T** obj_ptr_ = nullptr;
+  std::function<void(T*)> release_func_ = nullptr;
+};
+
+// Convert an OrtConstPointerArray into a span of Ort___ pointers.
+template <typename T>
+OrtStatus* GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
+                                        /*out*/ gsl::span<const T* const>& span) {
+  size_t size = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(ort_array, &size));
+
+  const void* const* raw_data = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetData(ort_array, &raw_data));
+
+  auto data = reinterpret_cast<const T* const*>(raw_data);
+  span = gsl::span<const T* const>(data, size);
+  return nullptr;
+}
+
 static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                  OrtEpGraphSupportInfo* graph_support_info) {
   TensorrtExecutionProvider* ep = static_cast<TensorrtExecutionProvider*>(this_ptr);
@@ -1353,7 +1383,7 @@ static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph
   */
 
   // Generate unique kernel name for TRT graph
-  HashValue model_hash = TRTGenerateId(ort_api, graph, std::to_string(trt_version_), std::to_string(cuda_version_));
+  // HashValue model_hash = TRTGenerateId(ort_api, graph, std::to_string(trt_version_), std::to_string(cuda_version_));
 
   // Get pre-excluded op list from provider options
   auto get_exclude_ops_set = [&](std::string node_list_to_exclude) -> std::set<std::string> {
@@ -1368,7 +1398,24 @@ static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph
     return set;
   };
 
-  auto exclude_ops_set = get_exclude_ops_set(op_types_to_exclude_);
+  //auto exclude_ops_set = get_exclude_ops_set(op_types_to_exclude_);
+  auto exclude_ops_set = get_exclude_ops_set("");
+
+  // Get all nodes
+  const OrtConstPointerArray* api_nodes_container = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, &api_nodes_container));
+
+
+  const OrtArrayOfConstObjects* nodes_array = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
+  size_t num_nodes = 0;
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[graph_idx], &nodes_array));
+  RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+
+
+  size_t api_num_nodes = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.ConstPointerArray_GetSize(api_nodes_container, &api_num_nodes));
+  ASSERT_EQ(api_num_nodes, graph_viewer.NumberOfNodes());
 
   // Get number of ORT graph nodes
   size_t num_nodes = ort_api.Graph_NumNodes(graph);
@@ -1456,7 +1503,7 @@ static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph
   }
 
   // Detect and remove cycles from supported node list
-  p->DetectTensorRTGraphCycles(supported_nodes_vector, graph, model_hash);
+  //p->DetectTensorRTGraphCycles(supported_nodes_vector, graph, model_hash);
 
   // Consolidate supported node list
   if (supported_nodes_vector.size() > 1) {
@@ -1583,58 +1630,95 @@ static OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph
   return nullptr;
 }
 
-static OrtStatus* ORT_API_CALL GetCapabilityImpl2(OrtEp* this_ptr, const OrtGraph* graph,
-                                                  OrtEpGraphSupportInfo* graph_support_info) {
-  ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
+                                           size_t count, OrtNodeComputeInfo** node_compute_infos) {
 
-  size_t num_nodes = ep->ort_api.Graph_NumNodes(graph);
-  if (num_nodes == 0) {
-    return nullptr;  // No nodes to process
-  }
+  TensorrtExecutionProvider* ep = static_cast<TensorrtExecutionProvider*>(this_ptr);
+  
+  for (size_t graph_idx = 0; graph_idx < count; graph_idx++) {
+    auto fused_node = fused_nodes[graph_idx];
 
-  std::vector<const OrtNode*> nodes(num_nodes, nullptr);
-  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, /*order*/ 0, nodes.data(), nodes.size()));
+    // Gets node's inputs and outputs as pointer array
+    OrtArrayOfConstObjects* inputs_array = nullptr;
+    OrtArrayOfConstObjects* outputs_array = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
+    DeferOrtRelease<OrtArrayOfConstObjects> release_outputs(&outputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
 
-  std::vector<const OrtNode*> supported_nodes;
+    RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(fused_node, &inputs_array));
+    RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(fused_node, &outputs_array));
 
-  for (const OrtNode* node : nodes) {
-    const char* op_type = ep->ort_api.Node_OperatorType(node);
+    // Gets node's inputs and outputs as OrtValueInfo in gsl::span
+    gsl::span<const OrtValueInfo* const> node_inputs{};
+    gsl::span<const OrtValueInfo* const> node_outputs{};
 
-    if (std::strncmp(op_type, "Mul", 4) == 0) {
-      // Check that Mul has inputs/output of type float
-      size_t num_inputs = ep->ort_api.Node_NumInputs(node);
-      size_t num_outputs = ep->ort_api.Node_NumOutputs(node);
-      RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
+    RETURN_IF_ERROR(GetSpanFromConstPointerArray<OrtValueInfo>(inputs_array, node_inputs));
+    RETURN_IF_ERROR(GetSpanFromConstPointerArray<OrtValueInfo>(outputs_array, node_outputs));
 
-      std::vector<const OrtValueInfo*> inputs(num_inputs, nullptr);
-      std::vector<const OrtValueInfo*> outputs(num_outputs, nullptr);
-      RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
-      RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
-
-      std::array<bool, 3> is_float_tensor = {false, false, false};
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[0], is_float_tensor[0]));
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[1], is_float_tensor[1]));
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, outputs[0], is_float_tensor[2]));
-      if (!is_float_tensor[0] || !is_float_tensor[1] || !is_float_tensor[2]) {
-        continue;  // Input or output is not of type float
-      }
-
-      supported_nodes.push_back(node);  // Only support a single Mul for now.
-      break;
+    // Gets number of node's inputs and outputs
+    size_t num_node_inputs = 0;
+    size_t num_node_outputs = 0;
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(inputs_array, &num_node_inputs));
+    RETURN_IF_ERROR(ep->ort_api.ConstPointerArray_GetSize(outputs_array, &num_node_outputs));
+    
+    // Builds map from input name to its index in input list
+    std::unordered_map<std::string, size_t> input_map;
+    input_map.reserve(num_node_inputs);
+    for (size_t i = 0, i < num_node_inputs; i++) {
+      std::string& name = node_inputs[i]->GetName();
+      input_map[name] = i;
     }
+
+    // Builds map from output name to its index in output list
+    std::unordered_map<std::string, size_t> out_map;
+    input_map.reserve(num_node_outputs);
+    for (size_t i = 0, i < num_node_outputs; i++) {
+      std::string& name = node_outputs[i]->GetName();
+      out_map[name] = i;
+    }
+
+    Status status;
+    if (GraphHasCtxNode(graph_body_viewer)) {
+      status = ep->CreateNodeComputeInfoFromPrecompiledEngine(graph_body_viewer,
+                                                          fused_node,
+                                                          input_map,
+                                                          output_map,
+                                                          node_compute_funcs);
+    } else {
+      status = ep->CreateNodeComputeInfoFromGraph(graph_body_viewer, fused_node, input_map, output_map, node_compute_funcs);
+    }
+    if (status != Status::OK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
+    }
+
+    /*
+    OrtArrayOfConstObjects* nodes_array = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
+    size_t num_nodes = 0;
+    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[graph_idx], &nodes_array));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+    */
   }
-  RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddFusedNodes(graph_support_info, supported_nodes.data(),
-                                                              supported_nodes.size()));
+  
   return nullptr;
 }
 
+static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
+  const auto* ep = static_cast<const TensorrtExecutionProvider*>(this_ptr);
+  return ep->name_.c_str();
+}
+
+/// <summary>
+/// 
+/// Plugin TensorRT EP implementation
+/// 
+/// </summary>
 struct TensorrtExecutionProvider : TensorrtExecutionProvider(ApiPtrs apis, const std::string& name, const OrtHardwareDevice& device,
                                                              const OrtSessionOptions& session_options, const OrtLogger& logger)
     : ApiPtrs(apis), name_{name}, hardware_device_{device}, session_options_{session_options}, logger_{logger} {
   // Initialize the execution provider.
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
-                                          ("ExampleEp has been created with name " + name_).c_str(),
+                                          ("Plugin EP has been created with name " + name_).c_str(),
                                           ORT_FILE, __LINE__, __FUNCTION__);
   // ignore status for now
   (void)status;
@@ -2162,11 +2246,12 @@ OrtStatusPtr TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filen
 #endif
 }
 
-OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const OrtGraphViewer* graph_body_viewer,
-                                                                       const OrtNode* fused_node,
+OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(OrtEp* this_ptr,
+                                                                       const OrtGraph** graphs,
+                                                                       const OrtNode** fused_nodes,
                                                                        std::unordered_map<std::string, size_t>& input_map,
                                                                        std::unordered_map<std::string, size_t>& output_map,
-                                                                       OrtNodeComputeInfo* node_compute_funcs) {
+                                                                       OrtNodeComputeInfo** node_compute_infos) {
   TensorrtLogger& trt_logger = GetTensorrtLogger(detailed_build_log_);
   auto trt_builder = GetBuilder(trt_logger);
   auto network_flags = 0;
