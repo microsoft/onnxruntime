@@ -762,8 +762,7 @@ static void GetMainEPCtxNodes(const onnxruntime::GraphViewer& graph_viewer,
 
     if (is_main_context && qnn::EPCONTEXT_OP == node.OpType() && (cache_source == "qnnexecutionprovider" || cache_source == "qnn")) {
       LOGS(logger, VERBOSE) << "EPContext Node found: [1] index: [" << node.Index()
-                            << "] name: [" << node.Name()
-                            << "] index: [" << node.Index() << "]";
+                            << "] name: [" << node.Name();
       ep_context_nodes.insert(&node);
     }
   }
@@ -862,7 +861,7 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
     }
   }
 
-  std::unordered_map<std::string, std::vector<std::string>> context_bin_map;
+  std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>> context_bin_map;
   if (enable_vtcm_backup_buffer_sharing_) {
     std::unordered_set<const Node*> ep_ctx_nodes;
     GetMainEPCtxNodes(graph_viewer, ep_ctx_nodes, logger);
@@ -878,11 +877,11 @@ QNNExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_viewer
       context_bin_filepath.append("/").append(node_helper.Get(qnn::EP_CACHE_CONTEXT, ""));
 
       if (context_bin_map.find(context_bin_filepath) == context_bin_map.end()) {
-        context_bin_map.emplace(context_bin_filepath, std::vector<std::string>());
+        context_bin_map.emplace(context_bin_filepath, std::make_unique<std::vector<std::string>>());
         // Push context bin filepath for lookup between sessions
-        context_bin_map.at(context_bin_filepath).push_back(context_bin_filepath);
+        context_bin_map.at(context_bin_filepath)->push_back(context_bin_filepath);
       }
-      context_bin_map.at(context_bin_filepath).push_back(ep_ctx_node->Name());
+      context_bin_map.at(context_bin_filepath)->push_back(ep_ctx_node->Name());
     }
   }
 

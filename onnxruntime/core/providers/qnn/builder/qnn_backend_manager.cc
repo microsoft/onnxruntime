@@ -729,19 +729,18 @@ void ContextCreateAsyncCallback(Qnn_ContextHandle_t context,
   }
 }
 
-void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t context, void* notifyParams) {
+void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t context, void* notifyParam) {
   std::lock_guard<std::mutex> guard(ep_context_handle_map_mutex_);
-  if (!notifyParams) {
+  if (!notifyParam) {
     LOGS(*logger_, WARNING) << "No known node names associated with context handle: " << context;
     return;
   }
 
-  std::vector<std::string>* ep_node_names = reinterpret_cast<std::vector<std::string>*>(notifyParams);
+  std::vector<std::string>* ep_node_names = reinterpret_cast<std::vector<std::string>*>(notifyParam);
   for (const auto& node_name : *ep_node_names) {
     if (!(ep_context_handle_map_.emplace(node_name, context).second)) {
       LOGS(*logger_, VERBOSE) << "Unable to map " << context << " to " << node_name;
     }
-    ep_node_names++;
   }
 
   auto s = AddQnnContextHandle(context);
@@ -750,7 +749,7 @@ void QnnBackendManager::ProcessContextFromBinListAsync(Qnn_ContextHandle_t conte
   }
 }
 
-Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::vector<std::string>>& context_bin_map) {
+Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
 #if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
   QnnContext_Config_t context_config_resource_sharing = QNN_CONTEXT_CONFIG_INIT;
   QnnHtpContext_CustomConfig_t resource_sharing_custom_config;
@@ -814,7 +813,7 @@ Status QnnBackendManager::CreateContextVtcmBackupBufferSharingEnabled(std::unord
                                                buffer_size,
                                                nullptr,
                                                ContextCreateAsyncCallback,
-                                               &(it.second)};
+                                               it.second.get()};
 
     QnnContext_Params_t context_params = {QnnContext_ParamsVersion_t::QNN_CONTEXT_PARAMS_VERSION_1,
                                           context_params_v1};
@@ -1155,7 +1154,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
                                        bool need_load_system_lib,
                                        bool share_ep_contexts,
                                        bool enable_vtcm_backup_buffer_sharing,
-                                       std::unordered_map<std::string, std::vector<std::string>>& context_bin_map) {
+                                       std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map) {
   std::lock_guard<std::recursive_mutex> lock(logger_recursive_mutex_);
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
@@ -1166,7 +1165,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
 
       for (auto& it : context_bin_map) {
         auto context_bin_filepath = it.first;
-        auto ep_node_names = it.second;
+        auto ep_node_names = *(it.second);
 
         auto context = ep_context_handle_map_.at(context_bin_filepath);
         for (auto node_name : ep_node_names) {

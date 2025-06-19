@@ -141,7 +141,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
                       bool need_load_system_lib, bool share_ep_contexts,
                       bool enable_vtcm_backup_buffer_sharing,
-                      std::unordered_map<std::string, std::vector<std::string>>& context_bin_map);
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -201,7 +201,12 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
-  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* ep_node_names);
+  // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
+  // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
+  // Takes in the context and the notifyParam objects received by the callback function
+  // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
+  // For each node name, a mapping to the context handle will be created
+  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
 
  private:
   Status LoadBackend();
@@ -220,7 +225,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   Status CreateContext(bool enable_htp_weight_sharing);
 
-  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string, std::vector<std::string>>& context_bin_map);
+  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
+                                                     std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status ReleaseContext();
 
