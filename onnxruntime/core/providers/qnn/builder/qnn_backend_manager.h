@@ -209,6 +209,11 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   QnnSerializerConfig* GetQnnSerializerConfig();
 
+  // Sets the context priority to some defined value (if valid)
+  Status SetContextPriority(ContextPriority context_priority);
+  // Resets the context priority to context_priority_
+  Status ResetContextPriority();
+
  private:
   Status LoadBackend();
 
