@@ -5,6 +5,90 @@
 #include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph_proto_serializer.h"
 
+#include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/abi_graph_types.h"
+#include "core/framework/abi_pointer_array.h"
+// Convert an OrtConstPointerArray into a span of Ort___ pointers.
+template <typename T>
+OrtStatus* GetSpanFromConstPointerArray(const OrtConstPointerArray* ort_array,
+                                        /*out*/ gsl::span<const T* const>& span) {
+  size_t size = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetSize(ort_array, &size));
+
+  const void* const* raw_data = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ConstPointerArray_GetData(ort_array, &raw_data));
+
+  auto data = reinterpret_cast<const T* const*>(raw_data);
+  span = gsl::span<const T* const>(data, size);
+  return nullptr;
+}
+
+/* Ex:
+value_info {
+name:
+  "my_tensor" type {
+    tensor_type {
+    elem_type:
+      FLOAT
+      shape {
+        dim{dim_value : 1}
+        dim{dim_value : 3}
+        dim{dim_value : 224}
+        dim{dim_value : 224}
+      }
+    }
+  }
+}
+*/
+
+//
+// OrtValueInfo to ValueInfoProto
+//
+void OrtValueInfoToProto(const OrtValueInfo* ort_value_info, ONNX_NAMESPACE::ValueInfoProto& value_info_proto) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  value_info_proto.set_name(ort_value_info->GetName());
+
+  // Get the type
+  auto type_info = ort_value_info->GetTypeInfo();
+  const OrtTensorTypeAndShapeInfo* type_and_shape_info;
+  ort_api.CastTypeInfoToTensorInfo(type_info, &type_and_shape_info);
+  ONNXTensorElementDataType elem_type;
+  ort_api.GetTensorElementType(type_and_shape_info, &elem_type);
+
+  // Set the type (Tensor)
+  ONNX_NAMESPACE::TypeProto* type_proto = value_info_proto.mutable_type();
+  ONNX_NAMESPACE::TypeProto_Tensor* tensor_type = type_proto->mutable_tensor_type();
+  tensor_type->set_elem_type(elem_type);
+
+  //Get the shape
+  size_t dim_cnt = 0;
+  ort_api.GetDimensionsCount(type_and_shape_info, &dim_cnt);
+  ort_api.GetDimensions(type_and_shape_info);
+  // Set the shape
+  ONNX_NAMESPACE::TensorShapeProto* shape = tensor_type->mutable_shape();
+  for (int64_t d : dims) {
+    shape->add_dim()->set_dim_value(d);
+  }
+}
+
+//
+// OrtGraph to GraphProto
+//
+void OrtGraphToProto(const OrtGraph* graph, ONNX_NAMESPACE::GraphProto& graph_proto) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  graph_proto.set_name(graph->GetName());
+  //graph_proto.set_doc_string(graph_view.Description());
+
+  const OrtConstPointerArray* initializers_container = nullptr;
+  gsl::span<const OrtValueInfo* const> initializers{};
+
+  auto status = ort_api.Graph_GetInitializers(graph, &initializers_container);
+  GetSpanFromConstPointerArray<OrtValueInfo>(initializers_container, initializers);
+
+}
+
 namespace onnxruntime {
 
 void GraphViewerToProto(const GraphViewer& graph_view,
