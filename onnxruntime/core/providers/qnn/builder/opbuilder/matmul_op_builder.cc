@@ -12,7 +12,7 @@ namespace qnn {
 
 /**
  * An ONNX MatMul can be translated to either a QNN MatMul or a QNN FullyConnected.
- * ONNX's MatMul suports inputs of rank 1, but neither QNN's MatMul nor FullyConnected support two rank 1 inputs.
+ * ONNX's MatMul supports inputs of rank 1, but neither QNN's MatMul nor FullyConnected support two rank 1 inputs.
  * So, we need to add Reshape Ops if necessary.
  * In two cases, FullyConnected (input_1's shape is [n, k]) is used instead of MatMul without extra Transpose Op:
  * 1. input_1 is a rank 2 initializer.

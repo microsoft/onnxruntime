@@ -4,6 +4,9 @@
 #include "core/optimizer/graph_transformer_mgr.h"
 #include "core/optimizer/rule_based_graph_transformer.h"
 
+#include <memory>
+#include <utility>
+
 using namespace onnxruntime;
 using namespace ::onnxruntime::common;
 
@@ -60,7 +63,8 @@ void GraphTransformerManager::ClearGraphModified(void) {
 common::Status GraphTransformerManager::Register(std::unique_ptr<GraphTransformer> transformer,
                                                  TransformerLevel level) {
   const auto& name = transformer->Name();
-  if (transformers_info_.find(name) != transformers_info_.end()) {
+  const auto& registered = level_to_transformer_map_[level];
+  if (std::find(registered.begin(), registered.end(), transformer) != registered.end()) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "This transformer is already registered " + name);
   }
 
