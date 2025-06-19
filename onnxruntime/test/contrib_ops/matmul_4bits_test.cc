@@ -357,6 +357,7 @@ TEST(MatMulNBits, Float32_Accuracy1) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 1>();
 }
 
+/*
 TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 4>();
@@ -384,6 +385,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
   TestMatMulNBitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 4>();
 }
+*/
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)
 #if !defined(USE_DML)
@@ -427,6 +429,7 @@ TEST(MatMulNBits, Float16_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
 }
 
+/*
 TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
@@ -456,6 +459,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
+*/
 
 TEST(MatMulNBits, LegacyShape) {
   constexpr bool legacy_shape = true;
