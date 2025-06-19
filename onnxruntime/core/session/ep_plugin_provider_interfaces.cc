@@ -273,7 +273,7 @@ Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fu
 
 DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   if (ort_ep_->GetPreferredDataLayout == nullptr) {
-    return IExecutionProvider::GetPreferredLayout();
+    return Base::GetPreferredLayout();
   }
 
   OrtEpDataLayout api_data_layout{};
@@ -294,6 +294,19 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
       ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",
                 static_cast<int>(api_data_layout));
   }
+}
+
+Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                    gsl::span<const char* const> values) {
+  if (ort_ep_->SetDynamicOptions == nullptr) {
+    return Base::SetEpDynamicOptions(keys, values);
+  }
+
+  ORT_RETURN_IF_NOT(keys.size() == values.size(),
+                    "The number of keys (", keys.size(), ") and number of values (", values.size(),
+                    ") must be the same.");
+
+  return ToStatusAndRelease(ort_ep_->SetDynamicOptions(ort_ep_.get(), keys.data(), values.data(), keys.size()));
 }
 
 }  // namespace onnxruntime

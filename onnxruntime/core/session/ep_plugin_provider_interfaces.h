@@ -58,6 +58,9 @@ using UniqueOrtEp = std::unique_ptr<OrtEp, OrtEpDeleter>;
 /// IExecutionProvider that wraps an instance of OrtEp.
 /// </summary>
 class PluginExecutionProvider : public IExecutionProvider {
+ private:
+  using Base = IExecutionProvider;
+
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep);
   ~PluginExecutionProvider();
@@ -72,6 +75,9 @@ class PluginExecutionProvider : public IExecutionProvider {
                  std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
   DataLayout GetPreferredLayout() const override;
+
+  Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                             gsl::span<const char* const> values) override;
 
  private:
   struct FusedNodeState {
