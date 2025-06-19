@@ -1431,6 +1431,19 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
   return tensor_proto;
 }
 
+ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto) {
+  TypeProto type_proto;
+
+  type_proto.mutable_tensor_type()->set_elem_type(tensor_proto.data_type());
+  auto shape = type_proto.mutable_tensor_type()->mutable_shape();
+
+  for (auto dim : tensor_proto.dims()) {
+    shape->add_dim()->set_dim_value(dim);
+  }
+
+  return type_proto;
+}
+
 common::Status ConstantNodeProtoToTensorProto(const ONNX_NAMESPACE::NodeProto& node,
                                               const std::filesystem::path& model_path,
                                               ONNX_NAMESPACE::TensorProto& tensor, const std::string& tensor_name) {
