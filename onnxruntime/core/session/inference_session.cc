@@ -1774,11 +1774,17 @@ static bool ModelHasFP16Inputs(const Graph& graph) {
 
 #ifdef _WIN32
 [[maybe_unused]] static std::string ComputeModelGraphHash(const Graph& graph) {
-  std::size_t final_hash = 0;
-  const std::size_t node_hash_count = TelemetrySampleCount;
+  // Skip hashing if the graph contains an EPContext node.
+  const auto& nodes = graph.Nodes();
+  for (const auto& node : nodes) {
+    if (node.OpType() == "EPContext") {
+      return "0";
+    }
+  }
 
   // Graph Hash
-  const auto& nodes = graph.Nodes();
+  std::size_t final_hash = 0;
+  const std::size_t node_hash_count = TelemetrySampleCount;
   const std::size_t total_nodes = graph.NumberOfNodes();
   const std::size_t node_step = (total_nodes > node_hash_count) ? (total_nodes / node_hash_count) : 1;
 
@@ -2077,7 +2083,7 @@ common::Status InferenceSession::Initialize() {
 #endif
 #ifdef _WIN32
       model_graph_hash = ComputeModelGraphHash(graph);
-      model_weight_hash = ComputeModelWeightHash(initializers);
+      model_weight_hash = (model_graph_hash == "0") ? "0" : ComputeModelWeightHash(initializers);
       SetGraphHash(model_graph_hash);
       SetWeightHash(model_weight_hash);
 #endif

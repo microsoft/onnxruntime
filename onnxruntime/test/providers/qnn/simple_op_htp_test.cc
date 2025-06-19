@@ -991,6 +991,23 @@ TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test Reciprocal on HTP
+TEST_F(QnnHTPBackendTests, Reciprocal_Basic_FLOAT) {
+  RunOpTest<float>("Reciprocal",
+                   {TestInputDef<float>({2, 2}, false, {1.0f, 2.0f, 0.5f, 4.0f})},
+                   {},  // No attributes
+                   13,
+                   ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Reciprocal_QU8) {
+  RunQDQOpTest<uint8_t>("Reciprocal",
+                        {TestInputDef<float>({2, 2}, false, GetFloatDataInRange(1.0f, 5.0f, 4))},
+                        {},  // No attributes
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
 // Test ScatterND op on HTP
 TEST_F(QnnHTPBackendTests, ScatterND_int64_int64) {
   std::vector<int64_t> data = {0, 1, 2, 3};

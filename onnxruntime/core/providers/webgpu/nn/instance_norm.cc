@@ -25,11 +25,11 @@ Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader)
 
   shader.MainFunctionBody() << "  let batch = workgroup_idx / uniforms.x_shape[1];\n"
                             << "  let channel = workgroup_idx % uniforms.x_shape[1];\n"
-                            << "  let hight = uniforms.x_shape[2];\n"
-                            << "   // initialize workgroup memory<< \n"
+                            << "  let height = uniforms.x_shape[2];\n"
+                            << "   // initialize workgroup memory\n"
                             << "  var sum = f32_val_t(0);\n"
                             << "  var squared_sum = f32_val_t(0);\n"
-                            << "  for (var h = local_idx; h < hight; h += workgroup_size) {\n"
+                            << "  for (var h = local_idx; h < height; h += workgroup_size) {\n"
                             << "    let indices = x_indices_t(batch, channel, h);\n"
                             << "    let value = f32_val_t(" << input.GetByIndices("indices") << ");\n"
                             << "    sum += value;\n"
@@ -46,8 +46,8 @@ Status ComputeChannelScaleShiftProgram::GenerateShaderCode(ShaderHelper& shader)
                             << "    workgroupBarrier();\n"
                             << "  }\n"
                             << "  if (local_idx == 0) {\n"
-                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", components_) << " / f32(hight * " << components_ << ");\n"
-                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", components_) << " / f32(hight * " << components_ << ");\n"
+                            << "    let sum_final = " << SumVector("workgroup_shared_sum[0]", components_) << " / f32(height * " << components_ << ");\n"
+                            << "    let squared_sum_final = " << SumVector("workgroup_shared_squared_sum[0]", components_) << " / f32(height * " << components_ << ");\n"
                             << "    let inv_std_dev = inverseSqrt(squared_sum_final - sum_final * sum_final + f32(" << std::to_string(epsilon_) << "));\n"
                             << "    let channel_scale = inv_std_dev * f32(" << scale.GetByOffset("channel") << ");\n"
                             << "    let channel_shift = f32(" << bias.GetByOffset("channel") << ") - sum_final * channel_scale;\n"
@@ -194,17 +194,19 @@ Status InstanceNorm<false>::ComputeInternal(ComputeContext& context) const {
   const auto spatial_size = input->Shape().SizeFromDimension(2);
   Tensor channel_scale_shift;
   ORT_RETURN_IF_ERROR(ComputeChannelScaleAndShift(context, input, scale, bias, epsilon_, &channel_scale_shift));
-  const auto output_shape(input_shape_vector);
+  TensorShape output_shape(input_shape_vector);
   Tensor* output = context.Output(0, output_shape);
   const auto components = GetMaxComponents(spatial_size);
   TensorShapeVector modified_input_shape_vector = {batch_size, channels, spatial_size / components};
   TensorShape modified_input_shape(modified_input_shape_vector);
   TensorShape modified_output_shape(modified_input_shape_vector);
-  auto output_size = (modified_output_shape.Size() + components - 1) / components;
+  auto output_size = modified_output_shape.Size();
+  TensorShapeVector channel_scale_shift_shape_vector = {batch_size, channels, 1};
+  TensorShape reduced_channel_scale_shift_shape(channel_scale_shift_shape_vector);
   InstanceNormProgram program;
   program
       .AddInputs({{input, ProgramTensorMetadataDependency::TypeAndRank, modified_input_shape, components},
-                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, channel_scale_shift.Shape(), 2}})
+                  {&channel_scale_shift, ProgramTensorMetadataDependency::TypeAndRank, reduced_channel_scale_shift_shape, 2}})
       .AddOutput({output, ProgramTensorMetadataDependency::TypeAndRank, modified_output_shape, components})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({static_cast<uint32_t>(output_size)});
