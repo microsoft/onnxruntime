@@ -525,7 +525,7 @@ Describes the generation/search parameters.
   Controls the length of the output. >1.0 encourages longer sequences, <1.0 encourages shorter.
 
 - **past_present_share_buffer**: *(bool)*  
-  If true, the past and present buffer are shared for efficiency.
+  If true, the past and present buffer are shared for efficiency. For a more detailed explanation, see [past present share buffer](../howto/past-present-share-buffer.md)
 
 - **random_seed**: *(int)*  
   Seed for the random number generator. -1 means use a random device.
