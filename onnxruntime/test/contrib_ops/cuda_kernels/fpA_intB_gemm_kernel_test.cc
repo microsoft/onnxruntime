@@ -444,13 +444,12 @@ class KernelTestFixture : public ::testing::Test {
         warmup_, repeats_, s_);
     d_out_->to_cpu(h_out2_.data());
 
-    const size_t n_x_k = static_cast<size_t>(n_) * static_cast<size_t>(k_);
-    const size_t m_x_n = static_cast<size_t>(m_) * static_cast<size_t>(n_);
     // ------------------------
     // Compare FpA_IntB_Gemv and FpA_IntB_Gemm outputs.
     bool pass = true;
     if (m_ < 16) {
       float quant_scale = 1.f / (1 << (WSizeInBits - 1));
+      const size_t m_x_n = static_cast<size_t>(m_) * static_cast<size_t>(n_);
       pass = compare<AType>(h_out1_.data(), h_out2_.data(), m_x_n, quant_scale);
     }
 
@@ -460,6 +459,7 @@ class KernelTestFixture : public ::testing::Test {
     float nbits_time_ms = 0.f;
     float naive_time_ms = 0.f;
     if constexpr (KT == wo::KernelType::FP16Int8Groupwise || KT == wo::KernelType::FP16Int4Groupwise) {
+      const size_t n_x_k = static_cast<size_t>(n_) * static_cast<size_t>(k_);
       std::vector<uint8_t> h_uint8_zeros(n_x_k / static_cast<size_t>(block_size_));
       for (uint8_t& v : h_uint8_zeros) {
         v = rand() % 256;
