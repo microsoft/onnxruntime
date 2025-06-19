@@ -93,7 +93,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 
 /* static */
 bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
-                                        [[maybe_unused]] const OpBuilderInputParams& input_params,
+                                        const OpBuilderInputParams& /*input_params*/,
                                         const logging::Logger& logger) {
   if (idx >= node.InputDefs().size()) {
     LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
@@ -114,11 +114,13 @@ bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
     return true;
   }
 
+#if CAN_BUILD_COREML6_OR_LATER
   // only MLProgram support FP16 and INT64
   if (input_params.create_mlprogram && (input_type == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16 ||
                                         input_type == ONNX_NAMESPACE::TensorProto_DataType_INT64)) {
     return true;
   }
+#endif
 
   LOGS(logger, VERBOSE) << "[" << node.OpType() << "] Input type: [" << input_type << "] is not currently supported";
   return false;

@@ -19,6 +19,9 @@ class BinaryOpBuilder : public BaseOpBuilder {
 
   int GetMinSupportedOpSet(const Node& node) const override;
 
+  bool IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                         const logging::Logger& logger) const override;
+
   bool HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
                               const logging::Logger& logger) const override;
 
@@ -210,6 +213,20 @@ int BinaryOpBuilder::GetMinSupportedOpSet(const Node& /* node */) const {
   return 7;
 }
 
+bool BinaryOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputParams& input_params,
+                                        const logging::Logger& logger) const {
+  if (node.OpType() == "Max" && !input_params.create_mlprogram) {
+    LOGS(logger, VERBOSE) << "Max operator requires ML Program for CoreML EP.";
+    return false;
+  }
+
+  if (node.OpType() == "Equal" && !input_params.create_mlprogram) {
+    LOGS(logger, VERBOSE) << "Equal operator requires ML Program for CoreML EP.";
+    return false;
+  }
+  return true;
+}
+
 bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderInputParams& input_params,
                                              const logging::Logger& logger) const {
   // Add/Sub/Mul/Div spec says inputs must be of the same type.
@@ -230,14 +247,6 @@ bool BinaryOpBuilder::HasSupportedInputsImpl(const Node& node, const OpBuilderIn
   }
 
   if (!IsInputDtypeSupport(node, 0, input_params, logger)) {
-    return false;
-  }
-
-  if (node.OpType() == "Max" && !input_params.create_mlprogram) {
-    return false;
-  }
-
-  if (node.OpType() == "Equal" && !input_params.create_mlprogram) {
     return false;
   }
 
