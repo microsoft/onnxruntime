@@ -5520,9 +5520,9 @@ struct OrtApi {
    * Optionally returns the associated output index.
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] node Output parameter set to the OrtNode that produces the OrtValueInfo.
-   * \param[out] output_index Optional output parameter set to the OrtNode instance's output index
-   *                          that produces the value. Ignored if set to NULL.
+   * \param[out] producer_node Output parameter set to the OrtNode that produces the OrtValueInfo.
+   * \param[out] producer_output_index Optional output parameter set to the OrtNode instance's output index
+   *                                   that produces the value. Ignored if set to NULL.
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.23.
    */
@@ -5539,7 +5539,9 @@ struct OrtApi {
    *
    * \param[in] value_info The OrtValueInfo instance.
    * \param[out] num_consumers Output parameter set to the number of consumers of the value.
+   *
    * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValueInfo_GetValueNumConsumers, _In_ const OrtValueInfo* value_info, _Out_ size_t* num_consumers);
@@ -5597,7 +5599,7 @@ struct OrtApi {
    * with the initializer serving as the default value.
    *
    * \param[in] value_info The OrtValueInfo instance representing the graph value.
-   * \param[out] Output parameter set to true if the graph value is a required graph input.
+   * \param[out] is_required_graph_input Output parameter set to true if the graph value is a required graph input.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5613,7 +5615,7 @@ struct OrtApi {
    * The matching initializer is also known as a non-constant initializer.
    *
    * \param[in] value_info The OrtValueInfo instance representing the graph value.
-   * \param[out] Output parameter set to true if the graph value is an optional graph input.
+   * \param[out] is_optional_graph_input Output parameter set to true if the graph value is an optional graph input.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5625,7 +5627,7 @@ struct OrtApi {
   /** \brief Returns a boolean indicating if the given value is a graph output.
    *
    * \param[in] value_info The OrtValueInfo instance representing the graph value.
-   * \param[out] Output parameter set to true if the graph value is a graph output.
+   * \param[out] is_graph_output Output parameter set to true if the graph value is a graph output.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5641,7 +5643,7 @@ struct OrtApi {
    * constant initializer.
    *
    * \param[in] value_info The OrtValueInfo instance representing the graph value.
-   * \param[out] Output parameter set to true if the graph value is a constant initializer.
+   * \param[out] is_constant_initializer Output parameter set to true if the graph value is a constant initializer.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5656,7 +5658,8 @@ struct OrtApi {
    * determining whether a value is defined in a parent node's graph.
    *
    * \param[in] value_info The OrtValueInfo instance representing the graph value.
-   * \param[out] Output parameter set to true if the value is defined in an outer scope (i.e., a parent graph).
+   * \param[out] is_from_outer_scope Output parameter set to true if the value is defined in an outer
+   *                                 scope (i.e., a parent graph).
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5672,7 +5675,7 @@ struct OrtApi {
   /** \brief Returns a graph's name.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] Output parameter set to the graph's name.
+   * \param[out] graph_name Output parameter set to the graph's name.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5683,7 +5686,7 @@ struct OrtApi {
   /** \brief Returns the ONNX IR version.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] Output parameter set to the ONNX IR version.
+   * \param[out] onnx_ir_version Output parameter set to the ONNX IR version.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5778,7 +5781,7 @@ struct OrtApi {
    * (e.g., subgraphs contained by If and Loop nodes) may reuse identifiers.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] Output parameter set to the node's identifier.
+   * \param[out] node_id Output parameter set to the node's identifier.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5789,7 +5792,7 @@ struct OrtApi {
   /** \brief Returns a node's name. Can be an empty string.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] Output parameter set to the node's name.
+   * \param[out] node_name Output parameter set to the node's name.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5800,7 +5803,7 @@ struct OrtApi {
   /** \brief Returns a node's operator type (e.g., "Conv").
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] Output parameter set to the name of the node's operator type.
+   * \param[out] operator_type Output parameter set to the name of the node's operator type.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5811,7 +5814,7 @@ struct OrtApi {
   /** \brief Returns a node's domain name.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] Output parameter set to the node's domain name.
+   * \param[out] domain_name Output parameter set to the node's domain name.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
