@@ -168,7 +168,7 @@ def generate_wrapper_onnx_file(
     value_infos = []
 
     model_inputs = []
-    for qnn_input in sorted(qnn_output_tensor_dic.values(), key=lambda inp: inp.id):
+    for qnn_input in sorted(qnn_input_tensor_dic.values(), key=lambda inp: inp.id):
         if qnn_input.is_quantized and not quantized_IO:
             q_scale_input_name = qnn_input.name + "_scale"
             q_offset_input_name = qnn_input.name + "_zp"
