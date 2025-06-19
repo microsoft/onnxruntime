@@ -5672,7 +5672,7 @@ struct OrtApi {
   /** \brief Returns a graph's name.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] Output parameter set to the graph's name.
+   * \param[out] graph_name Output parameter set to the graph's name.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
