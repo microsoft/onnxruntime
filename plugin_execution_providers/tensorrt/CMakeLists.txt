@@ -29,10 +29,26 @@ if (NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE "Release")
 endif()
 
-# There is an known issue when running "Debug build" TRT EP plugin with "Release build" TRT builtin parser on Windows.
-if (WIN32 AND CMAKE_BUILD_TYPE STREQUAL "Debug")
-  MESSAGE(FATAL_ERROR "[Note] There is an known issue when running \"Debug build\" TRT EP plugin with \"Release build\" TRT built-in parser on Windows. Please use release mode to build TRT EP plugin.")
-endif()
+# Add dependencies
+include(FetchContent)
+
+# Add GSL
+FetchContent_Declare(
+  gsl
+  GIT_REPOSITORY https://github.com/microsoft/GSL.git
+  GIT_TAG        v4.0.0  # Use a specific tag or commit
+)
+
+FetchContent_MakeAvailable(gsl)
+
+# Add flatbuffers
+FetchContent_Declare(
+  flatbuffers
+  GIT_REPOSITORY https://github.com/google/flatbuffers.git
+  GIT_TAG        v23.5.26  # Use a specific tag or commit
+)
+
+FetchContent_MakeAvailable(flatbuffers)
 
 if (WIN32)
   set(PLATFORM "Windows")
@@ -98,4 +114,6 @@ target_include_directories(TensorRTEp PUBLIC "${ORT_HOME}/include/onnxruntime/co
 target_link_libraries(TensorRTEp PUBLIC ${ORT_LIB}
                                         ${TRT_LIBS}
                                         CUDA::cudart
-                                        ${DEPS_LIBS})
+                                        ${DEPS_LIBS}
+                                        GSL
+                                        flatbuffers)
