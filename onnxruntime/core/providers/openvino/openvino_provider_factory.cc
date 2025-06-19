@@ -347,14 +347,14 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
     ORT_THROW(msg);
   }
 
-  if (pi.device_type.find("NPU") != std::string::npos) {
-    // For Stateful Compilation i.e. enable_causallm as True, we use the dynamic shapes path.
-    if (pi.enable_causallm) {
-      pi.disable_dynamic_shapes = false;
-    } else {
-      pi.disable_dynamic_shapes = true;
-    }
-  }
+  // Should likely account for meta devices as well, but for now keep the current behavior.
+  bool target_devices_support_dynamic_shapes =
+      pi.device_type.find("GPU") != std::string::npos ||
+      pi.device_type.find("CPU") != std::string::npos ||
+      (pi.device_type.find("NPU") != std::string::npos &&
+       pi.enable_causallm);
+
+  pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {

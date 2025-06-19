@@ -9,6 +9,8 @@
 #include <sstream>
 #include <utility>
 #include <optional>
+#include <algorithm>
+#include <unordered_map>
 
 #include "openvino/openvino.hpp"
 #include "openvino/runtime/intel_npu/properties.hpp"
@@ -30,6 +32,7 @@ typedef ov::ProfilingInfo OVProfilingInfo;
 typedef ov::Model OVNetwork;
 typedef std::shared_ptr<OVInferRequest> OVInferRequestPtr;
 typedef std::shared_ptr<OVTensor> OVTensorPtr;
+
 std::optional<bool> queryOVProperty(const std::string& property, const std::string& device_type);
 
 template <typename T>
@@ -103,20 +106,33 @@ class OVExeNetwork {
 };
 
 class OVInferRequest {
- protected:
+  struct ov_tensor_data_t {
+    OVTensorPtr tensor_ptr;
+    const void* ort_ptr;
+  };
+
+  protected:
   ov::InferRequest ovInfReq;
+  std::unordered_map<std::string, ov_tensor_data_t> bindings_cache_;
 
  public:
   uint32_t GetNumInputs();
   OVTensorPtr GetTensor(const std::string& name);
   std::string GetInputTensorName(uint32_t index);
+
+  // Set tensor described param_info and ort_ptr. Overrides shape in param_info with shape_override. Call infer req tensor if ort_ptr is last set.
+  void SetTensor(const std::string& name, const ov::element::Type &type, const ov::Shape& shape, void* ort_ptr) {
+    auto& cached_binding = bindings_cache_[name];
+    if (cached_binding.ort_ptr != ort_ptr) {
+      auto tensor_ptr = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
+      SetTensor(name, tensor_ptr);
+      cached_binding = {tensor_ptr, ort_ptr};
+    }
+  }
+
   void SetTensor(const std::string& name, OVTensorPtr& blob);
-  virtual void StartAsync();
   virtual void Infer();
-  void WaitRequest();
-  void CancelRequest();
-  void QueryStatus();
-  explicit OVInferRequest(ov::InferRequest infer_request_obj) : ovInfReq(std::move(infer_request_obj)) {}
+  explicit OVInferRequest(ov::InferRequest obj) : ovInfReq(std::move(obj)) {}
   OVInferRequest() : ovInfReq(ov::InferRequest()) {}
   ov::InferRequest& GetNewObj() {
     return ovInfReq;
@@ -128,7 +144,6 @@ class StatefulOVInferRequest : public OVInferRequest {
  public:
   explicit StatefulOVInferRequest(ov::InferRequest infer_request, std::string device);
 
-  void StartAsync() override;
   void Infer() override;
   void RewindKVCache(size_t index) override;
   void FillTensor(const std::string& tensor_name, const ov::element::Type& type,

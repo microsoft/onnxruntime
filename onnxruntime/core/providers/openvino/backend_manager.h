@@ -54,6 +54,7 @@ class BackendManager {
 
   std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_;
   std::shared_ptr<IBackend> concrete_backend_;
+  std::mutex mutex_;
   std::map<std::string, std::shared_ptr<IBackend>> backend_map_;
   SubGraphContext subgraph_context_;
   EPCtxHandler& ep_ctx_handle_;
