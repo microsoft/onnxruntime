@@ -7,6 +7,18 @@ namespace Microsoft.ML.OnnxRuntime
     using System.Runtime.InteropServices;
 
     /// <summary>
+    /// Flags representing options to enable when compiling a model.
+    /// Matches OrtCompileApiFlags in the ORT C API.
+    /// </summary>
+    [Flags]
+    public enum OrtCompileApiFlags : uint
+    {
+        NONE = 0,
+        ERROR_IF_NO_NODES_COMPILED = 1 << 0,
+        ERROR_IF_OUTPUT_FILE_EXISTS = 1 << 1,
+    }
+
+    /// <summary>
     /// This class is used to set options for model compilation, and to produce a compiled model using those options.
     /// See https://onnxruntime.ai/docs/api/c/ for further details of various options.
     /// </summary>
@@ -106,6 +118,16 @@ namespace Microsoft.ML.OnnxRuntime
         {
             NativeApiStatus.VerifySuccess(
                 NativeMethods.CompileApi.OrtModelCompilationOptions_SetEpContextEmbedMode(handle, embed));
+        }
+
+        /// <summary>
+        /// Sets flags from OrtCompileApiFlags that represent one or more boolean options to enable.
+        /// </summary>
+        /// <param name="flags">bitwise OR of flags in OrtCompileApiFlags to enable.</param>
+        public void SetFlags(OrtCompileApiFlags flags)
+        {
+            NativeApiStatus.VerifySuccess(
+                NativeMethods.CompileApi.OrtModelCompilationOptions_SetFlags(handle, (uint)flags));
         }
 
         internal IntPtr Handle => handle;

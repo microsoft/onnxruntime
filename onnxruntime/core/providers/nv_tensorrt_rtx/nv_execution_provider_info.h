@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #pragma once
@@ -23,6 +24,7 @@ struct NvExecutionProviderInfo {
   int max_partition_iterations{1000};
   int min_subgraph_size{1};
   size_t max_workspace_size{0};
+  size_t max_shared_mem_size{0};
   bool dump_subgraphs{false};
   std::string engine_cache_path{""};
   bool weight_stripped_engine_enable{false};
@@ -42,6 +44,7 @@ struct NvExecutionProviderInfo {
   std::string profile_max_shapes{""};
   std::string profile_opt_shapes{""};
   bool cuda_graph_enable{false};
+  bool multi_profile_enable{false};
   bool dump_ep_context_model{false};
   std::string ep_context_file_path{""};
   int ep_context_embed_mode{0};

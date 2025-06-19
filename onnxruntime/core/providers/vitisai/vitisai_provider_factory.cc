@@ -52,6 +52,8 @@ std::unique_ptr<IExecutionProvider> VitisAIProviderFactory::CreateProvider(const
   for (const auto& [key, value] : config_options_map) {
     if (key.rfind(key_prefix, 0) == 0) {
       provider_options[key.substr(key_prefix.size())] = value;
+    } else {
+      provider_options["ort_session_config." + key] = value;
     }
   }
 

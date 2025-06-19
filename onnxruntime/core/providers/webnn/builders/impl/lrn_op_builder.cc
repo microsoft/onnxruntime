@@ -156,9 +156,10 @@ bool LRNOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   }
 
   // Check if the input data type is supported by each decomposed WebNN op.
-  // Decomposed ops include: "add", "averagePool2d", "div", "mul", "pad", "pow" and "transpose".
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
-    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  // Decomposed ops include: "Add", "AveragePool", "Div", "Mul", "Pad", "Pow" and "Transpose".
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
+    const std::string_view webnn_input_name = GetWebNNOpFirstInputName(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits, webnn_input_name, "X", logger)) {
       return false;
     }
@@ -178,7 +179,8 @@ bool LRNOpBuilder::HasSupportedOutputsImpl(const Node& node,
   }
 
   // Check if the output data type is supported by every decomposed WebNN op.
-  for (const std::string_view webnn_op_type : decomposed_op_map.at(op_type)) {
+  for (const std::string_view decomposed_op_type : decomposed_op_map.at(op_type)) {
+    const std::string_view webnn_op_type = GetWebNNOpType(decomposed_op_type);
     if (!IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, output_type, wnn_limits, "output", "Y", logger)) {
       return false;
     }

@@ -22,8 +22,8 @@ QNBitGemmPackQuantBDataSize(
         const size_t ScaleSize = N * BlockCountK * sizeof(float);
         size_t BlkSumSize = MlasDivRoundup(N, 16) * BlockCountK * 16 * sizeof(float);
 
-        // _mm256_load_si256 requires alignment on a 32-byte boundary
-        constexpr size_t PackedQuantBDataAlignment = 32;
+        // avx512 requires alignment on a 64-byte boundary
+        constexpr size_t PackedQuantBDataAlignment = 64;
         PackedQuantBDataSize += PackedQuantBDataAlignment - 1;
         constexpr size_t BlkSumAlignment = MlasQNBitQuantBBlkSumAlignment();
         BlkSumSize += BlkSumAlignment - 1;

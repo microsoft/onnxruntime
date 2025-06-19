@@ -149,14 +149,20 @@ stages:
             artifactName: ${{ parameters.ArtifactName }}
             targetPath: '$(Build.ArtifactStagingDirectory)'
 
-        - task: PublishSymbols@2
-          displayName: 'Publish Build Symbols'
-          condition: and (succeeded(), or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-')))
-          inputs:
-            SymbolsFolder: '$(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo'
-            SearchPattern: 'onnxruntime.pdb'
-            SymbolServerType: teamServices
-            SymbolExpirationInDays: 365
+
+        - ${{if or(eq(variables['Build.SourceBranch'], 'refs/heads/main'), startsWith(variables['Build.SourceBranch'], 'refs/heads/rel-'))}}:
+          - template: ../../templates/publish-symbolrequestprod-api.yml
+            parameters:
+              ${{if eq(variables['Build.SourceBranch'], 'refs/heads/main')}}:
+                symbolExpiryTime: 60
+              includePublicSymbolServer: true
+              symbolsArtifactName: onnxruntime-dml-nuget-${{ parameters.BuildArch }}
+              symbolsVersion: $(Build.BuildId)
+              symbolProject: 'ONNX Runtime'
+              subscription: 'OnnxrunTimeCodeSign_20240611'
+              searchPattern: |
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime.pdb
+                $(Build.BinariesDirectory)\RelWithDebInfo\RelWithDebInfo\onnxruntime_providers_*.pdb
 
       # Node.js Publish
       - ${{ if eq(parameters['DoNodejsPack'], 'true') }}:

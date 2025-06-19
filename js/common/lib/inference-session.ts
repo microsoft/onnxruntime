@@ -81,7 +81,7 @@ export declare namespace InferenceSession {
      *
      * This setting is available only in ONNXRuntime (Node.js binding and react-native) or WebAssembly backend
      */
-    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'all';
+    graphOptimizationLevel?: 'disabled' | 'basic' | 'extended' | 'layout' | 'all';
 
     /**
      * Whether enable CPU memory arena.

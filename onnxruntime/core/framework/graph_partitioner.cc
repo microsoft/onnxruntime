@@ -17,6 +17,7 @@
 #include "core/framework/resource_accountant.h"
 #include "core/graph/function.h"
 #include "core/graph/function_utils.h"
+#include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
 #include "core/graph/model_saving_options.h"
@@ -767,10 +768,10 @@ static Status InlineFunctionsAOTImpl(const ExecutionProviders& execution_provide
 static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_path,
                                         const std::filesystem::path& model_path,
                                         std::filesystem::path& context_cache_path,
-                                        bool allow_overwrite_output_model = false) {
+                                        bool error_if_output_file_exists = true) {
   if (!ep_context_path.empty()) {
     context_cache_path = ep_context_path;
-    if (!context_cache_path.has_filename()) {
+    if (!(context_cache_path.has_filename() && context_cache_path.extension() != "")) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "context_file_path should not point to a folder.");
     }
   } else if (!model_path.empty()) {
@@ -784,9 +785,9 @@ static Status GetValidatedEpContextPath(const std::filesystem::path& ep_context_
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Both ep_context_path and model_path are empty.");
   }
 
-  if (std::filesystem::exists(context_cache_path) && !allow_overwrite_output_model) {
+  if (std::filesystem::exists(context_cache_path) && error_if_output_file_exists) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Failed to generate EP context model since the file '",
-                           context_cache_path, "' exist already. Please remove the EP context model if you want to re-generate it.");
+                           context_cache_path, "' exists already. Please remove the EP context model if you want to re-generate it.");
   }
 
   return Status::OK();
@@ -803,16 +804,25 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   if (all_ep_context_nodes.size() < 1) {
-    ORT_RETURN_IF(ep_context_gen_options.error_if_no_compiled_nodes,
-                  "Compiled model does not contain any EPContext nodes. "
-                  "Check that the session EPs support compilation and can execute at least one model subgraph.");
+    auto action_if_no_compiled_nodes = ep_context_gen_options.action_if_no_compiled_nodes;
 
-    LOGS(logger, WARNING) << "Compiled model does not contain any EPContext nodes. "
-                             "Either the session EPs do not support compilation or "
-                             "no subgraphs were able to be compiled.";
+    ORT_RETURN_IF(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kReturnError,
+                  "Unable to compile any nodes. Check that the session EPs support compilation and can execute "
+                  "at least one subgraph in the model.");
 
-    // we continue on to generate the compiled model which may benefit from L1 optimizations even if there are not
-    // EPContext nodes.
+    if (action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kDontGenerateModel) {
+      LOGS(logger, WARNING) << "Unable to compile any nodes. ONNX Runtime will not generate a compiled model. "
+                               "Either the session EPs do not support compilation or the model is already compiled.";
+      // Note: this path is only taken if a model is compiled with the original compilation approach that uses
+      // session options configs only. The explicit compile API instead only chooses between
+      // kReturnError and kGenerateModel.
+      return Status::OK();
+    }
+
+    // Assert so that this is caught in a test in DEBUG builds (in case a new enum value is added)
+    assert(action_if_no_compiled_nodes == EpContextModelGenerationOptions::ActionIfNoCompiledNodes::kGenerateModel);
+    LOGS(logger, INFO) << "Unable to compile any nodes but will still generate an output model. "
+                          "Either the session EPs do not support compilation or the model is already compiled.";
   }
 
   auto get_ep_context_node = [&all_ep_context_nodes](const std::string& node_name) -> std::pair<bool, const Node*> {
@@ -833,8 +843,20 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path,
                                                   graph.ModelPath(),
                                                   context_cache_path,
-                                                  ep_context_gen_options.overwrite_existing_output_file));
+                                                  ep_context_gen_options.error_if_output_file_exists));
   }
+
+  // Utility function to detect a fused node with an unsupported domain.
+  // Ex: when compiling an already compiled model, an EPContext node in the input model would be wrapped
+  // into a fused node with a domain like "QNN". Such fused nodes do not pass ONNX correctness checks, so
+  // we should detect them here and return a better error message. Otherwise, an ORT_INVALID_GRAPH error is raised
+  // with a confusing error message *after* the invalid model has been saved/generated.
+  // Note: This only applies to the explicit compile API. The original compilation approach (via session options),
+  // early exits above (without error) if the model is already compiled.
+  auto is_invalid_fused_node = [&graph](const Node& node) {
+    const std::unordered_map<std::string, int>& supported_domains = graph.DomainToVersionMap();
+    return (node.NodeType() == Node::Type::Fused) && (supported_domains.find(node.Domain()) == supported_domains.end());
+  };
 
   Model ep_context_model(graph.Name(), false, graph.GetModel().MetaData(),
                          graph.GetModel().ModelPath(),  // use source model path so that external initializers can find the data file path
@@ -872,15 +894,18 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     // Use EpContext node created by the EPs if name matched, otherwise use node from original model
     if (ep_context_node.first) {
       ep_graph.AddNode(*ep_context_node.second);
+    } else if (is_invalid_fused_node(node)) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_GRAPH, "Encountered an invalid node while compiling a model. ",
+                             "Please ensure the input model is not already compiled.");
     } else {
       ep_graph.AddNode(node);
     }
   }
 
   // handle initializers
-  for (const auto& initialized_tensor : graph.GetAllInitializedTensors()) {
-    if (ep_graph.GetNodeArg(initialized_tensor.first) != nullptr) {
-      ep_graph.AddInitializedTensor(*initialized_tensor.second);
+  for (const auto& [name, _] : graph.GetAllInitializedTensors()) {
+    if (ep_graph.GetNodeArg(name) != nullptr) {
+      graph_utils::MakeInitializerCopyIfNotExist(graph, ep_graph, name);
     }
   }
 
@@ -1216,7 +1241,7 @@ Status GraphPartitioner::Partition(Graph& graph, FuncManager& func_mgr,
       std::filesystem::path context_cache_path;
       ORT_RETURN_IF_ERROR(GetValidatedEpContextPath(ep_context_gen_options.output_model_file_path, graph.ModelPath(),
                                                     context_cache_path,
-                                                    ep_context_gen_options.overwrite_existing_output_file));
+                                                    ep_context_gen_options.error_if_output_file_exists));
     }
 
     // We use this only if Resource Aware Partitioning is enabled for any of the EPs

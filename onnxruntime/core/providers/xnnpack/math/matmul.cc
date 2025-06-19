@@ -41,9 +41,8 @@ bool MatMul::IsOnnxNodeSupported(const NodeUnit& node_unit, const GraphViewer& g
       break;
     }
 
-    if (A_shape == nullptr || A_shape->dim_size() > 2 ||
-        (A_shape->dim_size() == 2 && A_shape->dim(1).dim_value() == 0) ||
-        A_shape->dim(0).dim_value() == 0) {
+    // A must at-least be 1-D
+    if (A_shape == nullptr || A_shape->dim_size() < 1) {
       break;
     }
 
@@ -162,10 +161,28 @@ Status MatMul::Compute(OpKernelContext* ctx) const {
   xnn_status status = xnn_status_success;
 
   pthreadpool_t threadpool = GetThreadPool();
+
+  // If the input 'A' is 1-D, then it is prepended with 1 and hence batch will be 1
+  size_t batch = 1;
+
+  const auto& a_dims = a->Shape();
+  int64_t rank = a_dims.NumDimensions();
+
+  if (rank == 2) {
+    batch = a_dims[0];
+  } else if (rank > 2) {
+    // Input 'A' is N-dimensional, the batch is made up of the product of the outermost dims
+    // (excluding the actual inner reduction dim)
+
+    for (int64_t i = 0; i < rank - 1; ++i) {
+      batch *= a_dims[i];
+    }
+  }
+
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
-    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), a->Shape()[0], threadpool);
+    status = xnn_reshape_fully_connected_nc_f32(op0_.get(), batch, threadpool);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
-    status = xnn_reshape_fully_connected_nc_f16(op0_.get(), a->Shape()[0], threadpool);
+    status = xnn_reshape_fully_connected_nc_f16(op0_.get(), batch, threadpool);
   }
 
   if (status != xnn_status_success) {

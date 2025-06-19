@@ -30,6 +30,7 @@ try:
         NodeArg,  # noqa: F401
         OrtAllocatorType,  # noqa: F401
         OrtArenaCfg,  # noqa: F401
+        OrtCompileApiFlags,  # noqa: F401
         OrtEpDevice,  # noqa: F401
         OrtExecutionProviderDevicePolicy,  # noqa: F401
         OrtHardwareDevice,  # noqa: F401
@@ -54,6 +55,7 @@ try:
         register_execution_provider_library,  # noqa: F401
         set_default_logger_severity,  # noqa: F401
         set_default_logger_verbosity,  # noqa: F401
+        set_global_thread_pool_sizes,  # noqa: F401
         set_seed,  # noqa: F401
         unregister_execution_provider_library,  # noqa: F401
     )

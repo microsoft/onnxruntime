@@ -201,6 +201,21 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtCompileAPI::ModelCompilationOptions_SetFlags,
+                    _In_ OrtModelCompilationOptions* ort_model_compile_options, size_t flags) {
+  API_IMPL_BEGIN
+#if !defined(ORT_MINIMAL_BUILD)
+  auto model_compile_options = reinterpret_cast<onnxruntime::ModelCompilationOptions*>(ort_model_compile_options);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(model_compile_options->SetFlags(flags));
+  return nullptr;
+#else
+  ORT_UNUSED_PARAMETER(ort_model_compile_options);
+  ORT_UNUSED_PARAMETER(flags);
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "Compile API is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD)
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
                     _In_ const OrtModelCompilationOptions* ort_model_compile_options) {
   API_IMPL_BEGIN
@@ -217,8 +232,9 @@ ORT_API_STATUS_IMPL(OrtCompileAPI::CompileModel, _In_ const OrtEnv* env,
 }
 
 static constexpr OrtCompileApi ort_compile_api = {
-    // NOTE: The C# bindings depend on the Api order within this struct so all additions must be at the end,
-    // and no functions can be removed (the implementation needs to change to return an error).
+    // NOTE: Application compatibility with newer versions of ORT depends on the Api order within this struct so
+    // all new functions must be added at the end, and no functions that already exist in an officially released version
+    // of ORT can be reordered or removed.
 
     &OrtCompileAPI::ReleaseModelCompilationOptions,
     &OrtCompileAPI::CreateModelCompilationOptionsFromSessionOptions,
@@ -229,6 +245,9 @@ static constexpr OrtCompileApi ort_compile_api = {
     &OrtCompileAPI::ModelCompilationOptions_SetOutputModelBuffer,
     &OrtCompileAPI::ModelCompilationOptions_SetEpContextEmbedMode,
     &OrtCompileAPI::CompileModel,
+    // End of Version 22 - DO NOT MODIFY ABOVE
+
+    &OrtCompileAPI::ModelCompilationOptions_SetFlags,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

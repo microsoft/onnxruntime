@@ -374,6 +374,27 @@ Status TwoDimensionTranspose(const QnnModelWrapper& qnn_model_wrapper,
                              const onnx::TensorProto& initializer,
                              std::vector<uint8_t>& transposed_data);
 
+Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
+                       const std::string& convert_input_name,
+                       const std::string& convert_output_name,
+                       Qnn_DataType_t input_qnn_data_type,
+                       Qnn_DataType_t output_qnn_data_type,
+                       int32_t input_offset,
+                       float input_scale,
+                       const std::vector<uint32_t>& output_shape,
+                       bool output_symmetric,
+                       bool do_op_validation);
+
+/**
+ * Get permutation to transpose given axis to the last one.
+ *
+ * @param[in] axis the current axis to be transposed
+ * @param[in] rank the expected rank for permutation
+ * @param[out] perm the permutation for transpose
+ * @return execution status of this function
+ */
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
+
 }  // namespace utils
 }  // namespace qnn
 }  // namespace onnxruntime

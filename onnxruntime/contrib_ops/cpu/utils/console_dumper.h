@@ -17,33 +17,27 @@ class IConsoleDumper {
   virtual ~IConsoleDumper() {}
   void Disable() { is_enabled_ = false; }
   bool IsEnabled() const { return is_enabled_; }
-  virtual void Print(const char* name, const float* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const size_t* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1) const = 0;
-  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1) const = 0;
-
-  virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2) const = 0;
-  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2) const = 0;
-
-  virtual void Print(const char* name, const float* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
-  virtual void Print(const char* name, const int32_t* tensor, int dim0, int dim1, int dim2, int dim3) const = 0;
-
-  virtual void Print(const char* name, const int32_t* tensor, gsl::span<const int64_t>& dims) const = 0;
-  virtual void Print(const char* name, const int64_t* tensor, gsl::span<const int64_t>& dims) const = 0;
-  virtual void Print(const char* name, const float* tensor, gsl::span<const int64_t>& dims) const = 0;
-  virtual void Print(const char* name, const MLFloat16* tensor, gsl::span<const int64_t>& dims) const = 0;
 
   virtual void Print(const char* name, const Tensor& value) const = 0;
   virtual void Print(const char* name, const OrtValue& value) const = 0;
-  virtual void Print(const char* name, int index, bool end_line) const = 0;
-  virtual void Print(const char* name, const std::string& value, bool end_line) const = 0;
-
   virtual void Print(const std::string& value) const = 0;
+
+#define TENSOR_DUMPER_PRINT_TYPE(dtype)                                                                        \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1) const = 0;                     \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2) const = 0;           \
+  virtual void Print(const char* name, const dtype* tensor, int dim0, int dim1, int dim2, int dim3) const = 0; \
+  virtual void Print(const char* name, const dtype* tensor, gsl::span<const int64_t>& dims) const = 0;
+
+  TENSOR_DUMPER_PRINT_TYPE(int8_t)
+  TENSOR_DUMPER_PRINT_TYPE(uint8_t)
+  TENSOR_DUMPER_PRINT_TYPE(int32_t)
+  TENSOR_DUMPER_PRINT_TYPE(int64_t)
+  TENSOR_DUMPER_PRINT_TYPE(float)
+  TENSOR_DUMPER_PRINT_TYPE(MLFloat16)
+  TENSOR_DUMPER_PRINT_TYPE(BFloat16)
+  TENSOR_DUMPER_PRINT_TYPE(UInt4x2)
+  TENSOR_DUMPER_PRINT_TYPE(Int4x2)
+#undef TENSOR_DUMPER_PRINT_TYPE
 
  protected:
   bool is_enabled_;

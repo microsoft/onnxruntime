@@ -243,6 +243,12 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
   return ConstMemoryInfo{out};
 }
 
+template <typename T>
+inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
+  OrtKeyValuePairs* out;
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
+  return KeyValuePairs(out);
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
@@ -829,6 +835,11 @@ inline ModelCompilationOptions& ModelCompilationOptions::SetEpContextEmbedMode(
   Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetEpContextEmbedMode(
       this->p_,
       embed_ep_context_in_model));
+  return *this;
+}
+
+inline ModelCompilationOptions& ModelCompilationOptions::SetFlags(size_t flags) {
+  Ort::ThrowOnError(GetCompileApi().ModelCompilationOptions_SetFlags(this->p_, flags));
   return *this;
 }
 

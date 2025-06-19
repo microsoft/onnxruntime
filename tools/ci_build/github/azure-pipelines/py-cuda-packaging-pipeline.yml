@@ -49,7 +49,7 @@ extends:
       codeql:
         compiled:
           enabled: false
-          justificationForDisabling: 'CodeQL is taking nearly 4 hours resulting in timeouts in our production pipelines'
+          justificationForDisabling: 'CodeQL is taking nearly 6 hours resulting in timeouts in our production pipelines'
     pool:
       name: 'onnxruntime-Win-CPU-2022'  # Name of your hosted pool
       os: windows  # OS of the image. This value cannot be a variable. Allowed values: windows, linux, macOS

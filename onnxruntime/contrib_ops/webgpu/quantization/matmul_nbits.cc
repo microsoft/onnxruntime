@@ -5,6 +5,7 @@
 #include <string_view>
 
 #include "contrib_ops/webgpu/quantization/matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
 #include "contrib_ops/webgpu/quantization/dp4a_matmul_nbits.h"
 #include "contrib_ops/webgpu/webgpu_contrib_kernels.h"
@@ -19,45 +20,8 @@ namespace webgpu {
 
 namespace {
 
-std::string ReadZeroPoint(uint32_t nbits, bool has_zero_points) {
-  ORT_ENFORCE(nbits == 8 || nbits == 4, "Only 4/8 bits are supported for webgpu matmulnbits");
-  std::stringstream ss;
-  if (has_zero_points) {
-    ss << "const elements_in_uint32 = " << (32 / nbits) << "u;\n"
-       << "const bits = " << nbits << "u;\n";
-    ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  if (row < r_dim && col < c_dim) {
-    let offset = row * c_dim + col;
-
-    // u32 holds elements_in_uint32 packed nbits.
-    let array_index = offset / elements_in_uint32;
-    let component_index = offset % elements_in_uint32;
-    let packed_value = zero_points[array_index];
-
-    // Extract the nbits component
-    let shift_amount = component_index * bits;
-)";
-    ss << "    let masked_value = (packed_value >> shift_amount) & " << (nbits == 4 ? "0xFu" : "0xFF") << ";\n";
-    ss << R"(
-    return output_element_t(masked_value);
-  }
-  return output_element_t(0);
-}
-)";
-  } else {
-    ss << "const default_zero_point = " << (nbits == 4 ? 8 : 128) << ";\n";
-    ss << R"(
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  // The default zero point is 8.
-  return output_element_t(default_zero_point);
-}
-)";
-  }
-  return ss.str();
-}
-
 constexpr unsigned int kMinMForTileOptimization = 4;
+
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -134,7 +98,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
                                     << "  }\n"
                                     << "  return output_element_t(0);\n"
                                     << "}\n"
-                                    << ReadZeroPoint(nbits_, has_zero_points_);
+                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
 
   shader.AdditionalImplementation() << "\n"
                                     << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
@@ -272,7 +236,7 @@ Status MatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     }
   }
 )ADDNL_FN"
-                                    << ReadZeroPoint(nbits_, has_zero_points_);
+                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
 
   shader.MainFunctionBody() << R"MAIN_FN(
   let batch = workgroup_idx / (uniforms.M * uniforms.num_N_tile);
@@ -395,6 +359,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   ORT_ENFORCE(g_idx == nullptr, "group_idx as input is not supported yet.");
   ORT_ENFORCE(bias == nullptr, "bias as input is not supported yet.");
 
+  const bool has_zero_points = zero_points != nullptr;
+  if (has_zero_points) {
+    ORT_ENFORCE(zero_points->DataType() == DataTypeImpl::GetType<uint8_t>(), "Currently, only uint8 is supported for zero points, but got ", zero_points->DataType());
+  }
+
   MatMulComputeHelper helper;
   TensorShape b_shape({N_, K_});
   ORT_RETURN_IF_ERROR(helper.Compute(a->Shape(), b_shape, false, true));
@@ -417,23 +386,25 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
   const uint32_t components_a = GetMaxComponents(K);
   const uint32_t components_b = GetMaxComponents(blob_size_in_words);
   uint32_t components = GetMaxComponents(N);
+  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
+  // For bits==4, this is counted by elements of uint4. Need add 1 if not divisible by 2.
+  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
-  const bool has_zero_points = zero_points != nullptr;
-  // macOS - Experimental dawn support for subgroup matrix matmul on Metal.
-  if (M >= kMinMForTileOptimization &&
-      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, has_zero_points)) {
-    return ApplySubgroupMatrixMatMulNBits(a, b, scales, M, N, K, nbits, context, y);
+#if !defined(__wasm__)
+  int32_t subgroup_matrix_config_index = -1;
+  // apple|intel - Experimental dawn support for subgroup matrix matmul.
+  if (M >= kMinMForTileOptimization && (context.AdapterInfo().vendor == std::string_view{"apple"} || context.AdapterInfo().vendor == std::string_view{"intel"}) &&
+      CanApplySubgroupMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, subgroup_matrix_config_index)) {
+    return ApplySubgroupMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, nbits, zero_blocks_per_col, subgroup_matrix_config_index, context, y);
   }
+#endif
 
   // On FP32 only GPUs, integer math is faster than FP32 therefore always use DP4A independent of length of M.
   if ((M >= kMinMForTileOptimization || y->DataType() == DataTypeImpl::GetType<float>() ||
        context.AdapterInfo().vendor == std::string_view{"qualcomm"}) &&
-      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a, has_zero_points)) {
-    return ApplyDP4AMatrixMatMulNBits(a, b, scales, M, N, K, block_size, kMinMForTileOptimization, nbits, context, y);
+      CanApplyDP4AMatrixMatMulNBits(context, accuracy_level_, block_size, batch_count, N, K, components_a)) {
+    return ApplyDP4AMatrixMatMulNBits(a, b, scales, zero_points, M, N, K, block_size, zero_blocks_per_col, kMinMForTileOptimization, nbits, context, y);
   }
-
-  // zero_points has shape[N * CeilDiv(n_blocks_per_col * bits, 8)]. So here we need to check whether n_blocks_per_col is divisible by 8/nbits.
-  uint32_t zero_blocks_per_col = n_blocks_per_col % (8 / nbits) == 0 ? n_blocks_per_col : n_blocks_per_col + 1;
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.

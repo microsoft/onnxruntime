@@ -70,15 +70,42 @@ struct FreeDimensionOverride {
 
 using CheckLoadCancellationFn = std::function<bool()>;
 
+/// <summary>
+/// Options that configure the generation of a compiled model (i.e., a model with EPContext nodes).
+/// There are two ways to compile a model:
+///   1. By specifying the correct session option configurations and creating an inference session.
+///      The compiled model is generated as a side-effect of session creation.
+///   2. Using an explicit compile API (see OrtCompileApi struct in onnxruntime_c_api.h).
+///
+/// The default values in this struct are set to match the current/default behavior of approach 1 to maintain
+/// compatibility with the older way of compiling. The explicit compile API overrides some of these values to
+/// provide its own defaults (see core/session/model_compilation_options.h/cc).
+/// </summary>
 struct EpContextModelGenerationOptions {
+  // Action to take if the output model does not have compiled (EPContext) nodes.
+  enum class ActionIfNoCompiledNodes {
+    // Return OK() but don't generate an output model. Compiling via SessionOptions defaults to this behavior
+    // to maintain compatibility. The explicit compile API does *not* use this action.
+    kDontGenerateModel = 0,
+
+    // Generate an output model even if it doesn't have compiled nodes.
+    // The explicit Compile API defaults to this value.
+    kGenerateModel,
+
+    // Return an error if the model does not have compiled nodes.
+    // The explicit Compile API can be configured to this value.
+    kReturnError,
+  };
+
   EpContextModelGenerationOptions() = default;
 
   // Initializes from string key/value pairs in session config options.
+  // This initializes this struct from options set via the older compiling approach #1 above.
   explicit EpContextModelGenerationOptions(const ConfigOptions& config_options);
 
   bool enable = false;
-  bool overwrite_existing_output_file = false;
-  bool error_if_no_compiled_nodes = false;
+  bool error_if_output_file_exists = true;
+  ActionIfNoCompiledNodes action_if_no_compiled_nodes = ActionIfNoCompiledNodes::kDontGenerateModel;
   bool embed_ep_context_in_model = false;
 
   std::string output_model_file_path;
@@ -158,7 +185,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 10;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level3;
+  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel;
 
   // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
   OrtThreadPoolParams intra_op_param;

@@ -45,6 +45,15 @@ class QnnConfigsBuilder {
   }
 
   /**
+   * Returns the number of configs that have been added to this builder, excluding any null terminator.
+   *
+   * \return The number of configs in this builder.
+   */
+  size_t GetSize() const {
+    return IsNullTerminated() ? config_ptrs_.size() - 1 : config_ptrs_.size();
+  }
+
+  /**
    * Creates and returns a reference to a new custom QNN configuration object. The object is initialized to
    * the QNN recommended default value. The caller is meant to override fields in this object.
    *

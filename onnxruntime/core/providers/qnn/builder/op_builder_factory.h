@@ -93,6 +93,8 @@ void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateReciprocalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -102,5 +104,10 @@ void CreateHardSigmoidOpBuilder(const std::string& op_type, OpBuilderRegistratio
 void CreateMatMulOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime
