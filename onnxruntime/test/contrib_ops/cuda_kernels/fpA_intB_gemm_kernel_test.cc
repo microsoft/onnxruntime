@@ -56,9 +56,9 @@ std::vector<std::pair<int, int>> get_n_k_list() {
 
 struct CudaBuffer {
   void* _data;
-  int _bytes;
+  size_t _bytes;
 
-  CudaBuffer(int size_in_bytes) : _bytes(size_in_bytes) {
+  CudaBuffer(size_t size_in_bytes) : _bytes(size_in_bytes) {
     cudaMalloc(&_data, _bytes);
   }
 
@@ -81,7 +81,7 @@ struct CudaBuffer {
 };
 
 template <typename T>
-float compare(void* a, void* b, int size, float scale) {
+float compare(void* a, void* b, size_t size, float scale) {
   auto pa = reinterpret_cast<T*>(a);
   auto pb = reinterpret_cast<T*>(b);
   float max_diff = 0.f;
@@ -89,7 +89,7 @@ float compare(void* a, void* b, int size, float scale) {
   float max_val = 0.f;
   int diff_count = 0;
   float threshold = 1e-7;
-  for (int n = 0; n < size; ++n) {
+  for (size_t n = 0; n < size; ++n) {
     float va = static_cast<float>(pa[n]);
     float vb = static_cast<float>(pb[n]);
     max_val = std::max(max_val, vb);
@@ -111,7 +111,7 @@ float compare(void* a, void* b, int size, float scale) {
 
   bool passed = max_diff <= diff_threshold;
   if (!passed) {
-    printf("max diff %f (threshold %f), avg diff %f, diff count %d/%d\n",
+    printf("max diff %f (threshold %f), avg diff %f, diff count %d/%zu\n",
            max_diff, diff_threshold, total_diff / diff_count, diff_count, size);
   }
 
@@ -193,8 +193,8 @@ float measure_kernel_time(Func kernel_launcher, int warmup, int repeats, cudaStr
 }
 
 template <wo::KernelType KT, typename Runner, typename Config>
-void exec_cutlass_kernel([[maybe_unused]] void* scaled_act, Runner& runner, wo::Params& params, Config& config,
-                         char* ws, size_t ws_size, cudaStream_t stream) {
+void run_cutlass_kernel([[maybe_unused]] void* scaled_act, Runner& runner, wo::Params& params, Config& config,
+                        char* ws, size_t ws_size, cudaStream_t stream) {
   static constexpr cutlass::WeightOnlyQuantOp QuantOp = cutlassTypeMapper<KT>::QuantOp;
   void* act = params.act;
   if (params.act_scale) {
@@ -234,7 +234,7 @@ struct BenchmarkResult {
 };
 
 void PrintBenchmarkSummary(std::vector<BenchmarkResult>& benchmark_results) {
-  std::cout << "\nBenchmark of FpA_IntB_GEMV, FpA_IntB_GEMM, MatMulNBits, Navie (DQ + GEMM) kernels (latency in microseconds):\n";
+  std::cout << "\nBenchmark of FpA_IntB_GEMV, FpA_IntB_GEMM, MatMulNBits, Naive (DQ + GEMM) kernels (latency in microseconds):\n";
   constexpr size_t kLength = 139;
   std::cout << std::string(kLength, '-') << std::endl;
   std::cout << std::left << std::setw(6) << "A"
@@ -321,22 +321,26 @@ class KernelTestFixture : public ::testing::Test {
 
     using AType = typename cutlassTypeMapper<KT>::AType;
 
-    d_act_ = std::make_shared<CudaBuffer>(m_ * k_ * sizeof(AType));
-    d_act_scale_ = std::make_shared<CudaBuffer>(k_ * sizeof(AType));
-    d_weight_ = std::make_shared<CudaBuffer>(k_ * n_ * WSizeInBits / 8);
-    d_scales_ = std::make_shared<CudaBuffer>(n_ * k_ / block_size_ * sizeof(AType));
-    d_zeros_ = std::make_shared<CudaBuffer>(n_ * k_ / block_size_ * sizeof(AType));
-    d_bias_ = std::make_shared<CudaBuffer>(n_ * sizeof(AType));
-    d_out_ = std::make_shared<CudaBuffer>(m_ * n_ * sizeof(AType));
+    constexpr size_t ATypeBytes = sizeof(AType);
+    const size_t m_x_k = static_cast<size_t>(m_) * static_cast<size_t>(k_);
+    const size_t n_x_k = static_cast<size_t>(n_) * static_cast<size_t>(k_);
+    const size_t m_x_n = static_cast<size_t>(m_) * static_cast<size_t>(n_);
+    d_act_ = std::make_shared<CudaBuffer>(m_x_k * ATypeBytes);
+    d_act_scale_ = std::make_shared<CudaBuffer>(static_cast<size_t>(k_) * ATypeBytes);
+    d_weight_ = std::make_shared<CudaBuffer>(n_x_k * WSizeInBits / static_cast<size_t>(8));
+    d_scales_ = std::make_shared<CudaBuffer>(n_x_k / static_cast<size_t>(block_size_) * ATypeBytes);
+    d_zeros_ = std::make_shared<CudaBuffer>(n_x_k / static_cast<size_t>(block_size_) * ATypeBytes);
+    d_bias_ = std::make_shared<CudaBuffer>(static_cast<size_t>(n_) * ATypeBytes);
+    d_out_ = std::make_shared<CudaBuffer>(m_x_n * ATypeBytes);
 
-    h_act_.resize(m_ * k_);
-    h_act_scale_.resize(k_);
-    h_weight_.resize(k_ * n_);
-    h_scales_.resize(n_ * k_ / block_size_);
-    h_zeros_.resize(n_ * k_ / block_size_);
-    h_bias_.resize(n_);
-    h_out1_.resize(m_ * n_);
-    h_out2_.resize(m_ * n_);
+    h_act_.resize(m_x_k);
+    h_act_scale_.resize(static_cast<size_t>(k_));
+    h_weight_.resize(n_x_k);
+    h_scales_.resize(n_x_k / static_cast<size_t>(block_size_));
+    h_zeros_.resize(n_x_k / static_cast<size_t>(block_size_));
+    h_bias_.resize(static_cast<size_t>(n_));
+    h_out1_.resize(m_x_n);
+    h_out2_.resize(m_x_n);
 
     random_fill(h_act_, -1.f, 1.f);
     random_fill(h_act_scale_, -1.f, 1.f);
@@ -415,7 +419,7 @@ class KernelTestFixture : public ::testing::Test {
       try {
         time = measure_kernel_time(
             [&]() {
-              exec_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, config, ws_ptr, ws_bytes, s_);
+              run_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, config, ws_ptr, ws_bytes, s_);
             },
             2, 5, s_);
       } catch (std::exception const& e) {
@@ -435,17 +439,19 @@ class KernelTestFixture : public ::testing::Test {
 
     float cutlass_time_ms = measure_kernel_time(
         [&]() {
-          exec_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, best_config, ws_ptr, ws_bytes, s_);
+          run_cutlass_kernel<KT>(d_act_->data(), gemm_runner, params, best_config, ws_ptr, ws_bytes, s_);
         },
         warmup_, repeats_, s_);
     d_out_->to_cpu(h_out2_.data());
 
+    const size_t n_x_k = static_cast<size_t>(n_) * static_cast<size_t>(k_);
+    const size_t m_x_n = static_cast<size_t>(m_) * static_cast<size_t>(n_);
     // ------------------------
     // Compare FpA_IntB_Gemv and FpA_IntB_Gemm outputs.
     bool pass = true;
     if (m_ < 16) {
       float quant_scale = 1.f / (1 << (WSizeInBits - 1));
-      pass = compare<AType>(h_out1_.data(), h_out2_.data(), m_ * n_, quant_scale);
+      pass = compare<AType>(h_out1_.data(), h_out2_.data(), m_x_n, quant_scale);
     }
 
     // ------------------------
@@ -454,13 +460,13 @@ class KernelTestFixture : public ::testing::Test {
     float nbits_time_ms = 0.f;
     float naive_time_ms = 0.f;
     if constexpr (KT == wo::KernelType::FP16Int8Groupwise || KT == wo::KernelType::FP16Int4Groupwise) {
-      std::vector<uint8_t> h_uint8_zeros(n_ * k_ / block_size_);
+      std::vector<uint8_t> h_uint8_zeros(n_x_k / static_cast<size_t>(block_size_));
       for (uint8_t& v : h_uint8_zeros) {
         v = rand() % 256;
       }
 
       ORT_ENFORCE(k_ / block_size_ * WSizeInBits % 8 == 0);
-      CudaBuffer d_uint8_zeros(n_ * k_ / block_size_ * WSizeInBits / 8);
+      CudaBuffer d_uint8_zeros(n_x_k / static_cast<size_t>(block_size_) * WSizeInBits / static_cast<size_t>(8));
       d_uint8_zeros.from_cpu(h_uint8_zeros.data());
 
       if (m_ == 1) {
@@ -477,7 +483,7 @@ class KernelTestFixture : public ::testing::Test {
             warmup_, repeats_, s_);
       }
 
-      CudaBuffer d_dequantized_weight(SafeInt<int>(n_) * k_ * sizeof(AType));
+      CudaBuffer d_dequantized_weight(n_x_k * sizeof(AType));
 
       naive_time_ms = measure_kernel_time(
           [&]() {
