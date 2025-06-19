@@ -670,8 +670,12 @@ def generate_build_tree(
                 target_arch = "ARM64"
             elif args.arm64ec:
                 target_arch = "ARM64EC"
+            cpu_arch = platform.architecture()[0]
             if target_arch == "AMD64":
-                triplet = "x64-windows-static" if args.enable_msvc_static_runtime else "x64-windows-static-md"
+                if cpu_arch == "32bit" or args.x86:
+                    triplet = "x86-windows-static" if args.enable_msvc_static_runtime else "x86-windows-static-md"
+                else:
+                    triplet = "x64-windows-static" if args.enable_msvc_static_runtime else "x64-windows-static-md"
             elif target_arch == "ARM64":
                 triplet = "arm64-windows-static" if args.enable_msvc_static_runtime else "arm64-windows-static-md"
             elif target_arch == "ARM64EC":
@@ -2429,7 +2433,10 @@ def main():
             else:
                 target_arch = platform.machine()
                 if target_arch == "AMD64":
-                    target_arch = "x64"
+                    if cpu_arch == "32bit" or args.x86:
+                        target_arch = "Win32"
+                    else:
+                        target_arch = "x64"
                     host_arch = "x64"
                 elif target_arch == "ARM64":
                     host_arch = "ARM64"

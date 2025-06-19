@@ -401,6 +401,11 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
 
     # Cross-compilation targets hosted on Windows
     parser.add_argument(
+        "--x86",
+        action="store_true",
+        help="[Windows cross-compiling] Target Windows x86.",
+    )
+    parser.add_argument(
         "--arm",
         action="store_true",
         help="[Windows cross-compiling] Target Windows ARM.",
