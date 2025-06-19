@@ -2822,7 +2822,8 @@ Status Graph::InferAndVerifyTypeMatch(Node& node, const OpSchema& op, const Reso
   // if we're building a graph we permit outer scope node args to have no type
   // as the 'real' Resolve at runtime will have type inferencing
   auto is_outer_scope_nodearg = [this](const std::string& name) {
-    return resolve_context_.IsOuterScopeValue(name);
+    return outer_scope_node_arg_names_.find(name) != outer_scope_node_arg_names_.cend() ||
+           resolve_context_.IsOuterScopeValue(name);
   };
 
   // <k> index used to navigate node->InputDefs().
