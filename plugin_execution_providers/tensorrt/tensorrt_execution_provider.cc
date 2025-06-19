@@ -1323,8 +1323,8 @@ std::unique_ptr<OrtIndexedSubGraph> TensorrtExecutionProvider::GetSubGraph(SubGr
 
   return sub_graph;
 }
-
 */
+
 // Helper to release an Ort object at the end of its scope.
 template <typename T>
 struct DeferOrtRelease {
@@ -1718,7 +1718,11 @@ struct TensorrtExecutionProvider : TensorrtExecutionProvider(ApiPtrs apis, const
   // Initialize the execution provider.
   auto status = ort_api.Logger_LogMessage(&logger_,
                                           OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
+<<<<<<< HEAD
                                           ("Plugin EP has been created with name " + name_).c_str(),
+=======
+                                          ("ExampleEp has been created with name " + name_).c_str(),
+>>>>>>> ec079bb3745479d1f67ea2b9b7765216fadf7f42
                                           ORT_FILE, __LINE__, __FUNCTION__);
   // ignore status for now
   (void)status;
@@ -2245,6 +2249,7 @@ OrtStatusPtr TensorrtExecutionProvider::RefitEngine(std::string onnx_model_filen
   return api_->CreateStatus(OrtErrorCode::ORT_EP_FAIL, "TensorRT EP's IParserRefitter can only be used on TRT 10.0 onwards.");
 #endif
 }
+
 
 OrtStatusPtr TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(OrtEp* this_ptr,
                                                                        const OrtGraph** graphs,

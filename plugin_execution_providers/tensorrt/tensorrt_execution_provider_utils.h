@@ -279,7 +279,6 @@ HashValue TRTGenerateId(const OrtApi& api, const OrtGraph* graph, std::string tr
   //while (cur_graph->IsSubgraph()) {
   //  cur_graph = cur_graph->ParentGraph();
   //}
-  
 
   uint32_t hash[4] = {0, 0, 0, 0};
 

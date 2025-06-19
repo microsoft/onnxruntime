@@ -258,6 +258,7 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
 
+
   /*
   bool IsGraphCaptured(int graph_annotation_id) const { return false; }
 
