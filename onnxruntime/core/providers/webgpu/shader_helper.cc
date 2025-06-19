@@ -379,6 +379,9 @@ Status ShaderHelper::GenerateSourceCode(std::string& code, std::vector<int>& sha
 #if !defined(__wasm__)
   if (device_.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix)) {
     ss << "enable chromium_experimental_subgroup_matrix;\n";
+
+    // Dawn enforces the subgroup matrix builtin arguments to be uniform in change https://dawn-review.googlesource.com/c/dawn/+/236054
+    // Since we use `subgroup_id` as the subgroup matrix builtin argument, we have to turn off this restriction
     ss << "diagnostic (off, chromium.subgroup_matrix_uniformity);\n";
   }
 #endif

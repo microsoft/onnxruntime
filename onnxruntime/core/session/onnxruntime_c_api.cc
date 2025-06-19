@@ -2411,8 +2411,8 @@ ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetObjectType, _In_ const OrtAr
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array,
-                    _Outptr_ const void*** data) {
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetData, _In_ const OrtArrayOfConstObjects* array,
+                    _Outptr_ const void* const** data) {
   API_IMPL_BEGIN
   if (data == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'data' argument is NULL");
@@ -2423,8 +2423,8 @@ ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstOb
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetConstData, _In_ const OrtArrayOfConstObjects* array,
-                    _Outptr_ const void* const** data) {
+ORT_API_STATUS_IMPL(OrtApis::ArrayOfConstObjects_GetMutableData, _In_ OrtArrayOfConstObjects* array,
+                    _Outptr_ const void*** data) {
   API_IMPL_BEGIN
   if (data == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'data' argument is NULL");
@@ -3507,7 +3507,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseArrayOfConstObjects,
     &OrtApis::ArrayOfConstObjects_GetObjectType,
     &OrtApis::ArrayOfConstObjects_GetData,
-    &OrtApis::ArrayOfConstObjects_GetConstData,
+    &OrtApis::ArrayOfConstObjects_GetMutableData,
     &OrtApis::ArrayOfConstObjects_GetSize,
     &OrtApis::ArrayOfConstObjects_GetElementAt,
     &OrtApis::ArrayOfConstObjects_SetElementAt,

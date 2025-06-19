@@ -240,7 +240,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
 
     const void* const* nodes_data = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetConstData(nodes_array, &nodes_data));
+    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(nodes_array, &nodes_data));
     auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_data), num_nodes);
 
     std::vector<const OrtNode*> supported_nodes;
@@ -265,8 +265,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
         RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs));
         RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
-        const void** inputs_data = nullptr;
-        const void** outputs_data = nullptr;
+        const void* const* inputs_data = nullptr;
+        const void* const* outputs_data = nullptr;
         RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data));
         RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data));
 
@@ -450,7 +450,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
   std::string name_;
   Config config_{};
-  std::vector<const OrtHardwareDevice*> hardware_devices_;
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
   std::vector<OrtNode*> ep_ctx_nodes_;  // Owned by EP
