@@ -1994,6 +1994,73 @@ TEST_F(QnnHTPBackendTests, LoadFromArrayWithQnnEpContextGenPathValidation) {
     });
   }
 }
+
+TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
+  ProviderOptions provider_options;
+  provider_options["backend_type"] = "htp";
+  provider_options["offload_graph_io_quantization"] = "0";
+
+  Ort::SessionOptions so;
+  so.AppendExecutionProvider("QNN", provider_options);
+  so.SetLogSeverityLevel(ORT_LOGGING_LEVEL_VERBOSE);
+
+  Ort::Session session(*ort_env, ORT_TSTR("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx"), so);
+
+  std::vector<std::string> input_names;
+  std::vector<std::string> output_names;
+  GetModelInputNames("testdata/qnn_ctx/qnn_multi_ctx_embed.onnx", input_names, output_names,
+                     DefaultLoggingManager().DefaultLogger());
+
+  // Run sessions
+  // prepare input
+  std::vector<int64_t> input_dim{3, 4};
+  std::vector<float> input_value(3 * 4, 0.0f);
+  Ort::MemoryInfo info("Cpu", OrtDeviceAllocator, 0, OrtMemTypeDefault);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> input_names_c;
+  for (size_t i = 0; i < input_names.size(); ++i) {
+    auto input_tensor = Ort::Value::CreateTensor(info, input_value.data(), input_value.size(),
+                                                 input_dim.data(), input_dim.size());
+    ort_inputs.push_back(std::move(input_tensor));
+    input_names_c.push_back(input_names[i].c_str());
+  }
+  std::vector<const char*> output_names_c;
+  for (size_t i = 0; i < output_names.size(); ++i) {
+    output_names_c.push_back(output_names[i].c_str());
+  }
+
+  auto ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                                output_names_c.data(), 1);
+
+  const char* const workload_type[] = {"ep.dynamic.workload_type"};
+  const char* const efficient_type[] = {"Efficient"};
+  const char* const default_type[] = {"Default"};
+
+  // Test Efficent & Default options
+  session.SetEpDynamicOptions(workload_type, efficient_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  session.SetEpDynamicOptions(workload_type, default_type, 1);
+  ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
+                           output_names_c.data(), 1);
+
+  // Test invalid EP dynamic option and invalid workload type
+  const char* const dne[] = {"DNE"};
+  try {
+    session.SetEpDynamicOptions(workload_type, dne, 1);
+    FAIL() << "Expected exception to be thrown for workload type DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Invalid EP Workload Type.", e.what());
+  }
+
+  try {
+    session.SetEpDynamicOptions(dne, efficient_type, 1);
+    FAIL() << "Expected exception to be thrown for dynamic option DNE but was set successfully";
+  } catch (const std::exception& e) {
+    EXPECT_STREQ("Unsupported EP Dynamic Option", e.what());
+  }
+}
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 
 }  // namespace test

@@ -1545,4 +1545,38 @@ OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) 
   return default_device_;
 }
 
+Status QNNExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                 gsl::span<const char* const> values) {
+  if (keys.size() != values.size()) {
+    LOGS_DEFAULT(ERROR) << "SetEpDynamicOptions: number of keys (" << keys.size()
+                        << ") does not equal number of values (" << values.size() << ").";
+  }
+  auto key_it = keys.begin();
+  auto value_it = values.begin();
+
+  while (key_it != keys.end() && value_it != values.end()) {
+    std::string key(*key_it);
+    std::string value(*value_it);
+
+    if (key == kOrtEpDynamicOptionsWorkloadType) {
+      if (value == "Default") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->ResetContextPriority());
+      } else if (value == "Efficient") {
+        ORT_RETURN_IF_ERROR(qnn_backend_manager_->SetContextPriority(qnn::ContextPriority::LOW));
+      } else {
+        LOGS_DEFAULT(ERROR) << "Invalid EP Workload Type: " << value;
+        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Invalid EP Workload Type.");
+      }
+    } else {
+      LOGS_DEFAULT(ERROR) << "EP Dynamic Option \"" << key << "\" is not currently supported.";
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Unsupported EP Dynamic Option");
+    }
+
+    key_it++;
+    value_it++;
+  }
+
+  return Status::OK();
+}
+
 }  // namespace onnxruntime
