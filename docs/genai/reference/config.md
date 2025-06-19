@@ -125,14 +125,16 @@ Describes the model architecture, files, and tokenization.
   - qwen2
   - qwen3
 
-  For decoder only LLMS that are split into a pipeline of models, use "decoder-pipeline".
+  For decoder-only LLMs that are split into a pipeline of models, use "decoder-pipeline".
 
-  Other model types:
+  For encoder-decoder models:
   - whisper
+  - marian-ssru
+
+  For multi-modal model types:
   - phi3v
   - phi4mm
   - gemma3
-  - marian-ssru
 
 - **pad_token_id**: *(int)*  
   The id of the padding token.
@@ -550,12 +552,13 @@ Describes the generation/search parameters.
 1. **Beam search**
    - `num_beams > 1`
    - `do_sample = false`
+   - `past_present_share_buffer = false`
 
 2. **Greedy search**
    - `num_beams = 1`
    - `do_sample = false`
 
-3. **Top P / Top K**
+3. **Random sampling with Top P / Top K**
    - `do_sample = true`
 
 ---
