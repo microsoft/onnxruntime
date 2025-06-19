@@ -136,6 +136,16 @@ struct OrtEpApi {
 };
 
 /**
+ * \brief The data layout type that is preferred by an EP.
+ * \since Version 1.23.
+ */
+typedef enum OrtEpDataLayout {
+  NCHW = 0,
+  NHWC,
+  NCHWC,
+} OrtEpDataLayout;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -217,6 +227,21 @@ struct OrtEp {
   void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
+
+  /** \brief Get the EP's preferred data layout.
+   *
+   * \note Implementing this function is optional. If not implemented, ORT will assume that this EP prefers the data
+   *       layout `OrtEpDataLayout::NCHW`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] preferred_data_layout The EP's preferred data layout.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
+                                                   _Out_ OrtEpDataLayout* preferred_data_layout);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

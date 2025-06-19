@@ -185,8 +185,8 @@ Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_n
   return Status::OK();
 }
 
-common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                std::vector<NodeComputeInfo>& node_compute_infos) {
+Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                        std::vector<NodeComputeInfo>& node_compute_infos) {
   const logging::Logger* logger = GetLogger();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
@@ -270,4 +270,30 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   return Status::OK();
 }
+
+DataLayout PluginExecutionProvider::GetPreferredLayout() const {
+  if (ort_ep_->GetPreferredDataLayout == nullptr) {
+    return IExecutionProvider::GetPreferredLayout();
+  }
+
+  OrtEpDataLayout api_data_layout{};
+
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetPreferredDataLayout(ort_ep_.get(), &api_data_layout)));
+
+  switch (api_data_layout) {
+    case OrtEpDataLayout::NCHW:
+      return DataLayout::NCHW;
+
+    case OrtEpDataLayout::NHWC:
+      return DataLayout::NHWC;
+
+    case OrtEpDataLayout::NCHWC:
+      return DataLayout::NCHWC;
+
+    default:
+      ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",
+                static_cast<int>(api_data_layout));
+  }
+}
+
 }  // namespace onnxruntime
