@@ -218,9 +218,9 @@ struct OrtEp {
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
 
-  // Implementer calls ort_api.CreateConstPointerArray()
-  // ORT takes ownership of the returned OrtConstPointerArray (but not the OrtNode* elements)
-  OrtStatus*(ORT_API_CALL* GetEpContextNodes)(_In_ OrtEp* this_ptr, _Outptr_ OrtConstPointerArray** nodes);
+  // Implementer calls ort_api.CreateArrayOfConstObjects()
+  // ORT takes ownership of the returned OrtArrayOfConstObjects (but not the OrtNode* elements)
+  OrtStatus*(ORT_API_CALL* GetEpContextNodes)(_In_ OrtEp* this_ptr, _Outptr_ OrtArrayOfConstObjects** nodes);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

@@ -137,6 +137,7 @@ struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
+  const OrtModelEditorApi& model_editor_api;
 };
 
 static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
@@ -164,12 +165,38 @@ static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value
   return nullptr;
 }
 
+static OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
+                                                 const char* config_key, const std::string& default_val,
+                                                 /*out*/ std::string& config_val) {
+  int has_config = 0;
+  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
+
+  if (has_config != 1) {
+    config_val = default_val;
+    return nullptr;
+  }
+
+  size_t size = 0;
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
+
+  config_val.resize(size);
+  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
+  config_val.resize(size - 1);  // remove the terminating '\0'
+
+  return nullptr;
+}
+
 /// <summary>
 /// Example EP that can compile a single Mul operator.
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
-  ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, logger_{logger} {
+  struct Config {
+    bool enable_ep_context = false;
+    // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
+  };
+
+  ExampleEp(ApiPtrs apis, const std::string& name, const Config& config, const OrtLogger& logger)
+      : ApiPtrs(apis), name_{name}, config_{config}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -178,20 +205,17 @@ struct ExampleEp : OrtEp, ApiPtrs {
     // ignore status for now
     (void)status;
 
-    // Can get configurations from the session options.
-    // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-    // EP should copy any configurations or settings it needs.
-    (void)session_options;
-
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
     GetName = GetNameImpl;
     GetCapability = GetCapabilityImpl;
     Compile = CompileImpl;
+    GetEpContextNodes = GetEpContextNodesImpl;
     ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   }
 
   ~ExampleEp() {
     // Clean up the execution provider
+    ReleaseEpContextNodes();
   }
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
@@ -304,6 +328,35 @@ struct ExampleEp : OrtEp, ApiPtrs {
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
     node_compute_infos[0] = node_compute_info.release();
 
+    // Pre-create EpContext nodes for the fused nodes we compiled. These EpContext nodes will be returned to
+    // ORT via GetEpContextNodes().
+    if (ep->config_.enable_ep_context) {
+      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count)));
+    }
+
+    return nullptr;
+  }
+
+  static OrtStatus* ORT_API_CALL GetEpContextNodesImpl(OrtEp* this_ptr, OrtArrayOfConstObjects** ep_context_nodes) {
+    ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+
+    if (ep->ep_ctx_nodes_.empty()) {
+      // Don't have any EPContext nodes.
+      *ep_context_nodes = nullptr;
+      return nullptr;
+    }
+
+    if (ep_context_nodes == nullptr) {
+      return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected non-null argument for 'ep_context_nodes'");
+    }
+
+    RETURN_IF_ERROR(ep->ort_api.CreateArrayOfConstObjects(ORT_TYPE_TAG_OrtNode, ep->ep_ctx_nodes_.size(),
+                                                          nullptr, ep_context_nodes));
+
+    for (size_t i = 0; i < ep->ep_ctx_nodes_.size(); i++) {
+      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_SetElementAt(*ep_context_nodes, i, ep->ep_ctx_nodes_[i]));
+    }
+
     return nullptr;
   }
 
@@ -316,10 +369,91 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
   }
 
+  void ReleaseEpContextNodes() {
+    for (OrtNode* node : ep_ctx_nodes_) {
+      ort_api.ReleaseNode(node);
+    }
+    ep_ctx_nodes_.clear();
+  }
+
+  void SetEpContextNodes(gsl::span<OrtNode*> ep_ctx_nodes) {
+    ReleaseEpContextNodes();
+    assert(ep_ctx_nodes_.empty());
+
+    ep_ctx_nodes_.reserve(ep_ctx_nodes.size());
+    for (OrtNode* node : ep_ctx_nodes) {
+      ep_ctx_nodes_.push_back(node);
+    }
+  }
+
+  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes) {
+    std::vector<OrtNode*> ep_ctx_nodes(fused_nodes.size(), nullptr);
+
+    // Helper to collect input or output names from an array of OrtValueInfo instances.
+    auto collect_input_output_names = [&](const OrtArrayOfConstObjects& value_infos,
+                                          std::vector<const char*>& result) -> OrtStatus* {
+      size_t num_values = 0;
+      RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(&value_infos, &num_values));
+
+      std::vector<const char*> value_names(num_values, nullptr);
+
+      for (size_t i = 0; i < num_values; i++) {
+        const void* value_info = nullptr;  // Is a const OrtValueInfo*
+        RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(&value_infos, i, &value_info));
+        RETURN_IF_ERROR(ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(value_info), &value_names[i]));
+      }
+
+      result = std::move(value_names);
+      return nullptr;
+    };
+
+    // Create an "EPContext" node for every fused node.
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      const OrtNode* fused_node = fused_nodes[i];
+      const char* fused_node_name = nullptr;
+
+      RETURN_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name));
+
+      OrtArrayOfConstObjects* fused_node_inputs = nullptr;
+      OrtArrayOfConstObjects* fused_node_outputs = nullptr;
+      DeferOrtRelease<OrtArrayOfConstObjects> defer_release0(&fused_node_inputs, ort_api.ReleaseArrayOfConstObjects);
+      DeferOrtRelease<OrtArrayOfConstObjects> defer_release1(&fused_node_outputs, ort_api.ReleaseArrayOfConstObjects);
+
+      std::vector<const char*> input_names;
+      std::vector<const char*> output_names;
+
+      RETURN_IF_ERROR(collect_input_output_names(*fused_node_inputs, /*out*/ input_names));
+      RETURN_IF_ERROR(collect_input_output_names(*fused_node_outputs, /*out*/ output_names));
+
+      int64_t is_main_context = (i == 0);
+      int64_t embed_mode = 0;
+      std::array<OrtOpAttr*, 6> attributes = {};
+
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "serialized_context_bin_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, 1, ORT_OP_ATTR_STRING, &attributes[4]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), 1, ORT_OP_ATTR_STRING, &attributes[5]));
+
+      RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
+                                                  input_names.data(), input_names.size(),
+                                                  output_names.data(), output_names.size(),
+                                                  attributes.data(), attributes.size(),
+                                                  &ep_ctx_nodes[i]));
+    }
+
+    SetEpContextNodes(ep_ctx_nodes);
+
+    return nullptr;
+  }
+
   std::string name_;
+  Config config_{};
   std::vector<const OrtHardwareDevice*> hardware_devices_;
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
+  std::vector<OrtNode*> ep_ctx_nodes_;  // Owned by EP
 };
 
 //
@@ -466,7 +600,16 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     // const OrtHardwareDevice* device = devices[0];
     // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
 
-    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *session_options, *logger);
+    // Create EP configuration from session options, if needed.
+    // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
+    std::string ep_context_enable;
+    RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
+                                                   "ep.context_enable", "0", ep_context_enable));
+
+    ExampleEp::Config config = {};
+    config.enable_ep_context = ep_context_enable == "1";
+
+    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 
     *ep = dummy_ep.release();
     return nullptr;
@@ -496,10 +639,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ort_ep_api = ort_api->GetEpApi();
+  const OrtModelEditorApi* ort_model_editor_api = ort_api->GetModelEditorApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api, *ort_ep_api});
+                                                                             ApiPtrs{*ort_api, *ort_ep_api,
+                                                                                     *ort_model_editor_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,
