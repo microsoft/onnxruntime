@@ -5429,20 +5429,6 @@ struct OrtApi {
   ORT_API2_STATUS(ArrayOfConstObjects_GetObjectType, _In_ const OrtArrayOfConstObjects* array,
                   _Out_ OrtTypeTag* type_tag);
 
-  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a pointer to a
-   * constant opaque object (i.e., each element is a 'const void*').
-   *
-   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
-
   /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a constant pointer to a
    * constant opaque object (i.e., each element is a 'const void* const').
    *
@@ -5455,8 +5441,22 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetConstData, _In_ const OrtArrayOfConstObjects* array,
+  ORT_API2_STATUS(ArrayOfConstObjects_GetData, _In_ const OrtArrayOfConstObjects* array,
                   _Outptr_ const void* const** data);
+
+  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a pointer to a
+   * constant opaque object (i.e., each element is a 'const void*').
+   *
+   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
+   *
+   * \param[in] array The OrtArrayOfConstObjects instance.
+   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ArrayOfConstObjects_GetMutableData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
 
   /** \brief Get the number of elements contained by the given OrtArrayOfConstObjects instance.
    *

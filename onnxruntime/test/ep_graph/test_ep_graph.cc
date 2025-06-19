@@ -82,7 +82,7 @@ static void GetSpanFromArrayOfConstObjects(const OrtArrayOfConstObjects* ort_arr
   ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetSize(ort_array, &size));
 
   const void* const* raw_data = nullptr;
-  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetConstData(ort_array, &raw_data));
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetData(ort_array, &raw_data));
 
   auto data = reinterpret_cast<const T* const*>(raw_data);
   span = gsl::span<const T* const>(data, size);

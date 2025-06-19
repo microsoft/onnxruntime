@@ -119,7 +119,7 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ort_api.ReleaseArrayOfConstObjects);
 
   size_t num_nodes = 0;
-  const void** nodes_raw_data = nullptr;
+  const void* const* nodes_raw_data = nullptr;
 
   RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, &nodes_array));
   RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
