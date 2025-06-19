@@ -50,7 +50,8 @@ Status CumSumOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const
   const std::string axis_name = GetTensorName(input_defs, 1);
   const auto axis_tensor = *initializers.at(axis_name);
   emscripten::val axis = emscripten::val::undefined();
-  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, logger), "Cannot get axis value");
+  ORT_RETURN_IF_NOT(ReadScalarTensorData(axis_tensor, axis, model_builder.GetGraphViewer(), logger),
+                    "Cannot get axis value");
   int64_t webnn_axis = HandleNegativeAxis(axis.as<int64_t>(), input_rank);
 
   NodeAttrHelper helper(node);
