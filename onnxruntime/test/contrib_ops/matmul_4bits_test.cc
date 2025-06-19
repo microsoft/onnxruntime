@@ -20,6 +20,7 @@
 #include "test/optimizer/graph_transform_test_builder.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/scoped_env_vars.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
@@ -81,6 +82,8 @@ struct TestOptions {
   bool has_g_idx{false};
   bool has_bias{false};
 
+  bool legacy_shape{false};  // for backward compatibility
+
   std::optional<float> output_abs_error{};
   std::optional<float> output_rel_error{};
 };
@@ -107,28 +110,20 @@ void RunTest(const TestOptions& opts,
 
   const bool zp_is_4bit = opts.zp_is_4bit || opts.has_g_idx;
 
-  const int64_t M = opts.M,
-                K = opts.K,
-                N = opts.N;
+  const int64_t M = opts.M;
+  const int64_t K = opts.K;
+  const int64_t N = opts.N;
 
   RandomValueGenerator random{1234};
   std::vector<float> input0_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
   std::vector<float> input1_f_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
-#if 0  // for Debugging
-  std::vector<float> input1_f_vals_trans(N * K);
-  MlasTranspose(input1_f_vals.data(), input1_f_vals_trans.data(), K, N);
-#endif
-
-  int q_rows, q_cols;
-  MlasBlockwiseQuantizedShape<float, QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
-                                            static_cast<int>(K), static_cast<int>(N),
-                                            q_rows, q_cols);
-
-  size_t q_data_size_in_bytes, q_scale_size, q_zp_size_in_bytes;
-  MlasBlockwiseQuantizedBufferSizes<QBits>(static_cast<int>(opts.block_size), /* columnwise */ true,
-                                           static_cast<int>(K), static_cast<int>(N),
-                                           q_data_size_in_bytes, q_scale_size, &q_zp_size_in_bytes);
+  int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
+  int64_t blob_size = (opts.block_size * QBits + 7) / 8;
+  size_t q_scale_size = static_cast<size_t>(N * k_blocks);
+  size_t q_data_size_in_bytes = static_cast<size_t>(N * k_blocks * blob_size);  // packed as UInt4x2
+  const int64_t zero_point_blob_size = (k_blocks * QBits + 7) / 8;
+  size_t q_zp_size_in_bytes = static_cast<size_t>(N * zero_point_blob_size);  // packed as UInt4x2
 
   std::vector<uint8_t> input1_vals(q_data_size_in_bytes);
   std::vector<float> scales(q_scale_size);
@@ -141,16 +136,6 @@ void RunTest(const TestOptions& opts,
                      static_cast<int32_t>(N),
                      static_cast<int32_t>(K),
                      static_cast<int32_t>(opts.block_size));
-
-#if 0
-  for (int i = 0; i < input1_vals.size(); i++)
-  {
-    uint8_t byte = input1_vals[i];
-    uint8_t val_lo = byte & 0x0f;
-    uint8_t val_hi = byte >> 4;
-    std::cout << (int)val_lo << ", " << (int)val_hi << ", ";
-  }
-#endif
 
   const std::vector<int64_t> bias_shape = {N};
   const auto bias = [&]() -> std::optional<std::vector<float>> {
@@ -184,17 +169,22 @@ void RunTest(const TestOptions& opts,
     test.AddInput<T1>("A", {M, K}, input0_vals, false);
   }
 
-  test.AddInput<uint8_t>("B", {q_cols, q_rows}, input1_vals, true);
+  test.AddInput<uint8_t>("B", {N, k_blocks, blob_size}, input1_vals, true);
+
+  auto scales_shape = opts.legacy_shape ? std::vector<int64_t>{N * k_blocks}
+                                        : std::vector<int64_t>{N, k_blocks};
 
   if constexpr (use_float16) {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, ToFloat16(scales), true);
+    test.AddInput<T1>("scales", scales_shape, ToFloat16(scales), true);
   } else {
-    test.AddInput<T1>("scales", {static_cast<int64_t>(q_scale_size)}, scales, true);
+    test.AddInput<T1>("scales", scales_shape, scales, true);
   }
 
   if (opts.has_zero_point) {
     if (zp_is_4bit) {
-      test.AddInput<uint8_t>("zero_points", {static_cast<int64_t>(q_zp_size_in_bytes)}, zp, true);
+      auto zp_shape = opts.legacy_shape ? std::vector<int64_t>{N * zero_point_blob_size}
+                                        : std::vector<int64_t>{N, zero_point_blob_size};
+      test.AddInput<uint8_t>("zero_points", zp_shape, zp, true);
     } else {
       std::vector<float> zp_f;
       zp_f.reserve(q_zp_size_in_bytes * 2);
@@ -209,9 +199,9 @@ void RunTest(const TestOptions& opts,
       }
 
       if constexpr (use_float16) {
-        test.AddInput<T1>("zero_points", {static_cast<int64_t>(q_scale_size)}, ToFloat16(zp_f), true);
+        test.AddInput<T1>("zero_points", scales_shape, ToFloat16(zp_f), true);
       } else {
-        test.AddInput<T1>("zero_points", {static_cast<int64_t>(q_scale_size)}, zp_f, true);
+        test.AddInput<T1>("zero_points", scales_shape, zp_f, true);
       }
     }
   } else {
@@ -267,7 +257,7 @@ void RunTest(const TestOptions& opts,
 
 }  // namespace
 
-template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
+template <typename AType, int M, int N, int K, int block_size, int accuracy_level, bool legacy_shape = false>
 void TestMatMulNBitsTyped() {
   TestOptions base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
@@ -456,6 +446,8 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 32, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 32, 16, 128, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 64, 32, 32, 4>();
+  TestMatMulNBitsTyped<MLFloat16, 100, 128, 128, 32, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1024, 128, 4>();
@@ -464,6 +456,13 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 93, 128, 4>();
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
+
+TEST(MatMulNBits, LegacyShape) {
+  constexpr bool legacy_shape = true;
+  TestMatMulNBitsTyped<float, 4, 2, 16, 16, 4, legacy_shape>();
+  TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4, legacy_shape>();
+}
+
 #endif
 #endif
 #endif
@@ -490,6 +489,7 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, int64_t accura
 
   if (use_float16) {
     opts.output_abs_error = fp16_abs_error;
+    opts.output_rel_error = use_float16 ? 0.001f : 0.0005f;
   }
 
   std::vector<std::unique_ptr<IExecutionProvider>> execution_providers;
@@ -552,11 +552,8 @@ TEST(MatMulNBits, Float16Large) {
   // absolute error of 0.08, but the A10 has errors going as high as 0.22. Ultimately, given the large number
   // of elements in this test, ULPs should probably be used instead of absolute/relative tolerances.
   float abs_error = 0.3f;
-#elif USE_WEBGPU
-  // Use absolute error of 0.1 for WebGPU with subgroup implementation
-  float abs_error = 0.1f;
 #else
-  float abs_error = 0.05f;
+  float abs_error = 0.1f;
 #endif
 
   for (auto block_size : {16, 32, 64, 128}) {
@@ -567,6 +564,53 @@ TEST(MatMulNBits, Float16Large) {
     }
   }
 }
+
+#ifdef USE_CUDA
+TEST(MatMulNBits, Fp16_Int4_Int4ZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_Fp16ZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = false;
+  constexpr bool has_zeropoint = true;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+
+TEST(MatMulNBits, Fp16_Int4_NoZeroPoint) {
+  float abs_error = 0.1f;
+  constexpr bool use_float16 = true;
+  constexpr bool has_g_idx = false;
+  constexpr bool zp_is_4bit = true;
+  constexpr bool has_zeropoint = false;
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+
+  for (auto block_size : {64, 128}) {
+    RunTest(1, 256, 1024, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+    RunTest(32, 1024, 2048, block_size, 0, has_zeropoint, use_float16, has_g_idx, zp_is_4bit, abs_error);
+  }
+}
+#endif
 
 #endif  // defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
 }  // namespace test

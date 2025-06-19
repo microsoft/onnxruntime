@@ -151,7 +151,12 @@ export const initializeWebAssembly = async (flags: Env.WebAssemblyFlags): Promis
   const wasmPathOverride = (wasmPathOverrideFlag as URL)?.href ?? wasmPathOverrideFlag;
   const wasmBinaryOverride = flags.wasmBinary;
 
-  const [objectUrl, ortWasmFactory] = await importWasmModule(mjsPathOverride, wasmPrefixOverride, numThreads > 1);
+  const [objectUrl, ortWasmFactory] = await importWasmModule(
+    mjsPathOverride,
+    wasmPrefixOverride,
+    numThreads > 1,
+    !!wasmBinaryOverride || !!wasmPathOverride,
+  );
 
   let isTimeout = false;
 

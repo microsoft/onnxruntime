@@ -59,7 +59,7 @@ parameters:
 - name: qnn_sdk_version
   type: string
   displayName: 'QNN SDK version. Only for QNN packages.'
-  default: 2.33.2.250410
+  default: 2.35.0.250530
 
 stages:
 - ${{ if eq(parameters.enable_windows_cpu, true) }}:
@@ -67,7 +67,9 @@ stages:
     dependsOn: []
     jobs:
     - job: Windows_py_Wheels
-      pool: 'onnxruntime-Win-CPU-2022'
+      pool:
+        name: 'onnxruntime-Win-CPU-2022'
+        os: windows
       strategy:
         matrix:
           Python310_x64:

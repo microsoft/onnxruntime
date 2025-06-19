@@ -866,7 +866,9 @@ class DefaultWeightOnlyQuantizer:
             kwargs["N"] = cols
             kwargs["bits"] = bits
             kwargs["block_size"] = self.config.block_size
-            if self.config.accuracy_level is not None:
+
+            # Do not output accuracy_level if it is 0 since the attribute is optional and is not supported by most EPs.
+            if self.config.accuracy_level:
                 kwargs["accuracy_level"] = self.config.accuracy_level
 
             matmul_qbit_node = onnx.helper.make_node(

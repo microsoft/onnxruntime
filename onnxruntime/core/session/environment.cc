@@ -90,7 +90,6 @@ static bool AreOrtMemoryInfosEquivalent(
     return left == right;
   } else {
     return left.mem_type == right.mem_type &&
-           left.id == right.id &&
            left.device == right.device &&
            strcmp(left.name, right.name) == 0;
   }
@@ -209,17 +208,7 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
 
   // create thread pools
   if (create_global_thread_pools) {
-    create_global_thread_pools_ = true;
-    OrtThreadPoolParams to = tp_options->intra_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("intra-op");
-    }
-    intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
-    to = tp_options->inter_op_thread_pool_params;
-    if (to.name == nullptr) {
-      to.name = ORT_TSTR("inter-op");
-    }
-    inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+    ORT_RETURN_IF_ERROR(SetGlobalThreadingOptions(*tp_options));
   }
 
   ORT_TRY {
@@ -287,16 +276,17 @@ Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_
     // Register MemCpy schema;
 
     // These ops are internal-only, so register outside of onnx
-    static std::vector<std::string> all_fixed_size_types = []() {
-      std::vector<std::string> all_types;
-      std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
-      std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
-      all_types.insert(all_types.end(), all_tensor_types.begin(), all_tensor_types.end());
-      all_types.insert(all_types.end(), all_sequence_types.begin(), all_sequence_types.end());
-      all_types.emplace_back("seq(tensor(bfloat16))");
-      all_types.erase(std::remove_if(all_types.begin(), all_types.end(),
-                      [](const std::string& s) { return s.find("string") != std::string::npos; }), all_types.end());
-      return all_types; }();
+
+    std::vector<std::string> all_fixed_size_types;
+
+    std::vector<std::string> all_tensor_types = OpSchema::all_tensor_types_ir9();
+    std::vector<std::string> all_sequence_types = OpSchema::all_tensor_sequence_types();
+    all_fixed_size_types.insert(all_fixed_size_types.end(), all_tensor_types.begin(), all_tensor_types.end());
+    all_fixed_size_types.insert(all_fixed_size_types.end(), all_sequence_types.begin(), all_sequence_types.end());
+    all_fixed_size_types.emplace_back("seq(tensor(bfloat16))");
+    all_fixed_size_types.erase(std::remove_if(all_fixed_size_types.begin(), all_fixed_size_types.end(),
+                                              [](const std::string& s) { return s.find("string") != std::string::npos; }),
+                               all_fixed_size_types.end());
 
     ORT_ATTRIBUTE_UNUSED ONNX_OPERATOR_SCHEMA(MemcpyFromHost)
         .Input(0, "X", "input", "T")
@@ -343,6 +333,24 @@ Internal copy node
     status = Status{ONNXRUNTIME, common::RUNTIME_EXCEPTION};
   }
   return status;
+}
+
+Status Environment::SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options) {
+  if (create_global_thread_pools_) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Global thread pools have already been created, cannot replace them");
+  }
+  create_global_thread_pools_ = true;
+  OrtThreadPoolParams to = tp_options.intra_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("intra-op");
+  }
+  intra_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTRA_OP);
+  to = tp_options.inter_op_thread_pool_params;
+  if (to.name == nullptr) {
+    to.name = ORT_TSTR("inter-op");
+  }
+  inter_op_thread_pool_ = concurrency::CreateThreadPool(&Env::Default(), to, concurrency::ThreadPoolType::INTER_OP);
+  return Status::OK();
 }
 
 Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info,

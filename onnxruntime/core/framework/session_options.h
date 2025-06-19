@@ -185,7 +185,7 @@ struct SessionOptions {
   unsigned max_num_graph_transformation_steps = 10;  // TODO choose a good default here?
 
   // set graph optimization level
-  TransformerLevel graph_optimization_level = TransformerLevel::Level3;
+  TransformerLevel graph_optimization_level = TransformerLevel::MaxLevel;
 
   // controls the size of the thread pool used to parallelize the execution of tasks within individual nodes (ops)
   OrtThreadPoolParams intra_op_param;

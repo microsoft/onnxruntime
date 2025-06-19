@@ -14,7 +14,7 @@ namespace onnxruntime {
 namespace python {
 
 onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompiler>& out,
-                                            std::shared_ptr<onnxruntime::Environment> env,
+                                            onnxruntime::Environment& env,
                                             const PySessionOptions& sess_options,
                                             std::string&& input_model_path_or_bytes, bool input_model_is_path,
                                             bool embed_compiled_data_into_model,
@@ -49,7 +49,7 @@ onnxruntime::Status PyModelCompiler::Create(/*out*/ std::unique_ptr<PyModelCompi
 
 onnxruntime::Status PyModelCompiler::CompileToFile(const std::string& output_model_path) {
   ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelPath(output_model_path));
-  ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(*env_, model_compile_options_));
+  ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(env_, model_compile_options_));
   return Status::OK();
 }
 
@@ -68,7 +68,7 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
   void* buffer_data = nullptr;
   size_t buffer_size = 0;
   ORT_RETURN_IF_ERROR(model_compile_options_.SetOutputModelBuffer(allocator, &buffer_data, &buffer_size));
-  ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(*env_, model_compile_options_));
+  ORT_RETURN_IF_ERROR(onnxruntime::CompileModel(env_, model_compile_options_));
 
   // Copy into output buffer.
   output_buffer.reserve(buffer_size);
@@ -77,9 +77,9 @@ onnxruntime::Status PyModelCompiler::CompileToBytes(std::string& output_buffer) 
   return Status::OK();
 }
 
-PyModelCompiler::PyModelCompiler(std::shared_ptr<onnxruntime::Environment> env, const PySessionOptions& sess_options,
+PyModelCompiler::PyModelCompiler(onnxruntime::Environment& env, const PySessionOptions& sess_options,
                                  PrivateConstructorTag)
-    : env_(env), model_compile_options_(*env, sess_options) {
+    : env_(env), model_compile_options_(env, sess_options) {
 }
 }  // namespace python
 }  // namespace onnxruntime

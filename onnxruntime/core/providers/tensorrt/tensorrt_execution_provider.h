@@ -23,6 +23,7 @@ static const std::string kMaxPartitionIterations = "ORT_TENSORRT_MAX_PARTITION_I
 static const std::string kMinSubgraphSize = "ORT_TENSORRT_MIN_SUBGRAPH_SIZE";
 static const std::string kMaxWorkspaceSize = "ORT_TENSORRT_MAX_WORKSPACE_SIZE";
 static const std::string kFP16Enable = "ORT_TENSORRT_FP16_ENABLE";
+static const std::string kBF16Enable = "ORT_TENSORRT_BF16_ENABLE";
 static const std::string kINT8Enable = "ORT_TENSORRT_INT8_ENABLE";
 static const std::string kINT8CalibrationTableName = "ORT_TENSORRT_INT8_CALIBRATION_TABLE_NAME";
 static const std::string kINT8UseNativeTensorrtCalibrationTable = "ORT_TENSORRT_INT8_USE_NATIVE_CALIBRATION_TABLE";
@@ -172,6 +173,7 @@ struct TensorrtFuncState {
   std::unordered_map<std::string, std::unordered_map<size_t, std::vector<std::vector<int64_t>>>> input_shape_ranges;
   std::mutex* tensorrt_mu_ptr = nullptr;
   bool fp16_enable = false;
+  bool bf16_enable = false;
   bool int8_enable = false;
   bool int8_calibration_cache_available = false;
   bool dla_enable = false;
@@ -297,6 +299,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   size_t min_subgraph_size_ = 1;
   size_t max_workspace_size_ = 0;
   bool fp16_enable_ = false;
+  bool bf16_enable_ = false;
   bool int8_enable_ = false;
   bool dla_enable_ = false;
   int dla_core_ = 0;
@@ -537,7 +540,7 @@ class TensorrtExecutionProvider : public IExecutionProvider {
    * and save those information in subgraph context data structure. It's useful for building a valid graph and
    * make Graph::Resolve() happy especially when dealing with nested control-flow op graph.
    */
-  void BuildSubGraphContext(const Graph& build_graph) const;
+  void BuildSubGraphContext(Graph& build_graph) const;
 
   /**
    * Set outer scope values for subgraphs and add thoes values as top-level graph's inputs if needed.

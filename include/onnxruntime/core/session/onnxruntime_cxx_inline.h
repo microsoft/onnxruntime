@@ -243,6 +243,12 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
   return ConstMemoryInfo{out};
 }
 
+template <typename T>
+inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
+  OrtKeyValuePairs* out;
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
+  return KeyValuePairs(out);
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {

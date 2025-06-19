@@ -34,9 +34,6 @@ class Logger;
 }
 
 namespace utils {
-void* DefaultAlloc(size_t size);
-void DefaultFree(void* p);
-
 /// <summary>
 // Do the placement new for strings on pre-allocated buffer
 // `elements` times.

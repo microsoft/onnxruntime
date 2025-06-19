@@ -318,7 +318,6 @@ def generate_vcpkg_install_options(build_dir, args):
     elif "RUNNER_TEMP" in os.environ:
         temp_dir = os.environ["RUNNER_TEMP"]
         vcpkg_install_options.append(f"--x-buildtrees-root={temp_dir}")
-        vcpkg_install_options.append("--binarysource=clear\\;x-gha,readwrite")
 
     # Config asset cache
     if args.use_vcpkg_ms_internal_asset_cache:
@@ -382,6 +381,9 @@ def generate_build_tree(
             "-Donnxruntime_USE_TELEMETRY=" + ("ON" if args.use_telemetry else "OFF"),
             "-Donnxruntime_ENABLE_PIX_FOR_WEBGPU_EP=" + ("ON" if args.enable_pix_capture else "OFF"),
         ]
+
+        if args.caller_framework:
+            cmake_args.append("-Donnxruntime_CALLER_FRAMEWORK=" + args.caller_framework)
         if args.winml_root_namespace_override:
             cmake_args.append("-Donnxruntime_WINML_NAMESPACE_OVERRIDE=" + args.winml_root_namespace_override)
         if args.disable_memleak_checker or args.enable_address_sanitizer:
@@ -1719,6 +1721,9 @@ def run_onnxruntime_tests(args, source_dir, ctest_path, build_dir, configs):
             run_subprocess(
                 [sys.executable, "onnxruntime_test_python.py"], cwd=cwd, dll_path=dll_path, python_path=python_path
             )
+
+            log.info("Testing Global Thread Pool feature")
+            run_subprocess([sys.executable, "onnxruntime_test_python_global_threadpool.py"], cwd=cwd, dll_path=dll_path)
 
             log.info("Testing AutoEP feature")
             run_subprocess([sys.executable, "onnxruntime_test_python_autoep.py"], cwd=cwd, dll_path=dll_path)

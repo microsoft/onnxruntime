@@ -59,7 +59,11 @@
           list(APPEND onnxruntime_DELAYLOAD_FLAGS "/DELAYLOAD:webgpu_dawn.dll")
         endif()
 
-        if (onnxruntime_USE_VCPKG)
+        # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+        # until we figure out how to resolve the packaging pipeline failures
+        #
+        # if (onnxruntime_USE_VCPKG)
+        if (FALSE)
           # Fix Dawn vcpkg build issue (missing IMPORTED_IMPLIB and IMPORTED_LOCATION for target dawn::webgpu_dawn)
           get_target_property(webgpu_dawn_target_IMPORTED_IMPLIB dawn::webgpu_dawn IMPORTED_IMPLIB)
           if (NOT webgpu_dawn_target_IMPORTED_IMPLIB)
@@ -82,7 +86,11 @@
 
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
       # Ensure dxil.dll and dxcompiler.dll exist in the output directory $<TARGET_FILE_DIR:dxcompiler>
-      if (onnxruntime_USE_VCPKG)
+      # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+      # until we figure out how to resolve the packaging pipeline failures
+      #
+      # if (onnxruntime_USE_VCPKG)
+      if (FALSE)
         find_package(directx-dxc CONFIG REQUIRED)
         target_link_libraries(onnxruntime_providers_webgpu Microsoft::DirectXShaderCompiler)
         target_link_libraries(onnxruntime_providers_webgpu Microsoft::DXIL)

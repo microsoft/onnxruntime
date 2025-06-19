@@ -644,7 +644,12 @@ async function main() {
       isProduction: true,
       outputName: 'ort.wasm.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
     });
     // ort.webgl[.min].[m]js
     await addAllWebBuildTasks({

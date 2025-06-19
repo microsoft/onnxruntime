@@ -3,6 +3,7 @@
 // Licensed under the MIT License.
 
 #include <functional>
+#include <mutex>
 #include "python/onnxruntime_pybind_exceptions.h"
 #include "python/onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
@@ -35,9 +36,11 @@
 #include "core/providers/providers.h"
 #include "core/providers/tensorrt/tensorrt_provider_options.h"
 #include "core/session/IOBinding.h"
+#include "core/session/ort_env.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_session_options_config_keys.h"
 #include "core/session/provider_bridge_ort.h"
+#include "core/session/onnxruntime_cxx_api.h"
 
 #include "core/session/lora_adapters.h"
 
@@ -75,6 +78,7 @@ const OrtDevice::DeviceType OrtDevice::GPU;
 
 #include <iterator>
 #include <algorithm>
+#include <utility>
 
 namespace onnxruntime {
 namespace python {
@@ -302,14 +306,26 @@ const char* GetDeviceName(const OrtDevice& device) {
     case OrtDevice::CPU:
       return CPU;
     case OrtDevice::GPU:
-      return CUDA;
+      switch (device.Vendor()) {
+        case OrtDevice::VendorIds::NVIDIA:
+          return CUDA;
+        case OrtDevice::VendorIds::AMD:
+          return HIP;
+        case OrtDevice::VendorIds::MICROSOFT:
+          return DML;
+      }
+
+      return CUDA;  // default to CUDA for backwards compatibility
+
     case OrtDevice::DML:
       return DML;
     case OrtDevice::FPGA:
       return "FPGA";
     case OrtDevice::NPU:
 #ifdef USE_CANN
-      return CANN;
+      if (device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
+        return CANN;
+      }
 #else
       return "NPU";
 #endif
@@ -623,6 +639,14 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
               params.trt_fp16_enable = false;
             } else {
               ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_fp16_enable' should be 'True' or 'False'. Default value is 'False'.\n");
+            }
+          } else if (option.first == "trt_bf16_enable") {
+            if (option.second == "True" || option.second == "true") {
+              params.trt_bf16_enable = true;
+            } else if (option.second == "False" || option.second == "false") {
+              params.trt_bf16_enable = false;
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_bf16_enable' should be 'True' or 'False'. Default value is 'False'.\n");
             }
           } else if (option.first == "trt_int8_enable") {
             if (option.second == "True" || option.second == "true") {
@@ -938,12 +962,15 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
           0,
           0,
           0,
+          0,
           nullptr,
           1,
           "./compiled_model.mxr",
           1,
           "./compiled_model.mxr",
-          1};
+          1,
+          SIZE_MAX,
+          0};
       for (auto option : it->second) {
         if (option.first == "device_id") {
           if (!option.second.empty()) {
@@ -958,7 +985,17 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'trt_fp16_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp16_enable' should be"
+                " 'True' or 'False'. Default value is 'False'.\n");
+          }
+        } else if (option.first == "migraphx_fp8_enable") {
+          if (option.second == "True" || option.second == "true") {
+            params.migraphx_fp8_enable = true;
+          } else if (option.second == "False" || option.second == "false") {
+            params.migraphx_fp8_enable = false;
+          } else {
+            ORT_THROW(
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_fp8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_enable") {
@@ -968,7 +1005,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_int8_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_enable' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_enable' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_int8_calibration_table_name") {
@@ -977,7 +1014,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_int8_calibration_table_name = calibration_table.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_calibration_table_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_int8_calibration_table_name' should be a "
                 "file name i.e. 'cal_table'.\n");
           }
         } else if (option.first == "migraphx_use_native_calibration_table") {
@@ -987,7 +1024,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_use_native_calibration_table = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_int8_use_native_calibration_table' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_use_native_calibration_table' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_save_compiled_model") {
@@ -997,7 +1034,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_compiled_model' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_compiled_model' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_save_model_path") {
@@ -1006,7 +1043,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_save_model_path = save_model_path.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_save_model_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_save_model_name' should be a "
                 "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else if (option.first == "migraphx_load_compiled_model") {
@@ -1016,7 +1053,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_fp16_enable = false;
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_compiled_model' should be"
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_compiled_model' should be"
                 " 'True' or 'False'. Default value is 'False'.\n");
           }
         } else if (option.first == "migraphx_load_model_path") {
@@ -1025,7 +1062,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
             params.migraphx_load_model_path = load_model_path.c_str();
           } else {
             ORT_THROW(
-                "[ERROR] [MIGraphX] The value for the key 'migx_load_model_name' should be a "
+                "[ERROR] [MIGraphX] The value for the key 'migraphx_load_model_name' should be a "
                 "file name i.e. 'compiled_model.mxr'.\n");
           }
         } else if (option.first == "migraphx_exhaustive_tune") {
@@ -1404,19 +1441,6 @@ std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(const Sessio
   return nullptr;
 }
 
-/*
- * Register execution provider with options.
- */
-static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
-                                       const ProviderOptionsMap& provider_options_map) {
-  for (const std::string& type : provider_types) {
-    auto ep = CreateExecutionProviderInstance(sess->GetSessionOptions(), type, provider_options_map);
-    if (ep) {
-      OrtPybindThrowIfError(sess->RegisterExecutionProvider(std::move(ep)));
-    }
-  }
-}
-
 /**
  * Adds an explicit execution provider factory to the session options.
  *
@@ -1492,7 +1516,7 @@ static void RegisterCustomOpDomains(PyInferenceSession* sess, const PySessionOpt
 static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
                                         const std::vector<const OrtEpDevice*>& ep_devices,
                                         const ProviderOptions& provider_options) {
-  std::shared_ptr<onnxruntime::Environment> env = GetEnv();
+  onnxruntime::Environment& env = GetEnv();
   const size_t num_ep_options = provider_options.size();
   std::vector<const char*> ep_option_keys;
   std::vector<const char*> ep_option_vals;
@@ -1505,7 +1529,7 @@ static Status AddEpFactoryFromEpDevices(PySessionOptions& py_sess_options,
   }
 
   std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
-  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(*env,
+  ORT_RETURN_IF_ERROR(CreateIExecutionProviderFactoryForEpDevices(env,
                                                                   py_sess_options.value,
                                                                   ep_devices,
                                                                   ep_option_keys,
@@ -1535,7 +1559,7 @@ static Status InitializeSessionEpsFromSessionOptions(PyInferenceSession& py_sess
   // if there are no providers registered, and there's an ep selection policy set, do auto ep selection
   if (ort_session_options.provider_factories.empty() && ort_session_options.value.ep_selection_policy.enable) {
     ProviderPolicyContext context;
-    ORT_RETURN_IF_ERROR(context.SelectEpsForSession(*GetEnv(), ort_session_options, sess));
+    ORT_RETURN_IF_ERROR(context.SelectEpsForSession(GetEnv(), ort_session_options, sess));
   } else {
     for (const auto& provider_factory : ort_session_options.provider_factories) {
       std::unique_ptr<IExecutionProvider> ep = provider_factory->CreateProvider(ort_session_options,
@@ -1606,6 +1630,16 @@ static void LogDeprecationWarning(
 #endif
 
 void addGlobalMethods(py::module& m) {
+  m.def("set_global_thread_pool_sizes", [](int intra_op_num_threads, int inter_op_num_threads) {
+          static std::mutex global_thread_pool_mutex;
+          OrtThreadingOptions to;
+          to.intra_op_thread_pool_params.thread_pool_size = intra_op_num_threads;
+          to.inter_op_thread_pool_params.thread_pool_size = inter_op_num_threads;
+          std::lock_guard<std::mutex> lock(global_thread_pool_mutex);
+          SetGlobalThreadingOptions(std::move(to)); },
+        py::arg("intra_op_num_threads") = 0,  // Default value for intra_op_num_threads
+        py::arg("inter_op_num_threads") = 0,  // Default value for inter_op_num_threads
+        "Set the number of threads used by the global thread pools for intra and inter op parallelism.");
   m.def("get_default_session_options", &GetDefaultCPUSessionOptions, "Return a default session_options instance.");
   m.def("get_session_initializer", &SessionObjectInitializer::Get, "Return a default session object initializer.");
   m.def(
@@ -1618,15 +1652,13 @@ void addGlobalMethods(py::module& m) {
       "set_default_logger_severity", [](int severity) {
         ORT_ENFORCE(severity >= 0 && severity <= 4,
                     "Invalid logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
-        auto env = GetEnv();
-        logging::LoggingManager* default_logging_manager = env->GetLoggingManager();
+        logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
         default_logging_manager->SetDefaultLoggerSeverity(static_cast<logging::Severity>(severity));
       },
       "Sets the default logging severity. 0:Verbose, 1:Info, 2:Warning, 3:Error, 4:Fatal");
   m.def(
       "set_default_logger_verbosity", [](int vlog_level) {
-        auto env = GetEnv();
-        logging::LoggingManager* default_logging_manager = env->GetLoggingManager();
+        logging::LoggingManager* default_logging_manager = GetEnv().GetLoggingManager();
         default_logging_manager->SetDefaultLoggerVerbosity(vlog_level);
       },
       "Sets the default logging verbosity level. To activate the verbose log, "
@@ -1644,16 +1676,14 @@ void addGlobalMethods(py::module& m) {
       "Disables platform-specific telemetry collection.");
   m.def(
       "create_and_register_allocator", [](const OrtMemoryInfo& mem_info, const OrtArenaCfg* arena_cfg = nullptr) -> void {
-        auto env = GetEnv();
-        auto st = env->CreateAndRegisterAllocator(mem_info, arena_cfg);
+        auto st = GetEnv().CreateAndRegisterAllocator(mem_info, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator: " + st.ErrorMessage());
         }
       });
   m.def(
       "create_and_register_allocator_v2", [](const std::string& provider_type, const OrtMemoryInfo& mem_info, const ProviderOptions& options, const OrtArenaCfg* arena_cfg = nullptr) -> void {
-        auto env = GetEnv();
-        auto st = env->CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
+        auto st = GetEnv().CreateAndRegisterAllocatorV2(provider_type, mem_info, options, arena_cfg);
         if (!st.IsOK()) {
           throw std::runtime_error("Error when creating and registering allocator in create_and_register_allocator_v2: " + st.ErrorMessage());
         }
@@ -1662,8 +1692,7 @@ void addGlobalMethods(py::module& m) {
       "register_execution_provider_library",
       [](const std::string& registration_name, const PathString& library_path) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
-        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
-        OrtPybindThrowIfError(env->RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
+        OrtPybindThrowIfError(GetEnv().RegisterExecutionProviderLibrary(registration_name, library_path.c_str()));
 #else
         ORT_UNUSED_PARAMETER(registration_name);
         ORT_UNUSED_PARAMETER(library_path);
@@ -1675,8 +1704,7 @@ void addGlobalMethods(py::module& m) {
       "unregister_execution_provider_library",
       [](const std::string& registration_name) -> void {
 #if !defined(ORT_MINIMAL_BUILD)
-        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
-        OrtPybindThrowIfError(env->UnregisterExecutionProviderLibrary(registration_name));
+        OrtPybindThrowIfError(GetEnv().UnregisterExecutionProviderLibrary(registration_name));
 #else
         ORT_UNUSED_PARAMETER(registration_name);
         ORT_THROW("Execution provider libraries are not supported in this build.");
@@ -1687,8 +1715,7 @@ void addGlobalMethods(py::module& m) {
       "get_ep_devices",
       []() -> const std::vector<const OrtEpDevice*>& {
 #if !defined(ORT_MINIMAL_BUILD)
-        std::shared_ptr<onnxruntime::Environment> env = GetEnv();
-        return env->GetOrtEpDevices();
+        return GetEnv().GetOrtEpDevices();
 #else
         ORT_THROW("OrtEpDevices are not supported in this build");
 #endif
@@ -1868,6 +1895,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("ORT_DISABLE_ALL", GraphOptimizationLevel::ORT_DISABLE_ALL)
       .value("ORT_ENABLE_BASIC", GraphOptimizationLevel::ORT_ENABLE_BASIC)
       .value("ORT_ENABLE_EXTENDED", GraphOptimizationLevel::ORT_ENABLE_EXTENDED)
+      .value("ORT_ENABLE_LAYOUT", GraphOptimizationLevel::ORT_ENABLE_LAYOUT)
       .value("ORT_ENABLE_ALL", GraphOptimizationLevel::ORT_ENABLE_ALL);
 
   py::enum_<ExecutionMode>(m, "ExecutionMode")
@@ -1890,10 +1918,31 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .value("CPU", OrtMemTypeCPU)
       .value("DEFAULT", OrtMemTypeDefault);
 
-  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device informaion.)pbdoc");
-  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::DeviceId>())
+  py::class_<OrtDevice> device(m, "OrtDevice", R"pbdoc(ONNXRuntime device information.)pbdoc");
+  device.def(py::init<OrtDevice::DeviceType, OrtDevice::MemoryType, OrtDevice::VendorId, OrtDevice::DeviceId>())
+      .def(py::init([](OrtDevice::DeviceType type,
+                       OrtDevice::MemoryType mem_type,
+                       OrtDevice::DeviceId device_id) {
+             // backwards compatibility. generally there's only one GPU EP in the python package, with the exception
+             // of a build with CUDA and DML.
+             OrtDevice::VendorId vendor = OrtDevice::VendorIds::NONE;
+             if (type == OrtDevice::DML) {
+               type = OrtDevice::GPU;
+               vendor = OrtDevice::VendorIds::MICROSOFT;
+             } else if (type == OrtDevice::GPU) {
+#if USE_CUDA
+               vendor = OrtDevice::VendorIds::NVIDIA;
+#elif USE_ROCM || USE_MIGRAPHX
+               vendor = OrtDevice::VendorIds::AMD;
+#endif
+             }
+
+             return OrtDevice(type, mem_type, vendor, device_id);
+           }),
+           R"pbdoc(Constructor with vendor_id defaulted to 0 for backward compatibility.)pbdoc")
       .def("device_id", &OrtDevice::Id, R"pbdoc(Device Id.)pbdoc")
       .def("device_type", &OrtDevice::Type, R"pbdoc(Device Type.)pbdoc")
+      .def("vendor_id", &OrtDevice::Vendor, R"pbdoc(Vendor Id.)pbdoc")
       .def_static("cpu", []() { return OrtDevice::CPU; })
       .def_static("cuda", []() { return OrtDevice::GPU; })
       .def_static("cann", []() { return OrtDevice::NPU; })
@@ -2018,15 +2067,19 @@ for model inference.)pbdoc");
   py::class_<OrtMemoryInfo> ort_memory_info_binding(m, "OrtMemoryInfo");
   ort_memory_info_binding.def(py::init([](const char* name, OrtAllocatorType type, int id, OrtMemType mem_type) {
     if (strcmp(name, onnxruntime::CPU) == 0) {
-      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), id, mem_type);
+      return std::make_unique<OrtMemoryInfo>(onnxruntime::CPU, type, OrtDevice(), mem_type);
     } else if (strcmp(name, onnxruntime::CUDA) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA, type, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(id)), id,
+          onnxruntime::CUDA, type,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
           mem_type);
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
-          onnxruntime::CUDA_PINNED, type, OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, static_cast<OrtDevice::DeviceId>(id)),
-          id, mem_type);
+          onnxruntime::CUDA_PINNED, type,
+          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                    static_cast<OrtDevice::DeviceId>(id)),
+          mem_type);
     } else {
       throw std::runtime_error("Specified device is not supported.");
     }
@@ -2202,6 +2255,13 @@ Serialized model format will default to ONNX unless:
           R"pbdoc(VLOG level if DEBUG build and session_log_severity_level is 0.
 Applies to session load, initialization, etc. Default is 0.)pbdoc")
       .def_property(
+          "use_per_session_threads",
+          [](const PySessionOptions* options) -> bool { return options->value.use_per_session_threads; },
+          [](PySessionOptions* options, bool use_per_session_threads) -> void {
+            options->value.use_per_session_threads = use_per_session_threads;
+          },
+          R"pbdoc(Whether to use per-session thread pool. Default is True.)pbdoc")
+      .def_property(
           "intra_op_num_threads",
           [](const PySessionOptions* options) -> int { return options->value.intra_op_param.thread_pool_size; },
           [](PySessionOptions* options, int value) -> void { options->value.intra_op_param.thread_pool_size = value; },
@@ -2246,6 +2306,9 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
                 retval = ORT_ENABLE_EXTENDED;
                 break;
               case onnxruntime::TransformerLevel::Level3:
+                retval = ORT_ENABLE_LAYOUT;
+                break;
+              case onnxruntime::TransformerLevel::MaxLevel:
                 retval = ORT_ENABLE_ALL;
                 break;
               default:
@@ -2267,8 +2330,11 @@ Applies to session load, initialization, etc. Default is 0.)pbdoc")
               case ORT_ENABLE_EXTENDED:
                 options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level2;
                 break;
-              case ORT_ENABLE_ALL:
+              case ORT_ENABLE_LAYOUT:
                 options->value.graph_optimization_level = onnxruntime::TransformerLevel::Level3;
+                break;
+              case ORT_ENABLE_ALL:
+                options->value.graph_optimization_level = onnxruntime::TransformerLevel::MaxLevel;
                 break;
             }
           },
@@ -2475,14 +2541,21 @@ including arg name, arg type (contains both type and shape).)pbdoc")
       // without any conversion. So this init method can be used for model file path (string) and model content (bytes)
       .def(py::init([](const PySessionOptions& so, const std::string arg, bool is_arg_file_name,
                        bool load_config_from_model = false) {
-        auto env = GetEnv();
         std::unique_ptr<PyInferenceSession> sess;
+
+        if (CheckIfUsingGlobalThreadPool() && so.value.use_per_session_threads) {
+          ORT_THROW("use_per_session_threads must be false when using a global thread pool");
+        }
+
+        if (CheckIfUsingGlobalThreadPool() && (so.value.intra_op_param.thread_pool_size != 0 || so.value.inter_op_param.thread_pool_size != 0)) {
+          LOGS_DEFAULT(WARNING) << "session options intra_op_param.thread_pool_size and inter_op_param.thread_pool_size are ignored when using a global thread pool";
+        }
 
         // separate creation of the session from model loading unless we have to read the config from the model.
         // in a minimal build we only support load via Load(...) and not at session creation time
         if (load_config_from_model) {
 #if !defined(ORT_MINIMAL_BUILD)
-          sess = std::make_unique<PyInferenceSession>(std::move(env), so, arg, is_arg_file_name);
+          sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so, arg, is_arg_file_name);
 
           RegisterCustomOpDomains(sess.get(), so);
 
@@ -2491,7 +2564,7 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           ORT_THROW("Loading configuration from an ONNX model is not supported in this build.");
 #endif
         } else {
-          sess = std::make_unique<PyInferenceSession>(std::move(env), so);
+          sess = std::make_unique<PyInferenceSession>(*GetOrtEnv(), so);
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
           RegisterCustomOpDomains(sess.get(), so);
 #endif
@@ -2843,109 +2916,9 @@ including arg name, arg type (contains both type and shape).)pbdoc")
           R"pbdoc(Compile an ONNX model into a buffer.)pbdoc");
 }
 
-bool CreateInferencePybindStateModule(py::module& m) {
-  m.doc() = "pybind11 stateful interface to ONNX runtime";
-  RegisterExceptions(m);
-
-  import_array1(false);
-
-  auto env = GetEnv();
-
-  addGlobalMethods(m);
-  addObjectMethods(m, RegisterExecutionProviders);
-  addOrtValueMethods(m);
-  addSparseTensorMethods(m);
-  addIoBindingMethods(m);
-  addAdapterFormatMethods(m);
-
-#if !defined(__APPLE__) && !defined(ORT_MINIMAL_BUILD)
-  if (!InitProvidersSharedLibrary()) {
-    const logging::Logger& default_logger = logging::LoggingManager::DefaultLogger();
-    LOGS(default_logger, WARNING) << "Init provider bridge failed.";
-  }
-#endif
-
-  addGlobalSchemaFunctions(m);
-  addOpSchemaSubmodule(m);
-  addOpKernelSubmodule(m);
-  return true;
-}
-
-// This function is only used by orttraining module
 bool InitArray() {
   import_array1(false);
   return true;
-}
-
-namespace {
-// This class provides a static shell for on-demand and thread-safe construction
-// of Environment object for both Inference and Training python layers.
-// Environment class contains objects such as default logger, that must be available
-// for the entire duration of a program that makes use of onnxruntime library.
-// Because Python is a garbage collected language and the order of destruction of objects
-// is not guaranteed we design this class with the following important features.
-
-// 1) we make this class a singleton that is a function local static. The function local statics
-//    are constructed when the function is called the very first time. This fact has several important
-//    properties.
-//    - First, it is constructed before it is first needed possibly by another static object
-//      and destroyed after that object is destroyed.
-//    - Second, it is constructed in a thread safe manner.
-//    - Last, this order of construction/destruction is enforced across the compilation units, as opposed
-//      to the static objects that are simply declared in order in a single unit, but their lifespan is
-//      unconnected to that of in other compilation units. This is achieved automatically by run-time
-//      by execution atexit() to build a chain.
-//  2) We make Environment owned by a shared_ptr. This is done because python objects such as Inference and Training
-//    sessions depend on this global. We acquire a shared_ptr instance when those objects are instantiated
-//    and release it automatically when they are garbage collected. Although with this change all of the
-//    globals seem to have been destroyed after module is unloaded and GC runs before that, it is cheap and gives
-//    a piece of mind as there were situations when GC was still running in the past after Env was gone.
-//    TrainingEnv global also holds shared reference to this global.
-// 3) We guard against singleton resurrection attempts to detect code runs that when it should
-//    not and make necessary adjustments.
-//    For all the related details and why it is needed see "Modern C++ design" by A. Alexandrescu Chapter 6.
-class EnvInitializer {
- public:
-  static std::shared_ptr<onnxruntime::Environment> SharedInstance() {
-    // Guard against attempts to resurrect the singleton
-    if (EnvInitializer::destroyed) {
-      ORT_THROW("Detected an attempt to resurrect destroyed Environment");
-    }
-    static EnvInitializer env_holder;
-    return env_holder.Get();
-  }
-
- private:
-  EnvInitializer() {
-    std::unique_ptr<Environment> env_ptr;
-    Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
-    OrtPybindThrowIfError(Environment::Create(std::make_unique<LoggingManager>(
-                                                  std::make_unique<CLogSink>(),
-                                                  Severity::kWARNING, false, LoggingManager::InstanceType::Default,
-                                                  &SessionObjectInitializer::default_logger_id),
-                                              env_ptr));
-    session_env_ = std::shared_ptr<Environment>(env_ptr.release());
-    destroyed = false;
-  }
-
-  ~EnvInitializer() {
-    destroyed = true;
-  }
-
-  std::shared_ptr<Environment> Get() const {
-    return session_env_;
-  }
-
-  std::shared_ptr<Environment> session_env_;
-
-  static bool destroyed;
-};
-
-bool EnvInitializer::destroyed = false;
-}  // namespace
-
-std::shared_ptr<onnxruntime::Environment> GetEnv() {
-  return EnvInitializer::SharedInstance();
 }
 
 }  // namespace python

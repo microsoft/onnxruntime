@@ -67,6 +67,10 @@ static const char* const kOrtSessionOptionsEnableQuantQDQCleanup = "session.enab
 // GeluApproximation has side effects which may change the inference results. It is disabled by default due to this.
 static const char* const kOrtSessionOptionsEnableGeluApproximation = "optimization.enable_gelu_approximation";
 
+// Enable or disable Cast chain elimination in graph optimization. "0": disable; "1": enable. The default is "0".
+// CastElimination with chain elimination has side effects which may change the inference results. It is disabled by default due to this.
+static const char* const kOrtSessionOptionsEnableCastChainElimination = "optimization.enable_cast_chain_elimination";
+
 // This setting controls whether to enable AheadOfTime function inlining.
 // AOT function inlining examines the graph and attempts to inline as many locally defined functions in the model
 // as possible with the help of enabled execution providers.
@@ -106,6 +110,37 @@ static const char* const kOrtSessionOptionsMemoryOptimizerProbeConfig = "optimiz
 //
 // Default is an empty string which means no optimizers are disabled.
 static const char* const kOrtSessionOptionsDisableSpecifiedOptimizers = "optimization.disable_specified_optimizers";
+
+// It controls whether to run graph optimizations in loop or not.
+//
+// "0": disable. Graph Optimization Loop is disabled.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                 "No Loop"                       |
+//   |                                                 |
+//   X                xxxxxxxxxxx                      X
+// ```
+// "1": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 4 are applied then
+// the loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |        "Loop only depending on Level 4"         |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// "2": enable. Graph Optimization Loop is enabled, such that, if optimizations at Level 2 or above are applied then
+// The loop will check for any other valid optimization that can happen.
+// ```
+// Level 2 --> Level 3 --> InsertCastTransforms --> Level 4
+//   ^                                                 |
+//   |                    "Loop"                       |
+//   |                                                 |
+//   ---------------------------------------------------
+// ```
+// Default value is set to "1".
+static const char* const kOrtSessionOptionsGraphOptimizationsLoopLevel = "session.graph_optimizations_loop_level";
 
 // Enable or disable using device allocator for allocating initialized tensor memory. "1": enable; "0": disable. The default is "0".
 // Using device allocators means the memory allocation is made using malloc/new.

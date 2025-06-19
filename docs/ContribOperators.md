@@ -67,6 +67,7 @@ Do not modify directly.*
   * <a href="#com.microsoft.PackedAttention">com.microsoft.PackedAttention</a>
   * <a href="#com.microsoft.PackedMultiHeadAttention">com.microsoft.PackedMultiHeadAttention</a>
   * <a href="#com.microsoft.Pad">com.microsoft.Pad</a>
+  * <a href="#com.microsoft.PagedAttention">com.microsoft.PagedAttention</a>
   * <a href="#com.microsoft.QAttention">com.microsoft.QAttention</a>
   * <a href="#com.microsoft.QGemm">com.microsoft.QGemm</a>
   * <a href="#com.microsoft.QLinearAdd">com.microsoft.QLinearAdd</a>
@@ -2037,9 +2038,9 @@ This version of the operator has been available since version 1 of the 'com.micr
 
   GatherBlockQuantized is a Gather with data quantized. It is similar to Gather (https://github.com/onnx/onnx/blob/main/docs/Operators.md#gather) with differences:
     1. Input `data` is a constant. It is quantized block-wise along attribute `quantize_axis` with block size specified by attribute `block_size`.
-       `block_size must` be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ..
+       `block_size` must be a power of 2 and not smaller than 16, like 16, 32, 64, 128, ...
     2. Input `data`'s scale and zero point are specified by input `scales` and `zero_points`. `scales` and `zero_points` are also constants.
-       If `zero_points` is not provided, 0 is the zero point except when data is uint8 type then the default zero point is 8.
+       If `zero_points` is not provided, the default value is 0 for int4/uint4, or 2^(bits-1) for uint8.
     3. During the op execution, `data` and `indices` are first used to generate the quantized output. Then, `scales` and `zero_points` are used
        to dequantize the output.
     4. The `output` and `scales` have the same type. The `data` and `zero_points` have the same type.
@@ -2946,29 +2947,20 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 ### <a name="com.microsoft.MatMulNBits"></a><a name="com.microsoft.matmulnbits">**com.microsoft.MatMulNBits**</a>
 
-  MatMulNBits is a MatMul with weight quantized with N bits(e.g., 2, 3, 4, 5, 6, 7).It does Matrix Multiplication like MatMul (https://github.com/onnx/onnx/blob/main/docs/Operators.md#matmul) with differences:
-    1. Input B is a 2D constant Matrix. Its input feature count and output feature count are specified by attribute 'K' and 'N'.
-    2. Input B is quantized with x bits which is specified by attribute 'bits'. It is quantized blockwisely along dimension 0 (e.g. column) with block size specified by attribute block_size.
-       And block_size is not an arbitrary number and must be a power of 2 and not smaller than 16, like 16, 32, 64, 128,..
-    3. Input B's scale and zero point are specified by input scales and zero_points.
+  MatMulNBits performs a matrix multiplication where the right-hand-side matrix (weights) is quantized to N bits.
   
-    Input B is stored as uint8_t with shape: [N][n_blocks_per_col][blob_size] in which:
-    - n_blocks_per_col = (K + block_size - 1) / block_size
-    - blob_size = CeilDiv(block_size * bits, bitsof(uint8_t)<8>)
-    For all bits from 2-8, a row of data is stored squeezely and represented by uint8_t.
-      - for 2,4,8 bits, 4x2bit,2x4bit,1x8bit are stored in one uint8_t.
-          4bit example:
-          |.|.|.|.| .|.|.|.| =uint8_t (2x4bit)
-      - for 3,5,6,7 bits, 32x3bit,32x5bit,16x6bit,32x7bit are stored in 12xuint8_t,20xuint8_t,12xuint8_t,28xuint8_t separately. no bits are wasted.
-          3bit example:
-          |.|.|. |.|.|. |.|.|. = 9bit, which across 2 uint8_t, the highest bit for the second uint8_t is used.
-    The last uint_8 may have some bits unused.
+  It is a fusion of two operations:
+  1. Linear dequantization of the quantized weights using scale and (optionally) zero-point with formula:
+     dequantized_weight = (quantized_weight - zero_point) * scale
+  2. Matrix multiplication between the input matrix A and the dequantized weight matrix.
   
+  The weight matrix is a 2D constant matrix with the input feature count and output feature count specified by attributes 'K' and 'N'.
+  It is quantized block-wise along the K dimension with a block size specified by the 'block_size' attribute.
+  The block size must be a power of 2 and not smaller than 16 (e.g., 16, 32, 64, 128). Each block has its own scale and zero-point.
+  The quantization is performed using a bit-width specified by the 'bits' attribute, which can take values from 2 to 8.
   
-  Input scales is stored in same type as original type of B(float32, float16) with shape like: [N * n_blocks_per_col]
-  Input zero_points is stored as uint8_t or same as type(A). It has the same packing method as input B.
-    - [N * CeilDiv(n_blocks_per_col * bits, 8)]
-    If zero_points has same type as A, it's not packed and has the same shape as Scales.
+  The quantized weights are stored in a bit-packed format along the K dimension, with each block being represented by a blob of uint8.
+  For example, for 4 bits, the first 4 bits are stored in the lower 4 bits of a byte, and the second 4 bits are stored in the higher 4 bits of a byte.
 
 #### Version
 
@@ -2978,30 +2970,30 @@ This version of the operator has been available since version 1 of the 'com.micr
 
 <dl>
 <dt><tt>K</tt> : int (required)</dt>
-<dd>size of each input feature</dd>
+<dd>Input feature dimension of the weight matrix.</dd>
 <dt><tt>N</tt> : int (required)</dt>
-<dd>size of each output feature</dd>
+<dd>Output feature dimension of the weight matrix.</dd>
 <dt><tt>accuracy_level</tt> : int</dt>
 <dd>The minimum accuracy level of input A, can be: 0(unset), 1(fp32), 2(fp16), 3(bf16), or 4(int8) (default unset). It is used to control how input A is quantized or downcast internally while doing computation, for example: 0 means input A will not be quantized or downcast while doing computation. 4 means input A can be quantized with the same block_size to int8 internally from type T1.</dd>
-<dt><tt>bits</tt> : int (required)</dt>
-<dd>number of bits used for weight quantization (default 4)</dd>
+<dt><tt>bits</tt> : int</dt>
+<dd>Bit-width used to quantize the weights (valid range: 2~8)</dd>
 <dt><tt>block_size</tt> : int (required)</dt>
-<dd>number of groupsize used for weight quantization,(default 128). It needs to be a power of 2 and not smaller than 16.</dd>
+<dd>Size of each quantization block along the K (input feature) dimension. Must be a power of two and ≥ 16 (e.g., 16, 32, 64, 128).</dd>
 </dl>
 
 #### Inputs (3 - 6)
 
 <dl>
 <dt><tt>A</tt> : T1</dt>
-<dd>The input tensor, not quantized</dd>
+<dd>The input tensor, not quantized.</dd>
 <dt><tt>B</tt> : T2</dt>
-<dd>1 or 2 dimensional data blob</dd>
+<dd>Packed uint8 tensor of shape (N, k_blocks, blob_size), where k_blocks = ceil(K / block_size) and blob_size = (block_size * bits / 8). The quantized weights are stored in a bit-packed format along the K dimension, packed within each block_size.</dd>
 <dt><tt>scales</tt> : T1</dt>
-<dd>quantization scale</dd>
+<dd>Per-block scaling factors for dequantization with shape (N, k_blocks) and same data type as input A.</dd>
 <dt><tt>zero_points</tt> (optional) : T3</dt>
-<dd>quantization zero points</dd>
+<dd>Per-block zero point for dequantization. It can be either packed or unpacked: Packed (uint8) format has shape (N, ceil(k_blocks * bits / 8)), and it uses same bit-packing method as Input B. Unpacked (same type as A) format has shape (N, k_blocks). If not provided, a default zero point is used: 2^(bits - 1) (e.g., 8 for 4-bit quantization, 128 for 8-bit). </dd>
 <dt><tt>g_idx</tt> (optional) : T4</dt>
-<dd>group_idx</dd>
+<dd>group_idx. This input is deprecated</dd>
 <dt><tt>bias</tt> (optional) : T1</dt>
 <dd>Bias to add to result. It should have shape [N].</dd>
 </dl>
@@ -3016,12 +3008,12 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Type Constraints
 
 <dl>
-<dt><tt>T1</tt> : tensor(float), tensor(float16)</dt>
-<dd>Constrain input and output types to float/half_float tensors.</dd>
-<dt><tt>T2</tt> : tensor(uint8), tensor(int32)</dt>
-<dd>Constrain quantized weight types to uint8/int32.</dd>
-<dt><tt>T3</tt> : tensor(uint8), tensor(int32), tensor(float16), tensor(float)</dt>
-<dd>Constrain quantized zero point types to uint8/int32/float16/float.</dd>
+<dt><tt>T1</tt> : tensor(float), tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output types to float tensors.</dd>
+<dt><tt>T2</tt> : tensor(uint8)</dt>
+<dd>Constrain quantized weight types to uint8.</dd>
+<dt><tt>T3</tt> : tensor(uint8), tensor(float16), tensor(float), tensor(bfloat16)</dt>
+<dd>Constrain quantized zero point types to uint8 or float tensors.</dd>
 <dt><tt>T4</tt> : tensor(int32)</dt>
 <dd>the index tensor.</dd>
 </dl>
@@ -3689,6 +3681,100 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dl>
 <dt><tt>T</tt> : tensor(float16), tensor(float), tensor(double)</dt>
 <dd>Constrain input and output types to float tensors.</dd>
+</dl>
+
+
+### <a name="com.microsoft.PagedAttention"></a><a name="com.microsoft.pagedattention">**com.microsoft.PagedAttention**</a>
+
+  Paged Attention.
+  
+  This op leverages a block-based KV cache to enable continuous batching for LLMs. Currently, it is designed to work with
+  the CUDA Execution Provider only.
+  
+  In other attention ops, batch entries typically aren't of the same length, so they are padded.
+  Below is a batch with 3 sequences where * denotes a padding token.
+    Sequence_0:   0,  1*, 2*,  3*
+    Sequence_1:   4,  5,  6*,  7*
+    Sequence_2:   8,  9,  10,  11
+  
+  PagedAttention is designed to take in packed input, i.e., only the real tokens without padding.
+  For example, the input shown above will be packed into 3 tensors like below:
+   - query ([q0, q4, q5, q8, q9, q10, q11])
+   - key ([k0, k4, k5, k8, k9, k10, k11])
+   - value ([v0, v4, v5, v8, v9, v10, v11])
+   - cumulative_sequence_length: 0, 1, 1+2, 1+2+4
+  This packing omits padding tokens.
+  
+  The query, key and value tensors contain result of hidden embedding of real tokens after input projections.
+  cumulative_sequence_length records cumulated length of each sequence length.
+  
+
+#### Version
+
+This version of the operator has been available since version 1 of the 'com.microsoft' operator set.
+
+#### Attributes
+
+<dl>
+<dt><tt>do_rotary</tt> : int</dt>
+<dd>Whether to use rotary position embedding. Default value is 0.</dd>
+<dt><tt>kv_num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for k and v</dd>
+<dt><tt>local_window_size</tt> : int</dt>
+<dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
+<dt><tt>num_heads</tt> : int (required)</dt>
+<dd>Number of attention heads for q</dd>
+<dt><tt>rotary_interleaved</tt> : int</dt>
+<dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
+<dt><tt>scale</tt> : float</dt>
+<dd>Custom scale will be used if specified. Default value is 1/sqrt(head_size)</dd>
+<dt><tt>softcap</tt> : float</dt>
+<dd>Softcap value for attention weights. Default value is 0.</dd>
+</dl>
+
+#### Inputs (8 - 10)
+
+<dl>
+<dt><tt>query</tt> : T</dt>
+<dd>Query with shape (num_tokens, hidden_size), or packed QKV with shape (num_tokens, d) where d is (num_heads * head_size + 2 * kv_num_heads * head_size).</dd>
+<dt><tt>key</tt> (optional) : T</dt>
+<dd>Key with shape (num_tokens, kv_hidden_size) </dd>
+<dt><tt>value</tt> (optional) : T</dt>
+<dd>Value with shape (num_tokens, kv_hidden_size)</dd>
+<dt><tt>key_cache</tt> : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op.</dd>
+<dt><tt>value_cache</tt> : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is updated in place within the op. This should be the same shape as key_cache.</dd>
+<dt><tt>cumulative_sequence_length</tt> : S</dt>
+<dd>A tensor with shape (batch_size + 1). It specifies the cumulative sequence lengths between the packed entries in Q/K/V.</dd>
+<dt><tt>past_seqlens</tt> : S</dt>
+<dd>A tensor with shape (batch_size). It specifies the past lengths of cached sequence in the KV cache.</dd>
+<dt><tt>block_table</tt> : S</dt>
+<dd>2D tensor with shape (batch_size, max_blocks_per_sequence) that maps each sequence in the batch to itscorresponding blocks in the KV cache.</dd>
+<dt><tt>cos_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+<dt><tt>sin_cache</tt> (optional) : T</dt>
+<dd>2D tensor with shape (max total seqlen, head_size / 2).</dd>
+</dl>
+
+#### Outputs (1 - 3)
+
+<dl>
+<dt><tt>output</tt> : T</dt>
+<dd>3D output tensor with shape (num_tokens, hidden_size)</dd>
+<dt><tt>key_cache_out</tt> (optional) : T</dt>
+<dd>Block-based key cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as key_cache.</dd>
+<dt><tt>value_cache_out</tt> (optional) : T</dt>
+<dd>Block-based value cache with shape (num_blocks, block_size, kv_num_heads, head_size). This is always the same tensor as value_cache.</dd>
+</dl>
+
+#### Type Constraints
+
+<dl>
+<dt><tt>T</tt> : tensor(float16), tensor(bfloat16)</dt>
+<dd>Constrain input and output to float tensors.</dd>
+<dt><tt>S</tt> : tensor(int32)</dt>
+<dd>Constrain Positional inputs to int tensor.</dd>
 </dl>
 
 

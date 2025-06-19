@@ -18,7 +18,7 @@ struct ConfigOptions {
   // Maximum key/value string lengths specified in
   // core/session/onnxruntime_session_options_config_keys.h
   static constexpr size_t kMaxKeyLength = 1024;
-  static constexpr size_t kMaxValueLength = 2048;
+  static constexpr size_t kMaxValueLength = 4096;
 
   std::unordered_map<std::string, std::string> configurations;
 

@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include "core/providers/nv_tensorrt_rtx/nv_execution_provider_info.h"
@@ -40,12 +41,14 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
                 return Status::OK();
               })
           .AddAssignmentToReference(nv::provider_option_names::kMaxWorkspaceSize, info.max_workspace_size)
+          .AddAssignmentToReference(nv::provider_option_names::kMaxSharedMemSize, info.max_shared_mem_size)
           .AddAssignmentToReference(nv::provider_option_names::kDumpSubgraphs, info.dump_subgraphs)
           .AddAssignmentToReference(nv::provider_option_names::kDetailedBuildLog, info.detailed_build_log)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMinShapes, info.profile_min_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesMaxShapes, info.profile_max_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kProfilesOptShapes, info.profile_opt_shapes)
           .AddAssignmentToReference(nv::provider_option_names::kCudaGraphEnable, info.cuda_graph_enable)
+          .AddAssignmentToReference(nv::provider_option_names::kMultiProfileEnable, info.multi_profile_enable)
           .AddValueParser(
               nv::provider_option_names::kONNXBytestream,
               [&onnx_bytestream](const std::string& value_str) -> Status {
@@ -88,6 +91,7 @@ ProviderOptions NvExecutionProviderInfo::ToProviderOptions(const NvExecutionProv
       {nv::provider_option_names::kHasUserComputeStream, MakeStringWithClassicLocale(info.has_user_compute_stream)},
       {nv::provider_option_names::kUserComputeStream, MakeStringWithClassicLocale(reinterpret_cast<size_t>(info.user_compute_stream))},
       {nv::provider_option_names::kMaxWorkspaceSize, MakeStringWithClassicLocale(info.max_workspace_size)},
+      {nv::provider_option_names::kMaxSharedMemSize, MakeStringWithClassicLocale(info.max_shared_mem_size)},
       {nv::provider_option_names::kDumpSubgraphs, MakeStringWithClassicLocale(info.dump_subgraphs)},
       {nv::provider_option_names::kDetailedBuildLog, MakeStringWithClassicLocale(info.detailed_build_log)},
       {nv::provider_option_names::kProfilesMinShapes, MakeStringWithClassicLocale(info.profile_min_shapes)},
