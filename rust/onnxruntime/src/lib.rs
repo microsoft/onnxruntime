@@ -333,8 +333,6 @@ pub enum GraphOptimizationLevel {
     Basic = sys::GraphOptimizationLevel::ORT_ENABLE_BASIC as OnnxEnumInt,
     /// Extended optimization
     Extended = sys::GraphOptimizationLevel::ORT_ENABLE_EXTENDED as OnnxEnumInt,
-    /// Layout optimization
-    Layout = sys::GraphOptimizationLevel::ORT_ENABLE_LAYOUT as OnnxEnumInt,
     /// Add optimization
     All = sys::GraphOptimizationLevel::ORT_ENABLE_ALL as OnnxEnumInt,
 }
@@ -346,7 +344,6 @@ impl From<GraphOptimizationLevel> for sys::GraphOptimizationLevel {
             DisableAll => sys::GraphOptimizationLevel::ORT_DISABLE_ALL,
             Basic => sys::GraphOptimizationLevel::ORT_ENABLE_BASIC,
             Extended => sys::GraphOptimizationLevel::ORT_ENABLE_EXTENDED,
-            Layout => sys::GraphOptimizationLevel::ORT_ENABLE_LAYOUT,
             All => sys::GraphOptimizationLevel::ORT_ENABLE_ALL,
         }
     }

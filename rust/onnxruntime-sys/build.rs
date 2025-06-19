@@ -12,13 +12,6 @@ use std::{
 
 use anyhow::{anyhow, Context, Result};
 
-/// ONNX Runtime version
-///
-/// WARNING: If version is changed, bindings for all platforms will have to be re-generated.
-///          To do so, run this:
-///              cargo build --package onnxruntime-sys --features generate-bindings
-const ORT_VERSION: &str = include_str!("./vendor/onnxruntime-src/VERSION_NUMBER");
-
 /// Base Url from which to download pre-built releases/
 const ORT_RELEASE_BASE_URL: &str = "https://github.com/microsoft/onnxruntime/releases/download";
 
@@ -75,7 +68,7 @@ fn generate_bindings(include_dir: &Path) {
         ),
     ];
 
-    let path = include_dir.join("onnxruntime").join("onnxruntime_c_api.h");
+    let path = include_dir.join("onnxruntime_c_api.h");
 
     // The bindgen::Builder is the main entry point
     // to bindgen, and lets you build up options for
@@ -351,18 +344,41 @@ fn prebuilt_archive_url() -> (PathBuf, String) {
             .unwrap(),
     };
 
+    let ort_version = fetch_latest_onnxruntime_version().unwrap();
+
     let prebuilt_archive = format!(
         "onnxruntime-{}-{}.{}",
         triplet.as_onnx_str(),
-        ORT_VERSION,
+        ort_version,
         triplet.os.archive_extension()
     );
     let prebuilt_url = format!(
         "{}/v{}/{}",
-        ORT_RELEASE_BASE_URL, ORT_VERSION, prebuilt_archive
+        ORT_RELEASE_BASE_URL, ort_version, prebuilt_archive
     );
 
     (PathBuf::from(prebuilt_archive), prebuilt_url)
+}
+
+fn fetch_latest_onnxruntime_version() -> Result<String, Box<dyn std::error::Error>> {
+    let response = ureq::get("https://api.github.com/repos/microsoft/onnxruntime/tags")
+        .set("User-Agent", "ureq")
+        .timeout(std::time::Duration::from_secs(10))
+        .call()?;
+
+    let body: String = response.into_string()?;
+    let tags: serde_json::Value = serde_json::from_str(&body)?;
+
+    let latest_tag = tags[0]["name"]
+        .as_str()
+        .ok_or("No tag name found")?;
+
+    let version = latest_tag
+        .strip_prefix('v')
+        .unwrap_or(latest_tag)
+        .to_string();
+
+    Ok(version)
 }
 
 fn prepare_libort_dir_prebuilt() -> PathBuf {
