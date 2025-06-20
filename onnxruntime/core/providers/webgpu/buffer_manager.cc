@@ -3,17 +3,11 @@
 
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
-#include <chrono>
-#include <ctime>
-#include <fstream>
-#include <iomanip>
 
 namespace onnxruntime {
 namespace webgpu {
 
 namespace {
-constexpr const char* METRICS_FILE = "memory_result_inter_session_optimization_with_early_release_and_without_default_bucket_limits.csv";
-constexpr const char* METRICS_HEADER = "Timestamp,TotalMemory(MB),PeakMemory(MB),ActiveBuffers,TotalBuffers,TimeoutMs\n";
 
 constexpr size_t NormalizeBufferSize(size_t size) {
   return (size + 15) / 16 * 16;
