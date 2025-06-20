@@ -266,13 +266,14 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
   }
 
   void OnRunEnd() override {
-    // Update memory patterns based on this run
+    // Update memory patterns based on this session run.
     for (const auto& usage : current_run_usage_) {
       auto& pattern = memory_patterns_[usage.first];
       pattern.request_size = usage.first;
       pattern.frequency = usage.second;
     }
 
+    // Adjust buckets based on the collected memory patterns.
     AdjustBuckets();
   }
 
@@ -282,6 +283,8 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
     // Track usage for the current run
     current_run_usage_[request_size]++;
 
+    // Check if we already have a bucket for this size. If not, create a new bucket so that it can cache buffers of
+    // this size in the current session run if the buffer is quickly released in the same session.
     if (buckets_.find(request_size) == buckets_.end()) {
       buckets_.emplace(request_size, std::vector<WGPUBuffer>());
       buckets_keys_.push_back(request_size);
@@ -322,11 +325,6 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
 
   // Analyze memory patterns and adjust bucket sizes.
   void AdjustBuckets() {
-    std::vector<MemoryUsagePattern> patterns;
-    for (const auto& pair : memory_patterns_) {
-      patterns.push_back(pair.second);
-    }
-
     // Store old buckets to handle transitions.
     auto old_buckets = std::move(buckets_);
 
@@ -335,9 +333,9 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
     buckets_.clear();
 
     // Create new buckets based on patterns.
-    for (const auto& pattern : patterns) {
-      // The request size here is already normalized.
-      size_t bucket_size = pattern.request_size;
+    for (const auto& pattern : memory_patterns_) {
+      // The request size here is already normalized, so we can use it directly as the bucket size key.
+      size_t bucket_size = pattern.second.request_size;
       buckets_keys_.push_back(bucket_size);
 
       // Initialize bucket vector.
@@ -346,11 +344,9 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
       auto old_bucket_it = old_buckets.find(bucket_size);
       if (old_bucket_it != old_buckets.end()) {
         // Transfer buffers from old to new bucket.
-        for (size_t i = 0; i < old_bucket_it->second.size(); ++i) {
-          bucket.push_back(old_bucket_it->second[i]);
-        }
-
+        bucket = std::move(old_bucket_it->second);
         old_bucket_it->second.clear();
+        old_buckets.erase(old_bucket_it);
       }
     }
 
@@ -362,15 +358,17 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
       for (auto& buffer : pair.second) {
         wgpuBufferRelease(buffer);
       }
+      pair.second.clear();
     }
+    old_buckets.clear();
 
-    // Clear patterns for next adjustment period
+    // Clear patterns for next adjustment period.
     memory_patterns_.clear();
   }
 
  private:
-  std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current run.
-  std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across runs.
+  std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current session run.
+  std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across session runs.
   std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
   std::vector<size_t> buckets_keys_;
 };

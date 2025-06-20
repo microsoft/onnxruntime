@@ -52,10 +52,10 @@ class IBufferCacheManager {
   // when a stream refresh is requested
   virtual void OnRefresh() = 0;
 
-  // Track start of inference run
+  // Track start of session run
   virtual void OnRunStart() {}
 
-  // Track end of inference run and update memory patterns
+  // Track end of session run and update memory patterns
   virtual void OnRunEnd() {}
 };
 
@@ -76,7 +76,6 @@ class BufferManager {
   void Download(WGPUBuffer src, void* dst, size_t size);
   void RefreshPendingBuffers();
 
-  // Track inference run memory patterns
   void OnRunStart() {
     if (storage_cache_) storage_cache_->OnRunStart();
     if (uniform_cache_) uniform_cache_->OnRunStart();
