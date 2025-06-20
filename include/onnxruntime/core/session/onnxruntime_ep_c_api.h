@@ -222,8 +222,8 @@ struct OrtEp {
    * the previous call to OrtEp::Compile.
    *
    * The execution provider must call OrtApi::CreateArrayOfConstObject to allocate the output array that holds
-   * pointers to the OrtNode instances. ONNX Runtime takes ownership of the OrtArrayOfConstObjects instance, so the
-   * execution provider should NOT call OrtApi::ReleaseArrayOfConstObjects.
+   * pointers to the constant OrtNode instances. ONNX Runtime takes ownership of the OrtArrayOfConstObjects instance,
+   * so the execution provider should NOT call OrtApi::ReleaseArrayOfConstObjects.
    *
    * The execution provider must use OrtModelEditorApi::CreateNode to create the OrtNode instances.
    * ONNX Runtime does not own the OrtNode instances. The execution provider is responsible for
@@ -235,9 +235,9 @@ struct OrtEp {
    *  \endhtmlonly
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] nodes Array of OrtNode instances, each representing an EPContext node for a node compiled in
+   * \param[out] nodes Array of constant OrtNode instances, each representing an EPContext node for a node compiled in
    *                   the previous call to OrtEp::Compile. ONNX Runtime takes ownership of the OrtArrayOfConstObjects
-   *                   instance, but not the OrtNode instances.
+   *                   instance, but does not take ownership of the constant OrtNode instances.
    *
    * \since Version 1.23.
    */
