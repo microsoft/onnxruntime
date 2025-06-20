@@ -334,7 +334,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
 };
 
 //
-// Implementation of ExampleNodeComuteInfo
+// Implementation of ExampleNodeComputeInfo
 //
 ExampleNodeComputeInfo::ExampleNodeComputeInfo(ExampleEp& ep) : ep(ep) {
   ort_version_supported = ORT_API_VERSION;
