@@ -383,6 +383,8 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
       return std::make_unique<SimpleCacheManager>();
     case BufferCacheMode::Bucket:
       return std::make_unique<BucketCacheManager>();
+    case BufferCacheMode::DynamicBucket:
+      return std::make_unique<DynamicBucketCacheManager>();
     default:
       ORT_NOT_IMPLEMENTED("Unsupported buffer cache mode");
   }
@@ -401,6 +403,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
       break;
     case BufferCacheMode::Bucket:
       os << "Bucket";
+      break;
+    case BufferCacheMode::DynamicBucket:
+      os << "DynamicBucket";
       break;
     default:
       os << "Unknown(" << static_cast<int>(mode) << ")";
