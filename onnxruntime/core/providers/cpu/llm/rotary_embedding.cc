@@ -68,13 +68,11 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* cos_data;
       const T* sin_data;
       int cache_offset;
-      if (position_ids_format == -1) {
+      if (position_ids_format == 0) {
         cache_offset = (b * sequence_length + s) * half_rotary_emb_dim;
       } else {
         // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-        const int position_id = (position_ids_format == 0)
-                                    ? static_cast<int>(position_ids[0]) + s
-                                    : static_cast<int>(position_ids[b * sequence_length + s]);
+        const int position_id = static_cast<int>(position_ids[b * sequence_length + s]);
         cache_offset = position_id * half_rotary_emb_dim;
       }
       cos_data = cos_cache + cache_offset;
@@ -106,7 +104,8 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
   const Tensor* X = context->Input<Tensor>(0);
   const Tensor* cos_cache = context->Input<Tensor>(1);
   const Tensor* sin_cache = context->Input<Tensor>(2);
-  const Tensor* position_ids = context->Input<Tensor>(3);  // Optional, can be nullptr
+  // Optional position_ids input, can be nullptr
+  const Tensor* position_ids = context->Input<Tensor>(3);
 
   RotaryParameters parameters = {};
   ORT_RETURN_IF_ERROR(rotary_embedding_helper::CheckInputs<Tensor>(X,
@@ -118,11 +117,6 @@ Status RotaryEmbedding<T>::Compute(OpKernelContext* context) const {
                                                                    &parameters));
 
   Tensor* output = context->Output(0, X->Shape());
-
-  if (parameters.sequence_length > parameters.max_sequence_length) {
-    // Launch update_cos_sin_cache kernel with scale
-    ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
-  }
 
   const T* x_src = X->Data<T>();
   const int64_t* pos_ids_data = (nullptr == position_ids) ? nullptr : position_ids->Data<int64_t>();

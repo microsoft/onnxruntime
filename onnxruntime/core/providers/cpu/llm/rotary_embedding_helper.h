@@ -20,7 +20,7 @@ struct RotaryParameters {
   int head_stride;           // Head stride
   int seq_stride;            // Sequence stride
   int batch_stride;          // Batch stride
-  int position_ids_format;   // Format of position ids - 0 is (1), 1 is (batch_size, sequence_length)
+  int position_ids_format;   // Format of position ids - 0 is (0), 1 is (batch_size, sequence_length)
   bool transposed;           // Whether the input tensor has been transposed into (batch, num_heads, seq_len, hidden)
 };
 
@@ -32,39 +32,53 @@ Status CheckInputs(const T* input,
                    int num_heads,
                    int rotary_embedding_dim,
                    void* parameters) {
-  //    input        : (batch_size, sequence_length, hidden_size)
-  //    cos cache    : (max_sequence_length, rotary_embedding_dim / 2)
-  //    sin cache    : (max_sequence_length, rotary_embedding_dim / 2)
-  //    position ids : (1) or (batch_size, sequence_length)
+  //    input        : (batch_size, sequence_length, hidden_size) or (batch_size, num_heads, sequence_length, head_size)
+  //    IF position ids : (0)
+  //            rotary_embedding_dim == 0:
+  //                cos_cache    : (batch_size, sequence_length, head_size / 2)
+  //                sin_cache    : (batch_size, sequence_length, head_size / 2)
+  //            rotary_embedding_dim > 0:
+  //                cos_cache    : (batch_size, sequence_length, rotary_embedding_dim / 2)
+  //                sin_cache    : (batch_size, sequence_length, rotary_embedding_dim / 2)
+  //    ELSE position ids : (batch_size, sequence_length)
+  //            rotary_embedding_dim == 0:
+  //                cos_cache    : (max_position_id_plus_1, head_size / 2)
+  //                sin_cache    : (max_position_id_plus_1, head_size / 2)
+  //            rotary_embedding_dim > 0:
+  //                cos_cache    : (max_position_id_plus_1, rotary_embedding_dim / 2)
+  //                sin_cache    : (max_position_id_plus_1, rotary_embedding_dim / 2)
 
-  // Check input
+  // Check input is either 3d or 4d
   const auto& input_dims = input->Shape().GetDims();
-  if (input_dims.size() != 3 && input_dims.size() != 4) {
+
+  // Get attributes from inputs
+  int batch_size = static_cast<int>(input_dims[0]);
+  int sequence_length;
+  int hidden_size;
+  int head_size;
+
+  // If it's 4d, it is expected to have shape [batch, num_heads, seq_len, head_size].
+  bool transposed = false;
+  if (input_dims.size() == 4) {
+    sequence_length = static_cast<int>(input_dims[2]);
+    num_heads = static_cast<int>(input_dims[1]);
+    head_size = static_cast<int>(input_dims[3]);
+    hidden_size = num_heads * head_size;
+    transposed = true;
+  } else if (input_dims.size() == 3) {
+    // If it's 3d, it is expected to have shape [batch, seq_len, hidden_size].
+    sequence_length = static_cast<int>(input_dims[1]);
+    hidden_size = static_cast<int>(input_dims[2]);
+    head_size = hidden_size / num_heads;
+  } else {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'x' is expected to have 3 or 4 dimensions, got ",
                            input_dims.size());
   }
 
-  // Check num_heads and rotary_embedding_dim
-  if (rotary_embedding_dim > 0 && num_heads == 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads must be provided if rotary_embedding_dim is ",
-                           "specified");
-  }
-  // Get attributes from inputs
-  int batch_size = static_cast<int>(input_dims[0]);
-  int sequence_length = static_cast<int>(input_dims[1]);
-  int hidden_size = static_cast<int>(input_dims[2]);
-
-  bool transposed = false;
-  if (input_dims.size() == 4) {
-    // input is [batch, seq, num_heads, head_size]
-    hidden_size = static_cast<int>(input_dims[2]) * static_cast<int>(input_dims[3]);
-    transposed = true;
-  }
-
-  int position_ids_format = -1;
-  int max_sequence_length;
-  int head_size;
-
+  int position_ids_format = 0;
+  int max_sequence_length = 0;
+  // if position_ids is not provided, cos_cache and sin_cache are expected to have 3 dimensions
+  // else they are expected to have 2 dimensions.
   if (nullptr == position_ids) {
     // Check cos_cache and sin_cache
     const auto& cos_cache_dims = cos_cache->Shape().GetDims();
@@ -81,22 +95,23 @@ Status CheckInputs(const T* input,
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'cos_cache' and 'sin_cache' are expected to have ",
                              "the same shape");
     }
+    // Make sure cos_cache and sin_cache have the same batch size and sequence length as input x
+    // when position_ids is not provided.
+    if (cos_cache_dims[0] != batch_size || cos_cache_dims[1] != sequence_length) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Inputs 'cos_cache' and 'sin_cache' are expected to have ",
+                             "the same shape as input 'x', got ", cos_cache_dims[0], " and ", cos_cache_dims[1]);
+    }
 
     max_sequence_length = static_cast<int>(cos_cache_dims[1]);
-    head_size = rotary_embedding_dim == 0 ? static_cast<int>(cos_cache_dims[2]) * 2
-                                          : static_cast<int>(hidden_size / num_heads);
+
     if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
                              "head_size");
     }
     // Check cos_cache input shapes
-    if (max_sequence_length != static_cast<int>(cos_cache_dims[1])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
-                             "max_sequence_length, got ", cos_cache_dims[0]);
-    }
-    if ((head_size / 2) != static_cast<int>(cos_cache_dims[2]) && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[2]))) {
+    if (cos_cache_dims[2] != (rotary_embedding_dim > 0 ? rotary_embedding_dim : head_size) / 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 2 should be same as ",
-                             "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
+                             "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[2]);
     }
   } else {
     // Check cos_cache and sin_cache
@@ -116,43 +131,39 @@ Status CheckInputs(const T* input,
     }
     // Check position_ids
     const auto& position_ids_dims = position_ids->Shape().GetDims();
-    if (!onnxruntime::IsScalarOr1ElementVector(position_ids) && position_ids_dims.size() != 2) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 0, 1, or 2 ",
+    if (position_ids_dims.size() != 2) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' is expected to have 2 ",
                              "dimensions, got ", position_ids_dims.size());
     }
 
     max_sequence_length = static_cast<int>(cos_cache_dims[0]);
-    head_size = rotary_embedding_dim == 0 ? static_cast<int>(cos_cache_dims[1]) * 2
-                                          : static_cast<int>(hidden_size / num_heads);
+
     if (rotary_embedding_dim > 0 && rotary_embedding_dim > head_size) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "rotary_embedding_dim must be less than or equal to ",
                              "head_size");
     }
 
     // Check position_ids input shapes
-    if (!onnxruntime::IsScalarOr1ElementVector(position_ids)) {
-      if (batch_size != static_cast<int>(position_ids_dims[0])) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size ",
-                               "batch_size, got ", position_ids_dims[0]);
-      }
-      if (sequence_length != static_cast<int>(position_ids_dims[1])) {
-        return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size ",
-                               "sequence_length, got ", position_ids_dims[1]);
-      }
-      position_ids_format = 1;
-    } else {
-      position_ids_format = 0;
+    if (batch_size != static_cast<int>(position_ids_dims[0])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 0 should be of size ",
+                             "batch_size, got ", position_ids_dims[0]);
     }
+    if (sequence_length != static_cast<int>(position_ids_dims[1])) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'position_ids' dimension 1 should be of size ",
+                             "sequence_length, got ", position_ids_dims[1]);
+    }
+    position_ids_format = 1;
 
     // Check cos_cache input shapes
-    if (max_sequence_length != static_cast<int>(cos_cache_dims[0])) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 0 should be same as ",
-                             "max_sequence_length, got ", cos_cache_dims[0]);
-    }
-    if ((head_size / 2) != static_cast<int>(cos_cache_dims[1]) && (rotary_embedding_dim > 0 && (rotary_embedding_dim / 2) != static_cast<int>(cos_cache_dims[1]))) {
+    if (cos_cache_dims[1] != (rotary_embedding_dim > 0 ? rotary_embedding_dim : head_size) / 2) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'cos_cache' dimension 1 should be same as ",
                              "head_size / 2 or rotary_embedding_dim / 2, got ", cos_cache_dims[1]);
     }
+  }
+
+  if (sequence_length > max_sequence_length) {
+    // Launch update_cos_sin_cache kernel with scale
+    ORT_NOT_IMPLEMENTED("Updating cos_cache and sin_cache in RotaryEmbedding is not currently supported");
   }
 
   num_heads = num_heads > 0 ? num_heads : static_cast<int>(hidden_size / head_size);
