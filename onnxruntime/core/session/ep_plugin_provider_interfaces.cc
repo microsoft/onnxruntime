@@ -371,8 +371,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   // We call the EP plugin's OrtEp::GetEpContextNodes() function now (inside IExecutionProvider::Compile()) because
   // IExecutionProvider::GetEpContextNodes() is a const member function. We need to create and *store* onnxruntime::Node
-  // instances for each OrtNode returned by the EP plugin, and we can't do that in a const member
-  // function.
+  // instances for each OrtNode returned by the EP plugin, and we can't do that in a const member function.
   if (generate_ep_ctx_model_) {
     ORT_RETURN_IF_ERROR(GetEpPluginContextNodes(*ort_ep_, Type(), /*out*/ ep_context_nodes_,
                                                 /*out*/ ep_context_node_args_));

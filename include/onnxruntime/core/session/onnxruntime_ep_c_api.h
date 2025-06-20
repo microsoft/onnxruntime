@@ -218,8 +218,29 @@ struct OrtEp {
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
 
-  // Implementer calls ort_api.CreateArrayOfConstObjects()
-  // ORT takes ownership of the returned OrtArrayOfConstObjects (but not the OrtNode* elements)
+  /** \brief Returns the EPContext nodes, as OrtNode instances, that correspond to the nodes that were compiled in
+   * the previous call to OrtEp::Compile.
+   *
+   * The execution provider must call OrtApi::CreateArrayOfConstObject to allocate the output array that holds
+   * pointers to the OrtNode instances. ONNX Runtime takes ownership of the OrtArrayOfConstObjects instance, so the
+   * execution provider should NOT call OrtApi::ReleaseArrayOfConstObjects.
+   *
+   * The execution provider must use OrtModelEditorApi::CreateNode to create the OrtNode instances.
+   * ONNX Runtime does not own the OrtNode instances. The execution provider is responsible for
+   * releasing the OrtNode instances using OrtApi::ReleaseNode when the OrtEp instance is released.
+   *
+   * For more details about the EPContext design, refer to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] nodes Array of OrtNode instances, each representing an EPContext node for a node compiled in
+   *                   the previous call to OrtEp::Compile. ONNX Runtime takes ownership of the OrtArrayOfConstObjects
+   *                   instance, but not the OrtNode instances.
+   *
+   * \since Version 1.23.
+   */
   OrtStatus*(ORT_API_CALL* GetEpContextNodes)(_In_ OrtEp* this_ptr, _Outptr_ OrtArrayOfConstObjects** nodes);
 };
 
