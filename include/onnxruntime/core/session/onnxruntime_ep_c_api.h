@@ -205,7 +205,7 @@ struct OrtEp {
    *                              node for a compiled OrtGraph. The execution provider must use
    *                              OrtModelEditorApi::CreateNode to create the OrtNode instances. ONNX Runtime takes
    *                              ownership of the OrtNode instances, so the execution provider must NOT call
-   *                              OrtApi::ReleaseNode. Can be ignored if the session is not configured to generate an
+   *                              OrtApi::ReleaseNode. Should be ignored if the session is not configured to generate an
    *                              EPContext model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value

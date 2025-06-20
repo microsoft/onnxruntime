@@ -214,7 +214,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
   static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                              _In_ const OrtNode** fused_nodes, _In_ size_t count,
                                              _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                                             _Out_writes_all_opt_(count) OrtNode** ep_context_nodes) {
+                                             _Out_writes_(count) OrtNode** ep_context_nodes) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     if (count != 1) {
@@ -255,7 +255,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
     node_compute_infos[0] = node_compute_info.release();
 
     // Create EpContext nodes for the fused nodes we compiled.
-    if (ep->config_.enable_ep_context && ep_context_nodes != nullptr) {
+    if (ep->config_.enable_ep_context) {
+      assert(ep_context_nodes != nullptr);
       RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
                                                gsl::span<OrtNode*>(ep_context_nodes, count)));
     }
