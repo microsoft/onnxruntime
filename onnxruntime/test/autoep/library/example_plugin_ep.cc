@@ -1,56 +1,18 @@
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-
 #include <gsl/gsl>
 #include <cassert>
 #include <cstring>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#define RETURN_IF_ERROR(fn)   \
-  do {                        \
-    OrtStatus* status = (fn); \
-    if (status != nullptr) {  \
-      return status;          \
-    }                         \
-  } while (0)
+#include "example_plugin_ep_utils.h"
 
-#define RETURN_IF(cond, ort_api, msg)                    \
-  do {                                                   \
-    if ((cond)) {                                        \
-      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
-    }                                                    \
-  } while (0)
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
 
 struct ExampleEp;
-
-// Helper to release Ort objects at the end of their scope.
-template <typename T>
-struct DeferOrtRelease {
-  DeferOrtRelease(T** object_ptr, std::function<void(T*)> release_func)
-      : objects_(object_ptr), count_(1), release_func_(release_func) {}
-
-  DeferOrtRelease(T** objects, size_t count, std::function<void(T*)> release_func)
-      : objects_(objects), count_(count), release_func_(release_func) {}
-
-  ~DeferOrtRelease() {
-    if (objects_ != nullptr && count_ > 0) {
-      for (size_t i = 0; i < count_; ++i) {
-        if (objects_[i] != nullptr) {
-          release_func_(objects_[i]);
-          objects_[i] = nullptr;
-        }
-      }
-    }
-  }
-  T** objects_ = nullptr;
-  size_t count_ = 0;
-  std::function<void(T*)> release_func_ = nullptr;
-};
 
 /// <summary>
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
@@ -149,52 +111,6 @@ struct ApiPtrs {
   const OrtEpApi& ep_api;
   const OrtModelEditorApi& model_editor_api;
 };
-
-static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
-  result = false;
-
-  const OrtTypeInfo* type_info = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
-
-  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
-  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
-  if (onnx_type != ONNX_TYPE_TENSOR) {
-    return nullptr;
-  }
-
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
-
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
-  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return nullptr;
-  }
-
-  result = true;
-  return nullptr;
-}
-
-static OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
-                                                 const char* config_key, const std::string& default_val,
-                                                 /*out*/ std::string& config_val) {
-  int has_config = 0;
-  RETURN_IF_ERROR(ort_api.HasSessionConfigEntry(&session_options, config_key, &has_config));
-
-  if (has_config != 1) {
-    config_val = default_val;
-    return nullptr;
-  }
-
-  size_t size = 0;
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, nullptr, &size));
-
-  config_val.resize(size);
-  RETURN_IF_ERROR(ort_api.GetSessionConfigEntry(&session_options, config_key, config_val.data(), &size));
-  config_val.resize(size - 1);  // remove the terminating '\0'
-
-  return nullptr;
-}
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.
