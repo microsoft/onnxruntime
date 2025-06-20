@@ -11,7 +11,7 @@ nav_order: 6
 
 The past present share buffer is an optimization that can be used to save memory and processing time.
 
-When the share buffer is used, the past and present KV cache buffers point to the same memory block.
+When buffer sharing is used, the past and present KV cache buffers point to the same memory block.
 
 When buffer sharing is not used, the present KV cache buffers are re-allocated before every forward pass of the model and copied to the past KV cache buffers.
 
