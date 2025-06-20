@@ -199,7 +199,16 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
 
   // buffer cache modes
   auto parse_buffer_cache_mode = [&config_options](const std::string& config_entry_str,
-                                                   webgpu::BufferCacheMode default_value) -> webgpu::BufferCacheMode {
+                                                   webgpu::BufferCacheMode default_value, bool enable_graph_capture = false) -> webgpu::BufferCacheMode {
+    if (enable_graph_capture) {
+      if (config_entry_str == kStorageBufferCacheMode) {
+        LOGS_DEFAULT(WARNING) << "Detected that webgpu_ep_config.enable_graph_capture is enabled. Force to use the Graph Mode for buffer cache.";
+        return webgpu::BufferCacheMode::Graph;
+      } else if (config_entry_str == kUniformBufferCacheMode) {
+        LOGS_DEFAULT(WARNING) << "Detected that webgpu_ep_config.enable_graph_capture is enabled. Force to use the GraphSimple Mode for buffer cache.";
+        return webgpu::BufferCacheMode::GraphSimple;
+      }
+    }
     std::string buffer_cache_mode_str;
     if (config_options.TryGetConfigEntry(config_entry_str, buffer_cache_mode_str)) {
       if (buffer_cache_mode_str == kBufferCacheMode_Disabled) {
@@ -221,11 +230,11 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
   webgpu::WebGpuBufferCacheConfig buffer_cache_config;
 
   buffer_cache_config.storage.mode = parse_buffer_cache_mode(kStorageBufferCacheMode,
-                                                             webgpu_ep_config.enable_graph_capture ? webgpu::BufferCacheMode::Graph : webgpu::BufferCacheMode::Bucket);
+                                                             webgpu::BufferCacheMode::Bucket, webgpu_ep_config.enable_graph_capture);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP storage buffer cache mode: " << buffer_cache_config.storage.mode;
 
   buffer_cache_config.uniform.mode = parse_buffer_cache_mode(kUniformBufferCacheMode,
-                                                             webgpu_ep_config.enable_graph_capture ? webgpu::BufferCacheMode::GraphSimple : webgpu::BufferCacheMode::Simple);
+                                                             webgpu::BufferCacheMode::Simple, webgpu_ep_config.enable_graph_capture);
   LOGS_DEFAULT(VERBOSE) << "WebGPU EP uniform buffer cache mode: " << buffer_cache_config.uniform.mode;
 
   buffer_cache_config.query_resolve.mode = parse_buffer_cache_mode(kQueryResolveBufferCacheMode, webgpu::BufferCacheMode::Disabled);
