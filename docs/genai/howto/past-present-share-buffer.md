@@ -19,7 +19,7 @@ This is represented in the following diagram
 
 ![alt text](../../../images/past-present-share-buffer.png)
 
-The size of the KV cache is different depending on the value of the past present share buffer.
+The size of the KV cache depends on whether buffer sharing is enabled or disabled.
 
 
 ## Size of KV caches
