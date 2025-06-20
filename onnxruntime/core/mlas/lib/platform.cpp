@@ -562,7 +562,7 @@ Return Value:
     this->ConvNchwcFloatKernel = MlasConvNchwcFloatKernelNeon;
     this->ConvDepthwiseFloatKernel = MlasConvDepthwiseFloatKernelNeon;
     this->ConvPointwiseFloatKernel = MlasConvPointwiseFloatKernelNeon;
-    this->NchwcBlockSize = 16; // What is it supposed to be?
+    this->NchwcBlockSize = 4; // What is it supposed to be?
 
     //
     // Check if the processor supports ASIMD dot product instructions.
