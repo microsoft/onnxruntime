@@ -189,6 +189,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
     Compile = CompileImpl;
     ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
     GetPreferredDataLayout = GetPreferredDataLayoutImpl;
+    SetDynamicOptions = nullptr;
   }
 
   ~ExampleEp() {
