@@ -1060,7 +1060,6 @@ Status AddReshapeOperator(ModelBuilder& model_builder,
   const auto& operand_types(model_builder.GetOperandTypes());
   const auto& output = node_unit.Outputs()[0].node_arg.Name();
 
-  const auto input_shape = shaper[input];
   const auto output_shape = shaper[output];
 
   // For reshape, the output type should be the same as the input type except the shape is different
