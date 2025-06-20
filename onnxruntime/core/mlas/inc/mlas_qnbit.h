@@ -48,7 +48,7 @@ struct MLAS_QNBIT_GEMM_DATA_PARAMS {
     const T* QuantBScale = nullptr;             ///< address of scale values of quantized B, one per block
     const void* QuantBZeroPoint = nullptr;          ///< optional address of zero point values of quantized B, one per block
     const T* QuantBBlkSum = nullptr;            ///< optional address of scale * zp, one per block
-    const T* QuantBBlkSum2 = nullptr;           ///< optional address of scale * accumulate(quant - zp), one per block. Used when QuantA is uint8.
+    //const T* QuantBBlkSum2 = nullptr;           ///< optional address of scale * accumulate(quant - zp), one per block. Used when QuantA is uint8.
     const T* Bias = nullptr;                    ///< optional address of Bias, vector size N
     T* C = nullptr;                             ///< address of result matrix
     size_t ldc = 0;                                 ///< leading dimension of C

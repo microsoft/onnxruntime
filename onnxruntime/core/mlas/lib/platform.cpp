@@ -568,7 +568,7 @@ Return Value:
     const bool HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 
     if (HasDotProductInstructions) {
-        this->ArmNeonQuantAUnsigned = true;
+        //this->ArmNeonQuantAUnsigned = true;
 
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;

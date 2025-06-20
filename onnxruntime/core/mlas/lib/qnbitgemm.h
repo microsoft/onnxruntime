@@ -48,7 +48,7 @@ MlasAlignAddress(void* addr, const size_t alignment)
 
 template <typename T, int BlkBitWidth>
 struct PackedQuantBDataStruct {
-    PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen, bool QuantAUnsigned)
+    PackedQuantBDataStruct(void* PackedQuantBWorkspace, size_t N, size_t BlockCountK, size_t BlkLen)
         : QuantBWorkspace_(PackedQuantBWorkspace), N_(N), BlockCountK_(BlockCountK), BlkLen_(BlkLen)
     {
         const size_t PackedQuantBDataSize = N * BlockCountK * MlasQNBitBlkDataSizeInBytes(BlkBitWidth, BlkLen);
@@ -66,15 +66,8 @@ struct PackedQuantBDataStruct {
 
         QuantBBlkSum = (T*)(PackedQuantBData + PackedQuantBDataSize);
         QuantBBlkSum = (T*)MlasAlignAddress(QuantBBlkSum, MlasQNBitQuantBBlkSumAlignment());
-
-        if (QuantAUnsigned) {
-            QuantBBlkSum2 = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
-            QuantBBlkSum2 = (T*)MlasAlignAddress(QuantBBlkSum2, MlasQNBitQuantBBlkSumAlignment());
-            PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum2 + BlkSumSize);
-        } else {
-            QuantBBlkSum2 = nullptr;
-            PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
-        }
+        PackedQuantBScale = (T*)((std::byte*)QuantBBlkSum + BlkSumSize);
+        QuantBBlkSum2 = nullptr;
     }
 
     std::byte* PackedQuantBData;
@@ -186,6 +179,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param[in]   BlkLen          number of quantized values per block
      * @param[in]   HasZeroPoint    whether zero points are provided
      * @param[in]   ComputeType     GEMM compute type (e.g., multiplying float or int8 values)
+     * @param[in]   BlkBitWidth     Number of bits per quantized element 
      */
     typedef size_t(QNBitGemmPerGemmWorkspaceSize_Fn)(
         size_t M,

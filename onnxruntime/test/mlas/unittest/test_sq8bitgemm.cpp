@@ -351,7 +351,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     constexpr size_t PackBCount = N * Ldb;
     constexpr size_t ScaleCount = BlkCount * N;
     const size_t BufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, Bits, BlkLen, hasZp, SQNBIT_CompInt8);
-    const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
+    const bool quantAUnsigned = false;
 
     const auto* inputB = inputB_.GetFilledBuffer(PackBCount, [this](uint8_t* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -378,7 +378,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
     auto* refBlkSum = refBlkSum_.GetBuffer(((N + 15) & (~15)) * BlkCount, true);
     auto* refBlkSum2 = quantAUnsigned ? refBlkSum2_.GetBuffer(((N + 15) & (~15)) * BlkCount, true) : nullptr;
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, quantAUnsigned);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
 
     MlasQNBitGemmPackQuantBData(
         N, K, Bits, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
@@ -562,7 +562,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     constexpr size_t PackACount = M * Lda;
     constexpr size_t ScaleCount = M * BlkCount;
     const size_t BufferSize = MlasQNBitGemmBatchWorkspaceSize(M, 1, K, 1, Bits, BlkLen, true, SQNBIT_CompInt8);
-    const bool quantAUnsigned = GetMlasPlatform().ArmNeonQuantAUnsigned;
+    const bool quantAUnsigned = false;
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
@@ -748,7 +748,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         nullptr, HasZp, inputZp, nullptr);
 
-    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen, false);
+    PackedQuantBDataStruct<float, 8> packedQuantB(packedBuffer, N, BlkCount, BlkLen);
 
     auto* C = C_.GetBuffer(M * ldc, true);
     auto* ref = ref_.GetBuffer(M * ldc, true);

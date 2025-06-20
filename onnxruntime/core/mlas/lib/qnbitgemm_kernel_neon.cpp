@@ -383,6 +383,7 @@ QNBitGemmPerGemmWorkspaceSize(
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
+    MLAS_UNREFERENCED_PARAMETER(BlkBitWidth);
 #ifndef USE_KLEIDIAI
     MLAS_UNREFERENCED_PARAMETER(HasZeroPoint);
 #endif
@@ -391,7 +392,7 @@ QNBitGemmPerGemmWorkspaceSize(
         case SQNBIT_CompInt8: {
             // workspace buffer is used for block quantization of A to int8
 #ifdef USE_KLEIDIAI
-            if (BlkBitWidth == 4 && UseKleidiAI(K, BlkLen, HasZeroPoint)) {
+            if (UseKleidiAI(K, BlkLen, HasZeroPoint)) {
                 const kai_matmul_clamp_f32_qai8dxp_qsi4c32p_ukernel& ukernel =
                     M == 1? GetKleidiAIGemvUKernel() : GetKleidiAIGemmUKernel();
 
@@ -403,7 +404,7 @@ QNBitGemmPerGemmWorkspaceSize(
 #endif
             {
                 const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
-                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
+                const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen));
                 return PerGemmWorkspaceSize;
             }
         }
@@ -423,7 +424,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
 
     switch (ComputeType) {
         case SQNBIT_CompInt8: {
-            return Q8BlkAlignment() * 4;
+            return Q8BlkAlignment();
         }
         default: {
             return 1;
