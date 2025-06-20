@@ -8,10 +8,12 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "core/framework/abi_pointer_array.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/graph/ep_api_types.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/ort_apis.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
@@ -272,7 +274,87 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 }
 
 const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() const {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  OrtArrayOfConstObjects* api_nodes_array = nullptr;
+  Status status = ToStatusAndRelease(ort_ep_->GetEpContextNodes(ort_ep_.get(), &api_nodes_array));
+
+  if (api_nodes_array == nullptr) {
+    // No EPContext nodes.
+    return {};
+  }
+
+  // Wrap OrtArrayOfConstObjects in a std::unique_ptr so that is released.
+  const std::unique_ptr<OrtArrayOfConstObjects, decltype(&OrtApis::ReleaseArrayOfConstObjects)>
+      unique_api_nodes_array(api_nodes_array, OrtApis::ReleaseArrayOfConstObjects);
+
+  ORT_THROW_IF_ERROR(status);
+  ORT_ENFORCE(api_nodes_array->object_type == ORT_TYPE_TAG_OrtNode, Type(), ": OrtEp::GetEpContextNodes() returned an ",
+              "OrtArrayOfConstObjects with objects of an unexpected type (", api_nodes_array->object_type,
+              "). Expected ORT_TYPE_TAG_OrtNode (", ORT_TYPE_TAG_OrtNode, ").");
+
+  std::vector<std::unique_ptr<Node>> ep_context_nodes_holder;
+  std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_holder;
+  ep_context_nodes_holder.reserve(api_nodes_array->storage.size());
+
+  InlinedVector<const Node*> result;
+  result.reserve(api_nodes_array->storage.size());
+
+  for (const void* void_node : api_nodes_array->storage) {
+    const ModelEditorNode* editor_node = ModelEditorNode::ToInternal(static_cast<const OrtNode*>(void_node));
+
+    ORT_ENFORCE(editor_node != nullptr, Type(), ": OrtEp::GetEpContextNodes() returned OrtNode objects ",
+                "that were not created with OrtModelEditorApi.");
+
+    // Create NodeArg for each input/output.
+    std::vector<NodeArg*> input_node_args;
+    std::vector<NodeArg*> output_node_args;
+
+    input_node_args.reserve(editor_node->input_names.size());
+    output_node_args.reserve(editor_node->output_names.size());
+
+    for (const std::string& input_name : editor_node->input_names) {
+      auto node_arg = std::make_unique<NodeArg>(input_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      input_node_args.push_back(node_arg.get());
+      ep_context_node_args_holder.push_back(std::move(node_arg));
+    }
+
+    for (const std::string& output_name : editor_node->output_names) {
+      auto node_arg = std::make_unique<NodeArg>(output_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      output_node_args.push_back(node_arg.get());
+      ep_context_node_args_holder.push_back(std::move(node_arg));
+    }
+
+    // Create a name -> attribute map.
+    NodeAttributes attributes;
+    attributes.reserve(editor_node->attributes.size());
+
+    for (const ONNX_NAMESPACE::AttributeProto& attr : editor_node->attributes) {
+      attributes.emplace(attr.name(), attr);
+    }
+
+    // Create Node
+    auto internal_node = std::make_unique<Node>(editor_node->node_name,
+                                                editor_node->operator_name,
+                                                "EPContext node for " + Type(),
+                                                input_node_args,
+                                                output_node_args,
+                                                &attributes,
+                                                editor_node->domain_name);
+
+    result.push_back(internal_node.get());
+    ep_context_nodes_holder.push_back(std::move(internal_node));
+  }
+
+  // IMPORTANT: This function is CONST, so updating state is an error!
+  // ep_context_nodes_ = std::move(ep_context_nodes_holder);
+
   return {};
+#else
+  // Creating EPContext models is not supported in this build.
+  return {};
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 }
+
+// TODO: Add IExecutionProvider::ReleaseEpContextNodes() so that the EP can free them if necessary.
 
 }  // namespace onnxruntime

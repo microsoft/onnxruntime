@@ -92,5 +92,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
   // so that it is not destroyed until the EP itself is destroyed.
   std::vector<FusedNodeState> fused_node_states_;
+
+  std::vector<std::unique_ptr<Node>> ep_context_nodes_;
 };
 }  // namespace onnxruntime

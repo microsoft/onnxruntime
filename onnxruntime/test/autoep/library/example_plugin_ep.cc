@@ -28,17 +28,27 @@
 
 struct ExampleEp;
 
-// Helper to release an Ort object at the end of its scope.
+// Helper to release Ort objects at the end of their scope.
 template <typename T>
 struct DeferOrtRelease {
-  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
+  DeferOrtRelease(T** object_ptr, std::function<void(T*)> release_func)
+      : objects_(object_ptr), count_(1), release_func_(release_func) {}
+
+  DeferOrtRelease(T** objects, size_t count, std::function<void(T*)> release_func)
+      : objects_(objects), count_(count), release_func_(release_func) {}
+
   ~DeferOrtRelease() {
-    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
-      release_func_(*obj_ptr_);
-      *obj_ptr_ = nullptr;
+    if (objects_ != nullptr && count_ > 0) {
+      for (size_t i = 0; i < count_; ++i) {
+        if (objects_[i] != nullptr) {
+          release_func_(objects_[i]);
+          objects_[i] = nullptr;
+        }
+      }
     }
   }
-  T** obj_ptr_ = nullptr;
+  T** objects_ = nullptr;
+  size_t count_ = 0;
   std::function<void(T*)> release_func_ = nullptr;
 };
 
@@ -426,10 +436,13 @@ struct ExampleEp : OrtEp, ApiPtrs {
       RETURN_IF_ERROR(collect_input_output_names(*fused_node_outputs, /*out*/ output_names));
 
       int64_t is_main_context = (i == 0);
-      int64_t embed_mode = 0;
-      std::array<OrtOpAttr*, 6> attributes = {};
+      int64_t embed_mode = 1;
 
-      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "serialized_context_bin_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
+      // Create node attributes. The CreateNode() function copies the attributes, so we have to release them.
+      std::array<OrtOpAttr*, 6> attributes = {};
+      DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
+
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "binary_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
       RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
       RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
       RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
