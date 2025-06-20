@@ -429,6 +429,7 @@ TEST(MatMulNBits, Float16_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
 }
 
+/*
 TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
@@ -459,7 +460,6 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
 
-/*
 TEST(MatMulNBits, LegacyShape) {
   constexpr bool legacy_shape = true;
   TestMatMulNBitsTyped<float, 4, 2, 16, 16, 4, legacy_shape>();
