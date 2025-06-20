@@ -172,16 +172,6 @@ static void RemoveInvalidValues(ONNX_NAMESPACE::TypeProto& type) {
   }
 }
 
-static TypeProto TypeProtoFromTensorProto(const TensorProto& tensor) {
-  TypeProto t;
-  t.mutable_tensor_type()->set_elem_type(tensor.data_type());
-  auto shape = t.mutable_tensor_type()->mutable_shape();
-  for (auto dim : tensor.dims())
-    shape->add_dim()->set_dim_value(dim);
-
-  return t;
-}
-
 static std::string GenerateSchemaKey(const IndexedSubGraph& subgraph_ptr) {
   return MakeString(subgraph_ptr.GetMetaDef()->domain, "_",
                     subgraph_ptr.GetMetaDef()->name, "_",
@@ -1256,7 +1246,7 @@ Graph::Graph(const Model& owning_model,
     ORT_ENFORCE(status.IsOK(), status.ToString());
     // Ensure initializers are also graph inputs.
     if (ir_version_ < 4) {
-      TypeProto t{TypeProtoFromTensorProto(*tensor)};
+      TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
       const NodeArg& node_arg = GetOrCreateNodeArg(tensor->name(), &t);
       *(graph_proto_->add_input()) = node_arg.ToProto();
     }
@@ -1340,10 +1330,14 @@ Graph::Graph(const Model& owning_model,
     }
 
     NodeArg* matching_graph_input = GetNodeArg(tensor.name());
-    TypeProto t{TypeProtoFromTensorProto(tensor)};
+    TypeProto t{utils::TypeProtoFromTensorProto(tensor)};
 
     if (!utils::HasElemType(t.tensor_type())) {
       ORT_THROW("This is an invalid model. Tensor does not have type information.");
+    }
+
+    if (tensor.has_data_type() && (tensor.data_type() < TensorProto_DataType_DataType_ARRAYSIZE)) {
+      weight_data_type_freq_[tensor.data_type()]++;
     }
 
     if (ir_version_ < 4) {
@@ -3837,6 +3831,29 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& init
   return initializer;
 }
 
+const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name, bool check_outer_scope,
+                                                         bool& is_constant) const {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (GetInitializedTensor(initializer_name, initializer)) {
+    if (CanOverrideInitializer()) {
+      const auto& graph_inputs = GetInputsIncludingInitializers();
+      is_constant = std::none_of(graph_inputs.cbegin(), graph_inputs.cend(),
+                                 [&initializer_name](const NodeArg* input) {
+                                   return input->Name() == initializer_name;
+                                 });
+    } else {
+      is_constant = true;
+    }
+  } else if (check_outer_scope && IsSubgraph()) {
+    // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
+    if (IsOuterScopeValue(initializer_name)) {
+      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope, is_constant);
+    }
+  }
+
+  return initializer;
+}
+
 #if !defined(ORT_MINIMAL_BUILD)
 void Graph::AddValueInfo(const NodeArg* new_value_info) {
   NodeArg* node_arg = GetNodeArg(new_value_info->Name());
@@ -5032,7 +5049,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(),
               " conflicts with graph initializer. Check that the node names have been made unique.");
   if (GetNodeArg(tensor->name()) == nullptr) {
-    TypeProto t{TypeProtoFromTensorProto(*tensor)};
+    TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
     ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
   }
 
@@ -5483,7 +5500,7 @@ Status Graph::InlineFunction(Node& callnode) {
       ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " in inlined subgraph: ",
                   subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
       if (GetNodeArg(tensor->name()) == nullptr) {
-        TypeProto t{TypeProtoFromTensorProto(*tensor)};
+        TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
         ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
       }
     }
@@ -5845,7 +5862,7 @@ common::Status Graph::LoadFromOrtFormat(const onnxruntime::fbs::Graph& fbs_graph
 
 #if !defined(ORT_MINIMAL_BUILD)
 namespace {
-ValueInfoProto OrtValueInfoToOnnx(const OrtValueInfo& vi) {
+ValueInfoProto ModelEditorValueInfoToOnnx(const onnxruntime::ModelEditorValueInfo& vi) {
   // the model builder API checks that the OrtValueInfo has a complete and valid OrtTypeInfo instance and that the
   // name is not null/empty.
   ORT_ENFORCE(vi.type_info->type == ONNX_TYPE_TENSOR,
@@ -5887,7 +5904,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
   // NodeArg for the value using that
 
   auto add_graph_inputs_outputs = [&, this](
-                                      const InlinedVector<std::unique_ptr<OrtValueInfo>>& graph_inputs_or_outputs,
+                                      const InlinedVector<std::unique_ptr<onnxruntime::ModelEditorValueInfo>>& graph_inputs_or_outputs,
                                       bool is_input) {
     // when updating a model we don't require the inputs or outputs to be set if they're unchanged.
     if (updating_existing_graph && graph_inputs_or_outputs.empty()) {
@@ -5897,7 +5914,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
     std::vector<const NodeArg*> node_args;
     node_args.reserve(graph_inputs_or_outputs.size());
     for (auto& ort_value_info : graph_inputs_or_outputs) {
-      ValueInfoProto value_info = OrtValueInfoToOnnx(*ort_value_info);
+      ValueInfoProto value_info = ModelEditorValueInfoToOnnx(*ort_value_info);
 
       name_to_type_map[value_info.name()] = value_info.type();
       node_args.push_back(&GetOrCreateNodeArg(value_info.name(), &value_info.type()));
@@ -5941,7 +5958,7 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
         tensor_proto.set_raw_data(t.DataRaw(), t.SizeInBytes());
       }
 
-      TypeProto type_proto{TypeProtoFromTensorProto(tensor_proto)};
+      TypeProto type_proto{utils::TypeProtoFromTensorProto(tensor_proto)};
       ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(name, &type_proto));
 
       name_to_initial_tensor_.emplace(name, &tensor_proto);
@@ -5950,19 +5967,22 @@ Status Graph::LoadFromModelEditorApiModel(const OrtGraph& api_graph, bool updati
 
   // process graph inputs first as we want the type/shape from them to be preferred if a graph input
   // has a matching initializer
-  add_graph_inputs_outputs(api_graph.inputs, /*input*/ true);
+  const auto* editor_graph = onnxruntime::ModelEditorGraph::ToInternal(&api_graph);
+  ORT_RETURN_IF(editor_graph == nullptr, "Invalid OrtGraph variant for use in the model editor API.");
+
+  add_graph_inputs_outputs(editor_graph->inputs, /*input*/ true);
 
   // add initializers
-  ortvalue_initializers_.reserve(api_graph.external_initializers.size());
-  add_initializers(api_graph.external_initializers, /*is_external*/ true);
-  add_initializers(api_graph.initializers, /*is_external*/ false);
+  ortvalue_initializers_.reserve(editor_graph->external_initializers.size());
+  add_initializers(editor_graph->external_initializers, /*is_external*/ true);
+  add_initializers(editor_graph->initializers, /*is_external*/ false);
 
   // add graph outputs
-  add_graph_inputs_outputs(api_graph.outputs, /*input*/ false);
+  add_graph_inputs_outputs(editor_graph->outputs, /*input*/ false);
 
   // add nodes
-  for (const auto& ort_node : api_graph.nodes) {
-    const OrtNode& node = *ort_node;
+  for (const auto& editor_node : editor_graph->nodes) {
+    const onnxruntime::ModelEditorNode& node = *editor_node;
 
     // convert Constant nodes to initializers
     if (node.operator_name == "Constant" && node.domain_name == kOnnxDomain) {
