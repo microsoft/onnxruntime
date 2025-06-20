@@ -79,9 +79,9 @@ class ShaderHelper final {
   //
   // \param TemplateFilepath The filepath of the WGSL template to apply.
   // \return Status indicating success or failure.
-  template <wgsl::detail::string_template_filepath TemplateFilepath>
-  Status ApplyTemplate() {
-    return wgsl::ApplyTemplate<TemplateFilepath>(*this);
+  template <wgsl::string_template_filepath TemplateFilepath, typename TemplateParameterType = wgsl::TemplateParameter<TemplateFilepath>::type>
+  Status ApplyTemplate(TemplateParameterType x) {
+    return wgsl::ApplyTemplate<TemplateFilepath>(*this, x);
   }
 
   // Add an input variable to the shader.
