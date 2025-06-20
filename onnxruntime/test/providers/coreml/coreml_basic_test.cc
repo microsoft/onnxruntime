@@ -430,5 +430,113 @@ TEST(CoreMLExecutionProviderTest, TestModelCache) {
   TestModelLoad(model_data, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::All);
 #endif
 }
+
+TEST(CoreMLExecutionProviderTest, PartitioningTwoNegsThenEqual) {
+  // This test checks that the partitioning work that ensures that the CoreML partitions have valid inputs and outputs
+  // functions correctly.
+  //
+  // MODEL:
+  //   x1 (int64)    x2 (int64)
+  //    |           |
+  //   Neg       Neg
+  //     \      /
+  //     Equal
+  //       |
+  //     Output (bool)
+  //
+  // Assumes Neg has not been implemented in CoreML EP
+  //
+  // Expected behavior: Equal is supported by CoreML EP but will be moved off of it because it's an edge node,
+  // so all nodes in the graph will be assigned to the CPU EP.
+  const auto model_file_name = ORT_TSTR("testdata/coreml_partition_tests/two_negs_then_equal.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {3};
+  std::vector<int64_t> X_data = gen.Uniform<int64_t>(X_shape, -10, 10);
+  OrtValue X = CreateInputOrtValueOnCPU<int64_t>(X_shape, X_data);
+
+  std::vector<int64_t> x2_data = gen.Uniform<int64_t>(X_shape, -10, 10);
+  OrtValue x2 = CreateInputOrtValueOnCPU<int64_t>(X_shape, x2_data);
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider(),
+                            {{"x1", X}, {"x2", x2}},
+                            EPVerificationParams{ExpectedEPNodeAssignment::None});
+#endif
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::None);
+}
+
+TEST(CoreMLExecutionProviderTest, PartitioningWhereAddEqual) {
+  // This test checks that the partitioning work that ensures that the CoreML partitions have valid inputs and outputs
+  // functions correctly.
+  //
+  // MODEL:
+  //  cond      Y          X
+  // (bool)  (constant) (float)
+  //    \       |        /|  \
+  //      \     |      /  |  Neg
+  //         \  |    /   /
+  //           Where   /
+  //             \    /
+  //              Add       B
+  //               |   (constant)
+  //                \      /
+  //                 Equal       X       Y
+  //                    \   (constant) (constant)
+  //                     \     /      /
+  //                      \   /     /
+  //                        Where
+  //                          |
+  //                      Output (float)
+  //
+  // Assumes Neg has not been implemented in CoreML EP
+  //
+  // Expected behavior: The first where node is supported by the CoreML EP but will be moved off of it because
+  // it's an edge node. So Where and Neg will be assigned to the CPU EP, while the remaining nodes (including Equal and
+  // the second Where) will be assigned to the CoreML EP.
+  //
+  // This test also checks that the X input remains as an input to the first partition after modification.
+  // (In other words, after removing the first Where from the partition, X remains as an input to the first partition.)
+
+  const auto model_file_name = ORT_TSTR("testdata/coreml_partition_tests/where_add_equal.onnx");
+
+#if defined(__APPLE__)
+  RandomValueGenerator gen{1234};
+  std::vector<int64_t> X_shape = {2, 3};
+  std::vector<float> X_data = gen.Uniform<float>(X_shape, -10, 10);
+  OrtValue X = CreateInputOrtValueOnCPU<float>(X_shape, X_data);
+
+  std::vector<int64_t> cond_shape = {2, 3};
+  std::vector<uint8_t> uint8_data = gen.Uniform<uint8_t>(cond_shape, 0, 1);
+  std::vector<char> bool_data(uint8_data.begin(), uint8_data.end());
+  OrtValue cond = CreateInputOrtValueOnCPU<bool>(cond_shape, gsl::make_span(reinterpret_cast<const bool*>(bool_data.data()), bool_data.size()));
+
+  // GTest suite complains if lambda that potentially throws assert failure is passed to another function
+  // also resulting error message is not very useful -- so we use a function to store the count of CoreML nodes
+  // and assert the value after the model is ran.
+  int coreml_partition_count = 0;
+  int actual_cpu_node_count = 0;
+  const std::function<void(const Graph&)> store_counts = [&coreml_partition_count, &actual_cpu_node_count](const Graph& graph) {
+    coreml_partition_count = CountAssignedNodes(graph, kCoreMLExecutionProvider);
+    actual_cpu_node_count = CountAssignedNodes(graph, kCpuExecutionProvider);
+  };
+
+  EPVerificationParams params;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;  // Just verify some nodes are assigned
+  params.graph_verifier = &store_counts;
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            MakeCoreMLExecutionProvider("MLProgram"),
+                            {{"cond", cond}, {"X", X}},
+                            params);
+
+  ASSERT_EQ(coreml_partition_count, 1) << "Expected 1 CoreML partition created for the where_add_equal.onnx test model.";
+  ASSERT_EQ(actual_cpu_node_count, 2) << "Expected 2 CPU nodes in the where_add_equal.onnx test model.";
+  // After checking that the CPU partition contains 2 nodes, we can assume that the CoreML partition contains the
+  // remaining 3 nodes in the model.
+#else
+  TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
+#endif
+}
 }  // namespace test
 }  // namespace onnxruntime
