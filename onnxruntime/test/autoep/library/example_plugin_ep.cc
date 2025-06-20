@@ -169,7 +169,7 @@ static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
   ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, logger_{logger} {
+      : OrtEp(), ApiPtrs(apis), name_{name}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -323,7 +323,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
 };
 
 //
-// Implementation of ExampleNodeComuteInfo
+// Implementation of ExampleNodeComputeInfo
 //
 ExampleNodeComputeInfo::ExampleNodeComputeInfo(ExampleEp& ep) : ep(ep) {
   ort_version_supported = ORT_API_VERSION;
