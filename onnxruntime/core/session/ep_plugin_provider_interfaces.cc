@@ -296,6 +296,22 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   }
 }
 
+Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
+  if (ort_ep_->OnRunStart == nullptr) {
+    return Base::OnRunStart(run_options);
+  }
+
+  return ToStatusAndRelease(ort_ep_->OnRunStart(ort_ep_.get(), &run_options));
+}
+
+Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run_options) {
+  if (ort_ep_->OnRunEnd == nullptr) {
+    return Base::OnRunEnd(sync_stream, run_options);
+  }
+
+  return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
+}
+
 Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
                                                     gsl::span<const char* const> values) {
   if (ort_ep_->SetDynamicOptions == nullptr) {

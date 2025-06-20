@@ -76,6 +76,10 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  Status OnRunStart(const RunOptions& run_options) override;
+
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
+
   Status SetEpDynamicOptions(gsl::span<const char* const> keys,
                              gsl::span<const char* const> values) override;
 
