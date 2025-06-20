@@ -429,6 +429,9 @@ struct ExampleEp : OrtEp, ApiPtrs {
       DeferOrtRelease<OrtArrayOfConstObjects> defer_release0(&fused_node_inputs, ort_api.ReleaseArrayOfConstObjects);
       DeferOrtRelease<OrtArrayOfConstObjects> defer_release1(&fused_node_outputs, ort_api.ReleaseArrayOfConstObjects);
 
+      RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, &fused_node_inputs));
+      RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, &fused_node_outputs));
+
       std::vector<const char*> input_names;
       std::vector<const char*> output_names;
 
