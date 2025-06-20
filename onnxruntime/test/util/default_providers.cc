@@ -304,15 +304,22 @@ std::unique_ptr<IExecutionProvider> DefaultXnnpackExecutionProvider() {
 #endif
 }
 
-std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider() {
+std::unique_ptr<IExecutionProvider> DefaultWebGpuExecutionProvider(bool is_nhwc) {
 #ifdef USE_WEBGPU
   ConfigOptions config_options{};
   // Disable storage buffer cache
   ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kStorageBufferCacheMode,
                                             webgpu::options::kBufferCacheMode_Disabled)
                   .IsOK());
+  if (!is_nhwc) {
+    // Enable NCHW support
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kPreferredLayout,
+                                              webgpu::options::kPreferredLayout_NCHW)
+                    .IsOK());
+  }
   return WebGpuProviderFactoryCreator::Create(config_options)->CreateProvider();
 #else
+  ORT_UNUSED_PARAMETER(is_nhwc);
   return nullptr;
 #endif
 }

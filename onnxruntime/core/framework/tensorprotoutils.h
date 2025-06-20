@@ -86,7 +86,7 @@ bool operator==(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dime
 bool operator!=(const TensorShapeProto_Dimension& l, const TensorShapeProto_Dimension& r);
 
 }  // namespace ONNX_NAMESPACE
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 namespace onnxruntime {
 namespace utils {
@@ -186,6 +186,9 @@ ONNX_NAMESPACE::TensorProto TensorToTensorProto(const Tensor& tensor,
 ONNXTensorElementDataType CApiElementTypeFromProtoType(int type);
 ONNXTensorElementDataType GetTensorElementType(const ONNX_NAMESPACE::TensorProto& tensor_proto);
 
+// Creates a TypeProto from a TensorProto.
+ONNX_NAMESPACE::TypeProto TypeProtoFromTensorProto(const ONNX_NAMESPACE::TensorProto& tensor_proto);
+
 // How much memory it will need for putting the content of this tensor into a plain array
 // complex64/complex128 tensors are not supported.
 // The output value could be zero or -1.
@@ -264,7 +267,7 @@ common::Status DenseTensorToSparseTensorProto(const ONNX_NAMESPACE::TensorProto&
                                               ONNX_NAMESPACE::SparseTensorProto& sparse);
 #endif  // !ORT_MINIMAL_BUILD
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasDimValue(const ONNX_NAMESPACE::TensorShapeProto_Dimension& dim) {
   return dim.value_case() == ONNX_NAMESPACE::TensorShapeProto_Dimension::kDimValue;
@@ -473,7 +476,7 @@ inline bool HasKeyType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
 inline bool HasValueType(const ONNX_NAMESPACE::TypeProto_Map& map_proto) {
   return map_proto.value_type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
 }
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::ValueInfoProto& vi_proto) {
   return vi_proto.type().value_case() != ONNX_NAMESPACE::TypeProto::VALUE_NOT_SET;
@@ -511,7 +514,7 @@ Status TensorProtoWithExternalDataToTensorProto(
     const std::filesystem::path& model_path,
     ONNX_NAMESPACE::TensorProto& new_tensor_proto);
 
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 inline bool HasType(const ONNX_NAMESPACE::AttributeProto& at_proto) {
   return at_proto.type() != ONNX_NAMESPACE::AttributeProto::AttributeType::AttributeProto_AttributeType_UNDEFINED;
@@ -578,7 +581,7 @@ inline bool HasName(const ONNX_NAMESPACE::NodeProto& node_proto) {
   // XXX: Figure out proto3 style
   return node_proto.has_name();
 }
-#endif
+#endif  // !defined(SHARED_PROVIDER)
 
 // UnpackTensor from raw data or the type specific data field. Does not handle external data.
 // If the tensor does not contain raw data then raw_data should be nullptr and raw_data_len should be 0.

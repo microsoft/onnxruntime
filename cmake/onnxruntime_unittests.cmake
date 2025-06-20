@@ -495,6 +495,7 @@ set (ONNXRUNTIME_GLOBAL_THREAD_POOLS_TEST_SRC_DIR "${TEST_SRC_DIR}/global_thread
 set (ONNXRUNTIME_CUSTOM_OP_REGISTRATION_TEST_SRC_DIR "${TEST_SRC_DIR}/custom_op_registration")
 set (ONNXRUNTIME_LOGGING_APIS_TEST_SRC_DIR "${TEST_SRC_DIR}/logging_apis")
 set (ONNXRUNTIME_AUTOEP_TEST_SRC_DIR "${TEST_SRC_DIR}/autoep")
+set (ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR "${TEST_SRC_DIR}/ep_graph")
 
 set (onnxruntime_shared_lib_test_SRC
           ${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/test_fixture.h
@@ -1845,8 +1846,8 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
                ${ONNXRUNTIME_AUTOEP_LIB_LINK_FLAG})
 
   # test library
-  file(GLOB_RECURSE onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
-                                                "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
+  file(GLOB onnxruntime_autoep_test_SRC "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.h"
+                                        "${ONNXRUNTIME_AUTOEP_TEST_SRC_DIR}/*.cc")
 
   set(onnxruntime_autoep_test_LIBS onnxruntime_mocked_allocator ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils
                                    onnx_proto onnx ${onnxruntime_EXTERNAL_LIBRARIES})
@@ -1981,6 +1982,36 @@ if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CM
           TARGET onnxruntime_webgpu_delay_load_test
           SOURCES ${onnxruntime_webgpu_delay_load_test_SRC}
           LIBS ${SYS_PATH_LIB}
+          DEPENDS ${all_dependencies}
+  )
+endif()
+
+# onnxruntime_ep_graph_test tests the implementation of the public OrtGraph APIs for use in plugin EPs (OrtEp).
+if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
+  file(GLOB_RECURSE onnxruntime_ep_graph_test_SRC "${ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR}/*.h"
+                                                  "${ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR}/*.cc")
+
+  set(onnxruntime_ep_graph_test_LIBS ${ONNXRUNTIME_TEST_LIBS} onnxruntime_test_utils ${onnxruntime_EXTERNAL_LIBRARIES})
+  if (CMAKE_SYSTEM_NAME MATCHES "AIX")
+    list(APPEND onnxruntime_ep_graph_test_LIBS onnxruntime_session onnxruntime_util onnxruntime_lora onnxruntime_framework
+                                               onnxruntime_common onnxruntime_graph onnxruntime_providers onnxruntime_mlas
+                                               onnxruntime_optimizer onnxruntime_flatbuffers iconv re2
+                                               ${PROTOBUF_LIB} onnx onnx_proto)
+  endif()
+
+  if(NOT WIN32)
+    list(APPEND onnxruntime_ep_graph_test_LIBS  ${CMAKE_DL_LIBS})
+  endif()
+
+  if (onnxruntime_USE_TENSORRT OR onnxruntime_USE_NV)
+    # Need this because unittest_main_src defines a global nvinfer1::IBuilder variable.
+    list(APPEND onnxruntime_ep_graph_test_LIBS ${TENSORRT_LIBRARY_INFER})
+  endif()
+
+  AddTest(DYN
+          TARGET onnxruntime_ep_graph_test
+          SOURCES ${onnxruntime_ep_graph_test_SRC} ${onnxruntime_unittest_main_src}
+          LIBS ${onnxruntime_ep_graph_test_LIBS}
           DEPENDS ${all_dependencies}
   )
 endif()
