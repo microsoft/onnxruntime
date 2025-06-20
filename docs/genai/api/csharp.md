@@ -18,240 +18,440 @@ _Note: this API is in preview and is subject to change._
 
 ## Overview
 
+This document describes the C# API for ONNX Runtime GenAI.  
+Below are the main classes and methods, with code snippets and descriptions for each.
+
+---
+
 ## Model class
 
 ### Constructor
+
+Initializes a new model from the given model path.
 
 ```csharp
 public Model(string modelPath)
 ```
 
-### Generate method
+---
+
+### Generate
+
+Generates output sequences using the provided generator parameters.
 
 ```csharp
 public Sequences Generate(GeneratorParams generatorParams)
 ```
 
+---
+
+## Config class
+
+### Constructor
+
+Initializes a new configuration object from a config path.
+
+```csharp
+public Config(string configPath)
+```
+
+---
+
+### ClearProviders
+
+Clears all providers from the configuration.
+
+```csharp
+public void ClearProviders()
+```
+
+---
+
+### AppendProvider
+
+Appends a provider to the configuration.
+
+```csharp
+public void AppendProvider(string provider)
+```
+
+---
+
+### SetProviderOption
+
+Sets a provider option in the configuration.
+
+```csharp
+public void SetProviderOption(string provider, string name, string value)
+```
+
+---
+
+### Overlay
+
+Overlays a JSON string onto the configuration.
+
+```csharp
+public void Overlay(string json)
+```
+
+---
+
 ## Tokenizer class
 
 ### Constructor
+
+Initializes a tokenizer for the given model.
 
 ```csharp
 public Tokenizer(Model model)
 ```
 
-### Encode method
+---
+
+### Encode
+
+Encodes a string and returns the encoded sequences.
 
 ```csharp
 public Sequences Encode(string str)
 ```
 
-### Encode batch method
+---
+
+### EncodeBatch
+
+Encodes a batch of strings and returns the encoded sequences.
 
 ```csharp
 public Sequences EncodeBatch(string[] strings)
 ```
 
-### Decode method
+---
+
+### Decode
+
+Decodes a sequence of tokens into a string.
 
 ```csharp
 public string Decode(ReadOnlySpan<int> sequence)
 ```
 
-### Decode batch method
+---
+
+### DecodeBatch
+
+Decodes a batch of sequences into an array of strings.
 
 ```csharp
 public string[] DecodeBatch(Sequences sequences)
 ```
 
-### Create stream method
+---
+
+### ApplyChatTemplate
+
+Applies a chat template to messages and tools.
+
+```csharp
+public string ApplyChatTemplate(string template, string messages, string tools, bool addGenerationPrompt)
+```
+
+---
+
+### CreateStream
+
+Creates a tokenizer stream for incremental decoding.
 
 ```csharp
 public TokenizerStream CreateStream()
 ```
 
+---
+
 ## TokenizerStream class
 
-### Decode method
+### Decode
+
+Decodes a single token in the stream and returns the generated string chunk.
 
 ```csharp
 public string Decode(int token)
 ```
 
+---
+
 ## GeneratorParams class
 
 ### Constructor
+
+Initializes generator parameters for the given model.
 
 ```csharp
 public GeneratorParams(Model model)
 ```
 
-### Set search option (double)
+---
+
+### SetSearchOption (double)
+
+Sets a numeric search option.
 
 ```csharp
 public void SetSearchOption(string searchOption, double value)
 ```
 
-### Set search option (bool) method
+---
+
+### SetSearchOption (bool)
+
+Sets a boolean search option.
 
 ```csharp
 public void SetSearchOption(string searchOption, bool value)
 ```
 
-### Try graph capture with max batch size
+---
+
+### TryGraphCaptureWithMaxBatchSize
+
+Attempts to enable graph capture mode with a maximum batch size.
 
 ```csharp
- public void TryGraphCaptureWithMaxBatchSize(int maxBatchSize)
+public void TryGraphCaptureWithMaxBatchSize(int maxBatchSize)
 ```
 
-### Set input ids method
+---
+
+### SetInputIDs
+
+Sets the input IDs for the generator parameters.
 
 ```csharp
 public void SetInputIDs(ReadOnlySpan<int> inputIDs, ulong sequenceLength, ulong batchSize)
 ```
 
-### Set input sequences method
+---
+
+### SetInputSequences
+
+Sets the input sequences for the generator parameters.
 
 ```csharp
 public void SetInputSequences(Sequences sequences)
 ```
 
-### Set model inputs
+---
+
+### SetModelInput
+
+Sets an additional model input.
 
 ```csharp
 public void SetModelInput(string name, Tensor value)
 ```
 
+---
 
 ## Generator class
 
 ### Constructor
 
+Initializes a generator from the given model and generator parameters.
+
 ```csharp
 public Generator(Model model, GeneratorParams generatorParams)
 ```
 
-### Is done method
+---
+
+### IsDone
+
+Checks if generation is complete.
 
 ```csharp
 public bool IsDone()
 ```
 
-### Compute logits
+---
+
+### ComputeLogits
+
+Computes the logits for the current state.
 
 ```csharp
 public void ComputeLogits()
 ```
 
-### Generate next token method
+---
+
+### GenerateNextToken
+
+Generates the next token.
 
 ```csharp
 public void GenerateNextToken()
 ```
 
-### Get sequence
+---
+
+### GetSequence
+
+Returns the generated sequence at the given index.
 
 ```csharp
 public ReadOnlySpan<int> GetSequence(ulong index)
 ```
 
-### Set active adapter
+---
+
+### SetActiveAdapter
 
 Sets the active adapter on this Generator instance.
 
 ```csharp
-using var model = new Model(modelPath);
-using var genParams = new GeneratorParams(model);
-using var generator = new Generator(model, genParams);
-using var adapters = new Adapters(model);
-string adapterName = "..."
-
-generator.SetActiveAdapter(adapters, adapterName);
+public void SetActiveAdapter(Adapters adapters, string adapterName)
 ```
 
-#### Parameters
+**Parameters**
 
-* `adapters`: the previously created `Adapter` object
-* `adapterName`: the name of the adapter to activate
+- `adapters`: the previously created `Adapters` object
+- `adapterName`: the name of the adapter to activate
 
-#### Return value
+**Return value**
 
 `void`
 
-#### Exception
+**Exception**
 
 Throws on error.
 
-## Sequences class
+---
 
-### Num sequences member
+## Result class
+
+### Error
+
+Gets the error message from a failed operation.
 
 ```csharp
-public ulong NumSequences { get { return _numSequences; } }
+public string Error { get; }
 ```
 
-### [] operator
+---
+
+### Success
+
+Indicates if the operation was successful.
+
+```csharp
+public bool Success { get; }
+```
+
+---
+
+## Sequences class
+
+### NumSequences
+
+Gets the number of sequences.
+
+```csharp
+public ulong NumSequences { get; }
+```
+
+---
+
+### Indexer
+
+Gets the sequence at the specified index.
 
 ```csharp
 public ReadOnlySpan<int> this[ulong sequenceIndex]
 ```
 
-## Adapter class
+---
 
-This API is used to load and switch fine-tuned adapters, such as LoRA adapters.
+## Tensor class
 
 ### Constructor
 
-Construct an instance of an Adapter class.
+Initializes a tensor from a buffer.
 
 ```csharp
-using var model = new Model(modelPath);
-
-using var adapters = new Adapters(model);
+public Tensor(Array data, long[] shape, ElementType elementType)
 ```
 
-#### Parameters
+---
 
-* `model`: a previously constructed model class
+### Data
 
-### Load Adapter method
-
-Loads an adapter file from disk.
+Gets the underlying data buffer.
 
 ```csharp
-string adapterPath = Path()
-string adapterName = ...
-
-adapters.LoadAdapter(adapterPath, adapterName);
+public Array Data { get; }
 ```
 
-#### Parameters
+---
 
-* `adapterPath`: the path to the adapter file on disk
-* `adapterName`: a string identifier used to refer to the adapter in subsequent methods
+### Shape
 
-#### Return value
-
-`void`
-
-### Unload Adapter method
-
-Unloads an adapter file from memory.
+Gets the shape of the tensor.
 
 ```csharp
-adapters.UnLoadAdapter(adapterName);
+public long[] Shape { get; }
 ```
 
-#### Parameters
+---
 
-* `adapterName`: the name of the adapter to unload
+### ElementType
 
-#### Return value
+Gets the element type of the tensor.
 
-`void`
+```csharp
+public ElementType ElementType { get; }
+```
 
-#### Execption
+---
 
-Throws an exception on error.
+## Utils class
 
+### SetLogBool
 
+Sets a boolean logging option.
+
+```csharp
+public static void SetLogBool(string name, bool value)
+```
+
+---
+
+### SetLogString
+
+Sets a string logging option.
+
+```csharp
+public static void SetLogString(string name, string value)
+```
+
+---
+
+### SetCurrentGpuDeviceId
+
+Sets the current GPU device ID.
+
+```csharp
+public static void SetCurrentGpuDeviceId(int deviceId)
+```
+
+---
+
+### GetCurrentGpuDeviceId
+
+Gets the current GPU device ID.
+
+```csharp
+public static int GetCurrentGpuDeviceId()
+```
+
+---
