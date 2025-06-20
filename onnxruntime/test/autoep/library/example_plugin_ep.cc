@@ -135,13 +135,11 @@ struct ExampleEp : OrtEp, ApiPtrs {
     GetName = GetNameImpl;
     GetCapability = GetCapabilityImpl;
     Compile = CompileImpl;
-    GetEpContextNodes = GetEpContextNodesImpl;
     ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
   }
 
   ~ExampleEp() {
     // Clean up the execution provider
-    ReleaseEpContextNodes();
   }
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
@@ -213,8 +211,10 @@ struct ExampleEp : OrtEp, ApiPtrs {
     return nullptr;
   }
 
-  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
-                                             size_t count, OrtNodeComputeInfo** node_compute_infos) {
+  static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                             _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                             _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                             _Out_writes_all_opt_(count) OrtNode** ep_context_nodes) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     if (count != 1) {
@@ -254,33 +254,10 @@ struct ExampleEp : OrtEp, ApiPtrs {
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
     node_compute_infos[0] = node_compute_info.release();
 
-    // Pre-create EpContext nodes for the fused nodes we compiled. These EpContext nodes will be returned to
-    // ORT via GetEpContextNodes().
-    if (ep->config_.enable_ep_context) {
-      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count)));
-    }
-
-    return nullptr;
-  }
-
-  static OrtStatus* ORT_API_CALL GetEpContextNodesImpl(OrtEp* this_ptr, OrtArrayOfConstObjects** ep_context_nodes) {
-    ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
-
-    if (ep->ep_ctx_nodes_.empty()) {
-      // Don't have any EPContext nodes.
-      *ep_context_nodes = nullptr;
-      return nullptr;
-    }
-
-    if (ep_context_nodes == nullptr) {
-      return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected non-null argument for 'ep_context_nodes'");
-    }
-
-    RETURN_IF_ERROR(ep->ort_api.CreateArrayOfConstObjects(ORT_TYPE_TAG_OrtNode, ep->ep_ctx_nodes_.size(),
-                                                          nullptr, ep_context_nodes));
-
-    for (size_t i = 0; i < ep->ep_ctx_nodes_.size(); i++) {
-      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_SetElementAt(*ep_context_nodes, i, ep->ep_ctx_nodes_[i]));
+    // Create EpContext nodes for the fused nodes we compiled.
+    if (ep->config_.enable_ep_context && ep_context_nodes != nullptr) {
+      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+                                               gsl::span<OrtNode*>(ep_context_nodes, count)));
     }
 
     return nullptr;
@@ -295,28 +272,12 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
   }
 
-  void ReleaseEpContextNodes() {
-    for (OrtNode* node : ep_ctx_nodes_) {
-      ort_api.ReleaseNode(node);
-    }
-    ep_ctx_nodes_.clear();
-  }
-
-  void SetEpContextNodes(gsl::span<OrtNode*> ep_ctx_nodes) {
-    ReleaseEpContextNodes();
-    assert(ep_ctx_nodes_.empty());
-
-    ep_ctx_nodes_.reserve(ep_ctx_nodes.size());
-    for (OrtNode* node : ep_ctx_nodes) {
-      ep_ctx_nodes_.push_back(node);
-    }
-  }
-
   // Creates EPContext nodes from the given fused nodes.
   // This is an example implementation that can be used to generate an EPContext model. However, this example EP
   // cannot currently run the EPContext model.
-  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes) {
-    std::vector<OrtNode*> ep_ctx_nodes(fused_nodes.size(), nullptr);
+  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                  /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
+    assert(fused_nodes.size() == ep_context_nodes.size());
 
     // Helper to collect input or output names from an array of OrtValueInfo instances.
     auto collect_input_output_names = [&](const OrtArrayOfConstObjects& value_infos,
@@ -375,10 +336,8 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                                   input_names.data(), input_names.size(),
                                                   output_names.data(), output_names.size(),
                                                   attributes.data(), attributes.size(),
-                                                  &ep_ctx_nodes[i]));
+                                                  &ep_context_nodes[i]));
     }
-
-    SetEpContextNodes(ep_ctx_nodes);
 
     return nullptr;
   }
@@ -387,7 +346,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
   Config config_{};
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
-  std::vector<OrtNode*> ep_ctx_nodes_;  // Owned by EP
 };
 
 //

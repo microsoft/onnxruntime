@@ -182,6 +182,14 @@ struct OrtEp {
   /** \brief Compile OrtGraph instances assigned to the OrtEp. Implementer must set a OrtNodeComputeInfo instance
    * for each OrtGraph in order to define its computation function.
    *
+   * If the session is configured to generate a pre-compiled model, the execution provider must return EPContext nodes,
+   * as OrtNode instances, that ONNX Runtime uses to create a pre-compiled model, known as an "EPContext model".
+   * An EPContext model contains EPContext nodes. Each EPContext node encapsulates the pre-compiled binary data for a
+   * OrtGraph compiled for a specific execution provider. For more details about the EPContext design, refer to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graphs Array of `count` OrtGraph instances to compile. Each graph contains only the nodes for
    *                   which the execution provider indicated support. Nested subgraphs contained by a
@@ -190,9 +198,15 @@ struct OrtEp {
    *                        Each fused node is an OrtNode initialized with the intended fused node name and
    *                        input/output information.
    * \param[in] count The number of OrtGraph instances to compile.
-   * \param[inout] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
-   *                                  computation function. The implementer allocates the OrtNodeComputeInfo instances.
-   *                                  ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   * \param[out] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
+   *                                computation function. The implementer allocates the OrtNodeComputeInfo instances.
+   *                                ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   * \param[out] ep_context_nodes Output array of `count` OrtNode instances, each representing an EPContext
+   *                              node for a compiled OrtGraph. The execution provider must use
+   *                              OrtModelEditorApi::CreateNode to create the OrtNode instances. ONNX Runtime takes
+   *                              ownership of the OrtNode instances, so the execution provider must NOT call
+   *                              OrtApi::ReleaseNode. Can be ignored if the session is not configured to generate an
+   *                              EPContext model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -204,7 +218,8 @@ struct OrtEp {
    */
   OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                     _In_ const OrtNode** fused_nodes, _In_ size_t count,
-                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos);
+                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                    _Out_writes_(count) OrtNode** ep_context_nodes);
 
   /** \brief Release OrtNodeComputeInfo instances.
    *
@@ -217,31 +232,6 @@ struct OrtEp {
   void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
-
-  /** \brief Returns the EPContext nodes, as OrtNode instances, that correspond to the nodes that were compiled in
-   * the previous call to OrtEp::Compile.
-   *
-   * The execution provider must call OrtApi::CreateArrayOfConstObject to allocate the output array that holds
-   * pointers to the constant OrtNode instances. ONNX Runtime takes ownership of the OrtArrayOfConstObjects instance,
-   * so the execution provider should NOT call OrtApi::ReleaseArrayOfConstObjects.
-   *
-   * The execution provider must use OrtModelEditorApi::CreateNode to create the OrtNode instances.
-   * ONNX Runtime does not own the OrtNode instances. The execution provider is responsible for
-   * releasing the OrtNode instances using OrtApi::ReleaseNode when the OrtEp instance is released.
-   *
-   * For more details about the EPContext design, refer to:
-   *  \htmlonly
-   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
-   *  \endhtmlonly
-   *
-   * \param[in] this_ptr The OrtEp instance.
-   * \param[out] nodes Output parameter set to the array of constant OrtNode instances, each representing an EPContext
-   *                   node for a node compiled in the previous call to OrtEp::Compile. ONNX Runtime takes ownership of
-   *                   the OrtArrayOfConstObjects instance, but does not take ownership of the OrtNode instances.
-   *
-   * \since Version 1.23.
-   */
-  OrtStatus*(ORT_API_CALL* GetEpContextNodes)(_In_ OrtEp* this_ptr, _Outptr_ OrtArrayOfConstObjects** nodes);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
