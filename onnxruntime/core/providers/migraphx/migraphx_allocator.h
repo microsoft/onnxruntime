@@ -55,7 +55,7 @@ class MIGraphXPinnedAllocator final : public IAllocator {
   MIGraphXPinnedAllocator(const int device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
                                     static_cast<OrtDevice::DeviceId>(device_id)),
                           OrtMemTypeCPUOutput)) {}
 

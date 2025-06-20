@@ -53,11 +53,11 @@ class CUDAExternalAllocator : public CUDAAllocator {
 // TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
-  CUDAPinnedAllocator(const char* name)
+  CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                                    0 /*CPU device always with id 0*/),
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
                           OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
