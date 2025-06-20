@@ -22,6 +22,7 @@
 #include <gsl/gsl>
 
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/profiling_utils.h"
 #include "core/providers/qnn/qnn_allocator.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
@@ -1909,7 +1910,7 @@ Status QnnBackendManager::AddQnnContextHandle(Qnn_ContextHandle_t raw_context_ha
   // take ownership of `raw_context_handle`
   auto context_handle = UniqueQnnContextHandle(raw_context_handle, free_context_handle);
   auto mem_handle_manager = std::make_unique<QnnContextMemHandleManager>(GetQnnInterface(), raw_context_handle,
-                                                                         *logger_);
+                                                                         *logger_, GetProfilingEventStore());
 
   auto context_handle_record = std::make_shared<QnnContextHandleRecord>();
   context_handle_record->context_handle = std::move(context_handle);

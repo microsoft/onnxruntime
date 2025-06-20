@@ -15,7 +15,9 @@
 #include "core/providers/qnn/builder/qnn_node_group/qnn_node_group.h"
 #include "core/providers/qnn/builder/qnn_utils.h"
 #include "core/providers/qnn/ort_api.h"
+#include "core/providers/qnn/profiling_event_store.h"
 #include "core/providers/qnn/qnn_allocator.h"
+#include "core/providers/qnn/qnn_profiler.h"
 #include "core/providers/qnn/qnn_telemetry.h"
 #include "core/providers/qnn/rpcmem_library.h"
 #include "core/providers/qnn/shared_context.h"
@@ -510,7 +512,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      std::move(qnn_serializer_config),
                                      device_id_,
                                      htp_arch,
-                                     soc_model});
+                                     soc_model,
+                                     profiling_event_store_});
   }
 
 #if defined(_WIN32)
@@ -1402,6 +1405,11 @@ OrtDevice QNNExecutionProvider::GetOrtDeviceByMemType(OrtMemType /* em_type */) 
   //}
   // Default CPU allocator
   return default_device_;
+}
+
+std::unique_ptr<profiling::EpProfiler> QNNExecutionProvider::GetProfiler() {
+  auto qnn_profiler = std::make_unique<qnn::QnnProfiler>(profiling_event_store_);
+  return qnn_profiler;
 }
 
 }  // namespace onnxruntime
