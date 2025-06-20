@@ -1,46 +1,18 @@
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-
 #include <gsl/gsl>
 #include <cassert>
 #include <cstring>
-#include <functional>
 #include <memory>
 #include <string>
 #include <unordered_map>
 #include <vector>
 
-#define RETURN_IF_ERROR(fn)   \
-  do {                        \
-    OrtStatus* status = (fn); \
-    if (status != nullptr) {  \
-      return status;          \
-    }                         \
-  } while (0)
+#include "example_plugin_ep_utils.h"
 
-#define RETURN_IF(cond, ort_api, msg)                    \
-  do {                                                   \
-    if ((cond)) {                                        \
-      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
-    }                                                    \
-  } while (0)
+#define ORT_API_MANUAL_INIT
+#include "onnxruntime_cxx_api.h"
+#undef ORT_API_MANUAL_INIT
 
 struct ExampleEp;
-
-// Helper to release an Ort object at the end of its scope.
-template <typename T>
-struct DeferOrtRelease {
-  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
-  ~DeferOrtRelease() {
-    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
-      release_func_(*obj_ptr_);
-      *obj_ptr_ = nullptr;
-    }
-  }
-  T** obj_ptr_ = nullptr;
-  std::function<void(T*)> release_func_ = nullptr;
-};
 
 /// <summary>
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
@@ -137,39 +109,20 @@ struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
 struct ApiPtrs {
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
+  const OrtModelEditorApi& model_editor_api;
 };
-
-static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
-  result = false;
-
-  const OrtTypeInfo* type_info = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
-
-  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
-  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
-  if (onnx_type != ONNX_TYPE_TENSOR) {
-    return nullptr;
-  }
-
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
-
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
-  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return nullptr;
-  }
-
-  result = true;
-  return nullptr;
-}
 
 /// <summary>
 /// Example EP that can compile a single Mul operator.
 /// </summary>
 struct ExampleEp : OrtEp, ApiPtrs {
-  ExampleEp(ApiPtrs apis, const std::string& name, const OrtSessionOptions& session_options, const OrtLogger& logger)
-      : ApiPtrs(apis), name_{name}, logger_{logger} {
+  struct Config {
+    bool enable_ep_context = false;
+    // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
+  };
+
+  ExampleEp(ApiPtrs apis, const std::string& name, const Config& config, const OrtLogger& logger)
+      : ApiPtrs(apis), name_{name}, config_{config}, logger_{logger} {
     // Initialize the execution provider.
     auto status = ort_api.Logger_LogMessage(&logger_,
                                             OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
@@ -177,11 +130,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                             ORT_FILE, __LINE__, __FUNCTION__);
     // ignore status for now
     (void)status;
-
-    // Can get configurations from the session options.
-    // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
-    // EP should copy any configurations or settings it needs.
-    (void)session_options;
 
     ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
     GetName = GetNameImpl;
@@ -263,8 +211,10 @@ struct ExampleEp : OrtEp, ApiPtrs {
     return nullptr;
   }
 
-  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
-                                             size_t count, OrtNodeComputeInfo** node_compute_infos) {
+  static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                             _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                             _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                             _Out_writes_(count) OrtNode** ep_context_nodes) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
     if (count != 1) {
@@ -304,6 +254,13 @@ struct ExampleEp : OrtEp, ApiPtrs {
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
     node_compute_infos[0] = node_compute_info.release();
 
+    // Create EpContext nodes for the fused nodes we compiled.
+    if (ep->config_.enable_ep_context) {
+      assert(ep_context_nodes != nullptr);
+      RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+                                               gsl::span<OrtNode*>(ep_context_nodes, count)));
+    }
+
     return nullptr;
   }
 
@@ -316,8 +273,78 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
   }
 
+  // Creates EPContext nodes from the given fused nodes.
+  // This is an example implementation that can be used to generate an EPContext model. However, this example EP
+  // cannot currently run the EPContext model.
+  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                  /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
+    assert(fused_nodes.size() == ep_context_nodes.size());
+
+    // Helper to collect input or output names from an array of OrtValueInfo instances.
+    auto collect_input_output_names = [&](const OrtArrayOfConstObjects& value_infos,
+                                          std::vector<const char*>& result) -> OrtStatus* {
+      size_t num_values = 0;
+      RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(&value_infos, &num_values));
+
+      std::vector<const char*> value_names(num_values, nullptr);
+
+      for (size_t i = 0; i < num_values; i++) {
+        const void* value_info = nullptr;  // Is a const OrtValueInfo*
+        RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(&value_infos, i, &value_info));
+        RETURN_IF_ERROR(ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(value_info), &value_names[i]));
+      }
+
+      result = std::move(value_names);
+      return nullptr;
+    };
+
+    // Create an "EPContext" node for every fused node.
+    for (size_t i = 0; i < fused_nodes.size(); ++i) {
+      const OrtNode* fused_node = fused_nodes[i];
+      const char* fused_node_name = nullptr;
+
+      RETURN_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name));
+
+      OrtArrayOfConstObjects* fused_node_inputs = nullptr;
+      OrtArrayOfConstObjects* fused_node_outputs = nullptr;
+      DeferOrtRelease<OrtArrayOfConstObjects> defer_release0(&fused_node_inputs, ort_api.ReleaseArrayOfConstObjects);
+      DeferOrtRelease<OrtArrayOfConstObjects> defer_release1(&fused_node_outputs, ort_api.ReleaseArrayOfConstObjects);
+
+      RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, &fused_node_inputs));
+      RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, &fused_node_outputs));
+
+      std::vector<const char*> input_names;
+      std::vector<const char*> output_names;
+
+      RETURN_IF_ERROR(collect_input_output_names(*fused_node_inputs, /*out*/ input_names));
+      RETURN_IF_ERROR(collect_input_output_names(*fused_node_outputs, /*out*/ output_names));
+
+      int64_t is_main_context = (i == 0);
+      int64_t embed_mode = 1;
+
+      // Create node attributes. The CreateNode() function copies the attributes, so we have to release them.
+      std::array<OrtOpAttr*, 6> attributes = {};
+      DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
+
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "binary_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, 1, ORT_OP_ATTR_STRING, &attributes[4]));
+      RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), 1, ORT_OP_ATTR_STRING, &attributes[5]));
+
+      RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
+                                                  input_names.data(), input_names.size(),
+                                                  output_names.data(), output_names.size(),
+                                                  attributes.data(), attributes.size(),
+                                                  &ep_context_nodes[i]));
+    }
+
+    return nullptr;
+  }
+
   std::string name_;
-  std::vector<const OrtHardwareDevice*> hardware_devices_;
+  Config config_{};
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
 };
@@ -466,7 +493,16 @@ struct ExampleEpFactory : OrtEpFactory, ApiPtrs {
     // const OrtHardwareDevice* device = devices[0];
     // const OrtKeyValuePairs* ep_metadata = ep_metadata[0];
 
-    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, *session_options, *logger);
+    // Create EP configuration from session options, if needed.
+    // Note: should not store a direct reference to the session options object as its lifespan is not guaranteed.
+    std::string ep_context_enable;
+    RETURN_IF_ERROR(GetSessionConfigEntryOrDefault(factory->ort_api, *session_options,
+                                                   "ep.context_enable", "0", ep_context_enable));
+
+    ExampleEp::Config config = {};
+    config.enable_ep_context = ep_context_enable == "1";
+
+    auto dummy_ep = std::make_unique<ExampleEp>(*factory, factory->ep_name_, config, *logger);
 
     *ep = dummy_ep.release();
     return nullptr;
@@ -496,10 +532,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ort_ep_api = ort_api->GetEpApi();
+  const OrtModelEditorApi* ort_model_editor_api = ort_api->GetModelEditorApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api, *ort_ep_api});
+                                                                             ApiPtrs{*ort_api, *ort_ep_api,
+                                                                                     *ort_model_editor_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

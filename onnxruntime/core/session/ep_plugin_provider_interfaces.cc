@@ -8,15 +8,18 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
+#include "core/framework/abi_pointer_array.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/graph/ep_api_types.h"
-#include "core/session/ort_apis.h"
+#include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
 #include "core/session/abi_logger.h"
+#include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
+#include "core/session/ort_apis.h"
 #include "core/providers/partitioning_utils.h"
 
 namespace onnxruntime {
@@ -48,7 +51,8 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
     ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
-  auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)));
+  auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+                                                              session_options);
   ep_wrapper->SetLogger(session_logger.ToInternal());
 
   return ep_wrapper;
@@ -80,9 +84,10 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep)
+PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options)
     : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
       ort_ep_(std::move(ep)) {
+  generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {
@@ -185,6 +190,87 @@ Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_n
   return Status::OK();
 }
 
+/// <summary>
+/// Converts the EPContext nodes provided by the plugin EP (OrtNode instances) to onnxruntime::Node instances.
+/// Note that the EP plugin uses the model editor API to create the OrtNode instances.
+/// </summary>
+/// <param name="ep_name">Name of the plugin EP.</param>
+/// <param name="plugin_ep_context_nodes">EPContext nodes provided by the plugin EP.</param>
+/// <param name="result_nodes">Output parameter set to the resulting array of EPContext nodes.</param>
+/// <param name="result_node_args">Output parameter that stores the NodeArgs used by the EPContext nodes.</param>
+/// <returns>A status indicating success or an error.</returns>
+static Status ConvertEpContextNodes(const std::string& ep_name, const std::vector<OrtNode*> plugin_ep_context_nodes,
+                                    /*out*/ std::vector<std::unique_ptr<Node>>& result_nodes,
+                                    /*out*/ std::vector<std::unique_ptr<NodeArg>>& result_node_args) {
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+  if (plugin_ep_context_nodes.empty()) {
+    return Status::OK();  // No EPContext nodes.
+  }
+
+  std::vector<std::unique_ptr<Node>> ep_context_nodes_holder;
+  std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_holder;
+
+  ep_context_nodes_holder.reserve(plugin_ep_context_nodes.size());
+
+  for (const OrtNode* ort_node : plugin_ep_context_nodes) {
+    ORT_RETURN_IF_NOT(ort_node != nullptr, ep_name, ": OrtEp::Compile() returned a NULL EPContext node.");
+
+    const ModelEditorNode* editor_node = ModelEditorNode::ToInternal(ort_node);
+    ORT_RETURN_IF_NOT(editor_node != nullptr, ep_name, ": OrtEp::Compile() returned OrtNode objects ",
+                      "that were not created with OrtModelEditorApi.");
+
+    // Create NodeArg for each input/output.
+    std::vector<NodeArg*> input_node_args;
+    std::vector<NodeArg*> output_node_args;
+
+    input_node_args.reserve(editor_node->input_names.size());
+    output_node_args.reserve(editor_node->output_names.size());
+
+    for (const std::string& input_name : editor_node->input_names) {
+      auto node_arg = std::make_unique<NodeArg>(input_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      input_node_args.push_back(node_arg.get());
+      ep_context_node_args_holder.push_back(std::move(node_arg));
+    }
+
+    for (const std::string& output_name : editor_node->output_names) {
+      auto node_arg = std::make_unique<NodeArg>(output_name, /*p_arg_type*/ nullptr);  // Graph.Resolve() sets type.
+      output_node_args.push_back(node_arg.get());
+      ep_context_node_args_holder.push_back(std::move(node_arg));
+    }
+
+    // Create a name -> attribute map.
+    NodeAttributes attributes;
+    attributes.reserve(editor_node->attributes.size());
+
+    for (const ONNX_NAMESPACE::AttributeProto& attr : editor_node->attributes) {
+      attributes.emplace(attr.name(), attr);
+    }
+
+    // Create Node
+    auto internal_node = std::make_unique<Node>(editor_node->node_name,
+                                                editor_node->operator_name,
+                                                "EPContext node for " + ep_name,
+                                                input_node_args,
+                                                output_node_args,
+                                                &attributes,
+                                                editor_node->domain_name);
+
+    ep_context_nodes_holder.push_back(std::move(internal_node));
+  }
+
+  result_nodes = std::move(ep_context_nodes_holder);
+  result_node_args = std::move(ep_context_node_args_holder);
+
+  return Status::OK();
+#else
+  ORT_UNUSED_PARAMETER(ep_name);
+  ORT_UNUSED_PARAMETER(plugin_ep_context_nodes);
+  ORT_UNUSED_PARAMETER(result_nodes);
+  ORT_UNUSED_PARAMETER(result_node_args);
+  return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Creating EPContext models is not supported in this build");
+#endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
+}
+
 common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                                 std::vector<NodeComputeInfo>& node_compute_infos) {
   const logging::Logger* logger = GetLogger();
@@ -220,8 +306,21 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     api_fused_nodes.push_back(ep_fused_node->ToExternal());
   }
 
-  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(),
-                                                          num_graphs, api_node_compute_infos.data())));
+  // Provide an output buffer for the plugin EP to store EPContext nodes if it needs to (i.e., enabled in session options).
+  std::vector<std::unique_ptr<OrtNode, decltype(&OrtApis::ReleaseNode)>> plugin_ep_context_nodes_holder;
+  std::vector<OrtNode*> plugin_ep_context_nodes;
+  plugin_ep_context_nodes_holder.reserve(num_graphs);
+  plugin_ep_context_nodes.resize(num_graphs, nullptr);
+
+  Status compile_status = ToStatusAndRelease(ort_ep_->Compile(ort_ep_.get(), api_graphs.data(), api_fused_nodes.data(),
+                                                              num_graphs, api_node_compute_infos.data(),
+                                                              plugin_ep_context_nodes.data()));
+
+  // Store any EPContext nodes provided by the plugin EP in std::unique_ptr so that they are always properly released.
+  for (OrtNode* ort_node : plugin_ep_context_nodes) {
+    auto unique_ort_node = std::unique_ptr<OrtNode, decltype(&OrtApis::ReleaseNode)>(ort_node, OrtApis::ReleaseNode);
+    plugin_ep_context_nodes_holder.push_back(std::move(unique_ort_node));
+  }
 
   // Save OrtNodeComputeInfo created by OrtEp instance. They're freed when this IExecutionProvider
   // is destroyed.
@@ -230,6 +329,8 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
       api_node_compute_infos_.push_back(api_node_compute_infos[i]);
     }
   }
+
+  ORT_RETURN_IF_ERROR(compile_status);
 
   // Initialize node_compute_infos as wrappers to api_node_compute_infos.
   for (size_t i = 0; i < num_graphs; i++) {
@@ -268,6 +369,25 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
     node_compute_infos.push_back(std::move(compute_info));
   }
 
+  // Convert the EPContext nodes provided by the plugin EP into onnxruntime::Node instances.
+  // We store the converted Node and NodeArg instances as members to ensure they can be returned to the ORT graph
+  // partitioner via a call to IExecutionProvider::GetEpContextNodes().
+  if (generate_ep_ctx_model_) {
+    ORT_RETURN_IF_ERROR(ConvertEpContextNodes(Type(), plugin_ep_context_nodes,
+                                              /*out*/ ep_context_nodes_, /*out*/ ep_context_node_args_));
+  }
+
   return Status::OK();
 }
+
+const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() const {
+  InlinedVector<const Node*> result;
+
+  for (const std::unique_ptr<Node>& node : ep_context_nodes_) {
+    result.push_back(node.get());
+  }
+
+  return result;
+}
+
 }  // namespace onnxruntime
