@@ -235,9 +235,9 @@ struct OrtEp {
    *  \endhtmlonly
    *
    * \param[in] this_ptr The OrtEp instance.
-   * \param[out] nodes Array of constant OrtNode instances, each representing an EPContext node for a node compiled in
-   *                   the previous call to OrtEp::Compile. ONNX Runtime takes ownership of the OrtArrayOfConstObjects
-   *                   instance, but does not take ownership of the constant OrtNode instances.
+   * \param[out] nodes Output parameter set to the array of constant OrtNode instances, each representing an EPContext
+   *                   node for a node compiled in the previous call to OrtEp::Compile. ONNX Runtime takes ownership of
+   *                   the OrtArrayOfConstObjects instance, but does not take ownership of the OrtNode instances.
    *
    * \since Version 1.23.
    */
