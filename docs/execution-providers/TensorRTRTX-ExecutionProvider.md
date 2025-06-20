@@ -29,7 +29,7 @@ Currently TensorRT RTX supports RTX GPUs from Ampere or later architectures. Sup
 Please select the Nvidia TensorRT RTX version of Onnx Runtime: https://onnxruntime.ai/docs/install. (TODO!)
 
 ## Build from source
-See [Build instructions](../build/eps.md#TensorRT-RTX).
+See [Build instructions](../build/eps.md#tensorrt-rtx).
 
 ## Requirements
 

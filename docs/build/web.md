@@ -5,7 +5,7 @@ description: Learn how to build ONNX Runtime from source to deploy on the web
 nav_order: 4
 redirect_from: /docs/how-to/build/web
 ---
-
+Cloud to the Edge – This layer ensures flexibility and performance wherever your workloads run. Foundry is designed to extend seamlessly from the cloud to the edge, and Foundry Local is already live on hundreds of millions of Windows (and Mac) devices.
 # Build ONNX Runtime for Web
 {: .no_toc }
 
@@ -168,7 +168,7 @@ This is the last stage in the build process, please follow the sections in a seq
 
    - Download artifacts from pipeline manually.
 
-     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://dev.azure.com/onnxruntime/onnxruntime/_build?definitionId=161&_a=summary). Select a build, download artifact "Release_wasm" and unzip. See instructions below to put files into destination folders.
+     you can download prebuilt WebAssembly artifacts from [Windows WebAssembly CI Pipeline](https://github.com/microsoft/onnxruntime/actions/workflows/web.yml). Select a build, download artifact "Release_wasm" and unzip. See instructions below to put files into destination folders.
 
    - Build WebAssembly artifacts.
 

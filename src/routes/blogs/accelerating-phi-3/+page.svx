@@ -28,7 +28,7 @@ Activation-Aware Quantization (AWQ) to quantize Phi-3 Mini lets us reap the memo
 
 Every GPU that supports DirectX 12 on Windows can run DirectML, regardless of whether it's an AMD, Intel, or NVIDIA GPU. DirectML and ONNX Runtime now support INT4 AWQ, which means developers can now run and deploy this quantized version of Phi-3 across hundreds of millions of Windows devices!
 
-We're working with our hardware vendor partners to provide driver updates that will further improve performance in the coming weeks. Attend our [Build Talk](https://build.microsoft.com/en-US/sessions/65c11f47-56d8-442b-ae52-48df62b7b542?source=sessions) in late May to learn more!
+We're working with our hardware vendor partners to provide driver updates that will further improve performance in the coming weeks.
 
 See below for dedicated performance numbers.
 
@@ -69,7 +69,7 @@ This joke plays on the double meaning of "make up." In science, atoms are the fu
 literally making up everything. However, in a colloquial sense, "to make up" can mean to fabricate or lie, hence the humor. &lt;end&gt;
 </code>
 </pre>
-Please watch this space for more updates on AMD, and additional optimization with ORT 1.18. Also, check out our [Build Talk](https://build.microsoft.com/en-US/sessions/e6d21a49-2efb-4a39-8c26-f6eef1410c7a?source=sessions) in late May to learn more about this API!
+Please watch this space for more updates on AMD, and additional optimization with ORT 1.18.
 
 ## Performance Metrics
 

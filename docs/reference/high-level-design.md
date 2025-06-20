@@ -45,7 +45,6 @@ converts the model graph into its in-memory graph representation.
 3. It partitions the graph into a set of subgraphs based on the available execution providers.
 4. Each subgraph is assigned to an execution provider. We ensure that a subgraph can be executed by an execution provider by querying the capability of the execution provider using the `GetCapability()` API.
 
-![ONNX Runtime high level system architecture](https://azurecomcdn.azureedge.net/mediahandler/acomblog/media/Default/blog/228d22d3-6e3e-48b1-811c-1d48353f031c.png)
 
 ### More about partitioning
 {: .no_toc }
