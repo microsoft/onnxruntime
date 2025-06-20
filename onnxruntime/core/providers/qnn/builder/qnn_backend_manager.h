@@ -226,7 +226,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status CreateContext(bool enable_htp_weight_sharing);
 
   Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
-                                                     std::unique_ptr<std::vector<std::string>>>& context_bin_map);
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status ReleaseContext();
 
