@@ -1,5 +1,6 @@
 #pragma once
 #include "onnxruntime_pybind.h"
+#include <functional>
 #include "core/framework/provider_options.h"
 
 namespace onnxruntime {

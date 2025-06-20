@@ -1,9 +1,9 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_module_functions.h"
-#include <nanobind/stl.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/vector.h>
+
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
@@ -14,16 +14,33 @@
 #include "core/framework/provider_options.h"
 #include "core/platform/env.h"
 
+// Switch to the 'nb' namespace for nanobind
+namespace nb = nanobind;
+
 namespace onnxruntime {
 namespace python {
+
+// Forward declarations from other files
 std::unique_ptr<IExecutionProvider> CreateExecutionProviderInstance(
     const SessionOptions& session_options,
     const std::string& type,
     const ProviderOptionsMap& provider_options_map);
 bool InitArray();
+void addGlobalMethods(nanobind::module_& m);
+void addObjectMethods(nanobind::module_& m, ExecutionProviderRegistrationFn ep_registration_fn);
+void addOrtValueMethods(nanobind::module_& m);
+void addSparseTensorMethods(nanobind::module_& m);
+void addIoBindingMethods(nanobind::module_& m);
+void addAdapterFormatMethods(nanobind::module_& m);
+void addGlobalSchemaFunctions(nanobind::module_& m);
+void addOpSchemaSubmodule(nanobind::module_& m);
+void addOpKernelSubmodule(nanobind::module_& m);
+void CreateQuantPybindModule(nanobind::module_& m);  // Updated signature
+
 static OrtEnv* ort_env = nullptr;
 static OrtThreadingOptions global_tp_options;
 static bool use_global_tp = false;
+
 onnxruntime::Environment& GetEnv() {
   return ort_env->GetEnvironment();
 }
@@ -31,6 +48,7 @@ onnxruntime::Environment& GetEnv() {
 OrtEnv* GetOrtEnv() {
   return ort_env;
 }
+
 static Status CreateOrtEnv() {
   Env::Default().GetTelemetryProvider().SetLanguageProjection(OrtLanguageProjection::ORT_PROJECTION_PYTHON);
   OrtEnv::LoggingManagerConstructionInfo lm_info{nullptr, nullptr, ORT_LOGGING_LEVEL_WARNING, "Default"};
@@ -54,12 +72,12 @@ void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options) {
   global_tp_options = tp_options;
   use_global_tp = true;
 }
+
 bool CheckIfUsingGlobalThreadPool() {
   return use_global_tp;
 }
 
-
-/*
+/**
  * Register execution provider with options.
  */
 static void RegisterExecutionProviders(InferenceSession* sess, const std::vector<std::string>& provider_types,
@@ -73,7 +91,8 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
 }
 
 Status CreateInferencePybindStateModule(nanobind::module_& m) {
-  m.doc() = "pybind11 stateful interface to ONNX runtime";
+  // Update the docstring to reflect nanobind
+  m.doc() = "nanobind stateful interface to ONNX runtime";
   RegisterExceptions(m);
   if (!InitArray()) {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::FAIL, "import numpy failed");
@@ -99,23 +118,23 @@ static constexpr bool HAS_COLLECTIVE_OPS = true;
 static constexpr bool HAS_COLLECTIVE_OPS = false;
 #endif
 
-void CreateQuantPybindModule(py::module& m);
-
+// Main module definition
 NB_MODULE(onnxruntime_pybind11_state, m) {
   auto st = CreateInferencePybindStateModule(m);
   if (!st.IsOK())
-    throw pybind11::import_error(st.ErrorMessage());
-  // move it out of shared method since training build has a little different behavior.
-  m.def(
-      "get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
-      "Return list of available Execution Providers in this installed version of Onnxruntime. "
-      "The order of elements represents the default priority order of Execution Providers "
-      "from highest to lowest.");
+    // Use nanobind's exception type
+    throw nanobind::import_error(st.ErrorMessage().c_str());
+
+  m.def("get_available_providers", []() -> const std::vector<std::string>& { return GetAvailableExecutionProviderNames(); },
+        "Return list of available Execution Providers in this installed version of Onnxruntime. "
+        "The order of elements represents the default priority order of Execution Providers "
+        "from highest to lowest.");
 
   m.def("get_version_string", []() -> std::string { return ORT_VERSION; });
   m.def("get_build_info", []() -> std::string { return ORT_BUILD_INFO; });
   m.def("has_collective_ops", []() -> bool { return HAS_COLLECTIVE_OPS; });
   CreateQuantPybindModule(m);
 }
+
 }  // namespace python
 }  // namespace onnxruntime
