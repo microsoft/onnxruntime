@@ -72,9 +72,8 @@ Status SliceOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder, const 
     input_name = input_defs[input_idx]->Name();
     const auto& initializers(model_builder.GetInitializerTensors());
     const auto& tensor = *initializers.at(input_name);
-    if (!ReadIntArrayFrom1DTensor(tensor, data, logger)) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Data type for starts and ends inputs is not supported in this build.");
-    }
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(tensor, data, model_builder.GetGraphViewer(), logger),
+                      "Data type for starts or ends inputs is not supported in this build.");
 
     return Status::OK();
   };
@@ -176,7 +175,7 @@ bool SliceOpBuilder::HasSupportedInputsImpl(const GraphViewer& graph_viewer, con
   if (TensorExists(input_defs, 4)) {
     std::vector<int64_t> steps;
     const auto* init = graph_viewer.GetConstantInitializer(input_defs[4]->Name());
-    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, logger))
+    if (!init || !ReadIntArrayFrom1DTensor(*init, steps, graph_viewer, logger))
       return false;
     if (std::any_of(steps.begin(), steps.end(), [](int64_t step) { return step < 0; })) {
       if (!IsDataTypeSupportedByWebNNOp(op_type, "reverse", input_type, wnn_limits, "input", "data", logger)) {

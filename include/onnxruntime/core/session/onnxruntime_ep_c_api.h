@@ -106,7 +106,7 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes
+                  _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes
                   /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
 
   /** \brief Specify a node that is supported by an OrtEp and should be run with a registered EP kernel.
