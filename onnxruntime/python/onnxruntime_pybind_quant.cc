@@ -1,9 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include <pybind11/pybind11.h>
-#include <pybind11/numpy.h>
-#include <pybind11/functional.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/numpy.h>
+#include <nanobind/functional.h>
 
 #include "core/mlas/inc/mlas_q4.h"
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"

@@ -9,14 +9,14 @@ namespace python {
 using ExecutionProviderRegistrationFn = std::function<void(InferenceSession*,
                                                            const std::vector<std::string>&,
                                                            const ProviderOptionsMap&)>;
-void addGlobalMethods(pybind11::module& m);
-void addObjectMethods(pybind11::module& m, ExecutionProviderRegistrationFn ep_registration_fn);
-void addOrtValueMethods(pybind11::module& m);
-void addSparseTensorMethods(pybind11::module& m);
-void addIoBindingMethods(pybind11::module& m);
-void addAdapterFormatMethods(pybind11::module& m);
-void addGlobalSchemaFunctions(pybind11::module& m);
-void addOpSchemaSubmodule(pybind11::module& m);
-void addOpKernelSubmodule(pybind11::module& m);
+void addGlobalMethods(nanobind::module_& m);
+void addObjectMethods(nanobind::module_& m, ExecutionProviderRegistrationFn ep_registration_fn);
+void addOrtValueMethods(nanobind::module_& m);
+void addSparseTensorMethods(nanobind::module_& m);
+void addIoBindingMethods(nanobind::module_& m);
+void addAdapterFormatMethods(nanobind::module_& m);
+void addGlobalSchemaFunctions(nanobind::module_& m);
+void addOpSchemaSubmodule(nanobind::module_& m);
+void addOpKernelSubmodule(nanobind::module_& m);
 }  // namespace python
 }  // namespace onnxruntime

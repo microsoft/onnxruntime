@@ -67,7 +67,7 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
 }
 }  // namespace
 
-void addOrtValueMethods(pybind11::module& m) {
+void addOrtValueMethods(nanobind::module_& m) {
   py::class_<OrtValue> ortvalue_binding(m, "OrtValue");
   ortvalue_binding
       // Factory method to create an OrtValue (Tensor) from the given Numpy object

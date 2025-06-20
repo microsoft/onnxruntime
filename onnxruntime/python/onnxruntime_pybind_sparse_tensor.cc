@@ -83,7 +83,7 @@ class PySparseBlockSparseView : public SparseTensor::BlockSparseView {
 
 #endif  // !defined(DISABLE_SPARSE_TENSORS)
 
-void addSparseTensorMethods(pybind11::module& m) {
+void addSparseTensorMethods(nanobind::module_& m) {
   // this is exported via __init__.py so has to exist
   py::enum_<OrtSparseFormat>(m, "OrtSparseFormat")
       .value("ORT_SPARSE_UNDEFINED", OrtSparseFormat::ORT_SPARSE_UNDEFINED)

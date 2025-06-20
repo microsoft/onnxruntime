@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <nanobind/nanobind.h>
 #include <stdexcept>
 #include "core/common/status.h"
 
@@ -51,7 +51,7 @@ struct ModelRequiresCompilation : std::runtime_error {
   explicit ModelRequiresCompilation(const std::string& what) : std::runtime_error(what) {}
 };
 
-void RegisterExceptions(pybind11::module& m);
+void RegisterExceptions(nanobind::module_& m);
 
 void OrtPybindThrowIfError(onnxruntime::common::Status status);
 

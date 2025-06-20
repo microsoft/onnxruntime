@@ -507,18 +507,10 @@ endif()
 
 if(onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_USE_VCPKG)
-    find_package(pybind11 CONFIG REQUIRED)
+    find_package(nanobind CONFIG REQUIRED)
   else()
-    include(pybind11)
-  endif()
-if(TARGET pybind11::module)
-  message("Setting pybind11_lib")
-  set(pybind11_lib pybind11::module)
-else()
-  message("Setting pybind11_dep")
-  set(pybind11_dep pybind11::pybind11)
-endif()
-
+    message(FATAL_ERROR "not implemented")	
+  endif()    
 endif()
 onnxruntime_fetchcontent_declare(
   onnx

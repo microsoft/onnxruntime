@@ -3,7 +3,7 @@
 
 #include "onnxruntime_pybind_exceptions.h"
 #include "onnxruntime_pybind_module_functions.h"
-#include <pybind11/stl.h>
+#include <nanobind/stl.h>
 #include "core/providers/get_execution_providers.h"
 #include "onnxruntime_config.h"
 #include "core/common/common.h"
@@ -58,7 +58,6 @@ bool CheckIfUsingGlobalThreadPool() {
   return use_global_tp;
 }
 
-namespace py = pybind11;
 
 /*
  * Register execution provider with options.
@@ -73,7 +72,7 @@ static void RegisterExecutionProviders(InferenceSession* sess, const std::vector
   }
 }
 
-Status CreateInferencePybindStateModule(py::module& m) {
+Status CreateInferencePybindStateModule(nanobind::module_& m) {
   m.doc() = "pybind11 stateful interface to ONNX runtime";
   RegisterExceptions(m);
   if (!InitArray()) {
@@ -102,7 +101,7 @@ static constexpr bool HAS_COLLECTIVE_OPS = false;
 
 void CreateQuantPybindModule(py::module& m);
 
-PYBIND11_MODULE(onnxruntime_pybind11_state, m) {
+NB_MODULE(onnxruntime_pybind11_state, m) {
   auto st = CreateInferencePybindStateModule(m);
   if (!st.IsOK())
     throw pybind11::import_error(st.ErrorMessage());

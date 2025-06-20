@@ -18,7 +18,6 @@
 namespace onnxruntime {
 namespace python {
 
-namespace py = pybind11;
 
 namespace {
 void BindOutput(SessionIOBinding* io_binding, const std::string& name, const OrtDevice& device,
@@ -53,7 +52,7 @@ void BindOutput(SessionIOBinding* io_binding, const std::string& name, const Ort
 }
 }  // namespace
 
-void addIoBindingMethods(pybind11::module& m) {
+void addIoBindingMethods(nanobind::module_& m) {
   py::class_<SessionIOBinding> session_io_binding(m, "SessionIOBinding");
   session_io_binding
       .def(py::init([](PyInferenceSession* sess) {

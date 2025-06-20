@@ -5,38 +5,33 @@
 
 namespace onnxruntime {
 namespace python {
-namespace py = pybind11;
 
+/**
+ * Mainly it is used with the `CreateGenericMLValue` function.
+ * The function ThrowIfPyErrOccured() is a bridge between the low-level Python C-API and the C++ exception handling
+ * used in the onnx runtime project. Its purpose is to be called after a CPython API function that might fail (e.g., PyArray_FromAny). 
+ * If that C-API function fails, it doesn't throw a C++ exception; instead, it sets a global error indicator within the Python interpreter.
+ */
 void ThrowIfPyErrOccured() {
   if (PyErr_Occurred()) {
-    PyObject *ptype, *pvalue, *ptraceback;
-    PyErr_Fetch(&ptype, &pvalue, &ptraceback);
-
-    PyObject* pStr = PyObject_Str(ptype);
-    std::string sType = py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
-    pStr = PyObject_Str(pvalue);
-    sType += ": ";
-    sType += py::reinterpret_borrow<py::str>(pStr);
-    Py_XDECREF(pStr);
-    throw Fail(sType);
+    throw nanobind::python_error();
   }
 }
 
-void RegisterExceptions(pybind11::module& m) {
-  pybind11::register_exception<Fail>(m, "Fail");
-  pybind11::register_exception<InvalidArgument>(m, "InvalidArgument");
-  pybind11::register_exception<NoSuchFile>(m, "NoSuchFile");
-  pybind11::register_exception<NoModel>(m, "NoModel");
-  pybind11::register_exception<EngineError>(m, "EngineError");
-  pybind11::register_exception<RuntimeException>(m, "RuntimeException");
-  pybind11::register_exception<InvalidProtobuf>(m, "InvalidProtobuf");
-  pybind11::register_exception<ModelLoaded>(m, "ModelLoaded");
-  pybind11::register_exception<NotImplemented>(m, "NotImplemented");
-  pybind11::register_exception<InvalidGraph>(m, "InvalidGraph");
-  pybind11::register_exception<EPFail>(m, "EPFail");
-  pybind11::register_exception<ModelLoadCanceled>(m, "ModelLoadCanceled");
-  pybind11::register_exception<ModelRequiresCompilation>(m, "ModelRequiresCompilation");
+void RegisterExceptions(nanobind::module_& m) {
+  nanobind::exception<Fail>(m, "Fail");
+  nanobind::exception<InvalidArgument>(m, "InvalidArgument");
+  nanobind::exception<NoSuchFile>(m, "NoSuchFile");
+  nanobind::exception<NoModel>(m, "NoModel");
+  nanobind::exception<EngineError>(m, "EngineError");
+  nanobind::exception<RuntimeException>(m, "RuntimeException");
+  nanobind::exception<InvalidProtobuf>(m, "InvalidProtobuf");
+  nanobind::exception<ModelLoaded>(m, "ModelLoaded");
+  nanobind::exception<NotImplemented>(m, "NotImplemented");
+  nanobind::exception<InvalidGraph>(m, "InvalidGraph");
+  nanobind::exception<EPFail>(m, "EPFail");
+  nanobind::exception<ModelLoadCanceled>(m, "ModelLoadCanceled");
+  nanobind::exception<ModelRequiresCompilation>(m, "ModelRequiresCompilation");
 }
 
 void OrtPybindThrowIfError(onnxruntime::common::Status status) {

@@ -4,14 +4,14 @@
 
 #include "python/onnxruntime_pybind_state_common.h"
 #include "core/framework/kernel_registry.h"
-#include <pybind11/stl.h>
+#include <nanobind/stl.h>
 
 namespace py = pybind11;
 
 namespace onnxruntime {
 namespace python {
 
-void addGlobalSchemaFunctions(pybind11::module& m) {
+void addGlobalSchemaFunctions(nanobind::module_& m) {
   m.def(
       "get_all_operator_schema", []() -> const std::vector<ONNX_NAMESPACE::OpSchema> {
         return ONNX_NAMESPACE::OpSchemaRegistry::get_all_schemas_with_history();

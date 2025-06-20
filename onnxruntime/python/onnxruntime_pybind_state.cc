@@ -64,7 +64,7 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 
-#include <pybind11/functional.h>
+#include <nanobind/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses

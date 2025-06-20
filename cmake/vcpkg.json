@@ -43,7 +43,6 @@
     "ms-gsl",
     "nlohmann-json",
     "onnx",
-    "optional-lite",
     {
       "name": "protobuf",
       "version>=": "3.21.12"
@@ -53,7 +52,7 @@
       "host": true,
       "version>=": "3.21.12"
     },
-    "pybind11",
+    "nanobind",
     "re2",
     "safeint",
     "utf8-range",

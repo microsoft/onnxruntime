@@ -67,7 +67,9 @@ if (onnxruntime_ENABLE_LAZY_TENSOR)
   endif()
 endif()
 
-onnxruntime_add_shared_library_module(onnxruntime_pybind11_state ${onnxruntime_pybind_srcs})
+nanobind_build_library(onnxruntime_pybind11_state)
+onnxruntime_configure_target(onnxruntime_pybind11_state)
+target_sources(onnxruntime_pybind11_state PRIVATE ${onnxruntime_pybind_srcs})
 
 if(MSVC)
   # The following source file is only needed for the EPs that use delayloading. Namely, DML and WebGPU.
@@ -211,9 +213,7 @@ target_link_libraries(onnxruntime_pybind11_state PRIVATE
     Python::NumPy
 )
 set(onnxruntime_pybind11_state_dependencies
-    ${onnxruntime_EXTERNAL_DEPENDENCIES}
-    ${pybind11_dep}
-)
+    ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
 add_dependencies(onnxruntime_pybind11_state ${onnxruntime_pybind11_state_dependencies})
 

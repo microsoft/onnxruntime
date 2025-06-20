@@ -19,7 +19,7 @@
 #include "core/dlpack/dlpack_converter.h"
 #endif
 
-#include "onnxruntime_pybind.h"  // must use this for the include of <pybind11/pybind11.h>
+#include "onnxruntime_pybind.h"  // must use this for the include of <nanobind/nanobind.h>
 
 // execution provider factory creator headers
 struct OrtStatus {
@@ -453,19 +453,19 @@ void InitializeSession(InferenceSession* sess,
 // Checks if PyErrOccured, fetches status and throws.
 void ThrowIfPyErrOccured();
 
-void addOrtValueMethods(pybind11::module& m);
+void addOrtValueMethods(nanobind::module_& m);
 
-void addIoBindingMethods(pybind11::module& m);
+void addIoBindingMethods(nanobind::module_& m);
 
-void addSparseTensorMethods(pybind11::module& m);
+void addSparseTensorMethods(nanobind::module_& m);
 
-void addAdapterFormatMethods(pybind11::module& m);
+void addAdapterFormatMethods(nanobind::module_& m);
 
-void addGlobalSchemaFunctions(pybind11::module& m);
+void addGlobalSchemaFunctions(nanobind::module_& m);
 
-void addOpKernelSubmodule(pybind11::module& m);
+void addOpKernelSubmodule(nanobind::module_& m);
 
-void addOpSchemaSubmodule(pybind11::module& m);
+void addOpSchemaSubmodule(nanobind::module_& m);
 
 const char* GetDeviceName(const OrtDevice& device);
 
