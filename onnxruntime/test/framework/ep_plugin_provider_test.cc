@@ -25,8 +25,8 @@ struct ApiPtrs {
 // The `test_plugin_ep` namespace contains a local implementation intended for unit testing.
 namespace test_plugin_ep {
 
-struct TestOrtEp : ApiPtrs, ::OrtEp {
-  TestOrtEp() : ApiPtrs{}, ::OrtEp{} {
+struct TestOrtEp : ::OrtEp, ApiPtrs {
+  TestOrtEp() : ::OrtEp{}, ApiPtrs{} {
     ort_version_supported = ORT_API_VERSION;
 
     GetName = GetNameImpl;
@@ -34,7 +34,7 @@ struct TestOrtEp : ApiPtrs, ::OrtEp {
     // Individual tests should fill out the other function pointers as needed.
   }
 
-  static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
   }

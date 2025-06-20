@@ -188,10 +188,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
     GetCapability = GetCapabilityImpl;
     Compile = CompileImpl;
     ReleaseNodeComputeInfos = ReleaseNodeComputeInfosImpl;
-    GetPreferredDataLayout = GetPreferredDataLayoutImpl;
-    SetDynamicOptions = nullptr;
-    OnRunStart = nullptr;
-    OnRunEnd = nullptr;
   }
 
   ~ExampleEp() {
@@ -318,13 +314,6 @@ struct ExampleEp : OrtEp, ApiPtrs {
     for (size_t i = 0; i < num_node_compute_infos; i++) {
       delete node_compute_infos[i];
     }
-  }
-
-  static OrtStatus* ORT_API_CALL GetPreferredDataLayoutImpl(OrtEp* this_ptr,
-                                                            OrtEpDataLayout* preferred_data_layout) {
-    static_cast<void>(this_ptr);
-    *preferred_data_layout = OrtEpDataLayout::NCHW;
-    return nullptr;
   }
 
   std::string name_;
