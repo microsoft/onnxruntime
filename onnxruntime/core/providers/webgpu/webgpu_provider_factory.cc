@@ -210,6 +210,8 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
         return webgpu::BufferCacheMode::Simple;
       } else if (buffer_cache_mode_str == kBufferCacheMode_Bucket) {
         return webgpu::BufferCacheMode::Bucket;
+      } else if (buffer_cache_mode_str == kBufferCacheMode_DynamicBucket) {
+        return webgpu::BufferCacheMode::DynamicBucket;
       } else {
         ORT_THROW("Invalid buffer cache mode: ", config_entry_str);
       }
