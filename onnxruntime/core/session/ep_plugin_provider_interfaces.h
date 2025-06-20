@@ -95,9 +95,9 @@ class PluginExecutionProvider : public IExecutionProvider {
   // so that it is not destroyed until the EP itself is destroyed.
   std::vector<FusedNodeState> fused_node_states_;
 
-  // Stores the EPContext Nodes (and NodeArgs) that wrap the instances created by the plugin EP.
-  // Need to store them so that they are available when the GraphPartitioner
-  // calls IExecutionProvider::GetEpContextNodes.
+  // Stores the EPContext Nodes created from the OrtNode instances returned by the underlying plugin EP.
+  // Need to store both the Node and NodeArg instances so that they are available when the GraphPartitioner
+  // calls IExecutionProvider::GetEpContextNodes().
   std::vector<std::unique_ptr<Node>> ep_context_nodes_;
   std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_;
 };

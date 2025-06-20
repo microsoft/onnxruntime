@@ -396,6 +396,9 @@ struct ExampleEp : OrtEp, ApiPtrs {
     }
   }
 
+  // Creates EPContext nodes from the given fused nodes.
+  // This is an example implementation that can be used to generate an EPContext model. However, this example EP
+  // cannot currently run the EPContext model.
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes) {
     std::vector<OrtNode*> ep_ctx_nodes(fused_nodes.size(), nullptr);
 

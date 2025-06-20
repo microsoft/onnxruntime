@@ -190,14 +190,23 @@ Status PluginExecutionProvider::FusedNodeState::AddFusedNode(const Node& fused_n
   return Status::OK();
 }
 
-// Calls the underlying plugin EP's GetEpContextNodes() function and returns an array of std::unique_ptr<Node> that
-// each wraps an OrtNode created by the plugin EP using the model editor API.
-static Status GetEpPluginContextNodes(OrtEp& ep_plugin, const std::string& ep_name,
+/// <summary>
+/// Calls the plugin EP's GetEpContextNodes() function to get OrtNode instances representing EP context
+/// nodes. Note that the EP plugin uses the model editor API to create the OrtNodes.
+/// This function then converts the OrtNode instances to onnxruntime::Node instances and returns them via an
+/// output parameter.
+/// </summary>
+/// <param name="ort_ep">Reference to the plugin EP.</param>
+/// <param name="ep_name">Name of the plugin EP.</param>
+/// <param name="result_nodes">Output parameter set to the resulting array of EPContext nodes.</param>
+/// <param name="result_node_args">Output parameter that stores the NodeArgs used by the EPContext nodes.</param>
+/// <returns>A status indicating success or an error.</returns>
+static Status GetEpPluginContextNodes(OrtEp& ort_ep, const std::string& ep_name,
                                       /*out*/ std::vector<std::unique_ptr<Node>>& result_nodes,
                                       /*out*/ std::vector<std::unique_ptr<NodeArg>>& result_node_args) {
 #if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
   OrtArrayOfConstObjects* api_nodes_array = nullptr;
-  Status status = ToStatusAndRelease(ep_plugin.GetEpContextNodes(&ep_plugin, &api_nodes_array));
+  Status status = ToStatusAndRelease(ort_ep.GetEpContextNodes(&ort_ep, &api_nodes_array));
 
   // Wrap OrtArrayOfConstObjects in a std::unique_ptr so that is released. Do this before checking the status
   // returned by OrtEp::GetEpContextNodes() so that we clean up even on error.
@@ -270,7 +279,7 @@ static Status GetEpPluginContextNodes(OrtEp& ep_plugin, const std::string& ep_na
 
   return Status::OK();
 #else
-  ORT_UNUSED_PARAMETER(ep_plugin);
+  ORT_UNUSED_PARAMETER(ort_ep);
   ORT_UNUSED_PARAMETER(ep_name);
   ORT_UNUSED_PARAMETER(result);
   return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED, "Creating EPContext models is not supported in this build");
@@ -362,7 +371,7 @@ common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGr
 
   // We call the EP plugin's OrtEp::GetEpContextNodes() function now (inside IExecutionProvider::Compile()) because
   // IExecutionProvider::GetEpContextNodes() is a const member function. We need to create and *store* onnxruntime::Node
-  // instances that wrap the OrtNode instances returned by the EP plugin, and we can't do that in a const member
+  // instances for each OrtNode returned by the EP plugin, and we can't do that in a const member
   // function.
   if (generate_ep_ctx_model_) {
     ORT_RETURN_IF_ERROR(GetEpPluginContextNodes(*ort_ep_, Type(), /*out*/ ep_context_nodes_,
