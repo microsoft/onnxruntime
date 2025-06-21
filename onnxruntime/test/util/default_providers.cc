@@ -205,6 +205,17 @@ std::unique_ptr<IExecutionProvider> DefaultVSINPUExecutionProvider() {
 #endif
 }
 
+std::unique_ptr<IExecutionProvider> DefaultOpenCLExecutionProvider() {
+#if defined(USE_OPENCL)
+  bool use_fp16 = false;
+  bool auto_tuning_level = false;
+  auto p = onnxruntime::CreateExecutionProviderFactory_OpenCL(use_fp16, auto_tuning_level)->CreateProvider();
+  return p;
+#else
+  return nullptr;
+#endif
+}
+
 std::unique_ptr<IExecutionProvider> DefaultRknpuExecutionProvider() {
 #ifdef USE_RKNPU
   return RknpuProviderFactoryCreator::Create()->CreateProvider();

@@ -443,6 +443,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_NV=" + ("ON" if args.use_nv_tensorrt_rtx else "OFF"),
         "-Donnxruntime_USE_TENSORRT_BUILTIN_PARSER="
         + ("ON" if args.use_tensorrt_builtin_parser and not args.use_tensorrt_oss_parser else "OFF"),
+        "-Donnxruntime_USE_OPENCL=" + ("ON" if args.use_opencl else "OFF"),
         # interface variables are used only for building onnxruntime/onnxruntime_shared.dll but not EPs
         "-Donnxruntime_USE_TENSORRT_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
         "-Donnxruntime_USE_CUDA_INTERFACE=" + ("ON" if args.enable_generic_interface else "OFF"),
@@ -1893,6 +1894,7 @@ def build_python_wheel(
     use_cann,
     use_azure,
     use_qnn,
+    use_opencl,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1955,6 +1957,8 @@ def build_python_wheel(
             args.append("--use_qnn")
         elif use_azure:
             args.append("--use_azure")
+        elif use_opencl:
+            args.append('--use_opencl')
 
         run_subprocess(args, cwd=cwd)
 
@@ -2573,6 +2577,7 @@ def main():
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
+                args.use_opencl,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,

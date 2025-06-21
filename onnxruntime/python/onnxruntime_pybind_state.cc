@@ -1133,7 +1133,7 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
 #ifdef USE_ROCM
     if (auto* rocm_provider_info = TryGetProviderInfo_ROCM()) {
       const ROCMExecutionProviderInfo info = GetRocmExecutionProviderInfo(rocm_provider_info,
-                                                                          provider_options_map);
+                                                                    provider_options_map);
 
       // This variable is never initialized because the APIs by which is it should be initialized are deprecated,
       // however they still exist and are in-use. Nevertheless, it is used to return ROCMAllocator, hence we must
@@ -1257,6 +1257,22 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
         LOGS_DEFAULT(WARNING) << "Failed to create " << type << ". Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
       }
     }
+#endif
+  } else if (type == kOpenCLExecutionProvider) {
+#if USE_OPENCL
+    bool use_fp16 = false;
+    int auto_tuning_level = 1;
+    const auto it = provider_options_map.find(type);
+    if (it != provider_options_map.end()) {
+      const auto& options = it->second;
+      for (const auto& [key, value] : options) {
+        if(key == "use_fp16" && value == "True") {
+          use_fp16 = true;
+        }
+      }
+    }
+
+    return onnxruntime::CreateExecutionProviderFactory_OpenCL(use_fp16, auto_tuning_level);
 #endif
   } else if (type == kVitisAIExecutionProvider) {
 #if defined(USE_VITISAI) || defined(USE_VITISAI_PROVIDER_INTERFACE)

@@ -105,3 +105,7 @@
 #if defined(USE_AZURE)
 #include "core/providers/azure/azure_provider_factory_creator.h"
 #endif
+
+#if defined(USE_OPENCL)
+#include "core/providers/opencl/opencl_provider_factory.h"
+#endif

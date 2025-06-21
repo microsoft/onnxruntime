@@ -94,6 +94,8 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
+elif parse_arg_remove_boolean(sys.argv, '--use_opencl'):
+    package_name = 'onnxruntime-opencl'
 
 if is_rocm:
     package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
