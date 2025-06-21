@@ -17,11 +17,11 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 
 #if !defined(__wasm__)
   if (!session_initialized_ && context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
-    return context_.BufferManager().CreateUMA(size);
+    return context_.BufferManager().CreateUMA(size, session_id_);
   }
 #endif  // !defined(__wasm__)
 
-  return context_.BufferManager().Create(size);
+  return context_.BufferManager().Create(size, session_id_);
 }
 
 void GpuBufferAllocator::Free(void* p) {
@@ -33,6 +33,10 @@ void GpuBufferAllocator::Free(void* p) {
 
 void GpuBufferAllocator::GetStats(AllocatorStats* stats) {
   *stats = stats_;
+}
+
+void GpuBufferAllocator::OnSessionInitializationStart(uint32_t session_id) {
+  session_id_ = session_id;
 }
 
 void GpuBufferAllocator::OnSessionInitializationEnd() {

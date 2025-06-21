@@ -259,6 +259,8 @@ class IExecutionProvider {
     return Status::OK();
   }
 
+  virtual void OnSessionInitializationStart(uint32_t /*session_id*/) {}
+
   /**
      Called when session creation is complete
      This provides an opportunity for execution providers to optionally synchronize and
