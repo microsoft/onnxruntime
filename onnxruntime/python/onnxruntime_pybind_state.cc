@@ -909,6 +909,36 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
               preview_features = option.second;
               params.trt_preview_features = preview_features.c_str();
             }
+          } else if (option.first == "trt_dla_local_dram_size") {
+            if (!option.second.empty()) {
+              params.trt_dla_local_dram_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_local_dram_size' should be a positive integer number representing bytes.");
+            }
+          } else if (option.first == "trt_dla_global_dram_size") {
+            if (!option.second.empty()) {
+              params.trt_dla_global_dram_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_global_dram_size' should be a positive integer number representing bytes.");
+            }
+          } else if (option.first == "trt_dla_managed_sram_size") {
+            if (!option.second.empty()) {
+              params.trt_dla_managed_sram_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_dla_managed_sram_size' should be a positive integer number representing bytes.");
+            }
+          } else if (option.first == "trt_tactic_dram_size") {
+            if (!option.second.empty()) {
+              params.trt_tactic_dram_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_dram_size' should be a positive integer number representing bytes.");
+            }
+          } else if (option.first == "trt_tactic_shared_memory_size") {
+            if (!option.second.empty()) {
+              params.trt_tactic_shared_memory_size = std::stoull(option.second);
+            } else {
+              ORT_THROW("[ERROR] [TensorRT] The value for the key 'trt_tactic_shared_memory_size' should be a positive integer number representing bytes.");
+            }
           } else {
             ORT_THROW("Invalid TensorRT EP option: ", option.first);
           }

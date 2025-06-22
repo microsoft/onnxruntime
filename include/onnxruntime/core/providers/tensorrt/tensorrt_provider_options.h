@@ -92,4 +92,12 @@ struct OrtTensorRTProviderOptionsV2 {
   const char* trt_engine_cache_prefix{nullptr};  // specify engine cache prefix
   int trt_engine_hw_compatible{0};               // Enable hardware compatibility. Default 0 = false, nonzero = true
   const char* trt_op_types_to_exclude{};         // Exclude specific ops from running on TRT.
+
+  size_t trt_dla_local_dram_size{0};    // Maximum local DRAM pool size for DLA. Default 0 means use TensorRT default
+  size_t trt_dla_global_dram_size{0};   // Maximum global DRAM pool size for DLA. Default 0 means use TensorRT default
+  size_t trt_dla_managed_sram_size{0};  // Maximum managed SRAM pool size for DLA. Default 0 means use TensorRT default
+
+  // Memory pool configuration for tactics
+  size_t trt_tactic_dram_size{0};           // Maximum DRAM pool size for tactics. Default 0 means use TensorRT default
+  size_t trt_tactic_shared_memory_size{0};  // Maximum shared memory size for CUDA kernels. Default 0 means use TensorRT default
 };
