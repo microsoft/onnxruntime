@@ -78,13 +78,12 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtEnvironment_registerExecutionProvi
     if (newString == NULL) {
       (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
       throwOrtException(jniEnv, 1, "Not enough memory");
-      return 0;
+      return;
     }
     wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
-    checkOrtStatus(jniEnv, api,
-                   api->RegisterExecutionProviderLibrary(env, name, newString));
+    checkOrtStatus(jniEnv, api, api->RegisterExecutionProviderLibrary(env, cName, newString));
     free(newString);
-    (*jniEnv)->ReleaseStringChars(jniEnv, modelPath, cPath);
+    (*jniEnv)->ReleaseStringChars(jniEnv, libraryPath, cPath);
 #else
     const char* cPath = (*jniEnv)->GetStringUTFChars(jniEnv, libraryPath, NULL);
     checkOrtStatus(jniEnv, api, api->RegisterExecutionProviderLibrary(env, cName, cPath));

@@ -54,7 +54,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_setInputMo
   if (newString == NULL) {
     (*jniEnv)->ReleaseStringChars(jniEnv, modelPath, cPath);
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return 0;
+    return;
   }
   wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
   checkOrtStatus(jniEnv, api, compileApi->ModelCompilationOptions_SetInputModelPath(compOpts, newString));
@@ -105,7 +105,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_setOutputM
   if (newString == NULL) {
     (*jniEnv)->ReleaseStringChars(jniEnv, outputPath, cPath);
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return 0;
+    return;
   }
   wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
   checkOrtStatus(jniEnv, api, compileApi->ModelCompilationOptions_SetOutputModelPath(compOpts, newString));
@@ -136,7 +136,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtModelCompilationOptions_setOutputE
   if (newString == NULL) {
     (*jniEnv)->ReleaseStringChars(jniEnv, initializersPath, cPath);
     throwOrtException(jniEnv, 1, "Not enough memory");
-    return 0;
+    return;
   }
   wcsncpy_s(newString, stringLength + 1, (const wchar_t*)cPath, stringLength);
   checkOrtStatus(jniEnv, api, compileApi->ModelCompilationOptions_SetOutputModelExternalInitializersFile(compOpts, newString, threshold));

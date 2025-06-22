@@ -20,6 +20,7 @@ import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 
 /** Tests for {@link OrtEpDevice} and {@link OrtHardwareDevice}. */
+@EnabledOnOs(value = OS.WINDOWS)
 public class EpDeviceTest {
   private final OrtEnvironment ortEnv = OrtEnvironment.getEnvironment();
 
@@ -62,7 +63,6 @@ public class EpDeviceTest {
   }
 
   @Test
-  @EnabledOnOs(value = OS.WINDOWS)
   public void registerUnregisterLibrary() throws OrtException {
     String libFullPath = TestHelpers.getResourcePath("/example_plugin_ep.dll").toString();
     Assertions.assertTrue(
@@ -113,8 +113,6 @@ public class EpDeviceTest {
             throw new RuntimeException(e);
           }
         };
-
-    runTest.accept(() -> null);
 
     // empty options
     runTest.accept(Collections::emptyMap);

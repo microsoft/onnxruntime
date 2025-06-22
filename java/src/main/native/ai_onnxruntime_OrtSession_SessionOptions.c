@@ -762,7 +762,7 @@ JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExe
  * Method:    addExecutionProvider
  * Signature: (JJJ[J[Ljava/lang/String;[Ljava/lang/String;)V
  */
-JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider__JJ_3J_3Ljava_lang_String_2_3Ljava_lang_String_2
+JNIEXPORT void JNICALL Java_ai_onnxruntime_OrtSession_00024SessionOptions_addExecutionProvider__JJJ_3J_3Ljava_lang_String_2_3Ljava_lang_String_2
         (JNIEnv * jniEnv, jobject jobj, jlong apiHandle, jlong envHandle, jlong optionsHandle, jlongArray deviceHandleArr, jobjectArray configKeyArr, jobjectArray configValueArr) {
     (void)jobj;
 

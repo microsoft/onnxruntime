@@ -47,7 +47,7 @@ JNIEXPORT jint JNICALL Java_ai_onnxruntime_OrtHardwareDevice_getDeviceType
   (void) jclazz; // Required JNI parameter not needed by functions which don't need to access their host object.
   const OrtApi* api = (const OrtApi*) apiHandle;
   OrtHardwareDevice* device = (OrtHardwareDevice*) nativeHandle;
-  OrtHardwareDeviceType type = api->HardwareDevice_DeviceId(device);
+  OrtHardwareDeviceType type = api->HardwareDevice_Type(device);
   jint output = 0;
   // Must be kept aligned with the Java OrtHardwareDeviceType enum.
   switch (type) {
