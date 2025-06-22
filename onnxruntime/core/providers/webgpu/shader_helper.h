@@ -13,6 +13,10 @@
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/string_utils.h"
 
+#if defined(ORT_USE_WGSL_TEMPLATE)
+#include "core/providers/webgpu/wgsl_gen.h"
+#endif
+
 namespace onnxruntime {
 namespace webgpu {
 
@@ -72,6 +76,17 @@ class ShaderHelper final {
                uint32_t dispatch_group_size_z);
 
   Status Init();
+
+#if defined(ORT_USE_WGSL_TEMPLATE)
+  // Apply the WGSL template to the shader helper.
+  //
+  // \param TemplateFilepath The filepath of the WGSL template to apply.
+  // \return Status indicating success or failure.
+  template <wgsl_gen::string_template_filepath TemplateFilepath, typename TemplateParameterType = wgsl_gen::TemplateParameter<TemplateFilepath>::type>
+  Status ApplyTemplate(TemplateParameterType parameter) {
+    return wgsl_gen::ApplyTemplate<TemplateFilepath>(*this, parameter);
+  }
+#endif
 
   // Add an input variable to the shader.
   //
