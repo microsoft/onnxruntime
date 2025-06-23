@@ -304,7 +304,7 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
     return nullptr;
   }
 
-  void RegisterBuffer(WGPUBuffer buffer, size_t request_size) override {
+  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
     // no-op
   }
 
