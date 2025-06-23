@@ -19,7 +19,7 @@
 
 size_t
 MLASCALL
-ARMKleidiAI::MlasDynamicQgemmPackBSize(
+ArmKleidiAI::MlasDynamicQgemmPackBSize(
     size_t N,
     size_t K
 ) {
@@ -34,7 +34,7 @@ ARMKleidiAI::MlasDynamicQgemmPackBSize(
 
 void
 MLASCALL
-ARMKleidiAI::MlasDynamicQgemmPackB(
+ArmKleidiAI::MlasDynamicQgemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,
@@ -75,7 +75,7 @@ ARMKleidiAI::MlasDynamicQgemmPackB(
 
 void
 MLASCALL
-ARMKleidiAI::MlasDynamicQGemmBatch(
+ArmKleidiAI::MlasDynamicQGemmBatch(
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,

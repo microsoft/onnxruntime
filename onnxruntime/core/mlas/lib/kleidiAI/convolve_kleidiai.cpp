@@ -75,7 +75,7 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
                             ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
                             Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
 
-        throw ARMKleidiAI::NotSupported();
+        throw ArmKleidiAI::NotSupported();
     }
 
     //optimization checks - is the implementation optimal for the conv request
@@ -97,7 +97,7 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     MLAS_UNREFERENCED_PARAMETER(n_step);
 
     if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
-        throw ARMKleidiAI::NotSupported();
+        throw ArmKleidiAI::NotSupported();
     }
 }
 
@@ -561,7 +561,7 @@ static void ConvolveSme(const size_t co, //channels out
 }
 
 void MLASCALL
-ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
                 size_t BatchCount,
                 size_t GroupCount,
@@ -580,7 +580,7 @@ ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 {
     //Check dimensions before accessing
     if (Dimensions < 2) {
-        throw ARMKleidiAI::NotSupported();
+        throw ArmKleidiAI::NotSupported();
     }
 
     Parameters->Activation = Activation;
@@ -629,7 +629,7 @@ ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
 void
 MLASCALL
-ARMKleidiAI::MlasConv(
+ArmKleidiAI::MlasConv(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,

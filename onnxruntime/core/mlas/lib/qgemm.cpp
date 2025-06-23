@@ -17,7 +17,7 @@ Abstract:
 #include <cassert>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
@@ -205,7 +205,7 @@ MlasDynamicQGemmBatch (
     MLAS_THREADPOOL* ThreadPool
 ) {
     kai_check_if_supported(
-        ARMKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
     );
 
     MLAS_UNREFERENCED_PARAMETER(Shape);
@@ -325,7 +325,7 @@ MlasDynamicQgemmPackBSize(
 )
 {
     kai_check_if_supported(
-        return ARMKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+        return ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
     );
 
     MLAS_UNREFERENCED_PARAMETER(N);
@@ -409,7 +409,7 @@ MlasDynamicQgemmPackB(
 )
 {
     kai_check_if_supported(
-        ARMKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
     );
 
     MLAS_UNREFERENCED_PARAMETER(N);

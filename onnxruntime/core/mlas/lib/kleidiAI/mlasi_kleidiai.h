@@ -7,8 +7,9 @@
 #pragma once
 
 #include "mlasi.h"
+#include "mlas_api_overrides.h"
 
-namespace ARMKleidiAI {
+namespace ArmKleidiAI {
 
 class NotSupported : public std::exception{};
 
@@ -19,7 +20,7 @@ class NotSupported : public std::exception{};
     do {                                         \
         try {                                    \
             check;                               \
-        } catch (ARMKleidiAI::NotSupported& e) {    \
+        } catch (ArmKleidiAI::NotSupported& e) {    \
             (void)e;                             \
             /*intentionally fall through and     \
               fallback*/                         \

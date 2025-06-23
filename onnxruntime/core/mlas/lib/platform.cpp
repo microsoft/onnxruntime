@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 #include <thread>
 #include <mutex>
@@ -540,6 +541,8 @@ Return Value:
 #endif // MLAS_TARGET_AMD64_IX86
 
 #if defined(MLAS_TARGET_ARM64)
+#include "mlas_api_overrides.h"
+#include "mlasi_kleidiai_init.h"
 
     this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
@@ -691,6 +694,18 @@ Return Value:
     // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
 
 #endif // MLAS_TARGET_LARCH64
+
+    // Register Override
+    MlasInitializeDefaultApiOverrides();
+
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        MlasApiOverrides overrides{};
+        overrides.GemmBatch = ArmKleidiAI::MlasGemmBatch;
+        overrides.GemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
+        overrides.GemmPackB = ArmKleidiAI::MlasGemmPackB;
+
+        MlasRegisterApiOverrides(overrides);
+    }
 
 }
 

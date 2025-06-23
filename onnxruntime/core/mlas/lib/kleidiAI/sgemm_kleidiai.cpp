@@ -15,7 +15,7 @@
 
 size_t
 MLASCALL
-ARMKleidiAI::MlasGemmPackBSize(
+ArmKleidiAI::MlasGemmPackBSize(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -48,6 +48,10 @@ Return Value:
         return 0;
     }
 
+    if (TransA != CblasNoTrans || !MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        return ::MlasGemmPackBSize(TransA, TransB, N, K); // fallback
+    }
+
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
@@ -62,11 +66,11 @@ Return Value:
                 bytes = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(N, K);
                 break;
             default:
-                throw ARMKleidiAI::NotSupported();
+                throw ArmKleidiAI::NotSupported();
                 break;
         }
     } else {
-        throw ARMKleidiAI::NotSupported();
+        throw ArmKleidiAI::NotSupported();
     }
 
     return bytes;
@@ -74,7 +78,7 @@ Return Value:
 
 void
 MLASCALL
-ARMKleidiAI::MlasGemmPackB(
+ArmKleidiAI::MlasGemmPackB(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
@@ -135,17 +139,15 @@ Return Value:
                 kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(1, N, K, nr, kr, sr, ldb * sizeof(float), B, bias.data(), nullptr, PackedB, 0, nullptr);
                 break;
             default:
-                throw ARMKleidiAI::NotSupported();
+                ::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB); // fallback
                 break;
         }
-    } else {
-        throw ARMKleidiAI::NotSupported();
-    }
+    } 
 }
 
 void
 MLASCALL
-ARMKleidiAI::MlasGemmBatch(
+ArmKleidiAI::MlasGemmBatch(
     CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t M,
@@ -156,22 +158,7 @@ ARMKleidiAI::MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
 )
 {
-
-    if (M == 0 || N == 0 || K == 0) {
-        //no computation to do
-        return;
-    }
-
-    const bool GEMV = (N == 1) &&        // GEMV target case
-                      (M >= 64) &&       // enough rows to make it worth packing A
-                      (K >= 16 && K <= 1024); // K not too small or too large
-
     if (TransA == CblasNoTrans && MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
-
-        if(GEMV)
-        {
-            MlasGemmBatch_SME2_N1(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-        }
 
         const size_t mr = kai_get_mr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         const size_t kr = kai_get_kr_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
@@ -179,6 +166,15 @@ ARMKleidiAI::MlasGemmBatch(
 
         auto m_step = kai_get_m_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
         auto n_step = kai_get_n_step_matmul_clamp_f32_f32p2vlx1_f32p2vlx1biasf32_sme2_mopa();
+            
+        
+        //Guards with fallback
+        if ((M == 0 || N == 0 || K == 0) || //Zero Dims
+            (TransA != CblasNoTrans) || (TransB != CblasNoTrans && !Data[0].BIsPacked) || //If packing doesn't fall within KAI assumptions
+            M < m_step || N < n_step) { //Unsupported tile dims
+            ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);// fallback
+            return;
+        }
 
         std::vector<MLAS_SGEMM_DATA_PARAMS> KaiPackedData;
         KaiPackedData.resize(BatchSize);
@@ -208,7 +204,7 @@ ARMKleidiAI::MlasGemmBatch(
             size_t RhsPackedStride = 0;
             std::byte* RhsPackedData = nullptr;
 
-            RhsPackedStride = ARMKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
+            RhsPackedStride = ArmKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
             RhsPacked = std::make_unique_for_overwrite<std::byte[]>(RhsPackedStride * BatchSize);
             RhsPackedData = RhsPacked.get();
 
@@ -227,7 +223,7 @@ ARMKleidiAI::MlasGemmBatch(
 
                     std::byte* RhsPackedPtr = &(RhsPackedData[RhsPackedStride * batch_idx]);
 
-                    ARMKleidiAI::MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float*>(Data[batch_idx].B), Data[batch_idx].ldb, RhsPackedPtr);
+                    ArmKleidiAI::MlasGemmPackB(TransA, TransB, N, K, reinterpret_cast<const float*>(Data[batch_idx].B), Data[batch_idx].ldb, RhsPackedPtr);
 
                     KaiPackedData[batch_idx].B = reinterpret_cast<const float*>(RhsPackedPtr);
                 }
@@ -297,57 +293,7 @@ ARMKleidiAI::MlasGemmBatch(
                 );
         });
     }
-
-
     else {
-        throw ARMKleidiAI::NotSupported();
+        ::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
     }
-}
-
-inline void MLASCALL
-ARMKleidiAI::MlasGemmBatch_SME2_N1(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
-)
-{
-    const size_t nr = kai_get_nr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
-    const size_t kr = kai_get_kr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
-    const size_t sr = kai_get_sr_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla();
-
-    const size_t packed_rhs_size = kai_get_rhs_packed_size_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(M, K);
-
-    // Ensure packed_rhs_size is 64-byte aligned
-    const size_t aligned_size = (packed_rhs_size + 63) & ~size_t(63);
-
-    // Allocate shared packed buffer once
-    std::unique_ptr<void, decltype(&std::free)> packed_A(
-        std::aligned_alloc(64, aligned_size), &std::free
-    );
-
-    std::vector<float> bias(M, 0.0f);
-
-    MlasTrySimpleParallel(ThreadPool, BatchSize, [&](ptrdiff_t batch_idx) {
-        const float* A = static_cast<const float*>(Data[batch_idx].A);  // [M x K]
-        const float* B = static_cast<const float*>(Data[batch_idx].B);  // [K x 1]
-        float* C = static_cast<float*>(Data[batch_idx].C);              // [M x 1]
-
-        kai_run_rhs_pack_nxk_f32p2vlx1biasf32_f32_f32_sme(
-            1, M, K, nr, kr, sr, K,
-            A, bias.data(),
-            nullptr, packed_A.get(), 0, nullptr
-        );
-
-        kai_run_matmul_clamp_f32_f32_f32p2vlx1b_1x16vl_sme2_mla(
-            1, M, K,
-            B, 1, packed_A.get(), C,
-            0, 0,
-            -std::numeric_limits<float>::max(), std::numeric_limits<float>::max()
-        );
-    });
 }

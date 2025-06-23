@@ -15,7 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 //
 // Define the number of working buffer elements required per thread.
@@ -863,7 +863,7 @@ Return Value:
 --*/
 {
     kai_check_if_supported(
-        ARMKleidiAI::MlasConv(Parameters, Input, Filter, Bias, WorkingBuffer, Output, ThreadPool);
+        ArmKleidiAI::MlasConv(Parameters, Input, Filter, Bias, WorkingBuffer, Output, ThreadPool);
         return;
     );
 
@@ -1101,7 +1101,7 @@ Return Value:
 --*/
 {
     kai_check_if_supported(
-        ARMKleidiAI::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels, InputShape,
+        ArmKleidiAI::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels, InputShape,
                                      KernelShape, DilationShape, Padding, StrideShape, OutputShape, FilterCount,
                                      Activation, WorkingBufferSize, Beta, ThreadPool);
         return;

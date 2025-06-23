@@ -16,7 +16,8 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "mlas_api_overrides.h"
+#include "kleidiai/mlasi_kleidiai.h"
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1572,12 +1573,10 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-
-    kai_check_if_supported(
-        ARMKleidiAI::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+    if (g_mlas_api.GemmBatch) {
+        g_mlas_api.GemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
         return;
-    );
-
+    }
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1665,12 +1664,10 @@ Return Value:
 
 --*/
 {
-    //
-    // Compute the number of bytes required to hold the packed buffer.
-    //
-    kai_check_if_supported(
-        return ARMKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
-    );
+    if (g_mlas_api.GemmPackBSize) {
+    return g_mlas_api.GemmPackBSize(TransA, TransB, N, K);
+    }
+
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
 
@@ -1726,10 +1723,12 @@ Return Value:
 
 --*/
 {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+    if (g_mlas_api.GemmPackB) {
+        // Dispatch to override (e.g., KleidiAI)
+        g_mlas_api.GemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
         return;
-    );
+    }
+
     MLAS_UNREFERENCED_PARAMETER(TransA);
 
 

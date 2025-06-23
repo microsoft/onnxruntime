@@ -47,6 +47,7 @@ onnxruntime_add_static_library(onnxruntime_mlas
   ${MLAS_SRC_DIR}/rotary_embedding.cpp
   ${MLAS_SRC_DIR}/softmax.h
   ${MLAS_SRC_DIR}/saturation_check.cpp
+  ${MLAS_SRC_DIR}/mlas_api_overrides.cpp
 )
 
 target_sources(onnxruntime_mlas PRIVATE
@@ -271,6 +272,7 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
     ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/mlasi_kleidiai_init.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
 
