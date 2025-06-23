@@ -5,8 +5,15 @@
 
 # ---[ Python + Numpy
 set(onnxruntime_pybind_srcs_pattern
-    "${ONNXRUNTIME_ROOT}/python/*.cc"
-    "${ONNXRUNTIME_ROOT}/python/*.h"
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_exceptions.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_iobinding.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_mlvalue.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_module.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_ortvalue.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_quant.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_schema.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_state.cc
+${ONNXRUNTIME_ROOT}/python/onnxruntime_pybind_state_common.cc
 )
 
 if (onnxruntime_ENABLE_TRAINING)

@@ -1,12 +1,12 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// SPDX-FileCopyrightText: Copyright 2024 Arm Limited and/or its affiliates <open-source-office@arm.com>
-// Licensed under the MIT License.
-
 #include "python/onnxruntime_pybind_state_common.h"
 #include "core/framework/kernel_registry.h"
-#include <nanobind/stl.h>
+#include <nanobind/nanobind.h>
+#include <nanobind/stl/string.h>
+#include <nanobind/stl/unordered_map.h>
+#include <nanobind/stl/vector.h>
 
-namespace py = pybind11;
+// Use the nanobind namespace
+namespace nb = nanobind;
 
 namespace onnxruntime {
 namespace python {
@@ -104,18 +104,21 @@ void addGlobalSchemaFunctions(nanobind::module_& m) {
       "Return a vector of KernelDef for all registered OpKernels");
 }
 
-void addOpKernelSubmodule(py::module& m) {
+// Update function signature to use nanobind::module_
+void addOpKernelSubmodule(nanobind::module_& m) {
   auto opkernel = m.def_submodule("opkernel");
   opkernel.doc() = "OpKernel submodule";
-  py::class_<onnxruntime::KernelDef> kernel_def(opkernel, "KernelDef");
-  kernel_def.def_property_readonly("op_name", &onnxruntime::KernelDef::OpName)
-      .def_property_readonly("domain", &onnxruntime::KernelDef::Domain)
-      .def_property_readonly("provider", &onnxruntime::KernelDef::Provider)
-      .def_property_readonly("version_range",
+
+  // Use nb::class_
+  nb::class_<onnxruntime::KernelDef> kernel_def(opkernel, "KernelDef");
+  kernel_def.def_prop_ro("op_name", &onnxruntime::KernelDef::OpName)
+      .def_prop_ro("domain", &onnxruntime::KernelDef::Domain)
+      .def_prop_ro("provider", &onnxruntime::KernelDef::Provider)
+      .def_prop_ro("version_range",
                              [](const onnxruntime::KernelDef& kernelDef) -> std::pair<int, int> {
                                return kernelDef.onnxruntime::KernelDef::SinceVersion();
                              })
-      .def_property_readonly("type_constraints",
+      .def_prop_ro("type_constraints",
                              [](const onnxruntime::KernelDef& kernelDef) -> std::unordered_map<std::string, std::vector<std::string>> {
                                std::unordered_map<std::string, std::vector<std::string>> result;
                                const auto& tempResult = kernelDef.TypeConstraints();
@@ -129,79 +132,74 @@ void addOpKernelSubmodule(py::module& m) {
                              });
 }
 
-void addOpSchemaSubmodule(py::module& m) {
+// Update function signature to use nanobind::module_
+void addOpSchemaSubmodule(nanobind::module_& m) {
   auto schemadef = m.def_submodule("schemadef");
   schemadef.doc() = "Schema submodule";
 
-  // Keep this binding local to this module
-  py::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema", py::module_local());
-  op_schema.def_property_readonly("file", &ONNX_NAMESPACE::OpSchema::file)
-      .def_property_readonly("line", &ONNX_NAMESPACE::OpSchema::line)
-      .def_property_readonly("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
-      .def_property_readonly(
-          "doc", &ONNX_NAMESPACE::OpSchema::doc, py::return_value_policy::reference)
-      .def_property_readonly("since_version", &ONNX_NAMESPACE::OpSchema::since_version)
-      .def_property_readonly("deprecated", &ONNX_NAMESPACE::OpSchema::deprecated)
-      .def_property_readonly("domain", &ONNX_NAMESPACE::OpSchema::domain)
-      .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::Name)
-      .def_property_readonly("min_input", &ONNX_NAMESPACE::OpSchema::min_input)
-      .def_property_readonly("max_input", &ONNX_NAMESPACE::OpSchema::max_input)
-      .def_property_readonly("min_output", &ONNX_NAMESPACE::OpSchema::min_output)
-      .def_property_readonly("max_output", &ONNX_NAMESPACE::OpSchema::max_output)
-      .def_property_readonly("attributes", &ONNX_NAMESPACE::OpSchema::attributes)
-      .def_property_readonly("inputs", &ONNX_NAMESPACE::OpSchema::inputs)
-      .def_property_readonly("outputs", &ONNX_NAMESPACE::OpSchema::outputs)
-      .def_property_readonly(
+  nb::class_<ONNX_NAMESPACE::OpSchema> op_schema(schemadef, "OpSchema");
+  op_schema.def_prop_ro("file", &ONNX_NAMESPACE::OpSchema::file)
+      .def_prop_ro("line", &ONNX_NAMESPACE::OpSchema::line)
+      .def_prop_ro("support_level", &ONNX_NAMESPACE::OpSchema::support_level)
+      .def_prop_ro("doc", &ONNX_NAMESPACE::OpSchema::doc, nb::rv_policy::reference)
+      .def_prop_ro("since_version", &ONNX_NAMESPACE::OpSchema::since_version)
+      .def_prop_ro("deprecated", &ONNX_NAMESPACE::OpSchema::deprecated)
+      .def_prop_ro("domain", &ONNX_NAMESPACE::OpSchema::domain)
+      .def_prop_ro("name", &ONNX_NAMESPACE::OpSchema::Name)
+      .def_prop_ro("min_input", &ONNX_NAMESPACE::OpSchema::min_input)
+      .def_prop_ro("max_input", &ONNX_NAMESPACE::OpSchema::max_input)
+      .def_prop_ro("min_output", &ONNX_NAMESPACE::OpSchema::min_output)
+      .def_prop_ro("max_output", &ONNX_NAMESPACE::OpSchema::max_output)
+      .def_prop_ro("attributes", &ONNX_NAMESPACE::OpSchema::attributes)
+      .def_prop_ro("inputs", &ONNX_NAMESPACE::OpSchema::inputs)
+      .def_prop_ro("outputs", &ONNX_NAMESPACE::OpSchema::outputs)
+      .def_prop_ro(
           "has_type_and_shape_inference_function",
           &ONNX_NAMESPACE::OpSchema::has_type_and_shape_inference_function)
-      .def_property_readonly(
+      .def_prop_ro(
           "type_constraints", &ONNX_NAMESPACE::OpSchema::typeConstraintParams)
       .def_static("is_infinite", [](int v) {
         return v == std::numeric_limits<int>::max();
       });
 
-  // Keep this binding local to this module
-  py::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute", py::module_local())
-      .def_readonly("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
-      .def_readonly("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
-      .def_readonly("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
-      .def_property_readonly(
+  nb::class_<ONNX_NAMESPACE::OpSchema::Attribute>(op_schema, "Attribute")
+      .def_ro("name", &ONNX_NAMESPACE::OpSchema::Attribute::name)
+      .def_ro("description", &ONNX_NAMESPACE::OpSchema::Attribute::description)
+      .def_ro("type", &ONNX_NAMESPACE::OpSchema::Attribute::type)
+      .def_prop_ro(
           "_default_value",
-          [](ONNX_NAMESPACE::OpSchema::Attribute* attr) -> py::bytes {
+          // Use nb::bytes
+          [](ONNX_NAMESPACE::OpSchema::Attribute* attr) -> nb::bytes {
             std::string out;
             attr->default_value.SerializeToString(&out);
-            return out;
+            return nb::bytes(out.data(), out.size());
           })
-      .def_readonly("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
+      .def_ro("required", &ONNX_NAMESPACE::OpSchema::Attribute::required);
 
-  // Keep this binding local to this module
-  py::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam", py::module_local())
-      .def_readonly(
+  nb::class_<ONNX_NAMESPACE::OpSchema::TypeConstraintParam>(op_schema, "TypeConstraintParam")
+      .def_ro(
           "type_param_str", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::type_param_str)
-      .def_readonly("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
-      .def_readonly(
+      .def_ro("description", &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::description)
+      .def_ro(
           "allowed_type_strs",
           &ONNX_NAMESPACE::OpSchema::TypeConstraintParam::allowed_type_strs);
 
-  // Keep this binding local to this module
-  py::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption", py::module_local())
+  nb::enum_<ONNX_NAMESPACE::OpSchema::FormalParameterOption>(op_schema, "FormalParameterOption")
       .value("Single", ONNX_NAMESPACE::OpSchema::Single)
       .value("Optional", ONNX_NAMESPACE::OpSchema::Optional)
       .value("Variadic", ONNX_NAMESPACE::OpSchema::Variadic);
 
-  // Keep this binding local to this module
-  py::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter", py::module_local())
-      .def_property_readonly("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
-      .def_property_readonly("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
-      .def_property_readonly("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
-      .def_property_readonly(
+  nb::class_<ONNX_NAMESPACE::OpSchema::FormalParameter>(op_schema, "FormalParameter")
+      .def_prop_ro("name", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetName)
+      .def_prop_ro("types", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypes)
+      .def_prop_ro("typeStr", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetTypeStr)
+      .def_prop_ro(
           "description", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetDescription)
-      .def_property_readonly("option", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetOption)
-      .def_property_readonly(
+      .def_prop_ro("option", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetOption)
+      .def_prop_ro(
           "isHomogeneous", &ONNX_NAMESPACE::OpSchema::FormalParameter::GetIsHomogeneous);
 
-  // Keep this binding local to this module
-  py::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType", py::module_local())
+  nb::enum_<ONNX_NAMESPACE::AttributeProto::AttributeType>(op_schema, "AttrType")
       .value("FLOAT", ONNX_NAMESPACE::AttributeProto::FLOAT)
       .value("INT", ONNX_NAMESPACE::AttributeProto::INT)
       .value("STRING", ONNX_NAMESPACE::AttributeProto::STRING)
@@ -215,8 +213,7 @@ void addOpSchemaSubmodule(py::module& m) {
       .value("SPARSE_TENSORS", ONNX_NAMESPACE::AttributeProto::SPARSE_TENSORS)
       .value("GRAPHS", ONNX_NAMESPACE::AttributeProto::GRAPHS);
 
-  // Keep this binding local to this module
-  py::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType", py::module_local())
+  nb::enum_<ONNX_NAMESPACE::OpSchema::SupportType>(op_schema, "SupportType")
       .value("COMMON", ONNX_NAMESPACE::OpSchema::SupportType::COMMON)
       .value("EXPERIMENTAL", ONNX_NAMESPACE::OpSchema::SupportType::EXPERIMENTAL);
 }

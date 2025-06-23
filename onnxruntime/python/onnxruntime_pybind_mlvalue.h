@@ -4,7 +4,7 @@
 #pragma once
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
 
-#include "onnxruntime_pybind.h"  // must use this for the include of <nanobind/nanobind.h>
+#include "onnxruntime_pybind.h"
 
 #include <nanobind/ndarray.h>
 #include <nanobind/stl/vector.h>
@@ -19,7 +19,11 @@
 
 #include <variant>
 
-PYBIND11_MAKE_OPAQUE(std::vector<OrtValue>);
+// Use the nanobind namespace
+namespace nb = nanobind;
+
+// 1. Use NB_MAKE_OPAQUE for opaque type registration
+NB_MAKE_OPAQUE(std::vector<OrtValue>);
 
 namespace onnxruntime {
 namespace python {
@@ -27,15 +31,16 @@ namespace python {
 extern const char* PYTHON_ORTVALUE_OBJECT_NAME;
 extern const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR;
 
-bool IsNumericNumpyArray(const pybind11::object& py_object);
+// 2. Update all function signatures to use nanobind types (nb::object, nb::dtype, nb::ndarray)
+bool IsNumericNumpyArray(const nb::object& py_object);
 
-bool IsNumpyArray(pybind11::object& obj);
+bool IsNumpyArray(nb::object& obj);
 
-int GetNumpyArrayType(const pybind11::object& obj);
+int GetNumpyArrayType(const nb::object& obj);
 
-bool IsNumericDType(const pybind11::dtype& dtype);
+//bool IsNumericDType(const nb::dtype& dtype);
 
-TensorShape GetShape(const pybind11::array& arr);
+TensorShape GetShape(const nb::ndarray<>& arr);
 
 int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type);
 
@@ -49,16 +54,16 @@ using DataTransferAlternative = std::variant<const DataTransferManager*, MemCpyF
 
 void CpuToCpuMemCpy(void*, const void*, size_t);
 
-void CopyDataToTensor(const pybind11::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
+void CopyDataToTensor(const nb::ndarray<>& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
 
-pybind11::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
-                                  const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
+nb::object AddTensorAsPyObj(const OrtValue& val, const DataTransferManager* data_transfer_manager,
+                            const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
 
-pybind11::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager);
+nb::object GetPyObjectFromSparseTensor(size_t pos, const OrtValue& ort_value, const DataTransferManager* data_transfer_manager);
 
-pybind11::object AddNonTensorAsPyObj(const OrtValue& val,
-                                     const DataTransferManager* data_transfer_manager,
-                                     const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
+nb::object AddNonTensorAsPyObj(const OrtValue& val,
+                               const DataTransferManager* data_transfer_manager,
+                               const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions);
 
 OrtMemoryInfo GetMemoryInfoPerDeviceType(const OrtDevice& ort_device);
 
@@ -133,46 +138,22 @@ const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* GetRocmToHostMemCpy
 #endif
 
 void CreateGenericMLValue(const onnxruntime::InputDefList* input_def_list, const AllocatorPtr& alloc,
-                          const std::string& name_input, const pybind11::object& value, OrtValue* p_mlvalue,
+                          const std::string& name_input, const nb::object& value, OrtValue* p_mlvalue,
                           bool accept_only_numpy_array = false, bool use_numpy_data_memory = true, MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy);
 
-pybind11::object GetPyObjFromTensor(const OrtValue& rtensor,
-                                    const DataTransferManager* data_transfer_manager = nullptr,
-                                    const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
+nb::object GetPyObjFromTensor(const OrtValue& rtensor,
+                              const DataTransferManager* data_transfer_manager = nullptr,
+                              const std::unordered_map<OrtDevice::DeviceType, MemCpyFunc>* mem_cpy_to_host_functions = nullptr);
 
-// The below two functions are used to convert OrtValue to numpy arrays
 
-/// <summary>
-/// This function operates on string tensors. Strings are always
-/// copied to python and converted to UTF-16/UCS-4/32 depending on the platform.
-/// This is accomplished using py::cast()
-///
-/// It is an error to pass a non-tensor or a non-string tensor to this function.
-/// </summary>
-/// <param name="tensor">Tensor that contains strings</param>
-/// <returns>py::array object</returns>
-pybind11::array StringTensorToNumpyArray(const Tensor& tensor);
+nb::ndarray<void> StringTensorToNumpyArray(const Tensor& tensor);
 
-/// <summary>
-/// Creates a numpy array with shape over OrtValue memory. Numpy array
-/// does not own the memory, but it holds a copy or OrtValue in a py::capsule.
-/// OrtValue is destroyed when the numpy array is garbage collected.
-/// This is used when the OrtValue memory is on CPU.
-/// </summary>
-/// <param name="ort_value">OrtValue with data</param>
-/// <returns>numpy array</returns>
-pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
+nb::ndarray<void> PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
 
-/// <summary>
-/// Creates a numpy array with shape with a copy of OrtValue data.
-/// This function is used when the OrtValue memory is not on CPU.
-/// </summary>
-/// <param name="ort_value">Source memory that is not on CPU.</param>
-/// <param name="data_transfer">a variant encapsulating alternatives for copying data</param>
-/// <returns></returns>
-pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
-                                                 const DataTransferAlternative& data_transfer);
+nb::ndarray<void> PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
+                                             const DataTransferAlternative& data_transfer);
 
+// This custom deleter for CPython objects is library-agnostic and does not need to change.
 template <class T>
 struct DecRefFn {
   void operator()(T* pyobject) const {

@@ -64,7 +64,6 @@
 #include "core/providers/coreml/coreml_provider_factory.h"
 #endif
 
-#include <nanobind/functional.h>
 
 // Explicitly provide a definition for the static const var 'GPU' in the OrtDevice struct,
 // GCC 4.x doesn't seem to define this and it breaks the pipelines based on CentOS as it uses
@@ -212,9 +211,9 @@ static py::object AddNonTensor(const OrtValue& val,
 // This function is used to return strings from a string tensor to python
 // as a numpy array of strings
 // Strings are always on CPU and must always be copied to python memory
-py::array StringTensorToNumpyArray(const Tensor& tensor) {
+nanobind::ndarray<void> StringTensorToNumpyArray(const Tensor& tensor) {
   // Create the result and allocate memory with the right size
-  py::array result(py::dtype(NPY_OBJECT), tensor.Shape().GetDims());
+  nanobind::ndarray<void> result(py::dtype(NPY_OBJECT), tensor.Shape().GetDims());
   const auto span = tensor.DataAsSpan<std::string>();
   auto* mutable_data = reinterpret_cast<py::object*>(result.mutable_data());
   for (size_t i = 0, lim = span.size(); i < lim; ++i) {
@@ -223,7 +222,7 @@ py::array StringTensorToNumpyArray(const Tensor& tensor) {
   return result;
 }
 
-pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
+nanobind::ndarray<void> PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
   const Tensor& tensor = ort_value.Get<Tensor>();
   // The capsule destructor must be stateless
   // We create a copy of OrtValue on the heap.
@@ -244,22 +243,7 @@ pybind11::array PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value) {
   return result;
 }
 
-pybind11::array PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, const DataTransferAlternative& dtm) {
-  const Tensor& tensor = ort_value.Get<Tensor>();
-  const int numpy_type = OnnxRuntimeTensorToNumpyType(tensor.DataType());
-  pybind11::array result(py::dtype(numpy_type), tensor.Shape().GetDims());
-  void* data = result.mutable_data();
 
-  if (std::holds_alternative<const DataTransferManager*>(dtm)) {
-    const DataTransferManager* data_transfer = std::get<const DataTransferManager*>(dtm);
-    static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
-    const auto span = gsl::make_span<char>(reinterpret_cast<char*>(data), tensor.SizeInBytes());
-    ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(*data_transfer, tensor, cpu_alloc_info, span));
-  } else {
-    std::get<MemCpyFunc>(dtm)(data, tensor.DataRaw(), tensor.SizeInBytes());
-  }
-  return result;
-}
 
 // In all cases, we may not have access to a DataTransferManager, hence the user may specify functions that
 // pretty much does what a DataTransferManager does - copy data from device(s) to the host

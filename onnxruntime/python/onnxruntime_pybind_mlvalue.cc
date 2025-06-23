@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
-#include "pybind11/numpy.h"
 
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -40,7 +39,7 @@ using Microsoft::WRL::ComPtr;
 namespace onnxruntime {
 namespace python {
 
-namespace py = pybind11;
+namespace py = nanobind;
 using namespace onnxruntime::logging;
 
 const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
@@ -66,7 +65,7 @@ bool IsNumericNumpyArray(const py::object& py_object) {
 
   return false;
 }
-
+#if 0
 namespace {
 template <typename... T>
 std::vector<py::dtype> MakeTypes() {
@@ -82,7 +81,7 @@ bool IsNumericDType(const py::dtype& dtype) {
     return dtype.is(dt);
   });
 }
-
+#endif
 static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   const int ndim = PyArray_NDIM(pyObject);
   const npy_intp* npy_dims = PyArray_DIMS(pyObject);
@@ -91,14 +90,14 @@ static TensorShape GetArrayShape(PyArrayObject* pyObject) {
   TensorShape shape(shape_vec);
   return shape;
 }
-
+#if 0
 TensorShape GetShape(const py::array& arr) {
   auto span = gsl::make_span(arr.shape(), arr.ndim());
   TensorShapeVector shape_vec(span.begin(), span.end());
   TensorShape shape(shape_vec);
   return shape;
 }
-
+#endif
 void CpuToCpuMemCpy(void* dst, const void* src, size_t num_bytes) {
   memcpy(dst, src, num_bytes);
 }
@@ -579,7 +578,7 @@ using OrtPybindSingleUseAllocatorPtr = std::shared_ptr<OrtPybindSingleUseAllocat
 
 // Expects p_tensor properly created
 // Does not manage darray life-cycle
-
+#if 0
 static void CopyDataToTensor(PyArrayObject* darray, int npy_type, Tensor& tensor,
                              MemCpyFunc mem_cpy_to_device = CpuToCpuMemCpy) {
   const auto total_items = tensor.Shape().Size();
@@ -650,7 +649,7 @@ inline void CopyDataToTensor(PyArrayObject* darray, int npy_type, std::unique_pt
 void CopyDataToTensor(const py::array& py_array, int npy_type, Tensor& tensor, MemCpyFunc mem_cpy_to_device) {
   CopyDataToTensor(reinterpret_cast<PyArrayObject*>(py_array.ptr()), npy_type, tensor, mem_cpy_to_device);
 }
-
+#endif
 // Setting `use_numpy_data_memory` to `true` will ensure that the underlying numpy array buffer is directly used
 // as the backing data buffer for the ORT Tensor where applicable (for numeric tensors)
 // The numpy object owns the memory and needs to be alive until the corresponding OrtValue is in scope

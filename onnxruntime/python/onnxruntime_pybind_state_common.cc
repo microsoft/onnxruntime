@@ -5,7 +5,6 @@
 
 namespace onnxruntime {
 namespace python {
-namespace py = pybind11;
 
 const std::string onnxruntime::python::SessionObjectInitializer::default_logger_id = "Default";
 
@@ -90,7 +89,7 @@ std::unique_ptr<OrtValue> PySparseTensor::AsOrtValue() const {
   if (instance_) {
     auto ort_value = std::make_unique<OrtValue>();
     auto ml_type = DataTypeImpl::GetType<SparseTensor>();
-    py::object this_object = py::cast(*this);
+    nanobind::object this_object = nanobind::cast(*this);
     // Create an std::function deleter that captures and ref-counts this PySparseTensor
     ort_value->Init(instance_.get(), ml_type, [object = std::move(this_object)](void*) {});
     return ort_value;
@@ -104,13 +103,13 @@ PySparseTensor::~PySparseTensor() {
   // pybind11 will deref and potentially destroy its objects
   // that we use to hold a reference and it may throw python errors
   // so we want to do it in a controlled manner
-  auto None = py::none();
+  auto None = nanobind::none();
   for (auto& obj : backing_storage_) {
     try {
       obj = None;
-    } catch (py::error_already_set& ex) {
+    } catch (std::exception& ) {
       // we need it mutable to properly log and discard it
-      ex.discard_as_unraisable(__func__);
+      //ex.discard_as_unraisable(__func__);
     }
   }
 }

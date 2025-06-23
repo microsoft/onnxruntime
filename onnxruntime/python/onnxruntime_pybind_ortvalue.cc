@@ -16,7 +16,7 @@
 namespace onnxruntime {
 namespace python {
 
-namespace py = pybind11;
+namespace py = nanobind;
 
 namespace {
 std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& shape,
@@ -151,6 +151,7 @@ void addOrtValueMethods(nanobind::module_& m) {
 
         return ml_value;
       })
+#if 0
       .def("update_inplace", [](OrtValue* ml_value, const py::array& py_values) {
         if (!IsNumericNumpyArray(py_values)) {
           throw std::runtime_error("Inplace update of OrtValues is currently only supported from non-string numpy arrays");
@@ -253,6 +254,7 @@ void addOrtValueMethods(nanobind::module_& m) {
                              const_cast<void*>(data.data()), cpu_allocator->Info(), *ort_value);
         return ort_value;
       })
+#endif
       // Factory method to create an OrtValue from the given shape and numpy element type on the specified device.
       // The memory is left uninitialized
       .def_static("ortvalue_from_shape_and_type", [](const std::vector<int64_t>& shape, py::object& numpy_element_type, const OrtDevice& device) -> std::unique_ptr<OrtValue> {
@@ -398,7 +400,7 @@ void addOrtValueMethods(nanobind::module_& m) {
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
         return obj; })
-#if defined(ENABLE_DLPACK)
+#if 0
       .def("to_dlpack", [](OrtValue* ort_value) -> py::object { return py::reinterpret_steal<py::object>(ToDlpack(*ort_value)); },
            "Returns a DLPack representing the tensor. This method does not copy the pointer shape, "
            "instead, it copies the pointer value. The OrtValue must be persist until the dlpack structure "
@@ -449,7 +451,9 @@ void addOrtValueMethods(nanobind::module_& m) {
       .def("reserve", [](std::vector<OrtValue>* v, const size_t len) { v->reserve(len); })
       .def("shrink_to_fit", [](std::vector<OrtValue>* v) { v->shrink_to_fit(); })
       .def("__len__", [](const std::vector<OrtValue>& v) { return v.size(); })
+#if 0
       .def("__iter__", [](const std::vector<OrtValue>& v) { return py::make_iterator(v.cbegin(), v.cend()); }, py::keep_alive<0, 1>())
+#endif
       .def("__getitem__", [](const std::vector<OrtValue>& v, const size_t idx) { return v.at(idx); })
       .def("bool_tensor_indices", [](std::vector<OrtValue>* v) -> std::vector<int64_t> {
             std::vector<int64_t> indices;
@@ -463,7 +467,7 @@ void addOrtValueMethods(nanobind::module_& m) {
            "In case of a boolean tensor, method to_dlpacks returns a uint8 tensor instead of a boolean tensor. "
            "If torch consumes the dlpack structure, `.to(torch.bool)` must be applied to the torch tensor "
            "to get a boolean tensor.")
-#if defined(ENABLE_DLPACK)
+#if 0
       .def("dlpack_at", [](std::vector<OrtValue>* v, const size_t idx) { return py::reinterpret_steal<py::object>(ToDlpack(v->at(idx))); })
 #endif
       .def("element_type_at", [](std::vector<OrtValue>* v, const size_t idx) -> int32_t { return GetTensorProtoType(v->at(idx)); },
@@ -472,7 +476,7 @@ void addOrtValueMethods(nanobind::module_& m) {
            "(such as onnx.TensorProto.FLOAT)."
            "Raises an exception in any other case.",
            py::arg("idx"))
-#if defined(ENABLE_DLPACK)
+#if 0
       .def("to_dlpacks", [](const std::vector<OrtValue>& v, py::object to_tensor) -> py::list {
             if (v.size() == 0)
               return py::list();
@@ -542,7 +546,7 @@ for every transferred tensor.
 #endif
       ;
 
-#if defined(ENABLE_DLPACK)
+#if 0
   m.def(
       "is_dlpack_uint8_tensor", [](py::capsule cap) -> bool {
         // case ONNX_NAMESPACE::TensorProto_DataType_BOOL:

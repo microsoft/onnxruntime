@@ -348,7 +348,7 @@ class PySparseTensor {
   /// <param name="instance">a fully constructed and populated instance of SparseTensor</param>
   /// <param name="storage">a collection reference guards</param>
   PySparseTensor(std::unique_ptr<SparseTensor>&& instance,
-                 std::vector<pybind11::object>&& storage)
+                 std::vector<nanobind::object>&& storage)
       : instance_(std::move(instance)), backing_storage_(std::move(storage)), ort_value_() {
   }
 
@@ -401,7 +401,7 @@ class PySparseTensor {
   // If we have and are able to copy from the OrtValue returned by run() to CPU, then this owns the data
   // and backing_storage_ is empty.
   std::unique_ptr<SparseTensor> instance_;
-  std::vector<pybind11::object> backing_storage_;
+  std::vector<nanobind::object> backing_storage_;
 
   // We create a copy of OrtValue when we obtain it from a run method.
   OrtValue ort_value_;

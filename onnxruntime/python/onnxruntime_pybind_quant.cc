@@ -1,45 +1,38 @@
-// Copyright (c) Microsoft Corporation. All rights reserved.
-// Licensed under the MIT License.
-
 #include <nanobind/nanobind.h>
-#include <nanobind/numpy.h>
-#include <nanobind/functional.h>
+#include <nanobind/ndarray.h>
 
 #include "core/mlas/inc/mlas_q4.h"
 #include "contrib_ops/cpu/quantization/dequantize_blockwise_bnb4.h"
 #include "core/util/thread_utils.h"
+#include "core/framework/float16.h"
 
-namespace pybind11 {
-namespace detail {
-// python3 -c 'import numpy as np; print(np.dtype(np.float16).num)'
-constexpr int NPY_FLOAT16 = 23;
+// Use the nanobind namespace
+namespace nb = nanobind;
+
+
+namespace nanobind::detail {
 template <>
-struct npy_format_descriptor<onnxruntime::MLFloat16> {
-  static constexpr auto name = _("float16");
-  static pybind11::dtype dtype() {
-    handle ptr = npy_api::get().PyArray_DescrFromType_(NPY_FLOAT16);
-    return reinterpret_borrow<pybind11::dtype>(ptr);
-  }
-  static std::string format() {
-    // following: https://docs.python.org/3/library/struct.html#format-characters
-    return "e";
-  }
+struct dtype_traits<onnxruntime::MLFloat16> {
+  static constexpr dlpack::dtype value{
+      (uint8_t)dlpack::dtype_code::Float,  // type code
+      16,                                  // size in bits
+      1                                    // lanes
+  };
+  static constexpr auto name = const_name("float16");
 };
-}  // namespace detail
-}  // namespace pybind11
+}  // namespace nanobind::detail
 
 namespace onnxruntime {
 namespace python {
 
-namespace py = pybind11;
 using namespace onnxruntime;
 
 template <typename T, int qbits>
 void QuantizeMatMulNBitsBlockwise(
-    py::array_t<uint8_t> dst,          // shape: [ N, block_per_K, block_blob_size ]
-    py::array_t<T> src,                // shape: [K, N]
-    py::array_t<T> scale,              // shape: [N, block_per_K]
-    py::array_t<uint8_t> zero_points,  // shape: [N, block_per_K] if bits > 4 else [N, (block_per_K + 1) / 2]
+    nb::ndarray<uint8_t, nb::c_contig> dst,
+    nb::ndarray<T, nb::c_contig> src,
+    nb::ndarray<T, nb::c_contig> scale,
+    nb::ndarray<uint8_t, nb::c_contig> zero_points,
     int32_t block_size,
     int32_t N,
     int32_t K,
@@ -48,30 +41,25 @@ void QuantizeMatMulNBitsBlockwise(
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
 
-  py::buffer_info dst_buf = dst.request();
-  py::buffer_info src_buf = src.request();
-  py::buffer_info scale_buf = scale.request();
-  py::buffer_info zp_buf = zero_points.request();
-
   MlasQuantizeBlockwise<T, qbits>(
-      reinterpret_cast<uint8_t*>(dst_buf.ptr),
-      reinterpret_cast<T*>(scale_buf.ptr),
-      is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
-      reinterpret_cast<const T*>(src_buf.ptr),
+      dst.data(),
+      scale.data(),
+      is_symmetric ? nullptr : zero_points.data(),
+      src.data(),
       block_size,
-      true,
+      true,  // is_col_wise
       K,
       N,
-      N,
+      N,  // lda
       tp.get());
 }
 
 template <typename T>
 bool QuantizeQDQMatMul4BitsBlockwise(
-    py::array_t<uint8_t> dst,          // shape: [K, N / 2]
-    py::array_t<T> src,                // shape: [K, N]
-    py::array_t<T> scale,              // shape: [block_per_K, N]
-    py::array_t<uint8_t> zero_points,  // shape: [block_per_K, N / 2]
+    nb::ndarray<uint8_t, nb::c_contig> dst,
+    nb::ndarray<T, nb::c_contig> src,
+    nb::ndarray<T, nb::c_contig> scale,
+    nb::ndarray<uint8_t, nb::c_contig> zero_points,
     int32_t quant_block_size,
     int32_t N,
     int32_t K,
@@ -80,17 +68,12 @@ bool QuantizeQDQMatMul4BitsBlockwise(
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
 
-  py::buffer_info dst_buf = dst.request();
-  py::buffer_info src_buf = src.request();
-  py::buffer_info scale_buf = scale.request();
-  py::buffer_info zp_buf = zero_points.request();
-
   return MlasQDQQuantizeBlockwise<T, 4>(
-      reinterpret_cast<const T*>(src_buf.ptr),
-      reinterpret_cast<T*>(scale_buf.ptr),
-      is_symmetric ? nullptr : reinterpret_cast<uint8_t*>(zp_buf.ptr),
-      reinterpret_cast<uint8_t*>(dst_buf.ptr),
-      true,
+      src.data(),
+      scale.data(),
+      is_symmetric ? nullptr : zero_points.data(),
+      dst.data(),
+      true,  // is_col_wise
       K,
       N,
       quant_block_size,
@@ -99,9 +82,9 @@ bool QuantizeQDQMatMul4BitsBlockwise(
 
 template <typename T>
 void QuantizeMatMulBnb4Blockwise(
-    py::array_t<uint8_t> dst,
-    py::array_t<T> src,
-    py::array_t<T> absmax,
+    nb::ndarray<uint8_t, nb::c_contig> dst,
+    nb::ndarray<T, nb::c_contig> src,
+    nb::ndarray<T, nb::c_contig> absmax,
     int32_t block_size,
     int32_t quant_type,
     int32_t N,
@@ -110,14 +93,10 @@ void QuantizeMatMulBnb4Blockwise(
   auto tp = concurrency::CreateThreadPool(&onnxruntime::Env::Default(), to,
                                           concurrency::ThreadPoolType::INTRA_OP);
 
-  py::buffer_info dst_buf = dst.request();
-  py::buffer_info src_buf = src.request();
-  py::buffer_info absmax_buf = absmax.request();
-
   contrib::QuantizeBlockwiseBnb4<T>(
-      static_cast<uint8_t*>(dst_buf.ptr),
-      static_cast<const T*>(src_buf.ptr),
-      static_cast<T*>(absmax_buf.ptr),
+      dst.data(),
+      src.data(),
+      absmax.data(),
       block_size,
       quant_type,
       N,
@@ -125,7 +104,7 @@ void QuantizeMatMulBnb4Blockwise(
       tp.get());
 }
 
-void CreateQuantPybindModule(py::module& m) {
+void CreateQuantPybindModule(nb::module_& m) {
   m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<float, 4>);
   m.def("quantize_matmul_4bits", &QuantizeMatMulNBitsBlockwise<MLFloat16, 4>);
   m.def("quantize_matmul_8bits", &QuantizeMatMulNBitsBlockwise<float, 8>);

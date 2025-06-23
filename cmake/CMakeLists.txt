@@ -230,9 +230,6 @@ option(onnxruntime_ENABLE_CPUINFO "Enable cpuinfo" ON)
 # ATen fallback support
 option(onnxruntime_ENABLE_ATEN "Enable ATen fallback" OFF)
 
-# dlpack support
-cmake_dependent_option(onnxruntime_ENABLE_DLPACK "Enable dlpack" ON "onnxruntime_ENABLE_TRAINING OR onnxruntime_ENABLE_ATEN OR onnxruntime_ENABLE_PYTHON" OFF)
-
 # Triton support
 option(onnxruntime_ENABLE_TRITON "Enable Triton" OFF)
 
@@ -1665,9 +1662,6 @@ if (onnxruntime_ENABLE_TRAINING)
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES tensorboard)
 endif()
 
-if (onnxruntime_ENABLE_DLPACK)
-  add_compile_definitions(ENABLE_DLPACK)
-endif()
 
 if (onnxruntime_CALLER_FRAMEWORK)
   add_definitions(-DORT_CALLER_FRAMEWORK="${onnxruntime_CALLER_FRAMEWORK}")
