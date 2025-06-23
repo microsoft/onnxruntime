@@ -66,11 +66,7 @@ struct MIGraphXFuncState {
 class MIGraphXExecutionProvider : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider() override;
-
-  void get_flags_from_session_info(const MIGraphXExecutionProviderInfo& info);
-  void get_flags_from_env();
-  void print_migraphx_ep_flags();
+  ~MIGraphXExecutionProvider() override = default;
 
   Status Sync() const override;
 
@@ -132,7 +128,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
-  hipDeviceProp_t device_prop_;
+  hipDeviceProp_t device_prop_{};
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_{};
   size_t mem_limit_{std::numeric_limits<size_t>::max()};

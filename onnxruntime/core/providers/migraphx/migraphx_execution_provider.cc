@@ -113,31 +113,78 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
   return s_kernel_registry;
 }
 
+static std::string_view GetArenaExtendStrategyName(ArenaExtendStrategy strategy) {
+  switch (strategy) {
+    case ArenaExtendStrategy::kNextPowerOfTwo:
+      return "kNextPowerOfTwo";
+    case ArenaExtendStrategy::kSameAsRequested:
+      return "kSameAsRequested";
+    default:
+      return "Unknown";
+  }
+}
+
+#define GET_ENV(variable, value, ...)                              \
+  const auto value##env{GetEnvironmentVar(variable)};              \
+  if (!value##env.empty()) {                                       \
+    __VA_ARGS__;                                                   \
+    LOGS_DEFAULT(INFO) << "\n " << variable << ": " << value##env; \
+  }
+
+#define GET_ENV_BOOL(variable, value) \
+  GET_ENV(variable, value, value = std::stoi(value##env) != 0)
+
+#define GET_ENV_STRING(variable, value) \
+  GET_ENV(variable, value, value = value##env)
+
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
-    : IExecutionProvider{onnxruntime::kMIGraphXExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
-                                   info.device_id)},
-      device_id_{info.device_id} {
+    : IExecutionProvider{kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD, info.device_id)},
+      device_id_{info.device_id},
+      fp16_enable_{info.fp16_enable},
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR > 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH >= 2)))
+      bf16_enable_{info.bf16_enable},
+#endif
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
+      fp8_enable_{info.fp8_enable},
+#endif
+      int8_enable_{info.int8_enable},
+      model_cache_path_{info.model_cache_dir},
+      t_{info.target_device.c_str()},
+      exhaustive_tune_{info.exhaustive_tune},
+      metadef_id_generator_{ModelMetadefIdGenerator::Create()},
+      external_alloc_{info.external_alloc},
+      external_free_{info.external_free},
+      external_empty_cache_{info.external_empty_cache} {
   InitProviderOrtApi();
-  get_flags_from_session_info(info);
-  metadef_id_generator_ = ModelMetadefIdGenerator::Create();
-  get_flags_from_env();
-}
 
-MIGraphXExecutionProvider::~MIGraphXExecutionProvider() {
-}
+  // Set GPU device to be used and read device properties for feature usage.
 
-void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecutionProviderInfo& info) {
-  // Set GPU device to be used
   HIP_CALL_THROW(hipSetDevice(device_id_));
-  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, info.device_id));
-  t_ = migraphx::target(info.target_device.c_str());
+  HIP_CALL_THROW(hipGetDeviceProperties(&device_prop_, device_id_));
 
-  // Quantization
-  fp16_enable_ = info.fp16_enable;
+  // Overwrite initialized values with values from environment variables.
 
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4 && HIP_VERSION_PATCH >= 2)
-  bf16_enable_ = info.bf16_enable;
+  LOGS_DEFAULT(WARNING) << "[MIGraphX EP] MIGraphX ENV Override Variables Set:";
+  GET_ENV_BOOL(migraphx_env_vars::kFP16Enable, fp16_enable_);
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR > 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH >= 2)))
+  GET_ENV_BOOL(migraphx_env_vars::kBF16Enable, bf16_enable_);
+#endif
+#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
+  GET_ENV_BOOL(migraphx_env_vars::kFP8Enable, fp8_enable_);
+#endif
+  GET_ENV_BOOL(migraphx_env_vars::kINT8Enable, int8_enable_);
+  GET_ENV(migraphx_env_vars::kINT8CalibrationTableName, int8_calibration_cache_name_);
+  GET_ENV(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable, int8_use_native_migraphx_calibration_table_);
+  GET_ENV_STRING(migraphx_env_vars::kCachePath, calibration_cache_path_);
+  GET_ENV_STRING(migraphx_env_vars::kModelCachePath, model_cache_path_);
+  GET_ENV_BOOL(migraphx_env_vars::kDumpModelOps, dump_model_ops_);
+  GET_ENV_BOOL(migraphx_env_vars::kExhaustiveTune, exhaustive_tune_);
+
+  // Verify configuration correctness and adjust accordingly.
+
+#if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && (HIP_VERSION_MINOR < 4 || (HIP_VERSION_MINOR == 4 && HIP_VERSION_PATCH < 2)))
+  LOGS_DEFAULT(WARNING) << "MIGraphX: BF16 Quantization requires ROCm 6.4.2 or greater";
+  bf16_enable_ = false;
 #endif
 
   if (bf16_enable_ && fp16_enable_) {
@@ -146,23 +193,20 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
     LOGS_DEFAULT(FATAL) << "MIGraphX: BF16 and FP16 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
-  fp8_enable_ = info.fp8_enable;
-#else
+#if HIP_VERSION_MAJOR < 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR < 4)
   LOGS_DEFAULT(WARNING) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
   fp8_enable_ = false;
 #endif
-  int8_enable_ = info.int8_enable;
 
   if (int8_enable_ && fp8_enable_) {
-    int8_enable_ = false;
-    fp8_enable_ = false;
     LOGS_DEFAULT(FATAL) << "MIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
   }
 
   if (int8_enable_ ^ fp8_enable_) {
-    int8_calibration_cache_name_ = info.int8_calibration_table_name;
-    int8_use_native_migraphx_calibration_table_ = info.int8_use_native_calibration_table;
+    int8_calibration_cache_name_ =
+        int8_calibration_cache_name_env.empty() ? info.int8_calibration_table_name : int8_calibration_cache_name_env;
+    int8_use_native_migraphx_calibration_table_ =
+        int8_use_native_migraphx_calibration_table_env.empty() ? info.int8_use_native_calibration_table : std::stoi(int8_use_native_migraphx_calibration_table_env) != 0;
   }
 
   if (int8_enable_ || fp8_enable_) {
@@ -170,136 +214,24 @@ void MIGraphXExecutionProvider::get_flags_from_session_info(const MIGraphXExecut
   }
 
   // Load INT8 calibration table
-  std::unordered_map<std::string, float> dynamic_range_map;
   if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
-    const auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
+    std::unordered_map<std::string, float> dynamic_range_map;
+    auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
     if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
       throw std::runtime_error("Session Failed to read INT8 calibration table " + calibration_cache_path.string());
     }
   }
 
-  // Save/load migraphx compiled models
-  model_cache_path_ = info.model_cache_dir;
+  // Print configured options for the session.
 
-  exhaustive_tune_ = info.exhaustive_tune;
-
-  LOGS_DEFAULT(WARNING) << "[MIGraphX EP] MIGraphX provider Session Options:";
-  print_migraphx_ep_flags();
-}
-
-void MIGraphXExecutionProvider::get_flags_from_env() {
-  LOGS_DEFAULT(WARNING) << "\n[MIGraphX EP] MIGraphX ENV Override Variables Set:";
-  // whether fp16 is enable
-  const std::string fp16_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFP16Enable);
-  if (!fp16_enable_env.empty()) {
-    fp16_enable_ = (std::stoi(fp16_enable_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_FP16_ENABLE: " << fp16_enable_;
-  }
-
-  const std::string bf16_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kBF16Enable);
-  if (!bf16_enable_env.empty()) {
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4 && HIP_VERSION_PATCH >= 2)
-    bf16_enable_ = (std::stoi(bf16_enable_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_BF16_ENABLE: " << fp16_enable_;
-#else
-    LOGS_DEFAULT(WARNING) << "MIGraphX: BF16 Quantization requires ROCm 6.4.2 or greater";
-    bf16_enable_ = false;
-#endif
-  }
-
-  if (bf16_enable_ && fp16_enable_) {
-    LOGS_DEFAULT(FATAL) << "\nMIGraphX: FP16 and BF16 Quantization Mutually exclusive. Ignoring both flags";
-  }
-
-  // whether fp8 quantization is enabled
-  const std::string fp8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kFP8Enable);
-  if (!fp8_enable_env.empty()) {
-#if HIP_VERSION_MAJOR > 6 || (HIP_VERSION_MAJOR == 6 && HIP_VERSION_MINOR >= 4)
-    fp8_enable_ = (std::stoi(fp8_enable_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_FP8_ENABLE: " << fp8_enable_;
-#else
-    LOGS_DEFAULT(WARNING) << "MIGraphX: FP8 Quantization requires ROCm 6.4 or greater";
-    fp8_enable = false;
-#endif
-  }
-
-  // whether int8 is enabled
-  const std::string int8_enable_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8Enable);
-  if (!int8_enable_env.empty()) {
-    int8_enable_ = (std::stoi(int8_enable_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_INT8_ENABLE: " << int8_enable_;
-  }
-
-  if (int8_enable_ && fp8_enable_) {
-    LOGS_DEFAULT(FATAL) << "\nMIGraphX: FP8 and INT8 Quantization Mutually exclusive. Ignoring both Quantization flags";
-  }
-
-  if (int8_enable_ || fp8_enable_) {
-    const std::string int8_calibration_cache_name_env =
-        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8CalibrationTableName);
-    if (!int8_calibration_cache_name_env.empty()) {
-      int8_calibration_cache_name_ = int8_calibration_cache_name_env;
-      LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_CALIBRATION_TABLE_NAME: " << int8_calibration_cache_name_;
-    }
-
-    const std::string cache_path = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kCachePath);
-    if (!cache_path.empty()) {
-      calibration_cache_path_ = cache_path;
-      LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_CACHE_PATH: " << calibration_cache_path_.string();
-    }
-
-    const std::string int8_use_native_migraphx_calibration_table_env =
-        onnxruntime::GetEnvironmentVar(migraphx_env_vars::kINT8UseNativeMIGraphXCalibrationTable);
-    if (!int8_use_native_migraphx_calibration_table_env.empty()) {
-      int8_use_native_migraphx_calibration_table_ =
-          (std::stoi(int8_use_native_migraphx_calibration_table_env) == 0 ? false : true);
-      LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE: "
-                            << int8_use_native_migraphx_calibration_table_;
-    }
-  }
-
-  if (int8_enable_ || fp8_enable_) {
-    int8_calibration_cache_available_ = !int8_calibration_cache_name_.empty();
-  }
-
-  // Load INT8 calibration table
-  std::unordered_map<std::string, float> dynamic_range_map;
-  if ((int8_enable_ || fp8_enable_) && int8_calibration_cache_available_) {
-    const auto calibration_cache_path = GetCachePath(calibration_cache_path_, int8_calibration_cache_name_);
-    if (!ReadDynamicRange(calibration_cache_path, int8_use_native_migraphx_calibration_table_, dynamic_range_map)) {
-      throw std::runtime_error("ENV Failed to read calibration table " + calibration_cache_path.string());
-    }
-  }
-
-  // Save/load migraphx compiled models
-  const auto model_cache_path_env = GetEnvironmentVar(migraphx_env_vars::kModelCachePath);
-  if (!model_cache_path_env.empty()) {
-    model_cache_path_ = GetEnvironmentVar(migraphx_env_vars::kModelCachePath);
-    LOGS_DEFAULT(INFO) << "\n"
-                       << migraphx_env_vars::kModelCachePath << ": " << model_cache_path_.string();
-  }
-
-  // dump unsupported ops
-  const std::string dump_model_ops_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kDumpModelOps);
-  if (!dump_model_ops_env.empty()) {
-    dump_model_ops_ = (std::stoi(dump_model_ops_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_DUMP_MODEL_OPS: " << dump_model_ops_;
-  }
-
-  // Allow for exhaustive tune during compile
-  const std::string exhaustive_tune_env = onnxruntime::GetEnvironmentVar(migraphx_env_vars::kExhaustiveTune);
-  if (!exhaustive_tune_env.empty()) {
-    exhaustive_tune_ = (std::stoi(exhaustive_tune_env) == 0 ? false : true);
-    LOGS_DEFAULT(WARNING) << "\nORT_MIGRAPHX_EXHAUSTIVE_TUNE_OPS: " << exhaustive_tune_;
-  }
-}
-
-void MIGraphXExecutionProvider::print_migraphx_ep_flags() {
-  LOGS_DEFAULT(VERBOSE) << "\n " << migraphx_provider_option::kDeviceId << ": " << device_id_
+  LOGS_DEFAULT(VERBOSE) << "[MIGraphX EP] MIGraphX provider Session Options:"
+                        << "\n " << migraphx_provider_option::kDeviceId << ": " << device_id_
                         << "\n " << migraphx_provider_option::kFp16Enable << ": " << fp16_enable_
                         << "\n " << migraphx_provider_option::kBf16Enable << ": " << bf16_enable_
                         << "\n " << migraphx_provider_option::kFp8Enable << ": " << fp8_enable_
                         << "\n " << migraphx_provider_option::kInt8Enable << ": " << int8_enable_
+                        << "\n " << migraphx_provider_option::kMemLimit << ": " << mem_limit_
+                        << "\n " << migraphx_provider_option::kArenaExtendStrategy << ": " << GetArenaExtendStrategyName(arena_extend_strategy_)
                         << "\n dump_model_ops: " << dump_model_ops_
                         << "\n " << migraphx_provider_option::kExhaustiveTune << ": " << exhaustive_tune_
                         << "\n " << migraphx_provider_option::kInt8CalibTable << ": " << int8_calibration_cache_name_
