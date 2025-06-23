@@ -19,21 +19,6 @@
 #define EXPORT_API
 #endif
 
-#define RETURN_IF_ERROR(fn)   \
-  do {                        \
-    OrtStatus* status = (fn); \
-    if (status != nullptr) {  \
-      return status;          \
-    }                         \
-  } while (0)
-
-#define RETURN_IF(cond, ort_api, msg)                    \
-  do {                                                   \
-    if ((cond)) {                                        \
-      return (ort_api).CreateStatus(ORT_EP_FAIL, (msg)); \
-    }                                                    \
-  } while (0)
-
 namespace onnxruntime {
 
 namespace tensorrt_env_vars {
@@ -245,7 +230,7 @@ struct ApiPtrs {
 
 /// <summary>
 /// 
-/// Plugin TensorRT EP that implements OrtEP
+/// Plugin TensorRT EP that implements OrtEp
 /// 
 /// </summary>
 struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
@@ -258,6 +243,8 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
   const OrtSessionOptions& session_options_;
   const OrtLogger& logger_;
 
+  SubGraphCollection_t GetSupportedList(SubGraphCollection_t supported_nodes_list, int iterations, const int max_iterations,
+                                        const OrtGraph* graph, bool* early_termination) const;
 
   /*
   bool IsGraphCaptured(int graph_annotation_id) const { return false; }
@@ -361,7 +348,6 @@ struct TensorrtExecutionProvider : OrtEp, ApiPtrs {
 
   //  std::unique_ptr<ONNX_NAMESPACE::ModelProto> model_proto_ = ONNX_NAMESPACE::ModelProto::Create();
 
-  std::unordered_set<std::string> control_flow_op_set_ = {"If", "Loop", "Scan"};
   //  mutable std::unordered_map<std::string, std::unique_ptr<SubGraphContext>> subgraph_context_map_;
 
   mutable std::unique_ptr<nvinfer1::IBuilder> builder_;
