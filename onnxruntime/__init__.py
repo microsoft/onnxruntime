@@ -8,7 +8,7 @@ For more information on ONNX Runtime, please see `aka.ms/onnxruntime <https://ak
 or the `Github project <https://github.com/microsoft/onnxruntime/>`_.
 """
 
-__version__ = "1.22.0"
+__version__ = "1.22.1"
 __author__ = "Microsoft"
 
 # we need to do device version validation (for example to check Cuda version for an onnxruntime-training package).
