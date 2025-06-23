@@ -151,16 +151,27 @@
       COMMENT "Installing npm dependencies for WGSL template generation"
       VERBATIM
     )
-      # Find all WGSL template input files
+
+    # Find all WGSL template input files
     file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
 
+    # Define the output files that will be generated
+    set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
+    set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
+
     # Generate WGSL templates
-    add_custom_target(onnxruntime_webgpu_wgsl_generation
-      COMMAND ${NPM_EXECUTABLE} run gen -- -i ../ -o ${WGSL_GENERATED_DIR} -I wgsl_template_gen/ --generator static-cpp --clean --debug
+    add_custom_command(
+      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
+      COMMAND ${NPM_EXECUTABLE} run gen -- -i ../ -o ${WGSL_GENERATED_DIR} -I wgsl_template_gen/ --generator static-cpp --debug
       DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
       COMMENT "Generating WGSL templates from *.wgsl.template files"
       VERBATIM
+    )
+
+    # Create a target to represent the generation step
+    add_custom_target(onnxruntime_webgpu_wgsl_generation
+      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
