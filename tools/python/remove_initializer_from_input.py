@@ -13,7 +13,7 @@ def get_args():
 
 def remove_initializer_from_input(model: onnx.ModelProto) -> bool:
     if model.ir_version < 4:
-        print("Model with ir_version below 4 requires to include initilizer in graph input")
+        print("Model with ir_version below 4 requires to include initializer in graph input")
         return False
 
     inputs = model.graph.input
