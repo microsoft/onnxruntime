@@ -747,7 +747,10 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
     )
     webgpu_group.add_argument(
-        "--use_wgsl_template", action="store_true", help="Enable WebGPU WGSL template generation."
+        "--wgsl_template",
+        choices=["static", "dynamic", ""],
+        default="",  # By default, WGSL template generation is disabled
+        help="Specify the generator for WebGPU WGSL template generation.",
     )
 
     # --- XNNPACK ---

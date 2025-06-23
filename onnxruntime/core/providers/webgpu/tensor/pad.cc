@@ -19,7 +19,7 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
-#if defined(ORT_USE_WGSL_TEMPLATE)
+#if ORT_WGSL_TEMPLATE
   return shader.ApplyTemplate<"tensor/pad.wgsl.template">({.param_dim_value_zero = static_cast<int>(dim_value_zero_),
                                                            .param_is_float16 = static_cast<int>(is_float16_),
                                                            .param_pad_mode = static_cast<int>(mode_),

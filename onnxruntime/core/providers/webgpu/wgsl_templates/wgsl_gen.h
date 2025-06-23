@@ -24,6 +24,8 @@ namespace onnxruntime {
 namespace webgpu {
 namespace wgsl_gen {
 
+#if ORT_WGSL_TEMPLATE == 1  // Use static generator
+
 // A helper struct to enable using a string literal as a NTTP (non-type template parameter).
 template <size_t N>
 struct string_template_filepath {
@@ -64,6 +66,12 @@ onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateP
 #define INCLUDED_BY_WGSL_GEN_HEADER
 #include "wgsl_template_gen/index.h"
 #undef INCLUDED_BY_WGSL_GEN_HEADER
+
+#elif ORT_WGSL_TEMPLATE == 2  // Use dynamic generator
+
+#error "Dynamic WGSL template generation is not implemented yet."
+
+#endif
 
 }  // namespace wgsl_gen
 }  // namespace webgpu

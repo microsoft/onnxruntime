@@ -13,9 +13,7 @@
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/string_utils.h"
 
-#if defined(ORT_USE_WGSL_TEMPLATE)
-#include "core/providers/webgpu/wgsl_gen.h"
-#endif
+#include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -77,7 +75,7 @@ class ShaderHelper final {
 
   Status Init();
 
-#if defined(ORT_USE_WGSL_TEMPLATE)
+#if ORT_WGSL_TEMPLATE
   // Apply the WGSL template to the shader helper.
   //
   // \param TemplateFilepath The filepath of the WGSL template to apply.

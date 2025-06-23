@@ -9,8 +9,16 @@
   if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
     add_definitions(-DENABLE_WEBASSEMBLY_THREADS=1)
   endif()
-  if (onnxruntime_USE_WGSL_TEMPLATE)
-    add_definitions(-DORT_USE_WGSL_TEMPLATE=1)
+  if (onnxruntime_WGSL_TEMPLATE)
+    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
+      add_definitions(-DORT_WGSL_TEMPLATE=1)
+    elseif(NOT onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+      add_definitions(-DORT_WGSL_TEMPLATE=2)
+    else()
+      message(FATAL_ERROR "Unsupported value for onnxruntime_WGSL_TEMPLATE: ${onnxruntime_WGSL_TEMPLATE}. Supported values are 'static' or 'dynamic'.")
+    endif()
+  else()
+    add_definitions(-DORT_WGSL_TEMPLATE=0)
   endif()
   file(GLOB_RECURSE onnxruntime_providers_webgpu_cc_srcs CONFIGURE_DEPENDS
     "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.h"
@@ -122,7 +130,7 @@
 
   add_dependencies(onnxruntime_providers_webgpu ${onnxruntime_EXTERNAL_DEPENDENCIES})
 
-  if (onnxruntime_USE_WGSL_TEMPLATE)
+  if (onnxruntime_WGSL_TEMPLATE)
     # Define the WGSL templates directory and output directory
     set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")

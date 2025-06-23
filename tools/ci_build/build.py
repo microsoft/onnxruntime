@@ -477,7 +477,7 @@ def generate_build_tree(
         "-Donnxruntime_USE_JSEP=" + ("ON" if args.use_jsep else "OFF"),
         "-Donnxruntime_USE_WEBGPU=" + ("ON" if args.use_webgpu else "OFF"),
         "-Donnxruntime_USE_EXTERNAL_DAWN=" + ("ON" if args.use_external_dawn else "OFF"),
-        "-Donnxruntime_USE_WGSL_TEMPLATE=" + ("ON" if args.use_wgsl_template else "OFF"),
+        "-Donnxruntime_WGSL_TEMPLATE=" + (args.wgsl_template if args.wgsl_template else "OFF"),
         # Training related flags
         "-Donnxruntime_ENABLE_NVTX_PROFILE=" + ("ON" if args.enable_nvtx_profile else "OFF"),
         "-Donnxruntime_ENABLE_TRAINING=" + ("ON" if args.enable_training else "OFF"),
@@ -884,6 +884,9 @@ def generate_build_tree(
                 raise BuildError(
                     "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
                 )
+
+        if args.wgsl_template:
+            raise BuildError("WGSL Template (--wgsl_template) must be enabled with WebGPU (--use_webgpu).")
 
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]

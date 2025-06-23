@@ -19,10 +19,10 @@ For more information, check [wgsl-template](https://github.com/fs-eire/wgsl-temp
 
 3. Build and test.
 
-   Just append `--use_wgsl_template` to the ORT build script:
+   Just append `--wgsl_template static` to the ORT build script:
 
    ```sh
-   ./build.sh --use_webgpu --use_wgsl_template
+   ./build.sh --use_webgpu --wgsl_template static
    ```
 
    The following build steps are only for when you just want to build/debug the template generation.
