@@ -57,6 +57,9 @@ class WebGpuExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override { return preferred_data_layout_; }
 
+  std::optional<bool> ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                    std::string_view node_op_type) const override;
+
   FusionStyle GetFusionStyle() const override { return FusionStyle::FilteredGraphViewer; }
 
   // WebGPU EP disallow concurrent run because actual implementation (eg. WebGPU backend) relies on global states to
