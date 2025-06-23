@@ -3,7 +3,7 @@ FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 #Install Vulkan
-RUN FEDORA_VERSION=$(rpm -E %fedora) && \
+RUN FEDORA_VERSION=$(rpm -E %fedora) && echo $FEDORA_VERSION &&\
     dnf install -y \
     https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-${FEDORA_VERSION}.noarch.rpm \
     https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-${FEDORA_VERSION}.noarch.rpm
