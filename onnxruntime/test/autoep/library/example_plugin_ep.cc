@@ -53,14 +53,14 @@ struct FloatInitializer {
 struct MulKernel {
   MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
             const std::unordered_map<std::string, FloatInitializer>& float_initializers,
-            const char* input0_name, const char* input1_name)
+            std::string input0_name, std::string input1_name)
       : ort_api(ort_api),
         logger(logger),
         float_initializers(float_initializers),
         input0_name(input0_name),
         input1_name(input1_name) {}
 
-  const FloatInitializer* TryGetSavedInitializer(const char* name) const {
+  const FloatInitializer* TryGetSavedInitializer(const std::string& name) const {
     auto iter = float_initializers.find(name);
     return iter != float_initializers.end() ? &iter->second : nullptr;
   }
@@ -121,7 +121,7 @@ struct MulKernel {
         RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 0, input1, shape1));
         input0 = gsl::span<const float>(const_input0->data);
         shape0 = const_input0->shape;
-      } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input0_name); const_input1 != nullptr) {
+      } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
         RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 0, input0, shape0));
         input1 = gsl::span<const float>(const_input1->data);
         shape1 = const_input1->shape;
@@ -161,8 +161,8 @@ struct MulKernel {
   const OrtApi& ort_api;
   const OrtLogger& logger;
   const std::unordered_map<std::string, FloatInitializer>& float_initializers;
-  const char* input0_name = nullptr;
-  const char* input1_name = nullptr;
+  std::string input0_name;
+  std::string input1_name;
 };
 
 /// <summary>
@@ -281,7 +281,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
         RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(value), (void**)&data));
 
         FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
-        float_initializers.emplace(name, std::move(ep_initializer));
+        this->float_initializers.emplace(name, std::move(ep_initializer));
       }
     }
 
