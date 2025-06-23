@@ -1227,6 +1227,11 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
     LOGS(logger, VERBOSE) << "InitializeProfiling succeed.";
   }
 
+  if (status.IsOK()) {
+    ORT_RETURN_IF_ERROR(LoadOpPackage());
+    LOGS(logger, VERBOSE) << "LoadOpPackage succeed.";
+  }
+
   bool enable_htp_weight_sharing = false;
   if (share_ep_contexts && !load_from_cached_context) {
 #if defined(__aarch64__) || defined(_M_ARM64)
