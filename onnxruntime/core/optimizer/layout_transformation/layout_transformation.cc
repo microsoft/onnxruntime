@@ -44,40 +44,20 @@ std::string MakeLayoutTransformationOpIdentifier(std::string_view domain, std::s
 /// <returns>true if the node should have its layout converted to NHWC.</returns>
 bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider, const api::NodeRef& node) {
   // skip if op is not an ONNX or contrib op
-  auto domain = node.Domain();
+  const auto domain = node.Domain();
   if (domain != kOnnxDomain && domain != kMSDomain) {
     return false;
   }
 
-  if (auto should_convert = execution_provider.ShouldConvertNodeLayoutToNhwc(node.Domain(), node.OpType());
-      should_convert.has_value()) {
-    return *should_convert;
+  const auto op_type = node.OpType();
+  if (auto should_convert_from_ep = execution_provider.ShouldConvertNodeLayoutToNhwc(domain, op_type);
+      should_convert_from_ep.has_value()) {
+    return *should_convert_from_ep;
   }
 
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
-
-  const auto op_identifier = MakeLayoutTransformationOpIdentifier(node.Domain(), node.OpType());
+  const auto op_identifier = MakeLayoutTransformationOpIdentifier(domain, op_type);
   return layout_sensitive_ops.find(op_identifier) != layout_sensitive_ops.end();
-
-#if 0
-
-  // handle special cases
-
-// TODO: We don't really need EP pre-processor macros in this function because we're already checking if the
-// node is assigned to the desired EP (e.g., QNN EP). There's nothing about this code that absolutely requires
-// conditional compilation.
-#if defined(USE_QNN) || defined(USE_QNN_PROVIDER_INTERFACE)
-  if (node.GetExecutionProviderType() == kQnnExecutionProvider) {
-    if (node.OpType() == "Upsample") {
-      // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
-      return true;
-    }
-  }
-#endif
-
-  return layout_sensitive_ops.count(node.OpType()) != 0;
-
-#endif  // 0
 }
 }  // namespace
 

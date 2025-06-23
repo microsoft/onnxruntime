@@ -929,6 +929,16 @@ DataLayout QNNExecutionProvider::GetPreferredLayout() const {
   return DataLayout::NHWC;
 }
 
+std::optional<bool> QNNExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                                        std::string_view node_op_type) const {
+  if (node_domain == kOnnxDomain && node_op_type == "Upsample") {
+    // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
+    return true;
+  }
+
+  return std::nullopt;
+}
+
 Status QNNExecutionProvider::CreateComputeFunc(std::vector<NodeComputeInfo>& node_compute_funcs,
                                                const logging::Logger& logger) {
   NodeComputeInfo compute_info;
