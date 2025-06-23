@@ -497,6 +497,7 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
 typedef enum OrtTypeTag {
   ORT_TYPE_TAG_Void,
   ORT_TYPE_TAG_OrtValueInfo,
+  ORT_TYPE_TAG_OrtOpAttr,
   ORT_TYPE_TAG_OrtNode,
   ORT_TYPE_TAG_OrtGraph,
 } OrtTypeTag;
@@ -5873,6 +5874,18 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** implicit_inputs);
+
+  /** \brief Returns a node's attributes as OrtOpAttr instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] inputs Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
+   *                    as OrtOpAttr instances. Must be released by calling ReleaseArrayOfConstObjects.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** inputs);
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
