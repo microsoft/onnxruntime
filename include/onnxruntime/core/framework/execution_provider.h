@@ -6,6 +6,7 @@
 #ifndef SHARED_PROVIDER
 #include <memory>
 #include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 

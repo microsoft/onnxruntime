@@ -323,6 +323,32 @@ DataLayout CUDAExecutionProvider::GetPreferredLayout() const {
   return this->IsNHWCPreferred() ? DataLayout::NHWC : DataLayout::NCHW;
 }
 
+std::optional<bool> CUDAExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                                         std::string_view node_op_type) const {
+#if defined(ENABLE_CUDA_NHWC_OPS)
+
+  // TODO(mtavenrath) generate list from registered kernels using nhwc domain
+  static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{
+      "BatchNormalization",
+      "Conv",
+      "ConvTranspose",
+      "GlobalMaxPool",
+      "MaxPool",
+      "GlobalAveragePool",
+      "AveragePool",
+      "GridSample",
+      "DepthToSpace",
+      "SpaceToDepth",
+      "LRN",
+  };
+
+  return node_domain == kOnnxDomain && cuda_nhwc_onnx_ops.find(node_op_type) != cuda_nhwc_onnx_ops.end();
+
+#else  // defined(ENABLE_CUDA_NHWC_OPS)
+  return std::nullopt;
+#endif
+}
+
 CUDAExecutionProvider::~CUDAExecutionProvider() {
   // clean up thread local context caches
   {

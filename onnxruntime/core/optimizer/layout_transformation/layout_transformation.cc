@@ -30,27 +30,6 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
-#if defined(USE_CUDA) && ENABLE_CUDA_NHWC_OPS
-// TODO(mtavenrath) generate list from registered kernels using nhwc domain
-const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> cuda_nhwc_ops = []() {
-    return std::unordered_set<std::string_view>{
-        "BatchNormalization",
-        "Conv",
-        "ConvTranspose",
-        "GlobalMaxPool",
-        "MaxPool",
-        "GlobalAveragePool",
-        "AveragePool",
-        "GridSample",
-        "DepthToSpace",
-        "SpaceToDepth",
-        "LRN"};
-  }();
-  return cuda_nhwc_ops;
-}
-#endif
-
 // "op_type" if from ONNX domain, "domain:op_type" otherwise.
 std::string MakeLayoutTransformationOpIdentifier(std::string_view domain, std::string_view op_type) {
   return (domain == kOnnxDomain) ? std::string(domain) : MakeString(domain, ":", op_type);
@@ -83,20 +62,6 @@ bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider,
 #if 0
 
   // handle special cases
-
-// TODO: We don't need to check USE_CUDA || USE_CUDA_PROVIDER_INTERFACE in this function because we're already
-// checking if the node is assigned to the desired EP (e.g., CUDA EP). We should only need to check
-// ENABLE_CUDA_NHWC_OPS.
-#if (defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)) && ENABLE_CUDA_NHWC_OPS
-  if (node.GetExecutionProviderType() == kCudaExecutionProvider) {
-    if (layout_sensitive_ops.count(node.OpType())) {
-      const auto& cuda_nhwc_ops = GetCUDALayoutSensitiveOps();
-      if (!cuda_nhwc_ops.count(node.OpType())) {
-        return false;
-      }
-    }
-  }
-#endif
 
 // TODO: We don't really need EP pre-processor macros in this function because we're already checking if the
 // node is assigned to the desired EP (e.g., QNN EP). There's nothing about this code that absolutely requires
