@@ -12,6 +12,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/model.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/inference_session.h"
@@ -21,6 +22,22 @@
 #include "core/session/utils.h"
 
 using namespace onnxruntime;
+
+// Convert an OrtArrayOfConstObjects into a span of Ort___ pointers.
+template <typename T>
+static void GetSpanFromArrayOfConstObjects(const OrtArrayOfConstObjects* ort_array,
+                                           /*out*/ gsl::span<const T* const>& span) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  size_t size = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetSize(ort_array, &size));
+
+  const void* const* raw_data = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetData(ort_array, &raw_data));
+
+  auto data = reinterpret_cast<const T* const*>(raw_data);
+  span = gsl::span<const T* const>(data, size);
+}
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateValueInfo, _In_ const char* name, _In_ const OrtTypeInfo* type_info,
                     _Outptr_ OrtValueInfo** value_info) {
@@ -359,6 +376,112 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::FinalizeModelEditorSession, _In_ OrtSessi
   API_IMPL_BEGIN
   auto sess = reinterpret_cast<onnxruntime::InferenceSession*>(session);
   ORT_API_RETURN_IF_ERROR(InitializeSession(options, *sess, prepacked_weights_container));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::GetSubGraph, _In_ const OrtGraph* src_graph,
+                    _In_ const OrtArrayOfConstObjects* ort_nodes_container,
+                    _Outptr_ OrtGraph** dst_subgraph) {
+  API_IMPL_BEGIN
+  OrtGraph* new_graph = nullptr;
+  ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateGraph(&new_graph));
+
+  size_t num_nodes = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(ort_nodes_container, &num_nodes));
+
+  // Gets source graph's initializers
+  OrtArrayOfConstObjects* initializers_container = nullptr;
+  gsl::span<const OrtValueInfo* const> initializers{};
+  ORT_API_RETURN_IF_ERROR(OrtApis::Graph_GetInitializers(src_graph, &initializers_container));
+  GetSpanFromArrayOfConstObjects<OrtValueInfo>(initializers_container, initializers);
+
+  std::unordered_map<std::string, const OrtValueInfo*> initializer_map;
+  for (const auto& value_info : initializers) {
+    initializer_map[value_info->GetName()] = value_info;
+  }
+
+  // Iterates the nodes
+  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
+    const OrtNode* node = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetElementAt(ort_nodes_container, node_idx,
+                                                                    reinterpret_cast<const void**>(&node)));
+    // Gets node's inputs as OrtValueInfo in gsl::span
+    OrtArrayOfConstObjects* node_inputs_container = nullptr;
+    gsl::span<const OrtValueInfo* const> node_inputs{};
+
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetInputs(node, &node_inputs_container));
+    GetSpanFromArrayOfConstObjects<OrtValueInfo>(node_inputs_container, node_inputs);
+
+    // Gets node's inputs as vector of const char* and 
+    // adds initializer as OrtValue to the subgraph if node's input is an initializer in source graph
+    size_t num_node_inputs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(node_inputs_container, &num_node_inputs));
+    std::vector<const char*> node_input_names(num_node_inputs, nullptr);
+    for (size_t i = 0; i < num_node_inputs; i++) {
+      const auto& name = node_inputs[i]->GetName();
+      node_input_names[i] = name.c_str();
+
+      if (initializer_map.find(name) != initializer_map.end()) {
+        const OrtValue* const_initializer_value = nullptr;
+        const EpGraph* ep_graph = onnxruntime::EpGraph::ToInternal(src_graph);
+        const_initializer_value = ep_graph->GetInitializerValue(name);
+        std::unique_ptr<OrtValue> initializer_value = std::make_unique<OrtValue>(const_initializer_value);
+        // ORT will take ownership of the OrtValue
+        ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::AddInitializerToGraph(new_graph, name.c_str(), initializer_value.release(), true));
+      }
+    }
+
+    // Gets node's outputs as OrtValueInfo in gsl::span
+    OrtArrayOfConstObjects* node_outputs_container = nullptr;
+    gsl::span<const OrtValueInfo* const> node_outputs{};
+
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetOutputs(node, &node_outputs_container));
+    GetSpanFromArrayOfConstObjects<OrtValueInfo>(node_outputs_container, node_outputs);
+
+    // Gets node's outputs as vector of const char*
+    size_t num_node_outputs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(node_outputs_container, &num_node_outputs));
+    std::vector<const char*> node_output_names(num_node_outputs, nullptr);
+    for (size_t i = 0; i < num_node_outputs; i++) {
+      node_output_names[i] = node_outputs[i]->GetName().c_str();
+    }
+
+    // Creates the node
+    const char* node_name = nullptr;
+    const char* op_type = nullptr;
+    const char* domain_name = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetName(node, &node_name));
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetOperatorType(node, &op_type));
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetDomain(node, &domain_name));
+
+    OrtNode* new_node = nullptr;
+    OrtArrayOfConstObjects* node_attrs_container = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::Node_GetAttributes(node, &node_attrs_container));
+    size_t num_node_attrs = 0;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(node_attrs_container, &num_node_attrs));
+    std::vector<std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> node_attributes_holder;
+    std::vector<OrtOpAttr*> node_attributes(num_node_attrs, nullptr);
+    for (size_t i = 0; i < num_node_attrs; i++) {
+      const OrtOpAttr* attr = nullptr;
+      ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetElementAt(node_attrs_container, i,
+                                                                      reinterpret_cast<const void**>(&attr)));
+      auto attr_proto = std::make_unique<ONNX_NAMESPACE::AttributeProto>(attr->attr_proto);
+      node_attributes[i] = reinterpret_cast<OrtOpAttr*>(attr_proto.get());
+      node_attributes_holder.emplace_back(std::move(attr_proto));
+    }
+
+    ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::CreateNode(op_type, domain_name, node_name,
+                                                          node_input_names.data(), node_input_names.size(),
+                                                          node_output_names.data(), node_output_names.size(),
+                                                          node_attributes.data(), node_attributes.size(),
+                                                          &new_node));
+
+    ORT_API_RETURN_IF_ERROR(OrtModelEditorAPI::AddNodeToGraph(new_graph, new_node));
+  }
+
+  // Check outer scope value infos
+  *dst_subgraph = new_graph;
   return nullptr;
   API_IMPL_END
 }

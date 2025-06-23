@@ -91,6 +91,9 @@ struct EpValueInfo : public OrtValueInfo {
   // Helper to check if a flag is set.
   bool IsFlagSet(EpValueInfo::Flags flag) const { return flags_ & flag; }
 
+  // Helper to get the flags.
+  size_t GetFlags() const { return flags_; }
+
  private:
   // Back pointer to parent graph. If not null, enables retrieval of consumer and producer nodes.
   // Is null if the EpValueInfo was created without an owning EpGraph
@@ -231,6 +234,7 @@ struct EpGraph : public OrtGraph {
 
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag);
+  EpGraph(PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
@@ -239,6 +243,13 @@ struct EpGraph : public OrtGraph {
   /// <param name="result"></param>
   /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
+  /// <summary>
+  /// Creates an instance of EpGraph with no inputs, outputs, initializers, value infos and nodes. 
+  /// </summary>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status Create(/*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -290,6 +301,15 @@ struct EpGraph : public OrtGraph {
   // Supports initializers defined in an outer scope as long as that initializer is used
   // within this graph.
   const OrtValue* GetInitializerValue(std::string_view name) const;
+
+  // Returns true if it's a outer-scope initializer, otherwise returns false.
+  bool IsOuterScopeInitializer(std::string_view name) const;
+
+  // Returns the pointer to OrtValueInfo if it exists in this graph, otherwise returns nullptr.
+  const OrtValueInfo* GetValueInfo(std::string name) const;
+
+  // Adds a pointer of OrtValueInfo to this graph
+  void AddValueInfo(std::unique_ptr<EpValueInfo>);
 
  private:
   const GraphViewer& graph_viewer_;

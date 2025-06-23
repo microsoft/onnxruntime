@@ -68,4 +68,6 @@ ORT_API_STATUS_IMPL(ApplyModelToModelEditorSession, _In_ OrtSession* session, _I
 ORT_API_STATUS_IMPL(FinalizeModelEditorSession, _In_ OrtSession* session, _In_ const OrtSessionOptions* options,
                     _Inout_ OrtPrepackedWeightsContainer* prepacked_weights_container);
 
+ORT_API_STATUS_IMPL(GetSubGraph, _In_ const OrtGraph* ort_graph, _In_ const OrtArrayOfConstObjects* ort_nodes_container, _Outptr_ OrtGraph** ort_subgraph);
+
 }  // namespace OrtModelEditorAPI

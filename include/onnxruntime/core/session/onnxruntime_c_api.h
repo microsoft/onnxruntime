@@ -5769,6 +5769,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
+  /** \brief Get a "sub-graph" OrtGraph from a set of nodes in the source OrtGraph.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[in] nodes A set of nodes from the `graph`.
+   * \param[out] subgraph Returns the subgraph instance created from `nodes` and user must call ReleaseGraph when the instance is not needed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _Outptr_ OrtGraph** subgraph);
+
   //
   // OrtNode
   //
@@ -6421,6 +6433,18 @@ struct OrtModelEditorApi {
    */
   ORT_API2_STATUS(FinalizeModelEditorSession, _Inout_ OrtSession* session, _In_ const OrtSessionOptions* options,
                   _In_opt_ OrtPrepackedWeightsContainer* prepacked_weights_container);
+
+  /** \brief Create a subgraph from a set of nodes in the graph.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[in] nodes A set of nodes from the `graph`.
+   * \param[out] subgraph Returns the subgraph instance created from `nodes` and user must call ReleaseGraph when the instance is not needed.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _Outptr_ OrtGraph** subgraph);
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

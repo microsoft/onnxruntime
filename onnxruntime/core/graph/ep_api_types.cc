@@ -603,6 +603,12 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
   return Status::OK();
 }
 
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(PrivateTag{});
+  result = std::move(ep_graph);
+}
+
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
 int64_t EpGraph::GetOnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
@@ -680,4 +686,27 @@ const OrtValue* EpGraph::GetInitializerValue(std::string_view name) const {
 
   return nullptr;
 }
+
+bool EpGraph::IsOuterScopeInitializer(std::string_view name) const {
+  if (auto iter = outer_scope_initializer_values_.find(name);
+      iter != outer_scope_initializer_values_.end()) {
+    return true;
+  }
+  return false;
+}
+
+const OrtValueInfo* EpGraph::GetValueInfo(std::string name) const {
+  if (auto iter = value_infos_.find(name);
+      iter != value_infos_.end()) {
+    return iter->second.get();
+  }
+  return nullptr;
+}
+
+void EpGraph::AddValueInfo(std::unique_ptr<EpValueInfo> value_info) {
+  value_infos_[value_info->GetName()] = std::move(value_info);
+}
+
+
+
 }  // namespace onnxruntime
