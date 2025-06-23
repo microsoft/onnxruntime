@@ -839,6 +839,19 @@ InitializeWorkspace_CompInt8<float>(
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
             QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr);
         });
+    } else if (QuantizeARow) {
+        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
+            const auto& data = DataParams[gemm_idx];
+
+            const float* ARowPtr = data.A;
+            std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
+            for (size_t m = 0; m < M; ++m) {
+                QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
+
+                ARowPtr += data.lda;
+                QuantARowPtr += QuantAStride;
+            }
+        });
     } else if (QuantizeARow2) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
@@ -855,19 +868,6 @@ InitializeWorkspace_CompInt8<float>(
                 QuantARowPtr += BlockCountK * BlkLen;
                 QuantARowScalePtr += BlockCountK;
                 QuantARowBlkSum += BlockCountK;
-            }
-        });
-    } else if (QuantizeARow) {
-        MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
-            const auto& data = DataParams[gemm_idx];
-
-            const float* ARowPtr = data.A;
-            std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
-            for (size_t m = 0; m < M; ++m) {
-                QuantizeARow(BlkLen, ARowPtr, K, QuantARowPtr);
-
-                ARowPtr += data.lda;
-                QuantARowPtr += QuantAStride;
             }
         });
     }

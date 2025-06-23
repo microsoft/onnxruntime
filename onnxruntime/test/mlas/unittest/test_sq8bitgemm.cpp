@@ -322,7 +322,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
   }
-#endif // MLAS_TARGET_ARM64
+#endif // MLAS_TARGET_ARM64 
 
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void CheckBlkSum(const float* packedBlkSum, const float* refBlkSum) {
