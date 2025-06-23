@@ -187,6 +187,17 @@ Status EpNode::GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& result
   return Status::OK();
 }
 
+Status EpNode::GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
+  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtOpAttr);
+  result->storage.reserve(attributes_.size());
+
+  for (const OrtOpAttr* attr : attributes_) {
+    result->storage.push_back(attr);
+  }
+
+  return Status::OK();
+}
+
 Status EpNode::GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
   result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtGraph);
   result->storage.reserve(subgraphs_.size());
