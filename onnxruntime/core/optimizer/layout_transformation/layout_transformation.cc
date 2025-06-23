@@ -83,16 +83,6 @@ bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider,
 #if 0
 
   // handle special cases
-#if defined(USE_JSEP)
-  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
-  if (node.GetExecutionProviderType() == kJsExecutionProvider) {
-    if (node.OpType() == "Resize") {
-      // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
-      // with the original input layout.
-      return false;
-    }
-  }
-#endif
 
 // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
 #if defined(USE_WEBGPU)

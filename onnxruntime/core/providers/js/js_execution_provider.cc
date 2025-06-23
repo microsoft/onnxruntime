@@ -849,6 +849,18 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExtern
   return std::make_unique<js::ExternalDataLoader>();
 }
 
+std::optional<bool> JsExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                                       std::string_view node_op_type) const {
+  // TODO(fs-eire): Remove special case handing of JSEP once NHWC Resize implementation is fixed
+  if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    // leave Resize as-is pending bugfix for NHWC implementation. this means the node will remain in the ONNX domain
+    // with the original input layout.
+    return false;
+  }
+
+  return std::nullopt;
+}
+
 JsExecutionProvider::~JsExecutionProvider() {
 }
 
