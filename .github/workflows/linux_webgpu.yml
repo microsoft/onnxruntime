@@ -23,6 +23,7 @@ jobs:
     # This job runs on a CPU node using the reusable build workflow
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
+      # onnxruntime-github-Ubuntu2204-AMD-CPU
       pool_name: "Onnxruntime-github-Linux-GPU-A100-WUS3" # Build pool
       build_config: Release
       architecture: x64

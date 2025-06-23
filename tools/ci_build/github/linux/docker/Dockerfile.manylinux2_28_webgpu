@@ -3,7 +3,8 @@ FROM onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cpu_x64
 ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 
 #Install Vulkan
-RUN dnf -y install vulkan-headers vulkan-loader vulkan-tools
+RUN dnf install https://download1.rpmfusion.org/free/fedora/rpmfusion-free-release-$(rpm -E %fedora).noarch.rpm https://download1.rpmfusion.org/nonfree/fedora/rpmfusion-nonfree-release-$(rpm -E %fedora).noarch.rpm
+RUN dnf install xorg-x11-drv-nvidia akmod-nvidia vulkan vulkan-tools
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
