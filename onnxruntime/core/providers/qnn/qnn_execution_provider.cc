@@ -8,6 +8,7 @@
 #include <string_view>
 #include <unordered_set>
 
+#include "core/common/string_utils.h"
 #include "core/providers/qnn/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
 #include "core/providers/qnn/builder/qnn_def.h"
@@ -175,6 +176,45 @@ static void ParseHtpArchitecture(const std::string& htp_arch_string, QnnHtpDevic
     qnn_htp_arch = QNN_HTP_DEVICE_ARCH_V75;
   } else {
     LOGS_DEFAULT(WARNING) << "Invalid HTP architecture: " << htp_arch_string;
+  }
+}
+
+static void ParseOpPackages(const std::string& op_packages_string, std::vector<onnxruntime::qnn::OpPackage>& op_packages) {
+  for (const auto& op_package : utils::SplitString(op_packages_string, ",", true)) {
+    auto splitStrings = utils::SplitString(op_package, ":", true);
+    if (splitStrings.size() < 3 || splitStrings.size() > 4) {
+      LOGS_DEFAULT(WARNING) << "Invalid op_package passed, expected <OpType>:<PackagePath>:<InterfaceSymbolName>[:<Target>], got " << op_package;
+      LOGS_DEFAULT(WARNING) << "Skip registration.";
+      continue;
+    }
+
+    std::string op_type = std::string(splitStrings[0]);
+    std::string op_package_path = std::string(splitStrings[1]);
+    std::string op_package_interface = std::string(splitStrings[2]);
+    std::string op_package_target;
+
+    if (op_type.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op type is empty. Skip registration";
+      continue;
+    }
+
+    if (op_package_path.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op package path is empty. Skip registration";
+      continue;
+    }
+
+    if (op_package_interface.empty()) {
+      LOGS_DEFAULT(WARNING) << "Op package interface is empty. Skip registration";
+      continue;
+    }
+
+    LOGS_DEFAULT(VERBOSE) << "Loading op package from path: " << op_package_path << " for op " << op_type;
+    LOGS_DEFAULT(VERBOSE) << "Op package interface: " << op_package_interface;
+    if (splitStrings.size() > 3 && splitStrings[3].size()) {
+      op_package_target = std::string(splitStrings[3]);
+      LOGS_DEFAULT(VERBOSE) << "Op package target: " << op_package_target;
+    }
+    op_packages.push_back({op_type, op_package_path, op_package_interface, op_package_target});
   }
 }
 
@@ -438,6 +478,13 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
     }
   }
 
+  static const std::string QNN_OP_PACKAGES = "op_packages";
+  std::vector<onnxruntime::qnn::OpPackage> op_packages;
+  auto op_packages_pos = provider_options_map.find(QNN_OP_PACKAGES);
+  if (op_packages_pos != provider_options_map.end()) {
+    ParseOpPackages(op_packages_pos->second, op_packages);
+  }
+
   static const std::string QNN_HTP_FP16_MODE = "enable_htp_fp16_precision";
   auto htp_fp16_mode_pos = provider_options_map.find(QNN_HTP_FP16_MODE);
   if (htp_fp16_mode_pos != provider_options_map.end()) {
@@ -510,7 +557,8 @@ QNNExecutionProvider::QNNExecutionProvider(const ProviderOptions& provider_optio
                                      std::move(qnn_serializer_config),
                                      device_id_,
                                      htp_arch,
-                                     soc_model});
+                                     soc_model,
+                                     op_packages});
   }
 
 #if defined(_WIN32)

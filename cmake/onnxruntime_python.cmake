@@ -544,6 +544,7 @@ set(onnxruntime_mobile_util_srcs
     ${REPO_ROOT}/tools/python/util/pytorch_export_helpers.py
     ${REPO_ROOT}/tools/python/util/reduced_build_config_parser.py
     ${REPO_ROOT}/tools/python/util/update_onnx_opset.py
+    ${REPO_ROOT}/tools/python/remove_initializer_from_input.py
 )
 file(GLOB onnxruntime_ort_format_model_srcs CONFIGURE_DEPENDS
     ${REPO_ROOT}/tools/python/util/ort_format_model/*.py
