@@ -278,20 +278,20 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
   }
 
   size_t CalculateBufferSize(size_t request_size) override {
-    request_size = NormalizeBufferSize(request_size);
+    size_t normalized_request_size = NormalizeBufferSize(request_size);
 
     // Track usage for the current run
-    current_run_usage_[request_size]++;
+    current_run_usage_[normalized_request_size]++;
 
     // Check if we already have a bucket for this size. If not, create a new bucket so that it can cache buffers of
     // this size in the current session run if the buffer is quickly released in the same session.
-    if (buckets_.find(request_size) == buckets_.end()) {
-      buckets_.emplace(request_size, std::vector<WGPUBuffer>());
-      buckets_keys_.push_back(request_size);
+    if (buckets_.find(normalized_request_size) == buckets_.end()) {
+      buckets_.emplace(normalized_request_size, std::vector<WGPUBuffer>());
+      buckets_keys_.push_back(normalized_request_size);
       std::sort(buckets_keys_.begin(), buckets_keys_.end());
     }
 
-    return request_size;
+    return normalized_request_size;
   }
 
   WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
