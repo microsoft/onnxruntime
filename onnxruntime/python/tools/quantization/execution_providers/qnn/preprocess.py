@@ -11,6 +11,7 @@ from pathlib import Path
 import onnx
 
 from ....tools.onnx_model_utils import fix_output_shapes, make_input_shape_fixed
+from ....tools.remove_initializer_from_input import remove_initializer_from_input
 from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
 from ...quant_utils import save_and_reload_model_with_shape_infer
@@ -21,6 +22,7 @@ from .fusion_spacetodepth import FusionSpaceToDepth
 def qnn_preprocess_model(
     model_input: str | Path | onnx.ModelProto,
     model_output: str | Path,
+    exclude_initializer_from_input: bool = False,
     fuse_layernorm: bool = False,
     save_as_external_data: bool = False,
     all_tensors_to_one_file: bool = False,
@@ -43,6 +45,8 @@ def qnn_preprocess_model(
     Args:
         model_input: Path to the input model file or ModelProto.
         model_output: Path the output model file, which is only created if this method returns True.
+        exclude_initializer_from_input: A bool specifying whether to exclude initializer from input.
+            Defaults to False.
         fuse_layernorm: True if ReduceMean sequences should be fused into LayerNormalization nodes.
             Defaults to False.
         save_as_external_data: True if output model should be saved with external data. Defaults to false.
@@ -99,6 +103,10 @@ def qnn_preprocess_model(
             make_input_shape_fixed(onnx_model.graph(), input_name, input_shape)
         fix_output_shapes(onnx_model.model)
         modified = True
+
+    # Exclude initializer from input if model.ir_version >= 4
+    if exclude_initializer_from_input:
+        modified |= remove_initializer_from_input(onnx_model.model)
 
     # Fuse Erf sequence into a single Gelu
     fusion_gelu = FusionGelu(onnx_model)
