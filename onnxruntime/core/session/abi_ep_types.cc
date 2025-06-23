@@ -10,24 +10,19 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNode* const> nodes) {
-  std::vector<const onnxruntime::EpNode*> ep_nodes;
-  ep_nodes.reserve(nodes.size());
-
-  for (const OrtNode* node : nodes) {
-    const auto* ep_node = onnxruntime::EpNode::ToInternal(node);
-    ORT_RETURN_IF(ep_node == nullptr, "Invalid OrtNode variant for use in OrtEpApi.");
-    ep_nodes.push_back(ep_node);
-  }
-
-  node_groupings.emplace_back(NodeGroupingKind::kFusedNode, std::move(ep_nodes));
-  return onnxruntime::Status::OK();
+const OrtNodeFusionOptions* OrtEpGraphSupportInfo::NodeGrouping::TryGetNodeFusionOptions() const {
+  return std::get_if<OrtNodeFusionOptions>(&variant_);
 }
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddSingleNode(const OrtNode* node) {
-  std::vector<const onnxruntime::EpNode*> ep_nodes;
-  ep_nodes.push_back(onnxruntime::EpNode::ToInternal(node));
-  node_groupings.emplace_back(NodeGroupingKind::kSingleAssignedNode, std::move(ep_nodes));
+const onnxruntime::EpNode* OrtEpGraphSupportInfo::NodeGrouping::TryGetSingleNode() const {
+  const onnxruntime::EpNode* const* node_ptr = std::get_if<const onnxruntime::EpNode*>(&variant_);
+  return (node_ptr != nullptr) ? *node_ptr : nullptr;
+}
 
-  return onnxruntime::Status::OK();
+void OrtEpGraphSupportInfo::AddNodesToFuse(const OrtNodeFusionOptions& node_fusion_options) {
+  node_groupings.emplace_back(node_fusion_options);
+}
+
+void OrtEpGraphSupportInfo::AddSingleNode(const onnxruntime::EpNode& node) {
+  node_groupings.emplace_back(&node);
 }

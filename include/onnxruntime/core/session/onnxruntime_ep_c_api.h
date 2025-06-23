@@ -10,6 +10,7 @@ extern "C" {
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
+ORT_RUNTIME_CLASS(NodeFusionOptions);
 ORT_RUNTIME_CLASS(NodeComputeContext);
 
 /**
@@ -86,28 +87,64 @@ struct OrtEpApi {
 
   ORT_CLASS_RELEASE(EpDevice);
 
-  /** \brief Specify nodes that are supported by an OrtEp and should be fused into one node.
-   *
-   * IMPORTANT: This is not the final version of this API function. This is currently experimental but will
-   * be stabilized by the ONNX Runtime 1.23 release.
+  /** \brief Create an OrtNodeFusionOptions instance for specifying options for fusing nodes supported by an
+   * execution provider.
    *
    * Because the nodes will be fused into one "fused node", there must not exist an unsupported node in
    * a path between two of the provided nodes. Otherwise, the graph will become invalid.
+   *
+   * \param[in] nodes Array of nodes supported by the EP that should be fused.
+   * \param[in] num_nodes The number of nodes.
+   * \param[out] out Output parameter set to the OrtNodeFusionOptions instance that is created.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateNodeFusionOptions, _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes,
+                  _Outptr_ OrtNodeFusionOptions** out);
+
+  ORT_CLASS_RELEASE(NodeFusionOptions);
+
+  /** \brief Specify that the execution provider does not require ONNX Runtime to provide constant
+   * initializers as inputs to the fused node during model inference. This is used when the execution
+   * provider saves a copy of constant initializers, and allows ONNX Runtime to release constant initializers that
+   * are not used by any execution provider.
+   *
+   * If not specified, defaults to false. That is, ONNX Runtime provides constant initializers as inputs to
+   * the fused node by default.
+   *
+   * \param[in] options The OrtNodeFusionOptions instance.
+   * \param[in] drop True to indicate that the execution provider does not need ORT to provide constant initializers
+   *                 for this fused node.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(NodeFusionOptions_DropConstantInitializers, _In_ OrtNodeFusionOptions* options,
+                  _In_ bool drop);
+
+  // ORT_API2_STATUS(NodeFusionOptions_SetMetaDefinition, _In_ OrtNodeFusionOptions* options,
+  //                 _In_ const OrtNode* fused_node_meta_def);
+
+  // ORT_API2_STATUS(NodeFusionOptions_SetOptimizationInfo, _In_ OrtNodeFusionOptions* options,
+  //                 _In_ const OrtOptimizationInfo* optimization_info);
+
+  /** \brief Specify nodes that are supported by an OrtEp and should be fused into one node.
    *
    * This function can be called multiple times. A subsequent call to this function will force the next set of
    * nodes to be fused into a different node.
    *
    * \param[in] graph_support_info OrtEpGraphSupportInfo instance to which to add the supported nodes.
-   * \param[in] nodes Array of nodes supported by the EP that should be fused/compiled.
-   * \param[in] num_nodes The number of supported nodes.
+   * \param[in] node_fusion_options OrtNodeFusionOptions instance that specifies the nodes to fuse and other relevant
+   *                                options. ONNX Runtime takes ownership of this OrtNodeFusionOptions instance, so
+   *                                caller should NOT release the instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
-                  _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes
-                  /*, OrtFusedNodeSchema* optional_fused_node_schema, OrtNodesToOptimizeInfo* nodes_to_opt*/);
+                  _Inout_ OrtNodeFusionOptions* node_fusion_options);
 
   /** \brief Specify a node that is supported by an OrtEp and should be run with a registered EP kernel.
    *

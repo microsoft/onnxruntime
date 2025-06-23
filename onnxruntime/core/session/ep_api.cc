@@ -43,19 +43,60 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
 }
 
-ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
-                    _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes) {
+ORT_API_STATUS_IMPL(CreateNodeFusionOptions, _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes,
+                    _Outptr_ OrtNodeFusionOptions** out) {
   API_IMPL_BEGIN
-  if (ort_graph_support_info == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
+  if (nodes == nullptr || num_nodes == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify one or more valid nodes.");
   }
 
-  if (num_nodes == 0 || nodes == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of 1 or more supported nodes");
+  auto node_fusion_options = std::make_unique<OrtNodeFusionOptions>();
+  node_fusion_options->nodes.reserve(num_nodes);
+
+  for (size_t i = 0; i < num_nodes; ++i) {
+    const OrtNode* ort_node = nodes[i];
+
+    if (ort_node == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtNode instance is NULL.");
+    }
+
+    const auto* ep_node = onnxruntime::EpNode::ToInternal(ort_node);
+
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Unexpected variant of OrtNode that is not compatible with OrtEpApi.");
+    }
+
+    node_fusion_options->nodes.push_back(ep_node);
   }
 
-  gsl::span<const OrtNode* const> nodes_span(nodes, nodes + num_nodes);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddNodesToFuse(nodes_span));
+  *out = node_fusion_options.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API(void, ReleaseNodeFusionOptions, _Frees_ptr_opt_ OrtNodeFusionOptions* options) {
+  delete options;
+}
+
+ORT_API_STATUS_IMPL(NodeFusionOptions_DropConstantInitializers, _In_ OrtNodeFusionOptions* options,
+                    _In_ bool drop) {
+  API_IMPL_BEGIN
+  options->drop_constant_initializers = drop;
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+                    _Inout_ OrtNodeFusionOptions* node_fusion_options) {
+  API_IMPL_BEGIN
+  std::unique_ptr<OrtNodeFusionOptions> owned_options(node_fusion_options);  // Take ownership
+
+  if (node_fusion_options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'node_fusion_options' argument is NULL.");
+  }
+
+  ort_graph_support_info->AddNodesToFuse(*owned_options);
   return nullptr;
   API_IMPL_END
 }
@@ -71,7 +112,13 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtNode");
   }
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSingleNode(node));
+  const auto* ep_node = onnxruntime::EpNode::ToInternal(node);
+
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Unexpected variant of OrtNode is not compatible with OrtEpApi.");
+  }
+
+  ort_graph_support_info->AddSingleNode(*ep_node);
   return nullptr;
   API_IMPL_END
 }
@@ -93,6 +140,9 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::ReleaseEpDevice,
     // End of Version 22 - DO NOT MODIFY ABOVE
 
+    &OrtExecutionProviderApi::CreateNodeFusionOptions,
+    &OrtExecutionProviderApi::ReleaseNodeFusionOptions,
+    &OrtExecutionProviderApi::NodeFusionOptions_DropConstantInitializers,
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddNodesToFuse,
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSingleNode,
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
