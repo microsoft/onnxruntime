@@ -93,6 +93,8 @@ void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateReciprocalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);

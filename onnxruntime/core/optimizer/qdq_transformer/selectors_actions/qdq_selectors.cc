@@ -173,12 +173,13 @@ bool DropQDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node
 
   if (!allow_nonpositive_scale_) {
     // IsQDQPairSupported will check that the scale is the same between q_node and dq_node.
-    if (!IsQOrDQScalePositiveConstantScalar(q_node, get_const_initializer, graph_viewer.ModelPath())) {
+    if (!IsQOrDQScalePositiveConstantScalar(graph_viewer.GetGraph(), q_node, get_const_initializer,
+                                            graph_viewer.ModelPath())) {
       return false;
     }
   }
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool DropDQNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,
@@ -345,7 +346,7 @@ bool SplitNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& 
     }
 
     if (req_equal_quant_params_ &&
-        !IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
+        !IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath())) {
       return false;
     }
   }
@@ -405,6 +406,37 @@ bool EinsumNodeGroupSelector::Check(const GraphViewer& graph_viewer,
                                     const Node& node, const Node* redundant_clip_node,
                                     const std::vector<const Node*>& dq_nodes,
                                     const std::vector<const Node*>& q_nodes) const {
+  if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
+                     /*is_empty_q_nodes_allowed=*/true)) {
+    return false;
+  }
+  size_t num_dq_inputs = dq_nodes.size();
+  for (size_t i = 0; i < num_dq_inputs; ++i) {
+    int32_t dt_input = dq_nodes[i]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (!allow_int8_ && dt_input == ONNX_NAMESPACE::TensorProto_DataType::TensorProto_DataType_INT8) {
+      return false;
+    }
+    if (!allow_16bit_ && Is16BitIntType(dt_input)) {
+      return false;
+    }
+    if (!allow_4bit_ && Is4BitIntType(dt_input)) {
+      return false;
+    }
+  }
+  if (!q_nodes.empty()) {
+    int32_t dt_input0 = dq_nodes[0]->InputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    int32_t dt_output = q_nodes[0]->OutputDefs()[0]->TypeAsProto()->tensor_type().elem_type();
+    if (dt_input0 != dt_output) {
+      return false;
+    }
+  }
+  return true;
+}
+
+bool ReciprocalNodeGroupSelector::Check(const GraphViewer& graph_viewer,
+                                        const Node& node, const Node* redundant_clip_node,
+                                        const std::vector<const Node*>& dq_nodes,
+                                        const std::vector<const Node*>& q_nodes) const {
   if (!CheckQDQNodes(graph_viewer, node, redundant_clip_node, dq_nodes, q_nodes, /*num_dq_inputs=*/-1,
                      /*is_empty_q_nodes_allowed=*/true)) {
     return false;
@@ -761,7 +793,7 @@ bool TopKNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& n
     return graph_viewer.GetConstantInitializer(initializer_name, true);
   };
 
-  return IsQDQPairSupported(q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
+  return IsQDQPairSupported(graph_viewer.GetGraph(), q_node, dq_node, get_const_initializer, graph_viewer.ModelPath());
 }
 
 bool CumSumNodeGroupSelector::Check(const GraphViewer& graph_viewer, const Node& node, const Node* redundant_clip_node,

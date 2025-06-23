@@ -321,7 +321,7 @@ inline const PySessionOptions& GetDefaultCPUSessionOptions() {
 }
 
 inline AllocatorPtr& GetAllocator() {
-  static AllocatorPtr alloc = std::make_shared<CPUAllocator>();
+  static AllocatorPtr alloc = CPUAllocator::DefaultInstance();
   return alloc;
 }
 
@@ -436,6 +436,9 @@ class SessionObjectInitializer {
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(pop)
 #endif
+
+void SetGlobalThreadingOptions(const OrtThreadingOptions&& tp_options);
+bool CheckIfUsingGlobalThreadPool();
 Environment& GetEnv();
 OrtEnv* GetOrtEnv();
 

@@ -15,6 +15,7 @@
 #include <emscripten.h>
 #include <emscripten/val.h>
 
+using onnxruntime::common::Status;
 namespace onnxruntime {
 
 class GraphViewer;
@@ -92,14 +93,33 @@ inline std::vector<T> GetNarrowedIntfromInt64(gsl::span<const int64_t> int64_vec
   return vec;
 }
 
-template <typename T>
-bool ReadIntArrayFrom1DTensor(const onnx::TensorProto& tensor, std::vector<T>& array, const logging::Logger& logger) {
-  std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor);
+bool inline UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                                  std::vector<uint8_t>& unpacked_tensor,
+                                  const GraphViewer& graph_viewer,
+                                  const logging::Logger& logger) {
+  Status status = Status::OK();
+  if (utils::HasExternalData(initializer)) {
+    status = onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer.ModelPath(), unpacked_tensor);
+  } else {
+    status = onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor);
+  }
+
   if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking shape: " << status.ErrorMessage();
+    LOGS(logger, ERROR) << "Error while unpacking initializer data: " << status.ErrorMessage();
     return false;
   }
+
+  return true;
+}
+
+template <typename T>
+bool ReadIntArrayFrom1DTensor(const onnx::TensorProto& tensor, std::vector<T>& array,
+                              const GraphViewer& graph_viewer, const logging::Logger& logger) {
+  std::vector<uint8_t> unpacked_tensor;
+  if (!UnpackInitializerData(tensor, unpacked_tensor, graph_viewer, logger)) {
+    return false;
+  }
+
   const auto& dims = tensor.dims();
   if (dims.size() != 1) {
     LOGS(logger, VERBOSE) << "The tensor must be 1D.";
@@ -130,13 +150,13 @@ bool ReadIntArrayFrom1DTensor(const onnx::TensorProto& tensor, std::vector<T>& a
   return true;
 }
 
-inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::val& scalar, const logging::Logger& logger) {
+inline bool ReadScalarTensorData(const onnx::TensorProto& tensor, emscripten::val& scalar,
+                                 const GraphViewer& graph_viewer, const logging::Logger& logger) {
   std::vector<uint8_t> unpacked_tensor;
-  auto status = onnxruntime::utils::UnpackInitializerData(tensor, unpacked_tensor);
-  if (!status.IsOK()) {
-    LOGS(logger, ERROR) << "Error while unpacking tensor: " << status.ErrorMessage();
+  if (!UnpackInitializerData(tensor, unpacked_tensor, graph_viewer, logger)) {
     return false;
   }
+
   switch (tensor.data_type()) {
     case ONNX_NAMESPACE::TensorProto_DataType_BOOL:
     case ONNX_NAMESPACE::TensorProto_DataType_UINT8:
@@ -203,11 +223,11 @@ std::unordered_set<const Node*> GetSupportedNodes(const GraphViewer& graph_viewe
                                                   const emscripten::val& wnn_limits,
                                                   const logging::Logger& logger);
 
-// Retrieve the first input name of a WebNN op used for validating supported input data types.
+// Retrieve the first input name of an ONNX op's corresponding WebNN op used for validating supported input data types.
 // WebNN ops have various first input names such as 'a', 'input', 'inputs', etc.
 // All WebNN op inputs are recorded in op_inputs_map.
-inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op_type) {
-  auto it = op_inputs_map.find(webnn_op_type);
+inline std::string_view GetWebNNOpFirstInputName(const std::string_view onnx_op_type) {
+  auto it = op_inputs_map.find(onnx_op_type);
   if (it != op_inputs_map.end()) {
     for (const auto& input : it->second.inputs) {
       if (input.index == 0) {
@@ -218,9 +238,9 @@ inline std::string_view GetWebNNOpFirstInputName(const std::string_view webnn_op
   return "input";
 }
 
-inline std::string_view GetWebNNOpType(const std::string_view op_type) {
-  auto it = op_inputs_map.find(op_type);
-  // Return an empty string if the op_type is not listed in the op_inputs_map.
+inline std::string_view GetWebNNOpType(const std::string_view onnx_op_type) {
+  auto it = op_inputs_map.find(onnx_op_type);
+  // Return an empty string if the onnx_op_type is not listed in the op_inputs_map.
   return (it != op_inputs_map.end()) ? it->second.opType : "";
 }
 

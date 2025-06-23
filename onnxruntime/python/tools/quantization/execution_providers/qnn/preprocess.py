@@ -10,6 +10,7 @@ from pathlib import Path
 
 import onnx
 
+from ....tools.onnx_model_utils import fix_output_shapes, make_input_shape_fixed
 from ...fusions import FusionGelu, FusionLayerNormalization
 from ...onnx_model import ONNXModel
 from ...quant_utils import save_and_reload_model_with_shape_infer
@@ -28,6 +29,7 @@ def qnn_preprocess_model(
     external_data_convert_attribute: bool = False,
     inputs_to_make_channel_last: list[str] | None = None,
     outputs_to_make_channel_last: list[str] | None = None,
+    dynamic_input_shapes: list[tuple[str, str]] | None = None,
 ) -> bool:
     """
     If necessary, this method creates a new "pre-processed" model in preparation for
@@ -82,11 +84,21 @@ def qnn_preprocess_model(
             This can potentially improve inference latency for QDQ models running on QNN EP because the
             additional transpose node may allow other transpose nodes inserted during ORT layout transformation
             to cancel out.
+        dynamic_input_shapes: A list of tuples specifying model input name to and its static shape in comma seprated
+            format, for example: [('input', '1,3,256,256')]. Defaults to None.
     """
     modified = False
     model = model_input if isinstance(model_input, onnx.ModelProto) else onnx.load_model(model_input)
     model = save_and_reload_model_with_shape_infer(model)
     onnx_model = ONNXModel(model)
+
+    # Optionally, fix the dynamic input shapes.
+    if dynamic_input_shapes:
+        for input_name, input_shape_str in dynamic_input_shapes:
+            input_shape = [int(i) for i in input_shape_str.split(",")]
+            make_input_shape_fixed(onnx_model.graph(), input_name, input_shape)
+        fix_output_shapes(onnx_model.model)
+        modified = True
 
     # Fuse Erf sequence into a single Gelu
     fusion_gelu = FusionGelu(onnx_model)

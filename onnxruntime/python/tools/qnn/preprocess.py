@@ -69,6 +69,16 @@ def _parse_arguments():
         help="List of graph output names to be transposed into channel-last.",
     )
 
+    # Fix dynamic input shapes.
+    parser.add_argument(
+        "--dynamic_input_shapes",
+        nargs=2,
+        action="append",
+        type=str,
+        default=None,
+        help="Model input name and desired static shape in comma seprated format, for example: 'input' 1,3,256,256",
+    )
+
     return parser.parse_args()
 
 
@@ -83,6 +93,7 @@ def qnn_preprocess_model(
     external_data_convert_attribute: bool = False,
     inputs_to_make_channel_last: list[str] | None = None,
     outputs_to_make_channel_last: list[str] | None = None,
+    dynamic_input_shapes: list[tuple[str, str]] | None = None,
 ) -> bool:
     """Preprocess ONNX model for QNN.
 
@@ -105,6 +116,8 @@ def qnn_preprocess_model(
             Defaults to None.
         outputs_to_make_channel_last: A list of strs specifying graph output names to be transposed into channel-last.
             Defaults to None.
+        dynamic_input_shapes: A list of tuples specifying model input name to and its static shape in comma seprated
+            format, for example: [('input', '1,3,256,256')]. Defaults to None.
 
     Returns:
         A bool indicating whether the model is modified.
@@ -120,6 +133,7 @@ def qnn_preprocess_model(
         external_data_convert_attribute=external_data_convert_attribute,
         inputs_to_make_channel_last=inputs_to_make_channel_last,
         outputs_to_make_channel_last=outputs_to_make_channel_last,
+        dynamic_input_shapes=dynamic_input_shapes,
     )
 
 
@@ -136,4 +150,5 @@ if __name__ == "__main__":
         external_data_convert_attribute=args.external_data_convert_attribute,
         inputs_to_make_channel_last=args.inputs_to_make_channel_last,
         outputs_to_make_channel_last=args.outputs_to_make_channel_last,
+        dynamic_input_shapes=args.dynamic_input_shapes,
     )

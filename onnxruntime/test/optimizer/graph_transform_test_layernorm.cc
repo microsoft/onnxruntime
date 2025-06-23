@@ -882,19 +882,18 @@ static void EmbedLayerNormFusionFormat5(const std::basic_string<ORTCHAR_T>& file
   EXPECT_EQ(op_to_count["com.microsoft.EmbedLayerNormalization"], 1);
 
   // Validate the position embedding input.
+  double expected_value[] = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};
   for (const Node& node : graph.Nodes()) {
     if (node.OpType() == "EmbedLayerNormalization") {
       const ONNX_NAMESPACE::TensorProto* tensor_proto = graph_utils::GetConstantInitializer(graph, node.InputDefs()[3]->Name());
       ASSERT_TRUE(tensor_proto != nullptr);
       EXPECT_EQ(tensor_proto->data_type(), ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
 
-      auto initializer = std::make_unique<Initializer>(*tensor_proto, graph.ModelPath());
-      EXPECT_EQ(initializer->size(), 12U);
+      Initializer initializer{graph, *tensor_proto, graph.ModelPath()};
+      EXPECT_EQ(initializer.size(), std::size(expected_value));
 
-      std::vector<double> expected_value = {1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 8.0, 7.0, 6.0};
-
-      const float* data = initializer->data<float>();
-      for (size_t i = 0; i < expected_value.size(); i++) {
+      const float* data = initializer.data<float>();
+      for (size_t i = 0; i < std::size(expected_value); i++) {
         EXPECT_EQ(data[i], static_cast<float>(expected_value[i]));
       }
     }
