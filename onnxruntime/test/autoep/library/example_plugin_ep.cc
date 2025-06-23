@@ -51,10 +51,12 @@ struct FloatInitializer {
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
 /// </summary>
 struct MulKernel {
-  MulKernel(ExampleEp* ep, const char* input0_name, const char* input1_name)
-      : ort_api(ep->ort_api),
-        logger(ep->logger_),
-        float_initializers(ep->float_initializers),
+  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
+            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+            const char* input0_name, const char* input1_name)
+      : ort_api(ort_api),
+        logger(logger),
+        float_initializers(float_initializers),
         input0_name(input0_name),
         input1_name(input1_name) {}
 
@@ -421,7 +423,9 @@ struct ExampleEp : OrtEp, ApiPtrs {
     const char* fused_node_name = nullptr;
     RETURN_IF_ERROR(ep->ort_api.Node_GetName(fused_nodes[0], &fused_node_name));
 
-    ep->kernels.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep, input0_name, input1_name));
+    ep->kernels.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
+                                                                                  ep->float_initializers,
+                                                                                  input0_name, input1_name));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
