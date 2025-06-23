@@ -24,7 +24,7 @@
 
 namespace onnxruntime::cuda {
 
-// When adding new supported NHWC operations make sure to also integrate them into: ConvertNodeLayout
+// When adding new supported NHWC operations make sure to also integrate them into: ShouldConvertNodeLayoutToNhwc
 // in onnxruntime/core/optimizer/layout_transformation/layout_transformation.cc
 
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(7, 8, float, BatchNormalization);

@@ -68,6 +68,8 @@ bool IsSupportedOpset(const Graph& graph);
 /// Gets a list of layout sensitive ops for ORT. This list contains ONNX standard defined
 /// layout sensitive ops + contrib ops + ops which are not layout sensitive but are treated as
 /// layout sensitive by ORT EPs (example Resize).
+/// The format of the returned ops is "<op type>" for ops in the ONNX domain and
+/// "<domain>:<op type>" for ops in other domains.
 /// </summary>
 /// <returns>unordered set of op_types which are layout sensitive</returns>
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps();

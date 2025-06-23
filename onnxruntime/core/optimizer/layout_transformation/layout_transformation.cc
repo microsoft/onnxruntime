@@ -51,23 +51,36 @@ const std::unordered_set<std::string_view>& GetCUDALayoutSensitiveOps() {
 }
 #endif
 
+// "op_type" if from ONNX domain, "domain:op_type" otherwise.
+std::string MakeLayoutTransformationOpIdentifier(std::string_view domain, std::string_view op_type) {
+  return (domain == kOnnxDomain) ? std::string(domain) : MakeString(domain, ":", op_type);
+}
+
 /// <summary>
 /// Default function for checking if a node should have its layout changed. Allows EP specific adjustments to the
 /// default set of layout sensitive operators if required.
-///
-/// Longer term, if required, the EP API could allow the EP to provide a delegate to plugin EP specific logic so we
-/// don't hardcode it here.
 /// </summary>
+/// <param name="execution_provider">The EP instance.</param>
 /// <param name="node">Node to check</param>
 /// <returns>true if the node should have its layout converted to NHWC.</returns>
-bool ConvertNodeLayout(const api::NodeRef& node) {
+bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider, const api::NodeRef& node) {
   // skip if op is not an ONNX or contrib op
   auto domain = node.Domain();
   if (domain != kOnnxDomain && domain != kMSDomain) {
     return false;
   }
 
+  if (auto should_convert = execution_provider.ShouldConvertNodeLayoutToNhwc(node.Domain(), node.OpType());
+      should_convert.has_value()) {
+    return *should_convert;
+  }
+
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
+
+  const auto op_identifier = MakeLayoutTransformationOpIdentifier(node.Domain(), node.OpType());
+  return layout_sensitive_ops.find(op_identifier) != layout_sensitive_ops.end();
+
+#if 0
 
   // handle special cases
 #if defined(USE_JSEP)
@@ -117,6 +130,8 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
 #endif
 
   return layout_sensitive_ops.count(node.OpType()) != 0;
+
+#endif  // 0
 }
 }  // namespace
 
@@ -126,19 +141,25 @@ bool ConvertNodeLayout(const api::NodeRef& node) {
 // Once all the layout sensitive ops requested by the EP are wrapped the transpose optimizer will attempt to remove
 // as many of the layout transposes as possible.
 const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
-  static std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
-    const auto& layout_sensitive_ops = onnx_transpose_optimization::GetLayoutSensitiveOps();
+  static const std::unordered_set<std::string_view> ort_layout_sensitive_ops = []() {
+    const auto& layout_sensitive_onnx_ops = onnx_transpose_optimization::GetLayoutSensitiveOps();
+
+    // Define a static local string array so we can refer to the elements with string_views.
+    static const std::string layout_sensitive_contrib_ops[]{
+        MakeLayoutTransformationOpIdentifier(kMSDomain, "FusedConv"),
+        MakeLayoutTransformationOpIdentifier(kMSDomain, "QLinearAveragePool"),
+        MakeLayoutTransformationOpIdentifier(kMSDomain, "QLinearGlobalAveragePool"),
+    };
+
     std::unordered_set<std::string_view> ort_specific_ops =
         {
-            "FusedConv",
-            "QLinearAveragePool",
-            "QLinearGlobalAveragePool",
             // Whilst the ONNX spec doesn't specify a layout for Resize, we treat it as layout sensitive by default
             // as EPs tend to only support one layout.
             "Resize",
         };
 
-    ort_specific_ops.insert(layout_sensitive_ops.cbegin(), layout_sensitive_ops.cend());
+    ort_specific_ops.insert(std::begin(layout_sensitive_onnx_ops), std::end(layout_sensitive_onnx_ops));
+    ort_specific_ops.insert(std::begin(layout_sensitive_contrib_ops), std::end(layout_sensitive_contrib_ops));
     return ort_specific_ops;
   }();
 
@@ -159,7 +180,7 @@ Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvid
       continue;
     }
 
-    if (ConvertNodeLayout(*node)) {
+    if (ShouldConvertNodeLayoutToNhwc(execution_provider, *node)) {
       // domain kMSInternalNHWCDomain uses OpType "Conv" for both Conv and FusedConv.
       // So, change the OpType to "Conv" for FusedConv.
       std::string_view op_type = node->OpType() == "FusedConv" ? "Conv" : node->OpType();

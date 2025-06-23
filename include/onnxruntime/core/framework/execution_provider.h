@@ -5,6 +5,7 @@
 
 #ifndef SHARED_PROVIDER
 #include <memory>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -326,6 +327,16 @@ class IExecutionProvider {
     // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
     return DataLayout::NCHW;
+  }
+
+  /**
+    Determine whether a node with `domain` and `op_type` should have its layout converted to NHWC.
+    This function is called during layout transformation.
+    A return value of `std::nullopt` indicates that this decision is left to ORT.
+  */
+  virtual std::optional<bool> ShouldConvertNodeLayoutToNhwc(std::string_view /*node_domain*/,
+                                                            std::string_view /*node_op_type*/) const {
+    return std::nullopt;
   }
 
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}
