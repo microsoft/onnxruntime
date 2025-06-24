@@ -134,10 +134,6 @@
     # Define the WGSL templates directory and output directory
     set(WGSL_TEMPLATES_DIR "${ONNXRUNTIME_ROOT}/core/providers/webgpu/wgsl_templates")
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
-    set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
-
-    # Ensure the output directory exists
-    file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
 
     # Find npm and node executables
     find_program(NPM_EXECUTABLE "npm.cmd" "npm" REQUIRED)
@@ -160,12 +156,23 @@
       VERBATIM
     )
 
+    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
+      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/wgsl_template_gen")
+      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/index.h" "${WGSL_GENERATED_DIR}/index_impl.h")
+      # Define the output files that will be generated
+      set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
+      set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
+    elseif(NOT onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+      set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/dynamic")
+      # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/templates.js")
+      set(WGSL_GENERATED_TEMPLATES_JS "${WGSL_GENERATED_DIR}/templates.js")
+    endif()
+
+    # Ensure the output directory exists
+    file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
+
     # Find all WGSL template input files
     file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
-
-    # Define the output files that will be generated
-    set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
-    set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
 
     # Set wgsl-gen command line options as a list
     set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--debug")
@@ -181,7 +188,7 @@
 
     # Generate WGSL templates
     add_custom_command(
-      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
+      OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
       COMMAND ${NPM_EXECUTABLE} run gen -- ${WGSL_GEN_OPTIONS}
       DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
@@ -192,12 +199,15 @@
 
     # Create a target to represent the generation step
     add_custom_target(onnxruntime_webgpu_wgsl_generation
-      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H}
+      DEPENDS ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
       SOURCES ${WGSL_TEMPLATE_FILES}
     )
 
-    # Add the generated directory to include paths
-    target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
+    if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
+      # Add the generated directory to include paths
+      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
+    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    endif()
 
     # Make sure generation happens before building the provider
     add_dependencies(onnxruntime_providers_webgpu onnxruntime_webgpu_wgsl_generation)

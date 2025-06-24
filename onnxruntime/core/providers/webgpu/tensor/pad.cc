@@ -20,10 +20,11 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
 #if ORT_WGSL_TEMPLATE
-  return shader.ApplyTemplate<"tensor/pad.wgsl.template">({.param_dim_value_zero = static_cast<int>(dim_value_zero_),
-                                                           .param_is_float16 = static_cast<int>(is_float16_),
-                                                           .param_pad_mode = static_cast<int>(mode_),
-                                                           .var_output = &output});
+  return WGSL_TEMPLATE_APPLY(shader, "tensor/pad.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(dim_value_zero, dim_value_zero_),
+                             WGSL_TEMPLATE_PARAMETER(is_float16, is_float16_),
+                             WGSL_TEMPLATE_PARAMETER(pad_mode, mode_),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
 #else
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
   std::string constant_value_str = std::string("let constant_value = ") +

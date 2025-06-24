@@ -75,17 +75,6 @@ class ShaderHelper final {
 
   Status Init();
 
-#if ORT_WGSL_TEMPLATE
-  // Apply the WGSL template to the shader helper.
-  //
-  // \param TemplateFilepath The filepath of the WGSL template to apply.
-  // \return Status indicating success or failure.
-  template <wgsl_gen::string_template_filepath TemplateFilepath, typename TemplateParameterType = wgsl_gen::TemplateParameter<TemplateFilepath>::type>
-  Status ApplyTemplate(TemplateParameterType parameter) {
-    return wgsl_gen::ApplyTemplate<TemplateFilepath>(*this, parameter);
-  }
-#endif
-
   // Add an input variable to the shader.
   //
   // depending on the usage of the variable, additional code may be generated.
