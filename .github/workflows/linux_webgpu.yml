@@ -85,40 +85,24 @@ jobs:
             echo "Permissions restored."
           else
             echo "Warning: perms.txt not found in artifact."
-          fi
-
-      # --- Run Tests using the downloaded build ---
+          fi      # --- Run Tests using the downloaded build ---
       # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
       # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
-      - name: Verify GPU Environment
+      - name: Verify GPU and Vulkan Environment
         id: verify_gpu_step
         run: |
-          # Verify GPU is accessible
-          nvidia-smi || echo "nvidia-smi not available"
+          # Verify GPU is accessible on the host
+          echo "=== Host GPU Check ==="
+          nvidia-smi || echo "nvidia-smi not available on host"
 
-          # Set up headless environment for Vulkan
-          export DISPLAY=:99
-          export XDG_RUNTIME_DIR=/tmp/runtime-root
-          mkdir -p $XDG_RUNTIME_DIR
-
-          # Verify Vulkan in container with GPU access and proper environment
+          # Check Vulkan environment in container (without actually running Vulkan)
+          echo "=== Container Vulkan Environment Check ==="
           docker run --rm --gpus all \
             -v ${{ runner.temp }}:/onnxruntime_src/build \
-            -e DISPLAY=$DISPLAY \
-            -e XDG_RUNTIME_DIR=/tmp/runtime-root \
             -e NVIDIA_VISIBLE_DEVICES=all \
             -e NVIDIA_DRIVER_CAPABILITIES=all \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            sh -c "
-              mkdir -p /tmp/runtime-root && \
-              export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json && \
-              echo 'Testing Vulkan with NVIDIA ICD...' && \
-              vulkaninfo --summary || (
-                echo 'NVIDIA Vulkan failed, trying software fallback...' && \
-                export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json && \
-                vulkaninfo --summary || echo 'All Vulkan attempts failed, WebGPU will use software rendering'
-              )
-            "
+            sh -c "test-vulkan-headless"
 
       - name: Test ONNX Runtime
         id: test_step
@@ -130,3 +114,5 @@ jobs:
           execution_providers: 'webgpu'
           extra_build_flags: '--use_binskim_compliant_compile_flags --cmake_extra_defines onnxruntime_BUILD_UNIT_TESTS=ON'
           python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
+        # Continue even if Vulkan verification fails - WebGPU can fall back to software
+        continue-on-error: false

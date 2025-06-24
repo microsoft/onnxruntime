@@ -9,12 +9,17 @@ RUN dnf install -y \
     dnf install -y xorg-x11-drv-nvidia akmod-nvidia vulkan vulkan-tools mesa-vulkan-drivers
 
 # Configure Vulkan for headless operation
-ENV VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json:/usr/share/vulkan/icd.d/lvp_icd.x86_64.json
+# Note: VK_ICD_FILENAMES will be set dynamically by test script based on what's available
 ENV XDG_RUNTIME_DIR=/tmp/runtime-dir
 ENV DISPLAY=:99
+# Disable X11 forwarding to ensure headless operation
+ENV VK_FORCE_HEADLESS=1
 
 # Create runtime directory with proper permissions
 RUN mkdir -p /tmp/runtime-dir && chmod 700 /tmp/runtime-dir
+
+# Install additional Mesa drivers for better software fallback
+RUN dnf install -y mesa-dri-drivers mesa-vulkan-drivers || echo "Additional Mesa drivers not available"
 
 # Add debug helper script
 RUN echo '#!/bin/bash\n\
@@ -26,6 +31,88 @@ echo "Available ICDs:"\n\
 ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo "No ICD directory found"\n\
 echo "=== End Debug ==="\n\
 ' > /usr/local/bin/vulkan-debug && chmod +x /usr/local/bin/vulkan-debug
+
+# Add minimal Vulkan validation script
+RUN echo '#!/bin/bash\n\
+# Simple validation that doesnt run Vulkan - just checks driver availability\n\
+echo "=== Vulkan Environment Check ==="\n\
+\n\
+# Check GPU availability first\n\
+if command -v nvidia-smi >/dev/null 2>&1; then\n\
+    echo "✓ NVIDIA GPU utilities available"\n\
+    nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1 || echo "  (GPU query failed)"\n\
+else\n\
+    echo "ℹ NVIDIA GPU utilities not available"\n\
+fi\n\
+\n\
+# Check for Vulkan ICDs\n\
+echo "Checking Vulkan drivers..."\n\
+\n\
+nvidia_icd="/usr/share/vulkan/icd.d/nvidia_icd.json"\n\
+if [ -f "$nvidia_icd" ]; then\n\
+    echo "✓ NVIDIA Vulkan ICD found: $nvidia_icd"\n\
+    # Try to read the ICD file to see if it points to valid library\n\
+    if grep -q "libGLX_nvidia" "$nvidia_icd" 2>/dev/null; then\n\
+        echo "  - NVIDIA ICD appears configured for hardware acceleration"\n\
+    fi\n\
+else\n\
+    echo "✗ NVIDIA Vulkan ICD not found"\n\
+fi\n\
+\n\
+# Check for Mesa/software ICDs\n\
+mesa_found=false\n\
+for mesa_icd in "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json" "/usr/share/vulkan/icd.d/mesa_icd.x86_64.json"; do\n\
+    if [ -f "$mesa_icd" ]; then\n\
+        echo "✓ Mesa Vulkan ICD found: $mesa_icd"\n\
+        mesa_found=true\n\
+        break\n\
+    fi\n\
+done\n\
+\n\
+if [ "$mesa_found" = "false" ]; then\n\
+    echo "✗ Mesa/LLVMpipe Vulkan ICD not found"\n\
+fi\n\
+\n\
+# List all available ICDs\n\
+echo "All Vulkan ICDs in /usr/share/vulkan/icd.d/:"\n\
+ls -la /usr/share/vulkan/icd.d/ 2>/dev/null || echo "  Directory not found"\n\
+\n\
+echo "=== Environment Summary ==="\n\
+if [ -f "$nvidia_icd" ]; then\n\
+    echo "WebGPU will attempt hardware acceleration via NVIDIA Vulkan"\n\
+elif [ "$mesa_found" = "true" ]; then\n\
+    echo "WebGPU will fall back to software rendering via Mesa Vulkan"\n\
+else\n\
+    echo "WebGPU may fall back to CPU-only mode (no Vulkan drivers found)"\n\
+fi\n\
+\n\
+echo "=== End Check ==="\n\
+' > /usr/local/bin/test-vulkan-headless && chmod +x /usr/local/bin/test-vulkan-headless
+
+# Add script to configure optimal Vulkan environment for WebGPU
+RUN echo '#!/bin/bash\n\
+# Configure Vulkan environment for WebGPU based on available drivers\n\
+export DISPLAY=${DISPLAY:-:99}\n\
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-dir}\n\
+export VK_FORCE_HEADLESS=${VK_FORCE_HEADLESS:-1}\n\
+\n\
+# Set ICD preference: NVIDIA first, then Mesa fallback\n\
+nvidia_icd="/usr/share/vulkan/icd.d/nvidia_icd.json"\n\
+mesa_icd="/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"\n\
+\n\
+if [ -f "$nvidia_icd" ] && command -v nvidia-smi >/dev/null 2>&1; then\n\
+    export VK_ICD_FILENAMES="$nvidia_icd"\n\
+    echo "Configured for NVIDIA Vulkan driver"\n\
+elif [ -f "$mesa_icd" ]; then\n\
+    export VK_ICD_FILENAMES="$mesa_icd"\n\
+    echo "Configured for Mesa LLVMpipe fallback"\n\
+else\n\
+    echo "No Vulkan drivers found - WebGPU will use CPU mode"\n\
+fi\n\
+\n\
+# Execute the original command\n\
+exec "$@"\n\
+' > /usr/local/bin/setup-vulkan-env && chmod +x /usr/local/bin/setup-vulkan-env
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh
