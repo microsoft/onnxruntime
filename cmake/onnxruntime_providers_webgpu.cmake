@@ -167,16 +167,16 @@
     set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
     set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
 
-    # Set wgsl-gen command line options
-    set(WGSL_GEN_OPTIONS "-i ../ -o ${WGSL_GENERATED_DIR} -I wgsl_template_gen/ --preserve-code-ref --debug")
+    # Set wgsl-gen command line options as a list
+    set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--debug")
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        set(WGSL_GEN_OPTIONS "${WGSL_GEN_OPTIONS} --generator static-cpp-literal")
+        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
       else()
-        set(WGSL_GEN_OPTIONS "${WGSL_GEN_OPTIONS} --generator static-cpp")
+        list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp")
       endif()
     elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
-      set(WGSL_GEN_OPTIONS "${WGSL_GEN_OPTIONS} --generator dynamic")
+      list(APPEND WGSL_GEN_OPTIONS "--generator" "dynamic")
     endif()
 
     # Generate WGSL templates
@@ -186,6 +186,7 @@
       DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
       COMMENT "Generating WGSL templates from *.wgsl.template files"
+      COMMAND_EXPAND_LISTS
       VERBATIM
     )
 
