@@ -30,11 +30,6 @@ CostCheckResult PostLayoutTransformCostCheck(const api::GraphRef& graph, const a
   return OrtEPCostCheck(graph, node, perm, outputs_leading_to_transpose);
 }
 
-// "op_type" if from ONNX domain, "domain:op_type" otherwise.
-std::string MakeLayoutTransformationOpIdentifier(std::string_view domain, std::string_view op_type) {
-  return (domain == kOnnxDomain) ? std::string(domain) : MakeString(domain, ":", op_type);
-}
-
 /// <summary>
 /// Default function for checking if a node should have its layout changed. Allows EP specific adjustments to the
 /// default set of layout sensitive operators if required.
@@ -56,7 +51,7 @@ bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider,
   }
 
   const auto& layout_sensitive_ops = GetORTLayoutSensitiveOps();
-  const auto op_identifier = MakeLayoutTransformationOpIdentifier(domain, op_type);
+  const auto op_identifier = MakeORTLayoutSensitiveOpId(domain, op_type);
   return layout_sensitive_ops.find(op_identifier) != layout_sensitive_ops.end();
 }
 }  // namespace
@@ -72,9 +67,9 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
 
     // Define a static local string array so we can refer to the elements with string_views.
     static const std::string layout_sensitive_contrib_ops[]{
-        MakeLayoutTransformationOpIdentifier(kMSDomain, "FusedConv"),
-        MakeLayoutTransformationOpIdentifier(kMSDomain, "QLinearAveragePool"),
-        MakeLayoutTransformationOpIdentifier(kMSDomain, "QLinearGlobalAveragePool"),
+        MakeORTLayoutSensitiveOpId(kMSDomain, "FusedConv"),
+        MakeORTLayoutSensitiveOpId(kMSDomain, "QLinearAveragePool"),
+        MakeORTLayoutSensitiveOpId(kMSDomain, "QLinearGlobalAveragePool"),
     };
 
     std::unordered_set<std::string_view> ort_specific_ops =
@@ -90,6 +85,11 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
   }();
 
   return ort_layout_sensitive_ops;
+}
+
+// "op_type" if from ONNX domain, "domain:op_type" otherwise.
+std::string MakeORTLayoutSensitiveOpId(std::string_view domain, std::string_view op_type) {
+  return (domain == kOnnxDomain) ? std::string(op_type) : MakeString(domain, ":", op_type);
 }
 
 Status TransformLayoutForEP(Graph& graph, bool& modified, const IExecutionProvider& execution_provider,
