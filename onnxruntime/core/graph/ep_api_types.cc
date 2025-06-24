@@ -96,14 +96,12 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   std::vector<OrtOpAttr*> ep_node_attributes;
 
   if (node_attrs.size() > 0) {
-    ep_node_attributes.resize(node_attrs.size(), nullptr);
+    ep_node_attributes.reserve(node_attrs.size());
 
-    size_t attr_idx = 0;
     for (const auto& item : node_attrs) {
       auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
-      ep_node_attributes[attr_idx] = reinterpret_cast<OrtOpAttr*>(attr.get());
+      ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
       ep_node_attributes_map[item.first] = std::move(attr);
-      attr_idx++;
     }
   }
 

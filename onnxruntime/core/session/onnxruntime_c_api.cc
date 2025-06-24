@@ -2842,16 +2842,16 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attrs) {
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes) {
   API_IMPL_BEGIN
-  if (attrs == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'inputs' argument is NULL");
+  if (attributes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attributes' argument is NULL");
   }
 
   std::unique_ptr<OrtArrayOfConstObjects> array;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
 
-  *attrs = array.release();
+  *attributes = array.release();
   return nullptr;
   API_IMPL_END
 }

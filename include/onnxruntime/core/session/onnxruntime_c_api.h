@@ -5878,14 +5878,14 @@ struct OrtApi {
   /** \brief Returns a node's attributes as OrtOpAttr instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] inputs Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
+   * \param[out] attributes Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
    *                    as OrtOpAttr instances. Must be released by calling ReleaseArrayOfConstObjects.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** inputs);
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes);
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
