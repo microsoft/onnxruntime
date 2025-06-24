@@ -168,6 +168,7 @@ jobs:
           --build_shared_lib
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
         shell: bash
 
 
