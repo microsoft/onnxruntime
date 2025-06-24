@@ -61,6 +61,7 @@ extern "C" {
 #define _Ret_notnull_
 #define _Check_return_
 #define _Outptr_result_maybenull_
+#define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
@@ -4958,6 +4959,8 @@ struct OrtApi {
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
 
+  /// @}
+
   /** \brief Release an OrtValueInfo instance if it was not added to an OrtGraph.
    * \since Version 1.22.
    */
@@ -5902,6 +5905,29 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
                   _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+
+  /// \name OrtRunOptions
+  /// @{
+
+  /** \brief Get a run configuration entry.
+   *
+   * If a run configuration entry with key `config_key` doesn't exist, `config_value` will be set to NULL.
+   *
+   * `config_key`s are defined in onnxruntime_run_options_config_keys.h.
+   *
+   * \param[in] options The OrtRunOptions instance.
+   * \param[in] config_key The configuration entry key. A null-terminated string.
+   * \param[out] config_value Output parameter set to the configuration entry value. Either a null-terminated string if
+   *                          a configuration entry exists or NULL otherwise.
+   *                          Do not free this value. It is owned by `options` and will be invalidated if another call
+   *                          to `AddRunConfigEntry()` overwrites it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetRunConfigEntry, _In_ const OrtRunOptions* options,
+                  _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+
+  /// @}
 };
 
 /*

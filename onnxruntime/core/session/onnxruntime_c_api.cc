@@ -3540,6 +3540,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
+    &OrtApis::GetRunConfigEntry,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.
