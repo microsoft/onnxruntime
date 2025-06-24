@@ -277,6 +277,7 @@ class QdcClient:
     def download_logs(self, job_id: int, log_dir: Path) -> None:
         # Only collect logs whose names contain these:
         partial_names = [
+            ".results.txt",
             ".results.xml",
             "_stdout.txt",
             "test_dbg.stdout",

@@ -1,6 +1,7 @@
 # Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
 # SPDX-License-Identifier: MIT
 
+import os
 from pathlib import Path
 
 from adb_utils import Adb
@@ -8,13 +9,16 @@ from adb_utils import Adb
 ORT_BUILD_CONFIG = "Release"
 
 # this is where our zip file is extracted on the QDC host.
-QDC_HOST_PATH = "/qdc/appium"
+QDC_HOST_PATH = os.environ.get("QDC_TEST_ROOT", "/qdc/appium")
 
 # this is where we will copy our files on the Android device.
 ORT_DEVICE_PATH = "/data/local/tmp/onnxruntime"
 
 # Glob matching test result files on the device
-ORT_TEST_RESULTS_DEVICE_GLOB = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/onnxruntime_*.results.xml"
+ORT_TEST_RESULTS_DEVICE_GLOB = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/onnxruntime_*.results.*"
+
+# Path to the on-device test log; this should match the glob in ORT_TEST_RESULTS_DEVICE_GLOB
+ORT_TEST_RESULTS_DEVICE_LOG = f"{ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/onnxruntime_test.results.txt"
 
 # all files in this folder will be uploaded back to QDC.
 QDC_LOG_PATH = "/data/local/tmp/QDC_logs"
@@ -49,19 +53,16 @@ class TestBase:
             adb.push(item, Path(ORT_DEVICE_PATH))
 
         # Builds sometimes come from Windows, where executable bits are not set.
+        # fmt: off
         adb.shell(
             [
-                "find",
-                f"{ORT_DEVICE_PATH}/lib",
-                "-type",
-                "f",
-                "-exec",
-                "chmod",
-                "+x",
-                "{}",
+                "find", f"{ORT_DEVICE_PATH}/lib",
+                "-type", "f",
+                "-exec", "chmod", "+x", "{}",
                 "\\;",
             ],
         )
+        # fmt: on
         adb.shell([f"sh -c 'chmod +x {ORT_DEVICE_PATH}/{ORT_BUILD_CONFIG}/*'"])
 
     def copy_logs(self):

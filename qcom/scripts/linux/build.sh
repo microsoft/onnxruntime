@@ -178,9 +178,16 @@ else
       "${platform_args[@]}"
   fi
 
-  # Run tests using our ctest wrapper.
   if [ -n "${run_tests}" ]; then
+    # Run tests using our ctest wrapper.
     cd "${build_dir}/${config}/"
     "./$(basename ${test_runner})"
+
+    # Run node module tests
+    "${build_dir}/${config}/onnx_test_runner" \
+        -j 1 \
+        -e qnn \
+        -i "backend_type|cpu" \
+        "${REPO_ROOT}/cmake/external/onnx/onnx/backend/test/data/node"
   fi
 fi
