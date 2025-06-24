@@ -122,7 +122,7 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
       SubgraphState subgraph_state;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
+      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, nullptr, subgraph_state.ep_subgraph));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
 
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
@@ -452,12 +452,12 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
   nodes_[i] = ep_node;
 }
 
-EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
-    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
+EpGraph::EpGraph(const GraphViewer& graph_viewer, std::unique_ptr<Model> model, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer), model_(std::move(model)) {}
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+Status EpGraph::Create(const GraphViewer& graph_viewer, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, model, PrivateTag{});
 
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;

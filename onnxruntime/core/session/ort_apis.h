@@ -652,6 +652,7 @@ ORT_API_STATUS_IMPL(Graph_GetOutputs, _In_ const OrtGraph* graph, _Outptr_ OrtAr
 ORT_API_STATUS_IMPL(Graph_GetInitializers, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** initializers);
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** nodes);
 ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
+ORT_API_STATUS_IMPL(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _Outptr_ OrtGraph** subgraph);
 
 // OrtNode
 ORT_API_STATUS_IMPL(Node_GetId, _In_ const OrtNode* node, _Out_ size_t* node_id);
