@@ -270,6 +270,8 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_FLOATS,
   ORT_OP_ATTR_STRING,
   ORT_OP_ATTR_STRINGS,
+  ORT_OP_ATTR_GRAPH,
+  ORT_OP_ATTR_GRAPHS,
 } OrtOpAttrType;
 
 //! @}
@@ -5886,6 +5888,17 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes);
+
+  /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
+   *
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] type Output the attribute type as OrtOpAttrType.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type);
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *

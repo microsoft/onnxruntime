@@ -459,11 +459,56 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(api_node, &api_node_attributes));
       CheckArrayObjectType(api_node_attributes, ORT_TYPE_TAG_OrtOpAttr);
 
-      for (size_t attr_idx = 0; attr_idx < node_attrs.size(); attr_idx++) {
+      size_t attr_idx = 0;
+      for (const auto& node_attr : node_attrs) {
         const OrtOpAttr* api_node_attr = nullptr;
         ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetElementAt(api_node_attributes, attr_idx,
                                                                      reinterpret_cast<const void**>(&api_node_attr)));
         ASSERT_NE(api_node_attr, nullptr);
+
+        OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
+        ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type));
+
+        ONNX_NAMESPACE::AttributeProto_AttributeType node_attr_type = node_attr.second.type();
+        switch (node_attr_type) {
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_UNDEFINED);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_INT);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_INTS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_FLOAT);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRING);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPH);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPHS);
+            break;
+          }
+        }
+        attr_idx++;
       }
     }
 

@@ -2856,6 +2856,54 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outp
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type) {
+  API_IMPL_BEGIN
+  const auto attr = attribute->attr_proto;
+  auto onnx_attr_type = attribute->attr_proto.type();
+  switch (onnx_attr_type) {
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INTS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOAT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOATS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRING;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPH;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPHS;
+      break;
+    }
+    default:
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unexpected attribute type.");
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs) {
   API_IMPL_BEGIN
   if (subgraphs == nullptr) {
@@ -3552,6 +3600,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetImplicitInputs,
     &OrtApis::Node_GetAttributes,
+    &OrtApis::OpAttr_GetType,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
