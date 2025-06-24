@@ -58,7 +58,7 @@ class CUDAPinnedAllocator : public IAllocator {
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                                     0 /*CPU device always with id 0*/),
-                          0, OrtMemTypeCPUOutput)) {}
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
