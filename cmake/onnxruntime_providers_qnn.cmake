@@ -66,10 +66,10 @@
         COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
         )
     endif()
-    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+    if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" "${onnxruntime_providers_qnn_target}/Qualcomm LICENSE.pdf"
         )
     endif()
   else()
@@ -154,10 +154,10 @@
         COMMAND ${CMAKE_COMMAND} -E copy ${QNN_LIB_FILES} $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
         )
     endif()
-    if (EXISTS "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf")
+    if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/Qualcomm AI Hub Proprietary License.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" "${onnxruntime_providers_qnn_target}/Qualcomm LICENSE.pdf"
         )
     endif()
   endif()
