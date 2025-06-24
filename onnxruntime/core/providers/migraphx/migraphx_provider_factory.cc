@@ -76,7 +76,29 @@ struct MIGraphX_Provider : Provider {
     return std::make_shared<MIGraphXProviderFactory>(info);
   }
 
-  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
+  //TODO: Interface change might require changes in other parts of win-onnxruntime?
+  std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* param) {
+    if (param == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL options to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    // std::array<const void*, 2> pointers_array = *reinterpret_cast<const std::array<const void*, 2>*>(param);
+    const ProviderOptions* provider_options = reinterpret_cast<const ProviderOptions*>(param);
+    // const ConfigOptions* config_options = reinterpret_cast<const ConfigOptions*>(pointers_array[1]);
+
+    if (provider_options == nullptr) {
+      LOGS_DEFAULT(ERROR) << "[NvTensorRTRTX EP] Passed NULL ProviderOptions to CreateExecutionProviderFactory()";
+      return nullptr;
+    }
+
+    MIGraphXExecutionProviderInfo info = {};
+
+    UpdateProviderOptions(&info, *provider_options);
+    return std::make_shared<MIGraphXProviderFactory>(info);
+  }
+
+  /* std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory(const void* provider_options) override {
     auto& options = *reinterpret_cast<const OrtMIGraphXProviderOptions*>(provider_options);
     MIGraphXExecutionProviderInfo info;
     info.device_id = static_cast<OrtDevice::DeviceId>(options.device_id);
@@ -103,7 +125,7 @@ struct MIGraphX_Provider : Provider {
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(options.migraphx_arena_extend_strategy);
     info.mem_limit = options.migraphx_mem_limit;
     return std::make_shared<MIGraphXProviderFactory>(info);
-  }
+  }*/
 
   void UpdateProviderOptions(void* provider_options, const ProviderOptions& options) override {
     auto internal_options = onnxruntime::MIGraphXExecutionProviderInfo::FromProviderOptions(options);
@@ -159,7 +181,7 @@ struct MIGraphX_Provider : Provider {
 
     std::array<const void*, 2> configs_array = {&provider_options, config_options};
     const void* arg = reinterpret_cast<const void*>(&configs_array);
-    auto ep_factory = CreateExecutionProviderFactory(arg);
+    auto ep_factory = CreateExecutionProviderFactory(&provider_options);
     ep = ep_factory->CreateProvider(session_options, logger);
 
     return Status::OK();
@@ -253,7 +275,7 @@ struct MigraphXEpFactory : OrtEpFactory {
   const std::string vendor{"AMD"};
 
   // AMD vendor ID. Refer to the ACPI ID registry (search AMD): https://uefi.org/ACPI_ID_List
-  const uint32_t vendor_id{0x1022};
+  const uint32_t vendor_id{0x1022}; //TODO: set correct value for AMD GPU
   const OrtHardwareDeviceType ort_hw_device_type;  // Supported OrtHardwareDevice
 };
 
