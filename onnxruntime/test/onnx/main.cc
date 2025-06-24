@@ -7,6 +7,13 @@
 #include <fstream>
 #include <string>
 #include <unordered_map>
+// For memory leak detection on Windows with Visual Studio in Debug mode
+#ifdef _WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+
 #ifdef _WIN32
 #include "getopt.h"
 #elif defined(_AIX)
@@ -68,6 +75,8 @@ void usage() {
       "\t    [QNN only] [vtcm_mb]: QNN VTCM size in MB. default to 0(not set).\n"
       "\t    [QNN only] [htp_performance_mode]: QNN performance mode, options: 'burst', 'balanced', 'default', 'high_performance', \n"
       "\t    'high_power_saver', 'low_balanced', 'extreme_power_saver', 'low_power_saver', 'power_saver', 'sustained_high_performance'. Default to 'default'. \n"
+      "\t    [QNN only] [op_packages]: QNN UDO package, allowed format: \n"
+      "\t    op_packages|<op_type>:<op_package_path>:<interface_symbol_name>[:<target>],<op_type2>:<op_package_path2>:<interface_symbol_name2>[:<target2>]. \n"
       "\t    [QNN only] [qnn_context_priority]: QNN context priority, options: 'low', 'normal', 'normal_high', 'high'. Default to 'normal'. \n"
       "\t    0 means dump the QNN context binary into separate bin file and set the path in the Onnx skeleton model.\n"
       "\t    [QNN only] [qnn_saver_path]: QNN Saver backend path. e.g '/folderpath/libQnnSaver.so'.\n"
@@ -577,6 +586,10 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
             std::string str = str_stream.str();
             ORT_THROW("Wrong value for htp_performance_mode. select from: " + str);
           }
+        } else if (key == "op_packages") {
+          if (value.empty()) {
+            ORT_THROW("Please provide the valid op_packages.");
+          }
         } else if (key == "qnn_context_priority") {
           std::set<std::string> supported_qnn_context_priority = {"low", "normal", "normal_high", "high"};
           if (supported_qnn_context_priority.find(value) == supported_qnn_context_priority.end()) {
@@ -615,7 +628,7 @@ int real_main(int argc, char* argv[], Ort::Env& env) {
           ORT_THROW(
               "Wrong key type entered. Choose from options: ['backend_type', 'backend_path', "
               "'profiling_level', 'profiling_file_path', 'rpc_control_latency', 'vtcm_mb', 'htp_performance_mode', "
-              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'qnn_context_priority', "
+              "'qnn_saver_path', 'htp_graph_finalization_optimization_mode', 'op_packages', 'qnn_context_priority', "
               "'soc_model', 'htp_arch', 'device_id', 'enable_htp_fp16_precision', 'offload_graph_io_quantization']");
         }
 
@@ -965,6 +978,16 @@ int wmain(int argc, wchar_t* argv[]) {
 #else
 int main(int argc, char* argv[]) {
 #endif
+#ifdef _WIN32
+#if defined(_DEBUG) && !defined(ONNXRUNTIME_ENABLE_MEMLEAK_CHECK)
+  int tmpFlag = _CrtSetDbgFlag(_CRTDBG_REPORT_FLAG);
+  tmpFlag |= _CRTDBG_LEAK_CHECK_DF;
+  tmpFlag |= _CRTDBG_ALLOC_MEM_DF;
+  _CrtSetDbgFlag(tmpFlag);
+  std::cout << "CRT Debug Memory Leak Detection Enabled." << std::endl;
+#endif
+#endif
+
   Ort::Env env{nullptr};
   int retval = -1;
   ORT_TRY {

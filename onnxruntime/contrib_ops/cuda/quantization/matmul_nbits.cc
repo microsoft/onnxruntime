@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 constexpr int MatMulNBits_Input_B = 1;
@@ -30,21 +31,40 @@ using onnxruntime::llm::kernels::weight_only::WeightOnlyGroupwiseQuantGemmPlugin
 using onnxruntime::llm::kernels::weight_only::WeightTypeId;
 static GemmPluginProfilerManager<WeightOnlyGroupwiseQuantGemmPluginProfiler> s_profilerManager;
 
+constexpr auto kScaleAndZeros = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS;
+constexpr auto kScaleOnly = cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY;
+
 template <typename T>
 void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_ = s_profilerManager.createGemmPluginProfiler(/*inference*/ false);
 
   if constexpr (std::is_same_v<T, MLFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<half, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   } else if constexpr (std::is_same_v<T, BFloat16>) {
-    if (nbits_ == 8) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
-    } else if (nbits_ == 4) {
-      weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_AND_ZEROS>>();
+    if (has_zero_points_) {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleAndZeros>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleAndZeros>>();
+      }
+    } else {
+      if (nbits_ == 8) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, uint8_t, kScaleOnly>>();
+      } else if (nbits_ == 4) {
+        weightOnlyGemmRunner_ = std::make_shared<CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, kScaleOnly>>();
+      }
     }
   }
 
@@ -53,6 +73,9 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
+
+  auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  gemmProfiler_->setAllocator(allocator);
 }
 
 template <typename T>
@@ -139,6 +162,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
         {static_cast<size_t>(k), static_cast<size_t>(n)},
         quant_type);
 
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
@@ -163,7 +187,8 @@ Status MatMulNBits<T>::PrePack_Scale([[maybe_unused]] const Tensor& tensor,
     typedef typename ToCudaType<T>::MappedType CudaT;
     CudaT* transposed_scales = reinterpret_cast<CudaT*>(fpA_intB_scale_buffer_.get());
 
-    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
+    onnxruntime::llm::kernels::fpA_intB_gemv::launch_transpose_scale_kernel<CudaT>(
+        stream, reinterpret_cast<const CudaT*>(tensor.Data<T>()), transposed_scales, n, k_blocks);
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
 
     DUMP_TENSOR_INIT();
@@ -269,7 +294,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (has_fpA_intB_gemm_) {
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
-      DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+#if ORT_LLM_VERBOSE > 1
+      std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
+                << " is: " << bestTactic->toString() << std::endl;
+#endif
 
       if (bestTactic->enableCudaKernel) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -310,31 +338,19 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
-    bool done = (nbits_ == 8) ? TryMatMul8Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream)
-                              : TryMatMul4Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream);
-    if (done) {
+    if (TryMatMulNBits(
+            nbits_,
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
       return Status::OK();
     }
   }

@@ -236,6 +236,32 @@ bool ConvOpBuilder::IsOpSupportedImpl(const Node& node, const OpBuilderInputPara
   // use the weight for the shape as it should always be known
   const auto* weight_shape = input_defs[1]->Shape();
   int64_t num_dims = weight_shape ? weight_shape->dim_size() : -1;
+  const auto& output = *node.OutputDefs()[0];
+
+  std::vector<int64_t> weight_shape_vec;
+  std::vector<int64_t> x_shape_vec;
+  std::vector<int64_t> output_shape_vec;
+
+  if (!GetShape(*input_defs[1], weight_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of 'W' input, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!GetShape(*input_defs[0], x_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of 'X' input, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!GetShape(output, output_shape_vec, logger)) {
+    LOGS(logger, VERBOSE) << "Unable to get the shape of the output, which is necessary to check for valid convolutions.";
+    return false;
+  }
+
+  if (!CheckShapeForConvMemoryLimit(weight_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(x_shape_vec, logger) ||
+      !CheckShapeForConvMemoryLimit(output_shape_vec, logger)) {
+    return false;
+  }
 
   // ONNX spec requires N and C as first 2 dims
   if (num_dims != 3 && num_dims != 4) {

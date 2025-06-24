@@ -38,13 +38,11 @@ constexpr int get_weight_quant_bits(QuantType quant_type) {
     case QuantType::W8_A16:
       return 8;
     case QuantType::W4_A16:
-      return 4;
     case QuantType::W4_AFP8:
       return 4;
-    default:
-      ORT_THROW("Invalid quant_type");
-      return -1;
   }
+
+  return -1;
 }
 
 struct LayoutDetails {
@@ -117,24 +115,20 @@ LayoutDetails getLayoutDetailsForArch(QuantType quant_type) {
     case QuantType::W4_AFP8:
       details = getLayoutDetailsForArchAndQuantType<cutlassArch, cutlass::float_e4m3_t, cutlass::uint4b_t>();
       break;
-    default:
-      ORT_THROW("Unsupported quantization type");
   }
   return details;
 }
 
 LayoutDetails getLayoutDetailsForTransform(QuantType quant_type, int arch) {
-  if (arch >= 75 && arch < 80) {
+  ORT_ENFORCE(arch >= 75, "Unsupported CUDA architecture: ", arch);
+  if (arch < 80) {
     return getLayoutDetailsForArch<cutlass::arch::Sm75>(quant_type);
-  } else if (arch >= 80 && arch < 90) {
-    return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
+#ifndef EXCLUDE_SM_90
   } else if (arch >= 90 && arch < 100) {
     return getLayoutDetailsForArch<cutlass::arch::Sm90>(quant_type);
-  } else if (arch >= 100) {
-    return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
+#endif
   } else {
-    ORT_THROW("Unsupported Arch");
-    return LayoutDetails();
+    return getLayoutDetailsForArch<cutlass::arch::Sm80>(quant_type);
   }
 }
 

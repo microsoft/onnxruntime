@@ -356,8 +356,7 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                               bool need_handle_matmul,
                               uint32_t tile_inner,
                               bool split_k,
-                              uint32_t splitted_dim_inner,
-                              bool sequentially_access_by_threads) {
+                              uint32_t splitted_dim_inner) {
   ORT_UNUSED_PARAMETER(split_k);
   ORT_UNUSED_PARAMETER(splitted_dim_inner);
 
@@ -396,135 +395,86 @@ Status MakeMatMulPackedSource(ShaderHelper& shader,
                             << " var kStart = 0;\n"
                             << " var acc: array<array<" << data_type << ", colPerThread>, rowPerThread>;\n";
 
-  // sequentially_access_by_threads is true only for Conv Op. See `conv.cc`.
-  if (sequentially_access_by_threads) {
-    shader.MainFunctionBody() << "let localRow = i32(local_id.y);\n"
-                              << "let localCol = i32(local_id.x);\n"
-                              << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-                              << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
-                              << "\n"
-                              << "// Loop over shared dimension.\n"
-                              << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n"
-                              << "  // Load one tile of A into local memory.\n"
-                              << "  for (var inputRow = localRow; inputRow < " << tile_a_height << "; inputRow = inputRow + " << workgroup_size_y << ") {\n"
-                              << "    for (var inputCol = localCol; inputCol < " << tile_a_width << "; inputCol = inputCol + " << workgroup_size_x << ") {\n"
-                              << "      " << write_data_to_sub_a_snippet << "\n"
-                              << "    }\n"
-                              << "  }\n"
-                              << "  // Load one tile of B into local memory.\n"
-                              << "  for (var inputRow = localRow; inputRow < " << tile_inner << "; inputRow = inputRow + " << workgroup_size_y << ") {\n"
-                              << "        for (var inputCol = localCol; inputCol < " << tile_b_outer << "; inputCol = inputCol + " << workgroup_size_x << ") {\n"
-                              << "           " << write_data_to_sub_b_snippet << "\n "
-                              << "    }\n"
-                              << "  }\n"
-                              << "  kStart = kStart + tileInner;\n"
-                              << "  workgroupBarrier();\n"
-                              << "\n"
-                              << "  // Compute acc values for a single thread.\n"
-                              << "  var BCached : array<" << data_type << ", colPerThread>;\n"
-                              << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
-                              << "    for (var inner = 0; inner < colPerThread; inner = inner + 1) {\n"
-                              << "      BCached[inner] = mm_Bsub[k][localCol + inner * " << workgroup_size_x << "];\n"
-                              << "    }\n"
-                              << "    for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-                              << "      let ACached = " << (transpose_a ? "mm_Asub[k][localRow + innerRow * " + std::to_string(workgroup_size_y) + "];" : "mm_Asub[localRow + innerRow * " + std::to_string(workgroup_size_y) + "][k];") << "\n"
-                              << "      for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
-                              << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] +\n"
-                              << "            ACached * BCached[innerCol];\n"
+  shader.MainFunctionBody()
+      << "let tileRow = i32(local_id.y) * rowPerThread;\n"
+      << "let tileCol = i32(local_id.x) * colPerThread;\n"
+      << "let globalRow = i32(global_id.y) * rowPerThread;\n"
+      << "let globalCol = i32(global_id.x) * colPerThread;\n"
+      << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
+      << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
+      << "let tileRowA = i32(local_id.y) * " << row_per_thread_a << ";\n"
+      << "let tileColA = i32(local_id.x) * " << col_per_thread_a << ";\n"
+      << "let tileRowB = i32(local_id.y) * " << row_per_thread_b << ";\n";
+
+  if (need_handle_matmul) {
+    // Loop over shared dimension.
+    shader.MainFunctionBody()
+        << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
+
+    // Load one tile of A into local memory.
+    shader.MainFunctionBody()
+        << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_a << "); innerRow = innerRow + 1) {\n"
+        << "    for (var innerCol = 0; innerCol < i32(" << col_per_thread_a << "); innerCol = innerCol + 1) {\n"
+        << "      let inputRow = tileRowA + innerRow;\n"
+        << "      let inputCol = tileColA + innerCol;\n"
+        << "      " << write_data_to_sub_a_snippet << "\n"
+        << "    }\n"
+        << "  }\n";
+
+    // Load one tile of B into local memory.
+    shader.MainFunctionBody()
+        << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_b << "); innerRow = innerRow + 1) {\n"
+        << "    for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+        << "      let inputRow = tileRowB + innerRow;\n"
+        << "      let inputCol = tileCol + innerCol;\n"
+        << "           " << write_data_to_sub_b_snippet << "\n "
+        << "    }\n"
+        << "  }\n"
+        << "  kStart = kStart + tileInner;\n"
+        << "  workgroupBarrier();\n";
+
+    // Compute acc values for a single thread.
+    shader.MainFunctionBody()
+        << "var BCached: array<" << data_type << ", colPerThread>;\n"
+        << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
+        << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n";
+    if (transpose_b) {
+      shader.MainFunctionBody() << "      BCached[inner] = mm_Bsub[tileCol + inner][k];\n";
+    } else {
+      shader.MainFunctionBody()
+          << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n";
+    }
+    shader.MainFunctionBody() << "    }\n"
+                              << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n";
+    if (transpose_a) {
+      shader.MainFunctionBody() << "      let ACached = mm_Asub[k][tileRow + innerRow];\n";
+    } else {
+      shader.MainFunctionBody() << "      let ACached = mm_Asub[tileRow + innerRow][k];\n";
+    }
+    shader.MainFunctionBody() << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+                              << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
                               << "      }\n"
                               << "    }\n"
                               << "  }\n"
                               << "  workgroupBarrier();\n"
-                              << "}\n"
-                              << "for (var innerRow = 0; innerRow < rowPerThread; innerRow = innerRow + 1) {\n"
-                              << "  let gRow = globalRowStart + localRow + innerRow * " << workgroup_size_y << ";\n"
-                              << "  for (var innerCol = 0; innerCol < colPerThread; innerCol = innerCol + 1) {\n"
-                              << "    let gCol = globalColStart + localCol + innerCol * " << workgroup_size_x << ";\n"
-                              << "    mm_write(batch, gRow, gCol, acc[innerRow][innerCol]);\n"
-                              << "  }\n"
                               << "}\n";
-  } else {
-    shader.MainFunctionBody()
-        << "let tileRow = i32(local_id.y) * rowPerThread;\n"
-        << "let tileCol = i32(local_id.x) * colPerThread;\n"
-        << "let globalRow = i32(global_id.y) * rowPerThread;\n"
-        << "let globalCol = i32(global_id.x) * colPerThread;\n"
-        << "let globalRowStart = i32(workgroup_id.y) * " << tile_a_outer << ";\n"
-        << "let globalColStart = i32(workgroup_id.x) * " << tile_b_outer << ";\n"
-        << "let tileRowA = i32(local_id.y) * " << row_per_thread_a << ";\n"
-        << "let tileColA = i32(local_id.x) * " << col_per_thread_a << ";\n"
-        << "let tileRowB = i32(local_id.y) * " << row_per_thread_b << ";\n";
 
-    if (need_handle_matmul) {
-      // Loop over shared dimension.
-      shader.MainFunctionBody()
-          << "for (var t = 0; t < i32(num_tiles); t = t + 1) {\n";
-
-      // Load one tile of A into local memory.
-      shader.MainFunctionBody()
-          << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_a << "); innerRow = innerRow + 1) {\n"
-          << "    for (var innerCol = 0; innerCol < i32(" << col_per_thread_a << "); innerCol = innerCol + 1) {\n"
-          << "      let inputRow = tileRowA + innerRow;\n"
-          << "      let inputCol = tileColA + innerCol;\n"
-          << "      " << write_data_to_sub_a_snippet << "\n"
-          << "    }\n"
-          << "  }\n";
-
-      // Load one tile of B into local memory.
-      shader.MainFunctionBody()
-          << "  for (var innerRow = 0; innerRow < i32(" << row_per_thread_b << "); innerRow = innerRow + 1) {\n"
-          << "    for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-          << "      let inputRow = tileRowB + innerRow;\n"
-          << "      let inputCol = tileCol + innerCol;\n"
-          << "           " << write_data_to_sub_b_snippet << "\n "
-          << "    }\n"
-          << "  }\n"
-          << "  kStart = kStart + tileInner;\n"
-          << "  workgroupBarrier();\n";
-
-      // Compute acc values for a single thread.
-      shader.MainFunctionBody()
-          << "var BCached: array<" << data_type << ", colPerThread>;\n"
-          << "  for (var k = 0; k < tileInner; k = k + 1) {\n"
-          << "    for (var inner = 0; inner < i32(colPerThread); inner = inner + 1) {\n";
-      if (transpose_b) {
-        shader.MainFunctionBody() << "      BCached[inner] = mm_Bsub[tileCol + inner][k];\n";
-      } else {
-        shader.MainFunctionBody()
-            << "      BCached[inner] = mm_Bsub[k][tileCol + inner];\n";
-      }
-      shader.MainFunctionBody() << "    }\n"
-                                << "    for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n";
-      if (transpose_a) {
-        shader.MainFunctionBody() << "      let ACached = mm_Asub[k][tileRow + innerRow];\n";
-      } else {
-        shader.MainFunctionBody() << "      let ACached = mm_Asub[tileRow + innerRow][k];\n";
-      }
-      shader.MainFunctionBody() << "      for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-                                << "        acc[innerRow][innerCol] = acc[innerRow][innerCol] + ACached * BCached[innerCol];\n"
-                                << "      }\n"
-                                << "    }\n"
+    // Calculate alpha * acc
+    if (alpha != 1.0f) {
+      shader.MainFunctionBody() << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
+                                << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+                                << "    acc[innerRow][innerCol] = output_element_t(uniforms.alpha) * acc[innerRow][innerCol];\n"
                                 << "  }\n"
-                                << "  workgroupBarrier();\n"
                                 << "}\n";
-
-      // Calculate alpha * acc
-      if (alpha != 1.0f) {
-        shader.MainFunctionBody() << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
-                                  << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-                                  << "    acc[innerRow][innerCol] = output_element_t(uniforms.alpha) * acc[innerRow][innerCol];\n"
-                                  << "  }\n"
-                                  << "}\n";
-      }
     }
-    // Write the results to the output buffer
-    shader.MainFunctionBody()
-        << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
-        << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
-        << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
-        << "  }\n"
-        << "}\n";
   }
+  // Write the results to the output buffer
+  shader.MainFunctionBody()
+      << "for (var innerRow = 0; innerRow < i32(rowPerThread); innerRow = innerRow + 1) {\n"
+      << "  for (var innerCol = 0; innerCol < i32(colPerThread); innerCol = innerCol + 1) {\n"
+      << "    mm_write(batch, globalRow + innerRow, globalCol + innerCol, acc[innerRow][innerCol]);\n"
+      << "  }\n"
+      << "}\n";
   return Status::OK();
 }
 

@@ -57,15 +57,18 @@ TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntim
 #pragma warning(pop)
 #endif
 
+#ifndef ORT_CALLER_FRAMEWORK
+#define ORT_CALLER_FRAMEWORK ""
+#endif
+
 std::mutex WindowsTelemetry::mutex_;
 std::mutex WindowsTelemetry::provider_change_mutex_;
 uint32_t WindowsTelemetry::global_register_count_ = 0;
-std::atomic_bool WindowsTelemetry::enabled_{true};
+bool WindowsTelemetry::enabled_ = true;
 uint32_t WindowsTelemetry::projection_ = 0;
-std::atomic<UCHAR> WindowsTelemetry::level_{0};
-std::atomic<UINT64> WindowsTelemetry::keyword_{0};
-
-std::unordered_map<std::string, WindowsTelemetry::CallbackRecord> WindowsTelemetry::callbacks_;
+UCHAR WindowsTelemetry::level_ = 0;
+UINT64 WindowsTelemetry::keyword_ = 0;
+std::vector<const WindowsTelemetry::EtwInternalCallback*> WindowsTelemetry::callbacks_;
 std::mutex WindowsTelemetry::callbacks_mutex_;
 
 WindowsTelemetry::WindowsTelemetry() {
@@ -80,45 +83,49 @@ WindowsTelemetry::WindowsTelemetry() {
 }
 
 WindowsTelemetry::~WindowsTelemetry() {
-  {
-    std::lock_guard<std::mutex> lock(mutex_);
-    if (global_register_count_ > 0) {
-      global_register_count_ -= 1;
-      if (global_register_count_ == 0) {
-        TraceLoggingUnregister(telemetry_provider_handle);
-      }
+  std::lock_guard<std::mutex> lock(mutex_);
+  if (global_register_count_ > 0) {
+    global_register_count_ -= 1;
+    if (global_register_count_ == 0) {
+      TraceLoggingUnregister(telemetry_provider_handle);
     }
   }
+
+  std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
+  callbacks_.clear();
 }
 
 bool WindowsTelemetry::IsEnabled() const {
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return enabled_;
 }
 
 UCHAR WindowsTelemetry::Level() const {
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return level_;
 }
 
 UINT64 WindowsTelemetry::Keyword() const {
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
   return keyword_;
 }
 
-void WindowsTelemetry::RegisterInternalCallback(const std::string& callback_key, EtwInternalCallback callback) {
+// HRESULT WindowsTelemetry::Status() {
+//     return etw_status_;
+// }
+
+void WindowsTelemetry::RegisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  auto result = callbacks_.emplace(callback_key, std::move(callback));
-  if (!result.second) {
-    result.first->second.IncrementRef();
-  }
+  callbacks_.push_back(&callback);
 }
 
-void WindowsTelemetry::UnregisterInternalCallback(const std::string& callback_key) {
+void WindowsTelemetry::UnregisterInternalCallback(const EtwInternalCallback& callback) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  auto hit = callbacks_.find(callback_key);
-  if (hit != callbacks_.end()) {
-    if (hit->second.DecrementRef() < 1) {
-      callbacks_.erase(hit);
-    }
-  }
+  auto new_end = std::remove_if(callbacks_.begin(), callbacks_.end(),
+                                [&callback](const EtwInternalCallback* ptr) {
+                                  return ptr == &callback;
+                                });
+  callbacks_.erase(new_end, callbacks_.end());
 }
 
 void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
@@ -129,12 +136,10 @@ void NTAPI WindowsTelemetry::ORT_TL_EtwEnableCallback(
     _In_ ULONGLONG MatchAllKeyword,
     _In_opt_ PEVENT_FILTER_DESCRIPTOR FilterData,
     _In_opt_ PVOID CallbackContext) {
-  {
-    std::lock_guard<std::mutex> lock(provider_change_mutex_);
-    enabled_ = (IsEnabled != 0);
-    level_ = Level;
-    keyword_ = MatchAnyKeyword;
-  }
+  std::lock_guard<std::mutex> lock(provider_change_mutex_);
+  enabled_ = (IsEnabled != 0);
+  level_ = Level;
+  keyword_ = MatchAnyKeyword;
 
   InvokeCallbacks(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
 }
@@ -143,9 +148,8 @@ void WindowsTelemetry::InvokeCallbacks(LPCGUID SourceId, ULONG IsEnabled, UCHAR 
                                        ULONGLONG MatchAllKeyword, PEVENT_FILTER_DESCRIPTOR FilterData,
                                        PVOID CallbackContext) {
   std::lock_guard<std::mutex> lock_callbacks(callbacks_mutex_);
-  for (const auto& entry : callbacks_) {
-    const auto& cb = entry.second.cb;
-    cb(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
+  for (const auto& callback : callbacks_) {
+    (*callback)(SourceId, IsEnabled, Level, MatchAnyKeyword, MatchAllKeyword, FilterData, CallbackContext);
   }
 }
 
@@ -184,7 +188,8 @@ void WindowsTelemetry::LogProcessInfo() const {
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingString(ORT_VERSION, "runtimeVersion"),
                     TraceLoggingBool(IsDebuggerPresent(), "isDebuggerAttached"),
-                    TraceLoggingBool(isRedist, "isRedist"));
+                    TraceLoggingBool(isRedist, "isRedist"),
+                    TraceLoggingString(ORT_CALLER_FRAMEWORK, "frameworkName"));
 
   process_info_logged = true;
 }
@@ -220,7 +225,11 @@ void WindowsTelemetry::LogEvaluationStart() const {
 void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_version, const std::string& model_producer_name,
                                           const std::string& model_producer_version, const std::string& model_domain,
                                           const std::unordered_map<std::string, int>& domain_to_version_map,
+                                          const std::string& model_file_name,
                                           const std::string& model_graph_name,
+                                          const std::string& model_weight_type,
+                                          const std::string& model_graph_hash,
+                                          const std::string& model_weight_hash,
                                           const std::unordered_map<std::string, std::string>& model_metadata,
                                           const std::string& loaded_from, const std::vector<std::string>& execution_provider_ids,
                                           bool use_fp16, bool captureState) const {
@@ -285,7 +294,11 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_domain.c_str(), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
                       TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_file_name.c_str(), "modelFileName"),
                       TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_weight_type.c_str(), "modelWeightType"),
+                      TraceLoggingString(model_graph_hash.c_str(), "modelGraphHash"),
+                      TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
@@ -307,7 +320,11 @@ void WindowsTelemetry::LogSessionCreation(uint32_t session_id, int64_t ir_versio
                       TraceLoggingString(model_domain.c_str(), "modelDomain"),
                       TraceLoggingBool(use_fp16, "usefp16"),
                       TraceLoggingString(domain_to_version_string.c_str(), "domainToVersionMap"),
+                      TraceLoggingString(model_file_name.c_str(), "modelFileName"),
                       TraceLoggingString(model_graph_name.c_str(), "modelGraphName"),
+                      TraceLoggingString(model_weight_type.c_str(), "modelWeightType"),
+                      TraceLoggingString(model_graph_hash.c_str(), "modelGraphHash"),
+                      TraceLoggingString(model_weight_hash.c_str(), "modelWeightHash"),
                       TraceLoggingString(model_metadata_string.c_str(), "modelMetaData"),
                       TraceLoggingString(loaded_from.c_str(), "loadedFrom"),
                       TraceLoggingString(execution_provider_string.c_str(), "executionProviderIds"));
@@ -356,9 +373,21 @@ void WindowsTelemetry::LogRuntimeError(uint32_t session_id, const common::Status
 #endif
 }
 
-void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last) const {
+void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_since_last, int64_t total_run_duration_since_last,
+                                      std::unordered_map<int64_t, long long> duration_per_batch_size) const {
   if (global_register_count_ == 0 || enabled_ == false)
     return;
+
+  // Convert duration_per_batch_size to a formatted string
+  std::string total_duration_per_batch_size;
+  for (const auto& entry : duration_per_batch_size) {
+    if (!total_duration_per_batch_size.empty()) {
+      total_duration_per_batch_size += ", ";
+    }
+    total_duration_per_batch_size += std::to_string(entry.first);
+    total_duration_per_batch_size += ": ";
+    total_duration_per_batch_size += std::to_string(entry.second);
+  }
 
   TraceLoggingWrite(telemetry_provider_handle,
                     "RuntimePerf",
@@ -369,7 +398,8 @@ void WindowsTelemetry::LogRuntimePerf(uint32_t session_id, uint32_t total_runs_s
                     TraceLoggingUInt8(0, "schemaVersion"),
                     TraceLoggingUInt32(session_id, "sessionId"),
                     TraceLoggingUInt32(total_runs_since_last, "totalRuns"),
-                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"));
+                    TraceLoggingInt64(total_run_duration_since_last, "totalRunDuration"),
+                    TraceLoggingString(total_duration_per_batch_size.c_str(), "totalRunDurationPerBatchSize"));
 }
 
 void WindowsTelemetry::LogExecutionProviderEvent(LUID* adapterLuid) const {

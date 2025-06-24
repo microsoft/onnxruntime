@@ -84,6 +84,10 @@ function(bundle_static_library bundled_target_name)
   add_dependencies(${bundled_target_name} bundling_target)
 endfunction()
 
+if (onnxruntime_USE_JSEP AND onnxruntime_USE_WEBGPU)
+  message(FATAL_ERROR "onnxruntime_USE_JSEP and onnxruntime_USE_WEBGPU cannot be enabled at the same time.")
+endif()
+
 if (NOT onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
   add_compile_definitions(
     BUILD_MLAS_NO_ONNXRUNTIME
@@ -406,6 +410,16 @@ jsepDownload:_pp_")
     list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webgpu.js")
   endif()
 
+  if (onnxruntime_USE_WEBNN)
+    target_compile_definitions(onnxruntime_webassembly PRIVATE USE_WEBNN=1)
+    if (NOT onnxruntime_USE_JSEP)
+      target_link_options(onnxruntime_webassembly PRIVATE
+        "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/post-webnn.js\""
+      )
+      list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/post-webnn.js")
+    endif()
+  endif()
+
   if (onnxruntime_USE_JSEP OR onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
     # if any of the above is enabled, we need to use the asyncify library
     target_link_options(onnxruntime_webassembly PRIVATE
@@ -499,62 +513,67 @@ jsepDownload:_pp_")
 
   if (onnxruntime_USE_JSEP)
     string(APPEND target_name ".jsep")
+  elseif (onnxruntime_USE_WEBGPU OR onnxruntime_USE_WEBNN)
+    string(APPEND target_name ".asyncify")
+    # TODO: support JSPI and add ".jspi" once JSPI build is supported
   endif()
 
   set_target_properties(onnxruntime_webassembly PROPERTIES OUTPUT_NAME ${target_name} SUFFIX ".mjs")
 
-  #
-  # The following POST_BUILD script is a workaround for enabling:
-  # - using onnxruntime-web with Multi-threading enabled when import from CDN
-  # - using onnxruntime-web when consumed in some frameworks like Vite
-  #
-  # In the use case mentioned above, the file name of the script may be changed. So we need to replace the line:
-  # `new Worker(new URL("ort-wasm-*.mjs", import.meta.url),`
-  # with
-  # `new Worker(new URL(import.meta.url),`
-  #
-  # This behavior is introduced in https://github.com/emscripten-core/emscripten/pull/22165. Since it's unlikely to be
-  # reverted, and there is no config to disable this behavior, we have to use a post-build script to workaround it.
-  #
+  if (onnxruntime_ENABLE_WEBASSEMBLY_THREADS)
+    #
+    # The following POST_BUILD script is a workaround for enabling:
+    # - using onnxruntime-web with Multi-threading enabled when import from CDN
+    # - using onnxruntime-web when consumed in some frameworks like Vite
+    #
+    # In the use case mentioned above, the file name of the script may be changed. So we need to replace the line:
+    # `new Worker(new URL("ort-wasm-*.mjs", import.meta.url),`
+    # with
+    # `new Worker(new URL(import.meta.url),`
+    #
+    # This behavior is introduced in https://github.com/emscripten-core/emscripten/pull/22165. Since it's unlikely to be
+    # reverted, and there is no config to disable this behavior, we have to use a post-build script to workaround it.
+    #
 
-  # Generate a script to do the post-build work
-  file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js "
-    const fs = require('fs');
-    const path = require('path');
+    # Generate a script to do the post-build work
+    file(WRITE ${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js "
+      const fs = require('fs');
+      const path = require('path');
 
-    // node wasm_post_build.js <mjsFilePath>
-    const mjsFilePath = process.argv[2];
-    let contents = fs.readFileSync(mjsFilePath).toString();
+      // node wasm_post_build.js <mjsFilePath>
+      const mjsFilePath = process.argv[2];
+      let contents = fs.readFileSync(mjsFilePath).toString();
 
-    const regex = 'new Worker\\\\(new URL\\\\(\".+?\", ?import\\\\.meta\\\\.url\\\\),';
-    const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
-    if (matches.length !== 1) {
-      throw new Error(
-        `Unexpected number of matches for \"${regex}\" in \"${filepath}\": ${matches.length}.`,
+      const regex = 'new Worker\\\\(new URL\\\\(\".+?\", ?import\\\\.meta\\\\.url\\\\),';
+      const matches = [...contents.matchAll(new RegExp(regex, 'g'))];
+      if (matches.length !== 1) {
+        throw new Error(
+          `Unexpected number of matches for \"\${regex}\" in \"\${mjsFilePath}\": \${matches.length}.`,
+        );
+      }
+
+      // Replace the only occurrence.
+      contents = contents.replace(
+        new RegExp(regex),
+        `new Worker(new URL(import.meta.url),`,
       );
-    }
 
-    // Replace the only occurrence.
-    contents = contents.replace(
-      new RegExp(regex),
-      `new Worker(new URL(import.meta.url),`,
-    );
+      fs.writeFileSync(mjsFilePath, contents);
+    "
+    )
 
-    fs.writeFileSync(mjsFilePath, contents);
-  "
-  )
+    find_program(NODE_EXECUTABLE node required)
+    if (NOT NODE_EXECUTABLE)
+      message(FATAL_ERROR "Node is required to run the post-build script")
+    endif()
 
-  find_program(NODE_EXECUTABLE node required)
-  if (NOT NODE_EXECUTABLE)
-    message(FATAL_ERROR "Node is required to run the post-build script")
+    add_custom_command(
+      TARGET onnxruntime_webassembly
+      POST_BUILD
+      # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
+      COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
+      COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
+      COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
+    )
   endif()
-
-  add_custom_command(
-    TARGET onnxruntime_webassembly
-    POST_BUILD
-    # Backup file at $<TARGET_FILE_NAME:onnxruntime_webassembly>.bak
-    COMMAND ${CMAKE_COMMAND} -E copy_if_different "$<TARGET_FILE_NAME:onnxruntime_webassembly>" "$<TARGET_FILE_NAME:onnxruntime_webassembly>.bak"
-    COMMAND ${CMAKE_COMMAND} -E echo "Performing post-process for $<TARGET_FILE_NAME:onnxruntime_webassembly>"
-    COMMAND ${NODE_EXECUTABLE} "${CMAKE_CURRENT_BINARY_DIR}/wasm_post_build.js" "$<TARGET_FILE_NAME:onnxruntime_webassembly>"
-  )
 endif()

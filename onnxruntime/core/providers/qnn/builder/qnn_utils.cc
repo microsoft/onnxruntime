@@ -133,7 +133,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
       out << scalar.int32Value;
       break;
     case QNN_DATATYPE_INT_64:
-      out << "int64_t is not supported";
+      out << "int64_t is not supported in QNN except for UDO";
       break;
     case QNN_DATATYPE_UINT_8:
       out << static_cast<int32_t>(scalar.uint8Value);
@@ -145,7 +145,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
       out << scalar.uint32Value;
       break;
     case QNN_DATATYPE_UINT_64:
-      out << "uint64_t is not supported";
+      out << "uint64_t is not supported in QNN except for UDO";
       break;
     case QNN_DATATYPE_FLOAT_16:
       break;
@@ -1296,6 +1296,21 @@ Status InsertConvertOp(QnnModelWrapper& qnn_model_wrapper,
                                                     {},
                                                     do_op_validation),
                     "Failed to add node.");
+  return Status::OK();
+}
+
+Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm) {
+  ORT_RETURN_IF_NOT(axis < rank, "Expected axis must be smaller than rank: ", axis, " >= ", rank);
+
+  perm.reserve(rank);
+  for (uint32_t dim = 0; dim < rank; ++dim) {
+    perm.push_back(dim);
+  }
+
+  // Swap axis with the last one.
+  perm[axis] = rank - 1;
+  perm[rank - 1] = axis;
+
   return Status::OK();
 }
 

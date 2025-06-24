@@ -66,7 +66,7 @@ bool BaseOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   if (webnn_op_type.empty())
     return false;
 
-  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(webnn_op_type);
+  const std::string_view webnn_input_name = GetWebNNOpFirstInputName(op_type);
   return IsDataTypeSupportedByWebNNOp(op_type, webnn_op_type, input_type, wnn_limits,
                                       webnn_input_name, "input", logger);
 }

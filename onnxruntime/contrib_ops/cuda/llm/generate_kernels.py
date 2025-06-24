@@ -223,19 +223,20 @@ def get_file_content(launcher_inl_files, operations):
         instantiate_operation(insts_list, op)
     instantiations = "\n".join(insts_list)
 
-    file_content = f"""{includes}
-namespace onnxruntime::llm
-{{
-namespace kernels
-{{
-namespace cutlass_kernels
-{{
+    file_content = f"""
+#ifndef EXCLUDE_SM_90
+{includes}
+
+namespace onnxruntime::llm {{
+namespace kernels {{
+namespace cutlass_kernels {{
 
 {instantiations}
 
-}} // namespace cutlass_kernels
-}} // namespace kernels
-}} // namespace onnxruntime::llm
+}}  // namespace cutlass_kernels
+}}  // namespace kernels
+}}  // namespace onnxruntime::llm
+#endif  // EXCLUDE_SM_90
 """
     return file_content
 
@@ -276,7 +277,7 @@ def is_gemm_op_valid(op):
 
 
 ################################################################################
-def generate_sm90_mixed_gemm_operations(enable_fp8=False, enable_scale_only=False):
+def generate_sm90_mixed_gemm_operations(enable_fp8=False):
     arch = 90
 
     # For legacy reasons, we use unsigned types for the weights. The instanitated template
@@ -296,13 +297,7 @@ def generate_sm90_mixed_gemm_operations(enable_fp8=False, enable_scale_only=Fals
             (DataType.e4m3, DataType.u4, DataType.f16, DataType.bf16, DataType.bf16),
         ]
 
-    quant_ops = [LlmQuantOp.finegrained_scale_and_zeros]
-
-    if enable_scale_only:
-        quant_ops = [
-            *quant_ops,
-            LlmQuantOp.finegrained_scale_only,
-        ]
+    quant_ops = [LlmQuantOp.finegrained_scale_and_zeros, LlmQuantOp.finegrained_scale_only]
 
     epi_tags = [LlmEpilogueTag.epilogue_op_bias]
 
