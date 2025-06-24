@@ -69,7 +69,7 @@
     if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" "${onnxruntime_providers_qnn_target}/Qualcomm LICENSE.pdf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/Qualcomm_LICENSE.pdf
         )
     endif()
   else()
@@ -157,7 +157,7 @@
     if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD
-        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" "${onnxruntime_providers_qnn_target}/Qualcomm LICENSE.pdf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${onnxruntime_providers_qnn_target}>/Qualcomm_LICENSE.pdf
         )
     endif()
   endif()

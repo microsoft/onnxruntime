@@ -1081,8 +1081,8 @@ def generate_files(line_list, args):
         files_list.append(
             "<file src="
             + '"'
-            + os.path.join(args.native_build_path, "Qualcomm LICENSE.pdf")
-            + '" target="Qualcomm LICENSE.pdf" />'
+            + os.path.join(args.native_build_path, "Qualcomm_LICENSE.pdf")
+            + '" target="Qualcomm_LICENSE.pdf" />'
         )
     files_list.append("</files>")
 

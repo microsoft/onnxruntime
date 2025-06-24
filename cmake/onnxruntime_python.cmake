@@ -1071,9 +1071,7 @@ if (onnxruntime_USE_QNN)
   if (EXISTS "${onnxruntime_QNN_HOME}/LICENSE.pdf")
     add_custom_command(
       TARGET onnxruntime_pybind11_state POST_BUILD
-      COMMAND ${CMAKE_COMMAND} -E copy
-          "${onnxruntime_QNN_HOME}/LICENSE.pdf"
-          "${build_output_target}/onnxruntime/Qualcomm LICENSE.pdf"
+        COMMAND ${CMAKE_COMMAND} -E copy "${onnxruntime_QNN_HOME}/LICENSE.pdf" $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/Qualcomm_LICENSE.pdf
     )
   endif()
 endif()
