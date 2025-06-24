@@ -2819,6 +2819,12 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
 
+  auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
+  std::unique_ptr<EpGraph> result;
+  EpGraph::Create(std::move(new_graph_viewer), std::move(model), result);
+
+  *dst_graph = result.release();
+
   return nullptr;
   API_IMPL_END
 

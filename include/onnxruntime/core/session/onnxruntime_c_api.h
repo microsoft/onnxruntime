@@ -5783,7 +5783,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _Outptr_ OrtGraph** subgraph);
+  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _Outptr_ OrtGraph** subgraph);
 
   //
   // OrtNode

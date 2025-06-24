@@ -122,7 +122,7 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
     for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
       SubgraphState subgraph_state;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
-      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, nullptr, subgraph_state.ep_subgraph));
+      ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
 
       ep_node_subgraphs.emplace_back(std::move(subgraph_state));
@@ -452,12 +452,164 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
   nodes_[i] = ep_node;
 }
 
-EpGraph::EpGraph(const GraphViewer& graph_viewer, std::unique_ptr<Model> model, PrivateTag)
-    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer), model_(std::move(model)) {}
+EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
+
+EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(*graph_viewer.get()), model_(std::move(model)), graph_viewer_from_graph_in_model_(std::move(graph_viewer)) {}
 
 // Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, model, PrivateTag{});
+Status EpGraph::Create(std::unique_ptr<GraphViewer> graph_viewer_in_model, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto& graph_viewer = *graph_viewer_in_model.get();
+  auto ep_graph = std::make_unique<EpGraph>(std::move(graph_viewer_in_model), std::move(model), PrivateTag{});
+
+  AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
+  std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
+
+  // Process graph inputs.
+  const std::vector<const NodeArg*>& graph_input_node_args = graph_viewer.GetInputsIncludingInitializers();
+  InlinedVector<EpValueInfo*> graph_input_value_infos(graph_input_node_args.size(), nullptr);
+  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_input_node_args,
+                              graph_input_value_infos,
+                              [&graph_viewer](EpValueInfo* v) {
+                                if (!graph_viewer.IsInitializedTensor(v->GetName())) {
+                                  v->SetFlag(EpValueInfo::Flags::kIsRequiredGraphInput);
+                                } else if (graph_viewer.CanOverrideInitializer()) {
+                                  v->SetFlag(EpValueInfo::Flags::kIsOptionalGraphInput);
+                                }
+                              });
+
+  // Process graph outputs.
+  const std::vector<const NodeArg*>& graph_output_node_args = graph_viewer.GetOutputs();
+  InlinedVector<EpValueInfo*> graph_output_value_infos(graph_output_node_args.size(), nullptr);
+  ConvertNodeArgsToValueInfos(ep_graph.get(), value_infos_map, graph_output_node_args,
+                              graph_output_value_infos,
+                              [](EpValueInfo* v) { v->SetFlag(EpValueInfo::Flags::kIsGraphOutput); });
+
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values;
+
+  // Create OrtValueInfo and OrtValue instances for each initializer.
+  const InitializedTensorSet initializers = graph_viewer.GetAllInitializedTensors();
+  std::vector<EpValueInfo*> initializer_value_infos;
+  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values;
+
+  initializer_value_infos.reserve(initializers.size());
+  initializer_values.reserve(initializers.size());
+
+  for (const auto& [initializer_name, tensor_proto] : initializers) {
+    EpValueInfo* value_info = nullptr;
+    EpValueInfo::Flags flag = graph_viewer.IsConstantInitializer(initializer_name, /*check_outer_scope*/ false)
+                                  ? EpValueInfo::kIsConstantInitializer
+                                  : EpValueInfo::kIsOptionalGraphInput;
+
+    auto iter = value_infos_map.find(initializer_name);
+    if (iter != value_infos_map.end()) {
+      value_info = iter->second.get();
+      value_info->SetFlag(flag);
+    } else {
+      auto type_proto = utils::TypeProtoFromTensorProto(*tensor_proto);
+      std::unique_ptr<OrtTypeInfo> type_info = OrtTypeInfo::FromTypeProto(type_proto);
+      auto unique_value_info = std::make_unique<EpValueInfo>(ep_graph.get(), initializer_name, std::move(type_info),
+                                                             flag);
+
+      value_info = unique_value_info.get();
+      value_infos_map.emplace(initializer_name, std::move(unique_value_info));
+    }
+
+    initializer_value_infos.push_back(value_info);
+
+    // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
+    // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
+    // OrtValue instances is merged.
+    auto initializer_value = std::make_unique<OrtValue>();
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                     initializer_allocator, *initializer_value));
+    initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
+  }
+
+  // Process nodes in topological order, converting Node to EpNode.
+  std::vector<std::unique_ptr<EpNode>> ep_nodes;
+  IndexToEpNodeMap index_to_ep_node;
+  NodeIndex min_node_index = std::numeric_limits<NodeIndex>::max();
+  NodeIndex max_node_index = std::numeric_limits<NodeIndex>::lowest();
+
+  ep_nodes.reserve(graph_viewer.NumberOfNodes());
+
+  const std::vector<NodeIndex>& node_indices = graph_viewer.GetNodesInTopologicalOrder(ExecutionOrder::DEFAULT);
+
+  for (NodeIndex node_index : node_indices) {
+    gsl::not_null<const Node*> node = graph_viewer.GetNode(node_index);
+    std::unique_ptr<EpNode> ep_node = nullptr;
+
+    ORT_RETURN_IF_ERROR(EpNode::Create(*node, ep_graph.get(), value_infos_map, ep_node));
+    ep_nodes.push_back(std::move(ep_node));
+
+    min_node_index = std::min(min_node_index, node->Index());
+    max_node_index = std::max(max_node_index, node->Index());
+  }
+
+  // Iterate through nodes again and update the map of NodeIndex to EpNode*
+  index_to_ep_node.Resize(min_node_index, max_node_index);
+  for (std::unique_ptr<EpNode>& ep_node : ep_nodes) {
+    index_to_ep_node.SetEpNode(ep_node->GetInternalNode().Index(), ep_node.get());
+  }
+
+  // If this is a subgraph, add the OrtValueInfo and OrtValue objects that come from the outer scope.
+  // Wait until we have already processed OrtValueInfos consumed and produced by nodes so that we only add
+  // outer OrtValueInfo/OrtValue if they are actually used by the nodes in this GraphViewer.
+  if (graph_viewer.IsSubgraph()) {
+    gsl::not_null<const Graph*> parent_graph = graph_viewer.GetGraph().ParentGraph();
+    gsl::not_null<const Node*> parent_node = graph_viewer.ParentNode();
+
+    for (gsl::not_null<const NodeArg*> implicit_node_arg : parent_node->ImplicitInputDefs()) {
+      const std::string& implicit_name = implicit_node_arg->Name();
+      auto value_info_iter = value_infos_map.find(implicit_name);
+
+      if (value_info_iter == value_infos_map.end()) {
+        continue;  // Skip. This implicit value is not used by a node in this GraphViewer.
+      }
+
+      EpValueInfo* outer_value_info = value_info_iter->second.get();
+      bool is_constant = false;
+      const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
+                                                                                          /*check_outer_scope*/ true,
+                                                                                          is_constant);
+      outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
+
+      if (outer_initializer != nullptr) {
+        outer_value_info->SetFlag(is_constant ? EpValueInfo::kIsConstantInitializer : EpValueInfo::kIsOptionalGraphInput);
+      }
+
+      // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
+      // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
+      // OrtValue instances is merged.
+      if (outer_initializer != nullptr) {
+        auto initializer_value = std::make_unique<OrtValue>();
+        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                         *outer_initializer, initializer_allocator,
+                                                         *initializer_value));
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(initializer_value));
+      }
+    }
+  }
+
+  ep_graph->nodes_ = std::move(ep_nodes);
+  ep_graph->index_to_ep_node_ = std::move(index_to_ep_node);
+  ep_graph->value_infos_ = std::move(value_infos_map);
+  ep_graph->initializer_value_infos_ = std::move(initializer_value_infos);
+  ep_graph->initializer_values_ = std::move(initializer_values);
+  ep_graph->outer_scope_initializer_values_ = std::move(outer_scope_initializer_values);
+  ep_graph->inputs_ = std::move(graph_input_value_infos);
+  ep_graph->outputs_ = std::move(graph_output_value_infos);
+
+  result = std::move(ep_graph);
+
+  return Status::OK();
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
 
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
