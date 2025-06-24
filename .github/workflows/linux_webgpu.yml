@@ -95,11 +95,30 @@ jobs:
         run: |
           # Verify GPU is accessible
           nvidia-smi || echo "nvidia-smi not available"
-          # Verify Vulkan in container with GPU access
+
+          # Set up headless environment for Vulkan
+          export DISPLAY=:99
+          export XDG_RUNTIME_DIR=/tmp/runtime-root
+          mkdir -p $XDG_RUNTIME_DIR
+
+          # Verify Vulkan in container with GPU access and proper environment
           docker run --rm --gpus all \
             -v ${{ runner.temp }}:/onnxruntime_src/build \
+            -e DISPLAY=$DISPLAY \
+            -e XDG_RUNTIME_DIR=/tmp/runtime-root \
+            -e NVIDIA_VISIBLE_DEVICES=all \
+            -e NVIDIA_DRIVER_CAPABILITIES=all \
             ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            sh -c "vulkaninfo --summary || echo 'Vulkan verification failed, continuing with software fallback'"
+            sh -c "
+              mkdir -p /tmp/runtime-root && \
+              export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/nvidia_icd.json && \
+              echo 'Testing Vulkan with NVIDIA ICD...' && \
+              vulkaninfo --summary || (
+                echo 'NVIDIA Vulkan failed, trying software fallback...' && \
+                export VK_ICD_FILENAMES=/usr/share/vulkan/icd.d/lvp_icd.x86_64.json && \
+                vulkaninfo --summary || echo 'All Vulkan attempts failed, WebGPU will use software rendering'
+              )
+            "
 
       - name: Test ONNX Runtime
         id: test_step
