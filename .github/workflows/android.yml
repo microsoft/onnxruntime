@@ -237,6 +237,7 @@ jobs:
           --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
