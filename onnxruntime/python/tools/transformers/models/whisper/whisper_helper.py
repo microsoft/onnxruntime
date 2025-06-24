@@ -596,13 +596,21 @@ class WhisperHelper:
                 "no_repeat_ngram_size": 0,
                 "num_beams": 1,
                 "num_return_sequences": 1,
-                "past_present_share_buffer": provider == "cuda",  # Required for DMMHA kernel. Otherwise must be false for beam search to work in ORT GenAI.
+                "past_present_share_buffer": provider == "cuda",
                 "repetition_penalty": 1.0,
                 "temperature": 1.0,
                 "top_k": 1,
                 "top_p": 1.0,
             },
         }
+
+        # Requirements for the DMMHA kernel (which is currently
+        # enabled for CUDA only):
+        # - Buffer sharing = true
+        # - New input: past_sequence_length
+        # - New input: cache_indirection
+        # Otherwise, buffer sharing should be false and the new inputs
+        # should not be added for beam search to work in ORT GenAI.
 
         if provider == "cuda":
             # Add inputs for DMMHA kernel
