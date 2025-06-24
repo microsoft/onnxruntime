@@ -140,9 +140,8 @@ struct OrtEpApi {
  * \since Version 1.23.
  */
 typedef enum OrtEpDataLayout {
-  NCHW = 0,
-  NHWC,
-  NCHWC,
+  OrtEpDataLayout_NCHW = 0,
+  OrtEpDataLayout_NHWC,
 } OrtEpDataLayout;
 
 /**

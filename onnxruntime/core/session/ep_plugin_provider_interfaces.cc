@@ -281,14 +281,11 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetPreferredDataLayout(ort_ep_.get(), &api_data_layout)));
 
   switch (api_data_layout) {
-    case OrtEpDataLayout::NCHW:
+    case OrtEpDataLayout::OrtEpDataLayout_NCHW:
       return DataLayout::NCHW;
 
-    case OrtEpDataLayout::NHWC:
+    case OrtEpDataLayout::OrtEpDataLayout_NHWC:
       return DataLayout::NHWC;
-
-    case OrtEpDataLayout::NCHWC:
-      return DataLayout::NCHWC;
 
     default:
       ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",

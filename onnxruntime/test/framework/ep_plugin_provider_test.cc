@@ -82,7 +82,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
 
   {
     auto prefer_nhwc_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) -> ::OrtStatus* {
-      *preferred_data_layout = OrtEpDataLayout::NCHW;
+      *preferred_data_layout = OrtEpDataLayout::OrtEpDataLayout_NCHW;
       return nullptr;
     };
     ort_ep->GetPreferredDataLayout = prefer_nhwc_fn;
