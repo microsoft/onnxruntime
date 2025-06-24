@@ -47,7 +47,6 @@ void printDebugInfo(const ov::CompiledModel& obj) {
               continue;
             OPENVINO_SUPPRESS_DEPRECATED_END
             std::cout << "    " << item2.first << ": " << item2.second.as<std::string>() << std::endl;
-          }
         }
       } else {
         std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
@@ -101,10 +100,10 @@ OVExeNetwork OVCore::StatefulCompileModel(std::shared_ptr<OVNetwork>& model,
     LogBasicModelInfo(model);
   }
 
-  LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
   bool model_status = IsStateful(model);
   LOGS_DEFAULT(INFO) << log_tag << "Model IsStateful() Status:\t" << (model_status ? "True" : "False");
   if (!model_status) {
+    LOGS_DEFAULT(INFO) << log_tag << "Converting from Stateless OV Model to Stateful OV Model" << std::endl;
     PatchStatefulDecoder(model);
   }
 
@@ -198,14 +197,68 @@ OVExeNetwork OVCore::ImportModel(std::istream& model_stream,
   return OvExceptionBoundary([&]() {
     ov::CompiledModel obj;
     obj = core.import_model(model_stream, hw_target, device_config);
+    OVExeNetwork exe(obj, hw_target);
 #ifndef NDEBUG
     printDebugInfo(exe.Get());
 #endif
-    OVExeNetwork exe(obj, hw_target);
     return exe;
   },
                              "Exception while Loading Network for graph {}", name);
 }
+
+OVExeNetwork OVCore::ImportEPCtxOVIREncapsulation(std::istream& model_stream,
+                                                  std::string& hw_target,
+                                                  const ov::AnyMap& device_config,
+                                                  bool enable_causallm,
+                                                  std::filesystem::path model_file_path) {
+  return OvExceptionBoundary([&]() {
+    OVExeNetwork exe;
+
+    bool isXML = backend_utils::IsModelStreamXML(model_stream);
+
+    // Helper function to check if file exists and is readable
+    const auto check_file_access = [&model_file_path](const std::filesystem::path& path) {
+      try {
+        if (!std::filesystem::exists(path) || std::filesystem::is_empty(path)) {
+          ORT_THROW(log_tag + "Required file missing or empty: " + path.string());
+        }
+        std::ifstream file(path);
+        if (!file) {
+          ORT_THROW(log_tag + "Required file not readable: " + path.string());
+        }
+      } catch (const std::exception& e) {
+        ORT_THROW(log_tag + "Exception while checking file access for: " + path.string() + " - " + e.what());
+      }
+    };
+
+    if (isXML) {
+      // If the model is XML, we need to load it with the XML content in read_model()
+      // where weights from bin file is directly consumed
+      auto xml_file_path = model_file_path.parent_path() / (model_file_path.stem().string() + ".xml");
+
+      check_file_access(xml_file_path);
+
+      LOGS_DEFAULT(INFO) << log_tag << "Reading OVIR from XML file path: " << xml_file_path.string();
+
+      // Load the model explicitly with XML contents
+      std::shared_ptr<ov::Model> model = core.read_model(xml_file_path.string());
+
+      if (enable_causallm) {
+        exe = OVCore::Get()->StatefulCompileModel(model, hw_target, device_config);
+      } else {
+        auto obj = core.compile_model(model, hw_target, device_config);
+        exe = OVExeNetwork(obj, hw_target);
+      }
+    }
+
+#ifndef NDEBUG
+    printDebugInfo(exe.Get());
+#endif
+    return exe;
+  },
+                             "Exception while Loading Network from OVIR model file: {}", model_file_path.string());
+}
+
 
 void OVCore::SetCache(const std::string& cache_dir_path) {
   core.set_property(ov::cache_dir(cache_dir_path));

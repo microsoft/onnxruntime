@@ -7,6 +7,7 @@
 #include <algorithm>
 
 #include "core/providers/openvino/onnx_ctx_model_helper.h"
+#include "core/providers/openvino/backend_utils.h"
 
 namespace onnxruntime {
 namespace openvino_ep {
@@ -123,6 +124,16 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesy
     ORT_ENFORCE(std::filesystem::exists(blob_filepath), "Blob file not found: ", blob_filepath.string());
     result.reset((std::istream*)new std::ifstream(blob_filepath, std::ios_base::binary | std::ios_base::in));
   }
+
+  bool isXML = backend_utils::IsModelStreamXML(*result);
+  if (!isXML) {
+    // If the model stream is not an XML (i.e. precompiled blob), the OpenVINO SDK version that it was
+    // exported with must match the version that is currently running.
+    ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
+                "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
+                  ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
+  }
+
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";
   return result;
 }
@@ -142,7 +153,6 @@ bool EPCtxHandler::CheckForOVEPCtxNode(const Node& node) const {
   if (node.OpType() == EPCONTEXT_OP) {
     auto& attrs = node.GetAttributes();
     bool result = (attrs.count(SOURCE) == 1) && (attrs.at(SOURCE).s() == kOpenVINOExecutionProvider);
-    result &= (attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_);
     result &= attrs.count(EMBED_MODE) == 1;
     result &= attrs.count(EP_CACHE_CONTEXT) == 1;
     return result;
@@ -153,6 +163,33 @@ bool EPCtxHandler::CheckForOVEPCtxNode(const Node& node) const {
 InlinedVector<const Node*> EPCtxHandler::GetEPCtxNodes() const {
   const auto& epctx_nodes{epctx_model_->MainGraph().Nodes()};
   return InlinedVector<const Node*>(epctx_nodes.begin(), epctx_nodes.end());
+}
+
+// Check if graph's only node is EPContext & EP_CACHE_CONTEXT attribute has target extension.
+// @param graph_viewer: The graph to inspect.
+// @param target_attr_extn: The string to search for in the EP_CACHE_CONTEXT attribute.
+// @return true if the node exists, is of the correct type, and the attribute contains the extension; false otherwise.
+bool EPCtxHandler::CheckEPCacheContextAttribute(const GraphViewer& graph_viewer, const std::string& target_attr_extn) const {
+  // Only check if the graph has exactly one node
+  if (graph_viewer.NumberOfNodes() != 1) {
+    return false;
+  }
+  // Get the first node in topological order
+  auto first_index = *graph_viewer.GetNodesInTopologicalOrder().begin();
+  const Node* node = graph_viewer.GetNode(first_index);
+  if (!node) {
+    return false;
+  }
+  // Check OpType and required attributes
+  if (node->OpType() != EPCONTEXT_OP) {
+    return false;
+  }
+  const auto& attrs = node->GetAttributes();
+  auto it = attrs.find(EP_CACHE_CONTEXT);
+  if (it != attrs.end()) {
+    return it->second().s().find(target_attr_extn) != std::string::npos;
+  }
+  return false;
 }
 
 }  // namespace openvino_ep

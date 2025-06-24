@@ -107,6 +107,8 @@ void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
 
 void printPerformanceCounts(OVInferRequestPtr request, std::ostream& stream, std::string deviceName);
 
+bool IsModelStreamXML(std::istream& model_stream);
+
 }  // namespace backend_utils
 }  // namespace openvino_ep
 }  // namespace onnxruntime

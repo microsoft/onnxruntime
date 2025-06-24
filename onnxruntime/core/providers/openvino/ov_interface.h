@@ -86,6 +86,12 @@ struct OVCore : WeakSingleton<OVCore> {
                            std::string hw_target,
                            const ov::AnyMap& device_config,
                            std::string name);
+  OVExeNetwork ImportEPCtxOVIREncapsulation(std::istream& model_stream,
+                                            std::string& hw_target,
+                                            const ov::AnyMap& device_config,
+                                            bool enable_causallm,
+                                            std::filesystem::path model_file_path);
+
   std::vector<std::string> GetAvailableDevices() const;
   std::vector<std::string> GetAvailableDevices(const std::string& device_type) const;
   void SetCache(const std::string& cache_dir_path);

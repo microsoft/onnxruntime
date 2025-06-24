@@ -137,6 +137,7 @@ struct SubGraphContext {
   string_index_map_t output_names;
   std::string model_precision;
   bool is_ep_ctx_graph = false;
+  bool is_ep_ctx_ovir_encapsulated = false;
 };
 
 }  // namespace openvino_ep
