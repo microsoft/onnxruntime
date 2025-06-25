@@ -518,7 +518,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
           size_t output_idx = i * output_lda + j * BlkLen + k;
           if (k < std::min(BlkLen, K - j * BlkLen)) {
             const auto input_val = inputA[input_idx];
-            // Round away from zero
+            // Round to nearest, ties away from zero
             // float v = std::clamp(std::roundf(input_val * invScale), -128.f, 127.f);
 
             // Round to nearest, ties to even
@@ -594,7 +594,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = (float)i + 159.f;
+        p[i] = this->distrib_f32_(this->gen_);
       }
     });
 
@@ -615,13 +615,13 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     //std::cout << "QuantA M " << M << " K " << K << " BlkLen " << BlkLen << std::endl;
 
     QuantA<M, K, BlkLen>(inputA, refQuantA, refScale, refBlkSum, quantAUnsigned);
-    //std::cout << "Finished QuantA ref " << std::endl;
+    std::cout << "Finished QuantA ref " << std::endl;
     CheckQuantA<M, K, BlkLen>(reinterpret_cast<uint8_t*>(quantAPtr), refQuantA);
-    //std::cout << "Finished CheckQuantA" << std::endl;
+    std::cout << "Finished CheckQuantA" << std::endl;
     CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
-    //std::cout << "Finished CheckScale" << std::endl;
+    std::cout << "Finished CheckScale" << std::endl;
     CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
-    //std::cout << "Finished CheckBlkSum" << std::endl;
+    std::cout << "Finished CheckBlkSum" << std::endl;
   }
 
  public:
