@@ -404,8 +404,11 @@ std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTran
     ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
   }
 
-  auto dt = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
-  return dt;
+  if (data_transfer_impl == nullptr) {
+    return {};
+  }
+
+  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
 }
 
 std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {

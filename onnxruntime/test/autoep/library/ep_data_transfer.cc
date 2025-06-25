@@ -68,6 +68,10 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
 }
 
 /*static*/
-void ORT_API_CALL ExampleDataTransfer::ReleaseImpl(void* this_ptr) noexcept {
-  delete static_cast<ExampleDataTransfer*>(this_ptr);
+void ORT_API_CALL ExampleDataTransfer::ReleaseImpl(void* /*this_ptr*/) noexcept {
+  // In our setup the factory owns a shared ExampleDataTransfer instance so it will do the cleanup, and we ignore
+  // the call to Release from the plugin_ep::DataTransfer dtor (see /onnxruntime/core/framework/plugin_data_transfer.h)
+  //
+  // If you create a new instance on each call to OrtEpFactory::CreateDataTransfer you call `delete` here
+  // delete static_cast<ExampleDataTransfer*>(this_ptr);
 }
