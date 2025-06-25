@@ -4,6 +4,7 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
+#include "test/util/include/default_providers.h"
 
 namespace onnxruntime {
 namespace test {
@@ -433,6 +434,26 @@ TEST(ConcatOpTest, Concat4D_2) {
                          331.0f, 332.0f, 333.0f});
   test.Run();
 }
+
+#ifdef USE_WEBGPU
+TEST(ConcatOpTest, Concat1D_exceed_maxStorageBuffersPerShaderStage) {
+  // maxStorageBuffersPerShaderStage==8
+  OpTester test("Concat");
+  test.AddAttribute("axis", int64_t{0});
+
+  test.AddInput<int32_t>("input1", {1}, {1});
+  test.AddInput<int32_t>("input2", {1}, {2});
+  test.AddInput<int32_t>("input3", {1}, {3});
+  test.AddInput<int32_t>("input4", {1}, {4});
+  test.AddInput<int32_t>("input5", {1}, {5});
+  test.AddInput<int32_t>("input6", {1}, {6});
+  test.AddInput<int32_t>("input7", {1}, {7});
+  test.AddInput<int32_t>("input8", {1}, {8});
+  test.AddInput<int32_t>("input9", {1}, {9});
+  test.AddOutput<int32_t>("concat_result", {9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.Run();
+}
+#endif  // USE_WEBGPU
 
 }  // namespace test
 }  // namespace onnxruntime
