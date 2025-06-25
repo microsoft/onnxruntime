@@ -176,7 +176,7 @@ class MlasSQ8BitPrepackTest : public MlasTestBase {
       }
     }
   }
-#else // not MLAS_TARGET_ARM64
+#else  // not MLAS_TARGET_ARM64
   template <size_t K, size_t N, size_t BlkLen, size_t SubBlkLen>
   void PrepackB(const uint8_t* src, uint8_t* dst, float* blkSum2) {
     MLAS_UNREFERENCED_PARAMETER(blkSum2);
