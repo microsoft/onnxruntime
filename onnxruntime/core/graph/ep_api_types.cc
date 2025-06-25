@@ -544,9 +544,9 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
       bool is_constant = false;
-      auto initializer_value = std::make_unique<OrtValue>();
+      auto outer_initializer_value = std::make_unique<OrtValue>();
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
-                                                                                          *initializer_value,
+                                                                                          *outer_initializer_value,
                                                                                           is_constant,
                                                                                           /*check_outer_scope*/ true);
       outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
@@ -557,14 +557,14 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
-        if (!initializer_value->IsAllocated()) {
+        if (!outer_initializer_value->IsAllocated()) {
           // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
           // This should only happen for small initializers that are needed for ONNX shape inferencing.
           ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
                                                            *outer_initializer, initializer_allocator,
-                                                           *initializer_value));
+                                                           *outer_initializer_value));
         }
-        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(initializer_value));
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
     }
   }
