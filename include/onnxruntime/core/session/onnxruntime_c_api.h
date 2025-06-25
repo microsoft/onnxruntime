@@ -5386,8 +5386,8 @@ struct OrtApi {
    *
    * OrtEpDevice maps to the EP factory, and the factory provides the allocator implementation.
    *
-   * OrtDeviceMemoryType_DEFAULT is always supported for non-CPU based devices.
-   * OrtDeviceMemoryType_HOST_ACCESSIBLE is optional and dependent on the device as to whether it's required/supported.
+   * Both OrtDeviceMemoryType_DEFAULT and OrtDeviceMemoryType_HOST_ACCESSIBLE are optional for an EP to provide.
+   * It is EP implementation dependent as to what is available.
    *
    * If a shared allocator already exists for the OrtEpDevice and OrtDeviceMemoryType, it is replaced. This allows
    * changing the shared allocator configuration from the default. e.g. adding an arena.

@@ -13,12 +13,6 @@
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 
-namespace onnxruntime {
-namespace common {
-class Status;
-}
-}  // namespace onnxruntime
-
 // This configures the arena based allocator used by ORT
 // See docs/C_API.md for details on what these mean and how to choose these values
 struct OrtArenaCfg {

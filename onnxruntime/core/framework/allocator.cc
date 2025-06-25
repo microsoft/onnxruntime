@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/common/narrow.h"
+#include "core/common/parse_string.h"
 #include "core/common/safeint.h"
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
@@ -23,11 +24,8 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
   cfg = OrtArenaCfg{};  // reset to default values
 
   const auto from_string = [](const std::string& key, const std::string& str, int64_t& value) -> Status {
-    auto result = std::from_chars(str.data(), str.data() + str.size(), value);
-
-    if (result.ec != std::errc()) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                             "Failed to parse value for ", key, " from ", str);
+    if (!onnxruntime::ParseStringWithClassicLocale(str, value).IsOK()) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse value for ", key, " from ", str);
     }
 
     return Status::OK();
