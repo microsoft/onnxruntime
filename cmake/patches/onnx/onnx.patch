@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 6fe5c96e..087a7780 100644
+index 8b5af303..7fe05a5a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -40,6 +40,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
@@ -55,10 +55,26 @@ index 6fe5c96e..087a7780 100644
    set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
    set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
    set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -620,21 +636,11 @@ if(MSVC)
+@@ -595,13 +611,6 @@ if(ONNX_BUILD_PYTHON)
+     target_link_libraries(onnx_cpp2py_export PRIVATE ${Python3_LIBRARIES})
+     target_compile_options(onnx_cpp2py_export
+                            PRIVATE /MP
+-                                   /wd4146 # unary minus operator applied to unsigned type,
+-                                           # result still unsigned
+-                                   /wd4244 # 'argument': conversion from 'google::
+-                                           # protobuf::uint64' to 'int', possible
+-                                           # loss of data
+-                                   /wd4267 # Conversion from 'size_t' to 'int',
+-                                           # possible loss of data
+                                    ${EXTRA_FLAGS})
+     add_msvc_runtime_flag(onnx_cpp2py_export)
+     add_onnx_global_defines(onnx_cpp2py_export)
+@@ -618,23 +627,9 @@ endif()
+ if(MSVC)
+   target_compile_options(onnx_proto
                           PRIVATE /MP
-                                  /wd4146 # unary minus operator applied to unsigned type,
-                                          # result still unsigned
+-                                 /wd4146 # unary minus operator applied to unsigned type,
+-                                         # result still unsigned
 -                                 /wd4244 #'argument': conversion from 'google::
 -                                         #protobuf::uint64' to 'int', possible
 -                                         # loss of data
@@ -67,8 +83,8 @@ index 6fe5c96e..087a7780 100644
                                   ${EXTRA_FLAGS})
    target_compile_options(onnx
                           PRIVATE /MP
-                                  /wd4146 # unary minus operator applied to unsigned type,
-                                          # result still unsigned
+-                                 /wd4146 # unary minus operator applied to unsigned type,
+-                                         # result still unsigned
 -                                 /wd4244 # 'argument': conversion from 'google::
 -                                         # protobuf::uint64' to 'int', possible
 -                                         # loss of data
@@ -134,7 +150,7 @@ index c0ed3a39..6c8e2909 100644
  
    auto direction = getAttribute(ctx, "direction", "forward");
 diff --git a/onnx/defs/schema.h b/onnx/defs/schema.h
-index 42318d82..a33cf342 100644
+index acf3aac7..5bef6e72 100644
 --- a/onnx/defs/schema.h
 +++ b/onnx/defs/schema.h
 @@ -980,10 +980,7 @@ class OpSchemaRegistry final : public ISchemaRegistry {

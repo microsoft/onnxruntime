@@ -13,7 +13,7 @@ from autoep_helper import AutoEpTestCase
 from helper import get_name
 
 import onnxruntime as onnxrt
-from onnxruntime.capi.onnxruntime_pybind11_state import Fail, InvalidArgument
+from onnxruntime.capi.onnxruntime_pybind11_state import Fail
 
 # handle change from python 3.8 and on where loading a dll from the current directory needs to be explicitly allowed.
 if platform.system() == "Windows" and sys.version_info.major >= 3 and sys.version_info.minor >= 8:  # noqa: YTT204
@@ -225,14 +225,22 @@ class TestAutoEP(AutoEpTestCase):
         hw_metadata = hw_device.metadata
         self.assertGreater(len(hw_metadata), 0)  # Should have at least SPDRP_HARDWAREID on Windows
 
-        # Test adding this EP plugin's OrtEpDevice to the SessionOptions.
+        # Add EP plugin's OrtEpDevice to the SessionOptions.
         sess_options = onnxrt.SessionOptions()
-        with self.assertRaises(InvalidArgument) as context:
-            # Will raise InvalidArgument because ORT currently only supports provider bridge APIs.
-            # Actual plugin EPs will be supported in the future.
-            sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
-        self.assertIn("EP is not currently supported", str(context.exception))
+        sess_options.add_provider_for_devices([test_ep_device], {"opt1": "val1"})
+        sess_options.log_severity_level = 1  # INFO
+        self.assertTrue(sess_options.has_providers())
 
+        # Run sample model and check output
+        sess = onnxrt.InferenceSession(get_name("mul_1.onnx"), sess_options=sess_options)
+
+        x = np.array([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]], dtype=np.float32)
+        input_name = sess.get_inputs()[0].name
+        res = sess.run([], {input_name: x})
+        output_expected = np.array([[1.0, 4.0], [9.0, 16.0], [25.0, 36.0]], dtype=np.float32)
+        np.testing.assert_allclose(output_expected, res[0], rtol=1e-05, atol=1e-08)
+
+        del sess  # Delete session before unregistering library
         self.unregister_execution_provider_library(ep_name)
 
 

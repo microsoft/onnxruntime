@@ -723,36 +723,22 @@ if (onnxruntime_USE_WEBGPU)
       )
     else()
       set(ONNXRUNTIME_Dawn_PATCH_COMMAND
-          # The dawn.patch contains the following changes:
+          # The dawn_destroy_buffer_on_destructor.patch contains the following changes:
           #
           # - (private) Allow WGPUBufferImpl class to destroy the buffer in the destructor
           #   In native implementation, wgpuBufferRelease will trigger the buffer destroy (if refcount decreased to 0). But
           #   in emwgpu implementation, the buffer destroy won't happen. This change adds a destructor to the buffer class
           #   to destroy the buffer when the refcount is 0 for non-external buffers.
           #
-          # - (private) Remove hard-coded CMAKE_OSX_DEPLOYMENT_TARGET in Dawn's CMake files
-          #   https://github.com/microsoft/onnxruntime/pull/23729
-          #
-          # - (private) Reduce unsafe buffer usage warning in aligned_storage.h
-          #   https://github.com/microsoft/onnxruntime/pull/24308
-          #   The patch disables the UNSAFE_BUFFER_USAGE warning around the AlignedStorage struct in aligned_storage.h. This is done
-          #   by using TINT_BEGIN_DISABLE_WARNING and TINT_END_DISABLE_WARNING macros, which helps in warnings related to unsafe buffer usage
-          #   usage when compiling the code, making the build process cleaner and faster.
-          #
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn.patch &&
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_destroy_buffer_on_destructor.patch &&
 
           # The dawn_force_enable_f16_nvidia_vulkan.patch contains the following changes:
           #
           # - (private) Force enable f16 support for NVIDIA Vulkan
           #   Dawn disabled f16 support for NVIDIA Vulkan by default because of crashes in f16 CTS tests (crbug.com/tint/2164).
           #   Since the crashes are limited to specific GPU models, we patched Dawn to remove the restriction.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch &&
-
-          # The dawn_fix_copy_dxil_dll.patch contains the following changes:
           #
-          # - (private) Fix copy of dxil.dll in Dawn
-          #   The patch ensures the copy of dxil.dll to be done after the build step of `dxcompiler` target.
-          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_fix_copy_dxil_dll.patch)
+          ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_force_enable_f16_nvidia_vulkan.patch)
 
       onnxruntime_fetchcontent_declare(
         dawn

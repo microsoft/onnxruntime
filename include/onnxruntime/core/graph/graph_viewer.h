@@ -57,6 +57,11 @@ class GraphViewer {
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept;
 
+  /** Returns the ONNX IR version for the model. */
+  Version GetOnnxIRVersion() const noexcept {
+    return graph_->GetOnnxIRVersion();
+  }
+
   /**
   Gets the Graph inputs, excluding initializers.
   @returns Collection of NodeArg pointers for the graph inputs, excluding inputs that have matching initializers.

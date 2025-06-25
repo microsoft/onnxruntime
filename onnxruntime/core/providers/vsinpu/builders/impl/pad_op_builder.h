@@ -72,7 +72,7 @@ class PadOpBuilder : public BaseOpBuilder {
         return false;
       }
 
-      Initializer unpacked_tensor(*pads_initializer);
+      Initializer unpacked_tensor(graph_viewer.GetGraph(), *pads_initializer);
       auto tensor_data = unpacked_tensor.DataAsSpan<int64_t>();
       for (size_t i = 0; i < unpacked_tensor.size(); i++) {
         if (tensor_data[i] < 0) {
