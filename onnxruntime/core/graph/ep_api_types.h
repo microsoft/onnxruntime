@@ -297,8 +297,9 @@ struct EpGraph : public OrtGraph {
 
   std::vector<EpValueInfo*> initializer_value_infos_;
 
-  // Note: we return pointers to these OrtValue elements, which could be invalidated if the
-  // map is reallocated. This is not an issue now because OrtGraph is essentially readonly.
+  // Note: We return pointers to these OrtValue elements to users of the C API. These pointers would be invalidated
+  // if the maps were reallocated. However, this is not an issue now because OrtGraph is essentially readonly after
+  // initialization.
   std::unordered_map<std::string_view, OrtValue> initializer_values_;
   std::unordered_map<std::string_view, OrtValue> outer_scope_initializer_values_;
 
