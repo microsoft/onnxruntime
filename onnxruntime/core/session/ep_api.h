@@ -23,7 +23,6 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo
                     _In_ const OrtNode* node);
 ORT_API(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context);
 
-
 ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
                     _In_ const OrtMemoryInfo* allocator_memory_info);
 
