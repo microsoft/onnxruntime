@@ -512,11 +512,6 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
         float invScale = vAbsMax == 0.f ? 0.f : 127.f / vAbsMax;
         scalePtr[i * BlkCount + j] = scale;
 
-        if (j == 5)
-        {
-          std::cout << "Hello";
-        }
-
         float vSum = 0.f;
         for (size_t k = 0; k < BlkLen; ++k) {
           size_t input_idx = i * input_lda + j * BlkLen + k;
