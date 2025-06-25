@@ -124,15 +124,6 @@ struct DuktapeContext {
                            std::istreambuf_iterator<char>());
     file.close();
 
-    // Fix Duktape scoping: 'var $templates' doesn't create global properties
-    // Replace with 'this.$templates' to ensure global accessibility
-    constexpr const char* var_templates = "var $templates";
-    constexpr const char* this_templates = "this.$templates";
-    size_t pos = js_content.find(var_templates);
-    if (pos != std::string::npos) {
-      js_content.replace(pos, std::strlen(var_templates), this_templates);
-    }
-
     // Evaluate the JavaScript code
     if (duk_peval_string(ctx, js_content.c_str()) != 0) {
       std::string error_msg = "Failed to evaluate templates.js: ";
@@ -236,7 +227,8 @@ T* GetHelperFromFunction(duk_context* ctx) {
   if (!helper) {
     duk_error(ctx, DUK_ERR_ERROR, "Failed to get helper pointer");
   }
-  duk_pop_2(ctx);  // Pop pointer and function  return helper;
+  duk_pop_2(ctx);  // Pop pointer and function
+  return helper;
 }
 
 // ============================================================================
