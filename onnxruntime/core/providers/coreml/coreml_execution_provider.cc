@@ -38,23 +38,33 @@ CoreMLExecutionProvider::CoreMLExecutionProvider(const CoreMLOptions& options)
 CoreMLExecutionProvider::~CoreMLExecutionProvider() {}
 
 // Create a helper function for type checking
-bool CoreMLExecutionProvider::IsSupportedType(int32_t type) const {
-  return supported_input_output_types_.find(type) != supported_input_output_types_.end();
+bool CoreMLExecutionProvider::IsSupportedInputOrOutputType(int32_t type) const {
+  // Supported input and output types for CoreML MLProgram EP
+  // CoreML EP supports a more limited set of input and output types for models
+  // within the model, more data types are supported.
+  static const std::unordered_set<int64_t> supported_input_output_types = {
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
+      ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
+      ONNX_NAMESPACE::TensorProto_DataType_INT32,
+      ONNX_NAMESPACE::TensorProto_DataType_INT64};
+
+  return supported_input_output_types.find(type) != supported_input_output_types.end();
 }
 
+namespace {
 // After an input node is removed from the partition, we need to update the inputs of the partition.
 // We evaluate the outputs of the input nodes
 // For each output, if its consumer node is part of the partition, we add this output to the inputs of the partition
-void UpdateInputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
+void UpdateInputsSetAfterNodeRemoval(const std::unordered_set<NodeIndex>& partition_nodes_set,
                                      const Node* node,
-                                     std::unordered_set<std::string>& newInputs,
+                                     std::unordered_set<std::string>& new_inputs,
                                      const onnxruntime::GraphViewer& graph_viewer) {
   for (const auto& output : node->OutputDefs()) {
     for (const auto& consumer_node : graph_viewer.GetConsumerNodes(output->Name())) {
       NodeIndex consumer_node_index = consumer_node->Index();
       if (partition_nodes_set.find(consumer_node_index) != partition_nodes_set.end() &&
-          newInputs.find(output->Name()) == newInputs.end()) {
-        newInputs.insert(output->Name());
+          new_inputs.find(output->Name()) == new_inputs.end()) {
+        new_inputs.insert(output->Name());
       }
     }
   }
@@ -63,19 +73,20 @@ void UpdateInputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_no
 // we want to add the inputs of the removed node to the outputs of the partition IF:
 // 1. the input is an output of a node that is part of the partition
 // 2. the input is not already in the outputs of the partition
-void UpdateOutputsSetAfterNodeRemoval(std::unordered_set<NodeIndex>& partition_nodes_set,
+void UpdateOutputsSetAfterNodeRemoval(const std::unordered_set<NodeIndex>& partition_nodes_set,
                                       const Node* node,
-                                      std::unordered_set<std::string>& newOutputs,
+                                      std::unordered_set<std::string>& new_outputs,
                                       const onnxruntime::GraphViewer& graph_viewer) {
   for (const auto& input : node->InputDefs()) {
     const Node* producer_node_for_input = graph_viewer.GetProducerNode(input->Name());
     NodeIndex producer_index = producer_node_for_input ? producer_node_for_input->Index() : NodeIndex(-1);
     if (partition_nodes_set.find(producer_index) != partition_nodes_set.end() &&
-        newOutputs.find(input->Name()) == newOutputs.end()) {
-      newOutputs.insert(input->Name());
+        new_outputs.find(input->Name()) == new_outputs.end()) {
+      new_outputs.insert(input->Name());
     }
   }
 }
+}  // namespace
 
 bool CoreMLExecutionProvider::ProcessIncompatibleNodes(const onnxruntime::GraphViewer& graph_viewer,
                                                        std::unordered_set<NodeIndex>& partition_nodes,
@@ -87,28 +98,28 @@ bool CoreMLExecutionProvider::ProcessIncompatibleNodes(const onnxruntime::GraphV
   const size_t original_partition_size = partition_nodes.size();
 
   // Get the appropriate vector (inputs or outputs)
-  auto& names = is_input ? meta_def->inputs : meta_def->outputs;
+  auto& io_names = is_input ? meta_def->inputs : meta_def->outputs;
 
-  for (const auto& name : names) {
+  for (const auto& io_name : io_names) {
     // Get node arg type
-    const auto* node_arg = graph_viewer.GetNodeArg(name);
+    const auto* node_arg = graph_viewer.GetNodeArg(io_name);
     int32_t type = ONNX_NAMESPACE::TensorProto_DataType_UNDEFINED;
     if (!GetType(*node_arg, type, logger)) {
-      LOGS(logger, ERROR) << "NodeArg " << name << " has no type information.";
+      LOGS(logger, ERROR) << "NodeArg " << io_name << " has no type information.";
       continue;
     }
 
     // Get relevant nodes (producers or consumers)
     std::vector<const Node*> nodes;
     if (is_input) {
-      nodes = graph_viewer.GetConsumerNodes(name);
+      nodes = graph_viewer.GetConsumerNodes(io_name);
     } else {
-      const Node* producer = graph_viewer.GetProducerNode(name);
+      const Node* producer = graph_viewer.GetProducerNode(io_name);
       if (producer) nodes.push_back(producer);
     }
 
     // Process nodes based on type compatibility
-    if (!IsSupportedType(type)) {
+    if (!IsSupportedInputOrOutputType(type)) {
       for (const Node* node : nodes) {
         if (node && partition_nodes.find(node->Index()) != partition_nodes.end()) {
           update_meta_def = true;
@@ -131,7 +142,7 @@ bool CoreMLExecutionProvider::ProcessIncompatibleNodes(const onnxruntime::GraphV
       // Type is supported, check if nodes are in partition
       for (const Node* node : nodes) {
         if (node && partition_nodes.find(node->Index()) != partition_nodes.end()) {
-          new_names.insert(name);
+          new_names.insert(io_name);
         } else {
           update_meta_def = true;
         }
@@ -141,7 +152,7 @@ bool CoreMLExecutionProvider::ProcessIncompatibleNodes(const onnxruntime::GraphV
 
   // Update metadata if needed
   if (update_meta_def) {
-    names = std::vector<std::string>(new_names.begin(), new_names.end());
+    io_names = std::vector<std::string>(new_names.begin(), new_names.end());
   }
 
   return original_partition_size != partition_nodes.size();

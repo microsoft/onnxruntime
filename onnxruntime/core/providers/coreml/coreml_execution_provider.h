@@ -39,16 +39,8 @@ class CoreMLExecutionProvider : public IExecutionProvider {
   // map of fused_node_name to compiled_coreml_model
   InlinedHashMap<std::string, std::unique_ptr<onnxruntime::coreml::Model>> coreml_models_;
 
-  // Supported input and output types for CoreML MLProgram EP
-  // CoreML EP supports a more limited set of input and output types for models
-  // within the model, more data types are supported.
-  const std::unordered_set<int64_t> supported_input_output_types_ = {ONNX_NAMESPACE::TensorProto_DataType_FLOAT,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_FLOAT16,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT32,
-                                                                     ONNX_NAMESPACE::TensorProto_DataType_INT64};
-
   // Helper function to check if a type is supported by CoreML
-  bool IsSupportedType(int32_t type) const;
+  bool IsSupportedInputOrOutputType(int32_t type) const;
 
   bool ProcessIncompatibleNodes(const onnxruntime::GraphViewer& graph_viewer,
                                 std::unordered_set<NodeIndex>& partition_nodes,
