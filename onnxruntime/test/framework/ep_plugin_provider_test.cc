@@ -6,7 +6,7 @@
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
-#include "core/session/onnxruntime_c_api.h"
+#include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
 
 namespace onnxruntime::test {
@@ -65,7 +65,9 @@ struct MakeTestOrtEpResult {
 MakeTestOrtEpResult MakeTestOrtEp() {
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
-  auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep));
+  auto ort_session_options = Ort::SessionOptions{};
+  auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
+                                                      *static_cast<const OrtSessionOptions*>(ort_session_options));
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
 }
