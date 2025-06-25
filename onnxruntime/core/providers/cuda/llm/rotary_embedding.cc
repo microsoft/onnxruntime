@@ -2,7 +2,7 @@
 // Licensed under the MIT License.
 
 #include "core/providers/cuda/cuda_common.h"
-#include "core/providers/cuda/llm/rotary_embedding_helper.h"
+#include "core/providers/cpu/llm/rotary_embedding_helper.h"
 #include "core/providers/cuda/llm/rotary_embedding.h"
 #include "core/providers/cuda/llm/rotary_embedding_impl.h"
 

@@ -55,11 +55,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
   // position_ids_format == 0 means position_ids is nullptr
   // position_ids_format == 1 means position_ids is a 2D array of size
   if (position_ids_format == 0) {
-    cache_offset = (b * sequence_length + s) * half_rotary_emb_dim;
+    cache_offset = (b * sequence_length + s) * half_rotary_embedding_dim;
   } else {
     // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
     const int position_id = static_cast<int>(position_ids[b * sequence_length + s]);
-    cache_offset = position_id * half_rotary_emb_dim;
+    cache_offset = position_id * half_rotary_embedding_dim;
   }
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
