@@ -7,35 +7,8 @@
 #pragma once
 
 #include "mlasi.h"
-#include "mlas_api_overrides.h"
 
 namespace ArmKleidiAI {
-
-class NotSupported : public std::exception{};
-
-
-#if (defined(USE_KLEIDIAI) && (defined(__aarch64__) || defined(__APPLE__))) && !defined(_MSVC_LANG)
-
-#define kai_check_if_supported(check)            \
-    do {                                         \
-        try {                                    \
-            check;                               \
-        } catch (ArmKleidiAI::NotSupported& e) {    \
-            (void)e;                             \
-            /*intentionally fall through and     \
-              fallback*/                         \
-            /*Gather usage stats for integration \
-              coverage*/                         \
-        }                                        \
-    }                                            \
-    while (0)
-#else
-
-#define kai_check_if_supported(check)
-
-#endif
-
-
 //
 // Buffer packing routines.
 //

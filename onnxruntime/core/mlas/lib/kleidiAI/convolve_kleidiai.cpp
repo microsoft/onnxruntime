@@ -59,7 +59,7 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
     return m * co;
 }
 
-static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
+static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
 
     //functional checks - logically can the conv be performed
     if ((Parameters->Dimensions != 2) ||
@@ -74,8 +74,7 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
          ComputeConvOutSize(Parameters->InputShape[1],
                             ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
                             Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
-
-        throw ArmKleidiAI::NotSupported();
+        return false;
     }
 
     //optimization checks - is the implementation optimal for the conv request
@@ -97,8 +96,9 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     MLAS_UNREFERENCED_PARAMETER(n_step);
 
     if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
-        throw ArmKleidiAI::NotSupported();
+        return false;
     }
+    return true;
 }
 
 //General purpose axis swapping
@@ -580,7 +580,7 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 {
     //Check dimensions before accessing
     if (Dimensions < 2) {
-        throw ArmKleidiAI::NotSupported();
+        //MLAS DEFAULT CONV PREPARE
     }
 
     Parameters->Activation = Activation;
@@ -616,7 +616,9 @@ ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
     Parameters->ThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
-    CheckCapabilitiesSme(Parameters);
+    if(!CheckCapabilitiesSme(Parameters)){
+        //MLAS CONV PREPARE
+    }
 
     //Allocate an aligned buffer for MlasTranspose()
     *WorkingBufferSize = ComputeMlasWorkingBufferSize(Parameters->FilterCount,
@@ -639,7 +641,10 @@ ArmKleidiAI::MlasConv(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-    CheckCapabilitiesSme(Parameters);
+    if(!CheckCapabilitiesSme(Parameters)){
+        //Fallback to Default Mlas
+        ::MlasConv(Parameters,Input,Filter, Bias, WorkingBuffer,Output,ThreadPool);
+    };
 
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
                 Parameters->InputShape[0], Parameters->InputShape[1],        // image dimensions

@@ -204,9 +204,8 @@ MlasDynamicQGemmBatch (
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
-    kai_check_if_supported(
-        ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
-    );
+    //No fallback
+    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
 
     MLAS_UNREFERENCED_PARAMETER(Shape);
     MLAS_UNREFERENCED_PARAMETER(DataParams);
@@ -324,9 +323,8 @@ MlasDynamicQgemmPackBSize(
     size_t K
 )
 {
-    kai_check_if_supported(
-        return ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
-    );
+    //No fallback available
+    ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
@@ -408,9 +406,8 @@ MlasDynamicQgemmPackB(
     void* PackedB
 )
 {
-    kai_check_if_supported(
-        ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
-    );
+    //No fallback
+    ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);

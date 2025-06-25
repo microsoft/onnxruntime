@@ -16,7 +16,6 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "mlas_api_overrides.h"
 #include "kleidiai/mlasi_kleidiai.h"
 //
 // Define the number of rows from matrix A to transpose to a local buffer.

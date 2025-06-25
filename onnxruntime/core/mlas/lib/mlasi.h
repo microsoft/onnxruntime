@@ -789,6 +789,39 @@ struct MLAS_QUANT_KERNEL
         );
 };
 
+typedef
+void
+(MLASCALL MLAS_CONV_FLOAT_FN)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
+typedef
+void
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
+
 extern "C" {
 
 #if defined(MLAS_TARGET_AMD64_IX86)
@@ -1193,6 +1226,9 @@ struct MLAS_PLATFORM {
     MLAS_GEMM_BATCH_KERNEL* MlasGemmBatch;
     MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSize;
     MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackB;
+    MLAS_CONV_PREPARE_FLOAT_FN* MlasConvPrepare;
+    MLAS_CONV_FLOAT_FN* MlasConv;
+
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;

@@ -541,8 +541,6 @@ Return Value:
 #endif // MLAS_TARGET_AMD64_IX86
 
 #if defined(MLAS_TARGET_ARM64)
-#include "mlas_api_overrides.h"
-#include "mlasi_kleidiai_init.h"
 
     this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchNeon;
     this->GemmU8S8Dispatch = &MlasGemmX8S8DispatchNeon;
@@ -585,6 +583,8 @@ Return Value:
         this->MlasGemmBatch = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
         this->MlasGemmPackB = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepare = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConv = ArmKleidiAI::MlasConv;
     }
 
 #if defined(__linux__)
