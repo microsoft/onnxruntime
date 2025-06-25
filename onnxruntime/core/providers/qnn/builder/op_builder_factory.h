@@ -126,6 +126,8 @@ void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreateUDOBuilder(const std::string& op_type, const std::string& op_package, OpBuilderRegistrations& op_registrations);
 }  // namespace qnn
 }  // namespace onnxruntime
