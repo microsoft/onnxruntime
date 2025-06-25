@@ -342,7 +342,8 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::st
       "LRN",
   };
 
-  return node_domain == kOnnxDomain && cuda_nhwc_onnx_ops.find(node_op_type) != cuda_nhwc_onnx_ops.end();
+  return (node_domain == kOnnxDomain && cuda_nhwc_onnx_ops.find(node_op_type) != cuda_nhwc_onnx_ops.end()) ||
+         (node_domain == kMSDomain && node_op_type == "GridSample");
 
 #else  // defined(ENABLE_CUDA_NHWC_OPS)
   return std::nullopt;
