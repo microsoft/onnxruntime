@@ -276,9 +276,11 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
     // Adjust buckets based on the collected memory patterns every 2 runs.
     // The reason for this is to allow the cache to adapt to the memory usage patterns
     // of previous runs of last completed token generation session.
-    if ((session_id_ + 1) % 2 == 0) {
+    static size_t run_id = 0;
+    if ((run_id + 1) % 2 == 0) {
       AdjustBuckets();
     }
+    ++run_id;
   }
 
   size_t CalculateBufferSize(size_t request_size) override {
