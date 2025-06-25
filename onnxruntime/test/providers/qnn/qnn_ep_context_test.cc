@@ -1649,7 +1649,6 @@ static void DumpModelWithSharedCtx(ProviderOptions provider_options,
   Ort::Session session2(*ort_env, ToPathString(onnx_model_path2).c_str(), so);
 }
 
-#if defined(__aarch64__) || defined(_M_ARM64)
 static void GetModelInputNames(const std::string& model_path,
                                std::vector<std::string>& input_names,
                                std::vector<std::string>& output_names,
@@ -1669,7 +1668,6 @@ static void GetModelInputNames(const std::string& model_path,
     output_names.push_back(output->Name());
   }
 }
-#endif
 
 // 1. Create 2 QDQ models
 // 2. Initialize 2 Ort sessions which share the same QNN EP from these 2 QDQ models
