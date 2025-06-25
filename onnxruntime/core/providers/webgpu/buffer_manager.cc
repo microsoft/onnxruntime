@@ -273,8 +273,12 @@ class DynamicBucketCacheManager : public IBufferCacheManager {
       pattern.frequency = usage.second;
     }
 
-    // Adjust buckets based on the collected memory patterns.
-    AdjustBuckets();
+    // Adjust buckets based on the collected memory patterns every 2 runs.
+    // The reason for this is to allow the cache to adapt to the memory usage patterns
+    // of previous runs of last completed token generation session.
+    if ((session_id_ + 1) % 2 == 0) {
+      AdjustBuckets();
+    }
   }
 
   size_t CalculateBufferSize(size_t request_size) override {
