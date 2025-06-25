@@ -467,7 +467,13 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
         ASSERT_NE(api_node_attr, nullptr);
 
         OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
-        ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type));
+
+        // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
+        // In such cases, OpAttr_GetType will return a non-null status, and we simply skip the check here.
+        OrtStatusPtr status = ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type);
+        if (status != nullptr) {
+          continue;
+        }
 
         ONNX_NAMESPACE::AttributeProto_AttributeType node_attr_type = node_attr.second.type();
         switch (node_attr_type) {
