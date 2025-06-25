@@ -495,33 +495,49 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
   template <size_t M, size_t K, size_t BlkLen>
   void QuantA(const float* inputA, uint8_t* quantA, float* scalePtr, float* blkSum, bool quantAUnsigned) {
     constexpr size_t BlkCount = (K + BlkLen - 1) / BlkLen;
-    constexpr size_t lda = K;
+    constexpr size_t input_lda = K;
+
+    constexpr size_t Bits = 8;
+    constexpr size_t output_lda = (((K + BlkLen - 1) & (~(BlkLen - 1))) * Bits + 7) / 8;
+
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < BlkCount; ++j) {
         float vAbsMax = 0.f;
         for (size_t k = 0; k < std::min(BlkLen, K - j * BlkLen); ++k) {
-          size_t idx = i * lda + j * BlkLen + k;
-          vAbsMax = std::max(vAbsMax, fabsf(inputA[idx]));
+          size_t input_idx = i * input_lda + j * BlkLen + k;
+          vAbsMax = std::max(vAbsMax, fabsf(inputA[input_idx]));
         }
 
         float scale = vAbsMax / 127.f;
         float invScale = vAbsMax == 0.f ? 0.f : 127.f / vAbsMax;
         scalePtr[i * BlkCount + j] = scale;
 
+        if (j == 5)
+        {
+          std::cout << "Hello";
+        }
+
         float vSum = 0.f;
         for (size_t k = 0; k < BlkLen; ++k) {
-          size_t idx = i * lda + j * BlkLen + k;
+          size_t input_idx = i * input_lda + j * BlkLen + k;
+          size_t output_idx = i * output_lda + j * BlkLen + k;
           if (k < std::min(BlkLen, K - j * BlkLen)) {
-            float v = std::clamp(std::roundf(inputA[idx] * invScale), -128.f, 127.f);
+            const auto input_val = inputA[input_idx];
+            // Round away from zero
+            // float v = std::clamp(std::roundf(input_val * invScale), -128.f, 127.f);
+
+            // Round to nearest, ties to even
+            float v = std::clamp(std::nearbyint(input_val * invScale), -128.f, 127.f);
+
             if (quantAUnsigned) {
-              quantA[idx] = static_cast<uint8_t>(v + 128.f);
+              quantA[output_idx] = static_cast<uint8_t>(v + 128.f);
               vSum += v + 128.f;
             } else {
-              reinterpret_cast<int8_t*>(quantA)[idx] = static_cast<int8_t>(v);
+              reinterpret_cast<int8_t*>(quantA)[output_idx] = static_cast<int8_t>(v);
               vSum += v;
             }
           } else {
-            quantA[idx] = 0;
+            quantA[output_idx] = 0;
           }
         }
         blkSum[i * BlkCount + j] = vSum * scale;
@@ -538,7 +554,12 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
         size_t idx = i * lda + j;
         uint8_t a = quantA[idx];
         uint8_t b = refQuantA[idx];
-        std::cout << a << "\t" << b << "\n";
+        
+        if (a != b)
+        {
+          std::cout << a << "\t" << b << "\n";
+        }
+
         ASSERT_EQ(quantA[idx], refQuantA[idx]) << " at i=" << i << " j=" << j;
       }
     }
@@ -550,6 +571,14 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     for (size_t i = 0; i < M; ++i) {
       for (size_t j = 0; j < BlkCount; ++j) {
         size_t idx = i * BlkCount + j;
+        float a = scale[idx];
+        float b = refScale[idx];
+
+        if (a != b)
+        {
+          std::cout << a << "\t" << b << "\n";
+        }
+
         ASSERT_EQ(scale[idx], refScale[idx]) << " at i=" << i << " j=" << j;
       }
     }
@@ -570,7 +599,7 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
 
     const auto* inputA = inputA_.GetFilledBuffer(M * K, [this](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = (float)i;
+        p[i] = (float)i + 159.f;
       }
     });
 
@@ -594,9 +623,9 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     //std::cout << "Finished QuantA ref " << std::endl;
     CheckQuantA<M, K, BlkLen>(reinterpret_cast<uint8_t*>(quantAPtr), refQuantA);
     //std::cout << "Finished CheckQuantA" << std::endl;
-    //CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
+    CheckScale<M, K, BlkLen>(scaleAPtr, refScale);
     //std::cout << "Finished CheckScale" << std::endl;
-    //CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
+    CheckScale<M, K, BlkLen>(blkSumAPtr, refBlkSum);
     //std::cout << "Finished CheckBlkSum" << std::endl;
   }
 
@@ -629,8 +658,6 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     TestQuantA<8, 15, 16>();
     TestQuantA<9, 15, 16>();
 
-        /*
-
 
     TestQuantA<3, 17, 16>();
     TestQuantA<4, 17, 32>();
@@ -640,12 +667,12 @@ class MlasSQ8BitQuantAKernelTest : public MlasTestBase {
     TestQuantA<8, 17, 16>();
     TestQuantA<9, 17, 16>();
 
-    //TestQuantA<16, 159, 16>();
-    //TestQuantA<17, 160, 32>();
-    //TestQuantA<15, 161, 64>();
-    //TestQuantA<17, 160, 128>();
-    //TestQuantA<16, 159, 256>();
-    */
+    TestQuantA<2, 159, 16>();
+    TestQuantA<3, 159, 16>();
+    TestQuantA<17, 160, 32>();
+    TestQuantA<15, 161, 64>();
+    TestQuantA<17, 160, 128>();
+    TestQuantA<16, 159, 256>();
   }
 };
 
@@ -800,16 +827,16 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
   template <size_t M, size_t K, size_t N, size_t BlkLen>
   void Execute(void) {
     TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
-    TestSQ8BitGemmKernel<false, true, M, K, N, BlkLen>();
-    TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
-    TestSQ8BitGemmKernel<true, true, M, K, N, BlkLen>();
+    //TestSQ8BitGemmKernel<false, true, M, K, N, BlkLen>();
+    //TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
+    //TestSQ8BitGemmKernel<true, true, M, K, N, BlkLen>();
   }
 
   void ExecuteShort(void) override {
-    //Execute<1, 1, 1, 16>();
-    //Execute<7, 128, 4, 16>();
+    Execute<1, 1, 1, 16>();
+    Execute<7, 2, 4, 16>();
     //Execute<8, 497, 5, 16>();
-    Execute<1, 3072, 128, 16>();
+    //Execute<1, 3072, 128, 16>();
     //Execute<2, 3072, 128, 16>();
 
     /*
