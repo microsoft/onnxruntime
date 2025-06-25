@@ -64,6 +64,7 @@ class SharedContext : public WeakSingleton<SharedContext> {
     fs::path external_weight_filename;
     std::unique_ptr<WeightsFile> mapped_weights;
     Metadata::Map metadata;
+    fs::path metadata_filepath;
   } shared_weights;
 };
 

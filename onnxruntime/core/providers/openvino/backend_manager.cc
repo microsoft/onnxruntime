@@ -45,7 +45,7 @@ BackendManager::BackendManager(SessionContext& session_context,
   subgraph_context_.is_ep_ctx_graph = ep_ctx_handle_.CheckForOVEPCtxNodeInGraph(subgraph);
   // If the graph contains a OVIR wrapped node, we check if it has matching xml file name attribute
   subgraph_context_.is_ep_ctx_ovir_encapsulated = ep_ctx_handle_.CheckEPCacheContextAttribute(subgraph,
-                    session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
+                                                                                              session_context_.onnx_model_path_name.filename().replace_extension("xml").string());
 
   subgraph_context_.model_precision = [&](const GraphViewer& graph_viewer) {
     // return empty if graph has no inputs or if types are not one of FP32/FP16
@@ -91,21 +91,20 @@ BackendManager::BackendManager(SessionContext& session_context,
   std::string device_type = session_context_.device_type;
 
   auto& sw = shared_context_.shared_weights;
-  if (session_context_.so_share_ep_contexts) {
+  if (session_context_.so_share_ep_contexts && !sw.metadata.empty()) {
     std::filesystem::path weight_filename = session_context_.onnx_model_path_name.parent_path();
-    if (sw.external_weight_filename.empty() && !sw.metadata.empty()) {
+    if (sw.external_weight_filename.empty()) {
       // Reasonable assumption that all metadata entries have the same external file location
       sw.external_weight_filename = sw.metadata.begin()->second.location;
     }
     weight_filename /= sw.external_weight_filename;
     std::ifstream weight_file(weight_filename);
 
-    if (weight_file) {
-      if (!sw.mapped_weights) {
-        sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
-      }
-      backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
+    ORT_ENFORCE(weight_file, "Initializer file not found: ", weight_filename.string());
+    if (!sw.mapped_weights) {
+      sw.mapped_weights = std::make_unique<SharedContext::SharedWeights::WeightsFile>(weight_filename);
     }
+    backend_utils::CreateOVTensors(session_context_.device_type, sw.metadata, *sw.mapped_weights);
   }
 
   if (ModelHasSymbolicInputDims(subgraph)) {
@@ -196,7 +195,7 @@ BackendManager::BackendManager(SessionContext& session_context,
     }
   }
   if (session_context_.so_context_enable &&
-    (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
+      (subgraph_context_.is_ep_ctx_ovir_encapsulated || !subgraph_context_.is_ep_ctx_graph)) {
     auto status = onnxruntime::openvino_ep::BackendManager::ExportCompiledBlobAsEPCtxNode(subgraph);
     if (!status.IsOK()) {
       ORT_THROW(status);

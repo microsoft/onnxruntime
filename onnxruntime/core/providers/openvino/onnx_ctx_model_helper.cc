@@ -131,7 +131,7 @@ std::unique_ptr<std::istream> EPCtxHandler::GetModelBlobStream(const std::filesy
     // exported with must match the version that is currently running.
     ORT_ENFORCE((attrs.count(EP_SDK_VER) == 1) && (attrs.at(EP_SDK_VER).s() == openvino_sdk_version_),
                 "EPCtx blob was exported / is compatible with OpenVINO SDK version " + attrs.at(EP_SDK_VER).s() +
-                  ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
+                    ", but OpenVINO SDK version currently in use is " + openvino_sdk_version_);
   }
 
   LOGS_DEFAULT(VERBOSE) << "[OpenVINO EP] Read blob from EPContext Node";

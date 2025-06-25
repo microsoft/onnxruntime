@@ -78,24 +78,24 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
         // specify absolute path for so_context_file_path.
         auto model_file_path = [this]() {
           if (!session_context_.onnx_model_path_name.empty() &&
-          std::filesystem::exists(session_context_.onnx_model_path_name)) return session_context_.onnx_model_path_name;
+              std::filesystem::exists(session_context_.onnx_model_path_name)) return session_context_.onnx_model_path_name;
 
           ORT_ENFORCE(!session_context_.so_context_file_path.empty() &&
-          std::filesystem::path(session_context_.so_context_file_path).is_absolute() &&
-          std::filesystem::exists(session_context_.so_context_file_path), log_tag +
-          "Context file path must be non-empty & absolute, when using CreateSessionFormArray() API explicitly."
-          " Please set a valid absolute path for ep.context_file_path in session options.");
+                          std::filesystem::path(session_context_.so_context_file_path).is_absolute() &&
+                          std::filesystem::exists(session_context_.so_context_file_path),
+                      log_tag +
+                          "Context file path must be non-empty & absolute, when using CreateSessionFormArray() API explicitly."
+                          " Please set a valid absolute path for ep.context_file_path in session options.");
           // Return absolute context file path as input to ImportEPCtxOVIREncapsulation() function.
           return session_context_.so_context_file_path;
-
         };
         // If the EPContext node with OVIR Encapsulation, then create
         // an executable network from EP_CACHE_CONTEXT using read_model() & compile_model()
         exe_network_ = OVCore::Get()->ImportEPCtxOVIREncapsulation(*model_stream,
-                                                                    hw_target,
-                                                                    device_config,
-                                                                    enable_causallm,
-                                                                    model_file_path());
+                                                                   hw_target,
+                                                                   device_config,
+                                                                   enable_causallm,
+                                                                   model_file_path());
       } else {
         // If the blob is held in an EPContext node, then skip FE+Compile
         // and directly move on to creating a backend with the executable blob

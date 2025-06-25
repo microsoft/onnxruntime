@@ -38,7 +38,7 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
   } else if (enable_qdq_optimizer && device_type_.find("GPU") != std::string::npos) {
-    npu_qdq_optimizer_enabled = true;   // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
+    npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
 
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5

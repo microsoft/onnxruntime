@@ -117,7 +117,7 @@ class OVInferRequest {
     const void* ort_ptr;
   };
 
-  protected:
+ protected:
   ov::InferRequest ovInfReq;
   std::unordered_map<std::string, ov_tensor_data_t> bindings_cache_;
 
@@ -127,7 +127,7 @@ class OVInferRequest {
   std::string GetInputTensorName(uint32_t index);
 
   // Set tensor described param_info and ort_ptr. Overrides shape in param_info with shape_override. Call infer req tensor if ort_ptr is last set.
-  void SetTensor(const std::string& name, const ov::element::Type &type, const ov::Shape& shape, void* ort_ptr) {
+  void SetTensor(const std::string& name, const ov::element::Type& type, const ov::Shape& shape, void* ort_ptr) {
     auto& cached_binding = bindings_cache_[name];
     if (cached_binding.ort_ptr != ort_ptr) {
       auto tensor_ptr = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
