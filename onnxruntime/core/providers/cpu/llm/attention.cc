@@ -50,10 +50,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(Q->Shape().NumDimensions() == 3 || Q->Shape().NumDimensions() == 4, "Q must be a 3D or 4D tensor");
   ORT_ENFORCE(K->Shape().NumDimensions() == 3 || K->Shape().NumDimensions() == 4, "K must be a 3D or 4D tensor");
   ORT_ENFORCE(V->Shape().NumDimensions() == 3 || V->Shape().NumDimensions() == 4, "V must be a 3D or 4D tensor");
-  //const T* p_q = Q->Data<T>();
-  //const T* p_k = K->Data<T>();
-  //const T* p_v = V->Data<T>();
-  
+  // const T* p_q = Q->Data<T>();
+  // const T* p_k = K->Data<T>();
+  // const T* p_v = V->Data<T>();
+
   ORT_THROW("not implemented yet");
 }
 
