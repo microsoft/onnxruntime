@@ -85,7 +85,7 @@ bool MatchGemmSubgraph(Graph& graph,
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(node_after_gemm_reshape, true, parent_path, edges, logger)) {
-    DEBUG_LOG("Faild to match gemm path");
+    DEBUG_LOG("Failed to match gemm path");
     return false;
   }
 
@@ -145,7 +145,7 @@ bool MatchGemmSubgraph(Graph& graph,
   // Find the concat node for Gather paths.
   std::vector<graph_utils::EdgeEndToMatch> edge_to_match{{0, 1, "Concat", {4, 11, 13}, kOnnxDomain}};
   if (!graph_utils::FindPath(reshape_after_gemm, true, edge_to_match, edges, logger)) {
-    DEBUG_LOG("Faild to match concat node for Gather paths");
+    DEBUG_LOG("Failed to match concat node for Gather paths");
     return false;
   }
 
@@ -171,7 +171,7 @@ bool MatchGemmSubgraph(Graph& graph,
         {0, 0, "Shape", {1, 13}, kOnnxDomain}};
 
     if (!graph_utils::FindPath(concat_after_gather, true, gather_path1, edges, logger)) {
-      DEBUG_LOG("Faild to match gemm gather path");
+      DEBUG_LOG("Failed to match gemm gather path");
       return false;
     }
 
@@ -391,7 +391,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(add_node, true, root_path, edges, logger)) {
-    DEBUG_LOG("Faild to match the path (Div-->Where-->Add) for unidirectional mask");
+    DEBUG_LOG("Failed to match the path (Div-->Where-->Add) for unidirectional mask");
     return false;
   }
 
@@ -413,7 +413,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
       {0, 0, "Shape", {1, 13}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(where_node, true, path1, edges, logger)) {
-    DEBUG_LOG("Faild to match path 1 for unidirectional mask");
+    DEBUG_LOG("Failed to match path 1 for unidirectional mask");
     return false;
   }
 
@@ -470,7 +470,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 
   if (!graph_utils::FindPath(last_slice, true, slice_ends_path, edges, logger) ||
       edges[1]->GetNode().Index() != squeeze1.Index()) {
-    DEBUG_LOG("Faild to match path 2 for unidirectional mask");
+    DEBUG_LOG("Failed to match path 2 for unidirectional mask");
     return false;
   }
 
@@ -482,7 +482,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
 
   if (!graph_utils::FindPath(mask_slice, true, slice_ends_path, edges, logger) ||
       edges[1]->GetNode().Index() != squeeze1.Index()) {
-    DEBUG_LOG("Faild to match path 3 for unidirectional mask");
+    DEBUG_LOG("Failed to match path 3 for unidirectional mask");
     return false;
   }
 
@@ -498,7 +498,7 @@ bool MatchUnidirMaskSubgraph(const Graph& graph, const Node& add_node, MatchUnid
       {0, 0, "Shape", {1, 13}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(sub, true, path4, edges, logger)) {
-    DEBUG_LOG("Faild to match path 4 for unidirectional mask");
+    DEBUG_LOG("Failed to match path 4 for unidirectional mask");
     return false;
   }
 
@@ -1356,7 +1356,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
 
   std::vector<const Node::EdgeEnd*> edges;
   if (!graph_utils::FindPath(*gemm1_result.input_node, true, path1, edges, logger)) {
-    DEBUG_LOG("Faild to find path to qkv_matmul");
+    DEBUG_LOG("Failed to find path to qkv_matmul");
     return false;
   }
 
@@ -1377,7 +1377,7 @@ bool FuseGptAttention(Node& layer_norm, Graph& graph, int64_t hidden_size, std::
       {2, 0, "Split", {2, 11, 13}, kOnnxDomain}};
 
   if (!graph_utils::FindPath(has_past ? *v_concat : qkv_matmul, true, path2, edges, logger)) {
-    DEBUG_LOG("Faild to find path v to Split");
+    DEBUG_LOG("Failed to find path v to Split");
     return false;
   }
 
