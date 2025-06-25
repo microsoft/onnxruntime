@@ -1573,8 +1573,14 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-    if (g_mlas_api.GemmBatch) {
-        g_mlas_api.GemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+    //Check if external implementation (e.g. KleidiAI)
+    thread_local bool kleidiai_attempted = false;
+
+    if (!kleidiai_attempted &&
+        GetMlasPlatform().MlasGemmBatch == &ArmKleidiAI::MlasGemmBatch) {
+        kleidiai_attempted = true;
+        GetMlasPlatform().MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        kleidiai_attempted = false;
         return;
     }
     //
@@ -1664,8 +1670,15 @@ Return Value:
 
 --*/
 {
-    if (g_mlas_api.GemmPackBSize) {
-    return g_mlas_api.GemmPackBSize(TransA, TransB, N, K);
+    //Kleidi
+    thread_local bool kleidiai_pbsize_attempted = false;
+    if (!kleidiai_pbsize_attempted &&
+        GetMlasPlatform().MlasGemmPackBSize == &ArmKleidiAI::MlasGemmPackBSize) {
+        kleidiai_pbsize_attempted = true;
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasGemmPackBSize(TransA, TransB, N, K);
+        kleidiai_pbsize_attempted = false;
+        return bytes_required;
     }
 
     MLAS_UNREFERENCED_PARAMETER(TransA);
@@ -1723,9 +1736,12 @@ Return Value:
 
 --*/
 {
-    if (g_mlas_api.GemmPackB) {
-        // Dispatch to override (e.g., KleidiAI)
-        g_mlas_api.GemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+    thread_local bool kai_gemmPb_atttempted;
+    if (!kai_gemmPb_atttempted &&
+        GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB) {
+        kai_gemmPb_atttempted = true;
+        GetMlasPlatform().MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+        kai_gemmPb_atttempted = false;
         return;
     }
 

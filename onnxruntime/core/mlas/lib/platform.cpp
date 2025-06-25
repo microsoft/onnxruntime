@@ -581,6 +581,12 @@ Return Value:
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        this->MlasGemmBatch = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackB = ArmKleidiAI::MlasGemmPackB;
+    }
+
 #if defined(__linux__)
     //
     // Check if the processor supports ASIMD I8MM instructions.
@@ -687,26 +693,11 @@ Return Value:
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     }
-
     this->NchwcBlockSize = 8;
     // this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
     // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
-
 #endif // MLAS_TARGET_LARCH64
-
-    // Register Override
-    MlasInitializeDefaultApiOverrides();
-
-    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
-        MlasApiOverrides overrides{};
-        overrides.GemmBatch = ArmKleidiAI::MlasGemmBatch;
-        overrides.GemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
-        overrides.GemmPackB = ArmKleidiAI::MlasGemmPackB;
-
-        MlasRegisterApiOverrides(overrides);
-    }
-
 }
 
 size_t

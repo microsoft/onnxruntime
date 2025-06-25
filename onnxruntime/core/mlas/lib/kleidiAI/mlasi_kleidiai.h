@@ -74,18 +74,6 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-void MLASCALL
-MlasGemmBatch_SME2_N1(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
-);
-
 size_t
 MLASCALL
 MlasDynamicQgemmPackBSize(
@@ -103,7 +91,6 @@ MlasDynamicQgemmPackB(
     const float* Bias,
     void* PackedB
 );
-
 
 //pack symmetric quantized B and dynamic quantized A
 void

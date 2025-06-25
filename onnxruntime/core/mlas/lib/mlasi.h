@@ -747,6 +747,31 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -1164,6 +1189,10 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    // Default MLAS initialisation
+    MLAS_GEMM_BATCH_KERNEL* MlasGemmBatch;
+    MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSize;
+    MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackB;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;
@@ -1270,11 +1299,10 @@ struct MLAS_PLATFORM {
 };
 
 inline
-MLAS_PLATFORM& GetMlasPlatform(){
-    static MLAS_PLATFORM MlasPlatform;
-    return MlasPlatform;
+MLAS_PLATFORM& GetMlasPlatform() {
+    static MLAS_PLATFORM platform;
+    return platform;
 }
-
 //
 // Threading support.
 //
