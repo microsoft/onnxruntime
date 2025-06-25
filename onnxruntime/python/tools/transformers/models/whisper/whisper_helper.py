@@ -73,6 +73,7 @@ class WhisperHelper:
         model_name_or_path: str,
         provider: str,
         separate_encoder_and_decoder_init: bool,
+        use_decoder_masked_mha: bool,
         output_qk: bool,
         encoder_path: str,
         decoder_path: str,
@@ -596,7 +597,7 @@ class WhisperHelper:
                 "no_repeat_ngram_size": 0,
                 "num_beams": 1,
                 "num_return_sequences": 1,
-                "past_present_share_buffer": provider == "cuda",
+                "past_present_share_buffer": use_decoder_masked_mha,
                 "repetition_penalty": 1.0,
                 "temperature": 1.0,
                 "top_k": 1,
@@ -604,16 +605,13 @@ class WhisperHelper:
             },
         }
 
-        # Requirements for the DMMHA kernel (which is currently
-        # enabled for CUDA only):
+        # Requirements for the DMMHA kernel:
         # - Buffer sharing = true
         # - New input: past_sequence_length
         # - New input: cache_indirection
-        # Otherwise, buffer sharing should be false and the new inputs
-        # should not be added for beam search to work in ORT GenAI.
-
-        if provider == "cuda":
-            # Add inputs for DMMHA kernel
+        # Otherwise, buffer sharing should be false and the new inputs should not be added
+        # for beam search to work in ORT GenAI.
+        if use_decoder_masked_mha:
             genai_config["model"]["decoder"]["inputs"].update(
                 {
                     "past_sequence_length": "past_sequence_length",
@@ -771,6 +769,7 @@ class WhisperHelper:
         provider: str = "cpu",
         is_decoder: bool = False,
         no_beam_search_op: bool = False,
+        use_decoder_masked_mha: bool = False,
         output_qk: bool = False,
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
@@ -794,7 +793,7 @@ class WhisperHelper:
 
         # Add `past_sequence_length`, `cache_indirection`, and `output_qk` to `MultiHeadAttention` ops
         if is_decoder and no_beam_search_op:
-            if provider == "cuda":  # FP32 CPU can be supported here once the DMMHA CPU kernel bugs are fixed
+            if use_decoder_masked_mha:
                 # FP16 CUDA, FP32 CUDA, and FP32 CPU use the `DecoderMaskedMultiHeadAttention` kernel
                 # via `MultiHeadAttention`, which requires the `past_sequence_length` and
                 # `cache_indirection` inputs
