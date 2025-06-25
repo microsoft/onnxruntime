@@ -402,7 +402,9 @@ QNBitGemmPerGemmWorkspaceSize(
             } else
 #endif
             {
+                // workspace buffer is used for block quantization of A to int8
                 const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+                // QuantData + Scale + BlkSum
                 const size_t PerGemmWorkspaceSize = M * BlockCountK * (Q8BlkSize(BlkLen) + sizeof(float));
                 return PerGemmWorkspaceSize;
             }
@@ -530,6 +532,7 @@ GetMlasQNBitGemmDispatchNeon(
     bool InitializeWithI8MMSupport
 )
 {
+    (void)(InitializeWithI8MMSupport);
     // Note: The InitializeWithX parameters are only used in the invocation of this method that initializes the static
     // MLAS_QNBIT_GEMM_DISPATCH instance.
 
@@ -562,12 +565,12 @@ GetMlasQNBitGemmDispatchNeon(
 #endif
         }
 
-        if (InitializeWithI8MMSupport) {
-            d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
-            d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum<false>;
-            d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
-            d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
-        }
+        //if (InitializeWithI8MMSupport) {
+        //    d.Q8BitGemmPackQuantBDataSize = sqnbitgemm_neon::QNBitGemmPackQuantBDataSize<8, false>;
+        //    d.SQ8BitGemmPackQuantBDataAndBlkSum = sqnbitgemm_neon::SQ8BitGemmPackQuantBDataAndBlkSum<false>;
+        //    d.QuantizeARowComputeBlkSum_CompInt8 = sqnbitgemm_neon::QuantizeARowComputeBlkSum_CompInt8<false>;
+        //    d.SQ8BitGemmKernel_BlkSum_CompInt8 = sqnbitgemm_neon::SQ8BitGemmKernel_BlkSum_CompInt8<false>;
+        //}
 
 #if defined(MLAS_F16VEC_INTRINSICS_SUPPORTED) && defined(MLAS_TARGET_ARM64)
         d.HQ4BitGemmPackQuantBData = sqnbitgemm_neon::HQ4BitGemmPackQuantBData_CompFp16;

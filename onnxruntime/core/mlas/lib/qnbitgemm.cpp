@@ -830,6 +830,10 @@ InitializeWorkspace_CompInt8<float>(
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
     const size_t QuantAStride = BlockCountK * Q8BlkSize(BlkLen);
 
+    MLAS_UNREFERENCED_PARAMETER(QuantizeARow);
+    MLAS_UNREFERENCED_PARAMETER(QuantAStride);
+
+
     // TODO: try parallel on BatchN * M threads because BatchN is usually 1.
     if (BlkBitWidth == 4 && UsePacked && QuantizeA_Packed && UsePacked(K, BlkLen, DataParams->QuantBZeroPoint)) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
@@ -839,7 +843,7 @@ InitializeWorkspace_CompInt8<float>(
             std::byte* QuantARowPtr = static_cast<std::byte*>(Workspace) + gemm_idx * PerGemmWorkspaceStride;
             QuantizeA_Packed(BlkLen, ARowPtr, M, K, QuantARowPtr);
         });
-    } else if (QuantizeARow) {
+    } /* else if (QuantizeARow) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
 
@@ -852,7 +856,8 @@ InitializeWorkspace_CompInt8<float>(
                 QuantARowPtr += QuantAStride;
             }
         });
-    } else if (QuantizeARow2) {
+    } */
+    else if (QuantizeARow2) {
         MlasTrySimpleParallel(ThreadPool, BatchN, [&](ptrdiff_t gemm_idx) {
             const auto& data = DataParams[gemm_idx];
             const float* ARowPtr = data.A;

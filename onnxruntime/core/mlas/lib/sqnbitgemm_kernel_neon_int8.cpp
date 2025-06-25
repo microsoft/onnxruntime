@@ -279,15 +279,21 @@ QuantizeARowComputeBlkSum_CompInt8(
         I16VecType<QuantAUnsigned> sum_8_i16_1 = PrepareZeroI16<QuantAUnsigned>();
 
         for (size_t kk = 0; kk < BlkLen; kk += 16) {
-            const float32x4x4_t vfp32 = vld4q_f32(A + k + kk);
-            const float32x4_t v0 = vmulq_f32(vfp32.val[0], mul);
-            const float32x4_t v1 = vmulq_f32(vfp32.val[1], mul);
-            const float32x4_t v2 = vmulq_f32(vfp32.val[2], mul);
-            const float32x4_t v3 = vmulq_f32(vfp32.val[3], mul);
+            const float32x4_t vfp32_0 = LoadFloat32x4(A + k + kk, 4);
+            const float32x4_t vfp32_1 = LoadFloat32x4(A + k + kk + 4, 4);
+            const float32x4_t vfp32_2 = LoadFloat32x4(A + k + kk + 8, 4);
+            const float32x4_t vfp32_3 = LoadFloat32x4(A + k + kk + 12, 4);
+
+            const float32x4_t v0 = vmulq_f32(vfp32_0, mul);
+            const float32x4_t v1 = vmulq_f32(vfp32_1, mul);
+            const float32x4_t v2 = vmulq_f32(vfp32_2, mul);
+            const float32x4_t v3 = vmulq_f32(vfp32_3, mul);
+
             const int32x4_t i0 = vcvtnq_s32_f32(v0);
             const int32x4_t i1 = vcvtnq_s32_f32(v1);
             const int32x4_t i2 = vcvtnq_s32_f32(v2);
             const int32x4_t i3 = vcvtnq_s32_f32(v3);
+
             const int16x8_t v_8_i16_0 = vcombine_s16(vqmovn_s32(i0), vqmovn_s32(i1));
             const int16x8_t v_8_i16_1 = vcombine_s16(vqmovn_s32(i2), vqmovn_s32(i3));
 
