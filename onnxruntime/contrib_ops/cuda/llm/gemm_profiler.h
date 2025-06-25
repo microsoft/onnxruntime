@@ -30,6 +30,7 @@
 
 #include "contrib_ops/cuda/llm/nv_infer_datatype.h"
 #include "core/common/common.h"
+#include "core/framework/allocator.h"
 
 namespace onnxruntime::llm::kernels::weight_only {
 
@@ -190,12 +191,12 @@ class GemmPluginProfiler {
     mMNKProfileMap = map;
   }
 
-  void setTmpWorkspaceSizeInBytes(size_t bytes) {
-    mTmpWorkspaceSizeInBytes = bytes;
-  }
-
   void setSkip(bool skip) {
     mSkip = mSkip || skip;
+  }
+
+  void setAllocator(onnxruntime::AllocatorPtr allocator) {
+    mAllocator = std::move(allocator);
   }
 
   std::optional<Config> getBestConfig(int m, GemmIdType const& gemmId) const;
@@ -205,7 +206,7 @@ class GemmPluginProfiler {
  protected:
   virtual void runTactic(int m, int n, int k, Config const& tactic, char* workspace, cudaStream_t const& stream) = 0;
 
-  virtual void computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
+  virtual size_t computeTmpSize(size_t maxM, size_t n, size_t k) = 0;
 
   virtual bool checkTactic(int /*m*/, int /*n*/, int /*k*/, Config const& /*tactic*/) const {
     return true;
@@ -216,10 +217,6 @@ class GemmPluginProfiler {
   virtual void initTmpData(int m, int n, int k, char* workspace, size_t size, cudaStream_t stream);
 
  private:
-  void allocateTmpData();
-
-  void freeTmpData();
-
   std::optional<Config> profileTacticsForProblem(int m, int n, int k, std::vector<Config> const& tactics);
 
   float profileTacticForProblem(int m, int n, int k, Config const& tactic);
@@ -242,15 +239,15 @@ class GemmPluginProfiler {
  private:
   MNKProfileMapPtr mMNKProfileMap{};
 
-  size_t mTmpWorkspaceSizeInBytes{0};
-
-  char* mWorkspaceTmp{nullptr};
+  onnxruntime::IAllocatorUniquePtr<char> mWorkspaceTmp{nullptr};
 
   cudaStream_t mStream;
 
   GemmDims mDims{};
 
   bool mSkip{false};
+
+  onnxruntime::AllocatorPtr mAllocator;
 };
 
 template <typename GemmPluginProfilerType>
