@@ -30,8 +30,8 @@ struct OrtNodeFusionOptions {
 struct OrtEpGraphSupportInfo {
   // A grouping of supported nodes that should be handled in a single ComputeCapability.
   struct NodeGrouping {
-    NodeGrouping(const onnxruntime::EpNode* single_node) : variant_(single_node) {}
-    NodeGrouping(const OrtNodeFusionOptions& node_fusion_options) : variant_(node_fusion_options) {}
+    explicit NodeGrouping(const onnxruntime::EpNode* single_node) : variant_(single_node) {}
+    explicit NodeGrouping(const OrtNodeFusionOptions& node_fusion_options) : variant_(node_fusion_options) {}
 
     const OrtNodeFusionOptions* TryGetNodeFusionOptions() const;
     const onnxruntime::EpNode* TryGetSingleNode() const;
