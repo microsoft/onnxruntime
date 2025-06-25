@@ -506,14 +506,6 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
             ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
             break;
           }
-          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
-            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPH);
-            break;
-          }
-          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS: {
-            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPHS);
-            break;
-          }
           default:
             break;
         }

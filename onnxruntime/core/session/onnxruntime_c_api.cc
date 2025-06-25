@@ -2889,14 +2889,6 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
       *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
       break;
     }
-    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPH: {
-      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPH;
-      break;
-    }
-    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_GRAPHS: {
-      *type = OrtOpAttrType::ORT_OP_ATTR_GRAPHS;
-      break;
-    }
     default:
       return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unexpected attribute type.");
   }

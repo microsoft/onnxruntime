@@ -101,7 +101,7 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
     for (const auto& item : node_attrs) {
       auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
       ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
-      ep_node_attributes_map[item.first] = std::move(attr);
+      ep_node_attributes_map.emplace(item.first, std::move(attr));
     }
   }
 
