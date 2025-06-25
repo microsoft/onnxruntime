@@ -244,6 +244,8 @@ struct OrtEp {
 
   /** \brief Set dynamic options on this EP.
    *
+   * Dynamic options can be set by the user at any time after session creation with `OrtApi::SetEpDynamicOptions()`.
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] option_keys The dynamic option keys.
    * \param[in] option_values The dynamic option values.
