@@ -296,7 +296,7 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
         info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
                                   info.hardware_devices.size(), &options, &logger, &api_ep)));
-    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)),
+    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
                                                    *info.ep_factory, info.devices);
   }
 

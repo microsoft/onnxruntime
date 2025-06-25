@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include "onnxruntime_c_api.h"
-#include "utils.h"
+#include "example_plugin_ep_utils.h"
 
 struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
   ExampleDataTransfer(ApiPtrs api_ptrs,

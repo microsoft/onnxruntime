@@ -3,11 +3,6 @@
 
 #include "ep.h"
 
-#define ORT_API_MANUAL_INIT
-#include "onnxruntime_cxx_api.h"
-#undef ORT_API_MANUAL_INIT
-
-#include <gsl/gsl>
 #include <cassert>
 #include <cstring>
 #include <functional>
@@ -17,20 +12,6 @@
 #include <vector>
 
 #include "ep_factory.h"
-
-// Helper to release an Ort object at the end of its scope.
-template <typename T>
-struct DeferOrtRelease {
-  DeferOrtRelease(T** obj_ptr, std::function<void(T*)> release_func) : obj_ptr_(obj_ptr), release_func_(release_func) {}
-  ~DeferOrtRelease() {
-    if (obj_ptr_ != nullptr && *obj_ptr_ != nullptr) {
-      release_func_(*obj_ptr_);
-      *obj_ptr_ = nullptr;
-    }
-  }
-  T** obj_ptr_ = nullptr;
-  std::function<void(T*)> release_func_ = nullptr;
-};
 
 /// <summary>
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
@@ -124,37 +105,11 @@ struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
   ExampleEp& ep;
 };
 
-static OrtStatus* IsFloatTensor(const OrtApi& ort_api, const OrtValueInfo* value_info, bool& result) {
-  result = false;
-
-  const OrtTypeInfo* type_info = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoTypeInfo(value_info, &type_info));
-
-  ONNXType onnx_type = ONNX_TYPE_UNKNOWN;
-  RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(type_info, &onnx_type));
-  if (onnx_type != ONNX_TYPE_TENSOR) {
-    return nullptr;
-  }
-
-  const OrtTensorTypeAndShapeInfo* type_shape = nullptr;
-  RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(type_info, &type_shape));
-
-  ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-  RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
-  if (elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT) {
-    return nullptr;
-  }
-
-  result = true;
-  return nullptr;
-}
-
-ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name,
-                     const OrtSessionOptions& session_options, const OrtLogger& logger)
+ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger)
     : ApiPtrs(static_cast<const ApiPtrs&>(factory)),
       factory_{factory},
       name_{name},
-      session_options_{session_options},
+      config_{config},
       logger_{logger} {
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
 
@@ -246,8 +201,10 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
-                                               size_t count, OrtNodeComputeInfo** node_compute_infos) {
+OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                               _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                               _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                               _Out_writes_(count) OrtNode** ep_context_nodes) {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   if (count != 1) {
@@ -281,11 +238,18 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(OrtEp* this_ptr, const OrtGraph**
   const char* fused_node_name = nullptr;
   RETURN_IF_ERROR(ep->ort_api.Node_GetName(fused_nodes[0], &fused_node_name));
 
-  ep->Kernels().emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_));
+  ep->kernels_.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_));
 
   // Update the OrtNodeComputeInfo associated with the graph.
   auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
   node_compute_infos[0] = node_compute_info.release();
+
+  // Create EpContext nodes for the fused nodes we compiled.
+  if (ep->config_.enable_ep_context) {
+    assert(ep_context_nodes != nullptr);
+    RETURN_IF_ERROR(ep->CreateEpContextNodes(gsl::span<const OrtNode*>(fused_nodes, count),
+                                             gsl::span<OrtNode*>(ep_context_nodes, count)));
+  }
 
   return nullptr;
 }
@@ -300,6 +264,75 @@ void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
   }
 }
 
+// Creates EPContext nodes from the given fused nodes.
+// This is an example implementation that can be used to generate an EPContext model. However, this example EP
+// cannot currently run the EPContext model.
+OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                           /*out*/ gsl::span<OrtNode*> ep_context_nodes) {
+  assert(fused_nodes.size() == ep_context_nodes.size());
+
+  // Helper to collect input or output names from an array of OrtValueInfo instances.
+  auto collect_input_output_names = [&](const OrtArrayOfConstObjects& value_infos,
+                                        std::vector<const char*>& result) -> OrtStatus* {
+    size_t num_values = 0;
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(&value_infos, &num_values));
+
+    std::vector<const char*> value_names(num_values, nullptr);
+
+    for (size_t i = 0; i < num_values; i++) {
+      const void* value_info = nullptr;  // Is a const OrtValueInfo*
+      RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(&value_infos, i, &value_info));
+      RETURN_IF_ERROR(ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(value_info), &value_names[i]));
+    }
+
+    result = std::move(value_names);
+    return nullptr;
+  };
+
+  // Create an "EPContext" node for every fused node.
+  for (size_t i = 0; i < fused_nodes.size(); ++i) {
+    const OrtNode* fused_node = fused_nodes[i];
+    const char* fused_node_name = nullptr;
+
+    RETURN_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name));
+
+    OrtArrayOfConstObjects* fused_node_inputs = nullptr;
+    OrtArrayOfConstObjects* fused_node_outputs = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> defer_release0(&fused_node_inputs, ort_api.ReleaseArrayOfConstObjects);
+    DeferOrtRelease<OrtArrayOfConstObjects> defer_release1(&fused_node_outputs, ort_api.ReleaseArrayOfConstObjects);
+
+    RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, &fused_node_inputs));
+    RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, &fused_node_outputs));
+
+    std::vector<const char*> input_names;
+    std::vector<const char*> output_names;
+
+    RETURN_IF_ERROR(collect_input_output_names(*fused_node_inputs, /*out*/ input_names));
+    RETURN_IF_ERROR(collect_input_output_names(*fused_node_outputs, /*out*/ output_names));
+
+    int64_t is_main_context = (i == 0);
+    int64_t embed_mode = 1;
+
+    // Create node attributes. The CreateNode() function copies the attributes, so we have to release them.
+    std::array<OrtOpAttr*, 6> attributes = {};
+    DeferOrtRelease<OrtOpAttr> defer_release_attrs(attributes.data(), attributes.size(), ort_api.ReleaseOpAttr);
+
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_cache_context", "binary_data", 1, ORT_OP_ATTR_STRING, &attributes[0]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("main_context", &is_main_context, 1, ORT_OP_ATTR_INT, &attributes[1]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("embed_mode", &embed_mode, 1, ORT_OP_ATTR_INT, &attributes[2]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("ep_sdk_version", "1", 1, ORT_OP_ATTR_STRING, &attributes[3]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("partition_name", fused_node_name, 1, ORT_OP_ATTR_STRING, &attributes[4]));
+    RETURN_IF_ERROR(ort_api.CreateOpAttr("source", this->name_.c_str(), 1, ORT_OP_ATTR_STRING, &attributes[5]));
+
+    RETURN_IF_ERROR(model_editor_api.CreateNode("EPContext", "com.microsoft", fused_node_name,
+                                                input_names.data(), input_names.size(),
+                                                output_names.data(), output_names.size(),
+                                                attributes.data(), attributes.size(),
+                                                &ep_context_nodes[i]));
+  }
+
+  return nullptr;
+}
 //
 // Implementation of ExampleNodeComputeInfo
 //

@@ -3,9 +3,8 @@
 
 #pragma once
 
-#include "onnxruntime_c_api.h"
 #include "ep_data_transfer.h"
-#include "utils.h"
+#include "example_plugin_ep_utils.h"
 
 /// <summary>
 /// Example EP factory that can create an OrtEp and return information about the supported hardware devices.

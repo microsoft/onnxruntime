@@ -3,8 +3,9 @@
 
 #pragma once
 
-#include "onnxruntime_c_api.h"
-#include "utils.h"
+#include <gsl/span>
+
+#include "example_plugin_ep_utils.h"
 
 class ExampleEpFactory;
 struct MulKernel;
@@ -14,28 +15,37 @@ struct MulKernel;
 /// </summary>
 class ExampleEp : public OrtEp, public ApiPtrs {
  public:
-  ExampleEp(ExampleEpFactory& factory, const std::string& name,
-            const OrtSessionOptions& session_options, const OrtLogger& logger);
+  struct Config {
+    bool enable_ep_context = false;
+    // Other EP configs (typically extracted from OrtSessionOptions or OrtHardwareDevice(s))
+  };
+
+  ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger);
 
   ~ExampleEp();
 
   std::unordered_map<std::string, std::unique_ptr<MulKernel>>& Kernels() {
-    return kernels;
+    return kernels_;
   }
 
  private:
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
                                                               OrtEpGraphSupportInfo* graph_support_info);
-  static OrtStatus* ORT_API_CALL CompileImpl(OrtEp* this_ptr, const OrtGraph** graphs, const OrtNode** fused_nodes,
-                                             size_t count, OrtNodeComputeInfo** node_compute_infos);
+  static OrtStatus* ORT_API_CALL CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
+                                             _In_ const OrtNode** fused_nodes, _In_ size_t count,
+                                             _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                             _Out_writes_(count) OrtNode** ep_context_nodes);
   static void ORT_API_CALL ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                        OrtNodeComputeInfo** node_compute_infos,
                                                        size_t num_node_compute_infos);
 
+  OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
+                                  /*out*/ gsl::span<OrtNode*> ep_context_nodes);
+
   ExampleEpFactory& factory_;
   std::string name_;
-  const OrtSessionOptions& session_options_;
+  Config config_{};
   const OrtLogger& logger_;
-  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
+  std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
 };

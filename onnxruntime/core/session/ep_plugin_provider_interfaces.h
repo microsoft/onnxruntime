@@ -17,6 +17,7 @@
 namespace onnxruntime {
 struct EpNode;
 struct EpValueInfo;
+class NodeArg;
 
 /// <summary>
 /// IExecutionProviderFactory that wraps a OrtEpFactory. Required for SessionOptionsAppendExecutionProvider_V2.
@@ -60,7 +61,7 @@ using UniqueOrtEp = std::unique_ptr<OrtEp, OrtEpDeleter>;
 /// </summary>
 class PluginExecutionProvider : public IExecutionProvider {
  public:
-  explicit PluginExecutionProvider(UniqueOrtEp ep, OrtEpFactory& ep_factory,
+  explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
                                    gsl::span<const OrtEpDevice* const> ep_devices);
   ~PluginExecutionProvider();
 
@@ -72,6 +73,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                          std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
+  const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
@@ -95,6 +98,7 @@ class PluginExecutionProvider : public IExecutionProvider {
   OrtEpFactory& ep_factory_;
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
+  bool generate_ep_ctx_model_ = false;
 
   std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
 
@@ -103,5 +107,11 @@ class PluginExecutionProvider : public IExecutionProvider {
   // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
   // so that it is not destroyed until the EP itself is destroyed.
   std::vector<FusedNodeState> fused_node_states_;
+
+  // Stores the EPContext Nodes created from the OrtNode instances returned by the underlying plugin EP.
+  // Need to store both the Node and NodeArg instances so that they are available when the GraphPartitioner
+  // calls IExecutionProvider::GetEpContextNodes().
+  std::vector<std::unique_ptr<Node>> ep_context_nodes_;
+  std::vector<std::unique_ptr<NodeArg>> ep_context_node_args_;
 };
 }  // namespace onnxruntime

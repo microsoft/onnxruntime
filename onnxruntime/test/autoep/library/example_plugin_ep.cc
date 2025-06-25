@@ -18,10 +18,12 @@ EXPORT_SYMBOL OrtStatus* CreateEpFactories(const char* registration_name, const 
                                            OrtEpFactory** factories, size_t max_factories, size_t* num_factories) {
   const OrtApi* ort_api = ort_api_base->GetApi(ORT_API_VERSION);
   const OrtEpApi* ep_api = ort_api->GetEpApi();
+  const OrtModelEditorApi* model_editor_api = ort_api->GetModelEditorApi();
 
   // Factory could use registration_name or define its own EP name.
   std::unique_ptr<OrtEpFactory> factory = std::make_unique<ExampleEpFactory>(registration_name,
-                                                                             ApiPtrs{*ort_api, *ep_api});
+                                                                             ApiPtrs{*ort_api, *ep_api,
+                                                                                     *model_editor_api});
 
   if (max_factories < 1) {
     return ort_api->CreateStatus(ORT_INVALID_ARGUMENT,

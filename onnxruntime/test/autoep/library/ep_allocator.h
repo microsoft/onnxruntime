@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "onnxruntime_cxx_api.h"
+#include "example_plugin_ep_utils.h"
 
 struct CustomAllocator : OrtAllocator {
   CustomAllocator(const OrtMemoryInfo* mem_info) : memory_info{mem_info} {
