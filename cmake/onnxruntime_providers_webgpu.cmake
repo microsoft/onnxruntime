@@ -12,7 +12,13 @@
   if (onnxruntime_WGSL_TEMPLATE)
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       add_definitions(-DORT_WGSL_TEMPLATE=1)
-    elseif(NOT onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+      if (onnxruntime_DISABLE_EXCEPTIONS)
+        message(FATAL_ERROR "Dynamic WGSL template generation requires exception handling to be enabled.")
+      endif()
+      if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
+        message(FATAL_ERROR "Dynamic WGSL template generation is not supported when targeting WebAssembly.")
+      endif()
       add_definitions(-DORT_WGSL_TEMPLATE=2)
     else()
       message(FATAL_ERROR "Unsupported value for onnxruntime_WGSL_TEMPLATE: ${onnxruntime_WGSL_TEMPLATE}. Supported values are 'static' or 'dynamic'.")
@@ -162,7 +168,7 @@
       # Define the output files that will be generated
       set(WGSL_GENERATED_INDEX_H "${WGSL_GENERATED_DIR}/index.h")
       set(WGSL_GENERATED_INDEX_IMPL_H "${WGSL_GENERATED_DIR}/index_impl.h")
-    elseif(NOT onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
       set(WGSL_GENERATED_DIR "${WGSL_GENERATED_ROOT}/dynamic")
       # set(WGSL_GEN_OUTPUTS "${WGSL_GENERATED_DIR}/templates.js")
       set(WGSL_GENERATED_TEMPLATES_JS "${WGSL_GENERATED_DIR}/templates.js")
@@ -207,6 +213,13 @@
       # Add the generated directory to include paths
       target_include_directories(onnxruntime_providers_webgpu PRIVATE ${WGSL_GENERATED_ROOT})
     elseif(onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+      add_library(duktape_static STATIC "${duktape_SOURCE_DIR}/src/duktape.c")
+      target_compile_features(duktape_static PRIVATE c_std_99)
+      target_link_libraries(onnxruntime_providers_webgpu duktape_static)
+      target_include_directories(onnxruntime_providers_webgpu PRIVATE ${duktape_SOURCE_DIR}/src)
+      # Define the path to the generated templates.js file
+      target_compile_definitions(onnxruntime_providers_webgpu PRIVATE
+        "ORT_WGSL_TEMPLATES_JS_PATH=\"${WGSL_GENERATED_TEMPLATES_JS}\"")
     endif()
 
     # Make sure generation happens before building the provider

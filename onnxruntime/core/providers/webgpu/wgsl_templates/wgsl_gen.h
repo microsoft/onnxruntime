@@ -33,7 +33,7 @@ namespace wgsl_gen {
   .var_##name = &value
 
 #define WGSL_TEMPLATE_APPLY(shader_helper, template_filepath, ...) \
-  onnxruntime::webgpu::wgsl_gen::ApplyTemplate<template_filepath>(shader_helper, { __VA_ARGS__ })
+  onnxruntime::webgpu::wgsl_gen::ApplyTemplate<template_filepath>(shader_helper, {__VA_ARGS__})
 
 // A helper struct to enable using a string literal as a NTTP (non-type template parameter).
 template <size_t N>
@@ -85,8 +85,24 @@ onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateP
   onnxruntime::webgpu::wgsl_gen::TemplateVariable(#name, &value)
 
 #define WGSL_TEMPLATE_APPLY(shader_helper, template_filepath, ...) \
-  onnxruntime::webgpu::wgsl_gen::ApplyTemplateDynamic(shader_helper, template_filepath, { __VA_ARGS__ })
+  onnxruntime::webgpu::wgsl_gen::ApplyTemplateDynamic(shader_helper, template_filepath, {__VA_ARGS__})
 
+struct TemplateArgument {
+  std::string name;
+  enum class Type {
+    Param,
+    Variable
+  } type;
+  union {
+    int param_value;             // Used if type == Param
+    const void* variable_value;  // Used if type == Variable
+  };
+};
+
+TemplateArgument TemplateParam(std::string_view name, int value);
+TemplateArgument TemplateVariable(std::string_view name, const void* value);
+
+onnxruntime::common::Status ApplyTemplateDynamic(ShaderHelper& shader_helper, std::string_view template_filepath, const std::initializer_list<TemplateArgument>& args);
 
 #endif
 
