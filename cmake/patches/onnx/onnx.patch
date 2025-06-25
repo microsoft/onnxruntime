@@ -200,3 +200,30 @@ index 0aab3e26..27f32195 100644
 +
 +
  #endif // ! ONNX_ONNX_PB_H
+diff --git a/onnx/backend/test/case/node/cast.py b/onnx/backend/test/case/node/cast.py
+index 9696373920d72e782948cf9b5cf137983d229814..226f57eee4701dc8fefbf5d64983385b077bc80e 100644
+--- a/onnx/backend/test/case/node/cast.py
++++ b/onnx/backend/test/case/node/cast.py
+@@ -59,10 +59,11 @@ class Cast(Base):
+         test_cases = [
+-            ("FLOAT", "UINT4"),
+-            ("FLOAT16", "UINT4"),
+-            ("FLOAT", "INT4"),
+-            ("FLOAT16", "INT4"),
+-            ("UINT4", "FLOAT"),
+-            ("UINT4", "FLOAT16"),
+-            ("UINT4", "UINT8"),
+-            ("INT4", "FLOAT"),
+-            ("INT4", "FLOAT16"),
+-            ("INT4", "INT8"),
++            # Skipped until onnxruntime/cmake/external/onnx points to a version of onnx which includes @onnx/onnx/pull/7074
++            # ("FLOAT", "UINT4"),
++            # ("FLOAT16", "UINT4"),
++            # ("FLOAT", "INT4"),
++            # ("FLOAT16", "INT4"),
++            # ("UINT4", "FLOAT"),
++            # ("UINT4", "FLOAT16"),
++            # ("UINT4", "UINT8"),
++            # ("INT4", "FLOAT"),
++            # ("INT4", "FLOAT16"),
++            # ("INT4", "INT8"),
