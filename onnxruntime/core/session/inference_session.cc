@@ -2082,8 +2082,20 @@ common::Status InferenceSession::Initialize() {
       SetWeightDataType(model_weight_type);
 #endif
 #ifdef _WIN32
-      model_graph_hash = ComputeModelGraphHash(graph);
-      model_weight_hash = (model_graph_hash == "0") ? "0" : ComputeModelWeightHash(initializers);
+      // Check if model metadata contains a "model_hash" field
+      const auto& metadata = model_->MetaData();
+      auto model_hash_it = metadata.find("model_hash");
+
+      if (model_hash_it != metadata.end()) {
+        // Use the model_hash from metadata
+        model_graph_hash = model_hash_it->second;
+        model_weight_hash = model_hash_it->second;
+      } else {
+        // Compute hashes
+        model_graph_hash = ComputeModelGraphHash(graph);
+        model_weight_hash = (model_graph_hash == "0") ? "0" : ComputeModelWeightHash(initializers);
+      }
+
       SetGraphHash(model_graph_hash);
       SetWeightHash(model_weight_hash);
 #endif
