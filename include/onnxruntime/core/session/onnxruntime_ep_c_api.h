@@ -35,7 +35,7 @@ struct OrtNodeFusionOptions {
    */
   uint32_t ort_version_supported;
 
-  /** \brief Specify that the execution provider does not require ONNX Runtime to provide constant
+  /** \brief If set to true, specify that the execution provider does not require ONNX Runtime to provide constant
    * initializers as inputs to the fused node during model inference. This is used when the execution
    * provider saves a copy of constant initializers, and allows ONNX Runtime to release constant initializers that
    * are not used by any execution provider.
