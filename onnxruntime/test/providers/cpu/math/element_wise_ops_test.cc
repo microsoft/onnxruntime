@@ -4,6 +4,9 @@
 #include "gtest/gtest.h"
 #include "test/providers/provider_test_utils.h"
 #include "test/util/include/default_providers.h"
+#include "test/util/include/current_test_name.h"
+#include "test/util/include/test_utils.h"
+#include "test/framework/test_utils.h"
 #include "test/common/dnnl_op_test_utils.h"
 #include "test/common/cuda_op_test_utils.h"
 #include "test/common/trt_op_test_utils.h"
@@ -1446,6 +1449,37 @@ TEST(MathOpTest, Pow_float_float16) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "", {}, nullptr, &execution_providers);
 }
 #endif
+
+#if defined(USE_WEBGPU)
+// WebGPU EP currently handles a special case for supporting Pow op:
+// A Pow followed by a Cast to int64 type.
+TEST(MathOpTest, Pow_float_sqrt) {
+  const ORTCHAR_T* model_file_name = ORT_TSTR("testdata/webgpu_pow_cast_test.onnx");
+  AllocatorPtr allocator = std::make_shared<CPUAllocator>();
+
+  std::vector<int64_t> dims_x = {1};
+  std::vector<float> values_x = {576.};
+  OrtValue ml_value_x;
+  CreateMLValue<float>(allocator, dims_x, values_x, &ml_value_x);
+
+  std::vector<int64_t> dims_y = {1};
+  std::vector<float> values_y = {0.5};
+  OrtValue ml_value_y;
+  CreateMLValue<float>(allocator, dims_y, values_y, &ml_value_y);
+
+  NameMLValMap feeds;
+  feeds.insert(std::make_pair("x", ml_value_x));
+  feeds.insert(std::make_pair("y", ml_value_y));
+
+  EPVerificationParams verification_params{};
+
+  RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
+                            DefaultWebGpuExecutionProvider(),
+                            feeds,
+                            verification_params);
+}
+#endif
+
 #if defined(USE_DNNL)
 TEST(MathOpTest, Exp_bfloat16) {
 #ifdef USE_DNNL

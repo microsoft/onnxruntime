@@ -397,6 +397,7 @@ def add_windows_specific_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--windows_sdk_version", help="Windows SDK version (e.g., 10.0.19041.0).")
     parser.add_argument("--enable_msvc_static_runtime", action="store_true", help="Statically link MSVC runtimes.")
     parser.add_argument("--use_telemetry", action="store_true", help="Enable telemetry (official builds only).")
+    parser.add_argument("--caller_framework", type=str, help="Name of the framework calling ONNX Runtime.")
 
     # Cross-compilation targets hosted on Windows
     parser.add_argument(

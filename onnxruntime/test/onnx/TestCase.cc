@@ -632,7 +632,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::TensorProto& test_data_
   void* p = len == 0 ? nullptr : b.AllocMemory(len);
   Ort::Value v1{nullptr};
   onnxruntime::test::OrtCallback d;
-  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+  OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
   status = onnxruntime::test::TensorProtoToMLValue(test_data_pb, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                    v1, d);
   if (!status.IsOK()) {
@@ -683,7 +683,7 @@ void OnnxTestCase::ConvertTestData(const ONNX_NAMESPACE::SequenceProto& test_dat
     void* p = len == 0 ? nullptr : b.AllocMemory(len);
     Ort::Value v1{nullptr};
     onnxruntime::test::OrtCallback d;
-    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), 0, OrtMemTypeDefault);
+    OrtMemoryInfo cpu_memory_info(onnxruntime::CPU, OrtDeviceAllocator, OrtDevice(), OrtMemTypeDefault);
     status = onnxruntime::test::TensorProtoToMLValue(*it, onnxruntime::test::MemBuffer(p, len, cpu_memory_info),
                                                      v1, d);
     if (!status.IsOK()) {
@@ -1448,7 +1448,11 @@ std::unique_ptr<std::set<BrokenTest>> GetBrokenTests(const std::string& provider
     broken_tests->insert({"gridsample_reflection_padding", "result differs"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_0", "unknown version"});
     broken_tests->insert({"gridsample_volumetric_nearest_align_corners_1", "unknown version"});
+    broken_tests->insert({"rotary_embedding", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids", "unknown version"});
+    broken_tests->insert({"rotary_embedding_interleaved", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_expanded", "unknown version"});
+    broken_tests->insert({"rotary_embedding_no_position_ids_interleaved", "unknown version"});
     broken_tests->insert({"rotary_embedding_no_position_ids_interleaved_expanded", "unknown version"});
     broken_tests->insert({"spacetodepth", "result differs"});
     broken_tests->insert({"reduce_sum_square_empty_set_expanded", "unknown version"});
