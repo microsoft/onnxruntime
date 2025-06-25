@@ -296,8 +296,11 @@ struct EpGraph : public OrtGraph {
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_;  // All value infos in the graph
 
   std::vector<EpValueInfo*> initializer_value_infos_;
-  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> initializer_values_;
-  std::unordered_map<std::string_view, std::unique_ptr<OrtValue>> outer_scope_initializer_values_;
+
+  // Note: we return pointers to these OrtValue elements, which could be invalidated if the
+  // map is reallocated. This is not an issue now because OrtGraph is essentially readonly.
+  std::unordered_map<std::string_view, OrtValue> initializer_values_;
+  std::unordered_map<std::string_view, OrtValue> outer_scope_initializer_values_;
 
   InlinedVector<EpValueInfo*> inputs_;
   InlinedVector<EpValueInfo*> outputs_;
