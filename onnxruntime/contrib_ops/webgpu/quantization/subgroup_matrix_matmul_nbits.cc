@@ -5,6 +5,7 @@
 #include <tuple>
 
 #include "contrib_ops/webgpu/quantization/subgroup_matrix_matmul_nbits.h"
+#include "contrib_ops/webgpu/quantization/matmul_nbits_common.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -72,7 +73,7 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
   return false;
 }
 
-Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index) {
+Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t config_index, bool has_zero_points) {
   auto& config = intel_supported_subgroup_matrix_configs[config_index];
   shader.AdditionalImplementation() << "alias component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<2>(config))] << ";\n"
                                     << "alias result_component_type = " << ComponentTypeName[static_cast<uint32_t>(std::get<3>(config))] << ";\n"
@@ -103,7 +104,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
                 tile_A[row * tile_k + col + col_offset] = component_type(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
             }
         }
-    )ADDNL_FN";
+    )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -117,9 +118,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
+            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             let b_value = input_b[b_idx];
-            let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
-            let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(8)) * scale;
+            let b_value_lower = (vec4<component_type>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
+            let b_value_upper = (vec4<component_type>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
             tile_B[tile_b_base]     = b_value_lower[0];
             tile_B[tile_b_base + 1] = b_value_upper[0];
@@ -145,9 +147,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
             // Stored in column major fashion.
             let b_idx = u32((b_global * uniforms.K + k_idx + col) / 8);
             let scale   = component_type(scales_b[(b_global * uniforms.K + k_idx + col) / quantization_block_size]);
+            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             let b_value = input_b[b_idx];
-            let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(128)) * scale;
-            let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(128)) * scale;
+            let b_value0 = (vec4<component_type>(unpack4xU8(b_value[0])) - vec4<component_type>(zero)) * scale;
+            let b_value1 = (vec4<component_type>(unpack4xU8(b_value[1])) - vec4<component_type>(zero)) * scale;
             let tile_b_base = row * tile_k + col;
             tile_B[tile_b_base]     = b_value0[0];
             tile_B[tile_b_base + 1] = b_value0[1];
@@ -213,7 +216,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
   return Status::OK();
 }
 
-Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits) {
+Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits, bool has_zero_points) {
   // tile/subtile sizes and work distribution are inspired from metal shaders in llama.cpp (kernel_mul_mm)
   // https://github.com/ggml-org/llama.cpp/blob/d04e7163c85a847bc61d58c22f2c503596db7aa8/ggml/src/ggml-metal/ggml-metal.metal#L6066
   shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -242,7 +245,8 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits) {
                 tile_A[row * tile_k + col + col_offset] = compute_precision(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
             }
         }
-    )ADDNL_FN";
+    )ADDNL_FN"
+                                    << GenerateZeroPointReadingCode(nbits, has_zero_points, "compute_precision");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN(
         fn loadSHMB(tile_base: u32, k_idx: u32, row: u32, c_idx: u32) {
@@ -255,12 +259,13 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits) {
             // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale   = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+            let scale = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
                 var b_value = input_b[b_idx+step];
-                var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(8)) * scale;
-                var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(8)) * scale;
+                var b_value_lower = (vec4<compute_precision>(unpack4xU8(b_value & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
+                var b_value_upper = (vec4<compute_precision>(unpack4xU8((b_value >> 4) & 0x0F0F0F0Fu)) - vec4<compute_precision>(zero)) * scale;
                 let tile_b_base = row * tile_k + col + step * 8;
                 tile_B[tile_b_base]     = b_value_lower[0];
                 tile_B[tile_b_base + 1] = b_value_upper[0];
@@ -286,12 +291,13 @@ Status GenerateShaderCodeOnApple(ShaderHelper& shader, uint32_t nbits) {
             // 128 threads need to load 64 x 32. 2 threads per row or 16 col per thread.
             // Stored in column major fashion.
             let b_idx = u32((b_global*uniforms.K + k_idx + col)/8);
-            let scale   = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+            let scale = compute_precision(scales_b[(b_global*uniforms.K + k_idx + col)/quantization_block_size]);
+            let zero = mm_read_zero(b_global, (k_idx + col) / quantization_block_size, uniforms.N, uniforms.zero_blocks_per_col);
             for (var step:u32 = 0; step < 2; step++)
             {
                 var b_value = input_b[b_idx+step];
-                var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(128)) * scale;
-                var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(128)) * scale;
+                var b_value0 = (vec4<compute_precision>(unpack4xU8(b_value[0])) - vec4<compute_precision>(zero)) * scale;
+                var b_value1 = (vec4<compute_precision>(unpack4xU8(b_value[1])) - vec4<compute_precision>(zero)) * scale;
                 let tile_b_base = row * tile_k + col + step * 8;
                 tile_B[tile_b_base]     = b_value0[0];
                 tile_B[tile_b_base + 1] = b_value0[1];
@@ -410,12 +416,15 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
   shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   shader.AddInput("input_b", ShaderUsage::UseUniform);
   shader.AddInput("scales_b", ShaderUsage::UseUniform);
+  if (has_zero_points_) {
+    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+  }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseElementTypeAlias);
 
   if (!vendor_.compare("apple")) {
-    return GenerateShaderCodeOnApple(shader, nbits_);
+    return GenerateShaderCodeOnApple(shader, nbits_, has_zero_points_);
   } else if (!vendor_.compare("intel")) {
-    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_);
+    return GenerateShaderCodeOnIntel(shader, nbits_, config_index_, has_zero_points_);
   } else {
     return Status(onnxruntime::common::ONNXRUNTIME, onnxruntime::common::NOT_IMPLEMENTED,
                   "onnxruntime does not support subgroup matrix on this verdor.");
@@ -423,10 +432,12 @@ Status SubgroupMatrixMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader
 }
 
 Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor* scales,
+                                      const Tensor* zero_points,
                                       uint32_t M,
                                       uint32_t N,
                                       uint32_t K,
                                       uint32_t nbits,
+                                      uint32_t zero_blocks_per_col,
                                       int32_t config_index,
                                       onnxruntime::webgpu::ComputeContext& context,
                                       Tensor* y) {
@@ -435,7 +446,8 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
   constexpr uint32_t kTileSizeB = 64;
   constexpr uint32_t kU32Components = 4;
   TensorShape y_shape{1, M, N};
-  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor};
+  const bool has_zero_points = zero_points != nullptr;
+  SubgroupMatrixMatMulNBitsProgram mul_program{nbits, config_index, context.AdapterInfo().vendor, has_zero_points};
   if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
     tile_size_a = 64;
     work_group_size = 256;
@@ -449,9 +461,13 @@ Status ApplySubgroupMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Te
                          {scales, ProgramTensorMetadataDependency::TypeAndRank, 1}})
       .AddUniformVariables({{static_cast<uint32_t>(M)},
                             {static_cast<uint32_t>(N)},
-                            {static_cast<uint32_t>(K)}})
+                            {static_cast<uint32_t>(K)},
+                            {zero_blocks_per_col}})
       .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, y_shape, 1})
-      .CacheHint(nbits);
+      .CacheHint(nbits, has_zero_points);
+  if (has_zero_points) {
+    mul_program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+  }
   return context.RunProgram(mul_program);
 }
 
@@ -461,7 +477,6 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
                                        uint32_t batch_count,
                                        uint32_t N,
                                        uint32_t K,
-                                       bool has_zero_points,
                                        int32_t& config_index) {
   bool has_subgroup_matrix = context.HasFeature(wgpu::FeatureName::ChromiumExperimentalSubgroupMatrix);
   if (has_subgroup_matrix) {
@@ -480,8 +495,7 @@ bool CanApplySubgroupMatrixMatMulNBits(onnxruntime::webgpu::ComputeContext& cont
          block_size == 32 &&
          batch_count == 1 &&
          K % 32 == 0 &&
-         N % 64 == 0 &&
-         !has_zero_points;
+         N % 64 == 0;
 }
 }  // namespace webgpu
 }  // namespace contrib

@@ -13,7 +13,14 @@
 namespace onnxruntime {
 
 namespace {
+// The ORT API maintains ABI and backward compatibility, allowing applications to be built with an older version
+// and run with a newer one. Users may call `RegisterAllocator` with a custom allocator. However, any new
+// function pointers introduced in the newer version may contain invalid values, as the older application
+// is unaware of them.
+// Therefore, it's necessary to check the version value in `OrtAllocatorImplWrappingIAllocator` and
+// `IAllocatorImplWrappingOrtAllocator` to ensure compatibility.
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
+constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -29,16 +36,18 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
     OrtAllocator::Reserve =
         [](OrtAllocator* this_, size_t size) { return static_cast<OrtAllocatorImplWrappingIAllocator*>(this_)->Reserve(size); };
   }
-  OrtAllocator::GetStats =
-      [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
-    API_IMPL_BEGIN
-    auto kvp = std::make_unique<OrtKeyValuePairs>();
-    auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-    kvp->Copy(stats_map);
-    *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
-    return nullptr;
-    API_IMPL_END
-  };
+  if (OrtAllocator::version >= kOrtAllocatorStatsMinVersion) {
+    OrtAllocator::GetStats =
+        [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
+      API_IMPL_BEGIN
+      auto kvp = std::make_unique<OrtKeyValuePairs>();
+      auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      kvp->Copy(stats_map);
+      *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
+      return nullptr;
+      API_IMPL_END
+    };
+  }
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
@@ -106,6 +115,43 @@ void* IAllocatorImplWrappingOrtAllocator::Reserve(size_t size) {
 
 void IAllocatorImplWrappingOrtAllocator::Free(void* p) {
   return ort_allocator_->Free(ort_allocator_.get(), p);
+}
+
+void IAllocatorImplWrappingOrtAllocator::GetStats(AllocatorStats* stats) {
+  *stats = {};
+
+  if (ort_allocator_->version >= kOrtAllocatorStatsMinVersion && ort_allocator_->GetStats) {
+    OrtKeyValuePairs* kvps = nullptr;
+    Ort::ThrowOnError(ort_allocator_->GetStats(ort_allocator_.get(), &kvps));
+
+    auto release_fn = [](OrtKeyValuePairs** kvp) {
+      OrtApis::ReleaseKeyValuePairs(*kvp);
+    };
+
+    std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
+
+    for (size_t i = 0; i < kvps->keys.size(); ++i) {
+      if (strcmp(kvps->keys[i], "Limit") == 0) {
+        stats->bytes_limit = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "InUse") == 0) {
+        stats->bytes_in_use = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "TotalAllocated") == 0) {
+        stats->total_allocated_bytes = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "MaxInUse") == 0) {
+        stats->max_bytes_in_use = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "NumAllocs") == 0) {
+        stats->num_allocs = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "NumReserves") == 0) {
+        stats->num_reserves = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "NumArenaExtensions") == 0) {
+        stats->num_arena_extensions = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "NumArenaShrinkages") == 0) {
+        stats->num_arena_shrinkages = std::stoll(kvps->values[i]);
+      } else if (strcmp(kvps->keys[i], "MaxAllocSize") == 0) {
+        stats->max_alloc_size = std::stoll(kvps->values[i]);
+      }
+    }
+  }
 }
 
 }  // namespace onnxruntime

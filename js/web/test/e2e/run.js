@@ -168,6 +168,7 @@ function prepareWasmPathOverrideFiles() {
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'ort-wasm-simd-threaded.wasm'));
   fs.copyFileSync(`${sourceFile}.mjs`, path.join(folder, 'renamed.mjs'));
   fs.copyFileSync(`${sourceFile}.wasm`, path.join(folder, 'renamed.wasm'));
+  // TODO: add .asyncify/.jspi
   fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'ort-wasm-simd-threaded.jsep.mjs'));
   fs.copyFileSync(`${sourceFile}.jsep.wasm`, path.join(folder, 'ort-wasm-simd-threaded.jsep.wasm'));
   fs.copyFileSync(`${sourceFile}.jsep.mjs`, path.join(folder, 'jsep-renamed.mjs'));

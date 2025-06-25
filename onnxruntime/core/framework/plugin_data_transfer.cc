@@ -47,7 +47,7 @@ Status DataTransfer::CopyTensors(const std::vector<SrcDstPair>& src_dst_pairs) c
   auto* status = impl_.CopyTensors(&impl_, src_values.data(), dst_values.data(), streams.data(),
                                    src_dst_pairs.size());
 
-  return status == nullptr ? Status::OK() : ToStatus(status);
+  return status == nullptr ? Status::OK() : ToStatusAndRelease(status);
 }
 
 // optimized version for a single copy. see comments above in CopyTensors regarding the OrtValue usage and const_cast
@@ -61,7 +61,7 @@ Status DataTransfer::CopyTensorImpl(const Tensor& src_tensor, Tensor& dst_tensor
   OrtSyncStream* stream_ptr = nullptr;  // static_cast<OrtSyncStream*>(stream);
   auto* status = impl_.CopyTensors(&impl_, &src_ptr, &dst_ptr, &stream_ptr, 1);
 
-  return status == nullptr ? Status::OK() : ToStatus(status);
+  return status == nullptr ? Status::OK() : ToStatusAndRelease(status);
 }
 
 }  // namespace plugin_ep

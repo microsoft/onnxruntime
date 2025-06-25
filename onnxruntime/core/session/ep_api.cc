@@ -3,12 +3,17 @@
 
 #include "core/session/ep_api.h"
 
+#include <algorithm>
+#include <vector>
 #include "core/framework/error_code_helper.h"
+#include "core/framework/func_api.h"
 #include "core/framework/ort_value.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
 #include "core/framework/tensor.h"
+#include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_ep_types.h"
 #include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
@@ -40,6 +45,48 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
   delete device;
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+                    _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes) {
+  API_IMPL_BEGIN
+  if (ort_graph_support_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
+  }
+
+  if (num_nodes == 0 || nodes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid array of 1 or more supported nodes");
+  }
+
+  gsl::span<const OrtNode* const> nodes_span(nodes, nodes + num_nodes);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddNodesToFuse(nodes_span));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
+                    _In_ const OrtNode* node) {
+  API_IMPL_BEGIN
+  if (ort_graph_support_info == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
+  }
+
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a non-null OrtNode");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddSingleNode(node));
+  return nullptr;
+  API_IMPL_END
+}
+
+//
+// OrtCompiledNodeComputeContext
+//
+
+ORT_API(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context) {
+  const auto* compute_context = reinterpret_cast<const onnxruntime::ComputeContext*>(context);
+  return compute_context->node_name;
 }
 
 ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
@@ -105,6 +152,11 @@ static constexpr OrtEpApi ort_ep_api = {
 
     &OrtExecutionProviderApi::CreateEpDevice,
     &OrtExecutionProviderApi::ReleaseEpDevice,
+    // End of Version 22 - DO NOT MODIFY ABOVE
+
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddNodesToFuse,
+    &OrtExecutionProviderApi::EpGraphSupportInfo_AddSingleNode,
+    &OrtExecutionProviderApi::NodeComputeContext_NodeName,
     &OrtExecutionProviderApi::EpDevice_AddAllocatorInfo,
 
     &OrtExecutionProviderApi::OrtMemoryInfo_GetMemoryDevice,

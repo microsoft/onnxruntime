@@ -3,6 +3,9 @@
 
 #include "core/session/utils.h"
 
+#include <memory>
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
@@ -17,9 +20,9 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
-#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/model_compilation_options.h"
 #include "core/session/provider_policy_context.h"
 #endif  // !defined(ORT_MINIMAL_BUILD)
@@ -69,12 +72,8 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
     if (internal_factory) {
       // this is a factory we created and registered. internal or provider bridge EP.
-      OrtStatus* status = internal_factory->CreateIExecutionProvider(
-          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep);
-
-      if (status != nullptr) {
-        return ToStatus(status);
-      }
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(internal_factory->CreateIExecutionProvider(
+          devices.data(), ep_metadata.data(), devices.size(), &ort_so, &api_session_logger, &ep)));
     } else {
       // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
       // and we would add that IExecutionProvider to the InferenceSession.
@@ -82,13 +81,9 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
 
       /*
       OrtEp* api_ep = nullptr;
-      auto status = ep_device->ep_factory->CreateEp(
+      ORT_RETURN_IF_ERROR(ToStatusAndRelease(ep_device->ep_factory->CreateEp(
           ep_device->ep_factory, devices.data(), ep_metadata.data(), devices.size(),
-          &ort_so, &api_session_logger, &api_ep);
-
-      if (status != nullptr) {
-        return ToStatus(status);
-      }
+          &ort_so, &api_session_logger, &api_ep)));
       */
     }
 
@@ -271,17 +266,18 @@ Status CompileModel(const Environment& env, const ModelCompilationOptions& model
 
   if (model_compile_options.InputModelComesFromFile()) {
     PathString input_model_path = ToPathString(model_compile_options.GetInputModelPath());
-    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env,
-                                                               input_model_path.c_str(),
-                                                               nullptr, 0, session)));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env,
+                                                                         input_model_path.c_str(),
+                                                                         nullptr, 0, session)));
   } else {
-    ORT_RETURN_IF_ERROR(ToStatus(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
-                                                               model_compile_options.GetInputModelData(),
-                                                               model_compile_options.GetInputModelDataSize(),
-                                                               session)));
+    ORT_RETURN_IF_ERROR(
+        ToStatusAndRelease(CreateSessionAndLoadModelImpl(session_options, env, nullptr,
+                                                         model_compile_options.GetInputModelData(),
+                                                         model_compile_options.GetInputModelDataSize(),
+                                                         session)));
   }
 
-  ORT_RETURN_IF_ERROR(ToStatus(InitializeSession(session_options, *session)));
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(InitializeSession(session_options, *session)));
   return Status::OK();
 }
 
@@ -342,26 +338,17 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   }
 
   const auto& ep_name = ep_devices[0]->ep_name;
+  OrtEpFactory* ep_factory = ep_devices[0]->ep_factory;
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [&ep_name](const OrtEpDevice* ep_device) { return ep_device->ep_name == ep_name; });
+                               [&ep_name, &ep_factory](const OrtEpDevice* ep_device) {
+                                 return (ep_device->ep_name == ep_name) && (ep_device->ep_factory == ep_factory);
+                               });
   if (!all_match) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
   }
 
-  std::unique_ptr<IExecutionProviderFactory> provider_factory = nullptr;
-
   for (const OrtEpDevice* ep_device : ep_devices) {
-    if (provider_factory == nullptr) {
-      EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
-
-      if (internal_factory) {
-        provider_factory = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
-      } else {
-        provider_factory = std::make_unique<PluginExecutionProviderFactory>(*ep_device->ep_factory, ep_devices);
-      }
-    }
-
     // add the options to the session options with the EP prefix.
     // first add the default values with prefix followed by user specified values so those win
     const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
@@ -379,7 +366,13 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
     }
   }
 
-  out = std::move(provider_factory);
+  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
+
+  if (internal_factory) {
+    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+  } else {
+    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
+  }
 
   return Status::OK();
 }

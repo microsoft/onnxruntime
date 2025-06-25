@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <vector>
 
 #include "core/common/common.h"

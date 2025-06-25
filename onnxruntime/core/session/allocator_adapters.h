@@ -60,6 +60,8 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
     return ort_allocator_.get();
   }
 
+  void GetStats(AllocatorStats* stats) override;
+
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(IAllocatorImplWrappingOrtAllocator);
 
  private:

@@ -7,6 +7,9 @@
 #include "ep_data_transfer.h"
 #include "utils.h"
 
+/// <summary>
+/// Example EP factory that can create an OrtEp and return information about the supported hardware devices.
+/// </summary>
 class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
  public:
   ExampleEpFactory(const char* ep_name, ApiPtrs apis);

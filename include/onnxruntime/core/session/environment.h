@@ -54,6 +54,16 @@ class Environment {
                        const OrtThreadingOptions* tp_options = nullptr,
                        bool create_global_thread_pools = false);
 
+  /**
+   * Set the global threading options for the environment, if no global thread pools have been created yet.
+   *
+   * This function is not safe to call simultaneously from multiple threads, and will return a FAIL status on all calls
+   * after the first.
+   * @param tp_options set of parameters controlling the number of intra and inter op threads for the global
+    threadpools.
+   */
+  Status SetGlobalThreadingOptions(const OrtThreadingOptions& tp_options);
+
   logging::LoggingManager* GetLoggingManager() const {
     return logging_manager_.get();
   }

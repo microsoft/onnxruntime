@@ -5,12 +5,12 @@
 
 #include <gsl/gsl>
 #include <memory>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
-#include "core/framework/plugin_data_transfer.h"
 #include "core/providers/providers.h"
 #include "core/session/onnxruntime_c_api.h"
 
@@ -64,6 +64,15 @@ class PluginExecutionProvider : public IExecutionProvider {
                                    gsl::span<const OrtEpDevice* const> ep_devices);
   ~PluginExecutionProvider();
 
+  std::vector<std::unique_ptr<ComputeCapability>>
+  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+                const IKernelLookup& kernel_lookup,
+                const GraphOptimizerRegistry& graph_optimizer_registry,
+                IResourceAccountant* resource_accountant = nullptr) const override;
+
+  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
   // create per-session allocators
@@ -72,10 +81,27 @@ class PluginExecutionProvider : public IExecutionProvider {
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
 
  private:
-  UniqueOrtEp plugin_ep_;
+  struct FusedNodeState {
+    FusedNodeState() = default;
+    FusedNodeState(FusedNodeState&& other) = default;
+    FusedNodeState(const FusedNodeState& other) = delete;
+    Status AddFusedNode(const Node& fused_node, /*out*/ EpNode*& added_ep_node);
 
+    std::vector<std::unique_ptr<EpNode>> nodes;
+    std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos;
+  };
+
+  UniqueOrtEp ort_ep_;
   OrtEpFactory& ep_factory_;
   std::vector<const OrtEpDevice*> ep_devices_;
   std::vector<const OrtMemoryInfo*> allocator_mem_infos_;
+
+  std::vector<OrtNodeComputeInfo*> api_node_compute_infos_;
+
+  // Fused nodes have to be valid throughout model inference because they may be cached in NodeComputeInfo instances.
+  // For each fused node, the Compile() function creates EpNode and EpValueInfo instances on the heap,
+  // which are then passed to the underlying OrtEp instance. This class stores this "fused node state"
+  // so that it is not destroyed until the EP itself is destroyed.
+  std::vector<FusedNodeState> fused_node_states_;
 };
 }  // namespace onnxruntime
