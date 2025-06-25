@@ -795,9 +795,6 @@ typedef struct OrtCompileApi OrtCompileApi;
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
 
-struct OrtNodeComputeInfo;
-typedef struct OrtNodeComputeInfo OrtNodeComputeInfo;
-
 /** \brief The helper interface to get the right version of OrtApi
  *
  * Get a pointer to this structure through ::OrtGetApiBase

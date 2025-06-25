@@ -130,17 +130,16 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
 
   // Create ComputeCapability instances from OrtEpGraphSupportInfo::NodeGrouping instances.
   for (const OrtEpGraphSupportInfo::NodeGrouping& node_grouping : api_graph_support_info.node_groupings) {
-    if (const EpNode* single_node = node_grouping.TryGetSingleNode(); single_node != nullptr) {
+    if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kSingleAssignedNode) {
       auto indexed_sub_graph = std::make_unique<IndexedSubGraph>();
 
-      indexed_sub_graph->nodes.push_back(single_node->GetInternalNode().Index());
+      indexed_sub_graph->nodes.push_back(node_grouping.nodes[0]->GetInternalNode().Index());
       result.push_back(std::make_unique<ComputeCapability>(std::move(indexed_sub_graph)));
-    } else if (const OrtNodeFusionOptions* node_fusion_options = node_grouping.TryGetNodeFusionOptions();
-               node_fusion_options != nullptr) {
+    } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       std::unordered_set<const Node*> node_set;
-      node_set.reserve(node_fusion_options->nodes.size());
+      node_set.reserve(node_grouping.nodes.size());
 
-      for (const EpNode* ep_node : node_fusion_options->nodes) {
+      for (const EpNode* ep_node : node_grouping.nodes) {
         node_set.insert(&ep_node->GetInternalNode());
       }
 
@@ -153,7 +152,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // unsupported nodes in any path between supported nodes.
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
-          this->Type(), this->Type(), /*node_unit_map*/ nullptr, node_fusion_options->drop_constant_initializers);
+          this->Type(), this->Type(), /*node_unit_map*/ nullptr,
+          node_grouping.fusion_options.drop_constant_initializers);
 
       if (capabilities.size() > 1) {
         LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() set nodes that cannot be fused together. "
@@ -174,6 +174,10 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       }));
 
       result.push_back(std::move(capabilities[0]));
+    } else {
+      LOGS_DEFAULT(ERROR) << "PluginExecutionProvider::GetCapability() has invalid NodeGroupingKind: "
+                          << static_cast<int>(node_grouping.kind);
+      return {};
     }
   }
 

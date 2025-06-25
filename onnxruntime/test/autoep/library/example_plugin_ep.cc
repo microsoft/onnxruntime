@@ -297,18 +297,19 @@ struct ExampleEp : OrtEp, ApiPtrs {
         break;
       }
     }
-    OrtNodeFusionOptions* node_fusion_options = nullptr;
-    RETURN_IF_ERROR(ep->ep_api.CreateNodeFusionOptions(supported_nodes.data(), supported_nodes.size(),
-                                                       &node_fusion_options));
+
+    // Create (optional) fusion options for the supported nodes to fuse.
+    OrtNodeFusionOptions node_fusion_options = {};
+    node_fusion_options.ort_version_supported = ORT_API_VERSION;
 
     // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
     // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
     // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
     // during inference.
-    RETURN_IF_ERROR(ep->ep_api.NodeFusionOptions_DropConstantInitializers(node_fusion_options, true));
+    node_fusion_options.drop_constant_initializers = true;
 
-    // Note: ORT takes ownership of node_fusion_options.
-    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, node_fusion_options));
+    RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
+                                                                 supported_nodes.size(), &node_fusion_options));
     return nullptr;
   }
 
