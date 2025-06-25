@@ -68,13 +68,18 @@ struct OnnxToOvNetworkBindings {
 
         // For Stateful Model Compilation, the ONNX model includes KV cache (past/present) tensors.
         // However, these tensors are internally converted to a stateful representation, which removes them.
-        // To prevent runtime exceptions, we simply continue processing here.
-        if (!matched_names && session_context.enable_causallm &&
-            std::any_of(special_io_names_.begin(), special_io_names_.end(),
-                        [&onnx_name](const std::string& name) { return onnx_name.find(name) != std::string::npos; })) {
-          // This case also requires dynamic shape inference, so we'll mark the bindings as dynamic.
-          has_dynamic_io_ = true;
-          continue;
+        // It's also possible that the onnx model does not contain tensors such as beam_idx, whereas our converted
+        // stateful representation has introduced these new tensors, creating a name mismatch (matched_names=false).
+        // So, if there is a name mismatch, or the name matches our special io list, we simply continue processing
+        // here to prevent runtime exceptions.
+        if (session_context.enable_causallm) {
+          if (!matched_names ||
+              std::any_of(special_io_names_.begin(), special_io_names_.end(),
+                          [&onnx_name](const std::string& name) { return onnx_name.find(name) != std::string::npos; })) {
+            // This case also requires dynamic shape inference, so we'll mark the bindings as dynamic.
+            has_dynamic_io_ = true;
+            continue;
+          }
         }
 
         ORT_ENFORCE(matched_names, log_tag,
