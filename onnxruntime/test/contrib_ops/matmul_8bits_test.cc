@@ -252,7 +252,7 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
 #if defined(__ANDROID__) && defined(MLAS_TARGET_AMD64_IX86)
-  // Fails on Linux CI build:
+  // Fails on Android CI build on Linux host machine:
   //   [ RUN      ] MatMulNBits.Float32_8b_AccuracyLevel4
   //   Test was not executed.
   //   Trap
@@ -295,7 +295,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
 #if defined(__ANDROID__) && defined(MLAS_TARGET_AMD64_IX86)
-  // Fails on Linux CI build:
+  // Fails on Android CI build on Linux host machine:
   //   [ RUN      ] MatMulNBits.Float32_8b_AccuracyLevel1
   //   Trap
   // TODO investigate failure
