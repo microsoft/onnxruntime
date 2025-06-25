@@ -730,18 +730,18 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
-    // If the suggested_device is also CPU and default mem type, then
-    // we check which one has higher alignment and use that one if it is so.
-    // If the suggested device is CPU, but not the default mem type, then
-    // it is a CPU accessible memory device allocator. They typically have a page alignment
-    // so that would satisfy the alignment requirement of any other CPU consumers.
-    // If one device is not on CPU, we default on the one that is CPU.
+    // If both devices are OrtDevice::CPU or both are HOST_ACCESSIBLE we use the one with the higher alignment.
+    // If one is OrtDevice::CPU and one is HOST_ACCESSIBLE memory, we use the HOST_ACCESSIBLE one as that would
+    // typically have a page alignment and would satisfy the alignment requirement of any other CPU consumers.
+    // If one device is not on CPU, we default to the one that is CPU.
     auto determine_device = [](const OrtDevice& output_device, const OrtDevice& suggested_device) -> OrtDevice {
-      const bool output_is_cpu = output_device.UsesCpuMemory();
+      const bool output_is_cpu = output_device.UsesCpuMemory();  // CPU or HOST_ACCESSIBLE memory
       const bool suggested_is_cpu = suggested_device.UsesCpuMemory();
       if (output_is_cpu && suggested_is_cpu) {
-        // if both are CPU pick based on alignment
-        if (output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) {
+        // if both are CPU or both are HOST_ACCESSIBLE pick based on alignment.
+        if ((output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) ||
+            (output_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE &&
+             suggested_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE)) {
           return (output_device.GetAlignment() >= suggested_device.GetAlignment()) ? output_device : suggested_device;
         } else {
           // prefer host accessible memory device allocator as it most likely has the higher alignment requirement

@@ -398,8 +398,7 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  if (tensor_location.device.Type() == OrtDevice::CPU ||
-      tensor_location.device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
+  if (tensor_location.device.UsesCpuMemory()) {
     tensor_metadata.device_type = "CPU";
     DumpCpuTensor(dump_options, tensor, tensor_metadata, tensor_statistics);
   } else {
