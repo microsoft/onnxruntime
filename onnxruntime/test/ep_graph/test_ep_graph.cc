@@ -513,6 +513,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
             ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_GRAPHS);
             break;
           }
+          default:
+            break;
         }
         attr_idx++;
       }
