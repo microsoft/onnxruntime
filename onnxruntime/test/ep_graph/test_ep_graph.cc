@@ -472,6 +472,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
         // In such cases, OpAttr_GetType will return a non-null status, and we simply skip the check here.
         OrtStatusPtr status = ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type);
         if (status != nullptr) {
+          Ort::GetApi().ReleaseStatus(status);
           continue;
         }
 
