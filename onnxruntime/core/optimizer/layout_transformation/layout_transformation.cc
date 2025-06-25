@@ -68,6 +68,7 @@ const std::unordered_set<std::string_view>& GetORTLayoutSensitiveOps() {
     // Define a static local string array so we can refer to the elements with string_views.
     static const std::string layout_sensitive_contrib_ops[]{
         MakeORTLayoutSensitiveOpId(kMSDomain, "FusedConv"),
+        MakeORTLayoutSensitiveOpId(kMSDomain, "GridSample"),
         MakeORTLayoutSensitiveOpId(kMSDomain, "QLinearAveragePool"),
         MakeORTLayoutSensitiveOpId(kMSDomain, "QLinearGlobalAveragePool"),
     };
