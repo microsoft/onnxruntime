@@ -14,7 +14,6 @@
 #include "core/framework/ortmemoryinfo.h"
 #include "cpu/cpu_ops.h"
 #include "cuda/cuda_ops.h"
-#include "rocm/rocm_ops.h"
 #include "onnxruntime_lite_custom_op.h"
 
 static const char* c_OpDomain = "test.customop";
