@@ -4,10 +4,11 @@
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
+#include <cuda_bf16.h>
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -23,14 +24,14 @@ constexpr int kWarpSize = GPU_WARP_SIZE;           // Typically 32
 constexpr uint8_t kDefaultZeroPoint = 128;         // Default zero point if not provided
 
 // --- Device Function: Accumulate 8 Elements (half precision) ---
-// Dequantizes 8 uint8_t values and accumulates the result with 8 half values from A.
-// sums += A * dequant(B_quant)
+// Dequantizes 8 uint8_t values and accumulates the result with 8 half values from A into float sums.
+// sums_f += A_h * dequant(B_quant)
 __device__ __forceinline__ void AccumulateEightElements8b(
     uint64_t values_quant,  // 8 packed uint8_t values from B
     half scale,             // Dequantization scale for this block
     uint8_t zp,             // Dequantization zero point for this block
     const half* a,          // Pointer to 8 half values from A
-    half* sums) {           // Pointer to 8 partial sums (half)
+    float* sums_f) {        // Pointer to 8 partial sums (float)
 
 #if (!defined(__CUDA_ARCH__) || __CUDA_ARCH__ >= 530)
   // --- Dequantization Setup ---
@@ -62,21 +63,33 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   half2 b_vec3 = __hmul2(diff_67, scale_h2);  // {b6, b7}
 
   // --- Load Input A (8 half values as 4 half2 vectors) ---
-  // Assumes 'a' is properly aligned for half2 reads.
   const half2* a_half2 = reinterpret_cast<const half2*>(a);
   half2 a_vec0 = a_half2[0];  // {a0, a1}
   half2 a_vec1 = a_half2[1];  // {a2, a3}
   half2 a_vec2 = a_half2[2];  // {a4, a5}
   half2 a_vec3 = a_half2[3];  // {a6, a7}
 
-  // --- Accumulate: sums += a * b_vec using half2 FMA ---
-  half2* sums_half2 = reinterpret_cast<half2*>(sums);
-  sums_half2[0] = __hfma2(a_vec0, b_vec0, sums_half2[0]);  // {s0+=a0*b0, s1+=a1*b1}
-  sums_half2[1] = __hfma2(a_vec1, b_vec1, sums_half2[1]);  // {s2+=a2*b2, s3+=a3*b3}
-  sums_half2[2] = __hfma2(a_vec2, b_vec2, sums_half2[2]);  // {s4+=a4*b4, s5+=a5*b5}
-  sums_half2[3] = __hfma2(a_vec3, b_vec3, sums_half2[3]);  // {s6+=a6*b6, s7+=a7*b7}
+  // Convert half2 inputs to float2 for fmaf operations on sums_f
+  float2 a_vec0_f = __half22float2(a_vec0);
+  float2 a_vec1_f = __half22float2(a_vec1);
+  float2 a_vec2_f = __half22float2(a_vec2);
+  float2 a_vec3_f = __half22float2(a_vec3);
 
-#else // older GPUs of compute capability < 5.3, which lacks native half support.
+  float2 b_vec0_f = __half22float2(b_vec0);
+  float2 b_vec1_f = __half22float2(b_vec1);
+  float2 b_vec2_f = __half22float2(b_vec2);
+  float2 b_vec3_f = __half22float2(b_vec3);
+
+  sums_f[0] = fmaf(a_vec0_f.x, b_vec0_f.x, sums_f[0]);
+  sums_f[1] = fmaf(a_vec0_f.y, b_vec0_f.y, sums_f[1]);
+  sums_f[2] = fmaf(a_vec1_f.x, b_vec1_f.x, sums_f[2]);
+  sums_f[3] = fmaf(a_vec1_f.y, b_vec1_f.y, sums_f[3]);
+  sums_f[4] = fmaf(a_vec2_f.x, b_vec2_f.x, sums_f[4]);
+  sums_f[5] = fmaf(a_vec2_f.y, b_vec2_f.y, sums_f[5]);
+  sums_f[6] = fmaf(a_vec3_f.x, b_vec3_f.x, sums_f[6]);
+  sums_f[7] = fmaf(a_vec3_f.y, b_vec3_f.y, sums_f[7]);
+
+#else  // older GPUs of compute capability < 5.3, which lacks native half support.
   float scale_f = __half2float(scale);
   float zp_f = static_cast<float>(zp);
 
@@ -90,23 +103,20 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 #pragma unroll
   for (int i = 0; i < 8; ++i) {
     float a_f = __half2float(a[i]);
-    float product_f = a_f * b_dequant[i];
-    // Convert back to half for partial sums. It is not ideal for performance.
-    half product_h = __float2half_rn(product_f);
-    sums[i] += product_h;
+    sums_f[i] = fmaf(a_f, b_dequant[i], sums_f[i]);
   }
 #endif
 }
 
 // --- Device Function: Accumulate 8 Elements (float precision) ---
 // Dequantizes 8 uint8_t values and accumulates the result with 8 float values from A.
-// sums += A * dequant(B_quant)
+// sums_f += A_f * dequant(B_quant)
 __device__ __forceinline__ void AccumulateEightElements8b(
     uint64_t values_quant,  // 8 packed uint8_t values from B
     float scale,            // Dequantization scale for this block
     uint8_t zp,             // Dequantization zero point for this block
     const float* a,         // Pointer to 8 float values from A
-    float* sums) {          // Pointer to 8 partial sums (float)
+    float* sums_f) {        // Pointer to 8 partial sums (float)
 
   // Load A using float4 for potentially better memory bandwidth
   float4 a_vec_0 = *(reinterpret_cast<const float4*>(a));
@@ -125,14 +135,46 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   }
 
   // Accumulate using fmaf (fused multiply-add)
-  sums[0] = fmaf(v[0], a_vec_0.x, sums[0]);
-  sums[1] = fmaf(v[1], a_vec_0.y, sums[1]);
-  sums[2] = fmaf(v[2], a_vec_0.z, sums[2]);
-  sums[3] = fmaf(v[3], a_vec_0.w, sums[3]);
-  sums[4] = fmaf(v[4], a_vec_1.x, sums[4]);
-  sums[5] = fmaf(v[5], a_vec_1.y, sums[5]);
-  sums[6] = fmaf(v[6], a_vec_1.z, sums[6]);
-  sums[7] = fmaf(v[7], a_vec_1.w, sums[7]);
+  sums_f[0] = fmaf(v[0], a_vec_0.x, sums_f[0]);
+  sums_f[1] = fmaf(v[1], a_vec_0.y, sums_f[1]);
+  sums_f[2] = fmaf(v[2], a_vec_0.z, sums_f[2]);
+  sums_f[3] = fmaf(v[3], a_vec_0.w, sums_f[3]);
+  sums_f[4] = fmaf(v[4], a_vec_1.x, sums_f[4]);
+  sums_f[5] = fmaf(v[5], a_vec_1.y, sums_f[5]);
+  sums_f[6] = fmaf(v[6], a_vec_1.z, sums_f[6]);
+  sums_f[7] = fmaf(v[7], a_vec_1.w, sums_f[7]);
+}
+
+
+// --- Device Function: Accumulate 8 Elements (bfloat16 precision) ---
+// Dequantizes 8 uint8_t values and accumulates the result with 8 nv_bfloat16 values from A.
+// sums_f += A_bf16 * dequant(B_quant)
+__device__ __forceinline__ void AccumulateEightElements8b(
+    uint64_t values_quant,   // 8 packed uint8_t values from B
+    nv_bfloat16 scale,     // Dequantization scale for this block
+    uint8_t zp,              // Dequantization zero point for this block
+    const nv_bfloat16* a,  // Pointer to 8 nv_bfloat16 values from A
+    float* sums_f) {         // Pointer to 8 partial sums (float)
+#if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
+  float scale_f = __bfloat162float(scale);
+  float zp_f = static_cast<float>(zp);
+
+  float zp_adjust = -scale_f * zp_f;
+
+  float a_f[8];
+  float b_dequant_f[8];
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    a_f[i] = __bfloat162float(a[i]);
+    uint8_t q_val = (values_quant >> (i * 8)) & 0xFF;
+    b_dequant_f[i] = static_cast<float>(q_val) * scale_f + zp_adjust;
+  }
+
+#pragma unroll
+  for (int i = 0; i < 8; ++i) {
+    sums_f[i] = fmaf(a_f[i], b_dequant_f[i], sums_f[i]);
+  }
+#endif
 }
 
 // --- CUDA Kernel: MatMulFloat8bKernel (Optimized for m=1) ---
@@ -140,7 +182,7 @@ __device__ __forceinline__ void AccumulateEightElements8b(
 // B(K, N) is quantized with 8 bits and block_size bs, stored as [N, K/bs, bs]
 //
 // Template Parameters:
-//   T: Data type for A and C (float or half)
+//   T: Data type for A and C (float, half, or nv_bfloat16)
 //   block_size: Quantization block size for B
 //   has_zero_point: Boolean indicating if zero points are provided
 //
@@ -159,7 +201,6 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
 
   // --- Thread Indexing ---
   const int n_block_id = blockIdx.x;  // Block column index [0, Ceil(N / kColsPerThreadBlock))
-  // m_id is implicitly 0 since blockDim.y is 1
 
   const int lane_id = threadIdx.x;  // Thread index in warp (0..31)
   const int warp_id = threadIdx.y;  // Warp index in block (0..kColsPerThreadBlock-1)
@@ -227,10 +268,8 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
   }
 
   // --- Accumulation ---
-  // Initialize partial sums for this thread to zero
-  // Note that partial sum uses original data type. It is a trade-off between performance and accuracy.
-  // For example, K=3072, each accumulates k / k_per_iter = 3072 / 256 = 12 elements.
-  T sums[kElementsPerThreadPerIteration] = {static_cast<T>(0.0f)};
+  // Initialize partial sums for this thread to zero. Always accumulate in float for precision.
+  float sums[kElementsPerThreadPerIteration] = {0.0f};
 
   constexpr int k_per_iter = kWarpSize * kElementsPerThreadPerIteration;  // Elements processed per warp per iteration (e.g., 32*8 = 256)
   int k_id = 0;                                                           // Current position along the K dimension
@@ -275,12 +314,12 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
 
   // --- Intra-Thread Reduction ---
   // Sum the kElementsPerThreadPerIteration partial sums within each thread.
-  // Here we use float to accumulate to avoid precision loss.
+  // Always accumulate in float to avoid precision loss.
   float total_sum_thread = 0.0f;
 
 #pragma unroll
   for (int i = 0; i < kElementsPerThreadPerIteration; ++i) {
-    total_sum_thread += static_cast<float>(sums[i]);
+    total_sum_thread += sums[i];
   }
 
   // --- Inter-Thread Reduction (Warp Level) ---
@@ -289,13 +328,12 @@ __global__ void __launch_bounds__(kWarpSize* kColsPerThreadBlock) MatMulFloat8bK
   // Allocate shared memory for CUB temporary storage (one per warp)
   __shared__ typename BlockReduce::TempStorage temp_storage[kColsPerThreadBlock];
 
-  // Perform warp-level sum reduction. Use float in accumulation to avoid precision loss.
+  // Perform warp-level sum reduction.
   total_sum_thread = BlockReduce(temp_storage[warp_id]).Sum(total_sum_thread);
 
   // Lane 0 of each warp writes the final reduced sum to global memory
   if (lane_id == 0) {
     // Write result (cast back to T)
-    // Since m=1, output index is just n_id
     output[n_id] = static_cast<T>(total_sum_thread);
   }
 }
@@ -414,6 +452,20 @@ template bool TryMatMul8Bits<half>(
     const half* a_data,
     const uint8_t* b_data_quant,
     const half* scales_data,
+    const uint8_t* zero_points,
+    int m,
+    int n,
+    int k,
+    int block_size,
+    size_t shared_mem_per_block,
+    cudaStream_t stream);
+
+// Add template instantiation for nv_bfloat16
+template bool TryMatMul8Bits<nv_bfloat16>(
+    nv_bfloat16* output,
+    const nv_bfloat16* a_data,
+    const uint8_t* b_data_quant,
+    const nv_bfloat16* scales_data,
     const uint8_t* zero_points,
     int m,
     int n,
