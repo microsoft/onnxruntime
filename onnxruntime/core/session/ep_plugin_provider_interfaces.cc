@@ -419,11 +419,12 @@ std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::
   }
 
   // Ensure domain and op type strings are null-terminated.
-  const std::string node_domain_str = node_domain, node_op_type_str = node_op_type;
+  const std::string node_domain_str{node_domain}, node_op_type_str{node_op_type};
   int should_convert = -1;
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(
-      ort_ep_->ShouldConvertNodeLayoutToNhwc(ort_ep_.get(), node_domain_str, node_op_type_str, &should_convert)));
+      ort_ep_->ShouldConvertNodeLayoutToNhwc(ort_ep_.get(), node_domain_str.c_str(), node_op_type_str.c_str(),
+                                             &should_convert)));
 
   if (should_convert > 0) {
     return true;
