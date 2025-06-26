@@ -14,6 +14,7 @@
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/mlas/inc/mlas.h"
 #include "core/session/inference_session.h"
+#include "test/common/cuda_op_test_utils.h"
 #include "test/common/tensor_op_test_utils.h"
 #include "test/framework/test_utils.h"
 #include "test/optimizer/graph_transform_test_builder.h"
@@ -63,6 +64,12 @@ struct TestOptions8Bits {
 template <typename T1>
 void RunTest8Bits(const TestOptions8Bits& opts) {
   SCOPED_TRACE(opts);
+
+#ifdef USE_CUDA
+  if (opts.accuracy_level != 0) {
+    return;  // CUDA EP does not handle accuracy level, so only test one level to avoid unnecessary tests.
+  }
+#endif
 
   const int64_t M = opts.M,
                 K = opts.K,
@@ -140,8 +147,10 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   test.AddAttribute<int64_t>("accuracy_level", opts.accuracy_level);
   if constexpr (std::is_same<T1, float>::value) {
     test.AddInput<T1>("A", {M, K}, input0_fp32_vals, false);
-  } else {
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
     test.AddInput<T1>("A", {M, K}, FloatsToMLFloat16s(input0_fp32_vals), false);
+  } else if constexpr (std::is_same<T1, BFloat16>::value) {
+    test.AddInput<T1>("A", {M, K}, FloatsToBFloat16s(input0_fp32_vals), false);
   }
 
   int64_t k_blocks = (K + opts.block_size - 1) / opts.block_size;
@@ -149,8 +158,10 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 
   if constexpr (std::is_same<T1, float>::value) {
     test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, scales, true);
-  } else {
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
     test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToMLFloat16s(scales), true);
+  } else if constexpr (std::is_same<T1, BFloat16>::value) {
+    test.AddInput<T1>("scales", {N, static_cast<int64_t>(q_scale_size) / N}, FloatsToBFloat16s(scales), true);
   }
 
   if (opts.has_zero_point) {
@@ -165,8 +176,10 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
   if (bias.has_value()) {
     if constexpr (std::is_same<T1, float>::value) {
       test.AddInput<T1>("bias", bias_shape, *bias, true);
-    } else {
+    } else if constexpr (std::is_same<T1, MLFloat16>::value) {
       test.AddInput<T1>("bias", bias_shape, FloatsToMLFloat16s(*bias), true);
+    } else if constexpr (std::is_same<T1, BFloat16>::value) {
+      test.AddInput<T1>("bias", bias_shape, FloatsToBFloat16s(*bias), true);
     }
   } else {
     test.AddOptionalInputEdge<T1>();
@@ -174,8 +187,10 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 
   if constexpr (std::is_same<T1, float>::value) {
     test.AddOutput<T1>("Y", {M, N}, expected_vals);
-  } else {
+  } else if constexpr (std::is_same<T1, MLFloat16>::value) {
     test.AddOutput<T1>("Y", {M, N}, FloatsToMLFloat16s(expected_vals));
+  } else if constexpr (std::is_same<T1, BFloat16>::value) {
+    test.AddOutput<T1>("Y", {M, N}, FloatsToBFloat16s(expected_vals));
   }
 
   if (opts.output_abs_error.has_value()) {
@@ -207,7 +222,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
 #endif
 }
 
-template <typename AType, int M, int N, int K, int block_size, int accuracy_level>
+template <typename AType, int M, int N, int K, int block_size, int accuracy_level = 0>
 void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   TestOptions8Bits base_opts{};
   base_opts.M = M, base_opts.N = N, base_opts.K = K;
@@ -324,7 +339,7 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 1>();
 }
 
-#if defined(USE_CUDA) || defined(USE_WEBGPU)
+#if defined(USE_WEBGPU)
 TEST(MatMulNBits, Float16_8b_AccuracyLevel4) {
   constexpr float abs_error = 0.055f;
   constexpr float rel_error = 0.02f;
@@ -342,10 +357,37 @@ TEST(MatMulNBits, Fp16_Int8_Cuda) {
 
   ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
 
-  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 64, 4>(abs_error, rel_error);
-  TestMatMul8BitsTyped<MLFloat16, 32, 512, 512, 64, 4>(abs_error, rel_error);
-  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 128, 4>(abs_error, rel_error);
-  TestMatMul8BitsTyped<MLFloat16, 32, 1024, 1024, 128, 4>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 32, 512, 512, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 1, 256, 256, 128>(abs_error, rel_error);
+  TestMatMul8BitsTyped<MLFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
+}
+
+TEST(MatMulNBits, BFloat16_8bits) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 8-bit MatMul tests on CUDA < 8.0";
+  }
+
+  constexpr float abs_error = 0.055f;
+  constexpr float rel_error = 0.02f;
+  TestMatMul8BitsTyped<BFloat16, 1, 4, 32, 16>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 1, 64, 32, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 100, 128, 128, 32>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 199, 40, 576, 32>(abs_error, rel_error);
+}
+
+TEST(MatMulNBits, BFloat16_Int8_Gemm_Cuda) {
+  if (!HasCudaEnvironment(800)) {
+    GTEST_SKIP() << "Skipping BFloat16 8-bit MatMul tests on CUDA < 8.0";
+  }
+
+  ScopedEnvironmentVariables scoped_env_vars{EnvVarMap{{"ORT_FPA_INTB_GEMM", "1"}}};
+  constexpr float abs_error = 0.5f;
+  constexpr float rel_error = 0.05f;
+  TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 32, 512, 512, 64>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 1, 256, 256, 128>(abs_error, rel_error);
+  TestMatMul8BitsTyped<BFloat16, 32, 1024, 1024, 128>(abs_error, rel_error);
 }
 #endif
 
