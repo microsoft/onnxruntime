@@ -834,7 +834,6 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
 // Load model from memory
 // Without setting the session option "ep.context_model_external_initializers_file_name"
 // so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
-// There is an issue that a temp empty external file created which cause problem.
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
   EpCtxCpuNodeWithExternalIniFileTestBody(0, false, true);
 }
