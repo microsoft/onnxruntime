@@ -53,7 +53,7 @@ __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
   int cache_offset;
 
   // position_ids_format == 0 means position_ids is nullptr
-  // position_ids_format == 1 means position_ids is a 2D array of size
+  // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
   if (position_ids_format == 0) {
     cache_offset = (b * sequence_length + s) * half_rotary_embedding_dim;
   } else {
