@@ -204,8 +204,8 @@ diff --git a/onnx/backend/test/case/node/cast.py b/onnx/backend/test/case/node/c
 index 9696373920d72e782948cf9b5cf137983d229814..226f57eee4701dc8fefbf5d64983385b077bc80e 100644
 --- a/onnx/backend/test/case/node/cast.py
 +++ b/onnx/backend/test/case/node/cast.py
-@@ -59,10 +59,11 @@ class Cast(Base):
-         test_cases = [
+@@ -59,10 +59,11 @@
+             ("FLOAT8E5M2FNUZ", "FLOAT16"),
 -            ("FLOAT", "UINT4"),
 -            ("FLOAT16", "UINT4"),
 -            ("FLOAT", "INT4"),
@@ -227,3 +227,4 @@ index 9696373920d72e782948cf9b5cf137983d229814..226f57eee4701dc8fefbf5d64983385b
 +            # ("INT4", "FLOAT"),
 +            # ("INT4", "FLOAT16"),
 +            # ("INT4", "INT8"),
+             ("FLOAT4E2M1", "FLOAT"),
