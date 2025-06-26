@@ -426,10 +426,10 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
 EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
 
-// Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(*graph_viewer.get()), model_(std::move(model)), graph_viewer_from_graph_in_model_(std::move(graph_viewer)) {}
 
+Status EpGraph::GreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
@@ -581,6 +581,21 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
   result = std::move(ep_graph);
 
   return Status::OK();
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(std::unique_ptr<GraphViewer> graph_viewer_in_model, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto& graph_viewer = *graph_viewer_in_model.get();
+  auto ep_graph = std::make_unique<EpGraph>(std::move(graph_viewer_in_model), std::move(model), PrivateTag{});
+
+  return GreateImpl(std::move(ep_graph), graph_viewer, result);
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+  
+  return GreateImpl(std::move(ep_graph), graph_viewer, result);
 }
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }

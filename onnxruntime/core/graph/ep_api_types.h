@@ -17,6 +17,7 @@
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
 #include "core/graph/graph_viewer.h"
+#include "core/graph/model.h"
 
 namespace onnxruntime {
 struct EpGraph;
@@ -226,6 +227,7 @@ struct EpGraph : public OrtGraph {
 
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag);
+  EpGraph(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
@@ -234,6 +236,18 @@ struct EpGraph : public OrtGraph {
   /// <param name="result"></param>
   /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
+  /// <summary>
+  /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// There is a case where the EpGraph instance needs to take the ownership of the GraphViewer instance as well as the Model associated with it.
+  /// </summary>
+  /// <param name="graph_viewer"></param>
+  /// <param name="model"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status Create(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result);
+
+  static Status GreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -289,6 +303,9 @@ struct EpGraph : public OrtGraph {
  private:
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
+
+  std::unique_ptr<Model> model_ = nullptr;
+  std::unique_ptr<GraphViewer> graph_viewer_from_graph_in_model_ = nullptr;
 
   std::vector<std::unique_ptr<EpNode>> nodes_;
   IndexToEpNodeMap index_to_ep_node_;
