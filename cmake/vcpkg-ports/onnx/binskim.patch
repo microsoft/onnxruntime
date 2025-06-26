@@ -228,3 +228,13 @@ index 9696373920d72e782948cf9b5cf137983d229814..226f57eee4701dc8fefbf5d64983385b
 +            # ("INT4", "FLOAT16"),
 +            # ("INT4", "INT8"),
              ("FLOAT4E2M1", "FLOAT"),
+@@ -232,7 +233,8 @@
+                 expected_tensor = make_tensor(
+                     "x", getattr(TensorProto, to_type), [3, 5], expected.tolist()
+                 )
+                 output = expected_tensor
+-            elif from_type in ("UINT4", "INT4") or to_type in ("UINT4", "INT4"):
++            # Skipped until onnxruntime/cmake/external/onnx points to a version of onnx which includes @onnx/onnx/pull/7074
++            elif False and (from_type in ("UINT4", "INT4") or to_type in ("UINT4", "INT4")):
+                 np_fp32 = np.arange(-9, 16).astype(np.float32)
+                 input_shape = (5, 5)
