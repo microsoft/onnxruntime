@@ -146,6 +146,35 @@ template void launch_scaled_zero_point_kernel<true, half, uint8_t>(
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
+template void launch_transpose_scale_kernel<__nv_bfloat16>(
+    cudaStream_t stream,
+    const __nv_bfloat16* scale,
+    __nv_bfloat16* transposed_scale,
+    int n, int k_blocks);
+
+template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, __nv_bfloat16>(
+    cudaStream_t stream,
+    const __nv_bfloat16* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+// zero point is 4 bits packed.
+template void launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+
 // CUDA kernel to unpack uint4, transpose, and pack into int8 directly
 __global__ void unpack_transpose_pack_uint4_to_int8_kernel_v2(
     const unsigned char* __restrict__ packed_weight,
