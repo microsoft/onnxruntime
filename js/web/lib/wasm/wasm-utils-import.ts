@@ -214,7 +214,9 @@ const embeddedWasmModule: EmscriptenModuleFactory<OrtWasmModule> | undefined =
       require(
         !BUILD_DEFS.DISABLE_JSEP
           ? '../../dist/ort-wasm-simd-threaded.jsep.mjs'
-          : '../../dist/ort-wasm-simd-threaded.mjs',
+          : !BUILD_DEFS.DISABLE_WEBGPU
+            ? '../../dist/ort-wasm-simd-threaded.asyncify.mjs'
+            : '../../dist/ort-wasm-simd-threaded.mjs',
       ).default
     : undefined;
 
@@ -276,7 +278,9 @@ export const importWasmModule = async (
   } else {
     const wasmModuleFilename = !BUILD_DEFS.DISABLE_JSEP
       ? 'ort-wasm-simd-threaded.jsep.mjs'
-      : 'ort-wasm-simd-threaded.mjs';
+      : !BUILD_DEFS.DISABLE_WEBGPU
+        ? 'ort-wasm-simd-threaded.asyncify.mjs'
+        : 'ort-wasm-simd-threaded.mjs';
     const wasmModuleUrl = urlOverride ?? normalizeUrl(wasmModuleFilename, prefixOverride);
     // need to preload if all of the following conditions are met:
     // 1. not in Node.js.

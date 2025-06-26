@@ -120,15 +120,13 @@ if (onnxruntime_USE_MIMALLOC)
   target_link_libraries(onnxruntime_common PRIVATE onnxruntime_mimalloc_shim)
 endif()
 
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
-  if (MSVC)
-    set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
-    target_sources(
-        onnxruntime_common
-        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
-  endif()
+if (MSVC)
+  set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
+  target_sources(
+      onnxruntime_common
+      INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
 endif()
+
 
 if (MSVC)
     set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)

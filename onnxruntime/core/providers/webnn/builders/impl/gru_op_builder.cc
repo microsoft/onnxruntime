@@ -143,8 +143,7 @@ bool GruOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer, const Node
 
     const auto& sequence_lens_tensor = *seq_initializer;
     std::vector<int32_t> sequence_lens;
-    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, logger)) {
-      LOGS(logger, ERROR) << "Cannot read sequence lens tensor";
+    if (!ReadIntArrayFrom1DTensor(sequence_lens_tensor, sequence_lens, graph_viewer, logger)) {
       return false;
     }
     if (!std::all_of(sequence_lens.begin(), sequence_lens.end(),

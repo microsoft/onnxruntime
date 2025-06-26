@@ -79,6 +79,13 @@ def _parse_arguments():
         help="Model input name and desired static shape in comma seprated format, for example: 'input' 1,3,256,256",
     )
 
+    # Exclude initializer from input
+    parser.add_argument(
+        "--exclude_initializer_from_input",
+        action="store_true",
+        help="Whether to exclude initializer from input if model.ir_version >= 4",
+    )
+
     return parser.parse_args()
 
 
@@ -94,6 +101,7 @@ def qnn_preprocess_model(
     inputs_to_make_channel_last: list[str] | None = None,
     outputs_to_make_channel_last: list[str] | None = None,
     dynamic_input_shapes: list[tuple[str, str]] | None = None,
+    exclude_initializer_from_input: bool = False,
 ) -> bool:
     """Preprocess ONNX model for QNN.
 
@@ -118,6 +126,7 @@ def qnn_preprocess_model(
             Defaults to None.
         dynamic_input_shapes: A list of tuples specifying model input name to and its static shape in comma seprated
             format, for example: [('input', '1,3,256,256')]. Defaults to None.
+        exclude_initializer_from_input: A bool specifying whether to exclude initializer from input. Defaults to False.
 
     Returns:
         A bool indicating whether the model is modified.
@@ -134,6 +143,7 @@ def qnn_preprocess_model(
         inputs_to_make_channel_last=inputs_to_make_channel_last,
         outputs_to_make_channel_last=outputs_to_make_channel_last,
         dynamic_input_shapes=dynamic_input_shapes,
+        exclude_initializer_from_input=exclude_initializer_from_input,
     )
 
 
@@ -151,4 +161,5 @@ if __name__ == "__main__":
         inputs_to_make_channel_last=args.inputs_to_make_channel_last,
         outputs_to_make_channel_last=args.outputs_to_make_channel_last,
         dynamic_input_shapes=args.dynamic_input_shapes,
+        exclude_initializer_from_input=args.exclude_initializer_from_input,
     )

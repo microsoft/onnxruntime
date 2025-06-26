@@ -27,7 +27,7 @@ else()
 endif()
 
 # NB! Advancing Abseil version changes its internal namespace,
-# currently absl::lts_20240116 which affects abseil-cpp.natvis debugger
+# currently absl::lts_20250512 which affects abseil-cpp.natvis debugger
 # visualization file, that must be adjusted accordingly, unless we eliminate
 # that namespace at build time.
 onnxruntime_fetchcontent_declare(
@@ -36,7 +36,7 @@ onnxruntime_fetchcontent_declare(
     URL_HASH SHA1=${DEP_SHA1_abseil_cpp}
     EXCLUDE_FROM_ALL
     PATCH_COMMAND ${ABSL_PATCH_COMMAND}
-    FIND_PACKAGE_ARGS 20240722 NAMES absl
+    FIND_PACKAGE_ARGS 20250512 NAMES absl
 )
 
 onnxruntime_fetchcontent_makeavailable(abseil_cpp)

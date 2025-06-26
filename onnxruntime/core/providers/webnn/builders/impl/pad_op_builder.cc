@@ -83,16 +83,18 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto opset = node.SinceVersion();
   // From opset 11, pads, constant value and axes are inputs.
   if (opset >= 11) {
+    const auto& graph_viewer = model_builder.GetGraphViewer();
     ORT_RETURN_IF(input_defs.size() < 2, "Pads is required at opset ", opset);
     std::vector<int64_t> pads;
     const auto& pads_tensor = *initializers.at(input_defs[1]->Name());
-    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, logger), "Error while read pads tensor");
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(pads_tensor, pads, graph_viewer, logger),
+                      "Error while reading pads tensor");
 
     // Constant value and axes are optional. Make sure they are not empty.
     if (!GetTensorName(input_defs, 2).empty()) {
       const auto value_tensor = *initializers.at(input_defs[2]->Name());
       emscripten::val value = emscripten::val::object();
-      ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, logger), "Cannot read constant value");
+      ORT_RETURN_IF_NOT(ReadScalarTensorData(value_tensor, value, graph_viewer, logger), "Cannot read constant value");
       options.set("value", value);
     }
 
@@ -100,7 +102,8 @@ Status PadOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
       const auto input_rank = input_shape.size();
       std::vector<int64_t> axes;
       const auto& axes_tensor = *initializers.at(input_defs[3]->Name());
-      ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(axes_tensor, axes, logger), "Error while read axes tensor");
+      ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(axes_tensor, axes, graph_viewer, logger),
+                        "Error while reading axes tensor");
       std::vector<size_t> axes_index;
       std::transform(
           axes.begin(), axes.end(), std::back_inserter(axes_index),

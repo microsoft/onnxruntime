@@ -44,7 +44,7 @@ void sm90_dispatch_epilogue_schedules(ActivationType const* A, WeightType const*
                                       ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                       int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                                       cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   switch (gemm_config.epilogue_schedule) {
     case tkc::EpilogueScheduleType::AUTO:
       using EpilogueScheduleType = cute::conditional_t<size<0>(CTAShape{}) == Int<64>{},
@@ -100,7 +100,7 @@ void sm90_dispatch_mainloop_schedules(ActivationType const* A, WeightType const*
                                       ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                       int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                                       cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
 
   constexpr bool tile_shapes_supported = are_tile_shapes_supported<CTAShape, ClusterShape>();
 
@@ -133,7 +133,7 @@ void sm90_dispatch_gemm_config(ActivationType const* A, WeightType const* B, Sca
                                ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                int k, int const group_size, tkc::CutlassGemmConfig gemm_config, char* workspace, size_t workspace_bytes,
                                cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   switch (gemm_config.cluster_shape) {
     case tkc::ClusterShape::ClusterShape_1x1x1:
       sm90_dispatch_mainloop_schedules<ActivationType, WeightType, ScaleZeroType, BiasType, OutputType, QuantOp,
@@ -167,7 +167,7 @@ void sm90_dispatch_gemm_to_cutlass(ActivationType const* A, WeightType const* B,
                                    ScaleZeroType const* weight_zero_points, BiasType const* biases, float const alpha, OutputType* C, int m, int n,
                                    int k, int const group_size, char* workspace, size_t workspace_bytes, tkc::CutlassGemmConfig gemm_config,
                                    cudaStream_t stream, int* occupancy = nullptr) {
-  ORT_LLM_LOG_DEBUG(__PRETTY_FUNCTION__);
+  ORT_LLM_LOG_ENTRY();
   // Note that SIMT configs are omitted here since they are not supported for fpA_intB.
   // We also only instantiate configs here where threadblockShapeM == warpShapeM since those usually perform the best
   // for mixed type gemms.

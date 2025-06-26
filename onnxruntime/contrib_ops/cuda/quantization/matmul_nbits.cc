@@ -15,6 +15,7 @@
 #include "contrib_ops/cuda/llm/fpA_intB_gemm/fpA_intB_gemm.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_adaptor.h"
 #include "contrib_ops/cuda/llm/fpA_intB_gemm_preprocessors.h"
+#include "contrib_ops/cuda/llm/common/logger.h"
 #include "contrib_ops/cpu/quantization/matmul_nbits_helper.h"
 
 constexpr int MatMulNBits_Input_B = 1;
@@ -72,6 +73,9 @@ void MatMulNBits<T>::InitGemmProfiler(int sm) {
   gemmProfiler_->setCudaKernelType(cuda_kernel_type, sm);
   gemmProfiler_->setQuant(nbits_, has_bias_, has_zero_points_);
   gemmProfiler_->setGroupSize(block_size_);
+
+  auto allocator = this->Info().GetAllocator(OrtMemType::OrtMemTypeDefault);
+  gemmProfiler_->setAllocator(allocator);
 }
 
 template <typename T>
@@ -158,6 +162,7 @@ Status MatMulNBits<T>::PrePack_B([[maybe_unused]] const Tensor& tensor,
         {static_cast<size_t>(k), static_cast<size_t>(n)},
         quant_type);
 
+    CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream));
     DUMP_TENSOR_INIT();
     DUMP_TENSOR_D("packed transposed_weight in GPU", packed_transposed_weight, k, n * nbits_ / 8);
     DUMP_TENSOR_D("preprocessed_weight", reinterpret_cast<uint8_t*>(preprocessed_weight), k, n * nbits_ / 8);
@@ -289,7 +294,10 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
     if (has_fpA_intB_gemm_) {
       auto const& bestTactic = gemmProfiler_->getBestConfig(m, gemmId_);
 
-      DUMP_STRING("Best tactic: m=", m, " n=", n, " k=", k, " group_size=", block_size_, bestTactic->toString());
+#if ORT_LLM_VERBOSE > 1
+      std::cout << "Best tactic for m=" << m << ", n=" << n << ", k=" << k << "group_size=" << block_size_
+                << " is: " << bestTactic->toString() << std::endl;
+#endif
 
       if (bestTactic->enableCudaKernel) {
         using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
@@ -330,31 +338,19 @@ Status MatMulNBits<T>::ComputeInternal(OpKernelContext* ctx) const {
   }
 
   if ((reorder_idx_data == nullptr) && (!zero_points || !zero_points->IsDataType<T>())) {
-    bool done = (nbits_ == 8) ? TryMatMul8Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream)
-                              : TryMatMul4Bits(
-                                    reinterpret_cast<CudaT*>(Y->MutableData<T>()),
-                                    reinterpret_cast<const CudaT*>(a_data),
-                                    blob_data,
-                                    reinterpret_cast<const CudaT*>(scales_data),
-                                    static_cast<const uint8_t*>(zero_points_data),
-                                    m,
-                                    n,
-                                    k,
-                                    SafeInt<int>(block_size_),
-                                    GetDeviceProp().sharedMemPerBlock,
-                                    stream);
-    if (done) {
+    if (TryMatMulNBits(
+            nbits_,
+            reinterpret_cast<CudaT*>(Y->MutableData<T>()),
+            reinterpret_cast<const CudaT*>(a_data),
+            blob_data,
+            reinterpret_cast<const CudaT*>(scales_data),
+            static_cast<const uint8_t*>(zero_points_data),
+            m,
+            n,
+            k,
+            SafeInt<int>(block_size_),
+            GetDeviceProp().sharedMemPerBlock,
+            stream)) {
       return Status::OK();
     }
   }

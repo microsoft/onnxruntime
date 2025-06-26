@@ -93,7 +93,7 @@ const setExecutionProviders = async (
         }
         break;
       case 'webgpu':
-        if (BUILD_DEFS.USE_WEBGPU_EP) {
+        if (!BUILD_DEFS.DISABLE_WEBGPU) {
           epName = 'WebGPU';
           let customDevice: GPUDevice | undefined;
 

@@ -151,6 +151,7 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
       if (!fs.existsSync(WASM_FOLDER)) {
         fs.mkdirSync(WASM_FOLDER);
       } else {
+        // TODO: revise artifacts download
         const filesToDelete = ['ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
         if (!folderName.endsWith('_webgpu')) {
           filesToDelete.push('ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm');

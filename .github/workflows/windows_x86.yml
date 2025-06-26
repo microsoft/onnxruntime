@@ -87,7 +87,7 @@ jobs:
       - name: Build and Test
         shell: pwsh
         run: |
-          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --use_vcpkg --use_vcpkg_ms_internal_asset_cache
+          python.exe "${{ github.workspace }}\tools\ci_build\build.py" --config RelWithDebInfo --build_dir "${{ github.workspace }}\build" --skip_submodule_sync --build_csharp --parallel --use_binskim_compliant_compile_flags --cmake_generator "Visual Studio 17 2022" --build_shared_lib --enable_onnx_tests --build_wheel --msbuild_extra_options "IncludeMobileTargets=false" --build_nuget --compile_no_warning_as_error --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           if ($LASTEXITCODE -ne 0) {
             exit $LASTEXITCODE
           }

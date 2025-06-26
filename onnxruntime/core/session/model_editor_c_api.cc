@@ -41,11 +41,11 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateValueInfo, _In_ const char* name, _
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "tensor_type_info cannot be null");
   }
 
-  auto vi = std::make_unique<OrtValueInfo>();
+  auto vi = std::make_unique<onnxruntime::ModelEditorValueInfo>();
   vi->name = name;
   vi->type_info = type_info->Clone();
 
-  *value_info = vi.release();
+  *value_info = vi.release()->ToExternal();
 
   return nullptr;
   API_IMPL_END
@@ -58,7 +58,7 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
                     _In_reads_(attribs_len) _Inout_opt_ OrtOpAttr** attributes, _In_opt_ size_t attribs_len,
                     _Outptr_ OrtNode** node) {
   API_IMPL_BEGIN
-  auto n = std::make_unique<OrtNode>();
+  auto n = std::make_unique<onnxruntime::ModelEditorNode>();
   n->operator_name = operator_name;
   n->domain_name = domain_name == kOnnxDomainAlias ? kOnnxDomain : domain_name;
   n->node_name = node_name;
@@ -83,35 +83,48 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateNode, const char* operator_name, co
     }
   }
 
-  *node = n.release();
+  *node = n.release()->ToExternal();
   return nullptr;
   API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtModelEditorAPI::CreateGraph, _Outptr_ OrtGraph** graph) {
   API_IMPL_BEGIN
-  auto g = std::make_unique<OrtGraph>();
+  auto g = std::make_unique<onnxruntime::ModelEditorGraph>();
 
   // do some reserves to reduce reallocation. if we had a hint about sizes upfront that would be optimal
   g->initializers.reserve(32);
   g->external_initializers.reserve(32);
   g->nodes.reserve(64);
 
-  *graph = g.release();
+  *graph = g.release()->ToExternal();
   return nullptr;
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(inputs_len) _In_ OrtValueInfo** inputs, _In_ size_t inputs_len) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
+
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
   graph->inputs.clear();
   for (size_t i = 0; i < inputs_len; ++i) {
     if (inputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "inputs cannot contain null entries");
     }
 
-    graph->inputs.push_back(std::unique_ptr<OrtValueInfo>(inputs[i]));  // take ownership
+    onnxruntime::ModelEditorValueInfo* input = onnxruntime::ModelEditorValueInfo::ToInternal(inputs[i]);
+    if (input == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
+    }
+
+    graph->inputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(input));  // take ownership
     inputs[i] = nullptr;
   }
 
@@ -119,16 +132,29 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphInputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* graph,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* ort_graph,
                     _In_reads_(outputs_len) _In_ OrtValueInfo** outputs, _In_ size_t outputs_len) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
+
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
   graph->outputs.clear();
   for (size_t i = 0; i < outputs_len; ++i) {
     if (outputs[i] == nullptr) {
       return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "outputs cannot contain null entries");
     }
 
-    graph->outputs.push_back(std::unique_ptr<OrtValueInfo>(outputs[i]));  // take ownership
+    onnxruntime::ModelEditorValueInfo* output = onnxruntime::ModelEditorValueInfo::ToInternal(outputs[i]);
+    if (output == nullptr) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Invalid OrtValueInfo variant for use in the OrtModelEditorApi");
+    }
+
+    graph->outputs.push_back(std::unique_ptr<onnxruntime::ModelEditorValueInfo>(output));  // take ownership
     outputs[i] = nullptr;
   }
 
@@ -136,9 +162,16 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::SetGraphOutputs, _In_ OrtGraph* graph,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* graph, _In_ const char* name,
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* ort_graph, _In_ const char* name,
                     _Inout_ OrtValue* tensor, bool data_is_external) {
   API_IMPL_BEGIN
+  onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
+
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
   if (!tensor->IsTensor()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Only Tensor is currently supported.");
   }
@@ -172,9 +205,24 @@ ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddInitializerToGraph, _In_ OrtGraph* gra
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* graph, _Inout_ OrtNode* node) {
+ORT_API_STATUS_IMPL(OrtModelEditorAPI::AddNodeToGraph, _In_ OrtGraph* ort_graph, _Inout_ OrtNode* ort_node) {
   API_IMPL_BEGIN
-  graph->nodes.push_back(std::unique_ptr<OrtNode>(node));  // take ownership
+  onnxruntime::ModelEditorGraph* graph = onnxruntime::ModelEditorGraph::ToInternal(ort_graph);
+
+  if (graph == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtGraph variant for use in the OrtModelEditorApi");
+  }
+
+  onnxruntime::ModelEditorNode* node = onnxruntime::ModelEditorNode::ToInternal(ort_node);
+
+  if (node == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Invalid OrtNode variant for use in the OrtModelEditorApi");
+  }
+
+  node->id = graph->nodes.size();
+  graph->nodes.push_back(std::unique_ptr<onnxruntime::ModelEditorNode>(node));  // take ownership
   return nullptr;
   API_IMPL_END
 }

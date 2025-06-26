@@ -428,7 +428,7 @@ export class WebGpuBackend {
             console.log(
               `[profiling] kernel "${kernelId}|${kernelType}|${kernelName}|${programName}" ${inputShapes}${
                 outputShapes
-              }execution time: ${endTime - startTime} ns`,
+              }start time: ${startTime} ns, execution time: ${endTime - startTime} ns`,
             );
           }
           TRACE('GPU', `${programName}::${startTimeU64}::${endTimeU64}`);

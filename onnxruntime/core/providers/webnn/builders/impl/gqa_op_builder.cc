@@ -392,7 +392,7 @@ bool GroupQueryAttentionOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_vi
 
   const auto total_sequence_length_tensor = *total_sequence_length_initializer;
   emscripten::val total_sequence_length = emscripten::val::undefined();
-  if (!ReadScalarTensorData(total_sequence_length_tensor, total_sequence_length, logger)) {
+  if (!ReadScalarTensorData(total_sequence_length_tensor, total_sequence_length, graph_viewer, logger)) {
     return false;
   }
 

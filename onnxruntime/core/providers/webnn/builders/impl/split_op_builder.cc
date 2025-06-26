@@ -66,7 +66,8 @@ Status SplitOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   } else if (GetTensorName(input_defs, 1).size()) {
     const auto& initializers(model_builder.GetInitializerTensors());
     const auto& split_tensor = *initializers.at(input_defs[1]->Name());
-    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(split_tensor, splits, logger), "Cannot get input for split.");
+    ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(split_tensor, splits, model_builder.GetGraphViewer(), logger),
+                      "Cannot get input for split.");
   } else if (!helper.HasAttr("split")) {
     split_count = node.OutputDefs().size();
   }
@@ -125,8 +126,7 @@ bool SplitOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
       LOGS(logger, VERBOSE) << "The type of tensor's element data must be INT64.";
       return false;
     }
-    if (!ReadIntArrayFrom1DTensor(split_tensor, split, logger)) {
-      LOGS(logger, VERBOSE) << "Cannot get split.";
+    if (!ReadIntArrayFrom1DTensor(split_tensor, split, graph_viewer, logger)) {
       return false;
     }
   } else {

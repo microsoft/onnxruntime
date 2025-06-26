@@ -44,7 +44,8 @@ Status ExpandOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
   const auto& initializers(model_builder.GetInitializerTensors());
   const auto& shape_tensor = *initializers.at(input_defs[1]->Name());
   std::vector<int64_t> new_shape;
-  ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(shape_tensor, new_shape, logger), "Cannot get shape.");
+  ORT_RETURN_IF_NOT(ReadIntArrayFrom1DTensor(shape_tensor, new_shape, model_builder.GetGraphViewer(), logger),
+                    "Cannot get shape.");
   emscripten::val input = model_builder.GetOperand(input_defs[0]->Name());
   std::vector<int64_t> input_shape;
   ORT_RETURN_IF_NOT(GetShape(*input_defs[0], input_shape, logger), "Cannot get input's shape.");
@@ -84,8 +85,7 @@ bool ExpandOpBuilder::IsOpSupportedImpl(const GraphViewer& graph_viewer,
   }
 
   std::vector<int64_t> new_shape;
-  if (!ReadIntArrayFrom1DTensor(shape_tensor, new_shape, logger)) {
-    LOGS(logger, VERBOSE) << "Cannot get shape.";
+  if (!ReadIntArrayFrom1DTensor(shape_tensor, new_shape, graph_viewer, logger)) {
     return false;
   }
   if (std::any_of(new_shape.begin(), new_shape.end(), [](int64_t dimension) { return dimension == 0; })) {
