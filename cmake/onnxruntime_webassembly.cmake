@@ -224,7 +224,11 @@ else()
   if (onnxruntime_USE_WEBGPU)
     string(APPEND EXPORTED_FUNCTIONS ",_wgpuBufferRelease,_wgpuCreateInstance")
   endif()
-  
+  set(MAXIMUM_MEMORY "4294967296")
+  target_link_options(onnxruntime_webassembly PRIVATE
+    "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
+  )
+  list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
