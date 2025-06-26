@@ -184,6 +184,7 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_XNNPACK}
     ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
+    ${PROVIDERS_OPENCL}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)

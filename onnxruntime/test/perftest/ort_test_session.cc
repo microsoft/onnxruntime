@@ -210,6 +210,52 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
 #else
     ORT_THROW("NV TensorRT RTX is not supported in this build\n");
 #endif
+  } else if (provider_name_ == onnxruntime::kOpenCLExecutionProvider) {
+#ifdef USE_OPENCL
+    int use_fp16 = 0;
+    int auto_tuning_level = 0;
+
+    #ifdef _MSC_VER
+    std::string ov_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+    #else
+    std::string ov_string = performance_test_config.run_config.ep_runtime_config_string;
+    #endif
+    std::istringstream ss(ov_string);
+    std::string token;
+    while (ss >> token) {
+      if (token == "") {
+        continue;
+      }
+      auto pos = token.find("|");
+      if (pos == std::string::npos || pos == 0 || pos == token.length()) {
+        ORT_THROW("[ERROR] [OpenCL] Use a '|' to separate the key and value for the run-time option you are trying to use.\n");
+      }
+
+      auto key = token.substr(0, pos);
+      auto value = token.substr(pos + 1);
+      if (key == "use_fp16") {
+        if (value == "true" || value == "True") {
+          use_fp16 = 1;
+        } else if (value == "false" || value == "False") {
+          use_fp16 = 0;
+        } else {
+          ORT_THROW("[ERROR] [OpenCL] The value for the key 'use_fp16' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      }
+      else if (key == "auto_tune") {
+        if (value .size()== 1 && '0' <= value[0] && value[0] <= '9') {
+          auto_tuning_level = std::stol(value);
+        } else {
+          ORT_THROW("[ERROR] [OpenCL] The value for the key 'enable_auto_tune' should be a boolean i.e. true or false. Default value is false.\n");
+        }
+      }
+
+    }
+
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenCL(session_options, use_fp16, auto_tuning_level));
+#else
+    ORT_THROW("OpenCL is not supported in this build\n");
+#endif
   } else if (provider_name_ == onnxruntime::kQnnExecutionProvider) {
 #ifdef USE_QNN
 #ifdef _MSC_VER
@@ -373,6 +419,12 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
     Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_VSINPU(session_options));
 #else
     ORT_THROW("VSINPU is not supported in this build\n");
+#endif
+  } else if (provider_name_ == onnxruntime::kOpenCLExecutionProvider) {
+#ifdef USE_OPENCL
+    Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_OpenCL(session_options, 0, 0));
+#else
+    ORT_THROW("OpenCL is not supported in this build\n");
 #endif
   } else if (provider_name_ == onnxruntime::kCoreMLExecutionProvider) {
 #ifdef __APPLE__

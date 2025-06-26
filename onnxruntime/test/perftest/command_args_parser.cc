@@ -152,6 +152,10 @@ namespace perftest {
       "\t    [SNPE only] [buffer_type]: options: 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. default: ITENSOR'. \n"
       "\t    [SNPE only] [enable_init_cache]: enable SNPE init caching feature, set to 1 to enabled it. Disabled by default. \n"
       "\t    [Example] [For SNPE EP] -e snpe -i \"runtime|CPU priority|low\" \n\n"
+      "\t    [OPENCL only] [use_fp16]: Use fp16 relaxation in opencl EP..\n"
+      "\t    [OPENCL only] [auto_tune]: auto tuning local-size in OPENCL EP.\n"
+      "\t [Usage]: -e <provider_name> -i '<key1> <key2>'\n\n"
+      "\t [Example] [For OPENCL EP] -e opencl -i \" use_fp16 use_fp16  \"\n"
       "\n"
       "\t-T [Set intra op thread affinities]: Specify intra op thread affinity string\n"
       "\t [Example]: -T 1,2;3,4;5,6 or -T 1-2;3-4;5-6 \n"
@@ -170,8 +174,10 @@ namespace perftest {
 }
 #ifdef _WIN32
 static const ORTCHAR_T* overrideDelimiter = L":";
+static const ORTCHAR_T* extraDelimiter = L" ";
 #else
 static const ORTCHAR_T* overrideDelimiter = ":";
+static const ORTCHAR_T* extraDelimiter = " ";
 #endif
 static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier, int64_t& override_val) {
   std::basic_string<ORTCHAR_T> free_dim_str(optarg);
@@ -254,6 +260,8 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
           test_config.machine_config.provider_type_name = onnxruntime::kVSINPUExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("coreml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kCoreMLExecutionProvider;
+        } else if (!CompareCString(optarg, ORT_TSTR("opencl"))) {
+          test_config.machine_config.provider_type_name = onnxruntime::kOpenCLExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("dml"))) {
           test_config.machine_config.provider_type_name = onnxruntime::kDmlExecutionProvider;
         } else if (!CompareCString(optarg, ORT_TSTR("acl"))) {
@@ -366,7 +374,7 @@ static bool ParseDimensionOverride(std::basic_string<ORTCHAR_T>& dim_identifier,
         test_config.run_config.set_denormal_as_zero = true;
         break;
       case 'i':
-        test_config.run_config.ep_runtime_config_string = optarg;
+        test_config.run_config.ep_runtime_config_string.append(std::basic_string<ORTCHAR_T>(extraDelimiter) + optarg);
         break;
       case 'T':
         test_config.run_config.intra_op_thread_affinities = ToUTF8String(optarg);
