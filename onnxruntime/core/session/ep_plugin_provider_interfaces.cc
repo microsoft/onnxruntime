@@ -271,8 +271,8 @@ static Status ConvertEpContextNodes(const std::string& ep_name, const std::vecto
 #endif  // !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD) || defined(ORT_MINIMAL_BUILD_CUSTOM_OPS)
 }
 
-common::Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                                                std::vector<NodeComputeInfo>& node_compute_infos) {
+Status PluginExecutionProvider::Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                                        std::vector<NodeComputeInfo>& node_compute_infos) {
   const logging::Logger* logger = GetLogger();
   const size_t num_graphs = fused_nodes_and_graphs.size();
   std::vector<std::unique_ptr<EpGraph>> api_graphs_holder;
@@ -388,6 +388,57 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   }
 
   return result;
+}
+
+DataLayout PluginExecutionProvider::GetPreferredLayout() const {
+  if (ort_ep_->GetPreferredDataLayout == nullptr) {
+    return Base::GetPreferredLayout();
+  }
+
+  OrtEpDataLayout api_data_layout{};
+
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetPreferredDataLayout(ort_ep_.get(), &api_data_layout)));
+
+  switch (api_data_layout) {
+    case OrtEpDataLayout::OrtEpDataLayout_NCHW:
+      return DataLayout::NCHW;
+
+    case OrtEpDataLayout::OrtEpDataLayout_NHWC:
+      return DataLayout::NHWC;
+
+    default:
+      ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",
+                static_cast<int>(api_data_layout));
+  }
+}
+
+Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
+  if (ort_ep_->OnRunStart == nullptr) {
+    return Base::OnRunStart(run_options);
+  }
+
+  return ToStatusAndRelease(ort_ep_->OnRunStart(ort_ep_.get(), &run_options));
+}
+
+Status PluginExecutionProvider::OnRunEnd(bool sync_stream, const RunOptions& run_options) {
+  if (ort_ep_->OnRunEnd == nullptr) {
+    return Base::OnRunEnd(sync_stream, run_options);
+  }
+
+  return ToStatusAndRelease(ort_ep_->OnRunEnd(ort_ep_.get(), &run_options, sync_stream));
+}
+
+Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const> keys,
+                                                    gsl::span<const char* const> values) {
+  if (ort_ep_->SetDynamicOptions == nullptr) {
+    return Base::SetEpDynamicOptions(keys, values);
+  }
+
+  ORT_RETURN_IF_NOT(keys.size() == values.size(),
+                    "The number of keys (", keys.size(), ") and number of values (", values.size(),
+                    ") must be the same.");
+
+  return ToStatusAndRelease(ort_ep_->SetDynamicOptions(ort_ep_.get(), keys.data(), values.data(), keys.size()));
 }
 
 }  // namespace onnxruntime

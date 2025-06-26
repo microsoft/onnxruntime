@@ -59,6 +59,9 @@ using UniqueOrtEp = std::unique_ptr<OrtEp, OrtEpDeleter>;
 /// IExecutionProvider that wraps an instance of OrtEp.
 /// </summary>
 class PluginExecutionProvider : public IExecutionProvider {
+ private:
+  using Base = IExecutionProvider;
+
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options);
   ~PluginExecutionProvider();
@@ -69,8 +72,17 @@ class PluginExecutionProvider : public IExecutionProvider {
                 const GraphOptimizerRegistry& graph_optimizer_registry,
                 IResourceAccountant* resource_accountant = nullptr) const override;
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
+
+  DataLayout GetPreferredLayout() const override;
+
+  Status OnRunStart(const RunOptions& run_options) override;
+
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
+
+  Status SetEpDynamicOptions(gsl::span<const char* const> keys,
+                             gsl::span<const char* const> values) override;
 
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
