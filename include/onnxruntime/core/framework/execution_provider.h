@@ -64,7 +64,6 @@ using RunOptions = ::OrtRunOptions;
 enum class DataLayout {
   NCHW,
   NHWC,
-  NCHWC,
 };
 
 class IExecutionProvider {
