@@ -136,6 +136,15 @@ struct OrtEpApi {
 };
 
 /**
+ * \brief The data layout type that is preferred by an EP.
+ * \since Version 1.23.
+ */
+typedef enum OrtEpDataLayout {
+  OrtEpDataLayout_NCHW = 0,
+  OrtEpDataLayout_NHWC,
+} OrtEpDataLayout;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -232,6 +241,73 @@ struct OrtEp {
   void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
+
+  /** \brief Get the EP's preferred data layout.
+   *
+   * \note Implementation of this function is optional.
+   *       If not implemented, ORT will assume that this EP prefers the data layout `OrtEpDataLayout::NCHW`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] preferred_data_layout The EP's preferred data layout.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
+                                                   _Out_ OrtEpDataLayout* preferred_data_layout);
+
+  /** \brief Set dynamic options on this EP.
+   *
+   * Dynamic options can be set by the user at any time after session creation with `OrtApi::SetEpDynamicOptions()`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] option_keys The dynamic option keys.
+   * \param[in] option_values The dynamic option values.
+   * \param[in] num_options The number of dynamic options.
+   *
+   * \note Implementation of this function is optional.
+   *       An EP should only implement this if it needs to handle any dynamic options.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* SetDynamicOptions)(_In_ OrtEp* this_ptr,
+                                              _In_reads_(num_options) const char* const* option_keys,
+                                              _In_reads_(num_options) const char* const* option_values,
+                                              _In_ size_t num_options);
+
+  /** \brief Called by ORT to notify the EP of the start of a run.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] run_options The run options for this run.
+   *
+   * \note Implementation of this function is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* OnRunStart)(_In_ OrtEp* this_ptr,
+                                       _In_ const OrtRunOptions* run_options);
+
+  /** \brief Called by ORT to notify the EP of the end of a run.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] run_options The run options for this run.
+   * \param[in] sync_stream Whether any associated stream should be synchronized during this call.
+   *                        Only applicable if there is such a stream.
+   *
+   * \note Implementation of this function is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* OnRunEnd)(_In_ OrtEp* this_ptr,
+                                     _In_ const OrtRunOptions* run_options,
+                                     _In_ bool sync_stream);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
