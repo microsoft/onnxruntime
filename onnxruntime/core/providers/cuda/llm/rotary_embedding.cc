@@ -58,11 +58,15 @@ Status RotaryEmbedding<T>::ComputeInternal(OpKernelContext* context) const {
   // Launch rotary embedding kernel
   typedef typename ToCudaType<T>::MappedType CudaT;
   auto& device_prop = GetDeviceProp();
+
+  // Handle optional position_ids - pass nullptr if position_ids is null
+  const int64_t* position_ids_data = (position_ids != nullptr) ? position_ids->Data<int64_t>() : nullptr;
+
   return LaunchRotaryEmbeddingKernel<CudaT>(
       Stream(context),
       reinterpret_cast<CudaT*>(output->template MutableData<T>()),
       reinterpret_cast<const CudaT*>(input->template Data<T>()),
-      position_ids->Data<int64_t>(),
+      position_ids_data,
       reinterpret_cast<const CudaT*>(cos_cache->template Data<T>()),
       reinterpret_cast<const CudaT*>(sin_cache->template Data<T>()),
       parameters.batch_size,

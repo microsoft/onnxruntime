@@ -19,8 +19,8 @@ namespace cuda {
 template <typename T>
 __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
                                     const T* input,               // BxSxNxH
-                                    const T* cos_cache,           // Mx(H/2)
-                                    const T* sin_cache,           // Mx(H/2)
+                                    const T* cos_cache,           // BxSx(H/2) or Mx(H/2)
+                                    const T* sin_cache,           // BxSx(H/2) or Mx(H/2)
                                     const int64_t* position_ids,  // (0) or BxS
                                     const int sequence_length, const int num_heads, const int head_size,
                                     const int rotary_embedding_dim, const int position_ids_format,
@@ -135,7 +135,6 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   RotaryEmbeddingBSNH<<<grid, block, 0, stream>>>(output, input, cos_cache, sin_cache, position_ids, sequence_length,
                                                   num_heads, head_size, rotary_embedding_dim, position_ids_format,
                                                   interleaved, in_strides, out_strides);
-
   return CUDA_CALL(cudaGetLastError());
 }
 
