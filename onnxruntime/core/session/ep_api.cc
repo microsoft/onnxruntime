@@ -48,7 +48,8 @@ ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device) {
 }
 
 ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* ort_graph_support_info,
-                    _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes) {
+                    _In_reads_(num_nodes) const OrtNode* const* nodes, size_t num_nodes,
+                    _In_opt_ const OrtNodeFusionOptions* node_fusion_options) {
   API_IMPL_BEGIN
   if (ort_graph_support_info == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Must specify a valid OrtGraph instance");
@@ -59,7 +60,7 @@ ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInf
   }
 
   gsl::span<const OrtNode* const> nodes_span(nodes, nodes + num_nodes);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddNodesToFuse(nodes_span));
+  ORT_API_RETURN_IF_STATUS_NOT_OK(ort_graph_support_info->AddNodesToFuse(nodes_span, node_fusion_options));
   return nullptr;
   API_IMPL_END
 }

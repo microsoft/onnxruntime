@@ -785,7 +785,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _Inout_ OrtSession* sess,
   Status status;
 
   if (kv_len == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no imputs were passed");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no inputs were passed");
   } else {
     status = session->SetEpDynamicOptions(keys_span,
                                           values_span);
@@ -3560,6 +3560,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetImplicitInputs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
+
+    &OrtApis::GetRunConfigEntry,
 
     &OrtApis::EpDevice_MemoryInfo,
 

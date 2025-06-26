@@ -43,9 +43,12 @@ class ExampleEp : public OrtEp, public ApiPtrs {
   OrtStatus* CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes,
                                   /*out*/ gsl::span<OrtNode*> ep_context_nodes);
 
+  OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph);
+
   ExampleEpFactory& factory_;
   std::string name_;
   Config config_{};
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels_;
+  std::unordered_map<std::string, FloatInitializer> float_initializers_;
 };

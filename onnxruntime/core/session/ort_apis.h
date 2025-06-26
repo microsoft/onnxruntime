@@ -666,6 +666,9 @@ ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArr
 ORT_API_STATUS_IMPL(Node_GetParentGraph, _In_ const OrtNode* node,
                     _Outptr_result_maybenull_ const OrtGraph** parent_graph);
 
+ORT_API_STATUS_IMPL(GetRunConfigEntry, _In_ const OrtRunOptions* options,
+                    _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+
 ORT_API(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device);
 
 ORT_API_STATUS_IMPL(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
