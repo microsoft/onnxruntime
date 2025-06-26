@@ -174,7 +174,6 @@ template void launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
     __nv_bfloat16* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
-
 // CUDA kernel to unpack uint4, transpose, and pack into int8 directly
 __global__ void unpack_transpose_pack_uint4_to_int8_kernel_v2(
     const unsigned char* __restrict__ packed_weight,
