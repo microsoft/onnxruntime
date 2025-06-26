@@ -136,6 +136,15 @@ struct OrtEpApi {
 };
 
 /**
+ * \brief The data layout type that is preferred by an EP.
+ * \since Version 1.23.
+ */
+typedef enum OrtEpDataLayout {
+  OrtEpDataLayout_NCHW = 0,
+  OrtEpDataLayout_NHWC,
+} OrtEpDataLayout;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -182,6 +191,14 @@ struct OrtEp {
   /** \brief Compile OrtGraph instances assigned to the OrtEp. Implementer must set a OrtNodeComputeInfo instance
    * for each OrtGraph in order to define its computation function.
    *
+   * If the session is configured to generate a pre-compiled model, the execution provider must return EPContext nodes,
+   * as OrtNode instances, that ONNX Runtime uses to create a pre-compiled model, known as an "EPContext model".
+   * An EPContext model contains EPContext nodes. Each EPContext node encapsulates the pre-compiled binary data for a
+   * OrtGraph compiled for a specific execution provider. For more details about the EPContext design, refer to:
+   *  \htmlonly
+   *  <a href="https://onnxruntime.ai/docs/execution-providers/EP-Context-Design.html">EPContext design document.</a>
+   *  \endhtmlonly
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \param[in] graphs Array of `count` OrtGraph instances to compile. Each graph contains only the nodes for
    *                   which the execution provider indicated support. Nested subgraphs contained by a
@@ -190,9 +207,15 @@ struct OrtEp {
    *                        Each fused node is an OrtNode initialized with the intended fused node name and
    *                        input/output information.
    * \param[in] count The number of OrtGraph instances to compile.
-   * \param[inout] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
-   *                                  computation function. The implementer allocates the OrtNodeComputeInfo instances.
-   *                                  ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   * \param[out] node_compute_infos Array of `count` OrtNodeComputeInfo instances that define each OrtGraph instance's
+   *                                computation function. The implementer allocates the OrtNodeComputeInfo instances.
+   *                                ORT calls ReleaseNodeComputeInfos() to release multiple instances in a batch.
+   * \param[out] ep_context_nodes Output array of `count` OrtNode instances, each representing an EPContext
+   *                              node for a compiled OrtGraph. The execution provider must use
+   *                              OrtModelEditorApi::CreateNode to create the OrtNode instances. ONNX Runtime takes
+   *                              ownership of the OrtNode instances, so the execution provider must NOT call
+   *                              OrtApi::ReleaseNode. Should be ignored if the session is not configured to generate an
+   *                              EPContext model.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -204,7 +227,8 @@ struct OrtEp {
    */
   OrtStatus*(ORT_API_CALL* Compile)(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                     _In_ const OrtNode** fused_nodes, _In_ size_t count,
-                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos);
+                                    _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
+                                    _Out_writes_(count) OrtNode** ep_context_nodes);
 
   /** \brief Release OrtNodeComputeInfo instances.
    *
@@ -217,6 +241,73 @@ struct OrtEp {
   void(ORT_API_CALL* ReleaseNodeComputeInfos)(_In_ OrtEp* this_ptr,
                                               OrtNodeComputeInfo** node_compute_infos,
                                               _In_ size_t num_node_compute_infos);
+
+  /** \brief Get the EP's preferred data layout.
+   *
+   * \note Implementation of this function is optional.
+   *       If not implemented, ORT will assume that this EP prefers the data layout `OrtEpDataLayout::NCHW`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[out] preferred_data_layout The EP's preferred data layout.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
+                                                   _Out_ OrtEpDataLayout* preferred_data_layout);
+
+  /** \brief Set dynamic options on this EP.
+   *
+   * Dynamic options can be set by the user at any time after session creation with `OrtApi::SetEpDynamicOptions()`.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] option_keys The dynamic option keys.
+   * \param[in] option_values The dynamic option values.
+   * \param[in] num_options The number of dynamic options.
+   *
+   * \note Implementation of this function is optional.
+   *       An EP should only implement this if it needs to handle any dynamic options.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* SetDynamicOptions)(_In_ OrtEp* this_ptr,
+                                              _In_reads_(num_options) const char* const* option_keys,
+                                              _In_reads_(num_options) const char* const* option_values,
+                                              _In_ size_t num_options);
+
+  /** \brief Called by ORT to notify the EP of the start of a run.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] run_options The run options for this run.
+   *
+   * \note Implementation of this function is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* OnRunStart)(_In_ OrtEp* this_ptr,
+                                       _In_ const OrtRunOptions* run_options);
+
+  /** \brief Called by ORT to notify the EP of the end of a run.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] run_options The run options for this run.
+   * \param[in] sync_stream Whether any associated stream should be synchronized during this call.
+   *                        Only applicable if there is such a stream.
+   *
+   * \note Implementation of this function is optional.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* OnRunEnd)(_In_ OrtEp* this_ptr,
+                                     _In_ const OrtRunOptions* run_options,
+                                     _In_ bool sync_stream);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.

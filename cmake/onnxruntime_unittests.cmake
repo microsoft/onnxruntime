@@ -1499,6 +1499,8 @@ endif()
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
       target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /bigobj>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
     endif()
     if(IOS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES
@@ -1834,6 +1836,8 @@ if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
   onnxruntime_add_shared_library_module(example_plugin_ep
+                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep_utils.h
+                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep_utils.cc
                                         ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
