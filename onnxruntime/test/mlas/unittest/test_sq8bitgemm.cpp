@@ -683,7 +683,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     }
   }
 
-  #include <iostream>
+#include <iostream>
   template <size_t M, size_t K, size_t N, size_t BlkLen>
   void Check(const float* target, const float* ref, size_t ldc, float rtol, float atol) {
     for (size_t m = 0; m < M; ++m) {
