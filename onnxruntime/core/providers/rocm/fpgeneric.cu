@@ -72,8 +72,8 @@ __host__ bool CanUse_hipblasTransposeHelper_MLFloat16(int m, int n) {
   return dimGrid.y < deviceProp.maxGridSize[1];
 }
 
-hipblasStatus_t hipblasTransposeHelper(hipStream_t stream, hipblasHandle_t, hipblasOperation_t , hipblasOperation_t , int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
-if (C != A) {
+hipblasStatus_t hipblasTransposeHelper(hipStream_t stream, hipblasHandle_t, hipblasOperation_t, hipblasOperation_t, int m, int n, const half*, const half* A, int, const half*, const half*, int, half* C, int) {
+  if (C != A) {
     dim3 dimGrid((n + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, (m + TRANS_TILE_DIM - 1) / TRANS_TILE_DIM, 1);
     dim3 dimBlock(TRANS_TILE_DIM, BLOCK_ROWS, 1);
 
@@ -92,7 +92,7 @@ hipblasStatus_t hipblasCopyHelper(hipStream_t stream, hipblasHandle_t, int n, co
 }
 
 hipblasStatus_t hipblasCopyHelper(hipStream_t stream, hipblasHandle_t, int n, const onnxruntime::BFloat16* x, int incx,
-                                 onnxruntime::BFloat16* y, int incy) {
+                                  onnxruntime::BFloat16* y, int incy) {
   dim3 dimGrid((unsigned int)(n + COPY_BLOCK_DIM - 1) / COPY_BLOCK_DIM, 1, 1);
   dim3 dimBlock(COPY_BLOCK_DIM, 1, 1);
   CopyVectorBFloat16<<<dimGrid, dimBlock, 0, stream>>>(x, incx, y, incy, n);

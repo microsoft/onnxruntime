@@ -76,7 +76,7 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   sums_half2[2] = __hfma2(a_vec2, b_vec2, sums_half2[2]);  // {s4+=a4*b4, s5+=a5*b5}
   sums_half2[3] = __hfma2(a_vec3, b_vec3, sums_half2[3]);  // {s6+=a6*b6, s7+=a7*b7}
 
-#else // older GPUs of compute capability < 5.3, which lacks native half support.
+#else  // older GPUs of compute capability < 5.3, which lacks native half support.
   float scale_f = __half2float(scale);
   float zp_f = static_cast<float>(zp);
 
