@@ -35,7 +35,6 @@ namespace test {
 namespace {
 
 constexpr int QBits = 4;
-constexpr bool kPipelineMode = true;  // CI pipeline?
 
 void QuantizeDequantize(std::vector<float>& raw_vals,
                         std::vector<uint8_t>& quant_vals,
@@ -548,11 +547,13 @@ void RunTest(int64_t M, int64_t N, int64_t K, int64_t block_size, bool has_zerop
     RunTest<float>(opts, std::move(execution_providers));
   }
 }
+
+constexpr bool kPipelineMode = true;  // CI pipeline?
 }  // namespace
 
 TEST(MatMulNBits, Float16_Comprehensive) {
   if constexpr (kPipelineMode) {
-    GTEST_SKIP() << "Skipping in pipeline mode"; // This test has too many combinations. Skip it in CI pipeline.
+    GTEST_SKIP() << "Skipping in pipeline mode";  // This test has too many combinations. Skip it in CI pipeline.
   }
 
   constexpr float abs_error = 0.02f;
@@ -589,9 +590,9 @@ TEST(MatMulNBits, Float16_Large) {
 
   for (auto block_size : {16, 32, 64, 128}) {
     for (auto has_zeropoint : {false, true}) {
-      RunTest<float>(1, 4096, 4096, block_size, has_zeropoint, zp_is_4bit, abs_error);
-      RunTest<float>(1, 4096, 11008, block_size, has_zeropoint, zp_is_4bit, abs_error);
-      RunTest<float>(1, 11008, 4096, block_size, has_zeropoint, zp_is_4bit, abs_error);
+      RunTest<MLFloat16>(1, 4096, 4096, block_size, has_zeropoint, zp_is_4bit, abs_error);
+      RunTest<MLFloat16>(1, 4096, 11008, block_size, has_zeropoint, zp_is_4bit, abs_error);
+      RunTest<MLFloat16>(1, 11008, 4096, block_size, has_zeropoint, zp_is_4bit, abs_error);
     }
   }
 }
