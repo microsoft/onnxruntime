@@ -241,18 +241,6 @@
               ${ABSEIL_LIBS} ${ONNXRUNTIME_PROVIDERS_SHARED} Boost::mp11 safeint_interface)
     endif()
 
-    if (onnxruntime_USE_TRITON_KERNEL)
-      # compile triton kernel, generate .a and .h files
-      include(onnxruntime_compile_triton_kernel.cmake)
-      compile_triton_kernel(triton_kernel_obj_file triton_kernel_header_dir)
-      add_dependencies(${target} onnxruntime_triton_kernel)
-      target_compile_definitions(${target} PRIVATE USE_TRITON_KERNEL)
-      target_include_directories(${target} PRIVATE ${triton_kernel_header_dir})
-      target_link_libraries(${target} PUBLIC -Wl,--whole-archive ${triton_kernel_obj_file} -Wl,--no-whole-archive)
-      # lib cuda needed by cuLaunchKernel
-      target_link_libraries(${target} PRIVATE CUDA::cuda_driver)
-    endif()
-
     include(cutlass)
     target_include_directories(${target} PRIVATE ${cutlass_SOURCE_DIR}/include ${cutlass_SOURCE_DIR}/examples ${cutlass_SOURCE_DIR}/tools/util/include)
     target_link_libraries(${target} PRIVATE Eigen3::Eigen)
