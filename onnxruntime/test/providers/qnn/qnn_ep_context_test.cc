@@ -748,9 +748,10 @@ TEST_F(QnnHTPBackendTests, QnnContextBinaryMultiPartitionSupport2) {
   QnnContextBinaryMultiPartitionTestBody(single_ep_node);
 }
 
-void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
+void EpCtxCpuNodeWithExternalIniFileTestBody(int index, bool expect_external_ini_file, bool load_model_from_buffer = false) {
   ProviderOptions provider_options;
   provider_options["backend_type"] = "htp";
+  std::string index_str = std::to_string(index);
 
   const std::unordered_map<std::string, int> domain_to_version = {{"", 13}, {kMSDomain, 1}};
 
@@ -767,8 +768,8 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
   ModelSavingOptions model_saving_options{10};
   // dump the model in testdata folder in case it hides the bug that not able to find model not in current dir
-  const std::string model_with_ext = "./testdata/model_external.onnx";
-  const std::string model_ext_file = "model_external.bin";
+  const std::string model_with_ext = "./testdata/model_external" + index_str + ".onnx ";
+  const std::string model_ext_file = "model_external" + index_str + ".bin";
   ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model, model_with_ext,
                                                        model_ext_file, model_saving_options));
 
@@ -779,15 +780,30 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   Ort::SessionOptions so;
   so.AddConfigEntry(kOrtSessionOptionEpContextEnable, "1");
   so.AppendExecutionProvider("QNN", provider_options);
-  const std::string ep_context_model_file = "./qnn_ctx_part_external_ini_ctx.onnx";
+  const std::string ep_context_model_file = "./qnn_ctx_part_external_ini_ctx" + index_str + ".onnx";
   so.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ep_context_model_file.c_str());
-  const std::string external_ini_file = "./qnn_ctx_part_external_ini.bin";
+  const std::string external_ini_file = "./qnn_ctx_part_external_ini" + index_str + ".bin";
   if (expect_external_ini_file) {
     // Set the external ini file name will force all initializers to the external file
     so.AddConfigEntry(kOrtSessionOptionsEpContextModelExternalInitializersFileName, external_ini_file.c_str());
   }  // otherwise all initializers are in Onnx file, no external data file generated
 
-  Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
+  if (load_model_from_buffer) {
+    std::vector<char> buffer;
+    {
+      std::ifstream file(model_with_ext, std::ios::binary | std::ios::ate);
+      if (!file)
+        ORT_THROW("Error reading model");
+      buffer.resize(narrow<size_t>(file.tellg()));
+      file.seekg(0, std::ios::beg);
+      if (!file.read(buffer.data(), buffer.size()))
+        ORT_THROW("Error reading model");
+    }
+    so.AddConfigEntry(kOrtSessionOptionsModelExternalInitializersFileFolderPath, "./testdata/");
+    Ort::Session session(*ort_env, buffer.data(), buffer.size(), so);
+  } else {
+    Ort::Session session(*ort_env, ToPathString(model_with_ext).c_str(), so);
+  }
 
   EXPECT_TRUE(std::filesystem::exists(ep_context_model_file.c_str()));
   if (expect_external_ini_file) {
@@ -803,16 +819,24 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file) {
   CleanUpCtxFile(ep_context_model_file);
 }
 
-// Set the external initializer size threshold to 1024 so FusedMatMul (which fallback on CPU)
+// Set the session option "ep.context_model_external_initializers_file_name" so FusedMatMul (which fallback on CPU)
 // will dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithExternalWeights) {
-  EpCtxCpuNodeWithExternalIniFileTestBody(true);
+  EpCtxCpuNodeWithExternalIniFileTestBody(0, true);
 }
 
-// Use the default external initializer size threshold (1024000) so FusedMatMul (which fallback on CPU)
-// will NOT dump initializer data to external file
+// Without setting the session option "ep.context_model_external_initializers_file_name"
+// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
 TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeights) {
-  EpCtxCpuNodeWithExternalIniFileTestBody(false);
+  EpCtxCpuNodeWithExternalIniFileTestBody(0, false);
+}
+
+// Load model from memory
+// Without setting the session option "ep.context_model_external_initializers_file_name"
+// so FusedMatMul (which fallback on CPU) will NOT dump initializer data to external file
+// There is an issue that a temp empty external file created which cause problem.
+TEST_F(QnnHTPBackendTests, QnnContextBinaryCpuNodeWithoutExternalWeightsModelFromMemory) {
+  EpCtxCpuNodeWithExternalIniFileTestBody(0, false, true);
 }
 
 // Set ep.context_file_path to folder path which is not a valid option, check the error message

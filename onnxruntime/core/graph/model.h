@@ -206,7 +206,8 @@ class Model {
   // initializer offset could be page aligned and allocation granularity aligned for mmap support.
   ONNX_NAMESPACE::ModelProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                                   const std::filesystem::path& file_path,
-                                                                  const ModelSavingOptions& model_saving_options) const;
+                                                                  const ModelSavingOptions& model_saving_options,
+                                                                  bool force_embed_external_ini = false) const;
 
   static common::Status Save(Model& model, const PathString& file_path);
 
@@ -217,13 +218,15 @@ class Model {
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     const ModelSavingOptions& save_options);
+                                                     const ModelSavingOptions& save_options,
+                                                     bool force_embed_external_ini = false);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     const ModelSavingOptions& save_options);
+                                                     const ModelSavingOptions& save_options,
+                                                     bool force_embed_external_ini = false);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 
