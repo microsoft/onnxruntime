@@ -88,22 +88,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         const subtile_rows = 8;
         const quantization_block_size = 32;
 
-        var<workgroup> tile_A: array<component_type, tile_rows * tile_k>;       // 64 x 32 - RxC
         var<workgroup> tile_B: array<component_type, tile_cols * tile_k>;       // 64 x 32 - RxC
-
-        fn loadSHMA(tile_base: u32, k_idx: u32, row: u32, c_idx:u32) {
-            let a_global = tile_base + row;
-            if (a_global >= uniforms.M) {
-                return;
-            }
-            // Each call loads 8 columns, starting at col.
-            let col = c_idx * 8;
-            // 256 threads need to load 64 x 32. 4 threads per row or 8 col per thread.
-            for (var col_offset:u32 = 0; col_offset < 8; col_offset++)
-            {
-                tile_A[row * tile_k + col + col_offset] = component_type(input_a[a_global*uniforms.K + k_idx + col + col_offset]);
-            }
-        }
     )ADDNL_FN" << GenerateZeroPointReadingCode(nbits, has_zero_points, "component_type");
   if (nbits == 4) {
     shader.AdditionalImplementation() << R"ADDNL_FN(
@@ -176,17 +161,17 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         var matC03: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
         for (var kidx: u32 = 0; kidx < uniforms.K; kidx += tile_k) {
             // Load Phase
-            loadSHMA(a_global_base, kidx, local_idx / 4, local_idx % 4);
             loadSHMB(b_global_base, kidx, local_idx / 4, local_idx % 4);
             workgroupBarrier();
 
             for (var step: u32 = 0; step < tile_k; step += k_dim)
             {
-                // Load to local memory phase
-                let matrix_a_offset = subtile_id * subtile_rows * tile_k + step;
+                // Load A from global memory.
+                let matrix_a_offset = (a_global_base + subtile_id * subtile_rows) * uniforms.K + kidx + step;
                 // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
-                var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&tile_A, matrix_a_offset, false, tile_k);
+                var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, matrix_a_offset, false, uniforms.K);
 
+                // Load B from shared local memory.
                 // tile_B is stored as column major.
                 // [col0-0:32][col1-0:32][col2-0:32]..[col63-0:32]
                 var matrix_b_offset = step;

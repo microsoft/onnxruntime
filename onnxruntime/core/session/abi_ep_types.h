@@ -30,16 +30,19 @@ struct OrtEpGraphSupportInfo {
 
   // A grouping of supported nodes that should be handled in a single ComputeCapability.
   struct NodeGrouping {
-    NodeGrouping(NodeGroupingKind kind, std::vector<const onnxruntime::EpNode*>&& nodes)
-        : kind(kind), nodes(std::move(nodes)) {}
+    NodeGrouping(NodeGroupingKind kind, std::vector<const onnxruntime::EpNode*>&& nodes,
+                 const OrtNodeFusionOptions& fusion_options = {})
+        : kind(kind), nodes(std::move(nodes)), fusion_options(fusion_options) {}
 
     NodeGroupingKind kind = NodeGroupingKind::kInvalidGrouping;
     std::vector<const onnxruntime::EpNode*> nodes;
+    OrtNodeFusionOptions fusion_options = {};
   };
 
   explicit OrtEpGraphSupportInfo(const onnxruntime::EpGraph& graph) : ort_graph(graph) {}
 
-  onnxruntime::Status AddNodesToFuse(gsl::span<const OrtNode* const> nodes);
+  onnxruntime::Status AddNodesToFuse(gsl::span<const OrtNode* const> nodes,
+                                     const OrtNodeFusionOptions* node_fusion_options = nullptr);
   onnxruntime::Status AddSingleNode(const OrtNode* node);
 
   const onnxruntime::EpGraph& ort_graph;

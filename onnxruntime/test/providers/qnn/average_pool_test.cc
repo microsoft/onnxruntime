@@ -142,9 +142,7 @@ TEST_F(QnnHTPBackendTests, AveragePool_CountIncludePad_HTP_u8) {
                                    {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
                                     utils::MakeAttribute("count_include_pad", static_cast<int64_t>(1))},
                                    ExpectedEPNodeAssignment::All,
-                                   18,
-                                   // Need tolerance of 0.414% of output range after QNN SDK 2.17
-                                   QDQTolerance(0.00414f));
+                                   18);
 }
 
 // QDQ AveragePool that use auto_pad 'SAME_UPPER'.
@@ -157,9 +155,7 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameUpper_HTP_u8) {
                                    {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
                                     utils::MakeAttribute("auto_pad", "SAME_UPPER")},
                                    ExpectedEPNodeAssignment::All,
-                                   18,
-                                   // Need to use tolerance of 0.414% of output range after QNN SDK 2.17
-                                   QDQTolerance(0.00414f));
+                                   18);
 }
 
 // QDQ AveragePool that use auto_pad 'SAME_LOWER'.
@@ -172,9 +168,7 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameLower_HTP_u8) {
                                    {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{1, 1}),
                                     utils::MakeAttribute("auto_pad", "SAME_LOWER")},
                                    ExpectedEPNodeAssignment::All,
-                                   18,
-                                   // Need to use tolerance of 0.414% of output range after QNN SDK 2.17
-                                   QDQTolerance(0.00414f));
+                                   18);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)

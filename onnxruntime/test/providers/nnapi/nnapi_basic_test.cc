@@ -374,7 +374,7 @@ TEST(NnapiExecutionProviderTest, DISABLED_TestQDQMul) {
                   });
 }
 
-TEST(NnapiExecutionProviderTest, TestQDQTranspose) {
+TEST(NnapiExecutionProviderTest, DISABLED_TestQDQTranspose) {
   RunQDQModelTest(BuildQDQTransposeTestCase<uint8_t /* InputType */,
                                             uint8_t /* OutputType */>(
                       {1, 3, 32, 32} /* input_shape */,

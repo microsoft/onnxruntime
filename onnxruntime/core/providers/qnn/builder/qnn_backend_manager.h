@@ -149,7 +149,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Initializes handles to QNN resources (device, logger, etc.).
   // NOTE: This function locks the internal `logger_recursive_mutex_`.
   Status SetupBackend(const logging::Logger& logger, bool load_from_cached_context,
-                      bool need_load_system_lib, bool share_ep_contexts);
+                      bool need_load_system_lib, bool share_ep_contexts,
+                      bool enable_vtcm_backup_buffer_sharing,
+                      std::unordered_map<std::string, std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status CreateHtpPowerCfgId(uint32_t deviceId, uint32_t coreId, uint32_t& htp_power_config_id);
 
@@ -214,6 +216,13 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // Resets the context priority to the session default as defined by context_priority_
   Status ResetContextPriority();
 
+  // Handler to be called upon successful context creation via contextCreateFromBinaryListAsync()
+  // This handler is expected to be called in the callback ContextCreateAsyncCallback() in the .cc file
+  // Takes in the context and the notifyParam objects received by the callback function
+  // notifyParam is expected to be a pointer to a vector of node names associated with that context handle
+  // For each node name, a mapping to the context handle will be created
+  void ProcessContextFromBinListAsync(Qnn_ContextHandle_t handle, void* notifyParam);
+
  private:
   Status LoadBackend();
 
@@ -230,6 +239,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status ReleaseProfilehandle();
 
   Status CreateContext(bool enable_htp_weight_sharing);
+
+  Status CreateContextVtcmBackupBufferSharingEnabled(std::unordered_map<std::string,
+                                                                        std::unique_ptr<std::vector<std::string>>>& context_bin_map);
 
   Status ReleaseContext();
 
@@ -315,7 +327,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 #endif
 
   // Adds a new QNN context.
-  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance.
+  // Transfers ownership of `context_handle` (i.e., responsibility of freeing it) to this instance
   Status AddQnnContextHandle(Qnn_ContextHandle_t context_handle);
 
  private:
@@ -412,6 +424,10 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   // HtpSharedMemoryAllocator allocation cleanup callback.
   std::unordered_map<Qnn_ContextHandle_t, std::shared_ptr<QnnContextHandleRecord>> context_map_;
 
+  // Map of EP Main Context Node names to Qnn_ContextHandle_t
+  std::mutex ep_context_handle_map_mutex_;
+  std::unordered_map<std::string, Qnn_ContextHandle_t> ep_context_handle_map_;
+
   // Vector of Qnn_ContextHandle_t. The context handles are owned by context_map_.
   std::vector<Qnn_ContextHandle_t> contexts_;
 
@@ -423,6 +439,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   bool device_created_ = false;
   bool context_created_ = false;
   bool backend_setup_completed_ = false;
+  bool vtcm_backup_buffer_sharing_enabled_ = false;
   // NPU backend requires quantized model
   QnnBackendType qnn_backend_type_ = QnnBackendType::CPU;
   Qnn_ProfileHandle_t profile_backend_handle_ = nullptr;

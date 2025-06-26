@@ -10,7 +10,8 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 
-onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNode* const> nodes) {
+onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNode* const> nodes,
+                                                          const OrtNodeFusionOptions* optional_fusion_options) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.reserve(nodes.size());
 
@@ -20,7 +21,8 @@ onnxruntime::Status OrtEpGraphSupportInfo::AddNodesToFuse(gsl::span<const OrtNod
     ep_nodes.push_back(ep_node);
   }
 
-  node_groupings.emplace_back(NodeGroupingKind::kFusedNode, std::move(ep_nodes));
+  node_groupings.emplace_back(NodeGroupingKind::kFusedNode, std::move(ep_nodes),
+                              optional_fusion_options != nullptr ? *optional_fusion_options : OrtNodeFusionOptions{});
   return onnxruntime::Status::OK();
 }
 
@@ -28,6 +30,5 @@ onnxruntime::Status OrtEpGraphSupportInfo::AddSingleNode(const OrtNode* node) {
   std::vector<const onnxruntime::EpNode*> ep_nodes;
   ep_nodes.push_back(onnxruntime::EpNode::ToInternal(node));
   node_groupings.emplace_back(NodeGroupingKind::kSingleAssignedNode, std::move(ep_nodes));
-
   return onnxruntime::Status::OK();
 }
