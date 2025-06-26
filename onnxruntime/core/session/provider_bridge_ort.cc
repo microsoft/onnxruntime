@@ -299,7 +299,6 @@ struct ProviderHostImpl : ProviderHost {
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override { return GetProviderInfo_CUDA().CreateGPUDataTransfer(); }
 
-
   std::string GetEnvironmentVar(const std::string& var_name) override { return Env::Default().GetEnvironmentVar(var_name); }
 
   unsigned int GetThreadId() override { return onnxruntime::logging::GetThreadId(); }
@@ -2286,7 +2285,6 @@ ProviderInfo_Dnnl& GetProviderInfo_Dnnl() {
   ORT_THROW("oneDNN Provider not available, can't get interface for it");
 }
 
-
 ProviderInfo_MIGraphX* TryGetProviderInfo_MIGraphX() try {
   return reinterpret_cast<ProviderInfo_MIGraphX*>(s_library_migraphx.Get().GetInfo());
 } catch (const std::exception& exception) {
@@ -2308,13 +2306,13 @@ void CopyGpuToCpu(
     const OrtMemoryInfo& dst_location,
     const OrtMemoryInfo& src_location) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
-    return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);  
+    return info->CopyGpuToCpu(dst_ptr, src_ptr, size, dst_location, src_location);
   ORT_THROW("GPU-to-CPU copy is not implemented.");
 }
 
 void cudaMemcpy_HostToDevice(void* dst, const void* src, size_t count) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
-    return info->cudaMemcpy_HostToDevice(dst, src, count);  
+    return info->cudaMemcpy_HostToDevice(dst, src, count);
   ORT_THROW("cudaMemcpy_HostToDevice is not implemented.");
 }
 
@@ -2529,7 +2527,6 @@ ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_CUDA, _In_ Or
   return nullptr;
   API_IMPL_END
 }
-
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_TensorRT_V2, _In_ OrtSessionOptions* options, _In_ const OrtTensorRTProviderOptionsV2* tensorrt_options) {
   API_IMPL_BEGIN
@@ -3041,7 +3038,6 @@ ORT_API(void, OrtApis::ReleaseDnnlProviderOptions, _Frees_ptr_opt_ OrtDnnlProvid
   ORT_UNUSED_PARAMETER(ptr);
 #endif
 }
-
 
 ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_VitisAI, _In_ OrtSessionOptions* options,
                     _In_reads_(num_keys) const char* const* provider_options_keys,

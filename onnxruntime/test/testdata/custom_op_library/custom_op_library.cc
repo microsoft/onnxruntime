@@ -38,9 +38,6 @@ OrtStatus* ORT_API_CALL RegisterCustomOps(OrtSessionOptions* options, const OrtA
     Cuda::RegisterOps(domain);
     Cuda::RegisterOps(domain_v2);
 
-    Rocm::RegisterOps(domain);
-    Rocm::RegisterOps(domain_v2);
-
     Ort::UnownedSessionOptions session_options(options);
     session_options.Add(domain);
     session_options.Add(domain_v2);
