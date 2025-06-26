@@ -181,7 +181,7 @@
     file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
 
     # Set wgsl-gen command line options as a list
-    set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--debug")
+    set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--verbose")
     if (onnxruntime_WGSL_TEMPLATE STREQUAL "static")
       if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         list(APPEND WGSL_GEN_OPTIONS "--generator" "static-cpp-literal")
