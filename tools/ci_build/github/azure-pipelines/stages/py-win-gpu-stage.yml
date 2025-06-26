@@ -52,13 +52,11 @@ stages:
         sdl:
           codeSignValidation:
             enabled: true
-            # TODO: check why pyd file was not signed
             break: false
             additionalTargetsGlobPattern: f|**\*.pyd
           psscriptanalyzer:
             enabled: true
-          binskim:
-            preReleaseVersion: '4.3.1'
+          binskim:            
             enabled: true
             scanOutputDirectoryOnly: true
             analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'

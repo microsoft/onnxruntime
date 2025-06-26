@@ -33,6 +33,18 @@ jobs:
     name: ${{ parameters.MACHINE_POOL }}
     os: windows
     hostArchitecture: Arm64
+  templateContext:
+    sdl:
+      codeSignValidation:
+        enabled: true
+        break: false
+        additionalTargetsGlobPattern: f|**\*.pyd
+      psscriptanalyzer:
+        enabled: true
+      binskim:
+        enabled: true
+        scanOutputDirectoryOnly: true
+        analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
   strategy:
     matrix:
       Python311_arm64:

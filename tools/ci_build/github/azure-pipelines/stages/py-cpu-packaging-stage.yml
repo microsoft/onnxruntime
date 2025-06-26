@@ -70,6 +70,18 @@ stages:
       pool:
         name: 'onnxruntime-Win-CPU-2022'
         os: windows
+      templateContext:
+        sdl:
+          codeSignValidation:
+            enabled: true
+            break: false
+            additionalTargetsGlobPattern: f|**\*.pyd
+          psscriptanalyzer:
+            enabled: true
+          binskim:
+            enabled: true
+            scanOutputDirectoryOnly: true
+            analyzeTargetGlob: '+:file|$(BUILD.STAGINGDIRECTORY)\**\*.pyd;+:file|$(BUILD.STAGINGDIRECTORY)\**\*.dll;-:file|DirectML.dll'
       strategy:
         matrix:
           Python310_x64:
