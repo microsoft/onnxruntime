@@ -14,7 +14,6 @@ class AttentionBase : public OpKernel {
  public:
   AttentionBase(const OpKernelInfo& info) : OpKernel(info) {}
 
- protected:
   Status ApplyAttention(OpKernelContext* context,
                         const T* Q,                                               // Q data with shape BxNxSxH
                         const T* K,                                               // K data with shape BxNxLxH
@@ -32,6 +31,7 @@ class AttentionBase : public OpKernel {
                         bool past_present_share_buffer = false                    // memory optimization
   ) const;
 
+ protected:
   void ComputeVxAttentionScore(T* output,                 // buffer for the result with size BxSxNxH_v
                                T* tmp_buffer,             // buffer for temp use with size is BxNxSxH_v
                                const T* attention_probs,  // Attention probs with size BxNxSxT
@@ -47,6 +47,7 @@ class AttentionBase : public OpKernel {
                                const T* past_value,       // past value only (if not using past state)
                                T* present,                // present state
                                T* present_value,          // present value only (if not using present state)
+                               bool transpose_output,     // whether to transpose the output from BxNxSxH to BxSxNxH
                                concurrency::ThreadPool* tp,
                                bool past_present_share_buffer = false,
                                int max_sequence_length = 0) const;

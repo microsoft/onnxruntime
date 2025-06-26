@@ -46,6 +46,7 @@ struct AttentionParameters {
   int kv_sequence_length;    // K.shape[2] or V.shape[2] (4D)
   int v_head_size;           // V.shape[4] (4D)
   int past_sequence_length;  // pask_key.shape[2] or past_value.shape[2] (4D)
+  bool transpose_output;     // Whether to transpose the output from BxNxSxH to BxSxNxH
 
   AttentionType getAttentionType() const {
     if (q_num_heads == kv_num_heads) {

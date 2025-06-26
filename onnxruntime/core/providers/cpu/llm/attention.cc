@@ -47,7 +47,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase(info) {
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKV,
               "qk_matmul_output_mode must be 0 (None), 1 (QK), or 2 (QKV)");
-  scale_ = info.GetAttrOrDefault<float>("scale", 1.0f);
+  scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
   ORT_ENFORCE(scale_ > 0, "Scale must be greater than 0");
@@ -76,13 +76,12 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     AttentionParameters parameters;
     parameters.is_causal = is_causal_;
 
-    parameters.kv_num_heads = kv_num_heads_;                                    // K.shape[1] or V.shape[1] (4D)
-    parameters.q_num_heads = q_num_heads_;                                      // Q.shape[1] (4D)
-    parameters.scale = scale_;                                                  // scale
-    parameters.softcap = softcap_;                                              // softcap
-    parameters.softmax_precision = softmax_precision_;                          // precision for softmax, 0 for float16, 1 for float32
-    parameters.qk_matmul_output_mode = qk_matmul_output_mode_;                  // output mode for Q*K matmul
-    parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE  // mask type
+    parameters.kv_num_heads = kv_num_heads_ > 0 ? kv_num_heads_ : onnxruntime::narrow<int>(K->Shape()[1]);  // K.shape[1] or V.shape[1] (4D)
+    parameters.q_num_heads = q_num_heads_ > 0 ? q_num_heads_ : onnxruntime::narrow<int>(Q->Shape()[1]);     // Q.shape[1] (4D)
+    parameters.softcap = softcap_;                                                                          // softcap
+    parameters.softmax_precision = softmax_precision_;                                                      // precision for softmax, 0 for float16, 1 for float32
+    parameters.qk_matmul_output_mode = qk_matmul_output_mode_;                                              // output mode for Q*K matmul
+    parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE                              // mask type
                                                 : (attn_mask->IsDataType<bool>() ? AttentionMaskType::MASK_BOOL : AttentionMaskType::MASK_ADD);
 
     ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE || attn_mask->IsDataType<float>(), "Attention mask must be of type bool or float if provided.");
@@ -91,6 +90,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(parameters.q_num_heads == onnxruntime::narrow<int>(Q->Shape()[1]), "q_num_heads different from Q.shape[1]");
 
     // From shapes
+    parameters.transpose_output = false;                                      // whether to transpose the output from BxNxSxH to BxSxNxH
     parameters.batch_size = onnxruntime::narrow<int>(Q->Shape()[0]);          // Q.shape[0], K.shape[0], V.shape[0] (4D)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[2]);   // Q.shape[2] (4D)
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[3]);           // Q.shape[3] (4D)
@@ -102,6 +102,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                                  ? 0
                                                  : onnxruntime::narrow<int>(attn_mask->Shape()[3]) - parameters.kv_sequence_length)
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
+    parameters.scale = std::isnan(scale_) ? scale_ : static_cast<float>(1.0 / sqrt(parameters.head_size));
 
     ORT_ENFORCE(parameters.batch_size > 0, "Batch size must be greater than 0");
     ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
@@ -314,6 +315,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
                                                const T* past_value,       // past value only (if not using past state)
                                                T* present,                // present state
                                                T* present_value,          // present value only (if not using present state)
+                                               bool transpose_output,     // whether to transpose the output (0, 2, 1, 3)
                                                ThreadPool* tp,
                                                bool past_present_share_buffer,
                                                int max_sequence_length) const {
@@ -368,22 +370,30 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
             }
           }
 
-          T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
-          ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
-          math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
-                          attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
+          if (transpose_output) {
+            T* current_tmp_data = reinterpret_cast<T*>(tmp_buffer) + q_input_chunk_length * i;
+            ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
+            math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
+                            attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
 
-          // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
-          const int batch_index = static_cast<int>(i / num_heads);
-          const int head_index = static_cast<int>(i % num_heads);
-          T* src = current_tmp_data;
-          ptrdiff_t dest_offset =
-              (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads + head_index) * v_head_size;
-          T* dest = output + dest_offset;
-          for (int j = 0; j < sequence_length; j++) {
-            memcpy(dest, src, bytes_to_copy_trans);
-            src += v_head_size;
-            dest += v_hidden_size;
+            // Transpose: out(B, S, N, H_v) -> out_tmp(B, N, S, H_v)
+            const int batch_index = static_cast<int>(i / num_heads);
+            const int head_index = static_cast<int>(i % num_heads);
+            T* src = current_tmp_data;
+            ptrdiff_t dest_offset =
+                (SafeInt<ptrdiff_t>(batch_index) * sequence_length * num_heads + head_index) * v_head_size;
+            T* dest = output + dest_offset;
+            for (int j = 0; j < sequence_length; j++) {
+              memcpy(dest, src, bytes_to_copy_trans);
+              src += v_head_size;
+              dest += v_hidden_size;
+            }
+          } else {
+            ptrdiff_t attention_probs_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * i;
+            ptrdiff_t dest_offset = SafeInt<ptrdiff_t>(sequence_length) * v_head_size * i;
+            T* dest = output + dest_offset;
+            math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
+                            attention_probs + attention_probs_offset, v, dest, nullptr);
           }
         }
       });
@@ -460,8 +470,6 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   }
   */
 
-  float scale = parameters.scale == 0.0f ? 1.0f / sqrt(static_cast<float>(parameters.head_size)) : parameters.scale;
-
   const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
   T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
   const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
@@ -499,16 +507,18 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                         present_key_data,
                         output_qk_data,
                         tp,
-                        scale,
+                        parameters.scale,
                         attn_bias_data,
                         attn_bias_dims,
                         past_present_share_buffer,
                         max_sequence_length);
 
-  // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
-  auto out_tmp_data =
-      allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
-  BufferUniquePtr out_tmp_buffer(out_tmp_data, BufferDeleter(std::move(allocator)));
+  void* out_tmp_data = nullptr;
+  if (parameters.transpose_output) {
+    // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
+    allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
+  }
+  BufferUniquePtr out_tmp_buffer(out_tmp_data, out_tmp_data == nullptr ? BufferDeleter(nullptr) : BufferDeleter(std::move(allocator)));
 
   int v_hidden_size = parameters.q_num_heads * parameters.v_head_size;
   ComputeVxAttentionScore(output->MutableData<T>(),
@@ -526,6 +536,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                           past_value_data,
                           present_data,
                           present_value_data,
+                          parameters.transpose_output,
                           tp,
                           past_present_share_buffer,
                           max_sequence_length);
