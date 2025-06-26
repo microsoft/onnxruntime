@@ -1889,7 +1889,6 @@ def build_python_wheel(
     default_training_package_device=False,
     use_ninja=False,
     enable_training_apis=False,
-    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1909,8 +1908,6 @@ def build_python_wheel(
             args.append("--enable_training")
         if enable_training_apis:
             args.append("--enable_training_apis")
-        if enable_rocm_profiling:
-            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -2569,7 +2566,6 @@ def main():
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
                 enable_training_apis=args.enable_training_apis,
-                enable_rocm_profiling=args.enable_rocm_profiling,
             )
 
         if args.build_nuget:
