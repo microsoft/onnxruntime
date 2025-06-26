@@ -77,6 +77,9 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                    std::string_view node_op_type) const override;
+
   Status OnRunStart(const RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;

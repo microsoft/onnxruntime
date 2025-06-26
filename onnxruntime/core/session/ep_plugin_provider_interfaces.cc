@@ -412,6 +412,26 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   }
 }
 
+std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
+                                                                           std::string_view node_op_type) const {
+  if (ort_ep_->ShouldConvertNodeLayoutToNhwc == nullptr) {
+    return Base::ShouldConvertNodeLayoutToNhwc(node_domain, node_op_type);
+  }
+
+  int should_convert = -1;
+
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(
+    ort_ep_->ShouldConvertNodeLayoutToNhwc(ort_ep_.get(), node_domain.data(), node_op_type.data(), &should_convert)));
+
+  if (should_convert > 0) {
+    return true;
+  } else if (should_convert == 0) {
+    return false;
+  } else {
+    return std::nullopt;
+  }
+}
+
 Status PluginExecutionProvider::OnRunStart(const RunOptions& run_options) {
   if (ort_ep_->OnRunStart == nullptr) {
     return Base::OnRunStart(run_options);

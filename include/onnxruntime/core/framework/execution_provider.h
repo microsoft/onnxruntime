@@ -330,7 +330,7 @@ class IExecutionProvider {
   }
 
   /**
-    Determine whether a node with `domain` and `op_type` should have its layout converted to NHWC.
+    Determine whether a node with `domain` and `op_type` requires its data layout to be converted to NHWC.
     This function is called during layout transformation.
     A return value of `std::nullopt` indicates that this decision is left to ORT.
   */

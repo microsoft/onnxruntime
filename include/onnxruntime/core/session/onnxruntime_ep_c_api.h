@@ -257,6 +257,31 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
                                                    _Out_ OrtEpDataLayout* preferred_data_layout);
 
+  /** \brief Determine whether a node with `domain` and `op_type` requires its data layout to be converted to NHWC.
+   *         If the EP prefers NHWC data layout (see `GetPreferredDataLayout()`), this function will be called during
+   *         layout transformation.
+   *
+   * \note Implementation of this function is optional.
+   *       If an EP prefers NHWC data layout, it may implement this to customize the specific NHWC op preferences at a
+   *       finer granularity.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] node_domain The node's op domain. An empty string means the ONNX domain.
+   * \param[in] node_op_type The node's op type.
+   * \param[out] should_convert Indicates whether the node's layout should be converted to NHWC.
+   *                            If greater than 0, convert.
+   *                            If 0, don't convert.
+   *                            Otherwise, if less than 0, leave the decision to ORT.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* ShouldConvertNodeLayoutToNhwc)(_In_ OrtEp* this_ptr,
+                                                          _In_z_ const char* node_domain,
+                                                          _In_z_ const char* node_op_type,
+                                                          _Outptr_ int* should_convert);
+
   /** \brief Set dynamic options on this EP.
    *
    * Dynamic options can be set by the user at any time after session creation with `OrtApi::SetEpDynamicOptions()`.

@@ -112,4 +112,56 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
+TEST(PluginExecutionProviderTest, ShouldConvertNodeLayoutToNhwc) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    ort_ep->ShouldConvertNodeLayoutToNhwc = nullptr;
+    ASSERT_EQ(ep->ShouldConvertNodeLayoutToNhwc("", "Conv"), std::nullopt);
+  }
+
+  {
+    auto custom_nhwc_op_determination = [](OrtEp* /*this_ptr*/,
+                                           const char* /*node_domain*/,
+                                           const char* node_op_type,
+                                           int* should_convert) -> ::OrtStatus* {
+      if (node_op_type == std::string_view{"Conv"}) {
+        *should_convert = 1;
+      } else if (node_op_type == std::string_view{"BatchNormalization"}) {
+        *should_convert = 0;
+      } else {
+        *should_convert = -1;
+      }
+      return nullptr;
+    };
+    ort_ep->ShouldConvertNodeLayoutToNhwc = custom_nhwc_op_determination;
+
+    std::optional<bool> should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "Conv");
+    ASSERT_NE(should_convert, std::nullopt);
+    ASSERT_EQ(*should_convert, true);
+
+    should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "BatchNormalization");
+    ASSERT_NE(should_convert, std::nullopt);
+    ASSERT_EQ(*should_convert, false);
+
+    should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "GridSample");
+    ASSERT_EQ(should_convert, std::nullopt);
+  }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+  {
+    auto failing_fn = [](OrtEp* this_ptr,
+                         const char* /*node_domain*/,
+                         const char* /*node_op_type*/,
+                         int* /*should_convert*/) -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
+                                                "To convert to NHWC or not to convert to NHWC...");
+    };
+    ort_ep->ShouldConvertNodeLayoutToNhwc = failing_fn;
+    ASSERT_THROW(ep->ShouldConvertNodeLayoutToNhwc("", "Conv"), OnnxRuntimeException);
+  }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
 }  // namespace onnxruntime::test
