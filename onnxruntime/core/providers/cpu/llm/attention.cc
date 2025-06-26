@@ -37,7 +37,7 @@ inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* t
 }
 
 template <typename T>
-Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase(info) {
+Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
@@ -116,21 +116,21 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
         static_cast<int64_t>(parameters.v_head_size)};
     Tensor* Y = context->Output(0, y_shape);
 
-    return ApplyAttention(context,
-                          Q->Data<T>(),  // Q
-                          K->Data<T>(),  // K
-                          V->Data<T>(),  // V
-                          nullptr,       // const Tensor* mask_index,  // mask index. nullptr if no mask or its size is B
-                          nullptr,       // const Tensor* past,        // past state
-                          nullptr,       // const Tensor* past_key,    // past K input tensor (if not using past state)
-                          nullptr,       // const Tensor* past_value,  // past V input tensor (if not using past state)
-                          Y,             // first output
-                          nullptr,       // Tensor * present_key,     // present K output tensor (if separating present KV)
-                          nullptr,       // Tensor * present_value,   // present V output tensor (if separating present KV)
-                          nullptr,       // Tensor * output_qk,       // Q*K output tensor (if returning Q*K value)
-                          parameters,    // attention parameters
-                          nullptr,       // const Tensor* attn_bias,  // additive bias applied on scaled QK.
-                          false          // bool past_present_share_buffer)
+    return this->ApplyAttention(context,
+                                Q->Data<T>(),  // Q
+                                K->Data<T>(),  // K
+                                V->Data<T>(),  // V
+                                nullptr,       // const Tensor* mask_index,  // mask index. nullptr if no mask or its size is B
+                                nullptr,       // const Tensor* past,        // past state
+                                nullptr,       // const Tensor* past_key,    // past K input tensor (if not using past state)
+                                nullptr,       // const Tensor* past_value,  // past V input tensor (if not using past state)
+                                Y,             // first output
+                                nullptr,       // Tensor * present_key,     // present K output tensor (if separating present KV)
+                                nullptr,       // Tensor * present_value,   // present V output tensor (if separating present KV)
+                                nullptr,       // Tensor * output_qk,       // Q*K output tensor (if returning Q*K value)
+                                parameters,    // attention parameters
+                                nullptr,       // const Tensor* attn_bias,  // additive bias applied on scaled QK.
+                                false          // bool past_present_share_buffer)
     );
   } else {
     ORT_THROW("Attention not implemented yet for 3 dimensions.");
@@ -165,11 +165,6 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
   const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
   const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
   const size_t cache_chunk_length = static_cast<size_t>(max_sequence_length) * head_size;    // M x H
-
-  // DUMP_CPU_TENSOR_INIT();
-  // DUMP_CPU_TENSOR("Q", Q, batch_size, num_heads_, sequence_length, head_size);
-  // DUMP_CPU_TENSOR("K", K, batch_size, num_heads_, total_sequence_length, head_size);
-  // DUMP_CPU_TENSOR("Attn_Bias", attn_bias_data, attn_bias_dims);
 
   {
     const int loop_len = batch_size * num_heads;
@@ -267,16 +262,9 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
            SafeInt<size_t>(batch_size) * num_heads * sequence_length * total_sequence_length * sizeof(T));
   }
 
-  // DUMP_CPU_TENSOR("QK (scaled)", attention_probs, batch_size, num_heads, sequence_length, total_sequence_length);
-
-  // attention_probs(B, N, S, T) = Softmax(attention_probs)
-  {
-    const int N = batch_size * num_heads * sequence_length;
-    const int D = total_sequence_length;
-    ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
-  }
-
-  // DUMP_CPU_TENSOR("Softmax(QK)", attention_probs, batch_size, num_heads, sequence_length, total_sequence_length);
+  const int N = batch_size * num_heads * sequence_length;
+  const int D = total_sequence_length;
+  ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
 }
 
 template <typename T>
@@ -426,13 +414,13 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   if (parameters.past_sequence_length == 0) {
     if (present_key == nullptr && present_value == nullptr) {
       past_sequence_length = (nullptr != past) ? static_cast<int>(past->Shape().GetDims()[3]) : 0;
-      present = GetPresent(context,
-                           past,
-                           parameters.batch_size,
-                           parameters.v_head_size,
-                           parameters.q_num_heads,
-                           parameters.kv_sequence_length,
-                           past_sequence_length);
+      present = this->GetPresent(context,
+                                 past,
+                                 parameters.batch_size,
+                                 parameters.v_head_size,
+                                 parameters.q_num_heads,
+                                 parameters.kv_sequence_length,
+                                 past_sequence_length);
     } else if (past_key != nullptr && past_value != nullptr) {
       past_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
     }
@@ -457,16 +445,12 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
                                                  ? mask_index->Shape().GetDims()
                                                  : gsl::span<const int64_t>{};
-  // DUMP_CPU_TENSOR_INIT();
-  // DUMP_CPU_TENSOR("Mask", mask_index_data, mask_index_dims);
-
   /*
   if (mask_data != nullptr) {
     // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
     // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
     PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
                 causal, batch_size, sequence_length, kv_sequence_length, past_sequence_length, mask_filter_value_);
-    DUMP_CPU_TENSOR("Mask3D", static_cast<T*>(mask_data), batch_size, sequence_length, total_sequence_length);
   }
   */
 
@@ -492,26 +476,26 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   size_t bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * total_sequence_length * sizeof(T);
   auto attention_probs = allocator->Alloc(bytes);
   BufferUniquePtr scratch_buffer(attention_probs, BufferDeleter(allocator));
-  ComputeAttentionProbs(static_cast<T*>(attention_probs),
-                        Q,
-                        K,
-                        static_cast<T*>(mask_data),
-                        parameters.batch_size,
-                        parameters.q_sequence_length,
-                        parameters.kv_sequence_length,
-                        parameters.past_sequence_length,
-                        parameters.head_size == 0 ? parameters.v_head_size : parameters.head_size,
-                        parameters.q_num_heads,
-                        past_data,
-                        past_key_data, present_data,
-                        present_key_data,
-                        output_qk_data,
-                        tp,
-                        parameters.scale,
-                        attn_bias_data,
-                        attn_bias_dims,
-                        past_present_share_buffer,
-                        max_sequence_length);
+  this->ComputeAttentionProbs(static_cast<T*>(attention_probs),
+                              Q,
+                              K,
+                              static_cast<T*>(mask_data),
+                              parameters.batch_size,
+                              parameters.q_sequence_length,
+                              parameters.kv_sequence_length,
+                              parameters.past_sequence_length,
+                              parameters.head_size == 0 ? parameters.v_head_size : parameters.head_size,
+                              parameters.q_num_heads,
+                              past_data,
+                              past_key_data, present_data,
+                              present_key_data,
+                              output_qk_data,
+                              tp,
+                              parameters.scale,
+                              attn_bias_data,
+                              attn_bias_dims,
+                              past_present_share_buffer,
+                              max_sequence_length);
 
   void* out_tmp_data = nullptr;
   if (parameters.transpose_output) {
@@ -521,25 +505,25 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   BufferUniquePtr out_tmp_buffer(out_tmp_data, out_tmp_data == nullptr ? BufferDeleter(nullptr) : BufferDeleter(std::move(allocator)));
 
   int v_hidden_size = parameters.q_num_heads * parameters.v_head_size;
-  ComputeVxAttentionScore(output->MutableData<T>(),
-                          static_cast<T*>(out_tmp_data),
-                          static_cast<T*>(attention_probs),
-                          V,
-                          parameters.batch_size,
-                          parameters.q_sequence_length,
-                          parameters.kv_sequence_length,
-                          parameters.past_sequence_length,
-                          parameters.v_head_size,
-                          v_hidden_size,
-                          parameters.q_num_heads,
-                          past_data,
-                          past_value_data,
-                          present_data,
-                          present_value_data,
-                          parameters.transpose_output,
-                          tp,
-                          past_present_share_buffer,
-                          max_sequence_length);
+  this->ComputeVxAttentionScore(output->MutableData<T>(),
+                                static_cast<T*>(out_tmp_data),
+                                static_cast<T*>(attention_probs),
+                                V,
+                                parameters.batch_size,
+                                parameters.q_sequence_length,
+                                parameters.kv_sequence_length,
+                                parameters.past_sequence_length,
+                                parameters.v_head_size,
+                                v_hidden_size,
+                                parameters.q_num_heads,
+                                past_data,
+                                past_value_data,
+                                present_data,
+                                present_value_data,
+                                parameters.transpose_output,
+                                tp,
+                                past_present_share_buffer,
+                                max_sequence_length);
 
   return Status::OK();
 }
