@@ -331,7 +331,8 @@ class IExecutionProvider {
 
   /**
     Determine whether a node with `domain` and `op_type` requires its data layout to be converted to NHWC.
-    This function is called during layout transformation.
+    If the EP prefers NHWC data layout (see `GetPreferredLayout()`), this function will be called during layout
+    transformation.
     A return value of `std::nullopt` indicates that this decision is left to ORT.
   */
   virtual std::optional<bool> ShouldConvertNodeLayoutToNhwc(std::string_view /*node_domain*/,
