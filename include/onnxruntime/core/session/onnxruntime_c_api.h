@@ -4973,7 +4973,7 @@ struct OrtApi {
    * \snippet{doc} snippets.dox OrtStatus Return Value
    * \since Version 1.22.
    */
-  ORT_CLASS_RELEASE(Graph);
+  void(_stdcall* ReleaseGraph)(OrtGraph* input);
 
   /** \brief Release an OrtModel.
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -5783,7 +5783,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _Outptr_ OrtGraph** subgraph);
+  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtArrayOfConstObjects* nodes, _In_ bool copy_in_memory_initializer, _Outptr_ OrtGraph** subgraph);
 
   //
   // OrtNode

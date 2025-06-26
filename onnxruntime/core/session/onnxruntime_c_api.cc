@@ -2742,6 +2742,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
 
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
                     _In_ const OrtArrayOfConstObjects* ort_nodes_container,
+                    _In_ bool copy_in_memory_initializer,
                     _Outptr_ OrtGraph** dst_graph) {
   API_IMPL_BEGIN
   const GraphViewer& graph_viewer = EpGraph::ToInternal(src_graph)->GetGraphViewer();
@@ -2758,7 +2759,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
   // Initializers that refer to a memory location in OrtValue
   // can not be handled by TRT (unlike those that are on disk).
   // This prevents us from sharing the data and we have to make a copy here.
-  constexpr const bool load_initializers_inline_true = true;
+  bool load_initializers_inline_true = copy_in_memory_initializer;
 
   // Gets number of given nodes
   size_t num_nodes = 0;

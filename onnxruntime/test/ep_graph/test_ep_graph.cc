@@ -5,12 +5,15 @@
 #include <gsl/gsl>
 #include <memory>
 #include <vector>
+#include <fstream>
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/ep_api_types.h"
+#include "core/graph/graph_proto_serializer.h"
 
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -26,6 +29,7 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
+static void Check_Graph_GetSubgraph(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
 
 //
 //  Tests
@@ -66,6 +70,13 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, CApiUseOfGetSubGraphFromGraph) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  Check_Graph_GetSubgraph(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
 //
@@ -326,6 +337,54 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
       ASSERT_EQ(value_info, nullptr);  // A missing optional input has a null OrtValueInfo.
     }
   }
+}
+
+// Checks the Graph_GetSubgraph C API
+static void Check_Graph_GetSubgraph(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  // Get all Ort nodes
+  OrtArrayOfConstObjects* nodes_container = nullptr;
+  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_container,
+                                                        ort_api.ReleaseArrayOfConstObjects);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, &nodes_container));
+
+  gsl::span<const OrtNode* const> nodes{};
+  GetSpanFromArrayOfConstObjects<OrtNode>(nodes_container, nodes);
+
+  OrtArrayOfConstObjects* selected_nodes_container = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.CreateArrayOfConstObjects(OrtTypeTag::ORT_TYPE_TAG_OrtNode, 0, nullptr, &selected_nodes_container));
+
+  // Select a subset of nodes to create a sub-graph
+  for (auto node : nodes) {
+    const char* op_type = nullptr;
+    ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(node, &op_type));
+    std::string target_op_type = "MaxPool";
+    if (op_type == target_op_type) {
+      break;
+    }
+    ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_AppendElement(selected_nodes_container, node));
+  }
+
+  OrtGraph* sub_graph;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetSubGraph(&api_graph, selected_nodes_container, true, &sub_graph));
+
+
+  // For debug
+  const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+  std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
+  auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  std::string string_buf;
+  model_proto->SerializeToString(&string_buf);
+
+ // Dump TensorRT subgraph for debugging
+ std::fstream dump("Subgraph.onnx", std::ios::out | std::ios::trunc | std::ios::binary);
+ model_proto->SerializeToOstream(&dump);
+
+  ort_api.ReleaseGraph(sub_graph);
 }
 
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
