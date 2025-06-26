@@ -116,6 +116,7 @@ jobs:
           report_paths: ${{ github.workspace }}/build/linux/Release/*.results.xml
 
       - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
         with:
           name: ORT Linux Test Results
           path: |
@@ -148,6 +149,7 @@ jobs:
           report_paths: ${{ github.workspace }}/build/windows-x86_64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
       - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
         with:
           name: ORT Windows x86_64 Test Results
           path: |
@@ -166,6 +168,7 @@ jobs:
           python .\qcom\build_and_test.py archive_ort_windows_arm64
 
       - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
         with:
           name: ORT Windows ARM64 Tests
           path: |
@@ -200,6 +203,7 @@ jobs:
           report_paths: ${{ github.workspace }}/build/qdc-android/*.results.xml
 
       - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
         with:
           name: ORT Android Test Results
           path: |
@@ -233,6 +237,7 @@ jobs:
           report_paths: ${{ github.workspace }}/build/qdc-windows/*.results.xml
 
       - uses: actions/upload-artifact@v3
+        if: always() # always run even if the previous step fails
         with:
           name: ORT Windows ARM64 Test Results
           path: |
