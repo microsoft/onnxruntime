@@ -336,8 +336,7 @@ TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicInputs) {
                                         ExpectedEPNodeAssignment::All,
                                         13,
                                         false,
-                                        // Require tolerance of 0.74% on Windows ARM64.
-                                        QDQTolerance(0.0074f));
+                                        QDQTolerance(0.00410f));
 }
 
 TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_DynamicC) {
@@ -356,8 +355,7 @@ TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_DynamicC) {
                                         ExpectedEPNodeAssignment::All,
                                         13,
                                         false,
-                                        // Require tolerance of 0.74% on Windows ARM64.
-                                        QDQTolerance(0.0074f));
+                                        QDQTolerance(0.00410f));
 }
 
 TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
@@ -376,8 +374,7 @@ TEST_F(QnnHTPBackendTests, Gemm_Broadcast_Bias_DynamicA_StaticB_StaticC) {
                                         ExpectedEPNodeAssignment::All,
                                         13,
                                         false,
-                                        // Require tolerance of 0.74% on Windows ARM64.
-                                        QDQTolerance(0.0074f));
+                                        QDQTolerance(0.00410f));
 }
 
 // Test 16-bit QDQ Gemm with dynamic inputs A and Bias. The B input is an initializer.
