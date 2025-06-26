@@ -8,7 +8,7 @@
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -192,7 +192,7 @@ __device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant,
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
     __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
     nv_bfloat16 zp_adjust = -scale * __uint2bfloat16_rn(zp);
-    __nv_bfloat162 zp_adjust2 = {zp_adjust, zp_adjust};
+    __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
 
     const uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
 

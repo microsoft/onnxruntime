@@ -8,7 +8,7 @@
 #include <math_constants.h>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "matmul_nbits.cuh"
+#include "contrib_ops/cuda/quantization/matmul_nbits.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;

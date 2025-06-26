@@ -2,16 +2,16 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <cmath>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
-#include <cmath>
-#include <type_traits>
 #include <math_constants.h>
+#include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
-#include "dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -47,9 +47,9 @@ __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, h
 __device__ __forceinline__ void DequantizeEightElements(uint32_t values_quant, __nv_bfloat16 scale, __nv_bfloat16 zp,
                                                         __nv_bfloat16* output) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  __nv_bfloat162 scale_bf162 = {scale, scale};
+  __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
   __nv_bfloat16 zp_adjust = __hneg(scale) * zp;
-  __nv_bfloat162 zp_adjust2 = {zp_adjust, zp_adjust};
+  __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
 
   alignas(16) __nv_bfloat162 results[4];
   __nv_bfloat16 v0 = __uint2bfloat16_rn(values_quant & 0xF);

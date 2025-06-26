@@ -2,17 +2,17 @@
 // Licensed under the MIT License.
 
 #include <cstdint>
+#include <cmath>
 #include <cub/cub.cuh>
 #include <cublas_v2.h>
 #include <cuda_fp16.h>
 #include <cuda_bf16.h>
-#include <cmath>
-#include <type_traits>
 #include <math_constants.h>
+#include <type_traits>
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 #include "contrib_ops/cuda/utils/dump_cuda_tensor.h"
-#include "dequantize_blockwise.cuh"
+#include "contrib_ops/cuda/quantization/dequantize_blockwise.cuh"
 
 using namespace onnxruntime::cuda;
 using namespace cub;
@@ -46,10 +46,10 @@ __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, ha
 // Processes 4 elements (since each is 8 bits, 4 fit in uint32_t) for bfloat16
 __device__ __forceinline__ void DequantizeFourElements(uint32_t values_quant, __nv_bfloat16 scale, __nv_bfloat16 zp, __nv_bfloat16* output) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-  __nv_bfloat162 scale_bf162 = {scale, scale};
+  __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
   // Formula: val = (quant - zp) * scale = quant * scale - zp * scale
   __nv_bfloat16 zp_adjust = -scale * zp;
-  __nv_bfloat162 zp_adjust2 = {zp_adjust, zp_adjust};
+  __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
 
   alignas(16) __nv_bfloat162 results[2];  // Store 4 bfloat16 values
 
