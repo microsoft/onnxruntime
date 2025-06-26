@@ -317,42 +317,65 @@ void
         unsigned KernelFlags
     )
 {
-    // Mark unused parameters
-    (void)InputBase;
-    (void)InputWidth;
-
     const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
     const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
+    const size_t BlockSize = MlasNchwcGetBlockSize();
     const float32x4_t ZeroVector = vdupq_n_f32(0.0f);
 
-    // Convert byte strides to element strides
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t InputStrideElements = InputStride / sizeof(float);
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
 
-    // Mark unused variables in Depthwise kernel
     (void)InputStrideElements;
 
-    // For depthwise convolution, process 4 channels at a time
-    const float bias = BiasAddition ? Bias[0] : 0.0f;
-    const float32x4_t BiasVector = vdupq_n_f32(bias);
+    const size_t InputWidthElements = InputWidth / sizeof(float);
 
-    const float* input_ptr = Input;
-    size_t OutputIndex = 0;
+    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    // Handle left padding
-    for (size_t i = 0; i < OutputCountLeftPad; i++) {
-        float32x4_t Accumulator = AccumulateOutput ? MlasLoadFloat32x4(&Output[OutputIndex]) : BiasVector;
+    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
+
+        float32x4_t Accumulator;
+
+        if (AccumulateOutput) {
+            Accumulator = MlasLoadFloat32x4(&Output[output_idx * BlockSize]);
+        } else if (BiasAddition) {
+            Accumulator = MlasLoadFloat32x4(Bias);
+        } else {
+            Accumulator = vdupq_n_f32(0.0f);
+        }
 
         for (size_t kh = 0; kh < KernelHeight; kh++) {
             for (size_t kw = 0; kw < KernelWidth; kw++) {
-                const float* input_element = input_ptr + kh * DilatedInputWidthElements + kw * DilationWidthElements;
-                const float filter_value = Filter[kh * KernelWidth + kw];
-                const float32x4_t FilterVector = vdupq_n_f32(filter_value);
-                const float32x4_t InputVector = MlasLoadFloat32x4(input_element);
+                size_t kernel_pos = kh * KernelWidth + kw;
+
+                const float* input_base = Input + output_idx * StrideWidthElements +
+                                          kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+                float32x4_t InputVector;
+
+                if (is_main_region) {
+                    InputVector = MlasLoadFloat32x4(input_base);
+                } else {
+                    float input_values[4];
+                    for (size_t i = 0; i < BlockSize; i++) {
+                        const float* input_element = input_base + i;
+                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                        const float* input_row_end = input_row_start + InputWidthElements;
+
+                        if (input_element >= input_row_start && input_element < input_row_end) {
+                            input_values[i] = *input_element;
+                        } else {
+                            input_values[i] = 0.0f;
+                        }
+                    }
+                    InputVector = MlasLoadFloat32x4(input_values);
+                }
+
+                const float32x4_t FilterVector = MlasLoadFloat32x4(&Filter[kernel_pos * BlockSize]);
 
                 Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
             }
@@ -362,57 +385,7 @@ void
             Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
         }
 
-        MlasStoreFloat32x4(&Output[OutputIndex], Accumulator);
-        OutputIndex += 4;
-        input_ptr += StrideWidthElements;
-    }
-
-    // Handle main output region
-    for (size_t i = 0; i < OutputCount; i++) {
-        float32x4_t Accumulator = AccumulateOutput ? MlasLoadFloat32x4(&Output[OutputIndex]) : BiasVector;
-
-        for (size_t kh = 0; kh < KernelHeight; kh++) {
-            for (size_t kw = 0; kw < KernelWidth; kw++) {
-                const float* input_element = input_ptr + kh * DilatedInputWidthElements + kw * DilationWidthElements;
-                const float filter_value = Filter[kh * KernelWidth + kw];
-                const float32x4_t FilterVector = vdupq_n_f32(filter_value);
-                const float32x4_t InputVector = MlasLoadFloat32x4(input_element);
-
-                Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
-            }
-        }
-
-        if (ReluActivation) {
-            Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
-        }
-
-        MlasStoreFloat32x4(&Output[OutputIndex], Accumulator);
-        OutputIndex += 4;
-        input_ptr += StrideWidthElements;
-    }
-
-    // Handle right padding
-    for (size_t i = 0; i < OutputCountRightPad; i++) {
-        float32x4_t Accumulator = AccumulateOutput ? MlasLoadFloat32x4(&Output[OutputIndex]) : BiasVector;
-
-        for (size_t kh = 0; kh < KernelHeight; kh++) {
-            for (size_t kw = 0; kw < KernelWidth; kw++) {
-                const float* input_element = input_ptr + kh * DilatedInputWidthElements + kw * DilationWidthElements;
-                const float filter_value = Filter[kh * KernelWidth + kw];
-                const float32x4_t FilterVector = vdupq_n_f32(filter_value);
-                const float32x4_t InputVector = MlasLoadFloat32x4(input_element);
-
-                Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
-            }
-        }
-
-        if (ReluActivation) {
-            Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
-        }
-
-        MlasStoreFloat32x4(&Output[OutputIndex], Accumulator);
-        OutputIndex += 4;
-        input_ptr += StrideWidthElements;
+        MlasStoreFloat32x4(&Output[output_idx * BlockSize], Accumulator);
     }
 }
 
