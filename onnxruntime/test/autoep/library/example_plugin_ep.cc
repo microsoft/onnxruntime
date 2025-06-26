@@ -18,69 +18,108 @@ struct ExampleEp;
 /// Example implementation of ONNX Mul. Does not handle many things like broadcasting.
 /// </summary>
 struct MulKernel {
-  MulKernel(const OrtApi& ort_api, const OrtLogger& logger) : ort_api(ort_api), logger(logger) {}
+  MulKernel(const OrtApi& ort_api, const OrtLogger& logger,
+            const std::unordered_map<std::string, FloatInitializer>& float_initializers,
+            std::string input0_name, std::string input1_name)
+      : ort_api(ort_api),
+        logger(logger),
+        float_initializers(float_initializers),
+        input0_name(input0_name),
+        input1_name(input1_name) {}
+
+  const FloatInitializer* TryGetSavedInitializer(const std::string& name) const {
+    auto iter = float_initializers.find(name);
+    return iter != float_initializers.end() ? &iter->second : nullptr;
+  }
+
+  OrtStatus* GetInputDataAndShape(OrtKernelContext* kernel_context, size_t index,
+                                  /*out*/ gsl::span<const float>& data,
+                                  /*out*/ std::vector<int64_t>& shape) const {
+    const OrtValue* input = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetInput(kernel_context, index, &input));
+
+    OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+    DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type(&type_shape, ort_api.ReleaseTensorTypeAndShapeInfo);
+
+    RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(input, &type_shape));
+
+    ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
+    RETURN_IF(elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ort_api, "Expected float32 inputs");
+
+    size_t num_elems = 0;
+    RETURN_IF_ERROR(ort_api.GetTensorShapeElementCount(type_shape, &num_elems));
+
+    size_t num_dims = 0;
+    RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape, &num_dims));
+
+    shape.resize(num_dims, 0);
+    RETURN_IF_ERROR(ort_api.GetDimensions(type_shape, shape.data(), shape.size()));
+
+    const float* raw_data = nullptr;
+    RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(input), (void**)&raw_data));  // No const-correct API?
+
+    data = gsl::span<const float>(raw_data, num_elems);
+    return nullptr;
+  }
 
   OrtStatus* Compute(OrtKernelContext* kernel_context) {
     RETURN_IF_ERROR(ort_api.Logger_LogMessage(&logger,
                                               OrtLoggingLevel::ORT_LOGGING_LEVEL_INFO,
                                               "MulKernel::Compute", ORT_FILE, __LINE__, __FUNCTION__));
+    gsl::span<const float> input0;
+    gsl::span<const float> input1;
+    std::vector<int64_t> shape0;
+    std::vector<int64_t> shape1;
+
     size_t num_inputs = 0;
     RETURN_IF_ERROR(ort_api.KernelContext_GetInputCount(kernel_context, &num_inputs));
-    RETURN_IF(num_inputs != 2, ort_api, "Expected 2 inputs for MulKernel");
+
+    if (num_inputs == 2) {
+      // Both inputs are non-constant. Get them from ORT's KernelContext.
+      RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 0, input0, shape0));
+      RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 1, input1, shape1));
+    } else if (num_inputs == 1) {
+      // ORT is only providing one non-constant input because this EP chose not to request constant initializer inputs.
+      // Get the constant input from the initializers saved by the EP.
+      // Refer to "NodeFusionOptions_DropConstantInitializers()".
+
+      if (const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name); const_input0 != nullptr) {
+        RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 0, input1, shape1));
+        input0 = gsl::span<const float>(const_input0->data);
+        shape0 = const_input0->shape;
+      } else if (const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name); const_input1 != nullptr) {
+        RETURN_IF_ERROR(GetInputDataAndShape(kernel_context, 0, input0, shape0));
+        input1 = gsl::span<const float>(const_input1->data);
+        shape1 = const_input1->shape;
+      }
+    } else {
+      // Both inputs are constant. Should never happen unless all ORT optimizations (specifically constant-folding)
+      // are disabled.
+      const FloatInitializer* const_input0 = TryGetSavedInitializer(input0_name);
+      const FloatInitializer* const_input1 = TryGetSavedInitializer(input1_name);
+      RETURN_IF(const_input0 == nullptr || const_input1 == nullptr, ort_api,
+                "Expected 2 initializer inputs to be saved by EP");
+
+      input0 = gsl::span<const float>(const_input0->data);
+      input1 = gsl::span<const float>(const_input1->data);
+      shape0 = const_input0->shape;
+      shape1 = const_input1->shape;
+    }
+
+    RETURN_IF(shape0 != shape1, ort_api, "Expected same dimensions for both inputs");  // No broadcasting.
 
     size_t num_outputs = 0;
     RETURN_IF_ERROR(ort_api.KernelContext_GetOutputCount(kernel_context, &num_outputs));
     RETURN_IF(num_outputs != 1, ort_api, "Expected 1 output for MulKernel");
 
-    const OrtValue* input0 = nullptr;
-    const OrtValue* input1 = nullptr;
-    RETURN_IF_ERROR(ort_api.KernelContext_GetInput(kernel_context, 0, &input0));
-    RETURN_IF_ERROR(ort_api.KernelContext_GetInput(kernel_context, 1, &input1));
-
-    OrtTensorTypeAndShapeInfo* type_shape0 = nullptr;
-    OrtTensorTypeAndShapeInfo* type_shape1 = nullptr;
-    DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type0(&type_shape0, ort_api.ReleaseTensorTypeAndShapeInfo);
-    DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type1(&type_shape1, ort_api.ReleaseTensorTypeAndShapeInfo);
-
-    RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(input0, &type_shape0));
-    RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(input1, &type_shape1));
-
-    ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
-    RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape0, &elem_type));
-    RETURN_IF(elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ort_api, "Expected float32 inputs");
-
-    size_t num_dims0 = 0;
-    size_t num_dims1 = 0;
-    RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape0, &num_dims0));
-    RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape1, &num_dims1));
-    RETURN_IF((num_dims0 == 0) || (num_dims1 == 0), ort_api, "Input has 0 dimensions");
-    RETURN_IF(num_dims0 != num_dims1, ort_api, "Expected same dimensions for both inputs");  // No broadcasting
-
-    std::vector<int64_t> dims0(num_dims0, 0);
-    std::vector<int64_t> dims1(num_dims1, 0);
-    RETURN_IF_ERROR(ort_api.GetDimensions(type_shape0, dims0.data(), dims0.size()));
-    RETURN_IF_ERROR(ort_api.GetDimensions(type_shape1, dims1.data(), dims1.size()));
-    RETURN_IF(dims0 != dims1, ort_api, "Expected same dimensions for both inputs");  // No broadcasting.
-
-    const float* input_data0 = nullptr;
-    const float* input_data1 = nullptr;
-    RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(input0), (void**)&input_data0));  // No const-correct API?
-    RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(input1), (void**)&input_data1));
-
     OrtValue* output = nullptr;
-    RETURN_IF_ERROR(ort_api.KernelContext_GetOutput(kernel_context, 0, dims0.data(), dims0.size(), &output));
-
     float* output_data = nullptr;
+    RETURN_IF_ERROR(ort_api.KernelContext_GetOutput(kernel_context, 0, shape0.data(), shape0.size(), &output));
     RETURN_IF_ERROR(ort_api.GetTensorMutableData(output, reinterpret_cast<void**>(&output_data)));
 
-    int64_t num_elems = 1;
-    for (int64_t dim : dims0) {
-      RETURN_IF(dim < 0, ort_api, "Invalid dimension: negative value detected");
-      num_elems *= dim;
-    }
-
-    for (size_t i = 0; i < static_cast<size_t>(num_elems); ++i) {
-      output_data[i] = input_data0[i] * input_data1[i];
+    for (size_t i = 0; i < input0.size(); ++i) {
+      output_data[i] = input0[i] * input1[i];
     }
 
     return nullptr;
@@ -88,6 +127,9 @@ struct MulKernel {
 
   const OrtApi& ort_api;
   const OrtLogger& logger;
+  const std::unordered_map<std::string, FloatInitializer>& float_initializers;
+  std::string input0_name;
+  std::string input1_name;
 };
 
 /// <summary>
@@ -140,6 +182,55 @@ struct ExampleEp : OrtEp, ApiPtrs {
 
   ~ExampleEp() {
     // Clean up the execution provider
+  }
+
+  OrtStatus* SaveConstantInitializers(const OrtGraph* graph) {
+    OrtArrayOfConstObjects* initializers = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_initializers(&initializers, ort_api.ReleaseArrayOfConstObjects);
+    size_t num_initializers = 0;
+
+    RETURN_IF_ERROR(ort_api.Graph_GetInitializers(graph, &initializers));
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers));
+
+    for (size_t i = 0; i < num_initializers; ++i) {
+      const OrtValueInfo* initializer = nullptr;
+      RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(initializers, i,
+                                                               reinterpret_cast<const void**>(&initializer)));
+
+      bool is_constant = false;
+      RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(initializer, &is_constant));
+
+      if (is_constant) {
+        const char* name = nullptr;
+        const OrtValue* value = nullptr;
+        OrtTensorTypeAndShapeInfo* type_shape = nullptr;
+        DeferOrtRelease<OrtTensorTypeAndShapeInfo> release_type(&type_shape, ort_api.ReleaseTensorTypeAndShapeInfo);
+        size_t num_elems = 0;
+
+        RETURN_IF_ERROR(ort_api.GetValueInfoName(initializer, &name));
+        RETURN_IF_ERROR(ort_api.ValueInfo_GetInitializerValue(initializer, &value));
+        RETURN_IF_ERROR(ort_api.GetTensorTypeAndShape(value, &type_shape));
+        RETURN_IF_ERROR(ort_api.GetTensorShapeElementCount(type_shape, &num_elems));
+
+        ONNXTensorElementDataType elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+        RETURN_IF_ERROR(ort_api.GetTensorElementType(type_shape, &elem_type));
+        RETURN_IF(elem_type != ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, ort_api, "Expected float32 initializers");
+
+        size_t num_dims = 0;
+        RETURN_IF_ERROR(ort_api.GetDimensionsCount(type_shape, &num_dims));
+
+        std::vector<int64_t> dims(num_dims, 0);
+        RETURN_IF_ERROR(ort_api.GetDimensions(type_shape, dims.data(), dims.size()));
+
+        const float* data = nullptr;
+        RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(value), (void**)&data));
+
+        FloatInitializer ep_initializer = {std::move(dims), std::vector<float>(data, data + num_elems)};
+        this->float_initializers.emplace(name, std::move(ep_initializer));
+      }
+    }
+
+    return nullptr;
   }
 
   static const char* ORT_API_CALL GetNameImpl(const OrtEp* this_ptr) {
@@ -206,8 +297,19 @@ struct ExampleEp : OrtEp, ApiPtrs {
         break;
       }
     }
+
+    // Create (optional) fusion options for the supported nodes to fuse.
+    OrtNodeFusionOptions node_fusion_options = {};
+    node_fusion_options.ort_version_supported = ORT_API_VERSION;
+
+    // Set "drop constant initializers" to true if the compiling EP doesn't need ORT to provide constant initializers
+    // as inputs to the fused/compiled node at inference time. This allows ORT to release unused initializers.
+    // This example EP sets this to true and saves initializers during the call to OrtEp::Compile for use
+    // during inference.
+    node_fusion_options.drop_constant_initializers = true;
+
     RETURN_IF_ERROR(ep->ep_api.EpGraphSupportInfo_AddNodesToFuse(graph_support_info, supported_nodes.data(),
-                                                                 supported_nodes.size()));
+                                                                 supported_nodes.size(), &node_fusion_options));
     return nullptr;
   }
 
@@ -216,39 +318,62 @@ struct ExampleEp : OrtEp, ApiPtrs {
                                              _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
                                              _Out_writes_(count) OrtNode** ep_context_nodes) {
     ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
+    const OrtApi& ort_api = ep->ort_api;
 
     if (count != 1) {
       return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single graph");
     }
 
+    // In GetCapability(), this EP specified that it doesn't need ORT to provide constant initializers during inference.
+    // So, this EP saves constant initializers so that they're available during inference, but an actual EP
+    // implementation could transfer the weights to device memory.
+    ep->SaveConstantInitializers(graphs[0]);
+
     OrtArrayOfConstObjects* nodes_array = nullptr;
-    DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
+    DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ort_api.ReleaseArrayOfConstObjects);
     size_t num_nodes = 0;
 
-    RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], &nodes_array));
-    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+    RETURN_IF_ERROR(ort_api.Graph_GetNodes(graphs[0], &nodes_array));
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
 
     if (num_nodes != 1) {
-      return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
     const OrtNode* node_to_compile = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetElementAt(nodes_array, 0,
-                                                                 reinterpret_cast<const void**>(&node_to_compile)));
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(nodes_array, 0,
+                                                             reinterpret_cast<const void**>(&node_to_compile)));
 
     const char* node_op_type = nullptr;
-    RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node_to_compile, &node_op_type));
+    RETURN_IF_ERROR(ort_api.Node_GetOperatorType(node_to_compile, &node_op_type));
 
     if (std::strncmp(node_op_type, "Mul", 4) != 0) {
-      return ep->ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
+      return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
     }
 
-    // Now we know we're compiling a single Mul node.
+    // Now we know we're compiling a single Mul node. Create a computation kernel.
+    OrtArrayOfConstObjects* inputs = nullptr;
+    DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs, ep->ort_api.ReleaseArrayOfConstObjects);
+
+    RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node_to_compile, &inputs));
+    const OrtValueInfo* input0 = nullptr;
+    const OrtValueInfo* input1 = nullptr;
+
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(inputs, 0, reinterpret_cast<const void**>(&input0)));
+    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(inputs, 1, reinterpret_cast<const void**>(&input1)));
+
+    const char* input0_name = nullptr;
+    const char* input1_name = nullptr;
+    RETURN_IF_ERROR(ort_api.GetValueInfoName(input0, &input0_name));
+    RETURN_IF_ERROR(ort_api.GetValueInfoName(input1, &input1_name));
+
     // Associate the name of the fused node with our MulKernel.
     const char* fused_node_name = nullptr;
     RETURN_IF_ERROR(ep->ort_api.Node_GetName(fused_nodes[0], &fused_node_name));
 
-    ep->kernels.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_));
+    ep->kernels.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
+                                                                                  ep->float_initializers,
+                                                                                  input0_name, input1_name));
 
     // Update the OrtNodeComputeInfo associated with the graph.
     auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
@@ -347,6 +472,7 @@ struct ExampleEp : OrtEp, ApiPtrs {
   Config config_{};
   const OrtLogger& logger_;
   std::unordered_map<std::string, std::unique_ptr<MulKernel>> kernels;
+  std::unordered_map<std::string, FloatInitializer> float_initializers;
 };
 
 //

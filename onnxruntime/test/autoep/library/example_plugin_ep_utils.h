@@ -49,6 +49,11 @@ struct DeferOrtRelease {
   std::function<void(T*)> release_func_ = nullptr;
 };
 
+struct FloatInitializer {
+  std::vector<int64_t> shape;
+  std::vector<float> data;
+};
+
 // Returns an entry in the session option configurations, or a default value if not present.
 OrtStatus* GetSessionConfigEntryOrDefault(const OrtApi& ort_api, const OrtSessionOptions& session_options,
                                           const char* config_key, const std::string& default_val,
