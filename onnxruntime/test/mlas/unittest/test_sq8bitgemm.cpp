@@ -768,7 +768,7 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
 
     auto* bias = HasBias ? bias_.GetFilledBuffer(N, [](float* p, size_t t) {
       for (size_t i = 0; i < t; i++) {
-        p[i] = (float)(5+i);
+        p[i] = (float)(5 + i);
       }
     })
                          : nullptr;
@@ -805,9 +805,9 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
   template <size_t M, size_t K, size_t N, size_t BlkLen>
   void Execute(void) {
     // Commented out tests are failing tests
-    //TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
+    // TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
     TestSQ8BitGemmKernel<false, true, M, K, N, BlkLen>();
-    //TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
+    // TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
     TestSQ8BitGemmKernel<true, true, M, K, N, BlkLen>();
   }
 
@@ -816,31 +816,31 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     Execute<1, 16, 1, 16>();
     Execute<7, 2, 4, 16>();
     Execute<8, 497, 5, 16>();
-    //Execute<1, 3072, 128, 16>();
-    //Execute<2, 3072, 128, 16>();
+    // Execute<1, 3072, 128, 16>();
+    // Execute<2, 3072, 128, 16>();
 
     Execute<1, 1, 1, 32>();
     Execute<8, 33, 5, 32>();
-    //Execute<8, 513, 9, 32>();
-    //Execute<1, 3072, 128, 32>();
-    //Execute<2, 3072, 128, 32>();
+    // Execute<8, 513, 9, 32>();
+    // Execute<1, 3072, 128, 32>();
+    // Execute<2, 3072, 128, 32>();
 
     Execute<1, 1, 1, 64>();
-    //Execute<8, 497, 9, 64>();
-    //Execute<1, 3072, 128, 64>();
-    //Execute<2, 3072, 128, 64>();
+    // Execute<8, 497, 9, 64>();
+    // Execute<1, 3072, 128, 64>();
+    // Execute<2, 3072, 128, 64>();
 
     Execute<1, 1, 1, 128>();
     Execute<6, 255, 7, 128>();
-    //Execute<5, 257, 9, 128>();
-    //Execute<1, 3072, 128, 128>();
-    //Execute<2, 3072, 128, 128>();
+    // Execute<5, 257, 9, 128>();
+    // Execute<1, 3072, 128, 128>();
+    // Execute<2, 3072, 128, 128>();
 
     Execute<1, 1, 1, 256>();
     Execute<7, 255, 7, 256>();
     Execute<6, 257, 7, 256>();
-    //Execute<1, 3072, 128, 256>();
-    //Execute<2, 3072, 128, 256>();
+    // Execute<1, 3072, 128, 256>();
+    // Execute<2, 3072, 128, 256>();
   }
 };
 
