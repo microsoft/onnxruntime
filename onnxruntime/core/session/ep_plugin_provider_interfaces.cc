@@ -138,6 +138,7 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
     } else if (node_grouping.kind == OrtEpGraphSupportInfo::NodeGroupingKind::kFusedNode) {
       std::unordered_set<const Node*> node_set;
       node_set.reserve(node_grouping.nodes.size());
+
       for (const EpNode* ep_node : node_grouping.nodes) {
         node_set.insert(&ep_node->GetInternalNode());
       }
@@ -151,7 +152,8 @@ PluginExecutionProvider::GetCapability(const onnxruntime::GraphViewer& graph_vie
       // unsupported nodes in any path between supported nodes.
       std::vector<std::unique_ptr<ComputeCapability>> capabilities = utils::CreateSupportedPartitions(
           graph_viewer, node_set, /*stop_ops*/ {}, PluginEpMetaDefNameFunctor(generator, graph_viewer, this->Type()),
-          this->Type(), this->Type(), /*node_unit_map*/ nullptr);
+          this->Type(), this->Type(), /*node_unit_map*/ nullptr,
+          node_grouping.fusion_options.drop_constant_initializers);
 
       if (capabilities.size() > 1) {
         LOGS_DEFAULT(ERROR) << "OrtEp::GetCapability() set nodes that cannot be fused together. "
