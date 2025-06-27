@@ -31,6 +31,9 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
+#include "core/graph/model.h"
+#include "core/graph/graph_utils.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -2737,6 +2740,98 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
+                    _In_ const OrtArrayOfConstObjects* ort_nodes_container,
+                    _In_ bool copy_in_memory_initializer,
+                    _Outptr_ OrtGraph** dst_graph) {
+  API_IMPL_BEGIN
+  const GraphViewer& graph_viewer = EpGraph::ToInternal(src_graph)->GetGraphViewer();
+
+  // This API constructs an onnxruntime::Graph from scratch using a given set of nodes,
+  // obtains a corresponding onnxruntime::GraphViewer, and passes it to EpGraph::Create to create an EpGraph instance.
+
+  // The goal is to first construct an onnxruntime::Graph instance.
+  // The Graph constructor requires a pointer to an ONNX::GraphProto.
+  // Therefore it's simpler to create an onnxruntime::Model which holds both Graph and ONNX::ModelProto (contains ONNX::GraphProto)
+  std::unique_ptr<Model> model = std::make_unique<Model>(graph_viewer.Name(), true, graph_viewer.GetGraph().GetLogger());
+  Graph& new_graph = model->MainGraph();
+
+  // Gets number of given nodes
+  size_t num_nodes = 0;
+  ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(ort_nodes_container, &num_nodes));
+
+  // Builds the new graph
+  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
+    const OrtNode* ort_node = nullptr;
+    ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetElementAt(ort_nodes_container, node_idx,
+                                                                      reinterpret_cast<const void**>(&ort_node)));
+
+    // TODO: might need to check the OrtNode is also in src_graph
+
+    const auto& ep_node = EpNode::ToInternal(ort_node);
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node should be a EpNode.");
+    }
+
+    const auto& node = ep_node->GetInternalNode();
+    std::vector<onnxruntime::NodeArg*> inputs, outputs;
+
+    for (auto input : node.InputDefs()) {
+      auto& node_arg = new_graph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
+      inputs.push_back(&node_arg);
+      graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), new_graph, input->Name(),
+                                                 copy_in_memory_initializer);
+    }
+
+    for (auto output : node.OutputDefs()) {
+      auto& node_arg = new_graph.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
+      outputs.push_back(&node_arg);
+    }
+
+    if (node.ContainsSubgraph()) {
+      for (auto input : node.ImplicitInputDefs()) {
+        graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), new_graph, input->Name(),
+                                                   copy_in_memory_initializer);
+      }
+    }
+
+    // Updates node attributes if any.
+    // Ex: if the node has subgraph, it's possible that the subgraph and the GraphProto in node attribute are not in sync because of graph optimization.
+    // Therefore, we need to force GraphProto attribute to be updated in order to get the valid GraphProto.
+    if (node.GetAttributes().size() > 0) {
+      auto node_proto = std::make_unique<ONNX_NAMESPACE::NodeProto>();
+      // we need to update any GraphProto attributes for subgraphs so that any changes made by things
+      // such as the optimizers are captured. otherwise we can end up saving an invalid graph.
+      node.ToProto(*node_proto, /* update_subgraphs */ true);
+      const int num_attributes = node_proto->attribute_size();
+      auto node_attributes = std::make_unique<NodeAttributes>();
+      node_attributes->reserve(num_attributes);
+
+      for (int i = 0; i < num_attributes; ++i) {
+        auto& attr = node_proto->attribute(i);
+        node_attributes->emplace(attr.name(), attr);
+      }
+
+      // The GraphProto attributes are the updated ones.
+      new_graph.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, node_attributes.get(), node.Domain());
+    } else {
+      // The GraphProto attributes are the original ones.
+      new_graph.AddNode(node.Name(), node.OpType(), node.Description(), inputs, outputs, &node.GetAttributes(), node.Domain());
+    }
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
+
+  auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
+  std::unique_ptr<EpGraph> result;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(model), result));
+
+  *dst_graph = result.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+
 //
 // OrtNode
 //
@@ -3529,6 +3624,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetInitializers,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,
+    &OrtApis::Graph_GetSubGraph,
     &OrtApis::Node_GetId,
     &OrtApis::Node_GetName,
     &OrtApis::Node_GetOperatorType,
