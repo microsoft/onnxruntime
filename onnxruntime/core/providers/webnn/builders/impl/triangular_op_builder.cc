@@ -57,7 +57,9 @@ Status TriangularOpBuilder::AddToModelBuilderImpl(ModelBuilder& model_builder,
     const auto diagonal_tensor = *initializers.at(diagonal_name);
 
     std::vector<uint8_t> unpacked_tensor;
-    ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(diagonal_tensor, unpacked_tensor));
+    ORT_RETURN_IF_NOT(UnpackInitializerData(diagonal_tensor, unpacked_tensor,
+                                            model_builder.GetGraphViewer(), logger),
+                      "Failed to unpack diagonal tensor data");
     const auto diagonal = *reinterpret_cast<int64_t*>(unpacked_tensor.data());
     options.set("diagonal", SafeInt<int32_t>(diagonal).Ref());
   }
