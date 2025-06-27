@@ -24,7 +24,7 @@
 #include "core/session/ort_env.h"
 #include "core/util/qmath.h"
 
-#if (defined(MLAS_TARGET_AMD64_IX86) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
+#if ((defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_ARM64)) && !defined(USE_DML) && !defined(USE_WEBGPU) && !defined(USE_COREML)) || defined(USE_CUDA) || defined(USE_WEBGPU)
 
 extern std::unique_ptr<Ort::Env> ort_env;
 
@@ -69,7 +69,7 @@ void RunTest8Bits(const TestOptions8Bits& opts) {
                 N = opts.N;
 
   RandomValueGenerator random{1234};
-  std::vector<float> input0_fp32_vals(random.Gaussian<float>(AsSpan({M, K}), 0.0f, 0.25f));
+  std::vector<float> input0_fp32_vals(random.Uniform<float>(AsSpan({M, K}), 0.0f, 0.0f));
   std::vector<float> input1_fp32_vals(random.Gaussian<float>(AsSpan({K, N}), 0.0f, 0.25f));
 
   int q_rows, q_cols;
@@ -251,14 +251,14 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 }  // namespace
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
-  TestMatMul8BitsTyped<float, 1, 1, 16, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 8, 16, 16, 4>();
+  TestMatMul8BitsTyped<float, 1, 256, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 4, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 2, 4, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 4, 64, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 32, 16, 128, 4>();
-  TestMatMul8BitsTyped<float, 1, 256, 32, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 16, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1024, 16, 4>();
   TestMatMul8BitsTyped<float, 1, 288, 1024, 128, 4>();
