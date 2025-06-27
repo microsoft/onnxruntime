@@ -33,7 +33,7 @@ __global__ void _CumSumKernel(
   if (!reverse && !exclusive) {
     start = 0;
     end = axis_dim;
-  
+
   } else if (reverse && !exclusive) {
     start = axis_dim;
     end = input_dim_along_axis - 1;
@@ -42,24 +42,23 @@ __global__ void _CumSumKernel(
     start = 0;
     end = axis_dim - 1;
 
-  } else { // reverse && exclusive
+  } else {  // reverse && exclusive
     start = axis_dim + 1;
     end = input_dim_along_axis - 1;
-
   }
 
   // count the number of elements to accumulate the sum
   int count = end - start + 1;
   if (count <= 0) {
     output_data[indices_index] = 0;
-    return;  
+    return;
   }
 
   // adjust start index based on the above identified start dim value along the axis of interest
   int data_index = static_cast<int>(indices_index) + (start - axis_dim) * input_stride_along_axis;
   T sum = 0;
 
-  // keep accumulating values from the start index for 'count' times and skip appropriately 
+  // keep accumulating values from the start index for 'count' times and skip appropriately
   while (count != 0) {
     sum += input_data[data_index];
     data_index += input_stride_along_axis;
@@ -83,12 +82,12 @@ void CumSumImpl(
     int blocksPerGrid = static_cast<int>((output_size + GridDim::maxThreadsPerBlock - 1) / GridDim::maxThreadsPerBlock);
 
     _CumSumKernel<T><<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(input_data,
-                                                                        input_dim_along_axis,
-                                                                        input_stride_along_axis,
-                                                                        output_data,
-                                                                        output_size,
-                                                                        exclusive,
-                                                                        reverse);
+                                                                                input_dim_along_axis,
+                                                                                input_stride_along_axis,
+                                                                                output_data,
+                                                                                output_size,
+                                                                                exclusive,
+                                                                                reverse);
   }
 }
 
@@ -164,4 +163,3 @@ template void CumSumImpl<half>(
 
 }  // namespace cuda
 }  // namespace onnxruntime
-

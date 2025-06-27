@@ -59,7 +59,7 @@ class DequantizeBnb4 : public IKernelExplorer {
         params_.quant_map_buffer_,
         params_.StreamHandle()));
     ORT_THROW_IF_ERROR(contrib::cuda::DequantizeBnb4(
-      params_.quant_map_buffer_,
+        params_.quant_map_buffer_,
         params_.output_,
         params_.quant_,
         params_.absmax_,

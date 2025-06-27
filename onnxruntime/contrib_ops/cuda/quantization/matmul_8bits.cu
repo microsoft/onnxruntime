@@ -145,16 +145,15 @@ __device__ __forceinline__ void AccumulateEightElements8b(
   sums_f[7] = fmaf(v[7], a_vec_1.w, sums_f[7]);
 }
 
-
 // --- Device Function: Accumulate 8 Elements (bfloat16 precision) ---
 // Dequantizes 8 uint8_t values and accumulates the result with 8 nv_bfloat16 values from A.
 // sums_f += A_bf16 * dequant(B_quant)
 __device__ __forceinline__ void AccumulateEightElements8b(
-    uint64_t values_quant,   // 8 packed uint8_t values from B
-    nv_bfloat16 scale,     // Dequantization scale for this block
-    uint8_t zp,              // Dequantization zero point for this block
-    const nv_bfloat16* a,  // Pointer to 8 nv_bfloat16 values from A
-    float* sums_f) {         // Pointer to 8 partial sums (float)
+    uint64_t values_quant,  // 8 packed uint8_t values from B
+    nv_bfloat16 scale,      // Dequantization scale for this block
+    uint8_t zp,             // Dequantization zero point for this block
+    const nv_bfloat16* a,   // Pointer to 8 nv_bfloat16 values from A
+    float* sums_f) {        // Pointer to 8 partial sums (float)
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   float scale_f = __bfloat162float(scale);
   float zp_f = static_cast<float>(zp);
