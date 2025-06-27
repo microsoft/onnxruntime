@@ -275,20 +275,20 @@ ORT_API_STATUS_IMPL(OrtApis::CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* ort_e
 
   auto& env = ort_env->GetEnvironment();
   auto st = env.CreateAndRegisterAllocatorV2(provider_type, *mem_info, options, arena_cfg);
-
-  if (!st.IsOK()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, st.ErrorMessage().c_str());
-  }
-  return nullptr;
+  return onnxruntime::ToOrtStatus(st);
 }
 
-ORT_API(OrtAllocator*, OrtApis::GetSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtMemoryInfo* mem_info) {
+ORT_API_STATUS_IMPL(OrtApis::GetSharedAllocator, _In_ OrtEnv* ort_env, _In_ const OrtMemoryInfo* mem_info,
+                    _Outptr_result_maybenull_ OrtAllocator** allocator) {
+  *allocator = nullptr;
+
   if (ort_env == nullptr || mem_info == nullptr) {
-    return nullptr;
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtEnv and OrtMemoryInfo must be provided");
   }
 
   auto& env = ort_env->GetEnvironment();
-  return env.GetSharedAllocator(*mem_info);
+  auto st = env.GetSharedAllocator(*mem_info, *allocator);
+  return onnxruntime::ToOrtStatus(st);
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSharedAllocator,

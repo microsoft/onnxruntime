@@ -128,7 +128,7 @@ Status Environment::RegisterAllocator(OrtAllocator* allocator) {
   auto allocator_ptr = std::make_shared<IAllocatorImplWrappingOrtAllocator>(allocator);
 
   // for the public API we always want to replace any existing allocator for the device.
-  auto status = RegisterAllocatorImpl(allocator_ptr, /*replace_existing*/ true);
+  auto status = RegisterAllocatorImpl(allocator_ptr);
 
   // update shared_ort_allocators_
   if (status.IsOK()) {
@@ -143,17 +143,12 @@ Status Environment::RegisterAllocator(OrtAllocator* allocator) {
   return status;
 }
 
-Status Environment::RegisterAllocatorImpl(AllocatorPtr allocator, bool replace_existing) {
+Status Environment::RegisterAllocatorImpl(AllocatorPtr allocator) {
   const auto& mem_info = allocator->Info();
 
   const bool match_name = false;
   if (FindExistingAllocator(shared_allocators_, mem_info, match_name) != shared_allocators_.end()) {
-    if (replace_existing) {
-      ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(mem_info, match_name));
-    } else {
-      return Status(ONNXRUNTIME, INVALID_ARGUMENT,
-                    "An allocator for this device has already been registered for sharing.");
-    }
+    ORT_RETURN_IF_ERROR(UnregisterAllocatorImpl(mem_info, match_name));
   }
 
   shared_allocators_.push_back(std::move(allocator));
@@ -237,7 +232,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
   }
 
   std::lock_guard<std::mutex> lock{mutex_};
-  return RegisterAllocatorImpl(allocator_ptr, /*replace_existing*/ true);
+  return RegisterAllocatorImpl(allocator_ptr);
 }
 
 Status Environment::Initialize(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -410,7 +405,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
         arena_cfg->max_mem,
         static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
         external_info, arena_cfg);
-    return RegisterAllocatorImpl(allocator_ptr, /*replace_existing*/ true);
+    return RegisterAllocatorImpl(allocator_ptr);
   }
 #endif
 
@@ -420,12 +415,25 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 Environment::~Environment() = default;
 
-OrtAllocator* Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info) {
+Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};
 
   // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
   auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
-  return it != shared_ort_allocators_.end() ? *it : nullptr;
+  allocator = it != shared_ort_allocators_.end() ? *it : nullptr;
+
+  // use the default CPU allocator if there's no custom or EP provided CPU allocator
+  if (!allocator && (mem_info.device.Type() == OrtDevice::CPU &&
+                     mem_info.device.MemType() == OrtDevice::MemType::DEFAULT)) {
+    if (!default_cpu_ort_allocator_) {
+      auto cpu_ort_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(CPUAllocator::DefaultInstance());
+      default_cpu_ort_allocator_ = std::move(cpu_ort_allocator);
+    }
+
+    allocator = default_cpu_ort_allocator_.get();
+  }
+
+  return Status::OK();
 }
 
 #if !defined(ORT_MINIMAL_BUILD)

@@ -675,7 +675,9 @@ ORT_API_STATUS_IMPL(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDev
                     _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
                     _In_opt_ const OrtKeyValuePairs* allocator_options,
                     _Outptr_opt_ OrtAllocator** allocator);
-ORT_API(OrtAllocator*, GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
+ORT_API_STATUS_IMPL(GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                    _Outptr_result_maybenull_ OrtAllocator** allocator);
+
 ORT_API_STATUS_IMPL(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
                     _In_ OrtDeviceMemoryType mem_type);
 

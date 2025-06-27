@@ -5977,15 +5977,19 @@ struct OrtApi {
    *
    * This will also match and return custom allocators added with RegisterAllocator.
    *
+   * It is not an error to not find a matching allocator.
+   *
    * \param[in] env The OrtEnv instance to get the shared allocator from.
    * \param[in] mem_info The OrtMemoryInfo instance to get the shared allocator for.
-   * \return A pointer to the shared allocator, or nullptr if no shared allocator exists for the given memory info.
+   * \param[out] allocator A pointer to the shared allocator, or nullptr if no shared allocator exists for
+   *                       the given memory info.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23
    */
-  ORT_API_T(OrtAllocator*, GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info);
+  ORT_API2_STATUS(GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                  _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release a shared allocator from the OrtEnv for the OrtEpDevice and memory type.
    *

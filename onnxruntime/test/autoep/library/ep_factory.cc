@@ -53,8 +53,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   assert(status == nullptr);  // should never fail.
   default_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
+  // HOST_ACCESSIBLE memory should use the non-CPU device type
   mem_info = nullptr;
-  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_CPU,
+  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU pinned", OrtMemoryInfoDeviceType_GPU,
                                        /*vendor*/ 0xBE57, /* device_id */ 0,
                                        OrtDeviceMemoryType_HOST_ACCESSIBLE,
                                        /*alignment*/ 0,

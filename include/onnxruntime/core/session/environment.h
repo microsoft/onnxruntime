@@ -27,7 +27,9 @@ namespace onnxruntime {
 class EpFactoryInternal;
 class InferenceSession;
 struct IExecutionProviderFactory;
+struct OrtAllocatorImplWrappingIAllocator;
 struct SessionOptions;
+
 namespace plugin_ep {
 class DataTransfer;
 }  // namespace plugin_ep
@@ -141,7 +143,7 @@ class Environment {
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
-  OrtAllocator* GetSharedAllocator(const OrtMemoryInfo& mem_info);
+  Status GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator);
 
   ~Environment();
 
@@ -152,7 +154,7 @@ class Environment {
                     const OrtThreadingOptions* tp_options = nullptr,
                     bool create_global_thread_pools = false);
 
-  Status RegisterAllocatorImpl(AllocatorPtr allocator, bool replace_existing);
+  Status RegisterAllocatorImpl(AllocatorPtr allocator);
   Status UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found = true);
   Status CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                    const OrtMemoryInfo& memory_info, OrtAllocatorType allocator_type,
@@ -176,6 +178,10 @@ class Environment {
   // RegisterAllocator and CreateSharedAllocator pointers. Used for GetSharedAllocator.
   // Every instance here is also in shared_allocators_.
   std::unordered_set<OrtAllocator*> shared_ort_allocators_;
+
+  // OrtAllocator wrapped CPUAllocator::DefaultInstance that is returned by GetSharedAllocator when no plugin EP is
+  // providing a CPU allocator.
+  std::unique_ptr<OrtAllocatorImplWrappingIAllocator> default_cpu_ort_allocator_;
 
   using OrtAllocatorUniquePtr = std::unique_ptr<OrtAllocator, std::function<void(OrtAllocator*)>>;
 

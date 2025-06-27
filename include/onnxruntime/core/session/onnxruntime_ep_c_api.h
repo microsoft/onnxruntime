@@ -37,8 +37,7 @@ typedef struct OrtDataTransferImpl {
    * \param[in] this_ptr Pointer to the OrtDataTransferImpl instance.
    * \param[in] src_memory_device Source OrtMemoryDevice to copy from.
    * \param[in] dst_memory_device Destination OrtMemoryDevice to copy to.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \return True if the implementation can copy between the devices.
    *
    * \since Version 1.23.
    */
