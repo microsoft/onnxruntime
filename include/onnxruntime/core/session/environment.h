@@ -173,7 +173,7 @@ class Environment {
   // OrtEpDevice: We create a default shared IAllocatorImplWrappingOrtAllocator for each OrtEpDevice memory info.
   std::vector<AllocatorPtr> shared_allocators_;
 
-  // RegisterAllocator and CreateSharedAllocator pointers. Used for GetAllocator.
+  // RegisterAllocator and CreateSharedAllocator pointers. Used for GetSharedAllocator.
   // Every instance here is also in shared_allocators_.
   std::unordered_set<OrtAllocator*> shared_ort_allocators_;
 

@@ -11,8 +11,8 @@ bool ORT_API_CALL ExampleDataTransfer::CanCopyImpl(void* this_ptr,
                                                    const OrtMemoryDevice* src_memory_device,
                                                    const OrtMemoryDevice* dst_memory_device) noexcept {
   auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
-  bool src_is_our_device = impl.ep_api.OrtMemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);
-  bool dst_is_our_device = impl.ep_api.OrtMemoryDevice_AreEqual(dst_memory_device, impl.device_mem_info);
+  bool src_is_our_device = impl.ep_api.MemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);
+  bool dst_is_our_device = impl.ep_api.MemoryDevice_AreEqual(dst_memory_device, impl.device_mem_info);
 
   return src_is_our_device || dst_is_our_device;
 }
@@ -36,13 +36,13 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
 
     const OrtMemoryDevice* src_device = nullptr;
     const OrtMemoryDevice* dst_device = nullptr;
-    RETURN_IF_ERROR(impl.ep_api.OrtValue_GetMemoryDevice(src_tensors[i], &src_device));
-    RETURN_IF_ERROR(impl.ep_api.OrtValue_GetMemoryDevice(dst_tensors[i], &dst_device));
+    RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(src_tensors[i], &src_device));
+    RETURN_IF_ERROR(impl.ep_api.Value_GetMemoryDevice(dst_tensors[i], &dst_device));
 
-    OrtMemoryInfoDeviceType src_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(src_device);
-    OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.OrtMemoryDevice_GetDeviceType(dst_device);
-    //  OrtDeviceMemoryType src_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(src_device);
-    //  OrtDeviceMemoryType dst_mem_type = impl.ep_api.OrtMemoryDevice_GetMemoryType(dst_device);
+    OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
+    OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
+    //  OrtDeviceMemoryType src_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(src_device);
+    //  OrtDeviceMemoryType dst_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(dst_device);
     //   bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
     //                                      dst_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE;
 

@@ -55,10 +55,11 @@ struct MulKernel {
     shape.resize(num_dims, 0);
     RETURN_IF_ERROR(ort_api.GetDimensions(type_shape, shape.data(), shape.size()));
 
-    const float* raw_data = nullptr;
-    RETURN_IF_ERROR(ort_api.GetTensorMutableData(const_cast<OrtValue*>(input), (void**)&raw_data));  // No const-correct API?
+    const void* raw_data = nullptr;
+    RETURN_IF_ERROR(ort_api.GetTensorData(input, &raw_data));
 
-    data = gsl::span<const float>(raw_data, num_elems);
+    const float* float_data = static_cast<const float*>(raw_data);
+    data = gsl::span<const float>(float_data, num_elems);
     return nullptr;
   }
 
@@ -148,7 +149,8 @@ struct ExampleNodeComputeInfo : OrtNodeComputeInfo {
 };
 
 ExampleEp::ExampleEp(ExampleEpFactory& factory, const std::string& name, const Config& config, const OrtLogger& logger)
-    : ApiPtrs(static_cast<const ApiPtrs&>(factory)),
+    : OrtEp{},  // explicitly call the struct ctor to ensure all optional values are default initialized
+      ApiPtrs{static_cast<const ApiPtrs&>(factory)},
       factory_{factory},
       name_{name},
       config_{config},

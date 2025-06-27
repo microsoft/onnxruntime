@@ -95,6 +95,16 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  for (const auto* ep_device : ep_devices_) {
+    if (ep_device->device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->device_memory_info);
+    }
+
+    if (ep_device->host_accessible_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
+    }
+  }
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {

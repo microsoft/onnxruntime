@@ -19,7 +19,7 @@ ORT_RUNTIME_CLASS(SyncStream);
 
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
 typedef struct OrtDataTransferImpl {
-  uint32_t version;  ///< Must be initialized to ORT_API_VERSION
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
 
   /** \brief Release the OrtDataTransferImpl instance.
    *
@@ -228,9 +228,12 @@ struct OrtEpApi {
 
   /** \brief Register an allocator with the OrtEpDevice.
    *
-   * This allows an EP to provide OrtMemoryInfo for DEFAULT and HOST_ACCESSIBLE memory types as needed.
+   * This allows an EP to provide OrtMemoryInfo for DEFAULT and HOST_ACCESSIBLE memory type as needed.
    * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
    * are available for EP usage.
+   *
+   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
+   * Multiple calls for the same memory type will replace a previous entry.
    *
    * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
    * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
@@ -252,7 +255,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(const OrtMemoryDevice*, OrtMemoryInfo_GetMemoryDevice, _In_ const OrtMemoryInfo* memory_info);
+  ORT_API_T(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemoryInfo* memory_info);
 
   /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
    *
@@ -262,7 +265,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(OrtValue_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
 
   /** \brief Compare two OrtMemoryDevice instances for equality.
    *
@@ -275,7 +278,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(bool, OrtMemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
+  ORT_API_T(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
 
   /** \brief Get the OrtMemoryInfoDeviceType value from an OrtMemoryDevice instance.
    *
@@ -284,7 +287,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(OrtMemoryInfoDeviceType, OrtMemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device);
+  ORT_API_T(OrtMemoryInfoDeviceType, MemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device);
 
   /** \brief Get the OrtDeviceMemoryType value from an OrtMemoryDevice instance.
    *
@@ -293,7 +296,7 @@ struct OrtEpApi {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(OrtDeviceMemoryType, OrtMemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
+  ORT_API_T(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
 };
 
 /**
@@ -603,7 +606,8 @@ struct OrtEpFactory {
 
   /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
    *
-   * This is used to create an allocator that an execution provider created by the factory requires.
+   * This is used to create an allocator that an execution provider requires. The factory that creates the EP is
+   * responsible for providing the required allocators.
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
    * \param[in] this_ptr The OrtEpFactory instance.

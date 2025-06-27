@@ -421,6 +421,8 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 Environment::~Environment() = default;
 
 OrtAllocator* Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info) {
+  std::lock_guard<std::mutex> lock{mutex_};
+
   // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
   auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
   return it != shared_ort_allocators_.end() ? *it : nullptr;

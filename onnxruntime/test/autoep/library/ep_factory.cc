@@ -66,8 +66,8 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   // if we were to use GPU we'd create it like this
   data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(
       apis,
-      ep_api.OrtMemoryInfo_GetMemoryDevice(default_gpu_memory_info_.get()),         // device memory
-      ep_api.OrtMemoryInfo_GetMemoryDevice(host_accessible_gpu_memory_info_.get())  // shared memory
+      ep_api.MemoryInfo_GetMemoryDevice(default_gpu_memory_info_.get()),         // device memory
+      ep_api.MemoryInfo_GetMemoryDevice(host_accessible_gpu_memory_info_.get())  // shared memory
   );
 
   data_transfer_impl_.reset();  // but we're CPU only so we return nullptr for the IDataTransfer.
