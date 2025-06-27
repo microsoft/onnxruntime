@@ -1,10 +1,10 @@
-# This workflow builds and tests the ONNX Runtime for Linux for DNNL EP
+# This workflow builds and tests the ONNX Runtime for Linux for migraphx EP
 # It leverages a reusable workflow (`reusable_linux_build.yml`) to handle the core build and test logic
 # within Docker containers, ensuring a consistent environment.
 # This file is very similar to linux_ci.yml, but much simpler
 
 
-name: Linux DNNL CI
+name: Linux MigraphX CI
 
 on:
   push:
@@ -24,17 +24,17 @@ permissions:
   id-token: write
 
 jobs:
-  build-linux-x64-release-dnnl:
-    name: Build Linux x64 Release (DNNL EP)
+  build-linux-x64-release-migraphx:
+    name: Build Linux x64 Release (migraphx EP)
     uses: ./.github/workflows/reusable_linux_build.yml
     with:
       pool_name: "onnxruntime-github-Ubuntu2204-AMD-CPU"
       build_config: Release
       architecture: x64
-      dockerfile_path: tools/ci_build/github/linux/docker/Dockerfile.manylinux2_28_cpu
-      docker_image_repo: onnxruntimecpubuildpythonx64
-      extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --build_nuget'
-      python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
-      execution_providers: 'dnnl'
+      dockerfile_path: tools/ci_build/github/linux/docker/migraphx-ci-pipeline-env.Dockerfile
+      docker_image_repo: onnxruntimetrainingmigraphx-cibuild-rocm
+      extra_build_flags: '--enable_training --cmake_extra_defines CMAKE_HIP_COMPILER=/opt/rocm/llvm/bin/clang++ --rocm_version=6.4 --rocm_home /opt/rocm --nccl_home /opt/rocm --enable_nccl --skip_submodule_sync'
+      run_tests: false
+      execution_providers: 'migraphx'
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
