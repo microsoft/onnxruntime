@@ -124,8 +124,8 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
                           << "]: limits are not defined in WebNN MLOpSupportLimits.";
     return false;
   }
-  const emscripten::val rank_range = input_limits["rankRange"];
 
+  const emscripten::val rank_range = input_limits["rankRange"];
   if (rank_range.isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
                           << "] input [" << input_name
@@ -135,7 +135,6 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
 
   const emscripten::val min_val = rank_range["min"];
   const emscripten::val max_val = rank_range["max"];
-
   if (min_val.isUndefined() || max_val.isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
                           << "] input [" << input_name
@@ -143,9 +142,8 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
     return false;
   }
 
-  size_t  min_rank = min_val.as<size_t>();
+  size_t min_rank = min_val.as<size_t>();
   size_t max_rank = max_val.as<size_t>();
-
   if (input_rank < min_rank || input_rank > max_rank) {
     LOGS(logger, VERBOSE) << "Node name: [" << node_name
                           << "] WebNN op type [" << webnn_op_type
@@ -175,7 +173,9 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
 
   for (const auto& input : inputs) {
     // If it is an optional input and is not presented, skip.
-    if (!TensorExists(input_defs, input.index)) continue;
+    if (!TensorExists(input_defs, input.index)) {
+      continue;
+    }
 
     std::vector<int64_t> shape;
     if (!GetShape(*input_defs[input.index], shape, logger) ||
