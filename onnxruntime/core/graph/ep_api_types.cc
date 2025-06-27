@@ -224,6 +224,15 @@ gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
 }
 
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+  auto iter = attributes_map_.find(name);
+  if (iter == attributes_map_.end()) {
+    return nullptr;
+  } else {
+    return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
+  }
+}
+
 //
 // EpValueInfo
 //

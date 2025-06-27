@@ -31,6 +31,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -2862,17 +2863,8 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
   }
 
-  std::unique_ptr<OrtArrayOfConstObjects> array;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
-
-  *attribute = nullptr;
-  for (auto attr : array->storage) {
-    auto ort_op_attr = reinterpret_cast<const OrtOpAttr*>(attr);
-    if (ort_op_attr->attr_proto.has_name() && (ort_op_attr->attr_proto.name() == attribute_name)) {
-      *attribute = ort_op_attr;
-      break;
-    }
-  }
+  const EpNode* ep_node = EpNode::ToInternal(node);
+  *attribute = ep_node->GetAttribute(attribute_name);
 
   if (*attribute) {
     return nullptr;

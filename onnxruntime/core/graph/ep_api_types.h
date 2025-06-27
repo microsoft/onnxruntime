@@ -189,6 +189,9 @@ struct EpNode : public OrtNode {
   // Helper that returns this node's outputs as a span of EpValueInfo pointers.
   gsl::span<const EpValueInfo* const> GetOutputsSpan() const;
 
+  // Helper that gets the node's attributes by name.
+  const OrtOpAttr* GetAttribute(const std::string& name) const;
+
  private:
   // Back pointer to containing graph. Useful when traversing through nested subgraphs.
   // Will be nullptr if the EpNode was created without an owning graph.
