@@ -2864,6 +2864,10 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, 
   }
 
   const EpNode* ep_node = EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
+  }
+
   *attribute = ep_node->GetAttribute(attribute_name);
 
   if (*attribute) {
