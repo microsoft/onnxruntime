@@ -5776,7 +5776,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
-  /** \brief Create a sub-graph from a set of nodes in an OrtGraph.
+  /** \brief Create a sub-graph from a subset of nodes in an OrtGraph.
    *
    * NOTE: A 'sub-graph' is a graph formed by a subset of nodes within the current OrtGraph.
    *       However, the control flow nodes have nested Graph instance/s which are called 'subgraph'.

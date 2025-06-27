@@ -231,6 +231,7 @@ struct EpGraph : public OrtGraph {
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// This call is used when creating an EpGraph from a GraphViewer instance. The GraphViewer instance is not onwed by this EpGraph.
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
@@ -239,7 +240,8 @@ struct EpGraph : public OrtGraph {
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
-  /// There is a case where the EpGraph instance needs to take the ownership of the GraphViewer instance as well as the Model associated with it.
+  /// This call is used when creating an EpGraph from a subset of nodes in another EpGraph.
+  /// In this case, due to the implementation of OrtApis::Graph_GetSubGraph, the new EpGraph instance must take ownership of both the GraphViewer and the associated Model.
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="model"></param>
@@ -247,6 +249,14 @@ struct EpGraph : public OrtGraph {
   /// <returns></returns>
   static Status Create(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result);
 
+  /// <summary>
+  /// The real implementation of creating an EpGraph instance.
+  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
+  /// </summary>
+  /// <param name="ep_graph"></param>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
   static Status GreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.

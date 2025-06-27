@@ -2747,12 +2747,12 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
   API_IMPL_BEGIN
   const GraphViewer& graph_viewer = EpGraph::ToInternal(src_graph)->GetGraphViewer();
 
-  // This API builds the onnxruntime::Graph from scratch based on a set of nodes
-  // and then gets the onnxruntime::GraphViewer and feeds into EpGraph::Create to create an EpGraph instance.
+  // This API constructs an onnxruntime::Graph from scratch using a given set of nodes,
+  // obtains a corresponding onnxruntime::GraphViewer, and passes it to EpGraph::Create to create an EpGraph instance.
 
-  // The goal is to construct an onnxruntime::Graph instance first.
-  // Since the constructor of onnxruntime::Graph requires a pointer to ONNX::GraphProto which needs graph proto construction.
-  // A simpler approach is to create an onnxruntime::Model and retrieve the associated onnxruntime::Graph instance from it..
+  // The goal is to first construct an onnxruntime::Graph instance.
+  // The Graph constructor requires a pointer to an ONNX::GraphProto.
+  // Therefore it's simpler to create an onnxruntime::Model which holds both Graph and ONNX::ModelProto (contains ONNX::GraphProto)
   std::unique_ptr<Model> model = std::make_unique<Model>(graph_viewer.Name(), true, graph_viewer.GetGraph().GetLogger());
   Graph& new_graph = model->MainGraph();
 
