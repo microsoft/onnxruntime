@@ -103,15 +103,15 @@ bool IsTensorShapeSupported(const NodeArg& node_arg, const std::string& parent_n
 bool IsInputRankSupported(const emscripten::val& wnn_limits,
                           const std::string_view webnn_op_type,
                           const std::string_view input_name,
-                          const int input_rank,
-                          const std::string& node_name,
+                          const size_t input_rank,
+                          const std::string_view node_name,
                           const logging::Logger& logger) {
   const std::string webnn_op_type_str(webnn_op_type);
   const std::string input_name_str(input_name);
 
   if (wnn_limits[webnn_op_type_str].isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type: [" << webnn_op_type
-                          << "] is not defined in wnn_limits.";
+                          << "] is not defined in WebNN MLOpSupportLimits.";
     return false;
   }
 
@@ -121,15 +121,15 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
     LOGS(logger, VERBOSE) << "Node name: [" << node_name
                           << "], WebNN op type: [" << webnn_op_type
                           << "], input [" << input_name
-                          << "] limits are not defined in wnn_limits.";
+                          << "]: limits are not defined in WebNN MLOpSupportLimits.";
     return false;
   }
   const emscripten::val rank_range = input_limits["rankRange"];
 
   if (rank_range.isUndefined()) {
-    LOGS(logger, VERBOSE) << "Node name: [" << node_name
-                          << "]: Missing 'rankRange' attribute for input ["
-                          << input_name << "] in " << webnn_op_type;
+    LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
+                          << "] input [" << input_name
+                          << "]: missing 'rankRange' attribute.";
     return false;
   }
 
@@ -139,12 +139,12 @@ bool IsInputRankSupported(const emscripten::val& wnn_limits,
   if (min_val.isUndefined() || max_val.isUndefined()) {
     LOGS(logger, VERBOSE) << "WebNN op type [" << webnn_op_type
                           << "] input [" << input_name
-                          << "] does not define valid min or max attributes.";
+                          << "]: its 'rankRange' limits is missing valid 'min' or 'max' attributes.";
     return false;
   }
 
-  int min_rank = min_val.as<int>();
-  int max_rank = max_val.as<int>();
+  size_t  min_rank = min_val.as<size_t>();
+  size_t max_rank = max_val.as<size_t>();
 
   if (input_rank < min_rank || input_rank > max_rank) {
     LOGS(logger, VERBOSE) << "Node name: [" << node_name
@@ -177,10 +177,10 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
     // If it is an optional input and is not presented, skip.
     if (!TensorExists(input_defs, input.index)) continue;
 
-    std::vector<int64_t> input_shape;
-    if (!GetShape(*input_defs[input.index], input_shape, logger) ||
+    std::vector<int64_t> shape;
+    if (!GetShape(*input_defs[input.index], shape, logger) ||
         !IsInputRankSupported(wnn_limits, webnn_op_type, input.name,
-                              static_cast<int>(input_shape.size()),
+                              shape.size(),
                               node.Name(), logger)) {
       return false;
     }
