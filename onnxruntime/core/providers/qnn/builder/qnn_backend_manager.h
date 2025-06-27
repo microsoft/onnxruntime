@@ -158,8 +158,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
   Status SetHtpPowerConfig(uint32_t htp_power_config_client_id,
                            HtpPerformanceMode htp_performance_mode);
 
-  Status SetRpcControlLatency(uint32_t htp_power_config_client_id,
-                              uint32_t rpc_control_latency);
+  Status SetRpcPowerConfigs(uint32_t htp_power_config_client_id,
+                            uint32_t rpc_control_latency,
+                            uint32_t rpc_polling_time);
 
   const QNN_INTERFACE_VER_TYPE& GetQnnInterface() { return qnn_interface_; }
 
