@@ -2771,6 +2771,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
     ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetElementAt(ort_nodes_container, node_idx,
                                                                       reinterpret_cast<const void**>(&ort_node)));
 
+    // TODO: might need to check the OrtNode is also in src_graph
+
     const auto& node = EpNode::ToInternal(ort_node)->GetInternalNode();
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
 
