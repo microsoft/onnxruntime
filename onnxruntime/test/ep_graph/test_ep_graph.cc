@@ -507,7 +507,8 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
             break;
           }
           default:
-            break;
+            // The unsupported type should be skipped by 'continue' above. It's unexpected so we force test to fail. 
+            ASSERT_ORTSTATUS_OK(ort_api.CreateStatus(ORT_FAIL, "The attribute type is not in AttributeProto_AttributeType and this case shouldn't be hit."));
         }
         attr_idx++;
       }
