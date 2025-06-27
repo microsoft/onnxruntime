@@ -50,8 +50,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
-  ORT_ENFORCE(scale_ > 0, "Scale must be greater than 0");
-  ORT_ENFORCE(softmax_precision_ == 1, "only float32 is supported for now");
+  ORT_ENFORCE(scale_ > 0 || std::isnan(scale_), "scale must be greater than 0 if specified");
 }
 
 template <typename T>
@@ -70,7 +69,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(q_dims == 3 || q_dims == 4, "Q must be a 3D or 4D tensor");
   ORT_ENFORCE(q_dims == k_dims, "Q and K must have the same rank.");
   ORT_ENFORCE(q_dims == v_dims, "Q and V must have the same rank.");
-  ORT_ENFORCE(attn_mask == nullptr && past_key == nullptr && past_value == nullptr, "Not implemented if attn_mask, past_key or past_value is provided.");
+  ORT_ENFORCE(past_key == nullptr && past_value == nullptr, "Not implemented if attn_mask, past_key or past_value is provided.");
 
   if (q_dims == 4) {
     AttentionParameters parameters;
@@ -102,7 +101,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                                  ? 0
                                                  : onnxruntime::narrow<int>(attn_mask->Shape()[3]) - parameters.kv_sequence_length)
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
-    parameters.scale = std::isnan(scale_) ? scale_ : static_cast<float>(1.0 / sqrt(parameters.head_size));
+    parameters.scale = std::isnan(scale_) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale_;
 
     ORT_ENFORCE(parameters.batch_size > 0, "Batch size must be greater than 0");
     ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
@@ -120,7 +119,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                 Q->Data<T>(),  // Q
                                 K->Data<T>(),  // K
                                 V->Data<T>(),  // V
-                                nullptr,       // const Tensor* mask_index,  // mask index. nullptr if no mask or its size is B
+                                attn_mask,     // const Tensor* mask_index,  // mask, nullptr if no mask
                                 nullptr,       // const Tensor* past,        // past state
                                 nullptr,       // const Tensor* past_key,    // past K input tensor (if not using past state)
                                 nullptr,       // const Tensor* past_value,  // past V input tensor (if not using past state)
