@@ -1069,6 +1069,10 @@ DataLayout QNNExecutionProvider::GetPreferredLayout() const {
 std::optional<bool> QNNExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
                                                                   std::string_view node_domain,
                                                                   std::string_view node_op_type) const {
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
+
   if (node_domain == kOnnxDomain && node_op_type == "Upsample") {
     // Upsample is translated to QNN's Resize, which requires the NHWC layout for processing.
     return true;
