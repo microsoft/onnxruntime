@@ -21,6 +21,7 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 
+#include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/external_data_loader.h"
@@ -772,7 +773,18 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
       context_{context},
       preferred_data_layout_{config.data_layout},
       force_cpu_node_names_{std::move(config.force_cpu_node_names)},
-      enable_graph_capture_{config.enable_graph_capture} {}
+      enable_graph_capture_{config.enable_graph_capture} {
+  // If graph capture is enabled, create a dedicated buffer manager for graph mode
+  if (enable_graph_capture_) {
+    // Create buffer manager for graph capture mode with appropriate cache modes
+    // Use GraphSimple mode for all buffer types in graph mode
+    graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
+        context_,
+        webgpu::BufferCacheMode::Graph,
+        webgpu::BufferCacheMode::GraphSimple,
+        webgpu::BufferCacheMode::Disabled);
+  }
+}
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
@@ -856,7 +868,15 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 #endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
-  context_.OnReleaseSession(session_id_);
+  // Clean up any captured buffers from the graph buffer manager
+  if (graph_buffer_mgr_) {
+    // Use 0 for session_id since we're no longer using session IDs in our new design
+    graph_buffer_mgr_->ReleaseCapturedBuffers(0);
+  }
+
+  // The captured_commands_ vector will be automatically cleaned up
+  // The graph_buffer_mgr_ will be automatically cleaned up by unique_ptr
+
   WebGpuContextFactory::ReleaseContext(context_id_);
 }
 
@@ -869,8 +889,6 @@ void WebGpuExecutionProvider::OnSessionInitializationStart(uint32_t session_id) 
   if (allocator_ != nullptr) {
     allocator_->OnSessionInitializationStart(session_id);
   }
-  context_.OnSessionInitializationStart(session_id);
-  session_id_ = session_id;
 }
 
 Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
@@ -888,9 +906,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
   if (profiler_->Enabled()) {
     context_.StartProfiling();
   }
-
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-    context_.CaptureBegin(session_id_);
+    // Use the capture method with our vector and buffer manager
+    context_.CaptureBegin(&captured_commands_, graph_buffer_mgr_.get());
   }
   return Status::OK();
 }
@@ -930,7 +948,8 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int) {
   ORT_ENFORCE(IsGraphCaptured(0));
-  context_.Replay(session_id_);
+  // Use the new replay method with our vector instead of session_id
+  context_.Replay(captured_commands_);
   return Status::OK();
 }
 

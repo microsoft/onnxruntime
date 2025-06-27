@@ -19,8 +19,12 @@ KernelCreateInfo BuildKernelCreateInfo();
 
 class WebGpuContext;
 enum class BufferCacheMode;
+class BufferManager;
 class WebGpuProfiler;
 class GpuBufferAllocator;
+
+// Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
+struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -92,7 +96,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
   webgpu::GpuBufferAllocator* allocator_ = nullptr;
-  uint32_t session_id_ = 0;
+
+  // Buffer manager specifically for graph capture mode
+  std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;
+
+  // Store captured commands directly in the EP instead of in WebGpuContext
+  std::vector<webgpu::CapturedCommandInfo> captured_commands_;
 };
 
 }  // namespace onnxruntime

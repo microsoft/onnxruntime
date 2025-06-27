@@ -408,7 +408,12 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, session_id_, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    // Use external buffer manager if in graph capture mode and external buffer manager is provided
+    if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+      uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, 0, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    } else {
+      uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, 0, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+    }
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -431,7 +436,12 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
-    buffer_mgr_->Release(uniform_buffer);
+    // Release buffer using the appropriate buffer manager
+    if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+      external_buffer_mgr_->Release(uniform_buffer);
+    } else {
+      buffer_mgr_->Release(uniform_buffer);
+    }
   }
 
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
@@ -693,13 +703,14 @@ void WebGpuContext::Flush() {
 
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  BufferManager().RefreshPendingBuffers(session_status_, session_id_);
+  // Use external buffer manager for graph mode if available
+  if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+    external_buffer_mgr_->RefreshPendingBuffers(session_status_);
+  } else {
+    buffer_mgr_->RefreshPendingBuffers(session_status_);
+  }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
-}
-
-void WebGpuContext::OnSessionInitializationStart(uint32_t session_id) {
-  session_id_ = session_id;
 }
 
 void WebGpuContext::OnRunEnd() {
@@ -726,11 +737,16 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.entries = bind_group_entries.data();
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
   auto bind_group = Device().CreateBindGroup(&bind_group_desc);
-
   if (session_status_ == SessionState::Capturing) {
-    captured_commands_map_[session_id_].push_back({program_artifact.compute_pipeline,
-                                                   bind_group,
-                                                   {x, y, z}});
+    if (external_captured_commands_) {
+      // Store to the external vector provided by EP
+      external_captured_commands_->push_back({program_artifact.compute_pipeline,
+                                              bind_group,
+                                              {x, y, z}});
+    } else {
+      // Error - should always have external vector when capturing
+      ORT_THROW("No external captured_commands vector provided for graph capture mode");
+    }
   } else {
     // Execute the command directly
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
@@ -739,41 +755,39 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   }
 }
 
-void WebGpuContext::CaptureBegin(uint32_t session_id) {
-  LOGS_DEFAULT(VERBOSE) << "CaptureBegin: " << session_id;
-  session_id_ = session_id;
-  captured_commands_map_.emplace(session_id_, std::vector<CapturedCommandInfo>());
-
-  // TODO: support profiling with graph capture.
-  ORT_ENFORCE(!is_profiling_, "profiing is not supported yet under graph capture mode");
-
+// Implementation for CaptureBegin with external storage
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, webgpu::BufferManager* buffer_mgr) {
+  LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   Flush();
+
+  // Store the pointer to the external vector
+  external_captured_commands_ = captured_commands;
+
+  // Store the pointer to the external buffer manager
+  external_buffer_mgr_ = buffer_mgr;
+
+  // Make sure the external vector is empty before we start capturing
+  if (external_captured_commands_) {
+    external_captured_commands_->clear();
+  }
+
+  // TODO: support profiling with graph capture.
+  ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
 
   // Change to capturing mode
   session_status_ = SessionState::Capturing;
 }
 
-void WebGpuContext::CaptureEnd() {
-  LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
-
-  // Flush any pending commands before we change the status
-  Flush();
-
-  // Change back to default mode
-  session_status_ = SessionState::Default;
-}
-
-void WebGpuContext::Replay(uint32_t session_id) {
-  LOGS_DEFAULT(VERBOSE) << "Replay: " << session_id;
-  session_id_ = session_id;
+// Implementation for Replay with external commands vector
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+  LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   session_status_ = SessionState::Replaying;
 
-  // Replay all captured commands
-  auto command_list = captured_commands_map_[session_id_];
-  const size_t command_count = command_list.size();
+  // Replay all captured commands from the provided vector
+  const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
-    auto& command = command_list[i];
+    auto& command = captured_commands[i];
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
@@ -798,10 +812,18 @@ void WebGpuContext::Replay(uint32_t session_id) {
   session_status_ = SessionState::Default;
 }
 
-void WebGpuContext::OnReleaseSession(uint32_t session_id) {
-  LOGS_DEFAULT(VERBOSE) << "OnReleaseSession: " << session_id;
-  captured_commands_map_.erase(session_id);
-  buffer_mgr_->ReleaseCapturedBuffers(session_id);
+void WebGpuContext::CaptureEnd() {
+  LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
+
+  // Flush any pending commands before we change the status
+  Flush();
+
+  // Change back to default mode
+  session_status_ = SessionState::Default;
+
+  // Clear external pointers
+  external_captured_commands_ = nullptr;
+  external_buffer_mgr_ = nullptr;
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;

@@ -622,11 +622,13 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(SessionState session_status, uint32_t session_id) {
-  storage_cache_->OnRefresh(session_status, session_id);
-  uniform_cache_->OnRefresh(session_status, session_id);
-  query_resolve_cache_->OnRefresh(session_status, session_id);
-  default_cache_->OnRefresh(session_status, session_id);
+void BufferManager::RefreshPendingBuffers(SessionState session_status) {
+  // Use a default session_id of 0 since we're no longer tracking by session
+  uint32_t default_session_id = 0;
+  storage_cache_->OnRefresh(session_status, default_session_id);
+  uniform_cache_->OnRefresh(session_status, default_session_id);
+  query_resolve_cache_->OnRefresh(session_status, default_session_id);
+  default_cache_->OnRefresh(session_status, default_session_id);
 }
 
 IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {

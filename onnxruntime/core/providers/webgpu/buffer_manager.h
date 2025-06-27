@@ -79,7 +79,7 @@ class BufferManager {
   WGPUBuffer CreateUMA(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
   void Release(WGPUBuffer buffer);
   void Download(WGPUBuffer src, void* dst, size_t size);
-  void RefreshPendingBuffers(SessionState session_status, uint32_t session_id);
+  void RefreshPendingBuffers(SessionState session_status);
   void ReleaseCapturedBuffers(uint32_t session_id);
 
  private:

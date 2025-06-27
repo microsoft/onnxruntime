@@ -10,7 +10,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
+// Removed webgpu_execution_provider.h to avoid circular dependency
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
@@ -22,9 +22,18 @@ namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
+// Forward declarations for types previously included from webgpu_execution_provider.h
+// enum class ValidationMode;
 class WebGpuContext;
 class ComputeContext;
 class ProgramBase;
+
+// Definition for CapturedCommandInfo in the webgpu namespace
+struct CapturedCommandInfo {
+  wgpu::ComputePipeline compute_pipeline;
+  wgpu::BindGroup bind_group;
+  std::array<uint32_t, 3> dispatch_group;
+};
 
 struct WebGpuContextConfig {
   int context_id;
@@ -119,11 +128,9 @@ class WebGpuContext final {
     }
   }
 
-  void CaptureBegin(uint32_t session_id);
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, webgpu::BufferManager* buffer_mgr = nullptr);
   void CaptureEnd();
-  void Replay(uint32_t session_id);
-  void OnReleaseSession(uint32_t session_id);
-  void OnSessionInitializationStart(uint32_t session_id);
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
   void Flush();
 
@@ -249,18 +256,11 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
-
   SessionState session_status_{SessionState::Default};
 
-  struct CapturedCommandInfo {
-    wgpu::ComputePipeline compute_pipeline;
-    wgpu::BindGroup bind_group;
-    std::array<uint32_t, 3> dispatch_group;
-  };
-  // A session_id to a vector of corresponding commands map for replay
-  std::unordered_map<uint32_t, std::vector<CapturedCommandInfo>> captured_commands_map_;
-
-  uint32_t session_id_ = 0;
+  // External vector to store captured commands, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;  // External buffer manager for graph mode, owned by EP
+  webgpu::BufferManager* external_buffer_mgr_ = nullptr;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
