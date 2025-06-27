@@ -156,6 +156,7 @@ class BaseOpBuilder : public IOpBuilder {
         {"Max", QNN_OP_ELEMENT_WISE_MAXIMUM},
         {"Min", QNN_OP_ELEMENT_WISE_MINIMUM},
         {"Neg", QNN_OP_ELEMENT_WISE_NEG},
+        {"NonZero", QNN_OP_NON_ZERO},
         {"Not", QNN_OP_ELEMENT_WISE_NOT},
         {"Or", QNN_OP_ELEMENT_WISE_OR},
         {"Pow", QNN_OP_ELEMENT_WISE_POWER},
