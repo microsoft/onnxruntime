@@ -10,7 +10,9 @@
   </ItemDefinitionGroup>
 
   <ItemGroup>
-    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\Microsoft.AI.MachineLearning.Rules.Project.xml"/>
+    <PropertyPageSchema Include="$(MSBuildThisFileDirectory)\Microsoft.AI.MachineLearning.Rules.Project.xml">
+      <Context>Project</Context>
+    </PropertyPageSchema>
   </ItemGroup>
 
   <PropertyGroup>
