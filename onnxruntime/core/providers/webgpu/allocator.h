@@ -9,16 +9,16 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class WebGpuContext;
+class BufferManager;
 
 class GpuBufferAllocator : public IAllocator {
  public:
-  GpuBufferAllocator(const WebGpuContext& context)
+  GpuBufferAllocator(const BufferManager& buffer_manager)
       : IAllocator(
             OrtMemoryInfo(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0),
                           OrtMemTypeDefault)),
-        context_{context} {
+        buffer_manager_{buffer_manager} {
   }
 
   virtual void* Alloc(size_t size) override;
@@ -30,7 +30,7 @@ class GpuBufferAllocator : public IAllocator {
 
  private:
   AllocatorStats stats_;
-  const WebGpuContext& context_;
+  const BufferManager& buffer_manager_;
   bool session_initialized_ = false;
   uint32_t session_id_ = 0;
 };

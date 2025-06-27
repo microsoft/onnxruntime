@@ -788,7 +788,12 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
-    return std::make_unique<webgpu::GpuBufferAllocator>(context_);
+    // Use graph_buffer_mgr_ if available, otherwise use context_.BufferManager()
+    if (graph_buffer_mgr_) {
+      return std::make_unique<webgpu::GpuBufferAllocator>(*graph_buffer_mgr_);
+    } else {
+      return std::make_unique<webgpu::GpuBufferAllocator>(context_.BufferManager());
+    }
   },
                                                        0, false);
   auto preferred_allocators = std::vector<AllocatorPtr>{CreateAllocator(gpuBufferAllocatorCreationInfo)};
@@ -858,7 +863,12 @@ std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() con
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<webgpu::DataTransfer>(context_);
+  // Use graph_buffer_mgr_ if available, otherwise use context_.BufferManager()
+  if (graph_buffer_mgr_) {
+    return std::make_unique<webgpu::DataTransfer>(*graph_buffer_mgr_);
+  } else {
+    return std::make_unique<webgpu::DataTransfer>(context_.BufferManager());
+  }
 }
 
 #if defined(__wasm__)

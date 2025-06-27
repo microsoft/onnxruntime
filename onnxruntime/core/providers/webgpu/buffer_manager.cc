@@ -501,7 +501,7 @@ BufferManager::BufferManager(WebGpuContext& context, BufferCacheMode storage_buf
       default_cache_{CreateBufferCacheManager(BufferCacheMode::Disabled)} {
 }
 
-void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
+void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   // If the buffer is mapped, we can directly write to it.
   void* mapped_data = wgpuBufferGetMappedRange(dst, 0, WGPU_WHOLE_MAP_SIZE);  // ensure the buffer is mapped
   if (mapped_data) {
@@ -529,7 +529,7 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) {
   context_.Flush();
 }
 
-void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
+void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
   ORT_ENFORCE(src != dst, "Source and destination buffers must be different.");
   EnforceBufferUnmapped(context_, src);
   EnforceBufferUnmapped(context_, dst);
@@ -546,7 +546,7 @@ void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) {
   command_encoder.CopyBufferToBuffer(src, 0, dst, 0, buffer_size);
 }
 
-WGPUBuffer BufferManager::Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage) {
+WGPUBuffer BufferManager::Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage) const {
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
 
@@ -567,7 +567,7 @@ WGPUBuffer BufferManager::Create(size_t size, uint32_t session_id, wgpu::BufferU
   return buffer;
 }
 
-WGPUBuffer BufferManager::CreateUMA(size_t size, uint32_t /*session_id*/, wgpu::BufferUsage usage) {
+WGPUBuffer BufferManager::CreateUMA(size_t size, uint32_t /*session_id*/, wgpu::BufferUsage usage) const {
   ORT_ENFORCE(usage & wgpu::BufferUsage::Storage, "UMA buffer must be a storage buffer.");
   auto& cache = GetCacheManager(usage);
   auto buffer_size = cache.CalculateBufferSize(size);
@@ -587,7 +587,16 @@ WGPUBuffer BufferManager::CreateUMA(size_t size, uint32_t /*session_id*/, wgpu::
   return buffer;
 }
 
-void BufferManager::Release(WGPUBuffer buffer) {
+bool BufferManager::SupportsUMA() const {
+#if !defined(__wasm__)
+  // Check if the device supports the BufferMapExtendedUsages feature
+  return context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages);
+#else
+  return false;
+#endif  // !defined(__wasm__)
+}
+
+void BufferManager::Release(WGPUBuffer buffer) const {
   EnforceBufferUnmapped(context_, buffer);
   GetCacheManager(buffer).ReleaseBuffer(buffer);
 }
@@ -597,7 +606,7 @@ void BufferManager::ReleaseCapturedBuffers(uint32_t session_id) {
   GetCacheManager(wgpu::BufferUsage::Uniform).ReleaseCapturedBuffers(session_id);
 }
 
-void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) {
+void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   EnforceBufferUnmapped(context_, src);
   auto buffer_size = NormalizeBufferSize(size);
 
