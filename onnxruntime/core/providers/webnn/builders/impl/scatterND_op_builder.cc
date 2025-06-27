@@ -76,8 +76,9 @@ bool ScatterNDOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& 
     return false;
   }
   const std::string_view op_type = node.OpType();
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
-         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
+  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+         IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 void CreateScatterNDOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations) {

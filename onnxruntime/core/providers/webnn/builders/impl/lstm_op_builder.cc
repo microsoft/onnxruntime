@@ -242,7 +242,8 @@ bool LstmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool LstmOpBuilder::HasSupportedOutputsImpl(const Node& node,
