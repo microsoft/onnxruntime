@@ -139,7 +139,7 @@ class PlannerImpl {
               const InlinedHashMap<OrtValueName, OrtDevice>& outer_scope_node_arg_to_location_map,
               const OrtValueNameIdxMap& ort_value_name_idx_map,
               const ISequentialPlannerContext& context, SequentialExecutionPlan& plan,
-              const logging::Logger& logger)
+              [[maybe_unused]] const logging::Logger& logger)
       : context_(&context),
         plan_(plan),
         parent_node_(parent_node),
@@ -149,8 +149,13 @@ class PlannerImpl {
         kernel_create_info_map_(kernel_create_info_map),
         subgraphs_kernel_create_info_maps_(subgraphs_kernel_create_info_maps),
         outer_scope_node_arg_to_location_map_(outer_scope_node_arg_to_location_map),
-        ort_value_name_idx_map_(ort_value_name_idx_map),
+        ort_value_name_idx_map_(ort_value_name_idx_map)
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
+        ,
         logger_(logger) {
+#else
+  {
+#endif
   }
 
   Status CreatePlan(
@@ -186,10 +191,9 @@ class PlannerImpl {
   InlinedHashMap<onnxruntime::OrtValueIndex, onnxruntime::NodeIndex> value_node_map_;
 
   // logger_ is not currently used in a minimal build
-#if defined(ORT_MINIMAL_BUILD) && !defined(ORT_EXTENDED_MINIMAL_BUILD)
-  [[maybe_unused]]
-#endif
+#if !defined(ORT_MINIMAL_BUILD) || defined(ORT_EXTENDED_MINIMAL_BUILD)
   const logging::Logger& logger_;
+#endif
 
   // OrtValueInfo: Auxiliary information about an OrtValue used only during plan-generation:
   struct OrtValueInfo {
