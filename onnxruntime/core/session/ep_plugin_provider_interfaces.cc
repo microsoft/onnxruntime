@@ -12,6 +12,7 @@
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -30,12 +31,13 @@ namespace onnxruntime {
 
 PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
                                                                gsl::span<const OrtEpDevice* const> ep_devices)
-    : ep_factory_{ep_factory} {
-  devices_.reserve(ep_devices.size());
+    : ep_factory_{ep_factory},
+      devices_{ep_devices.begin(), ep_devices.end()} {
+  hardware_devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
 
   for (const auto* ep_device : ep_devices) {
-    devices_.push_back(ep_device->device);
+    hardware_devices_.push_back(ep_device->device);
     ep_metadata_.push_back(&ep_device->ep_metadata);
   }
 }
@@ -44,15 +46,16 @@ std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
   OrtEp* ort_ep = nullptr;
-  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, devices_.data(), ep_metadata_.data(),
-                                                          devices_.size(), &session_options, &session_logger, &ort_ep));
+  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(), ep_metadata_.data(),
+                                                          hardware_devices_.size(), &session_options, &session_logger,
+                                                          &ort_ep));
 
   if (!status.IsOK()) {
     ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
   auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                              session_options);
+                                                              session_options, ep_factory_, devices_);
   ep_wrapper->SetLogger(session_logger.ToInternal());
 
   return ep_wrapper;
@@ -84,10 +87,24 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options)
+PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
+                                                 OrtEpFactory& ep_factory,
+                                                 gsl::span<const OrtEpDevice* const> ep_devices)
     : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
-      ort_ep_(std::move(ep)) {
+      ort_ep_(std::move(ep)),
+      ep_factory_(ep_factory),
+      ep_devices_(ep_devices.begin(), ep_devices.end()) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  for (const auto* ep_device : ep_devices_) {
+    if (ep_device->device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->device_memory_info);
+    }
+
+    if (ep_device->host_accessible_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
+    }
+  }
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {
@@ -441,6 +458,43 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
                     ") must be the same.");
 
   return ToStatusAndRelease(ort_ep_->SetDynamicOptions(ort_ep_.get(), keys.data(), values.data(), keys.size()));
+}
+std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+  if (status != nullptr) {
+    ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+  }
+
+  if (data_transfer_impl == nullptr) {
+    return {};
+  }
+
+  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+}
+
+std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> allocators;
+  allocators.reserve(allocator_mem_infos_.size());
+
+  for (const auto* memory_info : allocator_mem_infos_) {
+    OrtAllocator* ort_allocator_ptr = nullptr;
+    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
+
+    // throw or log? start with throw
+    if (ort_status != nullptr) {
+      ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
+    }
+
+    auto ort_allocator = OrtAllocatorUniquePtr(
+        ort_allocator_ptr,
+        [this](OrtAllocator* allocator) {
+          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        });
+    allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
+  }
+
+  return allocators;
 }
 
 }  // namespace onnxruntime

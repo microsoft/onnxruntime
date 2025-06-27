@@ -10,7 +10,62 @@ extern "C" {
 ORT_RUNTIME_CLASS(Ep);
 ORT_RUNTIME_CLASS(EpFactory);
 ORT_RUNTIME_CLASS(EpGraphSupportInfo);
+ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
+
+// Opaque class to create an onnxruntime::Stream. Will be filled out in separate PR.
+// Adding here for OrtDataTransferImpl as the stream type is required by the IDataTransfer API.
+ORT_RUNTIME_CLASS(SyncStream);
+
+// struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
+typedef struct OrtDataTransferImpl {
+  uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
+
+  /** \brief Release the OrtDataTransferImpl instance.
+   *
+   * This is called by ORT when the OrtDataTransferImpl instance is no longer needed.
+   * The implementation should release any resources held by the instance.
+   *
+   * \param[in] this_ptr Pointer to the OrtDataTransferImpl instance.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(void, Release, _In_ void* this_ptr);
+
+  /** \brief Check if the implementation can copy between the source and destination memory devices.
+   *
+   * \param[in] this_ptr Pointer to the OrtDataTransferImpl instance.
+   * \param[in] src_memory_device Source OrtMemoryDevice to copy from.
+   * \param[in] dst_memory_device Destination OrtMemoryDevice to copy to.
+   * \return True if the implementation can copy between the devices.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, CanCopy, _In_ void* this_ptr,
+            _In_ const OrtMemoryDevice* src_memory_device, _In_ const OrtMemoryDevice* dst_memory_device);
+
+  /** \brief Copy tensors from src_tensors to dst_tensors using the provided streams.
+   *
+   * The implementation can use the provided streams to perform asynchronous copies if supported.
+   * If a stream is not available, the copy is performed synchronously.
+   *
+   * \param[in] this_ptr Pointer to the OrtDataTransferImpl instance.
+   * \param[in] src_tensors Array of source OrtValue pointers to copy from.
+   * \param[in] dst_tensors Array of destination OrtValue pointers to copy to.
+   * \param[in] streams Array of OrtSyncStream pointers for the copy operations, if the execution provider is stream
+   *                    aware. nullptr if it is not.
+   * \param[in] num_tensors Number of tensors to copy.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CopyTensors, _In_ void* this_ptr,
+                  _In_reads_(num_tensors) const OrtValue** src_tensors,
+                  _In_reads_(num_tensors) OrtValue** dst_tensors,
+                  _In_reads_(num_tensors) OrtSyncStream** streams,
+                  _In_ size_t num_tensors);
+} OrtDataTransferImpl;
 
 struct OrtNodeFusionOptions;
 typedef struct OrtNodeFusionOptions OrtNodeFusionOptions;
@@ -169,6 +224,78 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context);
+
+  /** \brief Register an allocator with the OrtEpDevice.
+   *
+   * This allows an EP to provide OrtMemoryInfo for DEFAULT and HOST_ACCESSIBLE memory type as needed.
+   * The registered values will be used in calls to OrtEpFactory::CreateAllocator to ensure the required allocator/s
+   * are available for EP usage.
+   *
+   * At most one DEFAULT and one HOST_ACCESSIBLE entry can be added.
+   * Multiple calls for the same memory type will replace a previous entry.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to register the OrtMemoryInfo with.
+   * \param[in] allocator_memory_info The OrtMemoryInfo information for the allocator.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
+                  _In_ const OrtMemoryInfo* allocator_memory_info);
+
+  /** \brief Get the OrtMemoryDevice from an OrtMemoryInfo instance.
+   *
+   * This is required for OrtDataTransferImpl (which implements onnxruntime::IDataTransfer) where the OrtMemoryDevice
+   * is used in the CanCopy and CopyTensors functions.
+   *
+   * \param[in] memory_info The OrtMemoryInfo instance to get the memory device from.
+   * \return The OrtMemoryDevice associated with the OrtMemoryInfo instance.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemoryInfo* memory_info);
+
+  /** \brief Get the OrtMemoryDevice from an OrtValue instance if it contains a Tensor.
+   *
+   * \param[in] value The OrtValue instance to get the memory device from.
+   * \param[out] device The OrtMemoryDevice associated with the OrtValue instance.
+   * \return Status Success if OrtValue contains a Tensor. Otherwise, an error status is returned.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device);
+
+  /** \brief Compare two OrtMemoryDevice instances for equality.
+   *
+   * This is used to check if two memory devices are the same.
+   * Used to implement DataTransferImpl::CanCopy.
+   *
+   * \param[in] a The first OrtMemoryDevice instance to compare.
+   * \param[in] b The second OrtMemoryDevice instance to compare.
+   * \return True if the two OrtMemoryDevice instances are equal, false otherwise.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b);
+
+  /** \brief Get the OrtMemoryInfoDeviceType value from an OrtMemoryDevice instance.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The OrtMemoryInfoDeviceType value.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(OrtMemoryInfoDeviceType, MemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the OrtDeviceMemoryType value from an OrtMemoryDevice instance.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The OrtDeviceMemoryType value.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
 };
 
 /**
@@ -475,6 +602,46 @@ struct OrtEpFactory {
    * \since Version 1.22.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
+
+  /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
+   *
+   * This is used to create an allocator that an execution provider requires. The factory that creates the EP is
+   * responsible for providing the required allocators.
+   * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] memory_info The OrtMemoryInfo to create the allocator for.
+   * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
+   * \param[out] allocator The created OrtAllocator instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
+                  _In_ const OrtMemoryInfo* memory_info,
+                  _In_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_ OrtAllocator** allocator);
+
+  /** \brief Release an OrtAllocator created by the factory.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(void, ReleaseAllocator, _In_ OrtEpFactory* this_ptr, _In_ OrtAllocator* allocator);
+
+  /** \brief Create an OrtDataTransferImpl instance for the factory.
+   *
+   * This is used to create an IDataTransfer implementation that can be used to copy data between devices
+   * that the execution provider supports.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[out] data_transfer The created OrtDataTransferImpl instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
 };
 
 #ifdef __cplusplus
