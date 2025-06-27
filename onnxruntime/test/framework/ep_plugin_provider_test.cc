@@ -6,6 +6,7 @@
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
+#include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
 
@@ -66,8 +67,14 @@ MakeTestOrtEpResult MakeTestOrtEp() {
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
+  auto ort_ep_device = OrtEpDevice{};
+  std::vector<const OrtEpDevice*> ep_devices{&ort_ep_device};
+
   auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
-                                                      *static_cast<const OrtSessionOptions*>(ort_session_options));
+                                                      *static_cast<const OrtSessionOptions*>(ort_session_options),
+                                                      g_test_ort_ep_factory,
+                                                      ep_devices);
+
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
 }
