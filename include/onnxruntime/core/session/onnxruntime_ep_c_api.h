@@ -263,8 +263,8 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
                                                    _Out_ OrtEpDataLayout* preferred_data_layout);
 
-  /** \brief Determine whether a node with `node_domain` and `node_op_type` requires its data layout to be converted to
-   *         `target_data_layout`.
+  /** \brief Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout
+   *         should be converted to `target_data_layout`.
    *         If the EP prefers a non-default data layout (see `GetPreferredDataLayout()`), this function will be called
    *         during layout transformation with `target_data_layout` set to the EP's preferred data layout.
    *
@@ -273,10 +273,10 @@ struct OrtEp {
    *       preferences at a finer granularity.
    *
    * \param[in] this_ptr The OrtEp instance.
+   * \param[in] domain The op domain. An empty string means the ONNX domain.
+   * \param[in] op_type The op type.
    * \param[in] target_data_layout The target data layout.
-   * \param[in] node_domain The node's op domain. An empty string means the ONNX domain.
-   * \param[in] node_op_type The node's op type.
-   * \param[out] should_convert Indicates whether the node's layout should be converted to `target_data_layout`.
+   * \param[out] should_convert Whether the associated node's data layout should be converted to `target_data_layout`.
    *                            If greater than 0, convert.
    *                            If 0, don't convert.
    *                            Otherwise, if less than 0, leave the decision to ORT.
@@ -285,11 +285,11 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* ShouldConvertNodeLayout)(_In_ OrtEp* this_ptr,
-                                                    _In_ OrtEpDataLayout target_data_layout,
-                                                    _In_z_ const char* node_domain,
-                                                    _In_z_ const char* node_op_type,
-                                                    _Outptr_ int* should_convert);
+  OrtStatus*(ORT_API_CALL* ShouldConvertDataLayoutForOp)(_In_ OrtEp* this_ptr,
+                                                         _In_z_ const char* domain,
+                                                         _In_z_ const char* op_type,
+                                                         _In_ OrtEpDataLayout target_data_layout,
+                                                         _Outptr_ int* should_convert);
 
   /** \brief Set dynamic options on this EP.
    *

@@ -855,9 +855,9 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 }
 #endif
 
-std::optional<bool> WebGpuExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
-                                                                     std::string_view node_domain,
-                                                                     std::string_view node_op_type) const {
+std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                          std::string_view node_op_type,
+                                                                          DataLayout target_data_layout) const {
   if (target_data_layout != DataLayout::NHWC) {
     return std::nullopt;
   }

@@ -25,7 +25,7 @@
 namespace onnxruntime::cuda {
 
 // When adding new supported NHWC operations make sure to also integrate them into
-// CUDAExecutionProvider::ShouldConvertNodeLayout()
+// CUDAExecutionProvider::ShouldConvertDataLayoutForOp()
 
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(7, 8, float, BatchNormalization);
 class CUDA_NHWC_OP_VERSIONED_TYPED_CLASS_NAME(7, 8, double, BatchNormalization);

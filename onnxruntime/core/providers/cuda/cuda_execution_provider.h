@@ -39,9 +39,9 @@ class CUDAExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
-  std::optional<bool> ShouldConvertNodeLayout(DataLayout target_data_layout,
-                                              std::string_view node_domain,
-                                              std::string_view node_op_type) const override;
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
 
   const void* GetExecutionHandle() const noexcept override {
     // The CUDA interface does not return anything interesting.

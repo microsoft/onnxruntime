@@ -330,15 +330,15 @@ class IExecutionProvider {
   }
 
   /**
-    Determine whether a node with `node_domain` and `node_op_type` requires its data layout to be converted to
-    `target_data_layout`.
+    Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout should be
+    converted to `target_data_layout`.
     If the EP prefers a non-default data layout (see `GetPreferredLayout()`), this function will be called during
     layout transformation with `target_data_layout` set to the EP's preferred data layout.
     A return value of `std::nullopt` indicates that this decision is left to ORT.
   */
-  virtual std::optional<bool> ShouldConvertNodeLayout(DataLayout /*target_data_layout*/,
-                                                      std::string_view /*node_domain*/,
-                                                      std::string_view /*node_op_type*/) const {
+  virtual std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/,
+                                                           std::string_view /*op_type*/,
+                                                           DataLayout /*target_data_layout*/) const {
     return std::nullopt;
   }
 

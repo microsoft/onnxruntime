@@ -425,11 +425,11 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   return data_layout_mapping->data_layout;
 }
 
-std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
-                                                                     std::string_view node_domain,
-                                                                     std::string_view node_op_type) const {
-  if (ort_ep_->ShouldConvertNodeLayout == nullptr) {
-    return Base::ShouldConvertNodeLayout(target_data_layout, node_domain, node_op_type);
+std::optional<bool> PluginExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                          std::string_view node_op_type,
+                                                                          DataLayout target_data_layout) const {
+  if (ort_ep_->ShouldConvertDataLayoutForOp == nullptr) {
+    return Base::ShouldConvertDataLayoutForOp(node_domain, node_op_type, target_data_layout);
   }
 
   const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
@@ -445,9 +445,10 @@ std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayout(DataLayout 
   int should_convert = -1;
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(
-      ort_ep_->ShouldConvertNodeLayout(ort_ep_.get(), data_layout_mapping->api_data_layout,
-                                       node_domain_str.c_str(), node_op_type_str.c_str(),
-                                       &should_convert)));
+      ort_ep_->ShouldConvertDataLayoutForOp(ort_ep_.get(),
+                                            node_domain_str.c_str(), node_op_type_str.c_str(),
+                                            data_layout_mapping->api_data_layout,
+                                            &should_convert)));
 
   if (should_convert > 0) {
     return true;

@@ -849,9 +849,9 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> JsExecutionProvider::GetExtern
   return std::make_unique<js::ExternalDataLoader>();
 }
 
-std::optional<bool> JsExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
-                                                                 std::string_view node_domain,
-                                                                 std::string_view node_op_type) const {
+std::optional<bool> JsExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                      std::string_view node_op_type,
+                                                                      DataLayout target_data_layout) const {
   if (target_data_layout != DataLayout::NHWC) {
     return std::nullopt;
   }
