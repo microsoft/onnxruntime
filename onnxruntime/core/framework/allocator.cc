@@ -23,7 +23,7 @@ using Status = onnxruntime::common::Status;
 Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg) {
   cfg = OrtArenaCfg{};  // reset to default values
 
-  const auto from_string = [](const std::string& key, const std::string& str, int64_t& value) -> Status {
+  const auto from_string = [](const std::string& key, const std::string& str, auto& value) -> Status {
     if (!onnxruntime::ParseStringWithClassicLocale(str, value).IsOK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Failed to parse value for ", key, " from ", str);
     }
@@ -31,35 +31,28 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     return Status::OK();
   };
 
-  int64_t value = 0;
   if (auto it = kvps.entries.find(ConfigKeyNames::ArenaExtendStrategy); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.arena_extend_strategy = onnxruntime::narrow<int32_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.arena_extend_strategy));
   }
 
   if (auto it = kvps.entries.find(ConfigKeyNames::InitialChunkSizeBytes); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.initial_chunk_size_bytes = onnxruntime::narrow<int32_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_chunk_size_bytes));
   }
 
   if (auto it = kvps.entries.find(ConfigKeyNames::MaxDeadBytesPerChunk); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.max_dead_bytes_per_chunk = onnxruntime::narrow<int32_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_dead_bytes_per_chunk));
   }
 
   if (auto it = kvps.entries.find(ConfigKeyNames::InitialGrowthChunkSizeBytes); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.initial_growth_chunk_size_bytes = onnxruntime::narrow<int32_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_growth_chunk_size_bytes));
   }
 
   if (auto it = kvps.entries.find(ConfigKeyNames::MaxPowerOfTwoExtendBytes); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.max_power_of_two_extend_bytes = onnxruntime::narrow<int64_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_power_of_two_extend_bytes));
   }
 
   if (auto it = kvps.entries.find(ConfigKeyNames::MaxMem); it != kvps.entries.end()) {
-    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, value));
-    cfg.max_mem = onnxruntime::narrow<size_t>(value);
+    ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
   }
 
   if (!cfg.IsValid()) {
