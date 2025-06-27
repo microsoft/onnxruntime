@@ -122,11 +122,11 @@ TEST(PluginExecutionProviderTest, ShouldConvertNodeLayout) {
 
   {
     auto custom_nhwc_op_determination_fn = [](OrtEp* /*this_ptr*/,
-                                           OrtEpDataLayout target_data_layout,
-                                           const char* /*node_domain*/,
-                                           const char* node_op_type,
-                                           int* should_convert) -> ::OrtStatus* {
-      ASSERT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
+                                              OrtEpDataLayout target_data_layout,
+                                              const char* /*node_domain*/,
+                                              const char* node_op_type,
+                                              int* should_convert) -> ::OrtStatus* {
+      EXPECT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
 
       if (node_op_type == std::string_view{"Conv"}) {
         *should_convert = 1;

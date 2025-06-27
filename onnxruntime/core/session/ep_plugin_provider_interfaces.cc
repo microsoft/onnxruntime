@@ -434,7 +434,7 @@ std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayout(DataLayout 
 
   const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
                                                 [target_data_layout](const DataLayoutMapping& mapping) {
-                                                  return mapping.data_layout = target_data_layout;
+                                                  return mapping.data_layout == target_data_layout;
                                                 });
 
   ORT_ENFORCE(data_layout_mapping != kDataLayoutMappings.end(),
@@ -446,7 +446,7 @@ std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayout(DataLayout 
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(
       ort_ep_->ShouldConvertNodeLayout(ort_ep_.get(), data_layout_mapping->api_data_layout,
-                                       node_op_domain_str.c_str(), node_op_type_str.c_str(),
+                                       node_domain_str.c_str(), node_op_type_str.c_str(),
                                        &should_convert)));
 
   if (should_convert > 0) {
