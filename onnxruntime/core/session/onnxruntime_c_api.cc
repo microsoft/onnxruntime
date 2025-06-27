@@ -2856,6 +2856,33 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outp
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute) {
+  API_IMPL_BEGIN
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
+  }
+
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
+
+  *attribute = nullptr;
+  for (auto attr : array->storage) {
+    auto ort_op_attr = reinterpret_cast<const OrtOpAttr*>(attr);
+    if (ort_op_attr->attr_proto.has_name() && (ort_op_attr->attr_proto.name() == attribute_name)) {
+      *attribute = ort_op_attr;
+      break;
+    }
+  }
+
+  if (*attribute) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type) {
   API_IMPL_BEGIN
   const auto attr = attribute->attr_proto;
@@ -3592,6 +3619,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetImplicitInputs,
     &OrtApis::Node_GetAttributes,
+    &OrtApis::Node_GetAttributeByName,
     &OrtApis::OpAttr_GetType,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,

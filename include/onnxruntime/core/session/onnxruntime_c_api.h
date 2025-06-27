@@ -5887,6 +5887,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes);
 
+  /** \brief Gets the OrtNode's attribute as OrtOpAttr by name.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[in] attribute_name The name of the attribute
+   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute);
+
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *
    * \param[in] attribute The OrtOpAttr instance.

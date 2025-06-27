@@ -466,6 +466,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
                                                                      reinterpret_cast<const void**>(&api_node_attr)));
         ASSERT_NE(api_node_attr, nullptr);
 
+        api_node_attr = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(api_node, node_attr.first.c_str(), &api_node_attr));
+        ASSERT_NE(api_node_attr, nullptr);
+
         OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 
         // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
@@ -507,7 +511,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
             break;
           }
           default:
-            // The unsupported type should be skipped by 'continue' above. It's unexpected so we force test to fail. 
+            // The unsupported type should be skipped by 'continue' above. It's unexpected so we force test to fail.
             ASSERT_ORTSTATUS_OK(ort_api.CreateStatus(ORT_FAIL, "The attribute type is not in AttributeProto_AttributeType and this case shouldn't be hit."));
         }
         attr_idx++;
