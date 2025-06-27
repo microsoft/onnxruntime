@@ -273,7 +273,7 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
            IsDataTypeSupportedByOp(op_type, input0_type, wnn_limits, "a", "A", logger);
   } else if (op_type == "MatMulInteger") {
     // Check up to 4 inputs for MatMulInteger
-    for (size_t i = 0; i < std::min<size_t>(4, input_defs.size()); ++i) {
+    for (size_t i = 0; i < input_defs.size(); ++i) {
       std::vector<int64_t> shape;
       if (!GetShape(*input_defs[i], shape, logger)) {
         return false;
