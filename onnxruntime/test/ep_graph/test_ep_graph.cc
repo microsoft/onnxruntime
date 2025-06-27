@@ -29,7 +29,7 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
-static void Check_Graph_GetSubgraph(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph);
 
 //
 //  Tests
@@ -72,12 +72,14 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+/*
 TEST(EpGraphTest, CApiUseOfGetSubGraphFromGraph) {
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
-  Check_Graph_GetSubgraph(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+  Check_Graph_GetSubgraph(test_graph->GetOrtGraph());
 }
+*/
 
 //
 // Utils for traversing an OrtGraph and checking against GraphViewer.
@@ -343,7 +345,7 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
 }
 
 // Checks the Graph_GetSubgraph C API
-static void Check_Graph_GetSubgraph(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   const OrtApi& ort_api = Ort::GetApi();
 
   // Get all Ort nodes
@@ -358,15 +360,9 @@ static void Check_Graph_GetSubgraph(const GraphViewer& graph_viewer, const OrtGr
   OrtArrayOfConstObjects* selected_nodes_container = nullptr;
   ASSERT_ORTSTATUS_OK(ort_api.CreateArrayOfConstObjects(OrtTypeTag::ORT_TYPE_TAG_OrtNode, 0, nullptr, &selected_nodes_container));
 
-  // Select a subset of nodes to create a sub-graph
-  // TODO: Make it more general, select half of the nodes to create a sub-graph
-  for (auto node : nodes) {
-    const char* op_type = nullptr;
-    ASSERT_ORTSTATUS_OK(ort_api.Node_GetOperatorType(node, &op_type));
-    std::string target_op_type = "MaxPool";
-    if (op_type == target_op_type) {
-      break;
-    }
+  // Select a half of nodes to create a sub-graph
+  for (size_t i = 0; i <= (nodes.size() >> 1); i++) {
+    auto node = nodes[i];
     ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_AppendElement(selected_nodes_container, node));
   }
 
@@ -549,6 +545,9 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       }
     }
   }
+
+  // Check creating an OrtGraph from a subset of nodes in an OrtGraph
+  Check_Graph_GetSubgraph(api_graph);
 }
 
 }  // namespace test
