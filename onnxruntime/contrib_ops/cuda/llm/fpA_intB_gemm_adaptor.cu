@@ -146,12 +146,40 @@ template void launch_scaled_zero_point_kernel<true, half, uint8_t>(
     half* scaled_zero_point,
     int n, int k_blocks, float default_zero_point);
 
+template void launch_transpose_scale_kernel<__nv_bfloat16>(
+    cudaStream_t stream,
+    const __nv_bfloat16* scale,
+    __nv_bfloat16* transposed_scale,
+    int n, int k_blocks);
+
+template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, __nv_bfloat16>(
+    cudaStream_t stream,
+    const __nv_bfloat16* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+template void launch_scaled_zero_point_kernel<false, __nv_bfloat16, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
+// zero point is 4 bits packed.
+template void launch_scaled_zero_point_kernel<true, __nv_bfloat16, uint8_t>(
+    cudaStream_t stream,
+    const uint8_t* zero_point,
+    const __nv_bfloat16* transposed_scale,
+    __nv_bfloat16* scaled_zero_point,
+    int n, int k_blocks, float default_zero_point);
+
 // CUDA kernel to unpack uint4, transpose, and pack into int8 directly
 __global__ void unpack_transpose_pack_uint4_to_int8_kernel_v2(
     const unsigned char* __restrict__ packed_weight,
     signed char* __restrict__ packed_transposed_weight,
-    int n, // original matrix rows
-    int k) // original matrix columns
+    int n,  // original matrix rows
+    int k)  // original matrix columns
 {
   // The output 'packed_transposed_weight' has dimensions k x (n/2) bytes.
   // Each thread processes one byte in the output.
@@ -184,9 +212,9 @@ __global__ void unpack_transpose_pack_uint4_to_int8_kernel_v2(
 
     unsigned char packed_data_0 = packed_weight[packed_weight_idx_0];
     signed char val_0;
-    if ((c_orig_0 % 2) == 0) { // If original column is even, it's the lower 4 bits
+    if ((c_orig_0 % 2) == 0) {  // If original column is even, it's the lower 4 bits
       val_0 = (signed char)(packed_data_0 & 0x0f) - default_zero_point;
-    } else { // If original column is odd, it's the upper 4 bits
+    } else {  // If original column is odd, it's the upper 4 bits
       val_0 = (signed char)(packed_data_0 >> 4) - default_zero_point;
     }
 
@@ -201,9 +229,9 @@ __global__ void unpack_transpose_pack_uint4_to_int8_kernel_v2(
 
     unsigned char packed_data_1 = packed_weight[packed_weight_idx_1];
     signed char val_1;
-    if ((c_orig_1 % 2) == 0) { // If original column is even, it's the lower 4 bits
+    if ((c_orig_1 % 2) == 0) {  // If original column is even, it's the lower 4 bits
       val_1 = (signed char)(packed_data_1 & 0x0f) - default_zero_point;
-    } else { // If original column is odd, it's the upper 4 bits
+    } else {  // If original column is odd, it's the upper 4 bits
       val_1 = (signed char)(packed_data_1 >> 4) - default_zero_point;
     }
 
@@ -230,7 +258,6 @@ __global__ void transpose_uint8_matrix_and_convert_to_int8_kernel(
     const uint8_t* __restrict__ input,  // shape: (n, k)
     int8_t* __restrict__ output,        // shape: (k, n)
     int n, int k) {
-
   int row = blockIdx.y * blockDim.y + threadIdx.y;  // index in n
   int col = blockIdx.x * blockDim.x + threadIdx.x;  // index in k
 
@@ -246,14 +273,12 @@ void transpose_uint8_matrix_and_convert_to_int8(
     int8_t* output,        // shape: (k, n)
     const uint8_t* input,  // shape: (n, k)
     int n, int k) {
-
   dim3 blockDim(16, 16);
   dim3 gridDim((k + blockDim.x - 1) / blockDim.x,
                (n + blockDim.y - 1) / blockDim.y);
 
   transpose_uint8_matrix_and_convert_to_int8_kernel<<<gridDim, blockDim, 0, stream>>>(input, output, n, k);
 }
-
 
 }  // namespace fpA_intB_gemv
 }  // namespace kernels

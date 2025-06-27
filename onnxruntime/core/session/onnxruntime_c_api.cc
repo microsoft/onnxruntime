@@ -114,12 +114,12 @@ using namespace onnxruntime;
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
-  auto& tensor = v->Get<onnxruntime::Tensor>();
+  const auto& tensor = v->Get<onnxruntime::Tensor>();
 
 #define TENSOR_READWRITE_API_BEGIN \
   API_IMPL_BEGIN                   \
   auto v = (value);                \
-  auto tensor = v->GetMutable<onnxruntime::Tensor>();
+  auto* tensor = v->GetMutable<onnxruntime::Tensor>();
 
 namespace {
 // Create tensor. Allocates memory. Tensor owns memory. Allocator is wrapped and stored in a shared_ptr in Tensor.
@@ -786,7 +786,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _Inout_ OrtSession* sess,
   Status status;
 
   if (kv_len == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no imputs were passed");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no inputs were passed");
   } else {
     status = session->SetEpDynamicOptions(keys_span,
                                           values_span);
@@ -1087,6 +1087,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Out
   //  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "this API does not support strings");
   //}
   *output = tensor->MutableDataRaw();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _Inout_ const OrtValue* value, _Outptr_ const void** output) {
+  TENSOR_READ_API_BEGIN
+  *output = tensor.DataRaw();
   return nullptr;
   API_IMPL_END
 }
@@ -2240,6 +2247,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
   cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
   cfg->max_dead_bytes_per_chunk = -1L;
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
+  }
+
   *out = cfg.release();
   return nullptr;
   API_IMPL_END
@@ -2269,6 +2281,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 
       return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
     }
+  }
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
   }
 
   *out = cfg.release();
@@ -3070,6 +3086,10 @@ ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevi
   return ep_device->device;
 }
 
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->device_memory_info;
+}
+
 static constexpr OrtApiBase ort_api_base = {
     &OrtApis::GetApi,
     &OrtApis::GetVersionString};
@@ -3502,6 +3522,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
+
     &OrtApis::CreateMemoryInfo_V2,
 
     &OrtApis::CreateArrayOfConstObjects,
@@ -3541,6 +3562,15 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
+    &OrtApis::GetRunConfigEntry,
+
+    &OrtApis::EpDevice_MemoryInfo,
+
+    &OrtApis::CreateSharedAllocator,
+    &OrtApis::GetSharedAllocator,
+    &OrtApis::ReleaseSharedAllocator,
+
+    &OrtApis::GetTensorData,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

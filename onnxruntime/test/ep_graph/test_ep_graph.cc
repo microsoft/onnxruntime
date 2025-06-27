@@ -287,8 +287,11 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
                                            return node_arg->Name() == graph_output->Name();
                                          });
       bool is_const_initializer = false;
-      const ONNX_NAMESPACE::TensorProto* initializer = graph_viewer.GetGraph().GetInitializer(value_name, true,
-                                                                                              is_const_initializer);
+      OrtValue initializer_value;
+      const ONNX_NAMESPACE::TensorProto* initializer = graph_viewer.GetGraph().GetInitializer(value_name,
+                                                                                              initializer_value,
+                                                                                              is_const_initializer,
+                                                                                              /*check_outer_scope*/ true);
       bool can_override_initializer = graph_viewer.CanOverrideInitializer();
 
       bool api_is_req_graph_input = false;

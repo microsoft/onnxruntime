@@ -485,12 +485,18 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
     initializer_value_infos.push_back(value_info);
 
-    // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-    // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-    // OrtValue instances is merged.
+    // Initialize OrtValue for the initializer.
     auto initializer_value = std::make_unique<OrtValue>();
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
-                                                     initializer_allocator, *initializer_value));
+    bool graph_has_ortvalue = graph_viewer.GetGraph().GetOrtValueInitializer(initializer_name, *initializer_value,
+                                                                             /*check_outer_scope*/ false);
+
+    if (!graph_has_ortvalue) {
+      // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+      // This should only happen for small initializers that are needed for ONNX shape inferencing.
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                       initializer_allocator, *initializer_value));
+    }
+
     initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
   }
 
@@ -538,24 +544,27 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
       bool is_constant = false;
+      auto outer_initializer_value = std::make_unique<OrtValue>();
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
-                                                                                          /*check_outer_scope*/ true,
-                                                                                          is_constant);
+                                                                                          *outer_initializer_value,
+                                                                                          is_constant,
+                                                                                          /*check_outer_scope*/ true);
       outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
 
       if (outer_initializer != nullptr) {
         outer_value_info->SetFlag(is_constant ? EpValueInfo::kIsConstantInitializer : EpValueInfo::kIsOptionalGraphInput);
       }
 
-      // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-      // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-      // OrtValue instances is merged.
+      // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
-        auto initializer_value = std::make_unique<OrtValue>();
-        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
-                                                         *outer_initializer, initializer_allocator,
-                                                         *initializer_value));
-        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(initializer_value));
+        if (!outer_initializer_value->IsAllocated()) {
+          // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+          // This should only happen for small initializers that are needed for ONNX shape inferencing.
+          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                           *outer_initializer, initializer_allocator,
+                                                           *outer_initializer_value));
+        }
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
     }
   }
