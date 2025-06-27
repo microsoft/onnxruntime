@@ -6,7 +6,7 @@
 #include "core/providers/cuda/cu_inc/common.cuh"
 #include "core/providers/cuda/cuda_common.h"
 
-//TODO:fix the warnings
+// TODO:fix the warnings
 #ifdef _MSC_VER
 #pragma warning(disable : 4244)
 #endif
@@ -29,8 +29,8 @@ struct CastToInt32 {
 };
 
 cudaError_t CompressCalcPrefixSumTempStorageBytes(cudaStream_t stream, const int8_t* condition_data, int32_t* condition_cumulative_sum, int length, size_t& temp_storage_bytes) {
-   auto input_iter = thrust::make_transform_iterator(condition_data, CastToInt32());
-   return cub::DeviceScan::InclusiveSum(
+  auto input_iter = thrust::make_transform_iterator(condition_data, CastToInt32());
+  return cub::DeviceScan::InclusiveSum(
       nullptr, temp_storage_bytes, input_iter, condition_cumulative_sum, length, stream);
 }
 
