@@ -354,14 +354,18 @@ SQ8BitGemmPackQuantBDataAndBlkSum(
     assert(BlkLen >= 16 && BlkLen % 16 == 0);
 
     const size_t BlockCountK = MlasDivRoundup(K, BlkLen);
+
+    // Pack the quantized weights
     if (QuantBDataBegin) {
         Q8PackQuantB(QuantBDataBegin, PackedQuantB.PackedQuantBData, PackedQuantB.QuantBBlkSum2, ThreadPool, N, K, BlkLen);
     }
 
+    // Pack the block scales
     if (QuantBScaleBegin) {
         std::copy(QuantBScaleBegin, QuantBScaleBegin + N * BlockCountK, PackedQuantB.PackedQuantBScale);
     }
 
+    // Pack the blksum (and blksum2 if applicable)
     if ((QuantBScaleBegin && !HasZeroPoint) || QuantBZPBegin) {
         Q8ComputePackBlkSum(BlkLen, N, K, PackedQuantB.PackedQuantBScale, QuantBZPBegin, PackedQuantB.QuantBBlkSum, PackedQuantB.QuantBBlkSum2, ThreadPool);
     }
@@ -425,7 +429,7 @@ QNBitGemmPerGemmWorkspaceAlignment(
 
     switch (ComputeType) {
         case SQNBIT_CompInt8: {
-            return Q8BlkAlignment() * 4;
+            return Q8BlkAlignment();
         }
         default: {
             return 1;

@@ -403,7 +403,7 @@ struct MLAS_QNBIT_GEMM_DISPATCH {
      * @param       ldc                 Number of elements between adjacent rows of C..
      * @param       ABlockSum           Supplies the blksum of A.
      * @param       QuantBBlkSum        Supplies the blksum of B.
-     * @param       QuantBBlkSum2       Supplies the blksum of B when quant A is converted to uint8.
+     * @param       QuantBBlkSum2       Supplies the blksum2 of B (i.e.) scale * accumulate(quant - zp) per block when quant A is converted to uint8.
      */
     typedef size_t(SQ8BitGemmKernel_BlkSum_CompInt8_Fn)(
         size_t BlkLen,
