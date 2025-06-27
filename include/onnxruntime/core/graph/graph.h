@@ -797,6 +797,9 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   /** Returns true if an initializer value can be overridden by a graph input with the same name. */
   bool CanOverrideInitializer() const noexcept { return ir_version_ >= 4; }
 
+  /** Returns the ONNX IR version for the model. */
+  Version GetOnnxIRVersion() const noexcept { return ir_version_; }
+
   /** returns the initializer's TensorProto if 'name' is an initializer, is constant and
   cannot be overridden at runtime. If the initializer is not found or is not constant, a nullptr is returned.
   @param check_outer_scope If true and the graph is a subgraph,
@@ -811,6 +814,21 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   @remarks check_outer_scope of true is not supported in a minimal build
   */
   const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, bool check_outer_scope) const;
+
+  /// <summary>
+  /// Returns the initializer's TensorProto if 'name' is an initializer (either constant or overridable).
+  /// If the initializer is not found, a nullptr is returned. Also returns, via output parameters, the
+  /// OrtValue that holds the actual data (if any) and a boolean that indicates if the initializer is constant.
+  /// </summary>
+  /// <param name="name">The initializer's name.</param>
+  /// <param name="value">Output OrtValue that is populated if the initializer tensor proto has been configured
+  ///                     to use external data that points to an OrtValue. Is set to an unallocated OrtValue for
+  ///                     a tensor proto that holds the weight data (e.g., small initializers).</param>
+  /// <param name="is_constant">Output parameter set to true if the initializer is a constant.</param>
+  /// <param name="check_outer_scope">Checks outer scope if set to true and the graph is a subgraph.</param>
+  /// <returns>The initializer's TensorProto or nullptr.</returns>
+  const ONNX_NAMESPACE::TensorProto* GetInitializer(const std::string& name, OrtValue& value,
+                                                    bool& is_constant, bool check_outer_scope = false) const;
 
   /** Gets the Graph inputs excluding initializers.
   These are the required inputs to the Graph as the initializers can be optionally overridden via graph inputs.

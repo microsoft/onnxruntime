@@ -16,4 +16,12 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                     _Out_ OrtEpDevice** ep_device);
 
 ORT_API(void, ReleaseEpDevice, _Frees_ptr_opt_ OrtEpDevice* device);
+
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddNodesToFuse, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_reads_(num_nodes) const OrtNode* const* nodes, _In_ size_t num_nodes,
+                    _In_opt_ const OrtNodeFusionOptions* node_fusion_options);
+ORT_API_STATUS_IMPL(EpGraphSupportInfo_AddSingleNode, _In_ OrtEpGraphSupportInfo* graph_support_info,
+                    _In_ const OrtNode* node);
+ORT_API(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeContext* context);
+
 }  // namespace OrtExecutionProviderApi

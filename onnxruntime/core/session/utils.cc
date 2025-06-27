@@ -3,6 +3,9 @@
 
 #include "core/session/utils.h"
 
+#include <memory>
+#include <utility>
+
 #include "core/framework/error_code_helper.h"
 #include "core/framework/execution_provider.h"
 #include "core/framework/provider_options.h"
@@ -17,6 +20,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/ep_library_plugin.h"
 #include "core/session/ep_library_provider_bridge.h"
 #include "core/session/model_compilation_options.h"
@@ -334,21 +338,17 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
   }
 
   const auto& ep_name = ep_devices[0]->ep_name;
+  OrtEpFactory* ep_factory = ep_devices[0]->ep_factory;
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [&ep_name](const OrtEpDevice* ep_device) { return ep_device->ep_name == ep_name; });
+                               [&ep_name, &ep_factory](const OrtEpDevice* ep_device) {
+                                 return (ep_device->ep_name == ep_name) && (ep_device->ep_factory == ep_factory);
+                               });
   if (!all_match) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "All OrtEpDevice values in ep_devices must have the same execution provider.");
   }
 
-  EpFactoryInternal* internal_factory = nullptr;
   for (const OrtEpDevice* ep_device : ep_devices) {
-    // we expect the internal factory to be available for internal and provider bridge EPs, which is all we support.
-    internal_factory = env.GetEpFactoryInternal(ep_device->ep_factory);
-    if (!internal_factory) {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
-    }
-
     // add the options to the session options with the EP prefix.
     // first add the default values with prefix followed by user specified values so those win
     const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
@@ -366,13 +366,14 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
     }
   }
 
-  if (!internal_factory) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "EP is not currently supported by this API");
+  EpFactoryInternal* internal_factory = env.GetEpFactoryInternal(ep_factory);
+
+  if (internal_factory) {
+    out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory, ep_devices);
+  } else {
+    out = std::make_unique<PluginExecutionProviderFactory>(*ep_factory, ep_devices);
   }
 
-  out = std::make_unique<InternalExecutionProviderFactory>(*internal_factory,
-                                                           std::vector<const OrtEpDevice*>(ep_devices.begin(),
-                                                                                           ep_devices.end()));
   return Status::OK();
 }
 #endif  // !defined(ORT_MINIMAL_BUILD)
