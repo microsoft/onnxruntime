@@ -295,7 +295,6 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 288, 1024, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 192, 64, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
-
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
   TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
