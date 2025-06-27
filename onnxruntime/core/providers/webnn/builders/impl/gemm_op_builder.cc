@@ -295,11 +295,13 @@ bool GemmOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
   } else {  // MatMul
     for (int i = 0; i < 2; ++i) {
       std::vector<int64_t> shape;
-      if (!GetShape(*input_defs[i], shape, logger))
+      if (!GetShape(*input_defs[i], shape, logger)) {
         return false;
+      }
 
-      if (shape.size() == 1)
+      if (shape.size() == 1) {
         continue;
+      }
 
       if (!IsInputRankSupported(wnn_limits, "matmul", (i == 0) ? "a" : "b", shape.size(), node.Name(), logger)) {
         return false;
