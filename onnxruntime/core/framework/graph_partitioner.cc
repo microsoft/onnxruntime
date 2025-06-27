@@ -911,10 +911,12 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
 
   size_t ini_size_threshold = ep_context_gen_options.output_external_initializer_size_threshold;
   std::filesystem::path external_ini_path = ep_context_gen_options.output_external_initializers_file_path;
+  bool force_embed_external_ini = false;
   if (external_ini_path.empty()) {
-    // Set the threshold to the max so all initializers are forced into the Onnx file
+    // if no external ini file specified, set force_embed_external_ini to true to avoid intermedia file creation
+    // and force all initializers embed into the Onnx file
     ini_size_threshold = SIZE_MAX;
-    external_ini_path = "./model_ext_ini.bin";
+    force_embed_external_ini = true;
   }
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
@@ -925,7 +927,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
     ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
                                                                                                    context_cache_path,
-                                                                                                   model_saving_options);
+                                                                                                   model_saving_options,
+                                                                                                   force_embed_external_ini);
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");
@@ -938,7 +941,8 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
   } else {
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                            external_ini_path, model_saving_options));
+                                                            external_ini_path, model_saving_options,
+                                                            force_embed_external_ini));
   }
 
   return Status::OK();
