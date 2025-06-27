@@ -64,6 +64,9 @@ using RunOptions = ::OrtRunOptions;
 enum class DataLayout {
   NCHW,
   NHWC,
+
+  // NCHW is the default ONNX standard data layout. So default to it.
+  Default = NCHW,
 };
 
 class IExecutionProvider {
@@ -324,9 +327,8 @@ class IExecutionProvider {
   }
 
   virtual DataLayout GetPreferredLayout() const {
-    // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return DataLayout::NCHW;
+    return DataLayout::Default;
   }
 
   /**
