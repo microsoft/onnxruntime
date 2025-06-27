@@ -45,7 +45,7 @@ bool ShouldConvertNodeLayoutToNhwc(const IExecutionProvider& execution_provider,
   }
 
   const auto op_type = node.OpType();
-  if (auto should_convert_from_ep = execution_provider.ShouldConvertNodeLayoutToNhwc(domain, op_type);
+  if (auto should_convert_from_ep = execution_provider.ShouldConvertNodeLayout(DataLayout::NHWC, domain, op_type);
       should_convert_from_ep.has_value()) {
     return *should_convert_from_ep;
   }

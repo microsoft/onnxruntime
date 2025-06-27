@@ -136,12 +136,18 @@ struct OrtEpApi {
 };
 
 /**
- * \brief The data layout type that is preferred by an EP.
+ * \brief The data layout type.
+ *
+ * EPs may specify a preferred data layout type. ORT's default layout type is OrtEpDataLayout_NCHW, or
+ * OrtEpDataLayout_Default.
+ *
  * \since Version 1.23.
  */
 typedef enum OrtEpDataLayout {
   OrtEpDataLayout_NCHW = 0,
   OrtEpDataLayout_NHWC,
+
+  OrtEpDataLayout_Default = OrtEpDataLayout_NCHW,
 } OrtEpDataLayout;
 
 /**
@@ -257,18 +263,20 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* GetPreferredDataLayout)(_In_ OrtEp* this_ptr,
                                                    _Out_ OrtEpDataLayout* preferred_data_layout);
 
-  /** \brief Determine whether a node with `domain` and `op_type` requires its data layout to be converted to NHWC.
-   *         If the EP prefers NHWC data layout (see `GetPreferredDataLayout()`), this function will be called during
-   *         layout transformation.
+  /** \brief Determine whether a node with `node_domain` and `node_op_type` requires its data layout to be converted to
+   *         `target_data_layout`.
+   *         If the EP prefers a non-default data layout (see `GetPreferredDataLayout()`), this function will be called
+   *         during layout transformation with `target_data_layout` set to the EP's preferred data layout.
    *
    * \note Implementation of this function is optional.
-   *       If an EP prefers NHWC data layout, it may implement this to customize the specific NHWC op preferences at a
-   *       finer granularity.
+   *       If an EP prefers a non-default data layout, it may implement this to customize the specific op data layout
+   *       preferences at a finer granularity.
    *
    * \param[in] this_ptr The OrtEp instance.
+   * \param[in] target_data_layout The target data layout.
    * \param[in] node_domain The node's op domain. An empty string means the ONNX domain.
    * \param[in] node_op_type The node's op type.
-   * \param[out] should_convert Indicates whether the node's layout should be converted to NHWC.
+   * \param[out] should_convert Indicates whether the node's layout should be converted to `target_data_layout`.
    *                            If greater than 0, convert.
    *                            If 0, don't convert.
    *                            Otherwise, if less than 0, leave the decision to ORT.
@@ -277,10 +285,11 @@ struct OrtEp {
    *
    * \since Version 1.23.
    */
-  OrtStatus*(ORT_API_CALL* ShouldConvertNodeLayoutToNhwc)(_In_ OrtEp* this_ptr,
-                                                          _In_z_ const char* node_domain,
-                                                          _In_z_ const char* node_op_type,
-                                                          _Outptr_ int* should_convert);
+  OrtStatus*(ORT_API_CALL* ShouldConvertNodeLayout)(_In_ OrtEp* this_ptr,
+                                                    _In_ OrtEpDataLayout target_data_layout,
+                                                    _In_z_ const char* node_domain,
+                                                    _In_z_ const char* node_op_type,
+                                                    _Outptr_ int* should_convert);
 
   /** \brief Set dynamic options on this EP.
    *

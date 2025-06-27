@@ -112,19 +112,22 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
-TEST(PluginExecutionProviderTest, ShouldConvertNodeLayoutToNhwc) {
+TEST(PluginExecutionProviderTest, ShouldConvertNodeLayout) {
   auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
 
   {
-    ort_ep->ShouldConvertNodeLayoutToNhwc = nullptr;
-    ASSERT_EQ(ep->ShouldConvertNodeLayoutToNhwc("", "Conv"), std::nullopt);
+    ort_ep->ShouldConvertNodeLayout = nullptr;
+    ASSERT_EQ(ep->ShouldConvertNodeLayout(DataLayout::NHWC, "", "Conv"), std::nullopt);
   }
 
   {
-    auto custom_nhwc_op_determination = [](OrtEp* /*this_ptr*/,
+    auto custom_nhwc_op_determination_fn = [](OrtEp* /*this_ptr*/,
+                                           OrtEpDataLayout target_data_layout,
                                            const char* /*node_domain*/,
                                            const char* node_op_type,
                                            int* should_convert) -> ::OrtStatus* {
+      ASSERT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
+
       if (node_op_type == std::string_view{"Conv"}) {
         *should_convert = 1;
       } else if (node_op_type == std::string_view{"BatchNormalization"}) {
@@ -134,23 +137,26 @@ TEST(PluginExecutionProviderTest, ShouldConvertNodeLayoutToNhwc) {
       }
       return nullptr;
     };
-    ort_ep->ShouldConvertNodeLayoutToNhwc = custom_nhwc_op_determination;
+    ort_ep->ShouldConvertNodeLayout = custom_nhwc_op_determination_fn;
 
-    std::optional<bool> should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "Conv");
+    std::optional<bool> should_convert{};
+
+    should_convert = ep->ShouldConvertNodeLayout(DataLayout::NHWC, "", "Conv");
     ASSERT_NE(should_convert, std::nullopt);
     ASSERT_EQ(*should_convert, true);
 
-    should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "BatchNormalization");
+    should_convert = ep->ShouldConvertNodeLayout(DataLayout::NHWC, "", "BatchNormalization");
     ASSERT_NE(should_convert, std::nullopt);
     ASSERT_EQ(*should_convert, false);
 
-    should_convert = ep->ShouldConvertNodeLayoutToNhwc("", "GridSample");
+    should_convert = ep->ShouldConvertNodeLayout(DataLayout::NHWC, "", "GridSample");
     ASSERT_EQ(should_convert, std::nullopt);
   }
 
 #if !defined(ORT_NO_EXCEPTIONS)
   {
     auto failing_fn = [](OrtEp* this_ptr,
+                         OrtEpDataLayout /*target_data_layout*/,
                          const char* /*node_domain*/,
                          const char* /*node_op_type*/,
                          int* /*should_convert*/) -> ::OrtStatus* {
@@ -158,8 +164,8 @@ TEST(PluginExecutionProviderTest, ShouldConvertNodeLayoutToNhwc) {
       return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
                                                 "To convert to NHWC or not to convert to NHWC...");
     };
-    ort_ep->ShouldConvertNodeLayoutToNhwc = failing_fn;
-    ASSERT_THROW(ep->ShouldConvertNodeLayoutToNhwc("", "Conv"), OnnxRuntimeException);
+    ort_ep->ShouldConvertNodeLayout = failing_fn;
+    ASSERT_THROW(ep->ShouldConvertNodeLayout(DataLayout::NHWC, "", "Conv"), OnnxRuntimeException);
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }

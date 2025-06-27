@@ -323,9 +323,13 @@ DataLayout CUDAExecutionProvider::GetPreferredLayout() const {
   return this->IsNHWCPreferred() ? DataLayout::NHWC : DataLayout::NCHW;
 }
 
-std::optional<bool> CUDAExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
-                                                                         std::string_view node_op_type) const {
+std::optional<bool> CUDAExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
+                                                                   std::string_view node_domain,
+                                                                   std::string_view node_op_type) const {
 #if defined(ENABLE_CUDA_NHWC_OPS)
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
 
   // TODO(mtavenrath) generate list from registered kernels using nhwc domain
   static const std::unordered_set<std::string_view> cuda_nhwc_onnx_ops{

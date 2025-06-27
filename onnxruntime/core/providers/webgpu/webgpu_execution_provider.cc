@@ -855,8 +855,13 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 }
 #endif
 
-std::optional<bool> WebGpuExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
-                                                                           std::string_view node_op_type) const {
+std::optional<bool> WebGpuExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
+                                                                     std::string_view node_domain,
+                                                                     std::string_view node_op_type) const {
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
+
   // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
   if (node_domain == kOnnxDomain && node_op_type == "Resize") {
     return false;

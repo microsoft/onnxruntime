@@ -390,6 +390,21 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   return result;
 }
 
+namespace {
+
+struct DataLayoutMapping {
+  DataLayout data_layout;
+  OrtEpDataLayout api_data_layout;
+};
+
+// Maps enum values between `onnxruntime::DataLayout` and `OrtEpDataLayout`.
+constexpr std::array kDataLayoutMappings{
+    DataLayoutMapping{DataLayout::NCHW, OrtEpDataLayout::OrtEpDataLayout_NCHW},
+    DataLayoutMapping{DataLayout::NHWC, OrtEpDataLayout::OrtEpDataLayout_NHWC},
+};
+
+}  // namespace
+
 DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   if (ort_ep_->GetPreferredDataLayout == nullptr) {
     return Base::GetPreferredLayout();
@@ -399,32 +414,40 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetPreferredDataLayout(ort_ep_.get(), &api_data_layout)));
 
-  switch (api_data_layout) {
-    case OrtEpDataLayout::OrtEpDataLayout_NCHW:
-      return DataLayout::NCHW;
+  const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
+                                                [api_data_layout](const DataLayoutMapping& mapping) {
+                                                  return mapping.api_data_layout == api_data_layout;
+                                                });
 
-    case OrtEpDataLayout::OrtEpDataLayout_NHWC:
-      return DataLayout::NHWC;
+  ORT_ENFORCE(data_layout_mapping != kDataLayoutMappings.end(),
+              "OrtEp::GetPreferredDataLayout() returned an invalid data layout: ", static_cast<int>(api_data_layout));
 
-    default:
-      ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",
-                static_cast<int>(api_data_layout));
-  }
+  return data_layout_mapping->data_layout;
 }
 
-std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayoutToNhwc(std::string_view node_domain,
-                                                                           std::string_view node_op_type) const {
-  if (ort_ep_->ShouldConvertNodeLayoutToNhwc == nullptr) {
-    return Base::ShouldConvertNodeLayoutToNhwc(node_domain, node_op_type);
+std::optional<bool> PluginExecutionProvider::ShouldConvertNodeLayout(DataLayout target_data_layout,
+                                                                     std::string_view node_domain,
+                                                                     std::string_view node_op_type) const {
+  if (ort_ep_->ShouldConvertNodeLayout == nullptr) {
+    return Base::ShouldConvertNodeLayout(target_data_layout, node_domain, node_op_type);
   }
+
+  const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
+                                                [target_data_layout](const DataLayoutMapping& mapping) {
+                                                  return mapping.data_layout = target_data_layout;
+                                                });
+
+  ORT_ENFORCE(data_layout_mapping != kDataLayoutMappings.end(),
+              "Unable to map target_data_layout (", static_cast<int>(target_data_layout), ") to OrtEpDataLayout.");
 
   // Ensure domain and op type strings are null-terminated.
   const std::string node_domain_str{node_domain}, node_op_type_str{node_op_type};
   int should_convert = -1;
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(
-      ort_ep_->ShouldConvertNodeLayoutToNhwc(ort_ep_.get(), node_domain_str.c_str(), node_op_type_str.c_str(),
-                                             &should_convert)));
+      ort_ep_->ShouldConvertNodeLayout(ort_ep_.get(), data_layout_mapping->api_data_layout,
+                                       node_op_domain_str.c_str(), node_op_type_str.c_str(),
+                                       &should_convert)));
 
   if (should_convert > 0) {
     return true;
