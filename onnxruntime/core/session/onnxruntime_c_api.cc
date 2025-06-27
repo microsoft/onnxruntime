@@ -2756,11 +2756,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
   std::unique_ptr<Model> model = std::make_unique<Model>(graph_viewer.Name(), true, graph_viewer.GetGraph().GetLogger());
   Graph& new_graph = model->MainGraph();
 
-  // Initializers that refer to a memory location in OrtValue
-  // can not be handled by TRT (unlike those that are on disk).
-  // This prevents us from sharing the data and we have to make a copy here.
-  bool load_initializers_inline_true = copy_in_memory_initializer;
-
   // Gets number of given nodes
   size_t num_nodes = 0;
   ORT_API_RETURN_IF_ERROR(OrtApis::ArrayOfConstObjects_GetSize(ort_nodes_container, &num_nodes));
@@ -2773,14 +2768,19 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
 
     // TODO: might need to check the OrtNode is also in src_graph
 
-    const auto& node = EpNode::ToInternal(ort_node)->GetInternalNode();
+    const auto& ep_node = EpNode::ToInternal(ort_node);
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node should be a EpNode.");
+    }
+
+    const auto& node = ep_node->GetInternalNode();
     std::vector<onnxruntime::NodeArg*> inputs, outputs;
 
     for (auto input : node.InputDefs()) {
       auto& node_arg = new_graph.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
       inputs.push_back(&node_arg);
       graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), new_graph, input->Name(),
-                                                 load_initializers_inline_true);
+                                                 copy_in_memory_initializer);
     }
 
     for (auto output : node.OutputDefs()) {
@@ -2791,7 +2791,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
     if (node.ContainsSubgraph()) {
       for (auto input : node.ImplicitInputDefs()) {
         graph_utils::MakeInitializerCopyIfNotExist(graph_viewer.GetGraph(), new_graph, input->Name(),
-                                                   load_initializers_inline_true);
+                                                   copy_in_memory_initializer);
       }
     }
 
@@ -2824,7 +2824,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
 
   auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
   std::unique_ptr<EpGraph> result;
-  EpGraph::Create(std::move(new_graph_viewer), std::move(model), result);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(model), result));
 
   *dst_graph = result.release();
 
