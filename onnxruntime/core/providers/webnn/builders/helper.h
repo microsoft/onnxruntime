@@ -219,8 +219,8 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
 bool IsInputRankSupported(const emscripten::val& wnn_limits,
                           const std::string_view webnn_op_type,
                           const std::string_view input_name,
-                          const int input_rank,
-                          const std::string& node_name,
+                          const size_t input_rank,
+                          const std::string_view node_name,
                           const logging::Logger& logger);
 
 // Get a set of nodes supported by WebNN EP.
