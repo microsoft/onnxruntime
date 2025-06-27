@@ -124,25 +124,25 @@ KE_REGISTER(m) {
 }
 
 KE_REGISTER(m) {
-REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("GeLU", Elementwise, GeLU, half);
-REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("GeLU", Elementwise, GeLU, float);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("GeLU", Elementwise, GeLU, half);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("GeLU", Elementwise, GeLU, float);
 
-REGISTER_OP_TYPED("GeLUTunable", ElementwiseTunable, GeLU, half);
-REGISTER_OP_TYPED("GeLUTunable", ElementwiseTunable, GeLU, float);
+  REGISTER_OP_TYPED("GeLUTunable", ElementwiseTunable, GeLU, half);
+  REGISTER_OP_TYPED("GeLUTunable", ElementwiseTunable, GeLU, float);
 
-REGISTER_OP_TYPED("GeLUStaticSelection", ElementwiseStaticSelection, GeLU, half);
-REGISTER_OP_TYPED("GeLUStaticSelection", ElementwiseStaticSelection, GeLU, float);
+  REGISTER_OP_TYPED("GeLUStaticSelection", ElementwiseStaticSelection, GeLU, half);
+  REGISTER_OP_TYPED("GeLUStaticSelection", ElementwiseStaticSelection, GeLU, float);
 }
 
 KE_REGISTER(m) {
-REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("ReLU", Elementwise, ReLU, half);
-REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("ReLU", Elementwise, ReLU, float);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("ReLU", Elementwise, ReLU, half);
+  REGISTER_OP_FOR_ALL_THREADS_PER_BLOCK("ReLU", Elementwise, ReLU, float);
 
-REGISTER_OP_TYPED("ReLUTunable", ElementwiseTunable, ReLU, half);
-REGISTER_OP_TYPED("ReLUTunable", ElementwiseTunable, ReLU, float);
+  REGISTER_OP_TYPED("ReLUTunable", ElementwiseTunable, ReLU, half);
+  REGISTER_OP_TYPED("ReLUTunable", ElementwiseTunable, ReLU, float);
 
-REGISTER_OP_TYPED("ReLUStaticSelection", ElementwiseStaticSelection, ReLU, half);
-REGISTER_OP_TYPED("ReLUStaticSelection", ElementwiseStaticSelection, ReLU, float);
+  REGISTER_OP_TYPED("ReLUStaticSelection", ElementwiseStaticSelection, ReLU, half);
+  REGISTER_OP_TYPED("ReLUStaticSelection", ElementwiseStaticSelection, ReLU, float);
 }
 
 }  // namespace onnxruntime
