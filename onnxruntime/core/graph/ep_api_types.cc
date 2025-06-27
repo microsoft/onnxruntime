@@ -594,7 +594,7 @@ Status EpGraph::Create(std::unique_ptr<GraphViewer> graph_viewer_in_model, std::
 // Static class function to create a std::unique_ptr<EpGraph>.
 Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
-  
+
   return GreateImpl(std::move(ep_graph), graph_viewer, result);
 }
 
