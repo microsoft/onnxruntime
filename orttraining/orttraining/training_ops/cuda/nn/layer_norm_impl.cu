@@ -1,18 +1,18 @@
 /**
-* Copyright (c) 2016-present, Facebook, Inc.
-*
-* Licensed under the Apache License, Version 2.0 (the "License");
-* you may not use this file except in compliance with the License.
-* You may obtain a copy of the License at
-*
-*     http://www.apache.org/licenses/LICENSE-2.0
-*
-* Unless required by applicable law or agreed to in writing, software
-* distributed under the License is distributed on an "AS IS" BASIS,
-* WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-* See the License for the specific language governing permissions and
-* limitations under the License.
-*/
+ * Copyright (c) 2016-present, Facebook, Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
 
 //
 // Copyright (c) 2017, NVIDIA CORPORATION. All rights reserved.
@@ -31,39 +31,39 @@ namespace onnxruntime {
 namespace cuda {
 
 namespace {
-  // This is the un-specialized struct.  Note that we prevent instantiation of this
-  // struct by putting an undefined symbol in the function body so it won't compile.
-  //  template <typename T>
-  //  struct SharedMemory
-  //  {
-  //      // Ensure that we won't compile any un-specialized types
-  //      __device__ T *getPointer()
-  //      {
-  //          extern __device__ void error(void);
-  //          error();
-  //          return NULL;
-  //      }
-  //  };
-  // https://github.com/NVIDIA/apex/issues/246
-  template <typename T>
-  struct SharedMemory;
+// This is the un-specialized struct.  Note that we prevent instantiation of this
+// struct by putting an undefined symbol in the function body so it won't compile.
+//  template <typename T>
+//  struct SharedMemory
+//  {
+//      // Ensure that we won't compile any un-specialized types
+//      __device__ T *getPointer()
+//      {
+//          extern __device__ void error(void);
+//          error();
+//          return NULL;
+//      }
+//  };
+// https://github.com/NVIDIA/apex/issues/246
+template <typename T>
+struct SharedMemory;
 
-  template <>
-  struct SharedMemory<float> {
-    __device__ float* getPointer() {
-      extern __shared__ float s_float[];
-      return s_float;
-    }
-  };
+template <>
+struct SharedMemory<float> {
+  __device__ float* getPointer() {
+    extern __shared__ float s_float[];
+    return s_float;
+  }
+};
 
-  template <>
-  struct SharedMemory<double> {
-    __device__ double* getPointer() {
-      extern __shared__ double s_double[];
-      return s_double;
-    }
-  };
-  }  // namespace
+template <>
+struct SharedMemory<double> {
+  __device__ double* getPointer() {
+    extern __shared__ double s_double[];
+    return s_double;
+  }
+};
+}  // namespace
 
 template <typename T, typename U, typename V, bool use_mean, bool simplified>
 __device__ void cuLoadWriteStridedInputs(
@@ -189,12 +189,12 @@ __global__ void cuComputePartGradGammaBeta(
   // compute partial sums from strided inputs
   // do this to increase number of loads in flight
   cuLoadWriteStridedInputs<T, U, V, use_mean, simplified>(i1_beg, thr_load_row_off, thr_load_col_off, i2_off,
-                                                           row_stride, warp_buf1, warp_buf2, input, output, dout,
-                                                           i1_end, n2, gamma, beta, mean, invvar);
+                                                          row_stride, warp_buf1, warp_buf2, input, output, dout,
+                                                          i1_end, n2, gamma, beta, mean, invvar);
   for (int i1_block = i1_beg + blockDim.y * blockDim.y; i1_block < i1_end; i1_block += blockDim.y * blockDim.y) {
     cuLoadAddStridedInputs<T, U, V, use_mean, simplified>(i1_block, thr_load_row_off, thr_load_col_off, i2_off,
-                                                           row_stride, warp_buf1, warp_buf2, input, output, dout,
-                                                           i1_end, n2, gamma, beta, mean, invvar);
+                                                          row_stride, warp_buf1, warp_buf2, input, output, dout,
+                                                          i1_end, n2, gamma, beta, mean, invvar);
   }
   __syncthreads();
   // inter-warp reductions
@@ -303,7 +303,7 @@ __global__ void cuComputeGradInput(
     const U c_mean = (use_mean && !simplified) ? mean[i1] : U(0);
     const U c_invvar = invvar[i1];
     const T* k_input = use_mean ? input + i1 * n2 : nullptr;
-    const V* k_output = use_mean ? nullptr: output + i1 * n2;
+    const V* k_output = use_mean ? nullptr : output + i1 * n2;
     const V* k_dout = dout + i1 * n2;
     const int numx = blockDim.x * blockDim.y;
     const int thrx = threadIdx.x + threadIdx.y * blockDim.x;
@@ -473,23 +473,23 @@ __global__ void cuComputeGradInput(
 
 template <typename T, typename U, typename V, bool simplified>
 void HostLayerNormGradient(
-  const cudaDeviceProp& prop,
-  cudaStream_t stream,
-  const V* dout,
-  const T* input,
-  const V* output,
-  const V* gamma,
-  const V* beta,
-  const U* mean,
-  const U* invvar,
-  int64_t n1,
-  int64_t n2,
-  T* grad_input,
-  V* grad_gamma,
-  V* grad_beta,
-  U* part_grad_gamma,
-  U* part_grad_beta,
-  const int part_size) {
+    const cudaDeviceProp& prop,
+    cudaStream_t stream,
+    const V* dout,
+    const T* input,
+    const V* output,
+    const V* gamma,
+    const V* beta,
+    const U* mean,
+    const U* invvar,
+    int64_t n1,
+    int64_t n2,
+    T* grad_input,
+    V* grad_gamma,
+    V* grad_beta,
+    U* part_grad_gamma,
+    U* part_grad_beta,
+    const int part_size) {
   const int warp_size = prop.warpSize;
   ORT_ENFORCE(warp_size == GPU_WARP_SIZE_HOST);
 
@@ -501,30 +501,30 @@ void HostLayerNormGradient(
   if (mean == nullptr && !simplified) {
     // use_mean == false, simplified == false -> Inverted Layer Norm
     cuComputePartGradGammaBeta<T, U, V, false, false><<<blocks2, threads2, nshared2, stream>>>(
-      dout,
-      input,
-      output,
-      gamma,
-      beta,
-      mean,
-      invvar,
-      n1, n2,
-      part_grad_gamma,
-      part_grad_beta);
+        dout,
+        input,
+        output,
+        gamma,
+        beta,
+        mean,
+        invvar,
+        n1, n2,
+        part_grad_gamma,
+        part_grad_beta);
   } else {
     // use_mean == true, simplified == false -> Layer Norm
     // use_mean == true, simplified == true -> Simplified Layer Norm
     cuComputePartGradGammaBeta<T, U, V, true, simplified><<<blocks2, threads2, nshared2, stream>>>(
-      dout,
-      input,
-      output,
-      gamma,
-      beta,
-      mean,
-      invvar,
-      n1, n2,
-      part_grad_gamma,
-      part_grad_beta);
+        dout,
+        input,
+        output,
+        gamma,
+        beta,
+        mean,
+        invvar,
+        n1, n2,
+        part_grad_gamma,
+        part_grad_beta);
   }
   const dim3 threads3(warp_size, 8, 1);
   const dim3 blocks3((n2 + threads2.x - 1) / threads2.x, 1, 1);
@@ -549,50 +549,50 @@ void HostLayerNormGradient(
   if (mean == nullptr && !simplified) {
     if (gamma == nullptr) {
       cuComputeGradInput<T, U, V, false, false, false><<<blocks1, threads1, nshared, stream>>>(
-        dout,
-        input,
-        output,
-        gamma,
-        beta,
-        mean,
-        invvar,
-        n1, n2,
-        grad_input);
+          dout,
+          input,
+          output,
+          gamma,
+          beta,
+          mean,
+          invvar,
+          n1, n2,
+          grad_input);
     } else {
       cuComputeGradInput<T, U, V, false, true, false><<<blocks1, threads1, nshared, stream>>>(
-        dout,
-        input,
-        output,
-        gamma,
-        beta,
-        mean,
-        invvar,
-        n1, n2,
-        grad_input);
+          dout,
+          input,
+          output,
+          gamma,
+          beta,
+          mean,
+          invvar,
+          n1, n2,
+          grad_input);
     }
   } else {
     if (gamma == nullptr) {
       cuComputeGradInput<T, U, V, true, false, simplified><<<blocks1, threads1, nshared, stream>>>(
-        dout,
-        input,
-        output,
-        gamma,
-        beta,
-        mean,
-        invvar,
-        n1, n2,
-        grad_input);
+          dout,
+          input,
+          output,
+          gamma,
+          beta,
+          mean,
+          invvar,
+          n1, n2,
+          grad_input);
     } else {
       cuComputeGradInput<T, U, V, true, true, simplified><<<blocks1, threads1, nshared, stream>>>(
-        dout,
-        input,
-        output,
-        gamma,
-        beta,
-        mean,
-        invvar,
-        n1, n2,
-        grad_input);
+          dout,
+          input,
+          output,
+          gamma,
+          beta,
+          mean,
+          invvar,
+          n1, n2,
+          grad_input);
     }
   }
 }

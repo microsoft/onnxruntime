@@ -318,28 +318,28 @@ template <typename TIn, typename TOut>
 Status reduce_sum(
     cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
-    stream, input, output, 1, size, buffer, buffer_size);
+      stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_square_sum(
     cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Square, Identity, false>(
-    stream, input, output, 1, size, buffer, buffer_size);
+      stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_l2_norm(
     cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Square, Sqrt, false>(
-    stream, input, output, 1, size, buffer, buffer_size);
+      stream, input, output, 1, size, buffer, buffer_size);
 }
 
 template <typename TIn, typename TOut>
 Status reduce_mean(
     cudaStream_t stream, const TIn* input, TOut* output, int size, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, true>(
-    stream, input, output, 1, size, buffer, buffer_size);
+      stream, input, output, 1, size, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_SUM(TIn, TOut) \
@@ -500,7 +500,7 @@ INSTANTIATE_REDUCE_MATRIX_ROWS(BFloat16);
 template <typename TIn, typename TOut>
 Status reduce_matrix_columns(cudaStream_t stream, const TIn* input, TOut* output, int m, int n, void* buffer, size_t buffer_size) {
   return detail::call_reduce_matrix_columns<TIn, TOut, Identity, Identity, false>(
-    stream, input, output, m, n, buffer, buffer_size);
+      stream, input, output, m, n, buffer, buffer_size);
 }
 
 #define INSTANTIATE_REDUCE_MATRIX_COLUMNS(T) \

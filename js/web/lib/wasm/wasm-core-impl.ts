@@ -445,7 +445,7 @@ export const createSession = async (
           : { name: nameString, isTensor: true, type: tensorDataTypeEnumToString(elementType), shape: shape! },
       );
 
-      if (!BUILD_DEFS.DISABLE_JSEP) {
+      if (!BUILD_DEFS.DISABLE_JSEP || !BUILD_DEFS.DISABLE_WEBGPU) {
         if (enableGraphCapture && options?.preferredOutputLocation === undefined) {
           outputPreferredLocations.push('gpu-buffer');
           continue;

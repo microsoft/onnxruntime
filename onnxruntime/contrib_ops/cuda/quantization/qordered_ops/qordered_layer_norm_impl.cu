@@ -73,9 +73,9 @@ __global__ void QOrderedLayerNormRowKernel(const int8_t* __restrict__ src, const
 
 template <typename T>
 Status QOrderedLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
-                       const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-                       const T* gamma, const T* beta, const float epsilon,
-                       const unsigned batch, const unsigned rows, const unsigned cols) {
+                         const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+                         const T* gamma, const T* beta, const float epsilon,
+                         const unsigned batch, const unsigned rows, const unsigned cols) {
   // The implementation only supports Row major tensor data ordering for now
   ORT_RETURN_IF(order != CUBLASLT_ORDER_ROW, "Order current not supported!");
 
@@ -87,18 +87,18 @@ Status QOrderedLayerNorm(cudaStream_t stream, const cudaDeviceProp& /*device_pro
   QOrderedLayerNormRowKernel<T><<<blocks, threads, 0, stream>>>(
       src, src_scale, dst, dst_scale, gamma, beta, epsilon, rows, cols);
 
-  return CUDA_CALL(cudaGetLastError());  
+  return CUDA_CALL(cudaGetLastError());
 }
 
 template Status QOrderedLayerNorm<float>(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
-                                       const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-                                       const float* gamma, const float* beta, const float epsilon,
-                                       const unsigned batch, const unsigned rows, const unsigned cols);
+                                         const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+                                         const float* gamma, const float* beta, const float epsilon,
+                                         const unsigned batch, const unsigned rows, const unsigned cols);
 
 template Status QOrderedLayerNorm<__half>(cudaStream_t stream, const cudaDeviceProp& /*device_prop*/, cublasLtOrder_t order,
-                                        const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
-                                        const __half* gamma, const __half* beta, const float epsilon,
-                                        const unsigned batch, const unsigned rows, const unsigned cols);
+                                          const int8_t* src, const float src_scale, int8_t* dst, const float dst_scale,
+                                          const __half* gamma, const __half* beta, const float epsilon,
+                                          const unsigned batch, const unsigned rows, const unsigned cols);
 
 }  // namespace cuda
 }  // namespace contrib
