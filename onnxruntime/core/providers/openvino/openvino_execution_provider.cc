@@ -190,10 +190,12 @@ common::Status OpenVINOExecutionProvider::Compile(
     fs::path metadata_file_path = shared_context_->shared_weights.metadata_filepath;
     if (metadata_file_path.empty()) {
       metadata_file_path = session_context_.so_context_file_path;
+      std::string name_append{"_metadata.bin"};
       if (metadata_file_path.empty()) {
         metadata_file_path = session_context_.onnx_model_path_name;
+        name_append = "_ctx" + name_append;
       }
-      auto metadata_filename = metadata_file_path.stem().string() + "_metadata.bin";
+      auto metadata_filename = metadata_file_path.stem().string() + name_append;
       metadata_file_path.replace_filename(metadata_filename);
       shared_context_->shared_weights.metadata_filepath = metadata_file_path;
     }
