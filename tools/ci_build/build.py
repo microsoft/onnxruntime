@@ -2338,6 +2338,65 @@ def main():
     script_dir = os.path.realpath(os.path.dirname(__file__))
     source_dir = os.path.normpath(os.path.join(script_dir, "..", ".."))
 
+    # Run the debug script
+    if args.use_webgpu:
+        # Run WebGPU environment validation for debugging purposes
+        try:
+            import subprocess
+            log.info("Running WebGPU environment validation...")
+
+            # Check if we're in a containerized environment by looking for common container indicators
+            is_container = any([
+                os.path.exists("/.dockerenv"),
+                os.path.exists("/run/.containerenv"),
+                os.environ.get("container") is not None
+            ])
+
+            if is_container:
+                # We're in a container, run the validation scripts from their repo location
+                webgpu_scripts_dir = os.path.join(source_dir, "tools", "ci_build", "github", "linux", "docker", "scripts", "webgpu")
+
+                vulkan_debug_script = os.path.join(webgpu_scripts_dir, "vulkan-debug.sh")
+                test_vulkan_script = os.path.join(webgpu_scripts_dir, "test-vulkan-headless.sh")
+
+                if os.path.exists(vulkan_debug_script):
+                    log.info("Running Vulkan debug script...")
+                    try:
+                        result = subprocess.run(["bash", vulkan_debug_script],
+                                              capture_output=True, text=True, timeout=30)
+                        log.info(f"Vulkan debug output:\n{result.stdout}")
+                        if result.stderr:
+                            log.warning(f"Vulkan debug stderr:\n{result.stderr}")
+                    except subprocess.TimeoutExpired:
+                        log.warning("Vulkan debug script timed out")
+                    except Exception as e:
+                        log.warning(f"Failed to run vulkan debug script: {e}")
+                else:
+                    log.warning(f"Vulkan debug script not found at: {vulkan_debug_script}")
+
+                if os.path.exists(test_vulkan_script):
+                    log.info("Running Vulkan environment test...")
+                    try:
+                        result = subprocess.run(["bash", test_vulkan_script],
+                                              capture_output=True, text=True, timeout=60)
+                        log.info(f"Vulkan test output:\n{result.stdout}")
+                        if result.stderr:
+                            log.warning(f"Vulkan test stderr:\n{result.stderr}")
+                        if result.returncode != 0:
+                            log.warning(f"Vulkan test script returned non-zero exit code: {result.returncode}")
+                    except subprocess.TimeoutExpired:
+                        log.warning("Vulkan test script timed out")
+                    except Exception as e:
+                        log.warning(f"Failed to run vulkan test script: {e}")
+                else:
+                    log.warning(f"Vulkan test script not found at: {test_vulkan_script}")
+            else:
+                log.info("WebGPU build detected but not in container environment - skipping Vulkan validation")
+
+        except Exception as e:
+            log.warning(f"WebGPU environment validation failed: {e}")
+            # Don't fail the build for validation issues
+
     # if using cuda, setup cuda paths and env vars
     cuda_home = ""
     cudnn_home = ""

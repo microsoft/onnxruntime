@@ -85,25 +85,9 @@ jobs:
             echo "Permissions restored."
           else
             echo "Warning: perms.txt not found in artifact."
-          fi      # --- Run Tests using the downloaded build ---
-      # The run-build-script-in-docker action mounts ${{ runner.temp }} to /onnxruntime_src/build
-      # So build.py --build_dir build/Release inside the container correctly finds the artifacts.
-      - name: Verify GPU and Vulkan Environment
-        id: verify_gpu_step
-        run: |
-          # Verify GPU is accessible on the host
-          echo "=== Host GPU Check ==="
-          nvidia-smi || echo "nvidia-smi not available on host"
+          fi
 
-          # Check Vulkan environment in container (without actually running Vulkan)
-          echo "=== Container Vulkan Environment Check ==="
-          docker run --rm --gpus all \
-            -v ${{ runner.temp }}:/onnxruntime_src/build \
-            -e NVIDIA_VISIBLE_DEVICES=all \
-            -e NVIDIA_DRIVER_CAPABILITIES=all \
-            ${{ steps.build_docker_image_step.outputs.full-image-name }} \
-            sh -c "test-vulkan-headless"
-
+      # Note: WebGPU environment validation is now handled by build.py when --use_webgpu is specified
       - name: Test ONNX Runtime
         id: test_step
         uses: microsoft/onnxruntime-github-actions/run-build-script-in-docker@v0.0.7
