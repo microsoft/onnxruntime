@@ -42,7 +42,7 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
       API_IMPL_BEGIN
       auto kvp = std::make_unique<OrtKeyValuePairs>();
       auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-      kvp->Copy(stats_map);
+      kvp->CopyFromMap(stats_map);
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
       API_IMPL_END
@@ -130,25 +130,27 @@ void IAllocatorImplWrappingOrtAllocator::GetStats(AllocatorStats* stats) {
 
     std::unique_ptr<OrtKeyValuePairs*, decltype(release_fn)> kvp_guard(&kvps, release_fn);
 
-    for (size_t i = 0; i < kvps->keys.size(); ++i) {
-      if (strcmp(kvps->keys[i], "Limit") == 0) {
-        stats->bytes_limit = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "InUse") == 0) {
-        stats->bytes_in_use = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "TotalAllocated") == 0) {
-        stats->total_allocated_bytes = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "MaxInUse") == 0) {
-        stats->max_bytes_in_use = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumAllocs") == 0) {
-        stats->num_allocs = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumReserves") == 0) {
-        stats->num_reserves = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumArenaExtensions") == 0) {
-        stats->num_arena_extensions = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "NumArenaShrinkages") == 0) {
-        stats->num_arena_shrinkages = std::stoll(kvps->values[i]);
-      } else if (strcmp(kvps->keys[i], "MaxAllocSize") == 0) {
-        stats->max_alloc_size = std::stoll(kvps->values[i]);
+    const auto keys = kvps->Keys(), values = kvps->Values();
+
+    for (size_t i = 0; i < keys.size(); ++i) {
+      if (strcmp(keys[i], "Limit") == 0) {
+        stats->bytes_limit = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "InUse") == 0) {
+        stats->bytes_in_use = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "TotalAllocated") == 0) {
+        stats->total_allocated_bytes = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "MaxInUse") == 0) {
+        stats->max_bytes_in_use = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumAllocs") == 0) {
+        stats->num_allocs = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumReserves") == 0) {
+        stats->num_reserves = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumArenaExtensions") == 0) {
+        stats->num_arena_extensions = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "NumArenaShrinkages") == 0) {
+        stats->num_arena_shrinkages = std::stoll(values[i]);
+      } else if (strcmp(keys[i], "MaxAllocSize") == 0) {
+        stats->max_alloc_size = std::stoll(values[i]);
       }
     }
   }
