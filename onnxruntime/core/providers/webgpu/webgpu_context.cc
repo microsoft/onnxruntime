@@ -408,8 +408,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    // Use external buffer manager if in graph capture mode and external buffer manager is provided
-    if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+    if (session_status_ == SessionState::Capturing) {
       uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     } else {
       uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
@@ -436,8 +435,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
-    // Release buffer using the appropriate buffer manager
-    if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+    if (session_status_ == SessionState::Capturing) {
       external_buffer_mgr_->Release(uniform_buffer);
     } else {
       buffer_mgr_->Release(uniform_buffer);
@@ -703,10 +701,9 @@ void WebGpuContext::Flush() {
 
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  // Use external buffer manager for graph mode if available
-  if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
+  if (session_status_ == SessionState::Capturing) {
     external_buffer_mgr_->RefreshPendingBuffers(session_status_);
-  } else {
+  } else if (session_status_ == SessionState::Default) {
     buffer_mgr_->RefreshPendingBuffers(session_status_);
   }
   current_command_encoder_ = nullptr;
@@ -755,16 +752,13 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   }
 }
 
-// Implementation for CaptureBegin with external storage
 void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, webgpu::BufferManager* buffer_mgr) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   Flush();
 
-  // Store the pointer to the external vector
+  ORT_ENFORCE(buffer_mgr != nullptr, "Buffer manager must not be null when capturing commands.");
   external_captured_commands_ = captured_commands;
-
-  // Store the pointer to the external buffer manager
   external_buffer_mgr_ = buffer_mgr;
 
   // Make sure the external vector is empty before we start capturing
@@ -775,11 +769,9 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   // TODO: support profiling with graph capture.
   ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
 
-  // Change to capturing mode
   session_status_ = SessionState::Capturing;
 }
 
-// Implementation for Replay with external commands vector
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   session_status_ = SessionState::Replaying;
@@ -808,7 +800,6 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   // Flush any remaining commands
   Flush();
 
-  // Change back to default mode
   session_status_ = SessionState::Default;
 }
 
@@ -818,10 +809,7 @@ void WebGpuContext::CaptureEnd() {
   // Flush any pending commands before we change the status
   Flush();
 
-  // Change back to default mode
   session_status_ = SessionState::Default;
-
-  // Clear external pointers
   external_captured_commands_ = nullptr;
   external_buffer_mgr_ = nullptr;
 }

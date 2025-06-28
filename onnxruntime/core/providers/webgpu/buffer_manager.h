@@ -40,8 +40,8 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
 // - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
-// - Graph: a session-aware buckets cache that each session has its own buckets. Buffers in the same session can be reused across session runs and in one run.
-// - GraphSimple: a session-aware simple cache that each session has its own cache. Buffers in the same session can be reused across session runs but can't be reused in one run.
+// - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
+// - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;

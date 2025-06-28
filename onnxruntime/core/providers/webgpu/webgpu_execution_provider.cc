@@ -777,7 +777,6 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
   // If graph capture is enabled, create a dedicated buffer manager for graph mode
   if (enable_graph_capture_) {
     // Create buffer manager for graph capture mode with appropriate cache modes
-    // Use GraphSimple mode for all buffer types in graph mode
     graph_buffer_mgr_ = webgpu::BufferManagerFactory::Create(
         context_,
         webgpu::BufferCacheMode::Graph,

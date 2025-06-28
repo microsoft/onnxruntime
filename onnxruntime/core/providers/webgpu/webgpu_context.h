@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
-// Removed webgpu_execution_provider.h to avoid circular dependency
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
@@ -22,8 +21,6 @@ namespace onnxruntime {
 class Tensor;
 
 namespace webgpu {
-// Forward declarations for types previously included from webgpu_execution_provider.h
-// enum class ValidationMode;
 class WebGpuContext;
 class ComputeContext;
 class ProgramBase;

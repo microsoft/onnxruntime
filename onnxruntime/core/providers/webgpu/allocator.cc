@@ -15,12 +15,10 @@ void* GpuBufferAllocator::Alloc(size_t size) {
 
   stats_.num_allocs++;
 
-#if !defined(__wasm__)
   // Check if the buffer manager supports UMA and we're not yet in an initialized session
   if (!session_initialized_ && buffer_manager_.SupportsUMA()) {
     return buffer_manager_.CreateUMA(size);
   }
-#endif  // !defined(__wasm__)
 
   return buffer_manager_.Create(size);
 }
