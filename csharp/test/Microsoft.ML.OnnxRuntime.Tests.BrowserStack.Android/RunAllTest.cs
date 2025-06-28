@@ -33,14 +33,16 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
                     return element;
                 }
             }
-            // was unable to find given element
-            throw new Exception(String.Format("Could not find {0}: {1} on the page.", xpathQuery, text));
+
+            Assert.Fail("Could not find element with xpath: {0} and text: {1}", xpathQuery, text);
+      // was unable to find given element
+      throw new Exception(String.Format("Could not find {0}: {1} on the page.", xpathQuery, text));
         }
 
         public AppiumElement FindAppiumElementThenClick(String xpathQuery, String text)
         {
             AppiumElement appiumElement = FindAppiumElement(xpathQuery, text);
-            appiumElement.Click();
+      appiumElement.Click();
             return appiumElement;
         }
 
@@ -79,9 +81,13 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
         [Test]
         public async Task ClickRunAllTest()
         {
-            // XAML for the main page:
-            // https://github.com/mattleibow/DeviceRunners/blob/cba7644e07b305ba64dc930b01c3eee55ef2b93d/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
-            AppiumElement runAllButton = FindAppiumElementThenClick("//android.widget.Button", "Run All");
+            await Task.Delay(500);
+
+      browserStackLog("In the run all test");
+
+      // XAML for the main page:
+      // https://github.com/mattleibow/DeviceRunners/blob/cba7644e07b305ba64dc930b01c3eee55ef2b93d/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
+      AppiumElement runAllButton = FindAppiumElementThenClick("//android.widget.Button", "Run All");
 
             while (!runAllButton.Enabled)
             {

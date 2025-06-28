@@ -56,7 +56,7 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            dotnet test
+            dotnet test --verbosity diagnostic
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android'
         env:
           BROWSERSTACK_USERNAME: $(browserstack_username)

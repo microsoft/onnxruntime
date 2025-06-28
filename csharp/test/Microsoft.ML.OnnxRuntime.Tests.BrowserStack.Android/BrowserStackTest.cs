@@ -29,6 +29,14 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
             driver = new AndroidDriver(new Uri("http://127.0.0.1:4723/wd/hub"), androidOptions);
         }
 
+        public void browserStackLog(String text, String loglevel = "info")
+    {
+       String jsonToSend = String.Format("browserstack_executor: {{\"action\": \"setSessionLog\", \"arguments\": " +
+                                      "{{\"level\":\"{0}\", \"message\": {1}}}}}",
+                                      loglevel, JsonConvert.ToString(text));
+       ((IJavaScriptExecutor)driver).ExecuteScript(jsonToSend);
+    }
+
         /// <summary>
         /// Passes the correct test status to BrowserStack and ensures the driver quits.
         /// </summary>
