@@ -410,9 +410,9 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
 
     // Use external buffer manager if in graph capture mode and external buffer manager is provided
     if (session_status_ == SessionState::Capturing && external_buffer_mgr_ != nullptr) {
-      uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, 0, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+      uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     } else {
-      uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, 0, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
+      uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     }
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }

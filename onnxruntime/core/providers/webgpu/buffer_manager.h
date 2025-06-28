@@ -50,7 +50,7 @@ class IBufferCacheManager {
   virtual size_t CalculateBufferSize(size_t request_size) = 0;
 
   // return a buffer if available in cache. otherwise empty.
-  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size, uint32_t session_id) = 0;
+  virtual WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) = 0;
 
   // register a newly created buffer
   virtual void RegisterBuffer(WGPUBuffer buffer, size_t request_size) = 0;
@@ -59,10 +59,10 @@ class IBufferCacheManager {
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
   // release captured buffers
-  virtual void ReleaseCapturedBuffers(uint32_t session_id) = 0;
+  virtual void ReleaseCapturedBuffers() = 0;
 
   // when a stream refresh is requested
-  virtual void OnRefresh(SessionState session_status, uint32_t session_id) = 0;
+  virtual void OnRefresh(SessionState session_status) = 0;
 };
 
 //
@@ -73,15 +73,15 @@ class BufferManager {
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
   void Upload(void* src, WGPUBuffer dst, size_t size) const;
   void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
-  WGPUBuffer Create(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
   // Create a buffer mapped for writing.
-  WGPUBuffer CreateUMA(size_t size, uint32_t session_id, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
+  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
   // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
   bool SupportsUMA() const;
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
   void RefreshPendingBuffers(SessionState session_status);
-  void ReleaseCapturedBuffers(uint32_t session_id);
+  void ReleaseCapturedBuffers();
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;

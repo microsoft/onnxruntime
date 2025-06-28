@@ -2123,8 +2123,6 @@ common::Status InferenceSession::Initialize() {
     }
 
     for (auto& ep : execution_providers_) {
-      ep->OnSessionInitializationStart(session_id_);
-
       auto tuning_ctx = ep->GetTuningContext();
       if (nullptr != tuning_ctx) {
         tuning_ctx->RegisterAllocatorsView(&session_state_->GetAllocators());

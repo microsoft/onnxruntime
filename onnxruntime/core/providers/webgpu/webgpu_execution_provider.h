@@ -68,7 +68,6 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool ConcurrentRunSupported() const override { return false; }
 
   std::vector<AllocatorPtr> CreatePreferredAllocators() override;
-  void OnSessionInitializationStart(uint32_t session_id) override;
   Status OnSessionInitializationEnd() override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;

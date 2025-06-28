@@ -880,8 +880,7 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   // Clean up any captured buffers from the graph buffer manager
   if (graph_buffer_mgr_) {
-    // Use 0 for session_id since we're no longer using session IDs in our new design
-    graph_buffer_mgr_->ReleaseCapturedBuffers(0);
+    graph_buffer_mgr_->ReleaseCapturedBuffers();
   }
 
   // The captured_commands_ vector will be automatically cleaned up
@@ -894,11 +893,6 @@ std::unique_ptr<profiling::EpProfiler> WebGpuExecutionProvider::GetProfiler() {
   auto profiler = std::make_unique<WebGpuProfiler>(context_);
   profiler_ = profiler.get();
   return profiler;
-}
-void WebGpuExecutionProvider::OnSessionInitializationStart(uint32_t session_id) {
-  if (allocator_ != nullptr) {
-    allocator_->OnSessionInitializationStart(session_id);
-  }
 }
 
 Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
@@ -958,7 +952,6 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int) {
   ORT_ENFORCE(IsGraphCaptured(0));
-  // Use the new replay method with our vector instead of session_id
   context_.Replay(captured_commands_);
   return Status::OK();
 }
