@@ -31,6 +31,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -2858,6 +2859,82 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes) {
+  API_IMPL_BEGIN
+  if (attributes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attributes' argument is NULL");
+  }
+
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
+
+  *attributes = array.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute) {
+  API_IMPL_BEGIN
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
+  }
+
+  const EpNode* ep_node = EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
+  }
+
+  *attribute = ep_node->GetAttribute(attribute_name);
+
+  if (*attribute) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type) {
+  API_IMPL_BEGIN
+  const auto attr = attribute->attr_proto;
+  auto onnx_attr_type = attribute->attr_proto.type();
+  switch (onnx_attr_type) {
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INTS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOAT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOATS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRING;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+      break;
+    }
+    default:
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unexpected attribute type.");
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs) {
   API_IMPL_BEGIN
   if (subgraphs == nullptr) {
@@ -3558,6 +3635,9 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetImplicitInputs,
+    &OrtApis::Node_GetAttributes,
+    &OrtApis::Node_GetAttributeByName,
+    &OrtApis::OpAttr_GetType,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
