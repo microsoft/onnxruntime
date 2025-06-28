@@ -242,12 +242,16 @@ common::Status InternalTestingExecutionProvider::Compile(const std::vector<Fused
 
     if (preferred_layout_ == DataLayout::NHWC) {
       const GraphViewer& graph_viewer = node_and_viewer.filtered_graph;
-      auto layout_sensitive_ops = layout_transformation::GetORTLayoutSensitiveOps();
+      const auto& layout_sensitive_ops = layout_transformation::GetORTLayoutSensitiveOps();
+
       for (const auto& unfused_node : graph_viewer.Nodes()) {
-        if (layout_sensitive_ops.count(unfused_node.OpType()) && unfused_node.Domain() != kMSInternalNHWCDomain) {
+        const auto unfused_node_op_id = layout_transformation::MakeORTLayoutSensitiveOpId(unfused_node.Domain(),
+                                                                                          unfused_node.OpType());
+        if (layout_sensitive_ops.find(unfused_node_op_id) != layout_sensitive_ops.end() &&
+            unfused_node.Domain() != kMSInternalNHWCDomain) {
           return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
                                  "Found a layout sensitive op which is still in NCHW format. Node: ",
-                                 unfused_node.OpType(), " ", unfused_node.Name(),
+                                 unfused_node_op_id, " ", unfused_node.Name(),
                                  " The preferred layout for this EP is NHWC. "
                                  "This is a possible bug in layout transformer.");
         }

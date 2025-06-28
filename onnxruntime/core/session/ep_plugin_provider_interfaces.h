@@ -79,6 +79,10 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
+
   Status OnRunStart(const RunOptions& run_options) override;
 
   Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
