@@ -35,6 +35,7 @@ permissions:
   packages: write
   attestations: write
   id-token: write
+  security-events: write
 
 jobs:
   # --- x64 Builds ---
