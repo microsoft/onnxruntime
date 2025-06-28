@@ -38,6 +38,7 @@ Q8Int8GemmR2xC8I8MM(
     size_t ldc
 )
 {
+    constexpr size_t NCols4 = 4;
     constexpr size_t NCols8 = 8;
     constexpr size_t NRows2 = 2;
     constexpr size_t KStep16 = 16;
@@ -69,11 +70,13 @@ Q8Int8GemmR2xC8I8MM(
             for (size_t i = 0; i < BlockCountK; ++i) {
                 const float scaleA0 = *QuantAScalePtr;
                 const float scaleA1 = *(QuantAScalePtr + BlockCountK);
-                const float32x4x2_t scaleB = vld2q_f32(QuantBScalePtr);
-                const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB.val[0], scaleA0);
-                const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB.val[1], scaleA0);
-                const float32x4_t scaleA1B03 = vmulq_n_f32(scaleB.val[0], scaleA1);
-                const float32x4_t scaleA1B47 = vmulq_n_f32(scaleB.val[1], scaleA1);
+                const float32x4_t scaleB03 = vld1q_f32(QuantBScalePtr);
+                const float32x4_t scaleB47 = vld1q_f32(QuantBScalePtr + NCols4);
+
+                const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB03, scaleA0);
+                const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB47, scaleA0);
+                const float32x4_t scaleA1B03 = vmulq_n_f32(scaleB03, scaleA1);
+                const float32x4_t scaleA1B47 = vmulq_n_f32(scaleB47, scaleA1);
 
                 int32x4_t acc0_03 = vdupq_n_s32(0);
                 int32x4_t acc0_47 = vdupq_n_s32(0);
@@ -127,11 +130,13 @@ Q8Int8GemmR2xC8I8MM(
             }
 
             if (BiasPtr != nullptr) {
-                const float32x4x2_t bias_4x2_f32 = vld2q_f32(BiasPtr);
-                accf0_03 = vaddq_f32(accf0_03, bias_4x2_f32.val[0]);
-                accf0_47 = vaddq_f32(accf0_47, bias_4x2_f32.val[1]);
-                accf1_03 = vaddq_f32(accf1_03, bias_4x2_f32.val[0]);
-                accf1_47 = vaddq_f32(accf1_47, bias_4x2_f32.val[1]);
+                const float32x4_t bias_4_f32_03 = vld1q_f32(BiasPtr);
+                const float32x4_t bias_4_f32_47 = vld1q_f32(BiasPtr + 4);
+
+                accf0_03 = vaddq_f32(accf0_03, bias_4_f32_03);
+                accf0_47 = vaddq_f32(accf0_47, bias_4_f32_47);
+                accf1_03 = vaddq_f32(accf1_03, bias_4_f32_03);
+                accf1_47 = vaddq_f32(accf1_47, bias_4_f32_47);
             }
 
             vst1q_f32(SumPtr, accf0_03);
@@ -164,6 +169,7 @@ Q8Int8GemmR1xC8I8MM(
     size_t ldc
 )
 {
+    constexpr size_t NCols4 = 4;
     constexpr size_t NCols8 = 8;
     constexpr size_t KStep16 = 16;
 
@@ -190,9 +196,11 @@ Q8Int8GemmR1xC8I8MM(
 
             for (size_t i = 0; i < BlockCountK; ++i) {
                 const float scaleA0 = *QuantAScalePtr;
-                const float32x4x2_t scaleB = vld2q_f32(QuantBScalePtr);
-                const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB.val[0], scaleA0);
-                const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB.val[1], scaleA0);
+                const float32x4_t scaleB03 = vld1q_f32(QuantBScalePtr);
+                const float32x4_t scaleB47 = vld1q_f32(QuantBScalePtr + NCols4);
+
+                const float32x4_t scaleA0B03 = vmulq_n_f32(scaleB03, scaleA0);
+                const float32x4_t scaleA0B47 = vmulq_n_f32(scaleB47, scaleA0);
 
                 int32x4_t acc0_03 = vdupq_n_s32(0);
                 int32x4_t acc0_47 = vdupq_n_s32(0);
@@ -231,9 +239,10 @@ Q8Int8GemmR1xC8I8MM(
             }
 
             if (BiasPtr != nullptr) {
-                const float32x4x2_t bias_4x2_f32 = vld2q_f32(BiasPtr);
-                accf0_03 = vaddq_f32(accf0_03, bias_4x2_f32.val[0]);
-                accf0_47 = vaddq_f32(accf0_47, bias_4x2_f32.val[1]);
+                const float32x4_t bias_4_f32_03 = vld1q_f32(BiasPtr);
+                const float32x4_t bias_4_f32_47 = vld1q_f32(BiasPtr + 4);
+                accf0_03 = vaddq_f32(accf0_03, bias_4_f32_03);
+                accf0_47 = vaddq_f32(accf0_47, bias_4_f32_47);
             }
 
             vst1q_f32(SumPtr, accf0_03);
