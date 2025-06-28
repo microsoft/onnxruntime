@@ -30,14 +30,19 @@ OrtHardwareDevice GetCpuDevice() {
   return cpu_device;
 }
 
-std::vector<fs::path> DetectGpuSysfsPaths() {
+struct GpuSysfsPathInfo {
+  size_t card_idx;
+  fs::path path;
+};
+
+std::vector<GpuSysfsPathInfo> DetectGpuSysfsPaths() {
   const fs::path sysfs_class_drm_path = "/sys/class/drm";
 
   if (!fs::exists(sysfs_class_drm_path)) {
     return {};
   }
 
-  const auto detect_card_path = [](const fs::path& sysfs_path, size_t& idx) -> bool {
+  const auto detect_card_path = [](const fs::path& sysfs_path, size_t& card_idx) -> bool {
     const auto filename = sysfs_path.filename();
     const auto filename_str = std::string_view{filename.native()};
 
@@ -47,21 +52,24 @@ std::vector<fs::path> DetectGpuSysfsPaths() {
       return false;
     }
 
-    size_t parsed_idx{};
-    if (!TryParseStringWithClassicLocale<size_t>(filename_str.substr(prefix.size()), parsed_idx)) {
+    size_t parsed_card_idx{};
+    if (!TryParseStringWithClassicLocale<size_t>(filename_str.substr(prefix.size()), parsed_card_idx)) {
       return false;
     }
 
-    idx = parsed_idx;
+    card_idx = parsed_card_idx;
     return true;
   };
 
-  std::vector<fs::path> gpu_sysfs_paths{};
+  std::vector<GpuSysfsPathInfo> gpu_sysfs_paths{};
   for (const auto& dir_item : fs::directory_iterator{sysfs_class_drm_path}) {
     auto dir_item_path = dir_item.path();
 
-    if (size_t idx{}; detect_card_path(dir_item_path, idx)) {
-      gpu_sysfs_paths.emplace_back(std::move(dir_item_path));
+    if (size_t card_idx{}; detect_card_path(dir_item_path, card_idx)) {
+      GpuSysfsPathInfo path_info{};
+      path_info.card_idx = card_idx;
+      path_info.path = std::move(dir_item_path);
+      gpu_sysfs_paths.emplace_back(std::move(path_info));
     }
   }
 
@@ -82,8 +90,9 @@ ValueType ReadValueFromFile(const fs::path& file_path) {
   return ParseStringWithClassicLocale<ValueType>(file_text);
 }
 
-OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path) {
+OrtHardwareDevice GetGpuDevice(const GpuSysfsPathInfo& path_info) {
   OrtHardwareDevice gpu_device{};
+  const auto& sysfs_path = path_info.path;
 
   // vendor id
   {
@@ -99,7 +108,9 @@ OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path) {
     gpu_device.device_id = ReadValueFromFile<uint32_t>(device_id_path);
   }
 
-  // TODO metadata? e.g., is the device discrete?
+  // metadata
+  gpu_device.metadata.Add("card_idx", MakeString(path_info.card_idx));
+  // TODO is card discrete?
 
   gpu_device.type = OrtHardwareDeviceType_GPU;
 
@@ -107,12 +118,12 @@ OrtHardwareDevice GetGpuDevice(const fs::path& sysfs_path) {
 }
 
 std::vector<OrtHardwareDevice> GetGpuDevices() {
-  const auto gpu_sysfs_paths = DetectGpuSysfsPaths();
+  const auto gpu_sysfs_path_infos = DetectGpuSysfsPaths();
   std::vector<OrtHardwareDevice> gpu_devices{};
-  gpu_devices.reserve(gpu_sysfs_paths.size());
+  gpu_devices.reserve(gpu_sysfs_path_infos.size());
 
-  for (const auto& gpu_sysfs_path : gpu_sysfs_paths) {
-    auto gpu_device = GetGpuDevice(gpu_sysfs_path);
+  for (const auto& gpu_sysfs_path_info : gpu_sysfs_path_infos) {
+    auto gpu_device = GetGpuDevice(gpu_sysfs_path_info);
     gpu_devices.emplace_back(std::move(gpu_device));
   }
 
