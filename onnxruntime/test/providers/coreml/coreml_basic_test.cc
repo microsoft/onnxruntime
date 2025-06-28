@@ -512,28 +512,33 @@ TEST(CoreMLExecutionProviderTest, PartitioningWhereAddEqual) {
   std::vector<char> bool_data(uint8_data.begin(), uint8_data.end());
   OrtValue cond = CreateInputOrtValueOnCPU<bool>(cond_shape, gsl::make_span(reinterpret_cast<const bool*>(bool_data.data()), bool_data.size()));
 
-  // GTest suite complains if lambda that potentially throws assert failure is passed to another function
-  // also resulting error message is not very useful -- so we use a function to store the count of CoreML nodes
-  // and assert the value after the model is ran.
-  int coreml_partition_count = 0;
-  int actual_cpu_node_count = 0;
-  const std::function<void(const Graph&)> store_counts = [&coreml_partition_count, &actual_cpu_node_count](const Graph& graph) {
-    coreml_partition_count = CountAssignedNodes(graph, kCoreMLExecutionProvider);
-    actual_cpu_node_count = CountAssignedNodes(graph, kCpuExecutionProvider);
+  const std::function<void(const Graph&)> count_nodes = [](const Graph& graph) {
+    // Count nodes assigned to CoreML EP
+    int coreml_node_count = CountAssignedNodes(graph, kCoreMLExecutionProvider);
+    int cpu_node_count = CountAssignedNodes(graph, kCpuExecutionProvider);
+
+    // Expected number of nodes for this specific model
+    const int expected_coreml_nodes = 1;
+    const int expected_cpu_nodes = 2;  // Where and Neg nodes
+
+    ASSERT_EQ(coreml_node_count, expected_coreml_nodes)
+        << "Expected " << expected_coreml_nodes << " partitions assigned to CoreML EP, but found " << coreml_node_count;
+
+    ASSERT_EQ(cpu_node_count, expected_cpu_nodes)
+        << "Expected " << expected_cpu_nodes << " partitions assigned to CPU EP, but found " << cpu_node_count;
+
+    std::cout << "EP Node Assignment: " << coreml_node_count << " nodes to CoreML EP, "
+              << cpu_node_count << " nodes to CPU EP" << std::endl;
   };
 
   EPVerificationParams params;
-  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;  // Just verify some nodes are assigned
-  params.graph_verifier = &store_counts;
+  params.ep_node_assignment = ExpectedEPNodeAssignment::Some;
+  params.graph_verifier = &count_nodes;
   RunAndVerifyOutputsWithEP(model_file_name, CurrentTestName(),
                             MakeCoreMLExecutionProvider("MLProgram"),
                             {{"cond", cond}, {"X", X}},
                             params);
 
-  ASSERT_EQ(coreml_partition_count, 1) << "Expected 1 CoreML partition created for the where_add_equal.onnx test model.";
-  ASSERT_EQ(actual_cpu_node_count, 2) << "Expected 2 CPU nodes in the where_add_equal.onnx test model.";
-  // After checking that the CPU partition contains 2 nodes, we can assume that the CoreML partition contains the
-  // remaining 3 nodes in the model.
 #else
   TestModelLoad(model_file_name, MakeCoreMLExecutionProvider(), ExpectedEPNodeAssignment::Some);
 #endif
