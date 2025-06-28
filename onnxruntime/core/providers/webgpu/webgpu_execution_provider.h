@@ -8,6 +8,7 @@
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+#include "core/providers/webgpu/buffer_manager.h"
 
 struct pthreadpool;
 namespace onnxruntime {
@@ -18,8 +19,6 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 
 class WebGpuContext;
-enum class BufferCacheMode;
-class BufferManager;
 class WebGpuProfiler;
 class GpuBufferAllocator;
 

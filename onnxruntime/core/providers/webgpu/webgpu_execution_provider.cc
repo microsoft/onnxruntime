@@ -21,7 +21,6 @@
 #include "core/graph/function_utils.h"
 #include "core/graph/indexed_sub_graph.h"
 
-#include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/webgpu_context.h"
 #include "core/providers/webgpu/data_transfer.h"
 #include "core/providers/webgpu/external_data_loader.h"
