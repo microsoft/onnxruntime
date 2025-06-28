@@ -16,6 +16,7 @@ permissions:
   packages: write
   attestations: write
   id-token: write
+  security-events: write
 
 jobs:
   build-linux-cuda-x64-release:
