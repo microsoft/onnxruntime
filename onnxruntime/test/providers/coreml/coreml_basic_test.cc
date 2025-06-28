@@ -526,9 +526,6 @@ TEST(CoreMLExecutionProviderTest, PartitioningWhereAddEqual) {
 
     ASSERT_EQ(cpu_node_count, expected_cpu_nodes)
         << "Expected " << expected_cpu_nodes << " partitions assigned to CPU EP, but found " << cpu_node_count;
-
-    std::cout << "EP Node Assignment: " << coreml_node_count << " nodes to CoreML EP, "
-              << cpu_node_count << " nodes to CPU EP" << std::endl;
   };
 
   EPVerificationParams params;
