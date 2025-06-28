@@ -30,7 +30,7 @@ bool IsDiscreteDevice(const OrtEpDevice* d) {
     return false;
   }
 
-  const auto& entries = d->device->metadata.entries;
+  const auto& entries = d->device->metadata.Entries();
   if (auto it = entries.find("Discrete"); it != entries.end()) {
     return it->second == "1";
   }
@@ -303,7 +303,7 @@ Status ProviderPolicyContext::AddEpDefaultOptionsToSession(InferenceSession& ses
   auto& config_options = sess.GetMutableSessionOptions().config_options;
   for (auto device : devices) {
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(device->ep_name.c_str());
-    for (const auto& [key, value] : device->ep_options.entries) {
+    for (const auto& [key, value] : device->ep_options.Entries()) {
       const std::string option_key = ep_options_prefix + key;
       // preserve user-provided options as they override any defaults the EP factory specified earlier
       if (config_options.configurations.find(option_key) == config_options.configurations.end()) {

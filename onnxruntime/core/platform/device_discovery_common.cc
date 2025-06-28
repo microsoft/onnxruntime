@@ -26,7 +26,7 @@ const std::unordered_set<OrtHardwareDevice>& DeviceDiscovery::GetDevices() {
           << ", vendor:" << ortdevice.vendor
           << ", type:" << std::dec << static_cast<int>(ortdevice.type)
           << ", metadata: [";
-      for (auto& [key, value] : ortdevice.metadata.entries) {
+      for (auto& [key, value] : ortdevice.metadata.Entries()) {
         oss << key << "=" << value << ", ";
       }
       oss << "]}";
