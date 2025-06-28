@@ -568,6 +568,8 @@ Return Value:
     const bool HasDotProductInstructions = MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeonDot();
 
     if (HasDotProductInstructions) {
+        this->ArmNeonQuantAUnsigned = true;
+
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUdot;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSdot;
@@ -576,16 +578,19 @@ Return Value:
         this->ConvSymS8S8Dispatch = &MlasConvSymS8DispatchDot;
     }
 
-    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
+    this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, false);
 
 #if defined(__linux__)
     //
     // Check if the processor supports ASIMD I8MM instructions.
     //
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmNeon_I8MM()) {
+        this->ArmNeonQuantAUnsigned = false;
+
         this->GemmU8U8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmU8S8Dispatch = &MlasGemmU8X8DispatchUmmla;
         this->GemmS8S8Dispatch = &MlasGemmS8S8DispatchSmmla;
+        this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions, true);
     }
 #endif
 
