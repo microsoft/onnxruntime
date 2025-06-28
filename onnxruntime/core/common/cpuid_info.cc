@@ -1,6 +1,9 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 #include "core/common/cpuid_info.h"
+
+#include <optional>
+
 #include "core/common/logging/logging.h"
 #include "core/common/logging/severity.h"
 #include "core/platform/check_intel.h"
@@ -52,6 +55,14 @@
 #endif
 
 #endif  // _WIN32
+
+#if defined(__APPLE__)
+#if defined(CPUIDINFO_ARCH_ARM)
+
+#include <sys/sysctl.h>
+
+#endif  // defined(CPUIDINFO_ARCH_ARM)
+#endif  // defined(__APPLE__)
 
 #if defined(CPUINFO_SUPPORTED)
 #include <cpuinfo.h>
@@ -175,6 +186,7 @@ uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
   if (vendor == "AuthenticAMD") return 0x1022;
   if (vendor.find("Qualcomm") == 0) return 'Q' | ('C' << 8) | ('O' << 16) | ('M' << 24);
   if (vendor.find("NV") == 0) return 0x10DE;
+  if (vendor == "Apple") return 0x106B;
   return 0;
 }
 
@@ -371,6 +383,40 @@ void CPUIDInfo::ArmAppleInit() {
   {
     // No fallback detection attempted now. Add if needed.
   }
+}
+
+std::string CPUIDInfo::GetArmAppleVendor() {
+  auto get_sysctl_value = [](const char* key) -> std::optional<std::string> {
+    size_t value_length{};
+    std::string value{};
+
+    if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != ENOMEM) {
+      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value length with sysctlbyname().";
+      return value;
+    }
+
+    value.resize(value_length);
+    if (sysctlbyname(key, &value.data(), &value_length, nullptr, 0) != 0) {
+      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value with sysctlbyname().";
+    }
+
+    return value;
+  };
+
+  constexpr auto vendor_key = "machdep.cpu.vendor";
+  if (auto vendor = get_sysctl_value(vendor_key); vendor.has_value()) {
+    return *vendor;
+  }
+
+  constexpr auto brand_string_key = "machdep.cpu.brand_string";
+  if (auto brand_string = get_sysctl_value(brand_string_key); brand_string.has_value()) {
+    if (brand_string->find("Apple") != std::string::npos) {
+      return "Apple";
+    }
+  }
+
+  LOGS_DEFAULT(WARNING) << "Unable to determine CPU vendor.";
+  return "";
 }
 
 #endif  // defined(__APPLE__)

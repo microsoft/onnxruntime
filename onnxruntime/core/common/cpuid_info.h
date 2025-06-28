@@ -158,6 +158,7 @@ class CPUIDInfo {
 #elif defined(__APPLE__)
 
   void ArmAppleInit();
+  std::string GetArmAppleVendor();
 
 #endif
 
