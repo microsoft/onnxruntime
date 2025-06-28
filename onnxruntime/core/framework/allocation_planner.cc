@@ -730,22 +730,25 @@ class PlannerImpl {
       ProcessDef(index, graph_viewer_.GetNodeArg(pair.first));
     }
 
-    // If the suggested_device is also CPU and default mem type, then
-    // we check which one has higher alignment and use that one if it is so.
-    // If the suggested device is CPU, but not the default mem type, then
-    // it is a CPU accessible memory device allocator. They typically have a page aligment
-    // so that would satisfy the alignment requirement of any other CPU consumers.
-    // If one device is not on CPU, we default on the one that is CPU.
+    // If both devices are OrtDevice::CPU or both are HOST_ACCESSIBLE we use the one with the higher alignment.
+    // If one is OrtDevice::CPU and one is HOST_ACCESSIBLE memory, we use the HOST_ACCESSIBLE one as that would
+    // typically have a page alignment and would satisfy the alignment requirement of any other CPU consumers.
+    // If one device is not on CPU, we default to the one that is CPU.
     auto determine_device = [](const OrtDevice& output_device, const OrtDevice& suggested_device) -> OrtDevice {
-      if (output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) {
-        if (output_device.MemType() == OrtDevice::MemType::DEFAULT &&
-            suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+      const bool output_is_cpu = output_device.UsesCpuMemory();  // CPU or HOST_ACCESSIBLE memory
+      const bool suggested_is_cpu = suggested_device.UsesCpuMemory();
+      if (output_is_cpu && suggested_is_cpu) {
+        // if both are CPU or both are HOST_ACCESSIBLE pick based on alignment.
+        if ((output_device.Type() == OrtDevice::CPU && suggested_device.Type() == OrtDevice::CPU) ||
+            (output_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE &&
+             suggested_device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE)) {
           return (output_device.GetAlignment() >= suggested_device.GetAlignment()) ? output_device : suggested_device;
         } else {
-          return (output_device.MemType() != OrtDevice::MemType::DEFAULT) ? output_device : suggested_device;
+          // prefer host accessible memory device allocator as it most likely has the higher alignment requirement
+          return (output_device.Type() != OrtDevice::CPU) ? output_device : suggested_device;
         }
       } else {
-        return (output_device.Type() == OrtDevice::CPU) ? output_device : suggested_device;
+        return (output_is_cpu) ? output_device : suggested_device;
       }
     };
 
@@ -916,19 +919,17 @@ class PlannerImpl {
           // We only do it for CPU based EPs. We are not likely to encounter
           // non CPU devices here since they are already taken care of by using MemCpy nodes earlier.
           // However, we still ignore them.
-          if (output_device.Type() == OrtDevice::CPU &&
-              output_device.MemType() == OrtDevice::MemType::DEFAULT) {
+          if (output_device.Type() == OrtDevice::CPU) {
             const auto& output_name = node_output->Name();
             const auto consumers = graph_viewer_.GetConsumerNodes(output_name);
             for (const auto* consumer : consumers) {
               if (consumer != nullptr) {
                 const auto& ep_type = consumer->GetExecutionProviderType();
-                auto suggested_device = execution_providers_.Get(ep_type)->GetOrtDeviceByMemType(
-                    OrtMemType::OrtMemTypeCPUInput);
-                if (suggested_device.Type() == OrtDevice::CPU &&
-                    suggested_device.MemType() == OrtDevice::MemType::DEFAULT) {
+                auto suggested_device = execution_providers_.Get(ep_type)
+                                            ->GetOrtDeviceByMemType(OrtMemType::OrtMemTypeCPUInput);
+                if (suggested_device.Type() == OrtDevice::CPU) {
                   output_device = determine_device(output_device, suggested_device);
-                } else if (suggested_device.Type() == OrtDevice::CPU) {
+                } else if (suggested_device.UsesCpuMemory()) {
                   // Edge case: there are more than one downstream nodes that suggest their own CPU accessible
                   // memory. In that case, we can not win them all, but the chosen device would still make it run
                   // and reduce a number of copies for some.
@@ -2070,10 +2071,10 @@ class PlannerImpl {
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
-        auto stream_device = execution_plan[i]->device_.Type();
+        auto stream_device = execution_plan[i]->device_;
         // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
         // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
-        if (node->OpType() != "Shape" && stream_device != OrtDevice::CPU) {
+        if (node->OpType() != "Shape" && !stream_device.UsesCpuMemory()) {
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             bool output_consumed_in_subgraph = true;
             for (auto* output : node->OutputDefs()) {
@@ -2087,9 +2088,11 @@ class PlannerImpl {
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
                   //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
-                  OrtDevice::DeviceType output_arg_device = AllocPlan(output_arg_idx).location.Type();
-                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, output_arg_device);
-                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device == OrtDevice::CPU) && wait_handle != nullptr) {
+                  const auto& output_arg_device = AllocPlan(output_arg_idx).location;
+                  WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
+                                                                                        output_arg_device);
+                  if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device.UsesCpuMemory()) &&
+                      wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
                       node_to_notification[node_index] = plan_.notification_owners.size();
                       plan_.notification_owners.push_back(i);
@@ -2103,8 +2106,9 @@ class PlannerImpl {
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
-                auto downstream_device = execution_plan[downstream]->device_.Type();
-                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device, downstream_device);
+                const auto& downstream_device = execution_plan[downstream]->device_;
+                WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
+                                                                                      downstream_device);
                 if (wait_handle) {
                   if (node_to_notification.find(node_index) == node_to_notification.end()) {
                     node_to_notification[node_index] = plan_.notification_owners.size();
