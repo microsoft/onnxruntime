@@ -536,7 +536,6 @@ GetMlasQNBitGemmDispatchNeon(
     bool InitializeWithI8MMSupport
 )
 {
-    (void)(InitializeWithI8MMSupport);
     // Note: The InitializeWithX parameters are only used in the invocation of this method that initializes the static
     // MLAS_QNBIT_GEMM_DISPATCH instance.
 

@@ -751,9 +751,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     size_t bufferSize = MlasQNBitGemmPackQuantBDataSize(N, K, 8, BlkLen, HasZp, SQNBIT_CompInt8);
     auto* packedBuffer = packedBuffer_.GetBuffer(bufferSize, true);
 
+    // Models the packing calls from MatmulNBits operator - we will have 3 separate calls
+    // for 3 different inputs in the Prepack() function
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, inputB, packedBuffer,
-        inputScale, HasZp, nullptr, nullptr);
+        nullptr, HasZp, nullptr, nullptr);
     MlasQNBitGemmPackQuantBData(
         N, K, 8, BlkLen, MLAS_QNBIT_GEMM_COMPUTE_TYPE::SQNBIT_CompInt8, nullptr, packedBuffer,
         inputScale, HasZp, nullptr, nullptr);
@@ -807,13 +809,11 @@ class MlasSQ8BitGemmKernelTest : public MlasTestBase {
     TestSQ8BitGemmKernel<false, true, M, K, N, BlkLen>();
     TestSQ8BitGemmKernel<true, true, M, K, N, BlkLen>();
 
-    // Commented out tests are failing tests
-    // TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
-    // TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
+    TestSQ8BitGemmKernel<false, false, M, K, N, BlkLen>();
+    TestSQ8BitGemmKernel<true, false, M, K, N, BlkLen>();
   }
 
   void ExecuteShort(void) override {
-    // Commented out tests are failing tests
     Execute<1, 16, 1, 16>();
     Execute<7, 2, 4, 16>();
     Execute<8, 497, 5, 16>();

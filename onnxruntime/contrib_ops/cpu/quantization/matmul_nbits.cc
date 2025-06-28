@@ -193,8 +193,23 @@ Status MatMulNBits<T1>::PrePack(const Tensor& tensor, int input_idx, /*out*/ All
     auto qptr = tensor.DataRaw();
     auto scale_ptr = scales ? scales->DataRaw() : nullptr;
     packed_b_ = IAllocator::MakeUniquePtr<void>(alloc, packed_b_size_, true);
+#if defined(MLAS_TARGET_ARM64)
+    if (nbits_ == 8) {
+      // On ARM64, the scales should NOT be provided while packing the weights for nbits_ == 64.
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), nullptr,
+                                  has_zp_input_, nullptr, nullptr);
+    } else { // nbits_ == 4
+      // KleidiAI requires scales for packing the quantized weights.
+      // Currently, KleidiAI path only supports nbits_ == 4 path.
+      // The non-KleidiAI path for nbits_ == 4 (i.e.) pure MLAS 4-bit
+      // kernels knows to ignore the scales if it is provided.
+      MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
+                                  has_zp_input_, nullptr, nullptr);
+    }
+#else
     MlasQNBitGemmPackQuantBData(N_, K_, nbits_, block_size_, compute_type_, qptr, packed_b_.get(), scale_ptr,
                                 has_zp_input_, nullptr, nullptr);
+#endif
     is_packed = true;
   } else if (compute_type_ == SQNBIT_CompInt8) {
     if (nbits_ == 8) {

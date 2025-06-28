@@ -217,15 +217,12 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
   base_opts.output_abs_error = abs_error;
   base_opts.output_rel_error = rel_error;
 
-// TODO: Re-enable on ARM64 after fixing the MLAS kernel when has_zero_point = false
-#if !defined(MLAS_TARGET_ARM64)
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = false;
     opts.has_bias = false;
     RunTest8Bits<AType>(opts);
   }
-#endif
 
   {
     TestOptions8Bits opts = base_opts;
@@ -236,16 +233,12 @@ void TestMatMul8BitsTyped(float abs_error = 0.1f, float rel_error = 0.02f) {
 
 // CUDA/WEBGPU does not support bias for MatMulNBits
 #if !defined(USE_CUDA) && !defined(USE_WEBGPU)
-
-// TODO: Re-enable on ARM64 after fixing the MLAS kernel when has_zero_point = false
-#if !defined(MLAS_TARGET_ARM64)
   {
     TestOptions8Bits opts = base_opts;
     opts.has_zero_point = false;
     opts.has_bias = true;
     RunTest8Bits<AType>(opts);
   }
-#endif
 
   {
     TestOptions8Bits opts = base_opts;
