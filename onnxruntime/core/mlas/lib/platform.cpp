@@ -16,6 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 #include <thread>
 #include <mutex>
@@ -578,6 +579,14 @@ Return Value:
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
 
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
+        this->MlasGemmBatch = ArmKleidiAI::MlasGemmBatch;
+        this->MlasGemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
+        this->MlasGemmPackB = ArmKleidiAI::MlasGemmPackB;
+        this->MlasConvPrepare = ArmKleidiAI::MlasConvPrepare;
+        this->MlasConv = ArmKleidiAI::MlasConv;
+    }
+
 #if defined(__linux__)
     //
     // Check if the processor supports ASIMD I8MM instructions.
@@ -684,14 +693,11 @@ Return Value:
         this->ComputeSoftmaxOutputF32Kernel = MlasComputeSoftmaxOutputF32Kernel;
         this->ComputeLogSoftmaxOutputF32Kernel = MlasComputeLogSoftmaxOutputF32Kernel;
     }
-
     this->NchwcBlockSize = 8;
     // this->PreferredBufferAlignment = MLAS_DEFAULT_PREFERRED_BUFFER_ALIGNMENT;
 
     // this->MaximumThreadCount = MLAS_MAXIMUM_THREAD_COUNT;
-
 #endif // MLAS_TARGET_LARCH64
-
 }
 
 size_t

@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-
+#include "kleidiai/mlasi_kleidiai.h"
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1572,7 +1572,16 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+    //Check if external implementation (e.g. KleidiAI)
+    thread_local bool kleidiai_attempted = false;
 
+    if (!kleidiai_attempted &&
+        GetMlasPlatform().MlasGemmBatch == &ArmKleidiAI::MlasGemmBatch) {
+        kleidiai_attempted = true;
+        GetMlasPlatform().MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        kleidiai_attempted = false;
+        return;
+    }
     //
     // Compute the number of target threads given the complexity of the SGEMM
     // operation. Small requests should run using the single threaded path.
@@ -1637,6 +1646,8 @@ MlasGemmBatch(
 size_t
 MLASCALL
 MlasGemmPackBSize(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K
     )
@@ -1658,9 +1669,20 @@ Return Value:
 
 --*/
 {
-    //
-    // Compute the number of bytes required to hold the packed buffer.
-    //
+    //Kleidi
+    thread_local bool kleidiai_pbsize_attempted = false;
+    if (!kleidiai_pbsize_attempted &&
+        GetMlasPlatform().MlasGemmPackBSize == &ArmKleidiAI::MlasGemmPackBSize) {
+        kleidiai_pbsize_attempted = true;
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasGemmPackBSize(TransA, TransB, N, K);
+        kleidiai_pbsize_attempted = false;
+        return bytes_required;
+    }
+
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+    MLAS_UNREFERENCED_PARAMETER(TransB);
+
 
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
@@ -1676,6 +1698,7 @@ Return Value:
 void
 MLASCALL
 MlasGemmPackB(
+    CBLAS_TRANSPOSE TransA,
     CBLAS_TRANSPOSE TransB,
     size_t N,
     size_t K,
@@ -1712,6 +1735,18 @@ Return Value:
 
 --*/
 {
+    thread_local bool kai_gemmPb_atttempted;
+    if (!kai_gemmPb_atttempted &&
+        GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB) {
+        kai_gemmPb_atttempted = true;
+        GetMlasPlatform().MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+        kai_gemmPb_atttempted = false;
+        return;
+    }
+
+    MLAS_UNREFERENCED_PARAMETER(TransA);
+
+
     const size_t AlignedN =
         (N + MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1) & ~(MLAS_SGEMM_STRIDEN_THREAD_ALIGN - 1);
 

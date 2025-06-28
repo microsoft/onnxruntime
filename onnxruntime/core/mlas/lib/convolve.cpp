@@ -15,6 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 //
 // Define the number of working buffer elements required per thread.
@@ -861,6 +862,16 @@ Return Value:
 
 --*/
 {
+    //KleidiAI
+    thread_local bool kleidiai_conv_attempted = false;
+    if (!kleidiai_conv_attempted &&
+        GetMlasPlatform().MlasConv == &ArmKleidiAI::MlasConv) {
+        kleidiai_conv_attempted = true;
+        GetMlasPlatform().MlasConv(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool);
+        kleidiai_conv_attempted = false;
+        return;
+    }
+
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
     const size_t K = Parameters->K;
@@ -1094,6 +1105,18 @@ Return Value:
 
 --*/
 {
+    thread_local bool kleidiai_convprep_attempted = false;
+    if (!kleidiai_convprep_attempted &&
+        GetMlasPlatform().MlasConvPrepare == &ArmKleidiAI::MlasConvPrepare) {
+        kleidiai_convprep_attempted = true;
+        GetMlasPlatform().MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+        Activation, WorkingBufferSize, Beta, ThreadPool);
+        kleidiai_convprep_attempted = false;
+        return;
+    }
+
+
     //
     // Save the convolution parameters.
     //
