@@ -114,7 +114,8 @@ AllocationTracker& GlobalAllocationTracker() {
 
 OrtMemoryInfo HtpSharedMemoryAllocator::AssociatedMemoryInfo() {
   return OrtMemoryInfo{QNN_HTP_SHARED, OrtAllocatorType::OrtDeviceAllocator,
-                       OrtDevice{OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM,
+                       // QNN EP registers with OrtDevice::CPU so we use that for HOST_ACCESSIBLE as well
+                       OrtDevice{OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM,
                                  /*device_id*/ 0},
                        OrtMemTypeDefault};
 }

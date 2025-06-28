@@ -13,7 +13,9 @@
 #undef INTEL
 #endif
 
-// Struct to represent a physical device.
+// Struct to represent a combination of physical device and memory type.
+// A memory allocation and allocator have a specific OrtDevice associated with them, and this information is used
+// to determine when data transfer is required.
 struct OrtDevice {
   using DeviceType = int8_t;
   using MemoryType = int8_t;
@@ -41,7 +43,13 @@ struct OrtDevice {
       QNN_HTP_SHARED = 4,
     };
 
-    static const MemoryType HOST_ACCESSIBLE = 5;  // Device memory that is accessible from host and device.
+    // HOST_ACCESSIBLE memory is treated as CPU memory.
+    // When creating an OrtDevice with MemType::HOST_ACCESSIBLE:
+    //   - For memory that is only accessible by a specific device and CPU, use the specific device type and id.
+    //   - When creating an OrtDevice for an EP allocator, you would typically use the same device type and id
+    //     that the EP is registered with (i.e. the OrtDevice passed to the base IExecutionProvider constructor).
+    //   - Otherwise use OrtDevice::CPU.
+    static const MemoryType HOST_ACCESSIBLE = 5;
   };
 
   // PCI vendor ids

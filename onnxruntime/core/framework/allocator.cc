@@ -234,7 +234,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateMemoryInfo, _In_ const char* name1, enum OrtA
   } else if (strcmp(name1, onnxruntime::QNN_HTP_SHARED) == 0) {
     *out = new OrtMemoryInfo(
         name1, type,
-        OrtDevice(OrtDevice::NPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM, device_id),
+        OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::QUALCOMM, device_id),
         mem_type1);
   } else if (strcmp(name1, onnxruntime::CPU_ALIGNED_4K) == 0) {
     *out = new OrtMemoryInfo(
