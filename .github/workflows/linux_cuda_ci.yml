@@ -30,6 +30,7 @@ jobs:
       docker_build_args: '--build-arg BASEIMAGE=onnxruntimebuildcache.azurecr.io/internal/azureml/onnxruntime/build/cuda12_x64_ubi8_gcc12:20250124.1'
       docker_image_repo: onnxruntimecuda12manylinuxbuild
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cuda_version=12.2 --cuda_home=/usr/local/cuda-12.2 --cudnn_home=/usr/local/cuda-12.2 --enable_cuda_profiling --build_java --cmake_extra_defines CMAKE_CUDA_ARCHITECTURES=80 onnxruntime_BUILD_UNIT_TESTS=ON onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS=ON'
+      run_codeql_scan: true
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH'
       run_tests: false            # <<< Do not run tests in this job
       upload_build_output: true   # <<< Upload the build/Release directory
