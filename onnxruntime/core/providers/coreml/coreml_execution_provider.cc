@@ -172,10 +172,8 @@ void CoreMLExecutionProvider::FilterIncompatibleEdgeNodesFromPartition(IndexedSu
     bool outputs_modified = ProcessIncompatibleNodes(graph_viewer, partition_nodes, meta_def, false, logger);
 
     modified = inputs_modified || outputs_modified;
-    if (modified) {
-      partition.nodes = std::vector<NodeIndex>(partition_nodes.begin(), partition_nodes.end());
-    }
   } while (modified);
+  partition.nodes = std::vector<NodeIndex>(partition_nodes.begin(), partition_nodes.end());
 }
 
 // CoreML only supports a limited set of inputs and outputs (int32 and float32), so we remove all edge nodes with incompatible types
