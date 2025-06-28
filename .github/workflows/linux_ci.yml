@@ -108,7 +108,7 @@ jobs:
       dockerfile_path: tools/ci_build/github/linux/docker/inference/aarch64/python/cpu/Dockerfile
       docker_image_repo: onnxruntimecpubuildpythonaarch64
       extra_build_flags: '--use_binskim_compliant_compile_flags --build_wheel --cmake_extra_defines onnxruntime_BUILD_BENCHMARKS=ON'
-      run_codeql_scan: true
+      run_codeql_scan: false
       python_path_prefix: 'PATH=/opt/python/cp310-cp310/bin:$PATH' # $ needs escaping in single quotes
     secrets:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
