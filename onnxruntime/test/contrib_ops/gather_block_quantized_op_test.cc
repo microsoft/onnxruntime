@@ -5,6 +5,7 @@
 #include <type_traits>
 #include <memory>
 #include <utility>
+#include <cstdint>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -20,20 +21,38 @@ namespace test {
 // compensates for that by adding 8 to the data values, so that the outputs match the results that
 // we be seen with non uint8_t data types.
 template <typename T1>
-void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t>& data_shape) {
+void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t>& data_shape, int bits = 4) {
   if (!std::is_same_v<T1, uint8_t>) {
     return;
   }
-  // For uint8_t, we need to pack each pair of values (after adding 8) into a single uint8_t
-  std::vector<int> packed_data;
-  for (size_t i = 0; i < data.size(); i += 2) {
-    int low_nibble = (data[i] + 8) & 0xF;
-    int high_nibble = ((i + 1) < data.size()) ? ((data[i + 1] + 8) & 0xF) : 0;
-    int packed = (high_nibble << 4) | low_nibble;
-    packed_data.push_back(packed);
+
+  if (bits == 8) {
+    return;  // No packing needed for 8 bits
   }
+  ORT_ENFORCE(bits == 4);
+
+  int64_t total_elements = 1;
+  for (const auto& dim : data_shape) {
+    total_elements *= dim;
+  }
+  int64_t total_columns = data_shape.back();
+  int64_t total_rows = total_elements / total_columns;
+
+  // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
+  std::vector<int> packed_data;
+  int64_t packed_columns = (total_columns + 1) / 2;
+  packed_data.reserve(total_rows * packed_columns);
+  for (int64_t row = 0; row < total_rows; ++row) {
+    for (int64_t col = 0; col < total_columns; col += 2) {
+      int low_nibble = (data[row * total_columns + col] + 8) & 0xF;
+      int high_nibble = ((col + 1) < total_columns) ? ((data[row * total_columns + col + 1] + 8) & 0xF) : 0;
+      int packed = (high_nibble << 4) | low_nibble;
+      packed_data.push_back(packed);
+    }
+  }
+
   data = packed_data;
-  data_shape[data_shape.size() - 1] = (data_shape[data_shape.size() - 1] + 1) / 2;
+  data_shape[data_shape.size() - 1] = packed_columns;
 }
 
 // Combinations: types, gather_axis, quantize_axis, block_size, indices, scale shape vs data shape
@@ -45,9 +64,11 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<T2>& scales,
                              const std::vector<int64_t>& scales_shape,
                              const std::vector<T1>& zero_points,
+                             const std::vector<int64_t>& zero_points_shape,
                              const int64_t gather_axis,
                              const int64_t quantize_axis,
                              const int64_t block_size,
+                             const int64_t bits,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
@@ -57,12 +78,13 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
     test.AddAttribute<int64_t>("gather_axis", gather_axis);
     test.AddAttribute<int64_t>("quantize_axis", quantize_axis);
     test.AddAttribute<int64_t>("block_size", block_size);
+    test.AddAttribute<int64_t>("bits", bits);
 
     test.AddInput<T1>("data", data_shape, data);
     test.AddInput<Tind>("indices", indices_shape, indices, indices_is_initializer);
     test.AddInput<T2>("scales", scales_shape, scales);
     if (!zero_points.empty()) {
-      test.AddInput<T1>("zero_points", scales_shape, zero_points);
+      test.AddInput<T1>("zero_points", zero_points_shape, zero_points);
     }
 
     test.AddOutput<T2>("output", output_shape, output);
@@ -106,10 +128,120 @@ ToType(const std::vector<int>& vec) {
   return result;
 }
 
+// The data and zero_points are not packed
+template <typename T1, typename T2, typename Tind>
+void RunUnpackedData(
+    const std::vector<int>& unpacked_data,
+    const std::vector<int64_t>& unpacked_data_shape,
+    const std::vector<int>& indices,
+    const std::vector<int64_t>& indices_shape,
+    const std::vector<float>& scales,
+    const std::vector<int64_t>& scales_shape,
+    std::vector<int>& zero_points,
+    const int64_t gather_axis,
+    const int64_t quantize_axis,
+    const int64_t block_size,
+    const int64_t bits,
+    const std::vector<float>& output,
+    const std::vector<int64_t>& output_shape,
+    bool expect_success) {
+  // Make a copy to avoid modifying the original unpacked data.
+  std::vector<int> packed_data = unpacked_data;
+  std::vector<int64_t> packed_data_shape = unpacked_data_shape;
+  PackDataForUint8TypeIfNecessary<T1>(packed_data, packed_data_shape, bits);
+
+  auto expect_result = expect_success ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure;
+  if (zero_points.empty()) {
+    // If no zero points are provided, we can skip packing them.
+    RunGatherBlockQuantized(ToType<T1>(packed_data),
+                            packed_data_shape,
+                            ToType<Tind>(indices),
+                            indices_shape,
+                            ToType<T2>(scales),
+                            scales_shape,
+                            {},
+                            {},
+                            gather_axis,
+                            quantize_axis,
+                            block_size,
+                            bits,
+                            ToType<T2>(output),
+                            output_shape,
+                            expect_result);
+    return;
+  }
+
+  std::vector<int64_t> zero_points_shape = scales_shape;
+  PackDataForUint8TypeIfNecessary<T1>(zero_points, zero_points_shape, bits);
+
+  RunGatherBlockQuantized(ToType<T1>(packed_data),
+                          packed_data_shape,
+                          ToType<Tind>(indices),
+                          indices_shape,
+                          ToType<T2>(scales),
+                          scales_shape,
+                          ToType<T1>(zero_points),
+                          zero_points_shape,
+                          gather_axis,
+                          quantize_axis,
+                          block_size,
+                          bits,
+                          ToType<T2>(output),
+                          output_shape,
+                          expect_result);
+}
+
+template <typename T>
+std::vector<T> ConvertZeroPoint(const std::vector<int>& vec, int bits) {
+  if constexpr (std::is_same_v<T, uint8_t>) {
+    std::vector<uint8_t> result;
+    if (bits == 4) {
+      for (size_t i = 0; i + 1 < vec.size(); i += 2) {
+        result.push_back(static_cast<uint8_t>((vec[i + 1] + 8) * 16 + vec[i] + 8));
+      }
+    } else {
+      ORT_ENFORCE(bits == 8, "Only 4 or 8 bits are supported for uint8_t zero points");
+      for (int v : vec) {
+        result.push_back(static_cast<uint8_t>(v + 128));
+      }
+    }
+    return result;
+  } else {
+    return ToType<T>(vec);
+  }
+}
+
+template <typename T>
+std::vector<int64_t> GetPackedShape(const std::vector<int64_t>& unpacked_shape, int bits) {
+  if constexpr (std::is_same<T, Int4x2>::value) {
+    return unpacked_shape;
+  }
+
+  if constexpr (std::is_same<T, UInt4x2>::value) {
+    return unpacked_shape;
+  }
+
+  if constexpr (std::is_same<T, uint8_t>::value) {
+    if (bits == 8) {
+      return unpacked_shape;
+    } else {
+      ORT_ENFORCE(bits == 4, "Only 4 or 8 bits are supported for uint8_t zero points");
+      std::vector<int64_t> packed_shape = unpacked_shape;
+      size_t last_dim_index = packed_shape.size() - 1;
+      packed_shape[last_dim_index] = (packed_shape[last_dim_index] + 1) / 2;
+      return packed_shape;
+    }
+  }
+
+  // Unsupported type, return the same shape as scales
+  return unpacked_shape;
+}
+
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithZeroPoints(int64_t gather_axis,
                               int64_t quantize_axis,
-                              int64_t block_size) {
+                              int64_t block_size,
+                              int64_t bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -117,7 +249,6 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -128,19 +259,8 @@ void Test_Fail_WithZeroPoints(int64_t gather_axis,
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          gather_axis,
-                          quantize_axis,
-                          block_size,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectFailure);
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
 TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
@@ -161,7 +281,8 @@ TEST(GatherBlockQuantizedOpTest, UnsupportedTypes) {
 template <typename T1, typename T2, typename Tind>
 void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                                  int64_t quantize_axis,
-                                 int64_t block_size) {
+                                 int64_t block_size,
+                                 int64_t bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -169,35 +290,22 @@ void Test_Fail_WithoutZeroPoints(int64_t gather_axis,
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
+
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 3, 1};
+  std::vector<int> zero_points = {};
   std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
                                3.f, 4.f, 5.f, 6.f,
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          {},
-                          gather_axis,
-                          quantize_axis,
-                          block_size,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectFailure);
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
 TEST(GatherBlockQuantizedOpTest, UnsupportedUInt8DataType) {
-  // T1 uint8_t with zero points is not yet supported.
-  Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, 2, 16);
-  Test_Fail_WithZeroPoints<uint8_t, float, int16_t>(0, 2, 16);
   // Gather on axis other than 0 is not supported with uint8_t
   Test_Fail_WithoutZeroPoints<uint8_t, float, int32_t>(1, 2, 16);
   Test_Fail_WithoutZeroPoints<uint8_t, float, int16_t>(1, 2, 16);
@@ -221,6 +329,15 @@ TEST(GatherBlockQuantizedOpTest, InvalidQuantizeAxis) {
   Test_Fail_WithZeroPoints<uint8_t, float, int32_t>(0, -4, 16);
 }
 
+TEST(GatherBlockQuantizedOpTest, NotSupportedBits) {
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 1);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 2);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 3);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 5);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 6);
+  Test_Fail_WithZeroPoints<UInt4x2, float, int32_t>(0, 2, 16, 7);
+}
+
 template <typename T1, typename T2, typename Tind>
 void Test_ShapeMismatch_WithZeroPoints() {
   std::vector<int> data = {-8, -7, -6, -5,
@@ -230,7 +347,6 @@ void Test_ShapeMismatch_WithZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f};
@@ -241,19 +357,12 @@ void Test_ShapeMismatch_WithZeroPoints() {
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          0,
-                          2,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectFailure);
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
 TEST(GatherBlockQuantizedOpTest, ShapeMismatch) {
@@ -271,7 +380,6 @@ void Test_InvalidIndices_WithZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
   std::vector<int> indices = {2};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
@@ -282,19 +390,12 @@ void Test_InvalidIndices_WithZeroPoints() {
                                -6.f, -4.f, -2.f, 0.f};
   std::vector<int64_t> output_shape = {1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          0,
-                          2,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectFailure);
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, false);
 }
 
 TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
@@ -304,7 +405,7 @@ TEST(GatherBlockQuantizedOpTest, InvalidIndices) {
 }
 
 template <typename T1, typename T2, typename Tind>
-void Test_GatherAxis0_WithZeroPoints() {
+void Test_GatherAxis0_WithZeroPoints(int bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8,
                            -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4,
                            0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0,
@@ -324,32 +425,14 @@ void Test_GatherAxis0_WithZeroPoints() {
                                -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -5};
   std::vector<int64_t> output_shape = {1, 3, 17};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          0,
-                          2,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          -3,
-                          -1,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                -3, -1, block_size, bits, output, output_shape, true);
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints) {
@@ -364,7 +447,55 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints) {
 }
 
 template <typename T1, typename T2, typename Tind>
-void Test_GatherAxis0_NoZeroPoints() {
+void Test_GatherAxis0_WithZeroPoints_Uint8(int bits = 4) {
+  std::vector<int> data = {-8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, -7, -6, -5, -8, 0,
+                           -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, 0,
+                           0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 1, 2, 3, 0, 0,
+                           4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 0,
+                           4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 5, 6, 7, 4, 0,
+                           -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, -3, -2, -1, -4, 0};
+  std::vector<int64_t> data_shape = {2, 3, 18};
+  std::vector<int> indices = {1};
+  std::vector<int64_t> indices_shape = {1};
+  std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f,
+                               2.0f, 2.0f, 1.0f, 1.0f, 2.0f, 1.0f};
+  std::vector<int64_t> scales_shape = {2, 3, 2};
+  std::vector<int> zero_points = {-1, 1, 0, 0, 1, -1,
+                                  1, -1, 1, 0, -1, 1};
+  // 4 bits output
+  std::vector<float> output = {6, 8, 10, 12, 6, 8, 10, 12, 6, 8, 10, 12, 6, 8, 10, 12, 10, 2,
+                               3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 4, 0,
+                               -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -5, -1};
+  if (bits == 8) {
+    output = {
+        24.f, 28.f, 26.f, 28.f, 28.f, 28.f, 22.f, 28.f, 24.f, 28.f, 26.f, 28.f, 28.f, 28.f, 22.f, 28.f, -510.f, -510.f,
+        -1.f, -1.f, 0.f, -1.f, 1.f, -1.f, 2.f, -1.f, -1.f, -1.f, 0.f, -1.f, 1.f, -1.f, 2.f, -1.f, 0.f, 0.f,
+        -508.f, -510.f, -506.f, -510.f, -504.f, -510.f, -510.f, -510.f, -508.f, -510.f, -506.f, -510.f, -504.f, -510.f, -510.f, -510.f, -1.f, -1.f};
+  }
+  std::vector<int64_t> output_shape = {1, 3, 18};
+
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                -3, -1, block_size, bits, output, output_shape, true);
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_4Bits) {
+  Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>();
+  Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0WithZeroPoints_8Bits) {
+  Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, float, int32_t>(8);
+  Test_GatherAxis0_WithZeroPoints_Uint8<uint8_t, MLFloat16, int64_t>(8);
+}
+
+template <typename T1, typename T2, typename Tind>
+void Test_GatherAxis0_NoZeroPoints(int bits = 4) {
   std::vector<int> data = {-8, -7, -6, -5,
                            -4, -3, -2, -1,
                            0, 1, 2, 3,
@@ -372,42 +503,34 @@ void Test_GatherAxis0_NoZeroPoints() {
                            4, 5, 6, 7,
                            -4, -3, -2, -1};
   std::vector<int64_t> data_shape = {2, 3, 4};
-  PackDataForUint8TypeIfNecessary<T1>(data, data_shape);
+
   std::vector<int> indices = {1};
   std::vector<int64_t> indices_shape = {1};
   std::vector<float> scales = {1.0f, 2.0f, 1.0f, 2.0f, 1.0f, 2.0f};
   std::vector<int64_t> scales_shape = {2, 3, 1};
+
+  // 4 bits output
   std::vector<float> output = {8.f, 10.f, 12.f, 14.f,
                                4.f, 5.f, 6.f, 7.f,
                                -8.f, -6.f, -4.f, -2.f};
+  if (bits == 8) {
+    // 8 bits output
+    output = {-228.f, -226.f, -226.f, -226.f,
+              -128.f, -128.f, -127.f, -128.f,
+              -252.f, -256.f, -250.f, -256.f};
+  }
+
   std::vector<int64_t> output_shape = {1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          {},
-                          0,
-                          2,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          {},
-                          -3,
-                          -1,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
+  std::vector<int> zero_points = {};
+  constexpr int64_t gather_axis = 0;
+  constexpr int64_t quantize_axis = 2;
+  constexpr int64_t block_size = 16;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                -3, -1, block_size, bits, output, output_shape, true);
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
@@ -415,10 +538,18 @@ TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints) {
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int32_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, float, int64_t>();
   Test_GatherAxis0_NoZeroPoints<Int4x2, MLFloat16, int64_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_4Bits) {
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int32_t>();
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int32_t>();
   Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>();
   Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>();
+}
+
+TEST(GatherBlockQuantizedOpTest, GatherAxis0NoZeroPoints_8Bits) {
+  Test_GatherAxis0_NoZeroPoints<uint8_t, float, int64_t>(8);
+  Test_GatherAxis0_NoZeroPoints<uint8_t, MLFloat16, int64_t>(8);
 }
 
 template <typename T1, typename T2, typename Tind>
@@ -443,32 +574,15 @@ void Test_GatherAxis1_WithZeroPoints() {
                                -5.f, -4.f, -2.f, -2.f};
   std::vector<int64_t> output_shape = {2, 1, 3, 4};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          1,
-                          1,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          -2,
-                          -2,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
+  constexpr int64_t gather_axis = 1;
+  constexpr int64_t quantize_axis = 1;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                -2, -2, block_size, bits, output, output_shape, true);
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis1) {
@@ -504,32 +618,15 @@ void Test_GatherAxis2_WithZeroPoints() {
                                6.f, 5.f, 6.f, 3.f, -3.f, -4.f};
   std::vector<int64_t> output_shape = {2, 3, 2, 1};
 
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          2,
-                          0,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
-  RunGatherBlockQuantized(ToType<T1>(data),
-                          data_shape,
-                          ToType<Tind>(indices),
-                          indices_shape,
-                          ToType<T2>(scales),
-                          scales_shape,
-                          ToType<T1>(zero_points),
-                          -1,
-                          -3,
-                          16,
-                          ToType<T2>(output),
-                          output_shape,
-                          OpTester::ExpectResult::kExpectSuccess);
+  constexpr int64_t gather_axis = 2;
+  constexpr int64_t quantize_axis = 0;
+  constexpr int64_t block_size = 16;
+  constexpr int64_t bits = 4;
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                gather_axis, quantize_axis, block_size, bits, output, output_shape, true);
+
+  RunUnpackedData<T1, T2, Tind>(data, data_shape, indices, indices_shape, scales, scales_shape, zero_points,
+                                -1, -3, block_size, bits, output, output_shape, true);
 }
 
 TEST(GatherBlockQuantizedOpTest, GatherAxis2) {
