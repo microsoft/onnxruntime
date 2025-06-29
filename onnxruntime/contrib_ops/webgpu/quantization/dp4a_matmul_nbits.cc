@@ -596,6 +596,11 @@ Status ApplyDP4AMatrixMatMulNBits(const Tensor* a, const Tensor* b, const Tensor
     uint32_t tile_size_k_vec = 16;
     uint32_t tile_size = 32;
 
+    if (context.AdapterInfo().vendor == std::string_view{"intel"}) {
+      tile_size_k_vec = 32;
+      tile_size = 4;
+    }
+
     DP4AMatMulNBitsSmallMProgram mul_program{tile_size_k_vec, tile_size, nbits, has_zero_points};
     uint32_t num_N_tile = (N + tile_size - 1) / tile_size;
     mul_program.SetWorkgroupSize(128);
