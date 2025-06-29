@@ -47,6 +47,10 @@ class GatherBlockQuantized : public OpKernel {
       block_size_ = 128;
     }
 
+    constexpr int64_t default_bits = 4;
+    info.GetAttrOrDefault("bits", &bits_, default_bits);
+    ORT_ENFORCE(bits_ == 4 || bits_ == 8, "GatherBlockQuantized only support bits==4 or 8");
+
     ORT_ENFORCE(block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0,
                 "'block_size' must be 2's power and not less than 16.");
   }
@@ -84,6 +88,7 @@ class GatherBlockQuantized : public OpKernel {
   int64_t gather_axis_;
   int64_t quantize_axis_;
   int64_t block_size_;
+  int64_t bits_;
 };
 
 template <typename T1, typename Tind>
@@ -94,13 +99,21 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
   p.zero_points_tensor = context->Input<Tensor>(3);
 
   const auto& data_shape = p.data_tensor->Shape();
-  const auto& indices_shape = p.indices_tensor->Shape();
   const auto data_rank = data_shape.NumDimensions();
   p.gather_axis = HandleNegativeAxis(gather_axis_, narrow<int64_t>(data_rank));
+
   p.quantize_axis = HandleNegativeAxis(quantize_axis_, narrow<int64_t>(data_rank));
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    ORT_RETURN_IF_NOT(p.gather_axis == 0, "For uint8_t data, gather_axis must be 0.");
+    ORT_RETURN_IF_NOT(p.quantize_axis == static_cast<int64_t>(data_rank) - 1, "For uint8_t data, quantize_axis must be the last dimension.");
+    ORT_RETURN_IF_NOT(p.gather_axis != p.quantize_axis, "gather_axis and quantize_axis must not be the same.");
+  }
+
+  const auto& indices_shape = p.indices_tensor->Shape();
+  const auto indices_rank = indices_shape.NumDimensions();
 
   std::vector<int64_t> shape;
-  shape.reserve(data_rank - 1 + indices_shape.NumDimensions());
+  shape.reserve(data_rank - 1 + indices_rank);
 
   // get output tensor
   // replace the dimension for p.gather_axis with the shape from the indices
@@ -113,12 +126,21 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
   for (int64_t i = p.gather_axis + 1; i < static_cast<int64_t>(data_rank); ++i)
     shape.push_back(data_shape[narrow<size_t>(i)]);
 
-  // When data is stored as uint8_t, each element has two int4 values.
+  // When bits==4 and data is stored as uint8_t, each element has two int4 values.
   // The shape in the onnx model reflects that by having the last dimension be half the number of values.
-  // Ex: For a true data size of 2000x3072, the onnx model would have data of shape 2000x1536.
+  // Example: For a true data size of 2000x3072, the packed uint8 tensor has shape 2000x1536.
   // However the outputs still need to be of size 2000x3072. Therefore we x2 the last dimension here.
-  uint32_t components = (std::is_same_v<T1, uint8_t>) ? 2 : 1;
-  shape[shape.size() - 1] = shape.back() * components;
+  uint32_t components = 1;
+  if constexpr (std::is_same_v<T1, uint8_t>) {
+    components = 8 / static_cast<int>(bits_);
+    if (components > 1) {
+      // To handle quantize_axis that is not the last dimension:
+      //  shape[(p.quantize_axis < p.gather_axis) ? p.quantize_axis : p.quantize_axis + indices_rank - 1] *= components;
+      // Since we constraint the last dimension to be the quantize_axis, we can simplify it to:
+      shape.back() *= components;
+    }
+  }
+
   p.output_tensor = context->Output(0, TensorShape(std::move(shape)));
 
   // validate quantization parameters
@@ -137,8 +159,14 @@ Status GatherBlockQuantized<T1, Tind>::PrepareForCompute(OpKernelContext* contex
     ORT_RETURN_IF_NOT(scales_shape.NumDimensions() == zero_points_shape.NumDimensions(),
                       "scales and zero_points must have the same rank.");
     for (size_t i = 0; i < scales_shape.NumDimensions(); ++i) {
-      ORT_RETURN_IF_NOT(scales_shape[i] == zero_points_shape[i],
-                        "scales and zero_points must have the same shape.");
+      if (components > 1 && i == static_cast<size_t>(p.quantize_axis)) {
+        // For uint8_t with bits=4, zero points is stored as 2 components per byte.
+        ORT_RETURN_IF_NOT((scales_shape[i] + components - 1) / components == zero_points_shape[i],
+                          "scales and zero_points shape does not match.");
+      } else {
+        ORT_RETURN_IF_NOT(scales_shape[i] == zero_points_shape[i],
+                          "scales and zero_points must have the same shape.");
+      }
     }
   }
 
@@ -194,13 +222,33 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int64_t scale_idx = x * scale_full_block + y / block_size_ * quantize_N + z;
       auto scale_val = static_cast<float>(scales_ptr[scale_idx]);
       int32_t zp_val;
+
       if constexpr (std::is_same_v<T1, uint8_t>) {
         // The default zero point for uint8 weights as stored by MatMulNBits op is 8.
-        zp_val = 8;
+        if (zero_points_ptr) {
+          if (bits_ == 4) {
+            // For uint8_t with bits=4, the zero points are stored as int4 in uint8_t.
+            // The zero point is stored in the same way as data, so we can use GetDataElement.
+            uint8_t packed = zero_points_ptr[scale_idx >> 1];
+            if (scale_idx & 1) {
+              // Get the second nibble.
+              zp_val = static_cast<int32_t>((packed >> 4) & 0x0F);
+            } else {
+              // Get the first nibble.
+              zp_val = static_cast<int32_t>(packed & 0x0F);
+            }
+          } else {
+            // For uint8_t with bits=8, the zero points are stored as uint8_t.
+            zp_val = static_cast<int32_t>(zero_points_ptr[scale_idx]);
+          }
+        } else {
+          const int32_t default_zero_point = bits_ == 4 ? 8 : 128;
+          zp_val = default_zero_point;
+        }
       } else {
-        zp_val = static_cast<int32_t>(zero_points_ptr
-                                          ? zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1))
-                                          : 0);
+        zp_val = zero_points_ptr
+                     ? static_cast<int32_t>(zero_points_ptr[scale_idx >> 1].GetElem(narrow<size_t>(scale_idx & 1)))
+                     : 0;
       }
 
       output_ptr[output_idx] = static_cast<T2>(static_cast<float>(data_val - zp_val) * scale_val);
@@ -232,7 +280,7 @@ template <typename T1, typename Tind>
 Status GatherBlockQuantized<T1, Tind>::Compute(OpKernelContext* context) const {
   Prepare p;
   ORT_RETURN_IF_ERROR(PrepareForCompute(context, p));
-  auto components = (std::is_same_v<T1, uint8_t>) ? 2 : 1;
+  int64_t components = std::is_same_v<T1, uint8_t> ? (8 / static_cast<int>(bits_)) : 1;
   const auto& data_shape = p.data_tensor->Shape();
   // re-shape the data tensor to [gather_M, gather_axis_dim, gather_block]
   // re-shape the indices tensor to [gather_N]
