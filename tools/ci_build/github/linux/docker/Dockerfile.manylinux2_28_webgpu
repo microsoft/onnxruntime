@@ -6,7 +6,7 @@ ENV JAVA_HOME=/usr/lib/jvm/msopenjdk-17
 RUN dnf install -y \
     https://download1.rpmfusion.org/free/el/rpmfusion-free-release-8.noarch.rpm \
     https://download1.rpmfusion.org/nonfree/el/rpmfusion-nonfree-release-8.noarch.rpm && \
-    dnf install -y xorg-x11-drv-nvidia akmod-nvidia vulkan vulkan-tools mesa-vulkan-drivers
+    dnf install -y xorg-x11-drv-nvidia akmod-nvidia vulkan vulkan-tools vulkan-loader mesa-vulkan-drivers vulkan-validation-layers
 
 # Configure Vulkan for headless operation
 # Note: VK_ICD_FILENAMES will be set dynamically by test script based on what's available
@@ -14,13 +14,44 @@ ENV XDG_RUNTIME_DIR=/tmp/runtime-dir
 ENV DISPLAY=:99
 # Disable X11 forwarding to ensure headless operation
 ENV VK_FORCE_HEADLESS=1
+# Set Mesa environment variables for software fallback
+ENV MESA_GL_VERSION_OVERRIDE=4.5
+ENV MESA_GLSL_VERSION_OVERRIDE=450
+# Force Mesa to use LLVMpipe for software rendering
+ENV GALLIUM_DRIVER=llvmpipe
+# Dawn/WebGPU configuration - enable Vulkan backend
+ENV DAWN_DEBUG_BREAK_ON_ERROR=0
+ENV DAWN_LOG_LEVEL=Warning
 
 # Create runtime directory with proper permissions
 RUN mkdir -p /tmp/runtime-dir && chmod 700 /tmp/runtime-dir
 
 # Install additional Mesa drivers for better software fallback
-RUN dnf install -y mesa-dri-drivers mesa-vulkan-drivers || echo "Additional Mesa drivers not available"
+RUN dnf install -y mesa-dri-drivers mesa-vulkan-drivers libdrm || echo "Additional Mesa drivers not available"
 
+# Install additional Vulkan development libraries that might be needed
+RUN dnf install -y vulkan-devel vulkan-headers || echo "Additional Vulkan development packages not available"
+
+# Copy WebGPU utility scripts and make them available
+COPY tools/ci_build/github/linux/docker/scripts/webgpu /usr/local/bin/webgpu-scripts/
+RUN chmod +x /usr/local/bin/webgpu-scripts/*.sh && \
+    ln -s /usr/local/bin/webgpu-scripts/vulkan-debug.sh /usr/local/bin/vulkan-debug && \
+    ln -s /usr/local/bin/webgpu-scripts/test-vulkan-headless.sh /usr/local/bin/test-vulkan-headless && \
+    ln -s /usr/local/bin/webgpu-scripts/test-webgpu-env.sh /usr/local/bin/test-webgpu-env && \
+    ln -s /usr/local/bin/webgpu-scripts/setup-vulkan-env.sh /usr/local/bin/setup-vulkan-env
+
+# Set default Vulkan ICD configuration for WebGPU
+# Prefer NVIDIA if available, fall back to Mesa LLVMpipe
+RUN echo '#!/bin/bash' > /usr/local/bin/configure-vulkan && \
+    echo 'nvidia_icd="/usr/share/vulkan/icd.d/nvidia_icd.json"' >> /usr/local/bin/configure-vulkan && \
+    echo 'mesa_icd="/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"' >> /usr/local/bin/configure-vulkan && \
+    echo 'if [ -f "$nvidia_icd" ] && command -v nvidia-smi >/dev/null 2>&1; then' >> /usr/local/bin/configure-vulkan && \
+    echo '    export VK_ICD_FILENAMES="$nvidia_icd"' >> /usr/local/bin/configure-vulkan && \
+    echo 'elif [ -f "$mesa_icd" ]; then' >> /usr/local/bin/configure-vulkan && \
+    echo '    export VK_ICD_FILENAMES="$mesa_icd"' >> /usr/local/bin/configure-vulkan && \
+    echo 'fi' >> /usr/local/bin/configure-vulkan && \
+    echo 'exec "$@"' >> /usr/local/bin/configure-vulkan && \
+    chmod +x /usr/local/bin/configure-vulkan
 
 ADD scripts /tmp/scripts
 RUN cd /tmp/scripts && /tmp/scripts/manylinux/install_centos.sh

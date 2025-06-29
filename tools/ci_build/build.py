@@ -2358,6 +2358,7 @@ def main():
 
                 vulkan_debug_script = os.path.join(webgpu_scripts_dir, "vulkan-debug.sh")
                 test_vulkan_script = os.path.join(webgpu_scripts_dir, "test-vulkan-headless.sh")
+                test_webgpu_env_script = os.path.join(webgpu_scripts_dir, "test-webgpu-env.sh")
 
                 if os.path.exists(vulkan_debug_script):
                     log.info("Running Vulkan debug script...")
@@ -2390,6 +2391,54 @@ def main():
                         log.warning(f"Failed to run vulkan test script: {e}")
                 else:
                     log.warning(f"Vulkan test script not found at: {test_vulkan_script}")
+
+                # Run comprehensive WebGPU environment test
+                if os.path.exists(test_webgpu_env_script):
+                    log.info("Running comprehensive WebGPU environment test...")
+                    try:
+                        result = subprocess.run(["bash", test_webgpu_env_script],
+                                              capture_output=True, text=True, timeout=90)
+                        log.info(f"WebGPU environment test output:\n{result.stdout}")
+                        if result.stderr:
+                            log.warning(f"WebGPU environment test stderr:\n{result.stderr}")
+                        if result.returncode != 0:
+                            log.warning(f"WebGPU environment test returned non-zero exit code: {result.returncode}")
+                    except subprocess.TimeoutExpired:
+                        log.warning("WebGPU environment test timed out")
+                    except Exception as e:
+                        log.warning(f"Failed to run WebGPU environment test: {e}")
+                else:
+                    log.warning(f"WebGPU environment test script not found at: {test_webgpu_env_script}")
+
+                # Configure Vulkan environment for WebGPU runtime
+                log.info("Configuring Vulkan environment for WebGPU...")
+                nvidia_icd = "/usr/share/vulkan/icd.d/nvidia_icd.json"
+                mesa_icd = "/usr/share/vulkan/icd.d/lvp_icd.x86_64.json"
+
+                # Set environment variables that will be inherited by test processes
+                if os.path.exists(nvidia_icd) and shutil.which("nvidia-smi"):
+                    os.environ["VK_ICD_FILENAMES"] = nvidia_icd
+                    log.info(f"Configured WebGPU to use NVIDIA Vulkan driver: {nvidia_icd}")
+                elif os.path.exists(mesa_icd):
+                    os.environ["VK_ICD_FILENAMES"] = mesa_icd
+                    log.info(f"Configured WebGPU to use Mesa Vulkan driver: {mesa_icd}")
+                else:
+                    log.warning("No suitable Vulkan drivers found - WebGPU may fall back to CPU mode")
+
+                # Ensure other necessary environment variables are set
+                os.environ["XDG_RUNTIME_DIR"] = "/tmp/runtime-dir"
+                os.environ["DISPLAY"] = ":99"
+                os.environ["VK_FORCE_HEADLESS"] = "1"
+                # Mesa configuration for better software fallback
+                os.environ["MESA_GL_VERSION_OVERRIDE"] = "4.5"
+                os.environ["MESA_GLSL_VERSION_OVERRIDE"] = "450"
+                os.environ["GALLIUM_DRIVER"] = "llvmpipe"
+                # Dawn/WebGPU configuration
+                os.environ["DAWN_DEBUG_BREAK_ON_ERROR"] = "0"
+                os.environ["DAWN_LOG_LEVEL"] = "Warning"
+
+                log.info("WebGPU environment configured successfully")
+
             else:
                 log.info("WebGPU build detected but not in container environment - skipping Vulkan validation")
 

@@ -51,4 +51,27 @@ else
     echo "WebGPU may fall back to CPU-only mode (no Vulkan drivers found)"
 fi
 
+# Test if vulkaninfo can enumerate devices (critical for WebGPU)
+echo "=== Vulkan Device Enumeration Test ==="
+if command -v vulkaninfo >/dev/null 2>&1; then
+    echo "Testing Vulkan device enumeration..."
+    # Set environment for testing
+    export DISPLAY=${DISPLAY:-:99}
+    export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/tmp/runtime-dir}
+    export VK_FORCE_HEADLESS=1
+
+    if [ -f "$nvidia_icd" ] && command -v nvidia-smi >/dev/null 2>&1; then
+        export VK_ICD_FILENAMES="$nvidia_icd"
+        echo "Testing with NVIDIA ICD..."
+    elif [ "$mesa_found" = "true" ]; then
+        export VK_ICD_FILENAMES="$mesa_icd"
+        echo "Testing with Mesa ICD..."
+    fi
+
+    # Try to get device information (timeout after 10 seconds)
+    timeout 10 vulkaninfo --summary 2>/dev/null | head -20 && echo "✓ Vulkan device enumeration successful" || echo "✗ Vulkan device enumeration failed"
+else
+    echo "vulkaninfo not available - cannot test device enumeration"
+fi
+
 echo "=== End Check ==="
