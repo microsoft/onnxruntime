@@ -1,0 +1,15 @@
+{
+  "name": "ort_wgsl_template_gen",
+  "version": "1.0.0",
+  "private": true,
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "gen": "wgsl-gen"
+  },
+  "author": "",
+  "license": "MIT",
+  "dependencies": {
+    "@fs-eire/wgsl-template": "^0.1.3"
+  }
+}

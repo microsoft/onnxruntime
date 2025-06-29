@@ -19,6 +19,13 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
+#if ORT_WGSL_TEMPLATE
+  return WGSL_TEMPLATE_APPLY(shader, "tensor/pad.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(dim_value_zero, dim_value_zero_),
+                             WGSL_TEMPLATE_PARAMETER(is_float16, is_float16_),
+                             WGSL_TEMPLATE_PARAMETER(pad_mode, mode_),
+                             WGSL_TEMPLATE_VARIABLE(output, output));
+#else
   shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
   std::string constant_value_str = std::string("let constant_value = ") +
                                    (is_float16_ ? "bitcast<vec2<f16>>(uniforms.constant_value)[0];\n" : "bitcast<output_value_t>(uniforms.constant_value);\n");
@@ -86,6 +93,7 @@ Status PadProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  " << output.SetByOffset("global_idx", "select(data[input_index], constant_value, use_pad_value)");
 
   return Status::OK();
+#endif
 }
 
 Status Pad::ComputeInternal(ComputeContext& context) const {
