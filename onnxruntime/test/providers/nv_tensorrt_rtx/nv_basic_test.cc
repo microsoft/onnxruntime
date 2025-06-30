@@ -35,9 +35,9 @@ class NvExecutionProviderTest : public ::testing::Test {
     } else if constexpr (std::is_same<T, float>::value) {
       dtype_name = "fp32";
     } else if constexpr (std::is_same<T, BFloat16>::value) {
-      dtype_name = "fp16";
-    } else if constexpr (std::is_same<T, MLFloat16>::value) {
       dtype_name = "bf16";
+    } else if constexpr (std::is_same<T, MLFloat16>::value) {
+      dtype_name = "fp16";
     } else if constexpr (std::is_same<T, int8_t>::value) {
       dtype_name = "int8";
     } else if constexpr (std::is_same<T, uint8_t>::value) {
@@ -184,6 +184,7 @@ static void CreateBaseModel(const PathString& model_name,
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
+  ASSERT_TRUE(status.IsOK());
 }
 
 static Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
