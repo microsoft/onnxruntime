@@ -226,7 +226,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
