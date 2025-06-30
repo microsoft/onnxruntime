@@ -3,6 +3,6 @@
 lintrunner==0.12.7
 lintrunner-adapters==0.12.4
 # RUFF
-ruff==0.11.13
+ruff==0.12.1
 # CLANGFORMAT
 clang-format==19.1.7
