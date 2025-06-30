@@ -473,6 +473,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
         ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(api_node, node_attr.first.c_str(), &api_node_attr));
         ASSERT_NE(api_node_attr, nullptr);
 
+        const char* api_node_attr_name = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(api_node_attr, &api_node_attr_name));
+        ASSERT_EQ(std::string(api_node_attr_name), node_attr.first);
+
         OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 
         // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
