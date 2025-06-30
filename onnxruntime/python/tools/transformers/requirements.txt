@@ -11,4 +11,4 @@ sentencepiece
 pillow
 
 # please follow https://pytorch.org/ to install PyTorch for your OS
-torch >= 1.13.1
+torch >= 2.6.0
