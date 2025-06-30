@@ -152,6 +152,14 @@ ORT_API(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDev
                                                                  : OrtDeviceMemoryType_HOST_ACCESSIBLE;
 }
 
+ORT_API(uint32_t, MemoryDevice_GetVendorId, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->Vendor();
+}
+
+ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->Id();
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -171,6 +179,8 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_AreEqual,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceType,
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
+    &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
+    &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
