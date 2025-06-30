@@ -11,7 +11,7 @@
 
 	<ItemGroup>
 		<PackageReference Include="Appium.WebDriver" Version="5.0.0-rc.5" />
-		<PackageReference Include="BrowserStack.TestAdapter" Version="0.13.13" />
+		<PackageReference Include="BrowserStack.TestAdapter" Version="0.16.0" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
 		<PackageReference Include="NUnit" Version="3.13.0" />
