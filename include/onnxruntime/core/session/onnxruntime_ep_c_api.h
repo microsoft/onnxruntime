@@ -296,6 +296,28 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the vendor ID from an OrtMemoryDevice instance.
+   *
+   * The vendor ID is used to identify the vendor of the device, and is typically set to the PCI vendor ID.
+   *
+   * If the device is not vendor specific (e.g. CPU memory) the vendor ID is set to 0.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The vendor ID value.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint32_t, MemoryDevice_GetVendorId, _In_ const OrtMemoryDevice* memory_device);
+
+  /** \brief Get the device ID from an OrtMemoryDevice instance.
+   *
+   * \param[in] memory_device OrtMemoryDevice instance.
+   * \return The device ID.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 };
 
 /**
