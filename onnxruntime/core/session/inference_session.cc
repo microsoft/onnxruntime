@@ -2522,6 +2522,12 @@ common::Status InferenceSession::Initialize() {
         status = end_status;
       }
     }
+  } else {
+    // Log runtime error telemetry if the return value is not OK
+    // NOTE: The error line number here is not the line number of the error in the code,
+    // but the line number of this function call in the code. The purpose of this telemetry is to log the runtime error
+    // code that occurred during the inference session initialize, not the specific line of code that caused the error.
+    env.GetTelemetryProvider().LogRuntimeError(session_id_, status, __FILE__, __FUNCTION__, __LINE__);
   }
 
   return status;
@@ -3127,6 +3133,15 @@ Status InferenceSession::Run(const RunOptions& run_options,
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
+
+  // Log runtime error telemetry if the return value is not OK
+  // NOTE: The error line number here is not the line number of the error in the code,
+  // but the line number of this function call in the code. The purpose of this telemetry is to log the runtime error
+  // code that occurred during the inference session run, not the specific line of code that caused the error.
+  if (!retval.IsOK()) {
+    env.GetTelemetryProvider().LogRuntimeError(session_id_, retval, __FILE__, __FUNCTION__, __LINE__);
+  }
+
   return retval;
 }
 
