@@ -264,7 +264,11 @@ void ProviderPolicyContext::FoldSelectedDevices(std::vector<const OrtEpDevice*> 
       });
 
       if (iter != devices_selected.end()) {
-        info.devices.push_back((*iter)->device);
+        info.devices.push_back(*iter);
+        // hardware device and metadata come from the OrtEpDevice but we need a collection of just the pointers
+        // to pass through to the CreateEp call. other info in the OrtEpDevice is used on the ORT side like the
+        // allocator and data transfer setup.
+        info.hardware_devices.push_back((*iter)->device);
         info.ep_metadata.push_back(&(*iter)->ep_metadata);
         devices_selected.erase(iter);
       } else {
@@ -284,15 +288,16 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
     ORT_RETURN_IF_ERROR(ToStatusAndRelease(
-        internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                   info.devices.size(), &options, &logger,
+        internal_factory->CreateIExecutionProvider(info.hardware_devices.data(), info.ep_metadata.data(),
+                                                   info.hardware_devices.size(), &options, &logger,
                                                    &ep)));
   } else {
     OrtEp* api_ep = nullptr;
-    ORT_RETURN_IF_ERROR(ToStatusAndRelease(info.ep_factory->CreateEp(info.ep_factory, info.devices.data(),
-                                                                     info.ep_metadata.data(), info.devices.size(),
-                                                                     &options, &logger, &api_ep)));
-    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)));
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
+                                  info.hardware_devices.size(), &options, &logger, &api_ep)));
+    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
+                                                   *info.ep_factory, info.devices);
   }
 
   return Status::OK();

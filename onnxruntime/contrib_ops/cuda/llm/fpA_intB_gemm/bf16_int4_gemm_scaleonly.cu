@@ -19,9 +19,8 @@
 namespace onnxruntime::llm {
 namespace kernels {
 namespace cutlass_kernels {
-#ifdef ENABLE_BF16
-template class CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t, cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
-#endif
+template class CutlassFpAIntBGemmRunner<__nv_bfloat16, cutlass::uint4b_t,
+                                        cutlass::WeightOnlyQuantOp::FINEGRAINED_SCALE_ONLY>;
 }  // namespace cutlass_kernels
 }  // namespace kernels
 }  // namespace onnxruntime::llm

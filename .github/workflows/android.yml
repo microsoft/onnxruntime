@@ -133,8 +133,8 @@ jobs:
 
       - uses: microsoft/onnxruntime-github-actions/setup-build-tools@v0.0.7
         with:
-          vcpkg-version: '2025.04.09'
-          vcpkg-hash: '31a28b58854b7c7b503db99bb2eb41582d9f835b401adf3bd0f680ef329faa4ab4278b987b586a2a6141e2c98f007833266a4e3b60c3164226a3905466a082ce'
+          vcpkg-version: '2025.06.13'
+          vcpkg-hash: '735923258c5187966698f98ce0f1393b8adc6f84d44fd8829dda7db52828639331764ecf41f50c8e881e497b569f463dbd02dcb027ee9d9ede0711102de256cc'
           cmake-version: '3.31.6'
           cmake-hash: '42395e20b10a8e9ef3e33014f9a4eed08d46ab952e02d2c1bbc8f6133eca0d7719fb75680f9bbff6552f20fcd1b73d86860f7f39388d631f98fb6f622b37cf04'
           add-cmake-to-path: 'true'
@@ -168,6 +168,7 @@ jobs:
           --build_shared_lib
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
         shell: bash
 
 
@@ -237,6 +238,7 @@ jobs:
           --parallel --use_vcpkg --use_vcpkg_ms_internal_asset_cache
           --cmake_generator=Ninja
           --build_java
+          --update --build --test
         shell: bash
 
       - name: Install psutil for emulator shutdown by run_android_emulator.py
