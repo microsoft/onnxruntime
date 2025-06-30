@@ -516,7 +516,7 @@ class InferenceSession(Session):
                 )
                 and any(
                     provider == "NvTensorRTRTXExecutionProvider"
-                    or (isinstance(provider, tuple) and provider[0] == "NvExecutionProvider")
+                    or (isinstance(provider, tuple) and provider[0] == "NvTensorRTRTXExecutionProvider")
                     for provider in providers
                 )
             ):
