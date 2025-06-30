@@ -125,13 +125,14 @@ class WebGpuContext final {
     }
   }
 
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, webgpu::BufferManager* buffer_mgr = nullptr);
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands);
   void CaptureEnd();
   void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
   void Flush();
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
+  void SetExternalBufferManager(webgpu::BufferManager* buffer_mgr);
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;

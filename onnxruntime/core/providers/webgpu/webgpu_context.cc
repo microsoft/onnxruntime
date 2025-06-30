@@ -408,7 +408,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    if (session_status_ == SessionState::Capturing) {
+    if (external_buffer_mgr_ != nullptr) {
       uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     } else {
       uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
@@ -435,7 +435,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
 
   if (uniform_buffer) {
-    if (session_status_ == SessionState::Capturing) {
+    if (external_buffer_mgr_ != nullptr) {
       external_buffer_mgr_->Release(uniform_buffer);
     } else {
       buffer_mgr_->Release(uniform_buffer);
@@ -701,10 +701,12 @@ void WebGpuContext::Flush() {
 
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  if (session_status_ == SessionState::Capturing) {
-    external_buffer_mgr_->RefreshPendingBuffers(session_status_);
-  } else if (session_status_ == SessionState::Default) {
-    buffer_mgr_->RefreshPendingBuffers(session_status_);
+  if (session_status_ != SessionState::Replaying) {
+    if (external_buffer_mgr_ != nullptr) {
+      external_buffer_mgr_->RefreshPendingBuffers(session_status_);
+    } else {
+      buffer_mgr_->RefreshPendingBuffers(session_status_);
+    }
   }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
@@ -735,15 +737,9 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
   auto bind_group = Device().CreateBindGroup(&bind_group_desc);
   if (session_status_ == SessionState::Capturing) {
-    if (external_captured_commands_) {
-      // Store to the external vector provided by EP
-      external_captured_commands_->push_back({program_artifact.compute_pipeline,
-                                              bind_group,
-                                              {x, y, z}});
-    } else {
-      // Error - should always have external vector when capturing
-      ORT_THROW("No external captured_commands vector provided for graph capture mode");
-    }
+    external_captured_commands_->push_back({program_artifact.compute_pipeline,
+                                            bind_group,
+                                            {x, y, z}});
   } else {
     // Execute the command directly
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
@@ -752,14 +748,13 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   }
 }
 
-void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, webgpu::BufferManager* buffer_mgr) {
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
   Flush();
 
-  ORT_ENFORCE(buffer_mgr != nullptr, "Buffer manager must not be null when capturing commands.");
+  ORT_ENFORCE(external_buffer_mgr_ != nullptr, "External buffer manager must not be null when capturing commands.");
   external_captured_commands_ = captured_commands;
-  external_buffer_mgr_ = buffer_mgr;
 
   // Make sure the external vector is empty before we start capturing
   if (external_captured_commands_) {
@@ -812,6 +807,10 @@ void WebGpuContext::CaptureEnd() {
   session_status_ = SessionState::Default;
   external_captured_commands_ = nullptr;
   external_buffer_mgr_ = nullptr;
+}
+
+void WebGpuContext::SetExternalBufferManager(webgpu::BufferManager* buffer_mgr) {
+  external_buffer_mgr_ = buffer_mgr;
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;

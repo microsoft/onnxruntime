@@ -37,10 +37,6 @@ class DisabledCacheManager : public IBufferCacheManager {
     wgpuBufferRelease(buffer);
   }
 
-  void ReleaseCapturedBuffers() override {
-    // no-op
-  }
-
   void OnRefresh(SessionState /*session_status*/) override {
     // no-op
   }
@@ -61,10 +57,6 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
     pending_buffers_.emplace_back(buffer);
-  }
-
-  void ReleaseCapturedBuffers() override {
-    // no-op
   }
 
   void OnRefresh(SessionState /*session_status*/) override {
@@ -109,10 +101,6 @@ class SimpleCacheManager : public IBufferCacheManager {
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
     pending_buffers_.emplace_back(buffer);
-  }
-
-  void ReleaseCapturedBuffers() override {
-    // no-op
   }
 
   void OnRefresh(SessionState /*session_status*/) override {
@@ -208,10 +196,6 @@ class BucketCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void ReleaseCapturedBuffers() override {
-    // no-op
-  }
-
   void OnRefresh(SessionState /*session_status*/) override {
     for (auto& buffer : pending_buffers_) {
       auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
@@ -299,15 +283,6 @@ class GraphCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void ReleaseCapturedBuffers() override {
-    for (auto& pair : buckets_) {
-      for (auto& buffer : pair.second) {
-        wgpuBufferRelease(buffer);
-      }
-    }
-    buckets_.clear();
-  }
-
   void OnRefresh(SessionState /*session_status*/) override {
     // Initialize buckets if they don't exist yet
     if (buckets_.empty()) {
@@ -386,13 +361,6 @@ class GraphSimpleCacheManager : public IBufferCacheManager {
 
   void ReleaseBuffer(WGPUBuffer buffer) override {
     pending_buffers_.emplace_back(buffer);
-  }
-
-  void ReleaseCapturedBuffers() override {
-    for (auto& buffer : captured_buffers_) {
-      wgpuBufferRelease(buffer);
-    }
-    captured_buffers_.clear();
   }
 
   void OnRefresh(SessionState session_status) override {
@@ -578,11 +546,6 @@ bool BufferManager::SupportsUMA() const {
 void BufferManager::Release(WGPUBuffer buffer) const {
   EnforceBufferUnmapped(context_, buffer);
   GetCacheManager(buffer).ReleaseBuffer(buffer);
-}
-
-void BufferManager::ReleaseCapturedBuffers() {
-  GetCacheManager(wgpu::BufferUsage::Storage).ReleaseCapturedBuffers();
-  GetCacheManager(wgpu::BufferUsage::Uniform).ReleaseCapturedBuffers();
 }
 
 void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {

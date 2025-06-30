@@ -781,6 +781,7 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
         webgpu::BufferCacheMode::Graph,
         webgpu::BufferCacheMode::GraphSimple,
         webgpu::BufferCacheMode::Disabled);
+    context_.SetExternalBufferManager(graph_buffer_mgr_.get());
   }
 }
 
@@ -876,11 +877,6 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 #endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
-  // Clean up any captured buffers from the graph buffer manager
-  if (graph_buffer_mgr_) {
-    graph_buffer_mgr_->ReleaseCapturedBuffers();
-  }
-
   // The captured_commands_ vector will be automatically cleaned up
   // The graph_buffer_mgr_ will be automatically cleaned up by unique_ptr
 
@@ -897,6 +893,9 @@ Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
   if (allocator_ != nullptr) {
     allocator_->OnSessionInitializationEnd();
   }
+  if (IsGraphCaptureEnabled()) {
+    context_.SetExternalBufferManager(nullptr);
+  }
   return Status::OK();
 }
 
@@ -908,9 +907,11 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
   if (profiler_->Enabled()) {
     context_.StartProfiling();
   }
-  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-    // Use the capture method with our vector and buffer manager
-    context_.CaptureBegin(&captured_commands_, graph_buffer_mgr_.get());
+  if (IsGraphCaptureEnabled()) {
+    context_.SetExternalBufferManager(graph_buffer_mgr_.get());
+    if (IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
+      context_.CaptureBegin(&captured_commands_);
+    }
   }
   return Status::OK();
 }
