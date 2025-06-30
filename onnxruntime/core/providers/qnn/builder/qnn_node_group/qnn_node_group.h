@@ -48,6 +48,9 @@ class IQnnNodeGroup {
   virtual std::string_view Type() const = 0;
 };
 
+/// Function to register fusion for QDQ
+void registerUDO(const std::string& node_type, const std::string& op_package);
+
 /// <summary>
 /// Traverses the ONNX graph to create IQnnNodeGroup objects, each containing one or more NodeUnits.
 /// The returned IQnnNodeGroup objects are sorted in topological order.
