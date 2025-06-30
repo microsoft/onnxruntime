@@ -106,6 +106,23 @@ TEST_F(QnnCPUBackendTests, AveragePool_AutopadSameLower) {
                        ExpectedEPNodeAssignment::All);
 }
 
+// AveragePool 3D as GlobalAveragePool.
+TEST_F(QnnCPUBackendTests, AveragePool_3D_AsGlobal) {
+  RunAveragePoolOpTest("AveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3, 3}, false, -10.0f, 10.0f)},
+                       {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                        utils::MakeAttribute("strides", std::vector<int64_t>{3, 3, 3})},
+                       ExpectedEPNodeAssignment::All);
+}
+
+// GlobalAveragePool 3D.
+TEST_F(QnnCPUBackendTests, GlobalAveragePool_3D) {
+  RunAveragePoolOpTest("GlobalAveragePool",
+                       {TestInputDef<float>({1, 2, 3, 3, 3}, false, -10.0f, 10.0f)},
+                       {},
+                       ExpectedEPNodeAssignment::All);
+}
+
 #if defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
 //
 // HTP tests:
@@ -169,6 +186,33 @@ TEST_F(QnnHTPBackendTests, AveragePool_AutopadSameLower_HTP_u8) {
                                     utils::MakeAttribute("auto_pad", "SAME_LOWER")},
                                    ExpectedEPNodeAssignment::All,
                                    18);
+}
+
+// QDQ AveragePool 3D.
+TEST_F(QnnHTPBackendTests, AveragePool_3D_u8) {
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 8, 8, 8}, false, -10.0f, 10.0f)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                                    utils::MakeAttribute("strides", std::vector<int64_t>{2, 2, 2})},
+                                   ExpectedEPNodeAssignment::All);
+}
+
+// QDQ AveragePool 3D with auto_pad SAME_UPPER.
+TEST_F(QnnHTPBackendTests, AveragePool_3D_AutoPad_SAME_UPPER_u8) {
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 8, 8, 8}, false, -10.0f, 10.0f)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
+                                    utils::MakeAttribute("auto_pad", "SAME_UPPER")},
+                                   ExpectedEPNodeAssignment::All);
+}
+
+// QDQ AveragePool 3D with auto_pad SAME_LOWER.
+TEST_F(QnnHTPBackendTests, AveragePool_3D_AutoPad_SAME_LOWER_u8) {
+  RunQDQAveragePoolOpTest<uint8_t>("AveragePool",
+                                   {TestInputDef<float>({1, 2, 8, 8, 8}, false, -10.0f, 10.0f)},
+                                   {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2, 2}),
+                                    utils::MakeAttribute("auto_pad", "SAME_LOWER")},
+                                   ExpectedEPNodeAssignment::All);
 }
 
 #endif  // defined(__aarch64__) || defined(_M_ARM64) || defined(__linux__)
