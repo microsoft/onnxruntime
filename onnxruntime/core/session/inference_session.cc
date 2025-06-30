@@ -3129,7 +3129,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // Log runtime error telemetry if the return value is not OK
-  ORT_RETURN_IF_ERROR_SESSIONID(retval, session_id);
+  ORT_RETURN_IF_ERROR_SESSIONID(retval, session_id_);
   return retval;
 }
 
