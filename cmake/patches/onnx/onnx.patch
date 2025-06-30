@@ -1,5 +1,5 @@
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index 8b5af303..7fe05a5a 100644
+index 8b5af303..8593fe4a 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
 @@ -40,6 +40,7 @@ option(ONNX_USE_LITE_PROTO "Use lite protobuf instead of full." OFF)
@@ -47,15 +47,7 @@ index 8b5af303..7fe05a5a 100644
  
  add_library(onnx_proto ${ONNX_PROTO_SRCS} ${ONNX_PROTO_HDRS})
  add_dependencies(onnx_proto gen_onnx_operators_proto gen_onnx_data_proto)
-@@ -492,6 +507,7 @@ if(MSVC)
-   endif()
- else()
-   # On non-Windows, hide all symbols we don't need
-+  set(EXTRA_FLAGS "-Wno-unused-parameter")
-   set(ONNX_API_DEFINE "-DONNX_API=__attribute__\(\(__visibility__\(\"default\"\)\)\)")
-   set_target_properties(onnx_proto PROPERTIES CXX_VISIBILITY_PRESET hidden)
-   set_target_properties(onnx_proto PROPERTIES VISIBILITY_INLINES_HIDDEN 1)
-@@ -595,13 +611,6 @@ if(ONNX_BUILD_PYTHON)
+@@ -595,13 +610,6 @@ if(ONNX_BUILD_PYTHON)
      target_link_libraries(onnx_cpp2py_export PRIVATE ${Python3_LIBRARIES})
      target_compile_options(onnx_cpp2py_export
                             PRIVATE /MP
@@ -69,7 +61,7 @@ index 8b5af303..7fe05a5a 100644
                                     ${EXTRA_FLAGS})
      add_msvc_runtime_flag(onnx_cpp2py_export)
      add_onnx_global_defines(onnx_cpp2py_export)
-@@ -618,23 +627,9 @@ endif()
+@@ -618,23 +626,9 @@ endif()
  if(MSVC)
    target_compile_options(onnx_proto
                           PRIVATE /MP
@@ -165,76 +157,3 @@ index acf3aac7..5bef6e72 100644
        OpSchemaRegisterNoExcept(std::move(op_schema), opset_version_to_load, fail_duplicate_schema);
      }
      static void
-diff --git a/onnx/onnx_pb.h b/onnx/onnx_pb.h
-index 0aab3e26..27f32195 100644
---- a/onnx/onnx_pb.h
-+++ b/onnx/onnx_pb.h
-@@ -47,10 +47,30 @@
- #define ONNX_API ONNX_IMPORT
- #endif
- 
-+#if defined(__GNUC__)
-+#pragma GCC diagnostic push
-+
-+// In file included from onnx/onnx-ml.pb.h:30:
-+// In file included from google/protobuf/extension_set.h:53:
-+// google/protobuf/parse_context.h:328:47: error: implicit conversion loses integer precision: 'long' to 'int' [-Werror,-Wshorten-64-to-32]
-+#if defined(__has_warning)
-+#if __has_warning("-Wshorten-64-to-32")
-+#pragma GCC diagnostic ignored "-Wshorten-64-to-32"
-+#endif
-+#endif  // defined(__has_warning)
-+
-+#endif  // defined(__GNUC__)
-+
-+
- #ifdef ONNX_ML
- #include "onnx/onnx-ml.pb.h"
- #else
- #include "onnx/onnx.pb.h"
- #endif
- 
-+#if defined(__GNUC__)
-+#pragma GCC diagnostic pop
-+#endif
-+
-+
- #endif // ! ONNX_ONNX_PB_H
-diff --git a/onnx/backend/test/case/node/cast.py b/onnx/backend/test/case/node/cast.py
-index 9696373920d72e782948cf9b5cf137983d229814..226f57eee4701dc8fefbf5d64983385b077bc80e 100644
---- a/onnx/backend/test/case/node/cast.py
-+++ b/onnx/backend/test/case/node/cast.py
-@@ -58,12 +58,13 @@
-             ("FLOAT8E5M2FNUZ", "FLOAT16"),
--            ("FLOAT", "UINT4"),
--            ("FLOAT16", "UINT4"),
--            ("FLOAT", "INT4"),
--            ("FLOAT16", "INT4"),
--            ("UINT4", "FLOAT"),
--            ("UINT4", "FLOAT16"),
--            ("UINT4", "UINT8"),
--            ("INT4", "FLOAT"),
--            ("INT4", "FLOAT16"),
--            ("INT4", "INT8"),
-+            # Skipped until onnxruntime/cmake/external/onnx points to a version of onnx which includes @onnx/onnx/pull/7074
-+            # ("FLOAT", "UINT4"),
-+            # ("FLOAT16", "UINT4"),
-+            # ("FLOAT", "INT4"),
-+            # ("FLOAT16", "INT4"),
-+            # ("UINT4", "FLOAT"),
-+            # ("UINT4", "FLOAT16"),
-+            # ("UINT4", "UINT8"),
-+            # ("INT4", "FLOAT"),
-+            # ("INT4", "FLOAT16"),
-+            # ("INT4", "INT8"),
-             ("FLOAT4E2M1", "FLOAT"),
-@@ -232,7 +233,8 @@
-                 expected_tensor = make_tensor(
-                     "x", getattr(TensorProto, to_type), [3, 5], expected.tolist()
-                 )
-                 output = expected_tensor
--            elif from_type in ("UINT4", "INT4") or to_type in ("UINT4", "INT4"):
-+            # Skipped until onnxruntime/cmake/external/onnx points to a version of onnx which includes @onnx/onnx/pull/7074
-+            elif False and (from_type in ("UINT4", "INT4") or to_type in ("UINT4", "INT4")):
-                 np_fp32 = np.arange(-9, 16).astype(np.float32)
-                 input_shape = (5, 5)
