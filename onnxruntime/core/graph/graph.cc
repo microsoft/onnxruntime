@@ -3831,8 +3831,8 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& init
   return initializer;
 }
 
-const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name, bool check_outer_scope,
-                                                         bool& is_constant) const {
+const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& initializer_name, OrtValue& value,
+                                                         bool& is_constant, bool check_outer_scope) const {
   const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
   if (GetInitializedTensor(initializer_name, initializer)) {
     if (CanOverrideInitializer()) {
@@ -3844,10 +3844,13 @@ const ONNX_NAMESPACE::TensorProto* Graph::GetInitializer(const std::string& init
     } else {
       is_constant = true;
     }
+
+    auto it = ortvalue_initializers_.find(initializer_name);
+    value = (it != ortvalue_initializers_.end()) ? it->second : OrtValue();
   } else if (check_outer_scope && IsSubgraph()) {
     // make sure there's not a local value with the same name. if there is it shadows any initializer in outer scope.
     if (IsOuterScopeValue(initializer_name)) {
-      initializer = parent_graph_->GetInitializer(initializer_name, check_outer_scope, is_constant);
+      initializer = parent_graph_->GetInitializer(initializer_name, value, is_constant, check_outer_scope);
     }
   }
 

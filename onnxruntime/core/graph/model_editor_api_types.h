@@ -114,6 +114,11 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
   }
 
+  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& /*attrs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
+  }
+
   Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& /*subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
