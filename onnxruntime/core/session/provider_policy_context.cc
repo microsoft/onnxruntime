@@ -214,6 +214,64 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
                            "No execution providers selected. Please check the device policy and available devices.");
   }
 
+  // Log telemetry for auto EP selection
+  {
+    std::vector<std::string> requested_ep_ids;
+    requested_ep_ids.reserve(devices_selected.size());
+
+    for (const auto* device : devices_selected) {
+      if (device != nullptr) {
+        requested_ep_ids.push_back(device->ep_name);
+      }
+    }
+
+    // Extract available execution provider IDs
+    std::vector<std::string> available_ep_ids;
+    available_ep_ids.reserve(execution_devices.size());
+    for (const auto* device : execution_devices) {
+      available_ep_ids.push_back(device->ep_name);
+    }
+
+    std::string policy_type;
+    if (options.value.ep_selection_policy.delegate) {
+      policy_type = "custom_delegate";
+    } else {
+      switch (options.value.ep_selection_policy.policy) {
+        case OrtExecutionProviderDevicePolicy_DEFAULT:
+          policy_type = "DEFAULT";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_CPU:
+          policy_type = "PREFER_CPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_NPU:
+          policy_type = "PREFER_NPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_GPU:
+          policy_type = "PREFER_GPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
+          policy_type = "MAX_PERFORMANCE";
+          break;
+        case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
+          policy_type = "MAX_EFFICIENCY";
+          break;
+        case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
+          policy_type = "MIN_OVERALL_POWER";
+          break;
+        default:
+          policy_type = "UNKNOWN";
+          break;
+      }
+    }
+
+    const Env& os_env = Env::Default();
+    os_env.GetTelemetryProvider().LogAutoEpSelection(
+        sess.GetCurrentSessionId(),
+        policy_type,
+        requested_ep_ids,
+        available_ep_ids);
+  }
+
   // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
   // EP options that have not been overridden by the user.
   ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
