@@ -71,7 +71,6 @@ bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const 
   const auto& data = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const auto& updates = *node.InputDefs()[2];
-  const std::string_view op_type = node.OpType();
 
   int32_t data_type;
   int32_t indices_type;
@@ -85,7 +84,9 @@ bool ScatterElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const 
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+  const std::string_view op_type = node.OpType();
+
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

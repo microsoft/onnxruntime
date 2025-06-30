@@ -56,13 +56,12 @@ bool GatherElementsOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const N
   const auto& indices = *node.InputDefs()[1];
   const std::string_view op_type = node.OpType();
 
-  int32_t data_type;
-  int32_t indices_type;
+  int32_t data_type, indices_type;
   if (!GetType(data, data_type, logger) || !GetType(indices, indices_type, logger)) {
     return false;
   }
 
-  return IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, data_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 
