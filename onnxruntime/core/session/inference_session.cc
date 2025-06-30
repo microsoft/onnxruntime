@@ -1999,10 +1999,10 @@ common::Status InferenceSession::Initialize() {
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
-  const Env& env = Env::Default();
 
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
+    const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
 
     bool have_cpu_ep = false;
@@ -2522,12 +2522,6 @@ common::Status InferenceSession::Initialize() {
         status = end_status;
       }
     }
-  } else {
-    // Log runtime error telemetry if the return value is not OK
-    // NOTE: The error line number here is not the line number of the error in the code,
-    // but the line number of this function call in the code. The purpose of this telemetry is to log the runtime error
-    // code that occurred during the inference session initialize, not the specific line of code that caused the error.
-    env.GetTelemetryProvider().LogRuntimeError(session_id_, status, __FILE__, __FUNCTION__, __LINE__);
   }
 
   return status;
@@ -3135,13 +3129,7 @@ Status InferenceSession::Run(const RunOptions& run_options,
   }
 
   // Log runtime error telemetry if the return value is not OK
-  // NOTE: The error line number here is not the line number of the error in the code,
-  // but the line number of this function call in the code. The purpose of this telemetry is to log the runtime error
-  // code that occurred during the inference session run, not the specific line of code that caused the error.
-  if (!retval.IsOK()) {
-    env.GetTelemetryProvider().LogRuntimeError(session_id_, retval, __FILE__, __FUNCTION__, __LINE__);
-  }
-
+  ORT_RETURN_IF_ERROR_SESSIONID(retval, session_id);
   return retval;
 }
 
