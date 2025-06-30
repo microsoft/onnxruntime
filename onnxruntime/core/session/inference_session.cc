@@ -1999,10 +1999,10 @@ common::Status InferenceSession::Initialize() {
   if (session_profiler_.IsEnabled()) {
     tp = session_profiler_.Start();
   }
+  const Env& env = Env::Default();
 
   ORT_TRY {
     LOGS(*session_logger_, INFO) << "Initializing session.";
-    const Env& env = Env::Default();
     env.GetTelemetryProvider().LogSessionCreationStart();
 
     bool have_cpu_ep = false;
