@@ -506,7 +506,7 @@ class InferenceSession(Session):
                 self._fallback_providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]
             else:
                 self._fallback_providers = ["CPUExecutionProvider"]
-        if "NvTensorRTRTXExecutionProvider" in available_providers:
+        elif "NvTensorRTRTXExecutionProvider" in available_providers:
             if (
                 providers
                 and any(
