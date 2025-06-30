@@ -400,8 +400,7 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
     if (mem_info.device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
       AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
       return RegisterAllocatorImpl(allocator_ptr);
-    }
-    else {
+    } else {
       CUDAExecutionProviderInfo cuda_ep_info;
       GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
       CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
