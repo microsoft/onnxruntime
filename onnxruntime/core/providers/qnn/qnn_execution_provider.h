@@ -43,6 +43,10 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
+
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;

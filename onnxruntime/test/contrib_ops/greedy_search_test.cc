@@ -75,9 +75,6 @@ TEST(GreedySearchTest, GptGreedySearchFp16_VocabPadded) {
       session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
     }
 #endif
-    if (is_rocm) {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
-    }
 
     // The following model was obtained by padding the vocabulary size in testdata/transformers/tiny_gpt2_beamsearch_fp16.onnx
     // (by making beam_size == 1) from 1000 to 1600 (just for illustrative and testing purposes) to see if the greedy search
@@ -160,9 +157,6 @@ TEST(GreedySearchTest, GptGreedySearchFp32) {
       session_options.AppendExecutionProvider_CUDA_V2(cuda_options);
     }
 #endif
-    if (is_rocm) {
-      Ort::ThrowOnError(OrtSessionOptionsAppendExecutionProvider_ROCM(session_options, 0));
-    }
 
     Ort::Session session(*ort_env, ORT_TSTR("testdata/transformers/tiny_gpt2_greedysearch_with_init_decoder.onnx"), session_options);
 

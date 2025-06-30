@@ -57,7 +57,7 @@ class MatMulNBits final : public CudaKernel {
       is_zero_points_scale_same_type_ = (zero_point_type == scale_type);
     }
 
-    if constexpr (std::is_same<T, MLFloat16>::value) {
+    if constexpr (std::is_same<T, MLFloat16>::value || std::is_same<T, BFloat16>::value) {
       int option = ParseEnvironmentVariableWithDefault<int>(kFpAIntBGemmOption, 0);
       if ((option & (static_cast<int>(nbits_) | kFpAIntBGemmOption_All)) != 0 &&
           (block_size_ == 64 || block_size_ == 128) &&
@@ -68,7 +68,13 @@ class MatMulNBits final : public CudaKernel {
           sm_ >= 75) {
         if ((option & (kFpAIntBGemmOption_Gemv | kFpAIntBGemmOption_All)) != 0) {
           using onnxruntime::llm::kernels::fpA_intB_gemv::KernelType;
-          KernelType cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          KernelType cuda_kernel_type;
+          if constexpr (std::is_same<T, MLFloat16>::value) {
+            cuda_kernel_type = (nbits_ == 8) ? KernelType::FP16Int8Groupwise : KernelType::FP16Int4Groupwise;
+          } else if constexpr (std::is_same<T, BFloat16>::value) {
+            cuda_kernel_type = (nbits_ == 8) ? KernelType::BF16Int8Groupwise : KernelType::BF16Int4Groupwise;
+          }
+
           if (onnxruntime::llm::kernels::fpA_intB_gemv::is_supported(sm_, cuda_kernel_type)) {
             has_fpA_intB_gemv_ = true;
           }
@@ -117,6 +123,10 @@ class MatMulNBits final : public CudaKernel {
   bool is_zero_points_scale_same_type_{false};
   bool has_fpA_intB_gemv_{false};
   bool has_fpA_intB_gemm_{false};
+
+  bool is_prepacked_weight_{false};
+  bool is_prepacked_scale_{false};
+  bool is_prepacked_zero_point_{false};
 
   WeightOnlyGemmRunnerPtr weightOnlyGemmRunner_{nullptr};
   mutable GemmProfilerPtr gemmProfiler_{nullptr};
