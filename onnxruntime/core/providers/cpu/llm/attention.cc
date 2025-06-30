@@ -83,7 +83,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE                              // mask type
                                                 : (attn_mask->IsDataType<bool>() ? AttentionMaskType::MASK_BOOL : AttentionMaskType::MASK_ADD);
 
-    ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE || attn_mask->IsDataType<float>(), "Attention mask must be of type bool or float if provided.");
+    ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                    parameters.mask_type == AttentionMaskType::MASK_BOOL ||
+                    attn_mask->IsDataType<float>(),
+                "Attention mask must be of type bool or float if provided.");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(K->Shape()[1]), "kv_num_heads different from K.shape[1]");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(V->Shape()[1]), "kv_num_heads different from V.shape[1]");
     ORT_ENFORCE(parameters.q_num_heads == onnxruntime::narrow<int>(Q->Shape()[1]), "q_num_heads different from Q.shape[1]");
@@ -99,7 +102,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     parameters.past_sequence_length = past_key == nullptr                     // past_key.shape[2] or past_value.shape[2] (4D) or given by the mask
                                           ? (attn_mask == nullptr
                                                  ? 0
-                                                 : onnxruntime::narrow<int>(attn_mask->Shape()[3]) - parameters.kv_sequence_length)
+                                                 : onnxruntime::narrow<int>(attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1]) - parameters.kv_sequence_length)
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
     parameters.scale = std::isnan(scale_) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale_;
 
@@ -430,28 +433,25 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
 
   // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0, then broadcast to 3D (BxSxT).
   void* mask_data = nullptr;
-  /*
   bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
   if (mask_index != nullptr || causal) {
-    size_t mask_data_bytes = SafeInt<size_t>(batch_size) * sequence_length * total_sequence_length * sizeof(T);
+    size_t mask_data_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_sequence_length * total_sequence_length * sizeof(T);
     mask_data = allocator->Alloc(mask_data_bytes);
     memset(mask_data, 0, mask_data_bytes);
   }
-  */
 
   BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
-  // const int32_t* mask_index_data = mask_index != nullptr ? mask_index->Data<int32_t>() : nullptr;
+  const bool* mask_index_data = mask_index != nullptr ? mask_index->Data<bool>() : nullptr;
   gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
                                                  ? mask_index->Shape().GetDims()
                                                  : gsl::span<const int64_t>{};
-  /*
   if (mask_data != nullptr) {
     // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
     // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
-    PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                causal, batch_size, sequence_length, kv_sequence_length, past_sequence_length, mask_filter_value_);
+    this->PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
+                      causal, parameters.batch_size, parameters.q_sequence_length,
+                      parameters.kv_sequence_length, parameters.past_sequence_length);
   }
-  */
 
   const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
   T* present_data = present != nullptr ? present->MutableData<T>() : nullptr;
@@ -548,6 +548,100 @@ Tensor* AttentionBase<T>::GetPresent(OpKernelContext* context,
   }
 
   return present;
+}
+
+template <typename T>
+void AttentionBase<T>::PrepareMask(const bool* mask_index,
+                                   gsl::span<const int64_t> mask_index_dims,
+                                   T* mask_data,
+                                   bool causal,
+                                   int batch_size,
+                                   int sequence_length,
+                                   int kv_sequence_length,
+                                   int past_sequence_length) const {
+  const int all_sequence_length = past_sequence_length + kv_sequence_length;
+
+  // mask_data has been filled with 0, and its shape is BxSxT
+  T* p_mask = mask_data;
+
+  // 4D mask in Megatron GPT2 is currently not support in CPU kernel
+  if (nullptr != mask_index && mask_index_dims.size() == 4) {
+    ORT_NOT_IMPLEMENTED("4D mask in attention cpu kernel is not supported");
+  }
+
+  T mask_filter_value = 1;
+
+  // For 3D mask, convert values 0 to mask_filter_value, and 1 to 0.0, then apply unidirectional mask if any.
+  if (nullptr != mask_index && mask_index_dims.size() == 3) {
+    for (int i = 0; i < batch_size * sequence_length * all_sequence_length; i++) {
+      p_mask[i] = mask_index[i] ? static_cast<T>(0.0f) : mask_filter_value;
+    }
+
+    if (causal) {
+      for (int b_i = 0; b_i < batch_size; b_i++) {
+        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+          for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+            p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+          }
+        }
+        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
+      }
+    }
+
+    return;
+  }
+
+  bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
+  bool has_mask_start_position = (nullptr != mask_index &&
+                                  mask_index_dims.size() == 1 &&
+                                  static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
+
+  for (int b_i = 0; b_i < batch_size; b_i++) {
+    // TODO: mask_index can be used in softmax to save some calculation.
+    if (nullptr != mask_index) {
+      if (is_raw_attention_mask) {
+        // Raw attention mask has value 0 or 1. Here we convert 0 to mask_filter_value, and 1 to 0.0.
+        ptrdiff_t off = SafeInt<ptrdiff_t>(b_i) * all_sequence_length;
+        const bool* raw_mask = mask_index + off;
+        for (int m_i = 0; m_i < all_sequence_length; m_i++) {
+          p_mask[m_i] = raw_mask[m_i] ? static_cast<T>(0.0f) : mask_filter_value;
+        }
+      } else {
+        // mask_index is 1D: (B) or (2B) => (Bx)T
+
+        // Handle right-side padding: mask value at or after the end position will be mask_filter_value
+        int end_position = mask_index[b_i];
+        for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
+          p_mask[m_i] = mask_filter_value;
+        }
+
+        // Handle left-side padding: mask value before the start position will be mask_filter_value
+        if (has_mask_start_position) {
+          int start_position = std::min(mask_index[b_i + batch_size] ? 1 : 0, all_sequence_length);
+          for (int m_i = 0; m_i < start_position; m_i++) {
+            p_mask[m_i] = mask_filter_value;
+          }
+        }
+      }
+    }
+
+    // Broadcast mask from (Bx)T to (Bx)SxT
+    for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
+      memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
+    }
+
+    // Apply unidirectional mask.
+    if (causal) {
+      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+        for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+          p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+        }
+      }
+    }
+
+    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
+    p_mask += mask_to_advance;
+  }
 }
 
 }  // namespace onnxruntime
