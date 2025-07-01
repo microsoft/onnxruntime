@@ -630,8 +630,15 @@ size_t EpGraph::GetNumInputs() const {
 Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> result) const {
   const size_t num_inputs = inputs_.size();
 
-  ORT_RETURN_IF(result.size() < num_inputs, "Not enough space for graph inputs: expected buffer with at least ",
-                inputs_.size(), " elements, but got ", result.size());
+  if (result.size() < num_inputs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for graph outputs: expected buffer with at least ",
+                           inputs_.size(), " elements, but got ", result.size());
+  }
+
+  if (result.data() == nullptr && num_inputs > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph inputs is NULL.");
+  }
 
   for (size_t i = 0; i < num_inputs; ++i) {
     result[i] = inputs_[i];
@@ -647,8 +654,15 @@ size_t EpGraph::GetNumOutputs() const {
 Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
   const size_t num_outputs = outputs_.size();
 
-  ORT_RETURN_IF(result.size() < num_outputs, "Not enough space for graph outputs: expected buffer with at least ",
-                outputs_.size(), " elements, but got ", result.size());
+  if (result.size() < num_outputs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for graph outputs: expected buffer with at least ",
+                           outputs_.size(), " elements, but got ", result.size());
+  }
+
+  if (result.data() == nullptr && num_outputs > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph outputs is NULL.");
+  }
 
   for (size_t i = 0; i < num_outputs; ++i) {
     result[i] = outputs_[i];
@@ -664,8 +678,15 @@ size_t EpGraph::GetNumInitializers() const {
 Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> result) const {
   const size_t num_initializers = initializer_value_infos_.size();
 
-  ORT_RETURN_IF(result.size() < num_initializers, "Not enough space for graph initializers: expected buffer with ",
-                "at least ", initializer_value_infos_.size(), " elements, but got ", result.size());
+  if (result.size() < num_initializers) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for graph initializers: expected buffer with at least ",
+                           initializer_value_infos_.size(), " elements, but got ", result.size());
+  }
+
+  if (result.data() == nullptr && num_initializers > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph initializers is NULL.");
+  }
 
   for (size_t i = 0; i < num_initializers; ++i) {
     result[i] = initializer_value_infos_[i];
@@ -681,8 +702,15 @@ size_t EpGraph::GetNumNodes() const {
 Status EpGraph::GetNodes(gsl::span<const OrtNode*> result) const {
   const size_t num_nodes = nodes_.size();
 
-  ORT_RETURN_IF(result.size() < num_nodes, "Not enough space for graph nodes: expected buffer with at least ",
-                nodes_.size(), " elements, but got ", result.size());
+  if (result.size() < num_nodes) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for graph nodes: expected buffer with at least ",
+                           nodes_.size(), " elements, but got ", result.size());
+  }
+
+  if (result.data() == nullptr && num_nodes > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph nodes is NULL.");
+  }
 
   for (size_t i = 0; i < num_nodes; ++i) {
     result[i] = nodes_[i].get();

@@ -115,21 +115,19 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   const OrtApi& ort_api = Ort::GetApi();
 
   // Get all nodes
-  OrtArrayOfConstObjects* nodes_array = nullptr;
-  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ort_api.ReleaseArrayOfConstObjects);
-
   size_t num_nodes = 0;
-  const void* const* nodes_raw_data = nullptr;
+  RETURN_IF_API_ERROR(ort_api.Graph_GetNumNodes(&graph, &num_nodes));
 
-  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, &nodes_array));
-  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
-  RETURN_IF_API_ERROR(ort_api.ArrayOfConstObjects_GetData(nodes_array, &nodes_raw_data));
+  if (num_nodes == 0) {
+    return Ort::Status{nullptr};  // Nothing to sort.
+  }
 
-  auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_raw_data), num_nodes);
+  std::vector<const OrtNode*> nodes(num_nodes);
+  RETURN_IF_API_ERROR(ort_api.Graph_GetNodes(&graph, nodes.data(), nodes.size()));
 
   // Get the maximum node ID. Not really required if we chose to represent the `in_degree` as a map instead of vector.
   size_t max_node_id = 0;
-  for (const OrtNode* node : nodes_span) {
+  for (const OrtNode* node : nodes) {
     size_t node_id = 0;
     RETURN_IF_API_ERROR(ort_api.Node_GetId(node, &node_id));
     max_node_id = std::max(max_node_id, node_id);
@@ -142,7 +140,7 @@ static Ort::Status KahnsTopologicalSort(const OrtGraph& graph,
   topo_order.reserve(num_nodes);
 
   // Initialize in_degree and initial nodes to visit first.
-  for (const OrtNode* node : nodes_span) {
+  for (const OrtNode* node : nodes) {
     size_t input_edge_count = 0;
     RETURN_IF_API_ERROR(GetNodeInputEdgeCount(node, input_edge_count));
 

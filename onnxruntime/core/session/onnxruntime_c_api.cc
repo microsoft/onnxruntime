@@ -2701,10 +2701,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumInputs, _In_ const OrtGraph* graph, _Ou
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetInputs, _In_ const OrtGraph* graph,
                     _Out_writes_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs) {
   API_IMPL_BEGIN
-  if (inputs == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'inputs' argument is NULL");
-  }
-
   gsl::span<const OrtValueInfo*> inputs_span(inputs, max_num_inputs);
   ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInputs(inputs_span));
 
@@ -2727,10 +2723,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumOutputs, _In_ const OrtGraph* graph, _O
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetOutputs, _In_ const OrtGraph* graph,
                     _Out_writes_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs) {
   API_IMPL_BEGIN
-  if (outputs == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'outputs' argument is NULL");
-  }
-
   gsl::span<const OrtValueInfo*> outputs_span(outputs, max_num_outputs);
   ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOutputs(outputs_span));
 
@@ -2754,10 +2746,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetInitializers, _In_ const OrtGraph* graph,
                     _Out_writes_(max_num_initializers) const OrtValueInfo** initializers,
                     _In_ size_t max_num_initializers) {
   API_IMPL_BEGIN
-  if (initializers == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'initializers' argument is NULL");
-  }
-
   gsl::span<const OrtValueInfo*> initializers_span(initializers, max_num_initializers);
   ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetInitializers(initializers_span));
 
@@ -2780,10 +2768,6 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetNodes, _In_ const OrtGraph* graph,
                     _Out_writes_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes) {
   API_IMPL_BEGIN
-  if (nodes == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'nodes' argument is NULL");
-  }
-
   gsl::span<const OrtNode*> nodes_span(nodes, max_num_nodes);
   ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetNodes(nodes_span));
 

@@ -180,18 +180,13 @@ const char* ORT_API_CALL ExampleEp ::GetNameImpl(const OrtEp* this_ptr) noexcept
 }
 
 OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph) {
-  OrtArrayOfConstObjects* initializers = nullptr;
-  DeferOrtRelease<OrtArrayOfConstObjects> release_initializers(&initializers, ort_api.ReleaseArrayOfConstObjects);
   size_t num_initializers = 0;
+  RETURN_IF_ERROR(ort_api.Graph_GetNumInitializers(graph, &num_initializers));
 
-  RETURN_IF_ERROR(ort_api.Graph_GetInitializers(graph, &initializers));
-  RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(initializers, &num_initializers));
+  std::vector<const OrtValueInfo*> initializers(num_initializers);
+  RETURN_IF_ERROR(ort_api.Graph_GetInitializers(graph, initializers.data(), initializers.size()));
 
-  for (size_t i = 0; i < num_initializers; ++i) {
-    const OrtValueInfo* initializer = nullptr;
-    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(initializers, i,
-                                                             reinterpret_cast<const void**>(&initializer)));
-
+  for (const OrtValueInfo* initializer : initializers) {
     bool is_constant = false;
     RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(initializer, &is_constant));
 
@@ -233,25 +228,19 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
                                                      OrtEpGraphSupportInfo* graph_support_info) {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
-  OrtArrayOfConstObjects* nodes_array = nullptr;
-  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes_array(&nodes_array, ep->ort_api.ReleaseArrayOfConstObjects);
-
   size_t num_nodes = 0;
-
-  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, &nodes_array));
-  RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNumNodes(graph, &num_nodes));
 
   if (num_nodes == 0) {
     return nullptr;  // No nodes to process
   }
 
-  const void* const* nodes_data = nullptr;
-  RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(nodes_array, &nodes_data));
-  auto nodes_span = gsl::span<const OrtNode* const>(reinterpret_cast<const OrtNode* const*>(nodes_data), num_nodes);
+  std::vector<const OrtNode*> nodes(num_nodes);
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graph, nodes.data(), nodes.size()));
 
   std::vector<const OrtNode*> supported_nodes;
 
-  for (const OrtNode* node : nodes_span) {
+  for (const OrtNode* node : nodes) {
     const char* op_type = nullptr;
     RETURN_IF_ERROR(ep->ort_api.Node_GetOperatorType(node, &op_type));
 
@@ -321,23 +310,18 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   // implementation could transfer the weights to device memory.
   ep->SaveConstantInitializers(graphs[0]);
 
-  OrtArrayOfConstObjects* nodes_array = nullptr;
-  DeferOrtRelease<OrtArrayOfConstObjects> release_nodes(&nodes_array, ort_api.ReleaseArrayOfConstObjects);
   size_t num_nodes = 0;
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNumNodes(graphs[0], &num_nodes));
 
-  RETURN_IF_ERROR(ort_api.Graph_GetNodes(graphs[0], &nodes_array));
-  RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(nodes_array, &num_nodes));
+  std::vector<const OrtNode*> nodes(num_nodes);
+  RETURN_IF_ERROR(ep->ort_api.Graph_GetNodes(graphs[0], nodes.data(), nodes.size()));
 
   if (num_nodes != 1) {
     return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
   }
 
-  const OrtNode* node_to_compile = nullptr;
-  RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(nodes_array, 0,
-                                                           reinterpret_cast<const void**>(&node_to_compile)));
-
   const char* node_op_type = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetOperatorType(node_to_compile, &node_op_type));
+  RETURN_IF_ERROR(ort_api.Node_GetOperatorType(nodes[0], &node_op_type));
 
   if (std::strncmp(node_op_type, "Mul", 4) != 0) {
     return ort_api.CreateStatus(ORT_EP_FAIL, "Expected to compile a single Mul node");
@@ -347,7 +331,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   OrtArrayOfConstObjects* inputs = nullptr;
   DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs, ort_api.ReleaseArrayOfConstObjects);
 
-  RETURN_IF_ERROR(ort_api.Node_GetInputs(node_to_compile, &inputs));
+  RETURN_IF_ERROR(ort_api.Node_GetInputs(nodes[0], &inputs));
   const OrtValueInfo* input0 = nullptr;
   const OrtValueInfo* input1 = nullptr;
 
