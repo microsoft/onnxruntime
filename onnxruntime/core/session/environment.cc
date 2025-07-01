@@ -226,7 +226,7 @@ Status Environment::CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info, co
         l_arena_cfg};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   } else {
-    AllocatorCreationInfo alloc_creation_info{[](int) { return std::make_unique<CPUAllocator>(); },
+    AllocatorCreationInfo alloc_creation_info{[mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
                                               0, create_arena};
     allocator_ptr = CreateAllocator(alloc_creation_info);
   }
@@ -397,15 +397,20 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
-    CUDAExecutionProviderInfo cuda_ep_info;
-    GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
-    CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
-    AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(
-        static_cast<int16_t>(mem_info.device.Id()),
-        arena_cfg->max_mem,
-        static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
-        external_info, arena_cfg);
-    return RegisterAllocatorImpl(allocator_ptr);
+    if (mem_info.device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
+      AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+      return RegisterAllocatorImpl(allocator_ptr);
+    } else {
+      CUDAExecutionProviderInfo cuda_ep_info;
+      GetProviderInfo_CUDA().CUDAExecutionProviderInfo__FromProviderOptions(options, cuda_ep_info);
+      CUDAExecutionProviderExternalAllocatorInfo external_info = cuda_ep_info.external_allocator_info;
+      AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCudaAllocator(
+          static_cast<int16_t>(mem_info.device.Id()),
+          arena_cfg->max_mem,
+          static_cast<ArenaExtendStrategy>(arena_cfg->arena_extend_strategy),
+          external_info, arena_cfg);
+      return RegisterAllocatorImpl(allocator_ptr);
+    }
   }
 #endif
 
