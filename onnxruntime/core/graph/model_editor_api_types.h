@@ -154,22 +154,30 @@ struct ModelEditorGraph : public OrtGraph {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }
 
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumInputs() const override { return inputs.size(); }
+
+  Status GetInputs(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph inputs.");
   }
 
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumOutputs() const override { return outputs.size(); }
+
+  Status GetOutputs(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph outputs.");
   }
 
-  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumInitializers() const override { return initializers.size() + external_initializers.size(); }
+
+  Status GetInitializers(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph initializers.");
   }
 
-  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumNodes() const override { return nodes.size(); }
+
+  Status GetNodes(gsl::span<const OrtNode*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph nodes.");
   }

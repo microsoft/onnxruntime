@@ -240,34 +240,56 @@ struct OrtGraph {
   virtual int64_t GetOnnxIRVersion() const = 0;
 
   /// <summary>
-  /// Gets the graph's inputs (including initializers) as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  /// Returns the number of graph inputs, including initializers that appear in the list of graph inputs.
   /// </summary>
-  /// <param name="inputs">Output parameter set to the graph's inputs.</param>
-  /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const = 0;
+  /// <returns>The number of graph inputs.</returns>
+  virtual size_t GetNumInputs() const = 0;
 
   /// <summary>
-  /// Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  /// Gets the graph's inputs (including initializers) as OrtValueInfo instances.
   /// </summary>
-  /// <param name="inputs">Output parameter set to the graph's outputs.</param>
+  /// <param name="inputs">Buffer into which to copy the inputs.</param>
   /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const = 0;
+  virtual onnxruntime::Status GetInputs(gsl::span<const OrtValueInfo*> inputs) const = 0;
 
   /// <summary>
-  /// Gets the graph's initializers (both constant and non-constant) as OrtValueInfo instances wrapped in an
-  /// OrtArrayOfConstObjects.
+  /// Returns the number of graph outputs.
   /// </summary>
-  /// <param name="initializers">Output parameter set to the graph's initializers.</param>
-  /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const = 0;
+  /// <returns>The number of graph outputs.</returns>
+  virtual size_t GetNumOutputs() const = 0;
 
   /// <summary>
-  /// Gets the graph's nodes as OrtNode instances wrapped in an OrtArrayOfConstObjects. The nodes are sorted in
-  /// a default "reverse DFS" topological order.
+  /// Gets the graph's outputs as OrtValueInfo instances.
   /// </summary>
-  /// <param name="nodes">Output parameter set to the graph's nodes.</param>
+  /// <param name="outputs">Buffer into which to copy the outputs.</param>
   /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& nodes) const = 0;
+  virtual onnxruntime::Status GetOutputs(gsl::span<const OrtValueInfo*> outputs) const = 0;
+
+  /// <summary>
+  /// Returns the number of graph initializers (both constant and non-constant).
+  /// </summary>
+  /// <returns>The number of graph initializers.</returns>
+  virtual size_t GetNumInitializers() const = 0;
+
+  /// <summary>
+  /// Gets the graph's initializers (both constant and non-constant) as OrtValueInfo instances.
+  /// </summary>
+  /// <param name="initializers">The buffer into which to copy the initializers.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetInitializers(gsl::span<const OrtValueInfo*> initializers) const = 0;
+
+  /// <summary>
+  /// Returns the number of graph nodes.
+  /// </summary>
+  /// <returns>The number of graph nodes.</returns>
+  virtual size_t GetNumNodes() const = 0;
+
+  /// <summary>
+  /// Gets the graph's nodes. The nodes are sorted in a default "reverse DFS" topological order.
+  /// </summary>
+  /// <param name="nodes">Buffer into which to copy the nodes.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNodes(gsl::span<const OrtNode*> nodes) const = 0;
 
   /// <summary>
   /// Gets the graph's parent node, if any. The parent_node is nullptr if this is not a nested subgraph.

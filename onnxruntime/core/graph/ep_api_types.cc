@@ -587,45 +587,69 @@ const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
 int64_t EpGraph::GetOnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
 
-Status EpGraph::GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(inputs_.size());
+size_t EpGraph::GetNumInputs() const {
+  return inputs_.size();
+}
 
-  for (const EpValueInfo* input : inputs_) {
-    result->storage.push_back(input);
+Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> result) const {
+  const size_t num_inputs = inputs_.size();
+
+  ORT_RETURN_IF(result.size() < num_inputs, "Not enough space for graph inputs: expected buffer with at least ",
+                inputs_.size(), " elements, but got ", result.size());
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    result[i] = inputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(outputs_.size());
+size_t EpGraph::GetNumOutputs() const {
+  return outputs_.size();
+}
 
-  for (const EpValueInfo* output : outputs_) {
-    result->storage.push_back(output);
+Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
+  const size_t num_outputs = outputs_.size();
+
+  ORT_RETURN_IF(result.size() < num_outputs, "Not enough space for graph outputs: expected buffer with at least ",
+                outputs_.size(), " elements, but got ", result.size());
+
+  for (size_t i = 0; i < num_outputs; ++i) {
+    result[i] = outputs_[i];
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(initializer_value_infos_.size());
+size_t EpGraph::GetNumInitializers() const {
+  return initializer_value_infos_.size();
+}
 
-  for (const EpValueInfo* initializer_value_info : initializer_value_infos_) {
-    result->storage.push_back(initializer_value_info);
+Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> result) const {
+  const size_t num_initializers = initializer_value_infos_.size();
+
+  ORT_RETURN_IF(result.size() < num_initializers, "Not enough space for graph initializers: expected buffer with ",
+                "at least ", initializer_value_infos_.size(), " elements, but got ", result.size());
+
+  for (size_t i = 0; i < num_initializers; ++i) {
+    result[i] = initializer_value_infos_[i];
   }
 
   return Status::OK();
 }
 
-Status EpGraph::GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtNode);
-  result->storage.reserve(nodes_.size());
+size_t EpGraph::GetNumNodes() const {
+  return nodes_.size();
+}
 
-  for (const std::unique_ptr<EpNode>& ep_node : nodes_) {
-    result->storage.push_back(ep_node->ToExternal());
+Status EpGraph::GetNodes(gsl::span<const OrtNode*> result) const {
+  const size_t num_nodes = nodes_.size();
+
+  ORT_RETURN_IF(result.size() < num_nodes, "Not enough space for graph nodes: expected buffer with at least ",
+                nodes_.size(), " elements, but got ", result.size());
+
+  for (size_t i = 0; i < num_nodes; ++i) {
+    result[i] = nodes_[i].get();
   }
 
   return Status::OK();

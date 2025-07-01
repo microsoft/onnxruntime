@@ -248,20 +248,31 @@ struct EpGraph : public OrtGraph {
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 
-  // Gets the graph's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  // Get the number of graph inputs, including initializers that are listed as graph inputs.
+  size_t GetNumInputs() const override;
+
+  // Gets the graph's inputs as OrtValueInfo instances.
   // Includes initializers that are graph inputs.
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  Status GetInputs(gsl::span<const OrtValueInfo*> inputs) const override;
 
-  // Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
+  // Get the number of graph outputs.
+  size_t GetNumOutputs() const override;
 
-  // Gets the graph's initializers as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  // Gets the graph's outputs as OrtValueInfo instances.
+  Status GetOutputs(gsl::span<const OrtValueInfo*> outputs) const override;
+
+  // Get the number of graph initializers, including both constant and non-constant initializers.
+  size_t GetNumInitializers() const override;
+
+  // Gets the graph's initializers as OrtValueInfo instances.
   // Includes both constant initializers and non-constant initializers (aka optional graph inputs).
-  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const override;
+  Status GetInitializers(gsl::span<const OrtValueInfo*> initializers) const override;
 
-  // Gets the graph's nodes as OrtNode instances wrapped in an OrtArrayOfConstObjects.
-  // The nodes are sorted in a default "reverse DFS" topological order.
-  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& nodes) const override;
+  // Get the number of nodes in the graph.
+  size_t GetNumNodes() const override;
+
+  // Gets the graph's nodes. The nodes are sorted in a default "reverse DFS" topological order.
+  Status GetNodes(gsl::span<const OrtNode*> nodes) const override;
 
   // Gets the graph's parent node or nullptr if this is not a nested subgraph.
   Status GetParentNode(const OrtNode*& parent_node) const override;

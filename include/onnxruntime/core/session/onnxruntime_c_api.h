@@ -5699,34 +5699,78 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
+  /** \brief Returns the number of graphs inputs.
+   *
+   * Counts initializers that are included in the list of graph inputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_inputs Output parameter set to the number of graph inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs);
+
   /** \brief Returns the graph's inputs as OrtValueInfo instances.
    *
    * Includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] inputs Output parameter set to a new OrtArrayOfConstObjects instance containing the graph inputs
-   *                    as OrtValueInfo instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_inputs The maximum size of the `inputs` array.
+   *                           Typical usage sets this to the result of Graph_GetNumInputs(). An error status is
+   *                           returned if `max_num_inputs` is less than the number of graph inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** inputs);
+  ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
+                  _Out_writes_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+
+  /** \brief Returns the number of graphs outputs.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_outputs Output parameter set to the number of graph outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumOutputs, _In_ const OrtGraph* graph, _Out_ size_t* num_outputs);
 
   /** \brief Returns the graph's outputs as OrtValueInfo instances.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] outputs Output parameter set to a new OrtArrayOfConstObjects instance containing the graph outputs
-   *                     as OrtValueInfo instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] outputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_outputs The maximum size of the `outputs` array.
+   *                            Typical usage sets this to the result of Graph_GetNumOutputs(). An error status is
+   *                            returned if `max_num_outputs` is less than the number of graph outputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** outputs);
+  ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
+                  _Out_writes_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
 
-  /** \brief Returns the graph's initializers as OrtValueInfo instances. Includes constant and non-constant
-   * initializers.
+  /** \brief Returns the number of graph initializers.
+   *
+   * Counts constant and non-constant initializers.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_initializers Output parameter set to the number of graph initializers.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumInitializers, _In_ const OrtGraph* graph, _Out_ size_t* num_initializers);
+
+  /** \brief Returns the graph's initializers as OrtValueInfo instances.
+   *
+   * Includes constant and non-constant initializers.
    *
    * For ONNX IR version < 4, all initializers are constant.
    *
@@ -5736,15 +5780,29 @@ struct OrtApi {
    * Call ValueInfo_GetInitializerValue to get the initializer's data.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] initializers Output parameter set to a new OrtArrayOfConstObjects instance containing the graph's
-   *                          initializers as OrtValueInfo instances.
-   *                          Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] initializers Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] max_num_initializers The maximum size of the `initializers` array. Typical usage sets this to the
+   *                                 result of Graph_GetNumInitializers(). An error status is returned if
+   *                                 `max_num_initializers` is less than the number of graph initializers.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** initializers);
+  ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph,
+                  _Out_writes_(max_num_initializers) const OrtValueInfo** initializers,
+                  _In_ size_t max_num_initializers);
+
+  /** \brief Returns the number of graph nodes.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_nodes Output parameter set to the number of graph nodes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t* num_nodes);
 
   /** \brief Returns the graph's nodes as OrtNode instances.
    *
@@ -5752,14 +5810,17 @@ struct OrtApi {
    * own node ordering if a different order is required.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] nodes Output parameter set to a new OrtArrayOfConstObjects instance containing the graph's nodes as
-   *                   OrtNode instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode*.
+   * \param[in] max_num_initializers The maximum size of the `nodes` array. Typical usage sets this to the
+   *                                 result of Graph_GetNumNodes(). An error status is returned if
+   *                                 `max_num_nodes` is less than the number of graph nodes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph, _Outptr_ OrtArrayOfConstObjects** nodes);
+  ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
+                  _Out_writes_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
    *
