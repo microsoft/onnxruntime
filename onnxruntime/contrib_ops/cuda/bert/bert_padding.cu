@@ -383,7 +383,7 @@ __global__ void __launch_bounds__(kMAX_THREADS_PER_BLOCK)
     }
   }
 
-  int last_leading_position = BlockReduce(temp_storage).Reduce(biggest_position, cub::Max(), blockDim.x);
+  int last_leading_position = BlockReduce(temp_storage).Reduce(biggest_position, ::cuda::maximum(), blockDim.x);
 
   if (threadIdx.x == 0) {
     int batch_offset = batch_id * sequence_length;

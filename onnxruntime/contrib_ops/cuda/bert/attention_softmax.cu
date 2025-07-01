@@ -95,7 +95,7 @@ __device__ inline void Softmax(const int total_sequence_length,
       }
     }
   }
-  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max());
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum());
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -114,7 +114,7 @@ __device__ inline void Softmax(const int total_sequence_length,
     }
   }
 
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, ::cuda::std::plus());
   if (threadIdx.x == 0) {
     sum_reverse_block = 1.f / sum;
   }
@@ -171,7 +171,7 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-  const auto max = BlockReduce(tmp_storage).Reduce(input_data, cub::Max(), end);
+  const auto max = BlockReduce(tmp_storage).Reduce(input_data, ::cuda::maximum(), end);
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -184,7 +184,7 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {
@@ -240,7 +240,7 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     cached_data[i] = input_data;
     thread_data_max = max(thread_data_max, input_data);
   }
-  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -254,7 +254,7 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     cached_data[i] = is_valid ? expf(cached_data[i] - max_block) : 0.0f;
     thread_data_exp += cached_data[i];
   }
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {
@@ -343,7 +343,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     return;
   }
 
-  const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, cub::Max(), total_sequence_length);
+  const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, ::cuda::maximum(), total_sequence_length);
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -357,7 +357,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     cached_data[i] = ev;
     sum_thread_data_exp += ev;
   }
-  const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, cub::Sum(), TPB);
+  const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, ::cuda::std::plus(), TPB);
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
@@ -441,7 +441,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
     return;
   }
 
-  const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), total_sequence_length);
+  const float max = BlockReduce(tmp_storage).Reduce(thread_data, ::cuda::maximum(), total_sequence_length);
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -450,7 +450,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
   __syncthreads();
 
   float thread_data_exp = threadIdx.x < total_sequence_length ? expf(thread_data - max_block) : 0.0f;
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), total_sequence_length);
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), total_sequence_length);
 
   // Store value of 1.0/sum
   if (threadIdx.x == 0) {
@@ -596,7 +596,7 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
   float input_data = HAS_BIAS ? float(input[index]) + float(attn_bias[bias_offset + threadIdx.x]) : float(input[index]);
 
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
-  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
+  const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
 
   // Store max value
   if (threadIdx.x == 0) {
@@ -609,7 +609,7 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
-  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
+  const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 
   // Store value of 1.0/sum.
   if (threadIdx.x == 0) {

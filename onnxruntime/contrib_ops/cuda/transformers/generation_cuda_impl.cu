@@ -97,7 +97,7 @@ __global__ void LogitsProcessKernel(
 
     if (word_id >= vocab_size) {
       // Set any value within the padding region to the lowest value so that it isn't picked
-      next_token_scores[index] = cub::FpLimits<T>::Lowest();
+      next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
     } else {
       // RepetitionPenaltyLogitsProcessor
       if (repetition_penalty != 1.0f) {
@@ -135,27 +135,27 @@ __global__ void LogitsProcessKernel(
         }
 
         if (found) {
-          next_token_scores[index] = cub::FpLimits<T>::Lowest();
+          next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
           return;
         }
       }
 
       // VocabMaskLogitsProcessor
       if (vocab_mask != nullptr && vocab_mask[word_id] == 0) {
-        next_token_scores[index] = cub::FpLimits<T>::Lowest();
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
         return;
       }
 
       // PrefixVocabMaskLogitsProcessor
       int batch_id = batch_beam_index / num_beams;
       if (prefix_vocab_mask != nullptr && prefix_vocab_mask[batch_id * vocab_size + word_id] == 0) {
-        next_token_scores[index] = cub::FpLimits<T>::Lowest();
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
         return;
       }
 
       // MinLengthLogitsProcessor
       if (word_id == demote_token_id) {
-        next_token_scores[index] = cub::FpLimits<T>::Lowest();
+        next_token_scores[index] = ::cuda::std::numeric_limits<T>::lowest();
       }
 
       // PresencePenaltyLogitsProcessor
@@ -1645,7 +1645,7 @@ __global__ void ForceDecodingIdsKernel(
 #pragma unroll
   for (int elem = 0; elem < ElementsPerThreads; elem++) {
     if (token_id < vocab_size) {
-      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : cub::FpLimits<float>::Lowest());
+      beam_scores[token_id] = ((token_id == id_wanted) ? 0.0f : ::cuda::std::numeric_limits<float>::lowest());
     }
     token_id += (int)blockDim.x;
   }
