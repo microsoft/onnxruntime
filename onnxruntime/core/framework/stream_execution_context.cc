@@ -67,7 +67,7 @@ StreamExecutionContext::StreamExecutionContext(const SessionState& sess_state,
 }
 
 synchronize::Notification* StreamExecutionContext::GetNotification(size_t idx) {
-    return notifications_[idx].get(); 
+  return notifications_[idx].get();
 }
 
 bool StreamExecutionContext::DecCountDownBarrier(size_t barrier_id) {

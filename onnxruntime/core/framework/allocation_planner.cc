@@ -2178,7 +2178,7 @@ class PlannerImpl {
             size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            // we add to the downstream map which causes TriggerDownstreamStep to run which decrements the 
+            // we add to the downstream map which causes TriggerDownstreamStep to run which decrements the
             // barrier from the downstream stream when the downstream node is ready.
             plan_.downstream_map[trigger_point_index].push_back(
                 {i, static_cast<int>(execution_plan[i]->steps_.size())});
