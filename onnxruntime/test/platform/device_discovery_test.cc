@@ -24,6 +24,7 @@ std::vector<OrtHardwareDevice> GetDevicesByType(OrtHardwareDeviceType device_typ
 TEST(DeviceDiscoveryTest, HasCpuDevice) {
   const auto cpu_devices = GetDevicesByType(OrtHardwareDeviceType_CPU);
   ASSERT_GT(cpu_devices.size(), 0);
+  ASSERT_NE(cpu_devices[0].vendor_id, 0);
 }
 
 }  // namespace onnxruntime::test
