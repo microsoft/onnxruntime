@@ -630,7 +630,7 @@ class InferenceSession {
     return weight_hash_;
   }
 
-  const uint32_t GetCurrentSessionId() const {
+  uint32_t GetCurrentSessionId() const {
     return session_id_;
   }
 
