@@ -22,6 +22,28 @@
 
 namespace onnxruntime {
 
+template <typename SrcElem, typename DstElem>
+static Status CheckAndCopyArray(std::string_view error_array_label, gsl::span<const SrcElem* const> src,
+                                gsl::span<const DstElem*> dst) {
+  const size_t num_elems = src.size();
+
+  if (dst.size() < num_elems) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for ", error_array_label, ": expected buffer with size >= ",
+                           src.size(), ", but got buffer of size ", dst.size());
+  }
+
+  if (dst.data() == nullptr && num_elems > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store ", error_array_label, " is NULL.");
+  }
+
+  for (size_t i = 0; i < num_elems; ++i) {
+    dst[i] = src[i];
+  }
+
+  return Status::OK();
+}
+
 // Create an EpValueInfo from a NodeArg.
 static std::unique_ptr<EpValueInfo> CreateValueInfo(const NodeArg& node_arg, const EpGraph* ep_graph, size_t flags) {
   const auto* type_proto = node_arg.TypeAsProto();
@@ -152,62 +174,69 @@ Status EpNode::GetSinceVersion(int& since_version) const {
   return Status::OK();
 }
 
-Status EpNode::GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(inputs_.size());
+size_t EpNode::GetNumInputs() const {
+  return inputs_.size();
+}
 
-  for (const EpValueInfo* input : inputs_) {
-    result->storage.push_back(input);
+Status EpNode::GetInputs(gsl::span<const OrtValueInfo*> result) const {
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node inputs", inputs_, result)));
+  return Status::OK();
+}
+
+size_t EpNode::GetNumOutputs() const {
+  return outputs_.size();
+}
+
+Status EpNode::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node outputs", outputs_, result)));
+  return Status::OK();
+}
+
+Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
+  num_implicit_inputs = implicit_inputs_.size();
+  return Status::OK();
+}
+
+Status EpNode::GetImplicitInputs(gsl::span<const OrtValueInfo*> result) const {
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node implicit inputs", implicit_inputs_, result)));
+  return Status::OK();
+}
+
+size_t EpNode::GetNumAttributes() const {
+  return attributes_.size();
+}
+
+Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> result) const {
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<OrtOpAttr, OrtOpAttr>("node attributes", attributes_, result)));
+  return Status::OK();
+}
+
+Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
+  num_subgraphs = subgraphs_.size();
+  return Status::OK();
+}
+
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> result) const {
+  const size_t num_subgraphs = subgraphs_.size();
+
+  if (result.size() < num_subgraphs) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "Not enough space for node subgraphs: expected buffer of size >= ",
+                           subgraphs_.size(), ", but got buffer of size ", result.size());
+  }
+
+  if (result.data() == nullptr && num_subgraphs > 0) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store node subgraphs is NULL.");
+  }
+
+  for (size_t i = 0; i < num_subgraphs; ++i) {
+    result[i] = subgraphs_[i].ep_subgraph.get();
   }
 
   return Status::OK();
 }
 
-Status EpNode::GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(outputs_.size());
-
-  for (const EpValueInfo* output : outputs_) {
-    result->storage.push_back(output);
-  }
-
-  return Status::OK();
-}
-
-Status EpNode::GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtValueInfo);
-  result->storage.reserve(implicit_inputs_.size());
-
-  for (const EpValueInfo* implicit_input : implicit_inputs_) {
-    result->storage.push_back(implicit_input);
-  }
-
-  return Status::OK();
-}
-
-Status EpNode::GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtOpAttr);
-  result->storage.reserve(attributes_.size());
-
-  for (const OrtOpAttr* attr : attributes_) {
-    result->storage.push_back(attr);
-  }
-
-  return Status::OK();
-}
-
-Status EpNode::GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
-  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtGraph);
-  result->storage.reserve(subgraphs_.size());
-
-  for (const SubgraphState& subgraph : subgraphs_) {
-    result->storage.push_back(subgraph.ep_subgraph->ToExternal());
-  }
-
-  return Status::OK();
-}
-
-Status EpNode::GetParentGraph(const OrtGraph*& parent_graph) const {
+Status EpNode::GetGraph(const OrtGraph*& parent_graph) const {
   parent_graph = ep_graph_->ToExternal();
   return Status::OK();
 }
@@ -628,22 +657,7 @@ size_t EpGraph::GetNumInputs() const {
 }
 
 Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> result) const {
-  const size_t num_inputs = inputs_.size();
-
-  if (result.size() < num_inputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for graph outputs: expected buffer with at least ",
-                           inputs_.size(), " elements, but got ", result.size());
-  }
-
-  if (result.data() == nullptr && num_inputs > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph inputs is NULL.");
-  }
-
-  for (size_t i = 0; i < num_inputs; ++i) {
-    result[i] = inputs_[i];
-  }
-
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph inputs", inputs_, result)));
   return Status::OK();
 }
 
@@ -652,22 +666,7 @@ size_t EpGraph::GetNumOutputs() const {
 }
 
 Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
-  const size_t num_outputs = outputs_.size();
-
-  if (result.size() < num_outputs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for graph outputs: expected buffer with at least ",
-                           outputs_.size(), " elements, but got ", result.size());
-  }
-
-  if (result.data() == nullptr && num_outputs > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph outputs is NULL.");
-  }
-
-  for (size_t i = 0; i < num_outputs; ++i) {
-    result[i] = outputs_[i];
-  }
-
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph outputs", outputs_, result)));
   return Status::OK();
 }
 
@@ -676,22 +675,8 @@ size_t EpGraph::GetNumInitializers() const {
 }
 
 Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> result) const {
-  const size_t num_initializers = initializer_value_infos_.size();
-
-  if (result.size() < num_initializers) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for graph initializers: expected buffer with at least ",
-                           initializer_value_infos_.size(), " elements, but got ", result.size());
-  }
-
-  if (result.data() == nullptr && num_initializers > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph initializers is NULL.");
-  }
-
-  for (size_t i = 0; i < num_initializers; ++i) {
-    result[i] = initializer_value_infos_[i];
-  }
-
+  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph initializers", initializer_value_infos_,
+                                                                    result)));
   return Status::OK();
 }
 
@@ -704,8 +689,8 @@ Status EpGraph::GetNodes(gsl::span<const OrtNode*> result) const {
 
   if (result.size() < num_nodes) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for graph nodes: expected buffer with at least ",
-                           nodes_.size(), " elements, but got ", result.size());
+                           "Not enough space for graph nodes: expected buffer with size >= ",
+                           nodes_.size(), ", but got buffer of size ", result.size());
   }
 
   if (result.data() == nullptr && num_nodes > 0) {

@@ -3,6 +3,7 @@
 
 #include "ep.h"
 
+#include <array>
 #include <cassert>
 #include <cstring>
 #include <functional>
@@ -246,29 +247,21 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 
     if (std::strncmp(op_type, "Mul", 4) == 0) {
       // Check that Mul has inputs/output of type float
-      OrtArrayOfConstObjects* inputs_array = nullptr;
-      OrtArrayOfConstObjects* outputs_array = nullptr;
-      DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
-      DeferOrtRelease<OrtArrayOfConstObjects> release_outputs(&outputs_array, ep->ort_api.ReleaseArrayOfConstObjects);
-
-      RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, &inputs_array));
-      RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, &outputs_array));
-
       size_t num_inputs = 0;
       size_t num_outputs = 0;
-      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(inputs_array, &num_inputs));
-      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetSize(outputs_array, &num_outputs));
+      RETURN_IF_ERROR(ep->ort_api.Node_GetNumInputs(node, &num_inputs));
+      RETURN_IF_ERROR(ep->ort_api.Node_GetNumOutputs(node, &num_outputs));
       RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
-      const void* const* inputs_data = nullptr;
-      const void* const* outputs_data = nullptr;
-      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(inputs_array, &inputs_data));
-      RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(outputs_array, &outputs_data));
+      std::vector<const OrtValueInfo*> inputs(num_inputs);
+      std::vector<const OrtValueInfo*> outputs(num_inputs);
+      RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
+      RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
 
       std::array<bool, 3> is_float = {false, false, false};
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(inputs_data[0]), is_float[0]));
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(inputs_data[1]), is_float[1]));
-      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, static_cast<const OrtValueInfo*>(outputs_data[0]), is_float[2]));
+      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[0], is_float[0]));
+      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, inputs[1], is_float[1]));
+      RETURN_IF_ERROR(IsFloatTensor(ep->ort_api, outputs[0], is_float[2]));
       if (!is_float[0] || !is_float[1] || !is_float[2]) {
         continue;  // Input or output is not of type float
       }
@@ -328,20 +321,12 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   }
 
   // Now we know we're compiling a single Mul node. Create a computation kernel.
-  OrtArrayOfConstObjects* inputs = nullptr;
-  DeferOrtRelease<OrtArrayOfConstObjects> release_inputs(&inputs, ort_api.ReleaseArrayOfConstObjects);
+  std::array<const OrtValueInfo*, 2> node_inputs = {};
+  std::array<const char*, 2> node_input_names = {};
 
-  RETURN_IF_ERROR(ort_api.Node_GetInputs(nodes[0], &inputs));
-  const OrtValueInfo* input0 = nullptr;
-  const OrtValueInfo* input1 = nullptr;
-
-  RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(inputs, 0, reinterpret_cast<const void**>(&input0)));
-  RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(inputs, 1, reinterpret_cast<const void**>(&input1)));
-
-  const char* input0_name = nullptr;
-  const char* input1_name = nullptr;
-  RETURN_IF_ERROR(ort_api.GetValueInfoName(input0, &input0_name));
-  RETURN_IF_ERROR(ort_api.GetValueInfoName(input1, &input1_name));
+  RETURN_IF_ERROR(ort_api.Node_GetInputs(nodes[0], node_inputs.data(), node_inputs.size()));
+  RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[0], &node_input_names[0]));
+  RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[1], &node_input_names[1]));
 
   // Associate the name of the fused node with our MulKernel.
   const char* fused_node_name = nullptr;
@@ -349,7 +334,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 
   ep->kernels_.emplace(std::string(fused_node_name), std::make_unique<MulKernel>(ep->ort_api, ep->logger_,
                                                                                  ep->float_initializers_,
-                                                                                 input0_name, input1_name));
+                                                                                 node_input_names[0],
+                                                                                 node_input_names[1]));
+
   // Update the OrtNodeComputeInfo associated with the graph.
   auto node_compute_info = std::make_unique<ExampleNodeComputeInfo>(*ep);
   node_compute_infos[0] = node_compute_info.release();
@@ -382,17 +369,14 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
   assert(fused_nodes.size() == ep_context_nodes.size());
 
   // Helper to collect input or output names from an array of OrtValueInfo instances.
-  auto collect_input_output_names = [&](const OrtArrayOfConstObjects& value_infos,
+  auto collect_input_output_names = [&](gsl::span<const OrtValueInfo* const> value_infos,
                                         std::vector<const char*>& result) -> OrtStatus* {
-    size_t num_values = 0;
-    RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetSize(&value_infos, &num_values));
+    size_t num_values = value_infos.size();
+    std::vector<const char*> value_names(num_values);
 
-    std::vector<const char*> value_names(num_values, nullptr);
-
-    for (size_t i = 0; i < num_values; i++) {
-      const void* value_info = nullptr;  // Is a const OrtValueInfo*
-      RETURN_IF_ERROR(ort_api.ArrayOfConstObjects_GetElementAt(&value_infos, i, &value_info));
-      RETURN_IF_ERROR(ort_api.GetValueInfoName(static_cast<const OrtValueInfo*>(value_info), &value_names[i]));
+    for (size_t i = 0; i < num_values; ++i) {
+      const OrtValueInfo* value_info = value_infos[i];
+      RETURN_IF_ERROR(ort_api.GetValueInfoName(value_info, &value_names[i]));
     }
 
     result = std::move(value_names);
@@ -406,19 +390,21 @@ OrtStatus* ExampleEp::CreateEpContextNodes(gsl::span<const OrtNode*> fused_nodes
 
     RETURN_IF_ERROR(ort_api.Node_GetName(fused_node, &fused_node_name));
 
-    OrtArrayOfConstObjects* fused_node_inputs = nullptr;
-    OrtArrayOfConstObjects* fused_node_outputs = nullptr;
-    DeferOrtRelease<OrtArrayOfConstObjects> defer_release0(&fused_node_inputs, ort_api.ReleaseArrayOfConstObjects);
-    DeferOrtRelease<OrtArrayOfConstObjects> defer_release1(&fused_node_outputs, ort_api.ReleaseArrayOfConstObjects);
+    size_t num_fused_node_inputs = 0;
+    size_t num_fused_node_outputs = 0;
+    RETURN_IF_ERROR(ort_api.Node_GetNumInputs(fused_node, &num_fused_node_inputs));
+    RETURN_IF_ERROR(ort_api.Node_GetNumOutputs(fused_node, &num_fused_node_outputs));
 
-    RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, &fused_node_inputs));
-    RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, &fused_node_outputs));
+    std::vector<const OrtValueInfo*> fused_node_inputs(num_fused_node_inputs);
+    std::vector<const OrtValueInfo*> fused_node_outputs(num_fused_node_outputs);
+    RETURN_IF_ERROR(ort_api.Node_GetInputs(fused_node, fused_node_inputs.data(), fused_node_inputs.size()));
+    RETURN_IF_ERROR(ort_api.Node_GetOutputs(fused_node, fused_node_outputs.data(), fused_node_outputs.size()));
 
     std::vector<const char*> input_names;
     std::vector<const char*> output_names;
 
-    RETURN_IF_ERROR(collect_input_output_names(*fused_node_inputs, /*out*/ input_names));
-    RETURN_IF_ERROR(collect_input_output_names(*fused_node_outputs, /*out*/ output_names));
+    RETURN_IF_ERROR(collect_input_output_names(fused_node_inputs, /*out*/ input_names));
+    RETURN_IF_ERROR(collect_input_output_names(fused_node_outputs, /*out*/ output_names));
 
     int64_t is_main_context = (i == 0);
     int64_t embed_mode = 1;

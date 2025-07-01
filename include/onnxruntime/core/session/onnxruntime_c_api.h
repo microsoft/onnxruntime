@@ -321,7 +321,6 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
-ORT_RUNTIME_CLASS(ArrayOfConstObjects);
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -492,17 +491,6 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
                                                       _In_ size_t max_selected,
                                                       _Out_ size_t* num_selected,
                                                       _In_ void* state);
-
-/** \brief Enum tags for ORT runtime types used to identify the type of elements in containers,
- * like OrtArrayOfConstObjects.
- */
-typedef enum OrtTypeTag {
-  ORT_TYPE_TAG_Void,
-  ORT_TYPE_TAG_OrtValueInfo,
-  ORT_TYPE_TAG_OrtOpAttr,
-  ORT_TYPE_TAG_OrtNode,
-  ORT_TYPE_TAG_OrtGraph,
-} OrtTypeTag;
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -5393,136 +5381,8 @@ struct OrtApi {
                   _In_ size_t alignment, enum OrtAllocatorType allocator_type,
                   _Outptr_ OrtMemoryInfo** out);
 
-  //
-  // OrtArrayOfConstObjects
-  //
-
-  /** \brief Create an OrtArrayOfConstObjects instance, which represents an array of
-   * pointers to constant opaque objects (i.e., each element is a 'const void*').
-   *
-   * The OrtArrayOfConstObjects instance does not own the underlying objects, only the pointers
-   * to them.
-   *
-   * An OrtArrayOfConstObjects instance stores elements of type 'const void*'. Users
-   * must check the object's type via ArrayOfConstObjects_GetObjectType before casting objects
-   * to their actual type.
-   *
-   * \param[in] object_type The object's type as indicated by the OrtTypeTag enum.
-   * \param[in] initial_size The backing array's initial size. Can be set to 0.
-   * \param[in] initial_value Each element's initial value. Can be set to NULL.
-   * \param[out] out A pointer to a newly created OrtArrayOfConstObjects instance.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \note Must be released by calling ReleaseArrayOfConstObjects.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(CreateArrayOfConstObjects, _In_ OrtTypeTag object_type, _In_ size_t initial_size,
-                  _In_ const void* initial_value, _Outptr_ OrtArrayOfConstObjects** out);
-
-  ORT_CLASS_RELEASE(ArrayOfConstObjects);
-
-  /** \brief Get a tag that represents the type of the opaque objects stored in a OrtArrayOfConstObjects instance.
-   *
-   * Refer to OrtTypeTag for valid values.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] type_tag Output parameter set to the type tag that corresponds to the object type.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetObjectType, _In_ const OrtArrayOfConstObjects* array,
-                  _Out_ OrtTypeTag* type_tag);
-
-  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a constant pointer to a
-   * constant opaque object (i.e., each element is a 'const void* const').
-   *
-   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetData, _In_ const OrtArrayOfConstObjects* array,
-                  _Outptr_ const void* const** data);
-
-  /** \brief Get a pointer to a data buffer of contiguous elements, where each element is a pointer to a
-   * constant opaque object (i.e., each element is a 'const void*').
-   *
-   * Caller must cast the objects to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] data Output parameter set to the contiguous data buffer that stores all elements.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetMutableData, _In_ OrtArrayOfConstObjects* array, _Outptr_ const void*** data);
-
-  /** \brief Get the number of elements contained by the given OrtArrayOfConstObjects instance.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[out] size Output parameter set to the number of elements in the array.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetSize, _In_ const OrtArrayOfConstObjects* array, _Out_ size_t* size);
-
-  /** \brief Get the element at the given index. Returns an error status if the index is outside the array bounds.
-   *
-   * Caller must cast the object to the appropriate type indicated by ArrayOfConstObjects_GetObjectType.
-   * Example:
-   *    // Assume OrtTypeTag is ORT_TYPE_TAG_OrtNode and there is at least one node in the array.
-   *    const OrtNode* node = nullptr;
-   *    OrtStatus status = ort_api.ArrayOfConstObjects_GetElementAt(nodes, 0, reinterpret_cast<const void**>(&node)));
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[in] index The index of the element.
-   * \param[out] out Output parameter set to the element at the given index.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_GetElementAt, _In_ const OrtArrayOfConstObjects* array, _In_ size_t index,
-                  _Outptr_ const void** out);
-
-  /** \brief Set the element at the given index. Returns an error status if the index is outside the array bounds.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[in] index The index of the element.
-   * \param[in] element The element to set.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_SetElementAt, _In_ OrtArrayOfConstObjects* array, _In_ size_t index,
-                  _In_ const void* element);
-
-  /** \brief Appends an element to the end of the array, which increases the size of the array by one.
-   *
-   * \param[in] array The OrtArrayOfConstObjects instance.
-   * \param[in] element The element to append.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(ArrayOfConstObjects_AppendElement, _In_ OrtArrayOfConstObjects* array, _In_ const void* element);
-
-  //
-  // OrtValueInfo
-  //
+  /// \name OrtValueInfo
+  /// @{
 
   /** \brief Get the OrtNode that produces the value represented by the given OrtValueInfo.
    * Optionally returns the associated output index.
@@ -5567,21 +5427,22 @@ struct OrtApi {
    *   - input_indices: [0, 1]
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] nodes Pre-allocated array of size `max_num_consumers` that will be filled with OrtNode instances.
-   * \param[out] input_indices Pre-allocated array of `max_num_consumers` elements that will be filled
+   * \param[out] nodes Pre-allocated array of size `num_consumers` that will be filled with OrtNode instances.
+   * \param[out] input_indices Pre-allocated array of `num_consumers` elements that will be filled
    *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
    *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
-   * \param[in] max_num_consumers The maximum size of the `consumer_nodes` and `consumer_input_indices` arrays.
-   *                              Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
+   * \param[in] num_consumers The size of the `consumer_nodes` and `consumer_input_indices` arrays.
+   *                          Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
+   *                          An error status returned if `num_consumers` is less than the number of actual consumers.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(ValueInfo_GetValueConsumers, _In_ const OrtValueInfo* value_info,
-                  _Out_writes_all_(max_num_consumers) const OrtNode** nodes,
-                  _Out_writes_all_(max_num_consumers) int64_t* input_indices,
-                  _In_ size_t max_num_consumers);
+                  _Out_writes_all_(num_consumers) const OrtNode** nodes,
+                  _Out_writes_all_(num_consumers) int64_t* input_indices,
+                  _In_ size_t num_consumers);
 
   /** \brief Get the underlying initializer value, as an OrtValue, from the given OrtValueInfo.
    *
@@ -5676,9 +5537,10 @@ struct OrtApi {
   ORT_API2_STATUS(ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo* value_info,
                   _Out_ bool* is_from_outer_scope);
 
-  //
-  // OrtGraph
-  //
+  /// @}
+
+  /// \name OrtGraph
+  /// @{
 
   /** \brief Returns a graph's name.
    *
@@ -5720,17 +5582,17 @@ struct OrtApi {
    * Includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] inputs Pre-allocated array of `max_num_inputs` elements that will be filled with OrtValueInfo*.
-   * \param[in] max_num_inputs The maximum size of the `inputs` array.
-   *                           Typical usage sets this to the result of Graph_GetNumInputs(). An error status is
-   *                           returned if `max_num_inputs` is less than the number of graph inputs.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] num_inputs The size of the `inputs` array.
+   *                       Typical usage sets this to the result of Graph_GetNumInputs(). An error status is
+   *                       returned if `num_inputs` is less than the number of graph inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
-                  _Out_writes_(max_num_inputs) const OrtValueInfo** inputs, _In_ size_t max_num_inputs);
+                  _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
 
   /** \brief Returns the number of graphs outputs.
    *
@@ -5746,17 +5608,17 @@ struct OrtApi {
   /** \brief Returns the graph's outputs as OrtValueInfo instances.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] outputs Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
-   * \param[in] max_num_outputs The maximum size of the `outputs` array.
-   *                            Typical usage sets this to the result of Graph_GetNumOutputs(). An error status is
-   *                            returned if `max_num_outputs` is less than the number of graph outputs.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] num_outputs The size of the `outputs` array.
+   *                        Typical usage sets this to the result of Graph_GetNumOutputs(). An error status is
+   *                        returned if `num_outputs` is less than the number of graph outputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetOutputs, _In_ const OrtGraph* graph,
-                  _Out_writes_(max_num_outputs) const OrtValueInfo** outputs, _In_ size_t max_num_outputs);
+                  _Out_writes_(num_outputs) const OrtValueInfo** outputs, _In_ size_t num_outputs);
 
   /** \brief Returns the number of graph initializers.
    *
@@ -5783,18 +5645,18 @@ struct OrtApi {
    * Call ValueInfo_GetInitializerValue to get the initializer's data.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] initializers Pre-allocated array of `max_num_outputs` elements that will be filled with OrtValueInfo*.
-   * \param[in] max_num_initializers The maximum size of the `initializers` array. Typical usage sets this to the
-   *                                 result of Graph_GetNumInitializers(). An error status is returned if
-   *                                 `max_num_initializers` is less than the number of graph initializers.
+   * \param[out] initializers Pre-allocated array of `num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[in] num_initializers The size of the `initializers` array. Typical usage sets this to the
+   *                             result of Graph_GetNumInitializers(). An error status is returned if
+   *                            `num_initializers` is less than the number of graph initializers.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetInitializers, _In_ const OrtGraph* graph,
-                  _Out_writes_(max_num_initializers) const OrtValueInfo** initializers,
-                  _In_ size_t max_num_initializers);
+                  _Out_writes_(num_initializers) const OrtValueInfo** initializers,
+                  _In_ size_t num_initializers);
 
   /** \brief Returns the number of graph nodes.
    *
@@ -5813,17 +5675,17 @@ struct OrtApi {
    * own node ordering if a different order is required.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] nodes Pre-allocated array of `max_num_nodes` elements that will be filled with OrtNode*.
-   * \param[in] max_num_initializers The maximum size of the `nodes` array. Typical usage sets this to the
-   *                                 result of Graph_GetNumNodes(). An error status is returned if
-   *                                 `max_num_nodes` is less than the number of graph nodes.
+   * \param[out] nodes Pre-allocated array of `num_nodes` elements that will be filled with OrtNode*.
+   * \param[in] num_nodes The size of the `nodes` array. Typical usage sets this to the
+   *                      result of Graph_GetNumNodes(). An error status is returned if
+   *                      `num_nodes` is less than the number of graph nodes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Graph_GetNodes, const OrtGraph* graph,
-                  _Out_writes_(max_num_nodes) const OrtNode** nodes, _In_ size_t max_num_nodes);
+                  _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 
   /** \brief Get the parent node for the given graph, if any exists.
    *
@@ -5840,9 +5702,10 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
-  //
-  // OrtNode
-  //
+  /// @}
+
+  /// \name OrtNode
+  /// @{
 
   /** \brief Returns a node's identifier.
    *
@@ -5902,29 +5765,72 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetSinceVersion, _In_ const OrtNode* node, _Out_ int* since_version);
 
-  /** \brief Returns a node's inputs as OrtValueInfo instances.
+  /** \brief Returns the number of node inputs.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] inputs Output parameter set to the OrtArrayOfConstObjects instance containing the node's inputs
-   *                    as OrtValueInfo instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] num_inputs Output parameter set to the number of node inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** inputs);
+  ORT_API2_STATUS(Node_GetNumInputs, _In_ const OrtNode* node, _Out_ size_t* num_inputs);
 
-  /** \brief Returns a node's outputs as OrtValueInfo instances.
+  /** \brief Returns the node's inputs as OrtValueInfo instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] outputs Output parameter set to a new OrtArrayOfConstObjects instance containing the node's outputs
-   *                     as OrtValueInfo instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that will be filled with the result.
+   * \param[in] num_inputs The size of the `inputs` array.
+   *                       Typical usage sets this to the result of Node_GetNumInputs(). An error status is
+   *                       returned if `num_inputs` is less than the number of node inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** outputs);
+  ORT_API2_STATUS(Node_GetInputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
+
+  /** \brief Returns the number of node outputs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_outputs Output parameter set to the number of node outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumOutputs, _In_ const OrtNode* node, _Out_ size_t* num_outputs);
+
+  /** \brief Returns the node's outputs as OrtValueInfo instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that will be filled with the result.
+   * \param[in] num_outputs The size of the `outputs` array.
+   *                        Typical usage sets this to the result of Node_GetNumOutputs(). An error status is
+   *                        returned if `num_outputs` is less than the number of node outputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetOutputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_outputs) const OrtValueInfo** outputs, _In_ size_t num_outputs);
+
+  /** \brief Returns the number of node implicit inputs.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
+   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
+   * contains the subgraphs (e.g., the If or Loop node).
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_implicit_inputs Output parameter set to the number of node implicit inputs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumImplicitInputs, _In_ const OrtNode* node, _Out_ size_t* num_implicit_inputs);
 
   /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
    *
@@ -5933,27 +5839,44 @@ struct OrtApi {
    * contains the subgraphs (e.g., the If or Loop node).
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] implicit_inputs Output parameter set to a new OrtArrayOfConstObjects instance containing the node's
-   *                             implicit inputs as OrtValueInfo instances.
-   *                             Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] implicit_inputs Pre-allocated array of `num_implicit_inputs` elements that will be filled the result.
+   * \param[in] num_inputs The size of the `implicit_inputs` array.
+   *                       Typical usage sets this to the result of Node_GetNumImplicitInputs(). An error status is
+   *                       returned if `num_implicit_inputs` is less than the number of node implicit inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** implicit_inputs);
+  ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node,
+                  _Out_writes_(num_implicit_inputs) const OrtValueInfo** implicit_inputs,
+                  _In_ size_t num_implicit_inputs);
+
+  /** \brief Returns the number of node attributes.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] num_attributes Output parameter set to the number of node attributes.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetNumAttributes, _In_ const OrtNode* node, _Out_ size_t* num_attributes);
 
   /** \brief Returns a node's attributes as OrtOpAttr instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] attributes Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
-   *                    as OrtOpAttr instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] attributes Pre-allocated array of `num_attributes` elements that will be filled with the result.
+   * \param[in] num_inputs The size of the `num_attributes` array.
+   *                       Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
+   *                       returned if `num_attributes` is less than the number of node attributes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes);
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node,
+                  _Out_writes_(num_attributes) const OrtOpAttr** attributes, _In_ size_t num_attributes);
 
   /** \brief Gets the OrtNode's attribute as OrtOpAttr by name.
    *
@@ -5965,7 +5888,8 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute);
+  ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name,
+                  _Outptr_ const OrtOpAttr** attribute);
 
   /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
    *
@@ -5978,34 +5902,51 @@ struct OrtApi {
    */
   ORT_API2_STATUS(OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type);
 
-  /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
+  /** \brief Returns the number of subgraphs contained by the given node.
    *
    * Certain operator types (e.g., If and Loop) contain nested subgraphs.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] subgraphs Output parameter set to a new OrtArrayOfConstObjects instance containing the node's
-   *                       subgraphs as OrtGraph instances. Must be released by calling ReleaseArrayOfConstObjects.
+   * \param[out] num_subgraphs Output parameter set to the number of node subgraphs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs);
+  ORT_API2_STATUS(Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs);
+
+  /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
+   *
+   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] subgraphs Pre-allocated array of `num_subgraphs` elements that will be filled with the result.
+   * \param[in] num_subgraphs The size of the `num_subgraphs` array.
+   *                          Typical usage sets this to the result of Node_GetNumSubgraphs(). An error status is
+   *                          returned if `num_subgraphs` is less than the number of node subgraphs.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
+                  _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs);
 
   /** \brief Get the node's parent OrtGraph instance.
    *
    * Can return NULL if the OrtNode was created without an owning graph.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] parent_graph Output parameter set to the node's parent OrtGraph. Can be set to NULL
-   *                          if the node is not currently contained by a graph.
+   * \param[out] graph Output parameter set to the node's OrtGraph. Can be set to NULL
+   *                   if the node is not currently contained by a graph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
-                  _Outptr_result_maybenull_ const OrtGraph** parent_graph);
+  ORT_API2_STATUS(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
+
+  /// @}
 
   /// \name OrtRunOptions
   /// @{

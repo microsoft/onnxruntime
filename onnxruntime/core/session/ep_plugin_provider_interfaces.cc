@@ -8,7 +8,6 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "core/framework/abi_pointer_array.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"

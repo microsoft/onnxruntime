@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/abi_pointer_array.h"
 #include "core/framework/allocator.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
@@ -155,23 +154,38 @@ struct EpNode : public OrtNode {
   // Gets the opset version in which this node's operator was first defined.
   Status GetSinceVersion(int& since_version) const override;
 
-  // Gets the node's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  // Get the number of node inputs.
+  size_t GetNumInputs() const override;
 
-  // Gets the node's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
+  // Gets the node's inputs.
+  Status GetInputs(gsl::span<const OrtValueInfo*> inputs) const override;
 
-  // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  // Get the number of node outputs.
+  size_t GetNumOutputs() const override;
 
-  // Gets the node's attributes as OrtOpAttr instances wrapped in an OrtArrayOfConstObjects.
-  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& attrs) const override;
+  // Gets the node's outputs.
+  Status GetOutputs(gsl::span<const OrtValueInfo*> outputs) const override;
+
+  // Gets the number of implicit inputs.
+  Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
+
+  // Gets the node's implicit inputs.
+  Status GetImplicitInputs(gsl::span<const OrtValueInfo*> inputs) const override;
+
+  // Get the number of node attributes.
+  size_t GetNumAttributes() const override;
+
+  // Gets the node's attributes.
+  Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const override;
+
+  // Gets the number of subgraphs contained by this node.
+  Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& subgraphs) const override;
+  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
-  Status GetParentGraph(const OrtGraph*& parent_graph) const override;
+  Status GetGraph(const OrtGraph*& parent_graph) const override;
 
   //
   // Helper functions used when working directly with an EpNode.
