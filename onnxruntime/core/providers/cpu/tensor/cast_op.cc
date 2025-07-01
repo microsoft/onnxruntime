@@ -73,13 +73,6 @@ struct IsStandardIntegerType {
       std::is_same_v<T, uint64_t>;
 };
 
-template <typename T>
-struct IsStandardFloatType {
-  static constexpr bool value =
-      std::is_same_v<T, float> ||
-      std::is_same_v<T, double>;
-};
-
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
 
@@ -457,7 +450,7 @@ struct TensorCaster<Int4x2, DstType,
 
 template <typename DstType>
 struct TensorCaster<Int4x2, DstType,
-                    std::enable_if_t<IsStandardFloatType<DstType>::value>> {
+                    std::enable_if_t<std::is_floating_point_v<DstType>>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
@@ -526,7 +519,7 @@ struct TensorCaster<UInt4x2, DstType,
 };
 
 template <typename DstType>
-struct TensorCaster<UInt4x2, DstType, std::enable_if_t<IsStandardFloatType<DstType>::value>> {
+struct TensorCaster<UInt4x2, DstType, std::enable_if_t<std::is_floating_point_v<DstType>>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
@@ -576,7 +569,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, Int4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || IsOrtFloat16Type<SrcType>::value
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<SrcType>::value
 #endif
@@ -627,7 +620,7 @@ struct TensorCaster<bool, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, UInt4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || IsStandardFloatType<SrcType>::value || IsOrtFloat16Type<SrcType>::value
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<SrcType>::value
 #endif
