@@ -21,6 +21,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "mlasi_sve.h"
 
 //
 // Bundles the floating point constants for use by kernels written in assembly.
@@ -57,6 +58,91 @@ MLAS_INTERNAL_DATA const struct {
     9.93151921023180e-01f,
     0.5f,
 };
+
+__attribute__((target("arch=armv8-a+sve")))
+void 
+MLASCALL
+MlasSveLogisticKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the generic kernel for the logistic function.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_SVBOOL Pred = svptrue_b32();
+    size_t sve_veclen = svcntw();
+    size_t stride = sve_veclen;
+
+    while (N > 0) {
+        // If fewer that SVE vector length elements are remaining, adjust the predicate
+        if (N < sve_veclen) {
+            Pred = svwhilelt_b32(0, (int32_t)N);
+            stride = N;
+        }
+        MLAS_SVFLOAT32 Value = MlasSveLoadFloat32(Pred, Input);
+
+        Value = MlasSveMaximumFloat32(Pred, MlasSveBroadcastFloat32(MlasLogisticConstants.LowerRange), Value);
+        Value = MlasSveMinimumFloat32(Pred, MlasSveBroadcastFloat32(MlasLogisticConstants.UpperRange), Value);
+
+        MLAS_SVFLOAT32 ValueSquared = MlasSveMultiplyFloat32(Pred, Value, Value);
+        
+        MLAS_SVFLOAT32 p;
+        p = MlasSveMultiplyAddFloat32(
+            Pred, 
+            ValueSquared, 
+            MlasSveBroadcastFloat32(MlasLogisticConstants.alpha_9),
+            MlasSveBroadcastFloat32(MlasLogisticConstants.alpha_7)
+        );
+        p = MlasSveMultiplyAddFloat32(Pred, p, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.alpha_5));
+        p = MlasSveMultiplyAddFloat32(Pred, p, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.alpha_3));
+        p = MlasSveMultiplyAddFloat32(Pred, p, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.alpha_1));
+        p = MlasSveMultiplyFloat32(Pred, p, Value);
+
+        MLAS_SVFLOAT32 q;
+        q = MlasSveMultiplyAddFloat32(
+            Pred,
+            ValueSquared,
+            MlasSveBroadcastFloat32(MlasLogisticConstants.beta_10),
+            MlasSveBroadcastFloat32(MlasLogisticConstants.beta_8)
+        );
+        q = MlasSveMultiplyAddFloat32(Pred, q, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.beta_6));
+        q = MlasSveMultiplyAddFloat32(Pred, q, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.beta_4));
+        q = MlasSveMultiplyAddFloat32(Pred, q, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.beta_2));
+        q = MlasSveMultiplyAddFloat32(Pred, q, ValueSquared, MlasSveBroadcastFloat32(MlasLogisticConstants.beta_0));
+
+        MlasSveStoreFloat32(
+            Pred, 
+            Output,
+            MlasSveAddFloat32(
+                Pred, 
+                MlasSveDivideFloat32(Pred, p, q),
+                MlasSveBroadcastFloat32(0.5f)
+            )
+        );
+
+        Input += stride;
+        Output += stride;
+        N -= stride;
+    }
+}
 
 void
 MLASCALL
@@ -184,6 +270,10 @@ Return Value:
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().LogisticKernelRoutine(Input, Output, N);
 #else
-    MlasLogisticKernel(Input, Output, N);
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+        MlasSveLogisticKernel(Input, Output, N);
+    } else {
+        MlasLogisticKernel(Input, Output, N);
+    }
 #endif
 }
