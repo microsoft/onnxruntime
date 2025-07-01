@@ -84,6 +84,11 @@ BackendManager::BackendManager(SessionContext& session_context,
   ptr_stream_t model_stream;
   std::unique_ptr<onnx::ModelProto> model_proto;
   if (subgraph_context_.is_ep_ctx_graph) {
+    if (!session_context_.reshape.empty()) {
+      std::string exception_str =
+          "[OpenVINO-EP] Bounded dynamic model execution using provider option reshape_input is not supported for OVEP EPContext model";
+      ORT_THROW(exception_str);
+    }
     model_stream = ep_ctx_handle_.GetModelBlobStream(session_context_.so_context_file_path, subgraph);
   } else {
     model_proto = GetModelProtoFromFusedNode(fused_node, subgraph, logger);
@@ -110,7 +115,10 @@ BackendManager::BackendManager(SessionContext& session_context,
   if (ModelHasSymbolicInputDims(subgraph)) {
     subgraph_context_.has_dynamic_input_shape = true;
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
-    if (!session_context_.disable_dynamic_shapes) {
+    if ((!session_context_.disable_dynamic_shapes &&
+            (session_context_.device_type.find("CPU") != std::string::npos ||
+             session_context_.device_type.find("GPU") != std::string::npos)) ||
+        (subgraph_context_.is_ep_ctx_graph)) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
       try {
@@ -590,7 +598,7 @@ void BackendManager::Compute(OrtKernelContext* context) {
   // by rewriting the model to static shaped model at runtime based on input shape.
   // disable_dynamic_shapes should be set for devices that don't support dynamic shapes.
   bool need_dynamic_backend = subgraph_context_.has_dynamic_input_shape &&
-                              session_context_.disable_dynamic_shapes;
+                              session_context_.disable_dynamic_shapes && !subgraph_context_.is_ep_ctx_graph;
 
   if (!need_dynamic_backend) {
     concrete_backend_->Infer(context);
