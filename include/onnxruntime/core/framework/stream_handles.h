@@ -170,12 +170,16 @@ class IStreamCommandHandleRegistry {
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
   [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type,
                                                          OrtDevice::DeviceType executor_device_type) const = 0;
-  // Get the stream creation function registered on the given device type.
+
+  // Get the stream creation function registered for the given device type.
   [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
-  // register a wait methond which will be invoked when we wait a notification (created by 'notification_device_type' device) on a stream at 'device_type' device.
+
+  // register a wait method which will be invoked to await a notification that is
+  // created by 'notification_device_type' device on a stream at 'device_type' device.
   virtual void RegisterWaitFn(OrtDevice::DeviceType notification_device_type,
                               OrtDevice::DeviceType device_type,
                               WaitNotificationFn fn) = 0;
+
   // register a handle about how to create stream on given device type.
   virtual void RegisterCreateStreamFn(OrtDevice::DeviceType device_type, CreateStreamFn f) = 0;
 
