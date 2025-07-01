@@ -40,6 +40,7 @@ from util import (  # noqa: E402
     is_linux,
     is_macOS,
     is_windows,
+    parse_qnn_version_from_sdk_yaml,
     run,
 )
 
@@ -1893,6 +1894,7 @@ def build_python_wheel(
     use_cann,
     use_azure,
     use_qnn,
+    qnn_home,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
@@ -1953,6 +1955,9 @@ def build_python_wheel(
             args.append("--use_cann")
         elif use_qnn:
             args.append("--use_qnn")
+            qnn_version = parse_qnn_version_from_sdk_yaml(qnn_home)
+            if qnn_version:
+                args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
 
@@ -2573,6 +2578,7 @@ def main():
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
+                args.qnn_home,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
