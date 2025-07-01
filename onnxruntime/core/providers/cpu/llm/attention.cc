@@ -18,15 +18,15 @@ using onnxruntime::concurrency::ThreadPool;
 
 namespace onnxruntime {
 
-#define REGISTER_ONNX_KERNEL_TYPED(T)                                \
-  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                    \
-      Attention,                                                     \
-      23,                                                            \
-      T,                                                             \
-      KernelDefBuilder()                                             \
-          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())    \
-          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())    \
-          .TypeConstraint("U", DataTypeImpl::GetTensorType<bool>()), \
+#define REGISTER_ONNX_KERNEL_TYPED(T)                                 \
+  ONNX_CPU_OPERATOR_TYPED_KERNEL(                                     \
+      Attention,                                                      \
+      23,                                                             \
+      T,                                                              \
+      KernelDefBuilder()                                              \
+          .TypeConstraint("T1", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("T2", DataTypeImpl::GetTensorType<T>())     \
+          .TypeConstraint("U", BuildKernelDefConstraints<bool, T>()), \
       Attention<T>);
 
 REGISTER_ONNX_KERNEL_TYPED(float)
@@ -69,74 +69,106 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(q_dims == 3 || q_dims == 4, "Q must be a 3D or 4D tensor");
   ORT_ENFORCE(q_dims == k_dims, "Q and K must have the same rank.");
   ORT_ENFORCE(q_dims == v_dims, "Q and V must have the same rank.");
-  ORT_ENFORCE(past_key == nullptr && past_value == nullptr, "Not implemented if attn_mask, past_key or past_value is provided.");
 
+  AttentionParameters parameters;
+  parameters.is_causal = is_causal_;
+  parameters.softcap = softcap_;                                              // softcap
+  parameters.softmax_precision = softmax_precision_;                          // precision for softmax, 0 for float16, 1 for float32
+  parameters.qk_matmul_output_mode = qk_matmul_output_mode_;                  // output mode for Q*K matmul
+  parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE  // mask type
+                                              : (attn_mask->IsDataType<bool>() ? AttentionMaskType::MASK_BOOL : AttentionMaskType::MASK_ADD);
+  parameters.batch_size = onnxruntime::narrow<int>(Q->Shape()[0]);  // Q.shape[0], K.shape[0], V.shape[0] (4D)
+
+  ORT_ENFORCE(parameters.batch_size > 0, "Batch size must be greater than 0");
+  ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE ||
+                  parameters.mask_type == AttentionMaskType::MASK_BOOL ||
+                  attn_mask->IsDataType<float>(),
+              "Attention mask must be of type bool or float if provided.");
+
+  std::vector<int64_t> y_shape;
   if (q_dims == 4) {
-    AttentionParameters parameters;
-    parameters.is_causal = is_causal_;
-
+    // 4D
     parameters.kv_num_heads = kv_num_heads_ > 0 ? kv_num_heads_ : onnxruntime::narrow<int>(K->Shape()[1]);  // K.shape[1] or V.shape[1] (4D)
     parameters.q_num_heads = q_num_heads_ > 0 ? q_num_heads_ : onnxruntime::narrow<int>(Q->Shape()[1]);     // Q.shape[1] (4D)
-    parameters.softcap = softcap_;                                                                          // softcap
-    parameters.softmax_precision = softmax_precision_;                                                      // precision for softmax, 0 for float16, 1 for float32
-    parameters.qk_matmul_output_mode = qk_matmul_output_mode_;                                              // output mode for Q*K matmul
-    parameters.mask_type = attn_mask == nullptr ? AttentionMaskType::MASK_NONE                              // mask type
-                                                : (attn_mask->IsDataType<bool>() ? AttentionMaskType::MASK_BOOL : AttentionMaskType::MASK_ADD);
 
-    ORT_ENFORCE(parameters.mask_type == AttentionMaskType::MASK_NONE ||
-                    parameters.mask_type == AttentionMaskType::MASK_BOOL ||
-                    attn_mask->IsDataType<float>(),
-                "Attention mask must be of type bool or float if provided.");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(K->Shape()[1]), "kv_num_heads different from K.shape[1]");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(V->Shape()[1]), "kv_num_heads different from V.shape[1]");
     ORT_ENFORCE(parameters.q_num_heads == onnxruntime::narrow<int>(Q->Shape()[1]), "q_num_heads different from Q.shape[1]");
 
     // From shapes
     parameters.transpose_output = false;                                      // whether to transpose the output from BxNxSxH to BxSxNxH
-    parameters.batch_size = onnxruntime::narrow<int>(Q->Shape()[0]);          // Q.shape[0], K.shape[0], V.shape[0] (4D)
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[2]);   // Q.shape[2] (4D)
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[3]);           // Q.shape[3] (4D)
     parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[2]);  // K.shape[2] or V.shape[2] (4D)
-    parameters.head_size = onnxruntime::narrow<int>(K->Shape()[3]);           // K.shape[3] (4D)
     parameters.v_head_size = onnxruntime::narrow<int>(V->Shape()[3]);         // V.shape[3] (4D)
     parameters.past_sequence_length = past_key == nullptr                     // past_key.shape[2] or past_value.shape[2] (4D) or given by the mask
                                           ? (attn_mask == nullptr
                                                  ? 0
                                                  : onnxruntime::narrow<int>(attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1]) - parameters.kv_sequence_length)
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
-    parameters.scale = std::isnan(scale_) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale_;
 
-    ORT_ENFORCE(parameters.batch_size > 0, "Batch size must be greater than 0");
-    ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
-
-    // TODO: missing ENFORE to Add
-
-    std::vector<int64_t> y_shape = {
-        static_cast<int64_t>(parameters.batch_size),
-        static_cast<int64_t>(parameters.q_num_heads),
-        static_cast<int64_t>(parameters.q_sequence_length),
-        static_cast<int64_t>(parameters.v_head_size)};
-    Tensor* Y = context->Output(0, y_shape);
-
-    return this->ApplyAttention(context,
-                                Q->Data<T>(),  // Q
-                                K->Data<T>(),  // K
-                                V->Data<T>(),  // V
-                                attn_mask,     // const Tensor* mask_index,  // mask, nullptr if no mask
-                                nullptr,       // const Tensor* past,        // past state
-                                nullptr,       // const Tensor* past_key,    // past K input tensor (if not using past state)
-                                nullptr,       // const Tensor* past_value,  // past V input tensor (if not using past state)
-                                Y,             // first output
-                                nullptr,       // Tensor * present_key,     // present K output tensor (if separating present KV)
-                                nullptr,       // Tensor * present_value,   // present V output tensor (if separating present KV)
-                                nullptr,       // Tensor * output_qk,       // Q*K output tensor (if returning Q*K value)
-                                parameters,    // attention parameters
-                                nullptr,       // const Tensor* attn_bias,  // additive bias applied on scaled QK.
-                                false          // bool past_present_share_buffer)
-    );
+    y_shape = {static_cast<int64_t>(parameters.batch_size),
+               static_cast<int64_t>(parameters.q_num_heads),
+               static_cast<int64_t>(parameters.q_sequence_length),
+               static_cast<int64_t>(parameters.v_head_size)};
   } else {
-    ORT_THROW("Attention not implemented yet for 3 dimensions.");
+    // 3D
+    parameters.kv_num_heads = kv_num_heads_;
+    parameters.q_num_heads = q_num_heads_;
+
+    // From shapes
+    parameters.transpose_output = true;  // whether to transpose the output from BxNxSxH to BxSxNxH
+    parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[1]);
+    parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
+    parameters.kv_sequence_length = onnxruntime::narrow<int>(K->Shape()[1]);
+    parameters.v_head_size = onnxruntime::narrow<int>(V->Shape()[2]) / parameters.kv_num_heads;
+    parameters.past_sequence_length = past_key == nullptr
+                                          ? (attn_mask == nullptr
+                                                 ? 0
+                                                 : onnxruntime::narrow<int>(attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1]) - parameters.kv_sequence_length)
+                                          : onnxruntime::narrow<int>(past_key->Shape()[2]);
+
+    y_shape = {static_cast<int64_t>(parameters.batch_size),
+               static_cast<int64_t>(parameters.q_sequence_length),
+               static_cast<int64_t>(parameters.q_num_heads * parameters.v_head_size)};
   }
+  parameters.scale = std::isnan(scale_) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale_;
+  ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
+
+  std::vector<int64_t> present_key_shape = {static_cast<int64_t>(parameters.batch_size),
+                                            static_cast<int64_t>(parameters.kv_num_heads),
+                                            static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length),
+                                            static_cast<int64_t>(parameters.head_size)};
+  std::vector<int64_t> present_value_shape = {static_cast<int64_t>(parameters.batch_size),
+                                              static_cast<int64_t>(parameters.kv_num_heads),
+                                              static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length),
+                                              static_cast<int64_t>(parameters.v_head_size)};
+  std::vector<int64_t> output_qk_shape = {static_cast<int64_t>(parameters.batch_size),
+                                          static_cast<int64_t>(parameters.q_num_heads),
+                                          static_cast<int64_t>(parameters.q_sequence_length),
+                                          static_cast<int64_t>(parameters.past_sequence_length + parameters.kv_sequence_length)};
+
+  Tensor* Y = context->Output(0, y_shape);
+  Tensor* present_key = context->Output(1, present_key_shape);
+  Tensor* present_value = context->Output(2, present_key_shape);
+  Tensor* output_qk = context->Output(3, output_qk_shape);
+
+  return this->ApplyAttention(context,
+                              Q->Data<T>(),   // Q
+                              K->Data<T>(),   // K
+                              V->Data<T>(),   // V
+                              attn_mask,      // const Tensor* mask_index,  // mask, nullptr if no mask
+                              nullptr,        // const Tensor* past,        // past state
+                              past_key,       // past K input tensor (if not using past state)
+                              past_value,     // past V input tensor (if not using past state)
+                              Y,              // first output
+                              present_key,    // present K output tensor (if separating present KV)
+                              present_value,  // present V output tensor (if separating present KV)
+                              output_qk,      // Q*K output tensor (if returning Q*K value)
+                              parameters,     // attention parameters
+                              nullptr,        // const Tensor* attn_bias,  // additive bias applied on scaled QK.
+                              false           // bool past_present_share_buffer
+  );
 }
 
 template <typename T>
@@ -441,16 +473,23 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   }
 
   BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
-  const bool* mask_index_data = mask_index != nullptr ? mask_index->Data<bool>() : nullptr;
-  gsl::span<const int64_t> mask_index_dims = mask_index != nullptr
-                                                 ? mask_index->Shape().GetDims()
-                                                 : gsl::span<const int64_t>{};
   if (mask_data != nullptr) {
     // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
     // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
-    this->PrepareMask(mask_index_data, mask_index_dims, static_cast<T*>(mask_data),
-                      causal, parameters.batch_size, parameters.q_sequence_length,
-                      parameters.kv_sequence_length, parameters.past_sequence_length);
+    if (mask_index == nullptr) {
+      this->PrepareMask(static_cast<T*>(nullptr), gsl::span<const int64_t>{}, static_cast<T*>(mask_data),
+                        causal, parameters.batch_size, parameters.q_sequence_length,
+                        parameters.kv_sequence_length, parameters.past_sequence_length);
+    } else if (mask_index->IsDataType<bool>()) {
+      this->PrepareMask(mask_index->Data<bool>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
+                        causal, parameters.batch_size, parameters.q_sequence_length,
+                        parameters.kv_sequence_length, parameters.past_sequence_length);
+    } else {
+      // Convert float mask to 0/1
+      this->PrepareMask(mask_index->Data<T>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
+                        causal, parameters.batch_size, parameters.q_sequence_length,
+                        parameters.kv_sequence_length, parameters.past_sequence_length);
+    }
   }
 
   const T* past_data = past != nullptr ? past->Data<T>() : nullptr;
@@ -550,8 +589,24 @@ Tensor* AttentionBase<T>::GetPresent(OpKernelContext* context,
   return present;
 }
 
+template <typename T, typename U>
+void make_copy(T* mask_data, const U* mask_index, size_t size);
+
+template <>
+void make_copy<float, float>(float* mask_data, const float* mask_index, size_t size) {
+  memcpy(mask_data, mask_index, size * sizeof(float));
+}
+
+template <>
+void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    mask_data[i] = mask_index[i] ? 0.0f : std::numeric_limits<float>::lowest();
+  }
+}
+
 template <typename T>
-void AttentionBase<T>::PrepareMask(const bool* mask_index,
+template <typename U>
+void AttentionBase<T>::PrepareMask(const U* mask_index,
                                    gsl::span<const int64_t> mask_index_dims,
                                    T* mask_data,
                                    bool causal,
@@ -569,14 +624,9 @@ void AttentionBase<T>::PrepareMask(const bool* mask_index,
     ORT_NOT_IMPLEMENTED("4D mask in attention cpu kernel is not supported");
   }
 
-  T mask_filter_value = 1;
-
   // For 3D mask, convert values 0 to mask_filter_value, and 1 to 0.0, then apply unidirectional mask if any.
   if (nullptr != mask_index && mask_index_dims.size() == 3) {
-    for (int i = 0; i < batch_size * sequence_length * all_sequence_length; i++) {
-      p_mask[i] = mask_index[i] ? static_cast<T>(0.0f) : mask_filter_value;
-    }
-
+    make_copy(p_mask, mask_index, batch_size * sequence_length * all_sequence_length);
     if (causal) {
       for (int b_i = 0; b_i < batch_size; b_i++) {
         for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
@@ -587,50 +637,12 @@ void AttentionBase<T>::PrepareMask(const bool* mask_index,
         p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
       }
     }
-
-    return;
-  }
-
-  bool is_raw_attention_mask = (nullptr != mask_index && mask_index_dims.size() == 2);
-  bool has_mask_start_position = (nullptr != mask_index &&
-                                  mask_index_dims.size() == 1 &&
-                                  static_cast<int>(mask_index_dims[0]) == 2 * batch_size);
-
-  for (int b_i = 0; b_i < batch_size; b_i++) {
-    // TODO: mask_index can be used in softmax to save some calculation.
+  } else {
     if (nullptr != mask_index) {
-      if (is_raw_attention_mask) {
-        // Raw attention mask has value 0 or 1. Here we convert 0 to mask_filter_value, and 1 to 0.0.
-        ptrdiff_t off = SafeInt<ptrdiff_t>(b_i) * all_sequence_length;
-        const bool* raw_mask = mask_index + off;
-        for (int m_i = 0; m_i < all_sequence_length; m_i++) {
-          p_mask[m_i] = raw_mask[m_i] ? static_cast<T>(0.0f) : mask_filter_value;
-        }
-      } else {
-        // mask_index is 1D: (B) or (2B) => (Bx)T
-
-        // Handle right-side padding: mask value at or after the end position will be mask_filter_value
-        int end_position = mask_index[b_i];
-        for (int m_i = end_position; m_i < all_sequence_length; m_i++) {
-          p_mask[m_i] = mask_filter_value;
-        }
-
-        // Handle left-side padding: mask value before the start position will be mask_filter_value
-        if (has_mask_start_position) {
-          int start_position = std::min(mask_index[b_i + batch_size] ? 1 : 0, all_sequence_length);
-          for (int m_i = 0; m_i < start_position; m_i++) {
-            p_mask[m_i] = mask_filter_value;
-          }
-        }
-      }
+      make_copy(p_mask, mask_index, sequence_length * all_sequence_length);
+    } else {
+      memset(p_mask, 0, sequence_length * all_sequence_length * sizeof(T));
     }
-
-    // Broadcast mask from (Bx)T to (Bx)SxT
-    for (ptrdiff_t s_i = 1; s_i < sequence_length; s_i++) {
-      memcpy(p_mask + s_i * all_sequence_length, p_mask, all_sequence_length * sizeof(T));
-    }
-
-    // Apply unidirectional mask.
     if (causal) {
       for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
         for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
@@ -638,9 +650,9 @@ void AttentionBase<T>::PrepareMask(const bool* mask_index,
         }
       }
     }
-
-    ptrdiff_t mask_to_advance = SafeInt<ptrdiff_t>(sequence_length) * all_sequence_length;
-    p_mask += mask_to_advance;
+    for (int b_i = 1; b_i < batch_size; b_i++) {
+      memcpy(p_mask + b_i * sequence_length * all_sequence_length, mask_data, sequence_length * all_sequence_length * sizeof(T));
+    }
   }
 }
 

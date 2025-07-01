@@ -89,7 +89,8 @@ class AttentionBase : public OpKernel {
                       size_t present_chunk_length,
                       std::ptrdiff_t i) const;
 
-  void PrepareMask(const bool* mask_index,
+  template <typename U>
+  void PrepareMask(const U* mask_index,
                    gsl::span<const int64_t> mask_index_dims,
                    T* mask_data,
                    bool causal,
