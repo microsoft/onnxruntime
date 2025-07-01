@@ -6,12 +6,11 @@ Licensed under the MIT License.
 
 Module Name:
 
-    mlasi.h
+    mlasi_sve.h
 
 Abstract:
 
-    This module contains the private data structures and procedure prototypes
-    for the Microsoft Machine Learning algebra subprogram library.
+    This module contains the procedure prototypes for the SVE intrinsics.
 
 --*/
 
