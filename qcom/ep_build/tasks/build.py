@@ -8,7 +8,7 @@ from typing import Literal
 
 from ..github import is_host_github_runner
 from ..task import BashScriptsWithVenvTask, RunExecutablesWithVenvTask
-from ..util import REPO_ROOT
+from ..util import REPO_ROOT, git_head_sha
 from .windows import RunPowershellScriptsTask
 
 
@@ -32,7 +32,7 @@ class BuildEpLinuxTask(BashScriptsWithVenvTask):
         if qairt_sdk_root is not None:
             cmd.append(f"--qairt-sdk-root={qairt_sdk_root}")
 
-        super().__init__(group_name, venv, [cmd])
+        super().__init__(group_name, venv, [cmd], env=ort_build_env_vars())
 
 
 class BuildEpWindowsTask(RunPowershellScriptsTask):
@@ -63,7 +63,7 @@ class BuildEpWindowsTask(RunPowershellScriptsTask):
         if qairt_sdk_root is not None:
             cmd.extend(["-QairtSdkRoot", str(qairt_sdk_root)])
 
-        super().__init__(group_name, [cmd])
+        super().__init__(group_name, [cmd], env=ort_build_env_vars())
 
 
 class QdcTestsTask(RunExecutablesWithVenvTask):
@@ -92,3 +92,11 @@ class QdcTestsTask(RunExecutablesWithVenvTask):
             cmd.append(f"--on-behalf-of={actor}")
 
         super().__init__(group_name, venv, [cmd])
+
+
+def ort_build_env_vars() -> dict[str, str]:
+    env = os.environ.copy()
+    if env.get("ORT_NIGHTLY_BUILD", "0") == "1":
+        env["NIGHTLY_BUILD"] = "1"
+        env["Build_SourceVersion"] = git_head_sha()
+    return env

@@ -65,6 +65,9 @@ Environment variables
   ORT_BUILD_TOOLS_PATH
     If specified, use this directory for build-managed tools instead of build/tools.
 
+  ORT_NIGHTLY_BUILD
+    If set to 1, instruct the ORT build to use a more verbose version string.
+
   QAIRT_SDK_ROOT
   QNN_SDK_ROOT
   SNPE_ROOT

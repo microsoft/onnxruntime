@@ -1,0 +1,59 @@
+# Copyright (c) Qualcomm Technologies, Inc. and/or its subsidiaries.
+# SPDX-License-Identifier: MIT
+
+name: Publish ONNX Runtime Execution Provider wheel
+
+on:
+  schedule:
+    - cron: "0 9 * * *"  # Every day at 2am in San Diego/PDT (9am UTC)
+  # Allow this workflow to be run manually from the Actions tab
+  workflow_dispatch:
+
+jobs:
+  build-and-test-all:
+    name: Build & Test
+    uses: ./.github/workflows/qualcomm-internal-build-and-test.yml
+    secrets: inherit
+    with:
+      do_all: false
+      do_linux: true
+      nightly_build: true
+
+  publish-wheel-workflow:
+    name: "Publish distribution to PyPI"
+    runs-on: [Linux, self-hosted, Build]
+    needs: [build-and-test-all]
+    permissions:
+      contents: read
+      id-token: write
+
+    steps:
+      - uses: actions/checkout@v4.1.1
+
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ORT Linux x86_64 Python Wheel
+          path: ${{ github.workspace }}/build/dist
+
+      - name: Create config file
+        run: |
+          echo "[distutils]" > build/pypirc
+          echo "index-servers = local" >> build/pypirc
+          echo "[local]" >> build/pypirc
+          echo "repository: http://ort-ep-win-01:8080" >> build/pypirc
+          echo "username = OrtQnnEpUploader" >> build/pypirc
+          echo "password = ${{ secrets.UPLOADER_PASSWORD }}" >> build/pypirc
+
+      - name: Install Dependencies
+        run: |
+          python3 -m venv venv
+          source venv/bin/activate && pip3 install twine
+
+      - name: Check wheel
+        run: |
+          source venv/bin/activate && twine check ${{ github.workspace }}/build/dist/*
+
+      - name: Publish
+        run: |
+          source venv/bin/activate && twine upload --config-file=build/pypirc -r local ${{ github.workspace }}/build/dist/*

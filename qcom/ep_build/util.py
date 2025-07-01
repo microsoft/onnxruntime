@@ -48,6 +48,10 @@ def get_env_int(key: str, default: int | None = None) -> int | None:
     return int_val
 
 
+def git_head_sha() -> str:
+    return run_and_get_output(["git", "rev-parse", "HEAD"], quiet=True)
+
+
 def have_root() -> bool:
     # mypy/pyright are generally unhappy here because these calls aren't always available.
     if is_host_windows():

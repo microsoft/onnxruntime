@@ -137,7 +137,8 @@ $CommonArgs = `
     "--cmake_generator", $CmakeGenerator, `
     "--config", $Config, `
     "--parallel", `
-    "--path_to_protoc", $ProtocPath
+    "--path_to_protoc", $ProtocPath, `
+    "--wheel_name_suffix", "qcom-internal"
 
 $Actions = @()
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
