@@ -47,6 +47,9 @@ class GatherBlockQuantized : public OpKernel {
       block_size_ = 128;
     }
 
+    ORT_ENFORCE(block_size_ >= 16 && ((block_size_ - 1) & block_size_) == 0,
+                "'block_size' must be a power of 2 and not less than 16.");
+
     constexpr int64_t default_bits = 4;
     info.GetAttrOrDefault("bits", &bits_, default_bits);
     ORT_ENFORCE(bits_ == 4 || bits_ == 8, "GatherBlockQuantized only support bits==4 or 8");
