@@ -93,7 +93,7 @@ bool BaseOpBuilder::HasSupportedInputs(const Node& node, const OpBuilderInputPar
 
 /* static */
 bool BaseOpBuilder::IsInputDtypeSupport(const Node& node, size_t idx,
-                                        const OpBuilderInputParams& /*input_params*/,
+                                        [[maybe_unused]] const OpBuilderInputParams& input_params,
                                         const logging::Logger& logger) {
   if (idx >= node.InputDefs().size()) {
     LOGS(logger, VERBOSE) << "Input index [" << idx << "] is out of range";
