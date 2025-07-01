@@ -195,6 +195,9 @@ uint32_t CPUIDInfo::GetVendorId(const std::string& vendor) {
 #if defined(__linux__)
 
 void CPUIDInfo::ArmLinuxInit() {
+  vendor_ = GetArmLinuxVendor();
+  vendor_id_ = GetVendorId(vendor_);
+
   // Assuming no hyper-threading, no NUMA groups
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
@@ -365,6 +368,9 @@ std::string CPUIDInfo::GetArmWindowsVendor() {
 #elif defined(__APPLE__)  // ^ defined(_WIN32)
 
 void CPUIDInfo::ArmAppleInit() {
+  vendor_ = GetArmAppleVendor();
+  vendor_id_ = GetVendorId(vendor_);
+
 #if defined(CPUINFO_SUPPORTED)
   if (pytorch_cpuinfo_init_) {
     is_hybrid_ = cpuinfo_get_uarchs_count() > 1;
@@ -388,16 +394,23 @@ void CPUIDInfo::ArmAppleInit() {
 std::string CPUIDInfo::GetArmAppleVendor() {
   auto get_sysctl_value = [](const char* key) -> std::optional<std::string> {
     size_t value_length{};
-    std::string value{};
-
-    if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != ENOMEM) {
-      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value length with sysctlbyname().";
-      return value;
+    if (sysctlbyname(key, nullptr, &value_length, nullptr, 0) != 0) {
+      const auto error = errno;
+      if (error == ENOENT) {
+        LOGS_DEFAULT(INFO) << "sysctlbyname() key not found: '" << key << "'";
+      } else {
+        LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value length with sysctlbyname(). "
+                              << "Error: " << error;
+      }
+      return std::nullopt;
     }
 
+    std::string value{};
     value.resize(value_length);
-    if (sysctlbyname(key, &value.data(), &value_length, nullptr, 0) != 0) {
-      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value with sysctlbyname().";
+    if (sysctlbyname(key, value.data(), &value_length, nullptr, 0) != 0) {
+      const auto error = errno;
+      LOGS_DEFAULT(WARNING) << "Failed to get '" << key << "' value with sysctlbyname(). "
+                            << "Error: " << error;
     }
 
     return value;
