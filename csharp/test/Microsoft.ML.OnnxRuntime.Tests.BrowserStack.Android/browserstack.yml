@@ -1,4 +1,4 @@
-app: ..\Microsoft.ML.OnnxRuntime.Tests.MAUI\bin\Release\net8.0-android\publish\ORT.CSharp.Tests.MAUI-Signed.apk
+app: ..\..\..\test_apk\ORT.CSharp.Tests.MAUI-Signed.apk
 platforms:
   - platformName: android
     deviceName: Samsung Galaxy S22 Ultra

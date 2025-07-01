@@ -83,8 +83,6 @@ namespace Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android
         {
             await Task.Delay(500);
 
-      browserStackLog("In the run all test");
-
       // XAML for the main page:
       // https://github.com/mattleibow/DeviceRunners/blob/cba7644e07b305ba64dc930b01c3eee55ef2b93d/src/DeviceRunners.VisualRunners.Maui/App/Pages/HomePage.xaml
       AppiumElement runAllButton = FindAppiumElementThenClick("//android.widget.Button", "Run All");
