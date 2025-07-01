@@ -59,7 +59,7 @@ class IBufferCacheManager {
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
   // when a stream refresh is requested
-  virtual void OnRefresh(SessionState session_status) = 0;
+  virtual void OnRefresh(const SessionState& session_status) = 0;
 };
 
 //
@@ -77,7 +77,7 @@ class BufferManager {
   bool SupportsUMA() const;
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(SessionState session_status);
+  void RefreshPendingBuffers(const SessionState& session_status);
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
