@@ -203,6 +203,13 @@ struct OrtNode {
   virtual onnxruntime::Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& implicit_inputs) const = 0;
 
   /// <summary>
+  /// Gets the node's attributes as an array of OrtOpAttr elements wrapped in an OrtArrayOfConstObjects.
+  /// </summary>
+  /// <param name="attrs">Output parameter set to the node's attributes.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& attrs) const = 0;
+
+  /// <summary>
   /// Gets the node's subgraphs (e.g., subgraphs contained by an If or Loop node).
   /// </summary>
   /// <param name="subgraphs">Output parameter set to the node's subgraphs as OrtGraph instances.</param>
