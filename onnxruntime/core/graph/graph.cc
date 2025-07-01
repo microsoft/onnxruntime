@@ -4455,11 +4455,11 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
                                                              result,
                                                              external_stream, external_offset, force_embed_external_ini));
 
-  if (!external_stream.flush()) {
-    ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
-  }
-
   if (!force_embed_external_ini) {
+    if (!external_stream.flush()) {
+      ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
+    }
+
     // Delete if the external data file is empty
     if (external_empty_pos == external_stream.tellp()) {
       external_stream.close();
