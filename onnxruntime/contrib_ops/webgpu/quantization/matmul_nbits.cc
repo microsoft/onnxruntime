@@ -22,6 +22,9 @@ namespace {
 
 constexpr unsigned int kMinMForTileOptimization = 4;
 
+#define CEIL_DIV(numerator, denominator) \
+  (((numerator) + (denominator) - 1) / (denominator))
+
 }  // namespace
 
 ONNX_OPERATOR_KERNEL_EX(
@@ -37,41 +40,59 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& a = shader.AddInput("input_a", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  const auto& b = shader.AddInput("input_b", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("scales", ShaderUsage::UseUniform);
+  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_b", ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseUniform);
+    shader.AddInput("zero_points", ShaderUsage::UseElementTypeAlias);
   }
-  const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
+  shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
-  // Bock size 32, `a` component size 4, 8 `a` components per block.
-  constexpr uint32_t kAComponentsForBlock32 = 8;
+  constexpr uint32_t KAVecSizeForBlock32 = 8;
 
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
   ORT_ENFORCE(tile_m_ == workgroup_size / 8, "tile_m must be workgroup_size / 8.");
   ORT_ENFORCE(tile_n_ == workgroup_size, "tile_n must be workgroup_size.");
 
-  // memory read/write helpers
-  shader.AdditionalImplementation() << "fn mm_read_a(batch : u32, row : u32, col : u32) -> input_a_value_t {\n"
-                                    << "  if (batch < uniforms.input_a_shape[0] && row < uniforms.input_a_shape[1] && col < uniforms.input_a_shape[2]) {\n"
-                                    << "    return " << a.GetByIndices("input_a_indices_t(batch, row, col)") << ";\n"
-                                    << "  }\n"
-                                    << "  return input_a_value_t(0);\n"
-                                    << "}\n";
-  if (nbits_ == 4) {
-    shader.AdditionalImplementation() << "\n"
-                                      << "fn mm_read_b(row : u32, col : u32) -> input_b_value_t {\n"
-                                      << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
-                                      << "    return " << b.GetByIndices("input_b_indices_t(row, col, 0)") << ";\n"
-                                      << "  }\n"
-                                      << "  return input_b_value_t(0);\n"
-                                      << "}\n";
+  shader.AdditionalImplementation() << R"(
+fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
+  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_div_4) {
+    let offset = batch * uniforms.M * uniforms.K_div_4 + row * uniforms.K_div_4 + col;
+    return input_a[offset];
+  }
+  return input_a_value_t();
+}
 
+fn load_scale(row : u32, block_idx : u32) -> output_element_t {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_32 + block_idx;
+    return scales[offset];
+  }
+  return output_element_t();
+}
+
+fn mm_write_y(batch : u32, row : u32, col : u32, value : output_element_t) {
+  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
+    let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
+    output[offset] = value;
+  }
+}
+)";
+
+  if (nbits_ == 4) {
     shader.AdditionalImplementation() << R"(
-fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
-  let lower_values: vec4<u32> = unpack4xU8(packed_value & 0x0F0F0F0Fu);
-  let upper_values: vec4<u32> = unpack4xU8((packed_value >> 4u) & 0x0F0F0F0Fu);
+fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_32 + block_idx;
+    return input_b[offset];
+  }
+  return vec4<input_b_element_t>();
+}
+
+// packed8xU4
+fn dequantize(packed_data : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower: vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
+  let upper: vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
 
   let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
       zero_point, zero_point, zero_point, zero_point,
@@ -79,10 +100,52 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   );
 
   var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
-      output_element_t(lower_values[0]), output_element_t(upper_values[0]),
-      output_element_t(lower_values[1]), output_element_t(upper_values[1]),
-      output_element_t(lower_values[2]), output_element_t(upper_values[2]),
-      output_element_t(lower_values[3]), output_element_t(upper_values[3])
+      output_element_t(lower[0]), output_element_t(upper[0]),
+      output_element_t(lower[1]), output_element_t(upper[1]),
+      output_element_t(lower[2]), output_element_t(upper[2]),
+      output_element_t(lower[3]), output_element_t(upper[3])
+  );
+
+  dequantized_values = (dequantized_values - zero_matrix) * scale;
+  return dequantized_values;
+}
+)";
+  } else {
+    ORT_ENFORCE(nbits_ == 8, "Only 4/8 bits are supported for webgpu matmulnbits");
+
+    shader.AdditionalImplementation() << R"(
+fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_16 + 2 * block_idx;
+    let b_data_0 = input_b[offset];
+    let b_data_1 = input_b[offset + 1];
+
+    let b_data = array<vec2<u32>, 4>(
+      vec2<u32>(b_data_0[0], b_data_0[1]),
+      vec2<u32>(b_data_0[2], b_data_0[3]),
+      vec2<u32>(b_data_1[0], b_data_1[1]),
+      vec2<u32>(b_data_1[2], b_data_1[3])
+    );
+    return b_data;
+  }
+  return array<vec2<u32>, 4>();
+}
+
+// 2x packed4xU8
+fn dequantize(packed_data : vec2<u32>, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower: vec4<u32> = unpack4xU8(packed_data[0]);
+  let upper: vec4<u32> = unpack4xU8(packed_data[1]);
+
+  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      zero_point, zero_point, zero_point, zero_point,
+      zero_point, zero_point, zero_point, zero_point
+  );
+
+  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      output_element_t(lower[0]), output_element_t(lower[1]),
+      output_element_t(lower[2]), output_element_t(lower[3]),
+      output_element_t(upper[0]), output_element_t(upper[1]),
+      output_element_t(upper[2]), output_element_t(upper[3])
   );
 
   dequantized_values = (dequantized_values - zero_matrix) * scale;
@@ -91,32 +154,17 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 )";
   }
 
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_read_scale(row : u32, col : u32) -> output_element_t {\n"
-                                    << "  if (row < uniforms.input_b_shape[0] && col < uniforms.input_b_shape[1]) {\n"
-                                    << "    return scales[row * uniforms.input_b_shape[1] + col];\n"
-                                    << "  }\n"
-                                    << "  return output_element_t(0);\n"
-                                    << "}\n"
-                                    << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
-
-  shader.AdditionalImplementation() << "\n"
-                                    << "fn mm_write_y(batch : u32, row : u32, col : u32, value : output_value_t) {\n"
-                                    << "  if (row < uniforms.output_shape[1] && col < uniforms.output_shape[2]) {\n"
-                                    << "    " << y.SetByIndices("output_indices_t(batch, row, col)", "value") << "\n"
-                                    << "  }\n"
-                                    << "}\n";
+  shader.AdditionalImplementation() << GenerateZeroPointReadingCode(nbits_, has_zero_points_);
 
   // declare const variables
   shader.AdditionalImplementation() << "\n"
-                                    << "// A block32 containing 8 components of `a`." << "\n"
-                                    << "const kAComponentsForBlock32 = " << kAComponentsForBlock32 << "u;\n"
+                                    << "const KAVecSizeForBlock32 = " << KAVecSizeForBlock32 << "u;\n"
                                     << "const kTileM = " << tile_m_ << "u;\n"
                                     << "const kTileN = " << tile_n_ << "u;\n";
 
   // declare workgroup memory
   shader.AdditionalImplementation() << "\n"
-                                    << "var<workgroup> a_data_tile: array<array<input_a_value_t, kAComponentsForBlock32>, kTileM>;\n"
+                                    << "var<workgroup> a_data_tile: array<array<input_a_value_t, KAVecSizeForBlock32>, kTileM>;\n"
                                     << "\n";
 
   // main
@@ -125,73 +173,37 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
   let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
   let col = (workgroup_idx % uniforms.num_N_tile) * kTileN;
 
-  let a_elements_per_col = uniforms.input_a_shape[2];
-  let a_blocks_per_col = (a_elements_per_col + kAComponentsForBlock32 - 1) / kAComponentsForBlock32;
-
   // Utilizing an f32 accumulator mitigated precision loss with minimal
   // performance impact compared to an f16 accumulator.
   var results : array<f32, kTileM>;
-  for (var a_block_idx = 0u; a_block_idx < a_blocks_per_col; a_block_idx++) {
-    // Load `a` elements into workgroup memory, TileM x kAComponentsForBlock32 (block32)
-    let a_row_idx = local_idx / kAComponentsForBlock32;
-    let a_col_idx = local_idx % kAComponentsForBlock32;
-    a_data_tile[a_row_idx][a_col_idx] = mm_read_a(batch, row + a_row_idx, a_block_idx * kAComponentsForBlock32 + a_col_idx);
+  for (var block_idx = 0u; block_idx < uniforms.K_div_32; block_idx++) {
+    // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
+    let a_row_idx = local_idx / KAVecSizeForBlock32;
+    let a_col_idx = local_idx % KAVecSizeForBlock32;
+    a_data_tile[a_row_idx][a_col_idx] = load_a(batch, row + a_row_idx, block_idx * KAVecSizeForBlock32 + a_col_idx);
     workgroupBarrier();
 
     let b_row = col + local_idx;
-    let b_col = a_block_idx;
+    let scale = load_scale(b_row, block_idx);
+    let zero_point = mm_read_zero(b_row, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+    let b_data = load_b(b_row, block_idx);
 
-    let scale = mm_read_scale(b_row, b_col);
-    let zero_point = mm_read_zero(b_row, b_col, uniforms.input_b_shape[0], uniforms.zero_blocks_per_col);
-)MAIN_FN";
-
-  if (nbits_ == 4) {
-    shader.MainFunctionBody() << R"MAIN_FN(
-    let b_data = mm_read_b(b_row, b_col);
-    // `b` component size is 4.
     for (var b_idx = 0u; b_idx < 4u; b_idx++) {
-      let b_dequantized = dequantize_packed8xU4(b_data[b_idx], zero_point, scale);
+      let b_dequantized = dequantize(b_data[b_idx], zero_point, scale);
       for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
         let a_data0 = a_data_tile[m_idx][b_idx * 2u];
         let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
 
-        results[m_idx] += f32(dot(a_data0, b_dequantized[0])) + f32(dot(a_data1, b_dequantized[1]));
+        results[m_idx] += f32(dot(a_data0, b_dequantized[0])) +
+                          f32(dot(a_data1, b_dequantized[1]));
       }
     }
-)MAIN_FN";
-  } else {
-    shader.MainFunctionBody() << "    var b_data0 = vec4<u32>(0);\n"
-                                 "    var b_data1 = vec4<u32>(0);\n"
-                                 "    if (b_row < uniforms.input_b_shape[0] && b_col < uniforms.input_b_shape[1]) {\n"
-                              << "      b_data0 = " << b.GetByIndices("input_b_indices_t(b_row, b_col, 0)") << ";\n"
-                              << "      b_data1 = " << b.GetByIndices("input_b_indices_t(b_row, b_col, 1)") << ";\n"
-                                                                                                               "    }"
-                              << R"MAIN_FN(
-    for (var b_idx = 0u; b_idx < 4u; b_idx++) {
-      let b_dequantized0 = (vec4<output_element_t>(unpack4xU8(b_data0[b_idx])) - vec4<output_element_t>(zero_point)) * scale;
-      let b_dequantized1 = (vec4<output_element_t>(unpack4xU8(b_data1[b_idx])) - vec4<output_element_t>(zero_point)) * scale;
-      for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
-        let a_data0 = a_data_tile[m_idx][b_idx];
-        let a_data1 = a_data_tile[m_idx][b_idx + 4u];
-
-        results[m_idx] += f32(dot(a_data0, b_dequantized0)) + f32(dot(a_data1, b_dequantized1));
-      }
-    }
-)MAIN_FN";
-  }
-
-  shader.MainFunctionBody() << R"MAIN_FN(
-
     workgroupBarrier();
-  }
-
-  if (batch >= uniforms.input_a_shape[0]) {
-    return;
   }
 
   // Write the results.
   for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
-    mm_write_y(batch, row + m_idx, col + local_idx, output_value_t(results[m_idx]));
+    mm_write_y(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
   }
 )MAIN_FN";
 
@@ -416,29 +428,26 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
-    uint32_t num_N_tile = (N + tile_n - 1) / tile_n;
-    uint32_t num_M_tile = (M + tile_m - 1) / tile_m;
+    const uint32_t num_N_tile = CEIL_DIV(N, tile_n);
+    const uint32_t num_M_tile = CEIL_DIV(M, tile_m);
 
     MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n, nbits};
     program.SetWorkgroupSize(workgroup_size);
-    program.SetDispatchGroupSize((N + tile_n - 1) / tile_n,
-                                 (M + tile_m - 1) / tile_m,
-                                 batch_count);
-    program.CacheHint("Tile" + std::to_string(tile_m) + "x" + std::to_string(tile_n) + "_Block32");
+    program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
-    TensorShape reshaped_a_shape{batch_count, M, K / components_a};
-    TensorShape reshaped_b_shape{N, n_blocks_per_col, blob_size_in_words / components_b};
-    TensorShape reshaped_y_shape{batch_count, M, N / components};
+    TensorShape reshaped_a_shape{batch_count, M, CEIL_DIV(K, components_a)};
+    TensorShape reshaped_b_shape{N, n_blocks_per_col, CEIL_DIV(blob_size_in_words, components_b)};
+    TensorShape reshaped_y_shape{batch_count, M, CEIL_DIV(N, components)};
 
     program
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, onnxruntime::narrow<int>(components_a)},
                     {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariables({{block_size}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
+        .AddUniformVariables({{batch_count}, {M}, {N}, {K}, {CEIL_DIV(K, 4)}, {CEIL_DIV(K, 16)}, {CEIL_DIV(K, 32)}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
         .CacheHint(nbits, has_zero_points);
     if (has_zero_points) {
-      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {(zero_points->Shape().Size() + 3) / 4}, 4});
+      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {CEIL_DIV(zero_points->Shape().Size(), 4)}, 4});
     }
 
     return context.RunProgram(program);
