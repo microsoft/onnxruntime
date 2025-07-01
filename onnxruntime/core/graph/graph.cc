@@ -4342,7 +4342,8 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
-      if (model_saving_options.force_embed_external_ini || tensor_bytes_size < model_saving_options.initializer_size_threshold) {
+      if (model_saving_options.force_embed_external_ini ||
+          tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
         // Data with size above the threshold is written into the new external initializer file
         // Data with size below the threshold should be kept inside the new model file

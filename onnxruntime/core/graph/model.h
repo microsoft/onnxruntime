@@ -217,15 +217,13 @@ class Model {
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     const ModelSavingOptions& save_options,
-                                                     bool force_embed_external_ini = false);
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status SaveWithExternalInitializers(Model& model,
                                                      int fd,
                                                      const std::filesystem::path& file_path,
                                                      const std::filesystem::path& external_file_path,
-                                                     const ModelSavingOptions& save_options,
-                                                     bool force_embed_external_ini = false);
+                                                     const ModelSavingOptions& save_options);
 
   static common::Status Load(std::istream& model_istream, ONNX_NAMESPACE::ModelProto* p_model_proto);
 

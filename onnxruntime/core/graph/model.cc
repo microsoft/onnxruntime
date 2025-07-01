@@ -621,14 +621,13 @@ template <typename T>
 static Status SaveModelWithExternalInitializers(Model& model,
                                                 const T& file_path,
                                                 const std::filesystem::path& external_file_name,
-                                                const ModelSavingOptions& save_options,
-                                                bool force_embed_external_ini = false) {
+                                                const ModelSavingOptions& save_options) {
   int fd = 0;
   Status status = Env::Default().FileOpenWr(file_path, fd);
   ORT_RETURN_IF_ERROR(status);
 
   ORT_TRY {
-    status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name, save_options, force_embed_external_ini);
+    status = Model::SaveWithExternalInitializers(model, fd, file_path, external_file_name, save_options);
   }
   ORT_CATCH(const std::exception& ex) {
     ORT_HANDLE_EXCEPTION([&]() {
@@ -658,9 +657,8 @@ Status Model::Load(const PathString& file_path, std::shared_ptr<Model>& p_model,
 
 Status Model::SaveWithExternalInitializers(Model& model, const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
-                                           const ModelSavingOptions& save_options,
-                                           bool force_embed_external_ini) {
-  return SaveModelWithExternalInitializers(model, file_path, external_file_name, save_options, force_embed_external_ini);
+                                           const ModelSavingOptions& save_options) {
+  return SaveModelWithExternalInitializers(model, file_path, external_file_name, save_options);
 }
 
 Status Model::LoadFromBytes(int count, const void* p_bytes, /*out*/ ONNX_NAMESPACE::ModelProto& model_proto) {
@@ -806,8 +804,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
                                            int fd,
                                            const std::filesystem::path& file_path,
                                            const std::filesystem::path& external_file_name,
-                                           const ModelSavingOptions& model_saving_options,
-                                           bool force_embed_external_ini) {
+                                           const ModelSavingOptions& model_saving_options) {
   if (fd < 0) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "<fd> is less than 0.");
   }
@@ -815,7 +812,7 @@ Status Model::SaveWithExternalInitializers(Model& model,
   ORT_RETURN_IF_ERROR(model.MainGraph().Resolve());
 
   auto model_proto = model.ToGraphProtoWithExternalInitializers(external_file_name, file_path,
-                                                                model_saving_options, force_embed_external_ini);
+                                                                model_saving_options);
   google::protobuf::io::FileOutputStream output(fd);
   const bool result = model_proto.SerializeToZeroCopyStream(&output) && output.Flush();
   if (result) {

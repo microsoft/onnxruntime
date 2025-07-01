@@ -941,8 +941,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     *ep_context_gen_options.output_model_buffer_ptr = buffer.release();
   } else {
     ORT_RETURN_IF_ERROR(Model::SaveWithExternalInitializers(ep_context_model, context_cache_path,
-                                                            external_ini_path, model_saving_options,
-                                                            force_embed_external_ini));
+                                                            external_ini_path, model_saving_options));
   }
 
   return Status::OK();
