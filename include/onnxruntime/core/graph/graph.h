@@ -1206,8 +1206,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   ONNX_NAMESPACE::GraphProto ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_path,
                                                                   const std::filesystem::path& model_file_path,
-                                                                  const ModelSavingOptions& model_saving_options,
-                                                                  bool force_embed_external_ini = false) const;
+                                                                  const ModelSavingOptions& model_saving_options) const;
 
   /** Gets the ISchemaRegistry instances being used with this Graph. */
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const;
@@ -1579,8 +1578,7 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
       const ModelSavingOptions& model_saving_options,
       ONNX_NAMESPACE::GraphProto& output_graph_proto,
       std::ostream& external_stream,
-      int64_t& external_offset,
-      bool force_embed_external_ini = false) const;
+      int64_t& external_offset) const;
 
 #endif
 

@@ -920,6 +920,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
   }
 
   ModelSavingOptions model_saving_options{ini_size_threshold};
+  model_saving_options.force_embed_external_ini = force_embed_external_ini;
 
   if (saving_to_buffer) {
     ORT_RETURN_IF_ERROR(ep_context_model.MainGraph().Resolve());
@@ -927,8 +928,7 @@ static Status CreateEpContextModel(const ExecutionProviders& execution_providers
     // May be able to use allocator to directly allocate the ModelProto to avoid a copy.
     ONNX_NAMESPACE::ModelProto model_proto = ep_context_model.ToGraphProtoWithExternalInitializers(external_ini_path,
                                                                                                    context_cache_path,
-                                                                                                   model_saving_options,
-                                                                                                   force_embed_external_ini);
+                                                                                                   model_saving_options);
     size_t buffer_size = model_proto.ByteSizeLong();
     ORT_RETURN_IF(buffer_size > static_cast<size_t>(std::numeric_limits<int>::max()),
                   "Cannot serialize ONNX ModelProto larger than 2GB");

@@ -4278,8 +4278,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
     const ModelSavingOptions& model_saving_options,
     ONNX_NAMESPACE::GraphProto& output_graph_proto,
     std::ostream& external_stream,
-    int64_t& external_offset,
-    bool force_embed_external_ini) const {
+    int64_t& external_offset) const {
   // Process initializers in a subgraph, check their size and
   // write to an external file. This function also saves pre-packed
   // blobs for the initializer being saved to disk, if the initializer has any pre-packs.
@@ -4313,7 +4312,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
             model_path, external_file_path,
             model_external_file_path, model_saving_options,
             result_subgraph,
-            external_stream, external_offset, force_embed_external_ini));
+            external_stream, external_offset));
       }
     }
   }
@@ -4343,7 +4342,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
-      if (force_embed_external_ini || tensor_bytes_size < model_saving_options.initializer_size_threshold) {
+      if (model_saving_options.force_embed_external_ini || tensor_bytes_size < model_saving_options.initializer_size_threshold) {
         *output_proto = initializer;
         // Data with size above the threshold is written into the new external initializer file
         // Data with size below the threshold should be kept inside the new model file
@@ -4430,8 +4429,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
     const std::filesystem::path& external_file_path,
     const std::filesystem::path& model_file_path,
-    const ModelSavingOptions& model_saving_options,
-    bool force_embed_external_ini) const {
+    const ModelSavingOptions& model_saving_options) const {
   GraphProto result;
   ToGraphProtoInternal(result);
   ORT_ENFORCE(external_file_path.is_relative());
@@ -4443,7 +4441,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   std::ofstream external_stream;
   std::streampos external_empty_pos;
   int64_t external_offset = 0;
-  if (!force_embed_external_ini) {
+  if (!model_saving_options.force_embed_external_ini) {
     // Create the external file.
     external_stream.open(modified_external_file_path, std::ofstream::out | std::ofstream::binary);
     external_empty_pos = external_stream.tellp();
@@ -4453,9 +4451,9 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProtoWithExternalInitializers(
   ORT_THROW_IF_ERROR(AddExternalInitializersToGraphProtoImpl(model_path, external_file_path,
                                                              modified_external_file_path, model_saving_options,
                                                              result,
-                                                             external_stream, external_offset, force_embed_external_ini));
+                                                             external_stream, external_offset));
 
-  if (!force_embed_external_ini) {
+  if (!model_saving_options.force_embed_external_ini) {
     if (!external_stream.flush()) {
       ORT_THROW("Failed to flush file with external initializers: ", modified_external_file_path);
     }

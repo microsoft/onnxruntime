@@ -384,13 +384,12 @@ ModelProto Model::ToProto() const {
 
 ModelProto Model::ToGraphProtoWithExternalInitializers(const std::filesystem::path& external_file_name,
                                                        const std::filesystem::path& file_path,
-                                                       const ModelSavingOptions& model_saving_options,
-                                                       bool force_embed_external_ini) const {
+                                                       const ModelSavingOptions& model_saving_options) const {
   ModelProto result(model_proto_);
   const auto& graph = *graph_;
   *(result.mutable_graph()) = graph.ToGraphProtoWithExternalInitializers(external_file_name,
                                                                          file_path,
-                                                                         model_saving_options, force_embed_external_ini);
+                                                                         model_saving_options);
   return result;
 }
 
