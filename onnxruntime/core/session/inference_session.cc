@@ -3127,6 +3127,9 @@ Status InferenceSession::Run(const RunOptions& run_options,
     LOGS(*session_logger_, INFO) << "Start another run for necessary memory allocation or graph capture.";
     ORT_RETURN_IF_ERROR(Run(run_options, feed_names, feeds, output_names, p_fetches, p_fetches_device_info));
   }
+
+  // Log runtime error telemetry if the return value is not OK
+  ORT_RETURN_IF_ERROR_SESSIONID(retval, session_id_);
   return retval;
 }
 

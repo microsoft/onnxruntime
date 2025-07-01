@@ -287,8 +287,11 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
                                            return node_arg->Name() == graph_output->Name();
                                          });
       bool is_const_initializer = false;
-      const ONNX_NAMESPACE::TensorProto* initializer = graph_viewer.GetGraph().GetInitializer(value_name, true,
-                                                                                              is_const_initializer);
+      OrtValue initializer_value;
+      const ONNX_NAMESPACE::TensorProto* initializer = graph_viewer.GetGraph().GetInitializer(value_name,
+                                                                                              initializer_value,
+                                                                                              is_const_initializer,
+                                                                                              /*check_outer_scope*/ true);
       bool can_override_initializer = graph_viewer.CanOverrideInitializer();
 
       bool api_is_req_graph_input = false;
@@ -448,6 +451,75 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     ASSERT_EQ(api_node_outputs.size(), output_node_args.size());
 
     CheckValueInfosCApi(graph_viewer, api_node_outputs, output_node_args);
+
+    // Check node attributes
+    const auto& node_attrs = node->GetAttributes();
+
+    if (node_attrs.size() > 0) {
+      OrtArrayOfConstObjects* api_node_attributes = nullptr;
+      DeferOrtRelease<OrtArrayOfConstObjects> release_node_attributes(&api_node_attributes,
+                                                                      ort_api.ReleaseArrayOfConstObjects);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributes(api_node, &api_node_attributes));
+      CheckArrayObjectType(api_node_attributes, ORT_TYPE_TAG_OrtOpAttr);
+
+      size_t attr_idx = 0;
+      for (const auto& node_attr : node_attrs) {
+        const OrtOpAttr* api_node_attr = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.ArrayOfConstObjects_GetElementAt(api_node_attributes, attr_idx,
+                                                                     reinterpret_cast<const void**>(&api_node_attr)));
+        ASSERT_NE(api_node_attr, nullptr);
+
+        api_node_attr = nullptr;
+        ASSERT_ORTSTATUS_OK(ort_api.Node_GetAttributeByName(api_node, node_attr.first.c_str(), &api_node_attr));
+        ASSERT_NE(api_node_attr, nullptr);
+
+        OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
+
+        // It's possible that the type is defined in ONNX::AttributeProto_AttributeType but not in OrtOpAttrType, since the two are not in a 1:1 mapping.
+        // In such cases, OpAttr_GetType will return a non-null status, and we simply skip the check here.
+        OrtStatusPtr status = ort_api.OpAttr_GetType(api_node_attr, &api_node_attr_type);
+        if (status != nullptr) {
+          Ort::GetApi().ReleaseStatus(status);
+          continue;
+        }
+
+        ONNX_NAMESPACE::AttributeProto_AttributeType node_attr_type = node_attr.second.type();
+        switch (node_attr_type) {
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_UNDEFINED);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_INT);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_INTS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_FLOAT);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_FLOATS);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRING);
+            break;
+          }
+          case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
+            ASSERT_EQ(api_node_attr_type, OrtOpAttrType::ORT_OP_ATTR_STRINGS);
+            break;
+          }
+          default:
+            // The unsupported type should be skipped by 'continue' above. It's unexpected so we force test to fail.
+            ASSERT_ORTSTATUS_OK(ort_api.CreateStatus(ORT_FAIL, "The attribute type is not in AttributeProto_AttributeType and this case shouldn't be hit."));
+        }
+        attr_idx++;
+      }
+    }
 
     // Check node subgraphs
     std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();

@@ -342,8 +342,6 @@ template void run_blkq4_gemm<32, false, true, false>(int m, int n, int k);
 template void run_blkq4_gemm<64, false, true, true>(int m, int n, int k);
 template void run_blkq4_gemm<64, false, true, false>(int m, int n, int k);
 
-
-
 /// @brief Testing small tile GEMM impl
 template <
     int block_size,
@@ -363,7 +361,7 @@ void run_blkq4_small_gemm(int m, int n, int k) {
       true>;
   using QuantBlocking = cutlass::MatrixShape<PrepackT::QuantBlocking::kRow, PrepackT::QuantBlocking::kColumn>;
   using LayoutQmeta = typename std::conditional<std::is_same<typename PrepackT::LayoutQmeta, RowMajorLayout>::value,
-                                            cutlass::layout::RowMajor, cutlass::layout::ColumnMajor>::type;
+                                                cutlass::layout::RowMajor, cutlass::layout::ColumnMajor>::type;
 
   using WarpShape = cutlass::gemm::GemmShape<16, 16, 64>;
   // change split k to 1 to help debug in case of test failure
@@ -383,7 +381,7 @@ void run_blkq4_small_gemm(int m, int n, int k) {
   const auto meta_shape = cutlass::make_Coord(problem_size.k() / QuantBlocking::kRow,
                                               problem_size.n() / QuantBlocking::kColumn);
   if ((problem_size.k() % QuantBlocking::kRow != 0) ||
-    (problem_size.n() % QuantBlocking::kColumn) != 0){
+      (problem_size.n() % QuantBlocking::kColumn) != 0) {
     ORT_THROW("Test case setup fail: partial quantization block not supported!");
   }
 
@@ -422,7 +420,7 @@ void run_blkq4_small_gemm(int m, int n, int k) {
       cutlass::half_t(1.25),
       cutlass::half_t(-1.0),
       5);  // <- Fill matrix A on host with uniform-distribution random data
-//   std::cout << "==========  A:  ============ \n" << tensor_a.host_view() << std::endl;
+           //   std::cout << "==========  A:  ============ \n" << tensor_a.host_view() << std::endl;
   cutlass::reference::host::TensorFillRandomUniform(
       tensor_c.host_view(),
       1,
@@ -530,7 +528,6 @@ template void run_blkq4_small_gemm<64, false, true>(int m, int n, int k);
 template void run_blkq4_small_gemm<64, false, false>(int m, int n, int k);
 template void run_blkq4_small_gemm<128, false, true>(int m, int n, int k);
 template void run_blkq4_small_gemm<128, false, false>(int m, int n, int k);
-
 
 }  // namespace test
 }  // namespace cuda

@@ -7,6 +7,10 @@
 #include <vector>
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
+#include "core/framework/ort_value.h"
+#include "core/framework/ortdevice.h"
+#include "core/framework/ortmemoryinfo.h"
+#include "core/framework/tensor.h"
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
@@ -86,6 +90,76 @@ ORT_API(const char*, NodeComputeContext_NodeName, _In_ const OrtNodeComputeConte
   return compute_context->node_name;
 }
 
+ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
+                    _In_ const OrtMemoryInfo* allocator_memory_info) {
+  const OrtDevice& info = allocator_memory_info->device;
+  switch (info.MemType()) {
+    case OrtDevice::MemType::DEFAULT:
+      ep_device->device_memory_info = allocator_memory_info;
+      break;
+    case OrtDevice::MemType::HOST_ACCESSIBLE:
+      ep_device->host_accessible_memory_info = allocator_memory_info;
+      break;
+    default:
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Memory type must be DEFAULT or HOST_ACCESSIBLE.");
+  }
+
+  return nullptr;
+}
+
+ORT_API(const OrtMemoryDevice*, MemoryInfo_GetMemoryDevice, _In_ const OrtMemoryInfo* memory_info) {
+  return static_cast<const OrtMemoryDevice*>(&memory_info->device);
+}
+
+ORT_API_STATUS_IMPL(Value_GetMemoryDevice, _In_ const OrtValue* value, _Out_ const OrtMemoryDevice** device) {
+  *device = nullptr;
+  if (value == nullptr || value->IsTensor() == false) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue does not contain an allocated tensor.");
+  }
+
+  auto& tensor = value->Get<Tensor>();
+  *device = static_cast<const OrtMemoryDevice*>(&tensor.Location().device);
+
+  return nullptr;
+}
+
+ORT_API(bool, MemoryDevice_AreEqual, _In_ const OrtMemoryDevice* a, _In_ const OrtMemoryDevice* b) {
+  // don't care if they're both null as you don't need to call this function if they are
+  if (a == nullptr || b == nullptr) {
+    return false;
+  }
+
+  // TODO: Validate this calls OrtDevice::operator== as expected
+  return *a == *b;
+}
+
+ORT_API(OrtMemoryInfoDeviceType, MemoryDevice_GetDeviceType, _In_ const OrtMemoryDevice* memory_device) {
+  switch (memory_device->Type()) {
+    case OrtDevice::GPU:
+      return OrtMemoryInfoDeviceType_GPU;
+    case OrtDevice::NPU:
+      return OrtMemoryInfoDeviceType_NPU;
+    case OrtDevice::FPGA:
+      return OrtMemoryInfoDeviceType_FPGA;
+    case OrtDevice::CPU:
+    default:  // should never happen. means we're out of sync with CreateMemoryInfo_V2
+      return OrtMemoryInfoDeviceType_CPU;
+  }
+}
+
+ORT_API(OrtDeviceMemoryType, MemoryDevice_GetMemoryType, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->MemType() == OrtDevice::MemType::DEFAULT ? OrtDeviceMemoryType_DEFAULT
+                                                                 : OrtDeviceMemoryType_HOST_ACCESSIBLE;
+}
+
+ORT_API(uint32_t, MemoryDevice_GetVendorId, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->Vendor();
+}
+
+ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device) {
+  return memory_device->Id();
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -97,6 +171,16 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddNodesToFuse,
     &OrtExecutionProviderApi::EpGraphSupportInfo_AddSingleNode,
     &OrtExecutionProviderApi::NodeComputeContext_NodeName,
+    &OrtExecutionProviderApi::EpDevice_AddAllocatorInfo,
+
+    &OrtExecutionProviderApi::MemoryInfo_GetMemoryDevice,
+    &OrtExecutionProviderApi::Value_GetMemoryDevice,
+
+    &OrtExecutionProviderApi::MemoryDevice_AreEqual,
+    &OrtExecutionProviderApi::MemoryDevice_GetDeviceType,
+    &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
+    &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
+    &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
