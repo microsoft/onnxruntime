@@ -8,18 +8,32 @@
 namespace onnxruntime {
 namespace webgpu {
 
-void* GpuBufferAllocator::Alloc(size_t size) {
+void* GpuBufferAllocator::Reserve(size_t size) {
+  ORT_ENFORCE(!session_initialized_, "Session has already been initialized.");
+
+#if !defined(__wasm__)
+  if (context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
+    return context_.BufferManager().CreateUMA(size);
+  }
+#endif  // !defined(__wasm__)
+
   if (size == 0) {
     return nullptr;
   }
 
   stats_.num_allocs++;
 
-#if !defined(__wasm__)
-  if (!session_initialized_ && context_.DeviceHasFeature(wgpu::FeatureName::BufferMapExtendedUsages)) {
-    return context_.BufferManager().CreateUMA(size);
+  return context_.BufferManager().Create(size);
+}
+
+void* GpuBufferAllocator::Alloc(size_t size) {
+  ORT_ENFORCE(session_initialized_, "Session has not been initialized.");
+
+  if (size == 0) {
+    return nullptr;
   }
-#endif  // !defined(__wasm__)
+
+  stats_.num_allocs++;
 
   return context_.BufferManager().Create(size);
 }

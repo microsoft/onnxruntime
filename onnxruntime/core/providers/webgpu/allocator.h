@@ -21,6 +21,7 @@ class GpuBufferAllocator : public IAllocator {
         context_{context} {
   }
 
+  virtual void* Reserve(size_t size) override;
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
