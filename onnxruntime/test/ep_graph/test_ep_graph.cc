@@ -475,7 +475,7 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
 
         const char* api_node_attr_name = nullptr;
         ASSERT_ORTSTATUS_OK(ort_api.OpAttr_GetName(api_node_attr, &api_node_attr_name));
-        ASSERT_EQ(std::string(api_node_attr_name), node_attr.first);
+        ASSERT_STREQ(api_node_attr_name, node_attr.first.c_str());
 
         OrtOpAttrType api_node_attr_type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
 

@@ -2938,7 +2938,10 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
 ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name) {
   API_IMPL_BEGIN
   if (name == nullptr) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'name' argument is NULL");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name argument is null");
+  }
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
   }
 
   *name = attribute->attr_proto.name().c_str();
