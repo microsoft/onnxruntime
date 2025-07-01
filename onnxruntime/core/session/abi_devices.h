@@ -7,8 +7,12 @@
 #include <unordered_map>
 
 #include "core/common/hash_combine.h"
+#include "core/framework/ortdevice.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
+
+// alias API type to internal type
+struct OrtMemoryDevice : OrtDevice {};
 
 struct OrtHardwareDevice {
   OrtHardwareDeviceType type;
@@ -61,4 +65,6 @@ struct OrtEpDevice {
   OrtKeyValuePairs ep_options;
 
   OrtEpFactory* ep_factory;
+  const OrtMemoryInfo* device_memory_info{nullptr};
+  const OrtMemoryInfo* host_accessible_memory_info{nullptr};
 };

@@ -5,6 +5,8 @@
 
 #ifndef SHARED_PROVIDER
 #include <memory>
+#include <optional>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -35,6 +37,7 @@ class GraphOptimizerRegistry;
 #include "core/framework/stream_handles.h"
 #include "core/framework/tuning_context.h"
 
+struct OrtEpDevice;
 struct OrtRunOptions;
 
 namespace onnxruntime {
@@ -62,6 +65,9 @@ using RunOptions = ::OrtRunOptions;
 enum class DataLayout {
   NCHW,
   NHWC,
+
+  // NCHW is the default ONNX standard data layout. So default to it.
+  Default = NCHW,
 };
 
 class IExecutionProvider {
@@ -322,9 +328,21 @@ class IExecutionProvider {
   }
 
   virtual DataLayout GetPreferredLayout() const {
-    // NCHW is the default ONNX standard data layout. So default to it.
     // EPs which prefer a different layout should override to return their preferred layout.
-    return DataLayout::NCHW;
+    return DataLayout::Default;
+  }
+
+  /**
+    Given an op with domain `domain` and type `op_type`, determine whether an associated node's data layout should be
+    converted to `target_data_layout`.
+    If the EP prefers a non-default data layout (see `GetPreferredLayout()`), this function will be called during
+    layout transformation with `target_data_layout` set to the EP's preferred data layout.
+    A return value of `std::nullopt` indicates that this decision is left to ORT.
+  */
+  virtual std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view /*domain*/,
+                                                           std::string_view /*op_type*/,
+                                                           DataLayout /*target_data_layout*/) const {
+    return std::nullopt;
   }
 
   virtual void RegisterStreamHandlers(IStreamCommandHandleRegistry& /*stream_handle_registry*/, AllocatorMap&) const {}

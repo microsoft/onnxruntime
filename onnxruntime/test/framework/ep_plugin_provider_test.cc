@@ -6,6 +6,7 @@
 #include "gsl/gsl"
 #include "gtest/gtest.h"
 
+#include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
 
@@ -66,8 +67,14 @@ MakeTestOrtEpResult MakeTestOrtEp() {
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
+  auto ort_ep_device = OrtEpDevice{};
+  std::vector<const OrtEpDevice*> ep_devices{&ort_ep_device};
+
   auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
-                                                      *static_cast<const OrtSessionOptions*>(ort_session_options));
+                                                      *static_cast<const OrtSessionOptions*>(ort_session_options),
+                                                      g_test_ort_ep_factory,
+                                                      ep_devices);
+
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;
 }
@@ -108,6 +115,64 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
     };
     ort_ep->GetPreferredDataLayout = failing_fn;
     ASSERT_THROW(ep->GetPreferredLayout(), OnnxRuntimeException);
+  }
+#endif  // !defined(ORT_NO_EXCEPTIONS)
+}
+
+TEST(PluginExecutionProviderTest, ShouldConvertDataLayoutForOp) {
+  auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp();
+
+  {
+    ort_ep->ShouldConvertDataLayoutForOp = nullptr;
+    ASSERT_EQ(ep->ShouldConvertDataLayoutForOp("", "Conv", DataLayout::NHWC), std::nullopt);
+  }
+
+  {
+    auto custom_nhwc_op_determination_fn = [](OrtEp* /*this_ptr*/,
+                                              const char* /*node_domain*/,
+                                              const char* node_op_type,
+                                              OrtEpDataLayout target_data_layout,
+                                              int* should_convert) -> ::OrtStatus* {
+      EXPECT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
+
+      if (node_op_type == std::string_view{"Conv"}) {
+        *should_convert = 1;
+      } else if (node_op_type == std::string_view{"BatchNormalization"}) {
+        *should_convert = 0;
+      } else {
+        *should_convert = -1;
+      }
+      return nullptr;
+    };
+    ort_ep->ShouldConvertDataLayoutForOp = custom_nhwc_op_determination_fn;
+
+    std::optional<bool> should_convert{};
+
+    should_convert = ep->ShouldConvertDataLayoutForOp("", "Conv", DataLayout::NHWC);
+    ASSERT_NE(should_convert, std::nullopt);
+    ASSERT_EQ(*should_convert, true);
+
+    should_convert = ep->ShouldConvertDataLayoutForOp("", "BatchNormalization", DataLayout::NHWC);
+    ASSERT_NE(should_convert, std::nullopt);
+    ASSERT_EQ(*should_convert, false);
+
+    should_convert = ep->ShouldConvertDataLayoutForOp("", "GridSample", DataLayout::NHWC);
+    ASSERT_EQ(should_convert, std::nullopt);
+  }
+
+#if !defined(ORT_NO_EXCEPTIONS)
+  {
+    auto failing_fn = [](OrtEp* this_ptr,
+                         const char* /*node_domain*/,
+                         const char* /*node_op_type*/,
+                         OrtEpDataLayout /*target_data_layout*/,
+                         int* /*should_convert*/) -> ::OrtStatus* {
+      auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
+      return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
+                                                "To convert to NHWC or not to convert to NHWC...");
+    };
+    ort_ep->ShouldConvertDataLayoutForOp = failing_fn;
+    ASSERT_THROW(ep->ShouldConvertDataLayoutForOp("", "Conv", DataLayout::NHWC), OnnxRuntimeException);
   }
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
