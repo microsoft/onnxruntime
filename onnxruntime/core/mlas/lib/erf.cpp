@@ -22,6 +22,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
+#include "mlasi_sve.h"
 
 //
 // Bundles the constants for use by kernels written in assembly.
@@ -97,6 +98,102 @@ MLAS_INTERNAL_DATA const struct {
     1.25829120e+7f,
     127,
 };
+
+
+__attribute__((target("arch=armv8-a+sve")))
+void
+MLASCALL
+MlasSveErfKernel(
+    const float* Input,
+    float* Output,
+    size_t N
+    )
+/*++
+
+Routine Description:
+
+    This routine implements the generic kernel for the error function.
+
+Arguments:
+
+    Input - Supplies the input buffer.
+
+    Output - Supplies the output buffer.
+
+    N - Supplies the number of elements to process.
+
+Return Value:
+
+    None.
+
+--*/
+{
+    MLAS_SVBOOL Pred = svptrue_b32();
+    size_t sve_veclen = svcntw();
+    size_t stride = sve_veclen;
+
+    while (N > 0) {
+        // If fewer that SVE vector length elements are remaining, adjust the predicate
+        if (N < sve_veclen) {
+            Pred = svwhilelt_b32(0, (int32_t)N);
+            stride = N;
+        }
+        MLAS_SVFLOAT32 Value = MlasSveLoadFloat32(Pred, Input);
+        MLAS_SVFLOAT32 NegZero = MlasSveBroadcastFloat32(MlasErfConstants.ErfNegZero);
+        MLAS_SVFLOAT32 SignMask = MlasSveAndFloat32(Pred, Value, NegZero);
+        MLAS_SVFLOAT32 AbsValue = MlasSveAndNotFloat32(Pred, NegZero, Value);
+        AbsValue = MlasSveMinimumFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.ErfUpperAbsRange), AbsValue);
+        MLAS_SVFLOAT32 SquareValue = MlasSveMultiplyFloat32(Pred, AbsValue, AbsValue);
+
+        MLAS_SVFLOAT32 r_small = MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P0);
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, SquareValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P1));
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, SquareValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P2));
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, SquareValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P3));
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, SquareValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P4));
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, SquareValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSMALL_P5_Minus_One));
+        r_small = MlasSveMultiplyAddFloat32(Pred, r_small, AbsValue, AbsValue);
+        MLAS_SVFLOAT32 split_mask = MlasSveGreaterThanFloat32(Pred, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfSplitBoundary));
+        r_small = MlasSveAndNotFloat32(Pred, split_mask, r_small);
+
+        AbsValue = MlasSveAndFloat32(Pred, split_mask, AbsValue);
+        MLAS_SVFLOAT32 r_big = MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P0);
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P1));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P2));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P3));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P4));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P5));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, MlasSveBroadcastFloat32(MlasErfConstants.ErfBIG_P6_Minus_One));
+        r_big = MlasSveMultiplyAddFloat32(Pred, r_big, AbsValue, AbsValue);
+
+        r_big = MlasSveXorFloat32(Pred, r_big, MlasSveBroadcastFloat32(MlasErfConstants.ErfNegZero));
+        r_big = MlasSveMaximumFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.Exp_LowerRange), r_big);\
+        MLAS_SVFLOAT32 exp_c = MlasSveBroadcastFloat32(MlasErfConstants.Exp_C);
+        MLAS_SVFLOAT32 r = MlasSveMultiplyAddFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.Exp_Log2Reciprocal), r_big, exp_c);
+        r = MlasSveSubtractFloat32(Pred, r, exp_c);
+
+        MLAS_SVFLOAT32 fx = MlasSveMultiplyAddFloat32(Pred, r, MlasSveBroadcastFloat32(MlasErfConstants.Exp_log2_hi), r_big);
+        fx = MlasSveMultiplyAddFloat32(Pred, r, MlasSveBroadcastFloat32(MlasErfConstants.Exp_log2_lo), fx);
+
+        MLAS_SVFLOAT32 y = MlasSveBroadcastFloat32(MlasErfConstants.Exp_P0);
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P1));
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P2));
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P3));
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P4));
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P5));
+        y = MlasSveMultiplyAddFloat32(Pred, y, fx, MlasSveBroadcastFloat32(MlasErfConstants.Exp_P6));
+
+        y = MlasSveMultiplyFloat32(Pred, y, MlasSvePowerOf2Float32(Pred, r));
+        y = MlasSveSubtractFloat32(Pred, MlasSveBroadcastFloat32(MlasErfConstants.ErfOne), y);
+
+        y = MlasSveOrFloat32(Pred, r_small, y);
+        y = MlasSveOrFloat32(Pred, y, SignMask);
+        MlasSveStoreFloat32(Pred, Output, y);
+
+        Input += stride;
+        Output += stride;
+        N -= stride;
+    }
+}
 
 void
 MLASCALL
@@ -263,7 +360,11 @@ Return Value:
 {
 #if defined(MLAS_TARGET_AMD64)
     GetMlasPlatform().ErfKernelRoutine(Input, Output, N);
-#else
-    MlasErfKernel(Input, Output, N);
+#else 
+    if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArmSVE()) {
+        MlasSveErfKernel(Input, Output, N);
+    } else {
+        MlasErfKernel(Input, Output, N);
+    }
 #endif
 }
