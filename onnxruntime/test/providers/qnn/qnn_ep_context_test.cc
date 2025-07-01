@@ -768,7 +768,7 @@ void EpCtxCpuNodeWithExternalIniFileTestBody(bool expect_external_ini_file, bool
   ASSERT_STATUS_OK(model.MainGraph().Resolve());
   ModelSavingOptions model_saving_options{10};
   // dump the model in testdata folder in case it hides the bug that not able to find model not in current dir
-  const std::string model_with_ext = "./testdata/model_external.onnx ";
+  const std::string model_with_ext = "./testdata/model_external.onnx";
   const std::string model_ext_file = "model_external.bin";
   ASSERT_STATUS_OK(Model::SaveWithExternalInitializers(model, model_with_ext,
                                                        model_ext_file, model_saving_options));
