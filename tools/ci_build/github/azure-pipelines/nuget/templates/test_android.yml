@@ -51,7 +51,7 @@ stages:
             dotnet publish -c Release --property:UsePrebuiltNativePackage=true --property:CurrentOnnxRuntimeVersion=$(NuGetPackageVersionNumber) -f net8.0-android
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI'
 
-      - task: PublishPipelineArtifact@0
+      - task: 1ES.PublishPipelineArtifact@1
         displayName: Publish Android MAUI APK
         inputs:
           targetPath: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI\bin\Release\net8.0-android\publish'

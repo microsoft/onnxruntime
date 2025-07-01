@@ -1,5 +1,5 @@
 <Project Sdk="Microsoft.NET.Sdk">
-	
+
 	<PropertyGroup>
 		<TargetFramework>net8.0</TargetFramework>
 		<ImplicitUsings>enable</ImplicitUsings>
@@ -11,12 +11,12 @@
 
 	<ItemGroup>
 		<PackageReference Include="Appium.WebDriver" Version="5.0.0-rc.5" />
-		<PackageReference Include="BrowserStack.TestAdapter" Version="0.16.0" />
+		<PackageReference Include="BrowserStack.TestAdapter" Version="0.13.13" />
 		<PackageReference Include="Microsoft.Extensions.Logging.Debug" Version="8.0.0" />
 		<PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
 		<PackageReference Include="NUnit" Version="3.13.0" />
 		<PackageReference Include="NUnit.Analyzers" Version="3.3.0" />
 		<PackageReference Include="NUnit3TestAdapter" Version="4.3.0" />
 	</ItemGroup>
-	
+
 </Project>
