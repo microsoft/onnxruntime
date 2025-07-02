@@ -876,9 +876,6 @@ def generate_build_tree(
                     "Enable PIX Capture (--enable_pix_capture) must be enabled with WebGPU (--use_webgpu) on Windows"
                 )
 
-        if args.wgsl_template:
-            raise BuildError("WGSL Template (--wgsl_template) must be enabled with WebGPU (--use_webgpu).")
-
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
