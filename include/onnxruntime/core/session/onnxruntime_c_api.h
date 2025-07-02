@@ -3852,11 +3852,11 @@ struct OrtApi {
    *      assigned to QNN EP is dumped to a separate file.
    *   "json_qnn_graph_dir": Directory in which to dump QNN JSON graphs. If not specified, QNN graphs are dumped in the
    *      program's current working directory. Ignored if "dump_json_qnn_graph" is not set.
-   * "op_packages": QNN UDO op_package for QNN EP, allowed format:
-   *   <op_type>:<op_package_path>:<interface>[:<target>],<op_type2>:<op_package_path2>:<interface2>[:<target>],
-   *   where op_type is the name of the operation, op_package_path is the path to the op package shared library,
-   *   interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
-   *   details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
+   *   "op_packages": QNN UDO op_package for QNN EP, allowed format:
+   *     "<op_type>:<op_package_path>:<interface>[:<target>],<op_type2>:<op_package_path2>:<interface2>[:<target>]",
+   *     where op_type is the name of the operation, op_package_path is the path to the op package shared library,
+   *     interface is the symbol name to register the op life cycle functions, and target is the backend type. For more
+   *     details, refer to: https://docs.qualcomm.com/bundle/publicresource/topics/80-63442-50/op_packages.html
    *
    * XNNPACK supported keys:
    *   "intra_op_num_threads": number of thread-pool size to use for XNNPACK execution provider.
