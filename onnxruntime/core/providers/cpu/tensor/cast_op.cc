@@ -191,8 +191,14 @@ struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
 
-// Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
 namespace {
+
+constexpr int INT4_MIN = -8;
+constexpr int INT4_MAX = 7;
+constexpr unsigned int UINT4_MIN = 0;
+constexpr unsigned int UINT4_MAX = 15;
+
+// Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
 template <typename DstType>
 struct Int4ElementConverter {
   static DstType Convert(int8_t val) {
@@ -215,41 +221,41 @@ template <typename SrcType, typename Enable = void>
 struct ToInt4ElementConverter {
   // Default implementation for most numeric types
   static int8_t ConvertToInt4(const SrcType& val) {
-    int8_t result = static_cast<int8_t>(val);
+    int result = static_cast<int>(val);
     // Clamp to int4 range (-8 to 7)
-    return std::clamp(result, int8_t(-8), int8_t(7));
+    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
   }
 
   static uint8_t ConvertToUInt4(const SrcType& val) {
-    uint8_t result = static_cast<uint8_t>(val);
+    unsigned int result = static_cast<unsigned int>(val);
     // Clamp to uint4 range (0 to 15)
-    return std::min(result, uint8_t(15));
+    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
   }
 };
 
 template <>
 struct ToInt4ElementConverter<float> {
   static int8_t ConvertToInt4(const float& val) {
-    int8_t result = static_cast<int8_t>(std::roundf(val));
-    return std::clamp(result, static_cast<int8_t>(-8), static_cast<int8_t>(7));
+    int result = static_cast<int>(std::roundf(val));
+    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
   }
 
   static uint8_t ConvertToUInt4(const float& val) {
-    uint8_t result = static_cast<uint8_t>(std::max(0.0f, std::roundf(val)));
-    return std::min(result, static_cast<uint8_t>(15));
+    unsigned int result = static_cast<unsigned int>(std::max(0.0f, std::roundf(val)));
+    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
   }
 };
 
 template <>
 struct ToInt4ElementConverter<double> {
   static int8_t ConvertToInt4(const double& val) {
-    int8_t result = static_cast<int8_t>(std::round(val));
-    return std::clamp(result, static_cast<int8_t>(-8), static_cast<int8_t>(7));
+    int result = static_cast<int>(std::round(val));
+    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
   }
 
   static uint8_t ConvertToUInt4(const double& val) {
-    uint8_t result = static_cast<uint8_t>(std::max(0.0, std::round(val)));
-    return std::min(result, static_cast<uint8_t>(15));
+    unsigned int result = static_cast<unsigned int>(std::max(0.0, std::round(val)));
+    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
   }
 };
 
@@ -360,8 +366,8 @@ struct TensorCaster<std::string, Int4x2> {
       // Parse each string and clamp to int4 range (-8 to 7)
       int v0 = std::stoi(in_data[i]);
       int v1 = std::stoi(in_data[i + 1]);
-      int8_t val0 = static_cast<int8_t>(std::clamp(v0, -8, 7));
-      int8_t val1 = static_cast<int8_t>(std::clamp(v1, -8, 7));
+      int8_t val0 = static_cast<int8_t>(std::clamp(v0, INT4_MIN, INT4_MAX));
+      int8_t val1 = static_cast<int8_t>(std::clamp(v1, INT4_MIN, INT4_MAX));
 
       out_data[i >> 1] = Int4x2(val0, val1);
     }
@@ -369,7 +375,7 @@ struct TensorCaster<std::string, Int4x2> {
     // Handle odd number of elements - pad with 0
     if (i < shape_size) {
       int v0 = std::stoi(in_data[i]);
-      int8_t val0 = static_cast<int8_t>(std::clamp(v0, -8, 7));
+      int8_t val0 = static_cast<int8_t>(std::clamp(v0, INT4_MIN, INT4_MAX));
 
       out_data[i >> 1] = Int4x2(val0, 0);
     }
@@ -390,8 +396,8 @@ struct TensorCaster<std::string, UInt4x2> {
       // Parse each string and clamp to uint4 range (0 to 15)
       int v0 = std::stoi(in_data[i]);
       int v1 = std::stoi(in_data[i + 1]);
-      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, 0, 15));
-      uint8_t val1 = static_cast<uint8_t>(std::clamp(v1, 0, 15));
+      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
+      uint8_t val1 = static_cast<uint8_t>(std::clamp(v1, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
 
       out_data[i >> 1] = UInt4x2(val0, val1);
     }
@@ -399,7 +405,7 @@ struct TensorCaster<std::string, UInt4x2> {
     // Handle odd number of elements - pad with 0
     if (i < shape_size) {
       int v0 = std::stoi(in_data[i]);
-      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, 0, 15));
+      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
 
       out_data[i >> 1] = UInt4x2(val0, 0);
     }
@@ -559,8 +565,8 @@ struct TensorCaster<UInt4x2, Int4x2> {
       auto high_nibble = in_data[i].GetElem(1);
 
       // Convert to signed by clamping to int4 range (-8 to 7)
-      int8_t low_signed = std::clamp(static_cast<int8_t>(low_nibble), int8_t(-8), int8_t(7));
-      int8_t high_signed = std::clamp(static_cast<int8_t>(high_nibble), int8_t(-8), int8_t(7));
+      int8_t low_signed = static_cast<int8_t>(std::clamp(static_cast<int>(low_nibble), INT4_MIN, INT4_MAX));
+      int8_t high_signed = static_cast<int8_t>(std::clamp(static_cast<int>(high_nibble), INT4_MIN, INT4_MAX));
 
       out_data[i] = Int4x2(low_signed, high_signed);
     }
