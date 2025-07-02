@@ -327,6 +327,16 @@ class TaskLibrary:
         )
 
     @task
+    def extract_ort_windows_arm64(self, plan: Plan) -> str:
+        return plan.add_step(
+            ExtractArchiveTask(
+                "Extracting ONNX Runtime for Windows on ARM64",
+                REPO_ROOT / "build" / "onnxruntime-tests-windows-arm64.zip",
+                REPO_ROOT / "build" / "windows-arm64" / "RelWithDebInfo",
+            )
+        )
+
+    @task
     def extract_ort_windows_x86_64(self, plan: Plan) -> str:
         return plan.add_step(
             ExtractArchiveTask(

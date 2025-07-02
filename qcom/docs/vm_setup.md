@@ -110,7 +110,9 @@ The GitHub runner runs as a Windows service. Log in as the local administrator a
 
 #### Build Configuration
 
-Set the environment variable `ORT_BUILD_TOOLS_PATH` to `C:\Users\OrtQnnEpCi\.ort-build-tools`.
+* Set the environment variable `ORT_BUILD_TOOLS_PATH` to `C:\Users\OrtQnnEpCi\.ort-build-tools`.
+* Set `REQUESTS_CA_BUNDLE` to the location of the Netskope combined certificate as
+  [described here](https://qualcomm.sharepoint.com/teams/cloudproxy/SitePages/Certificate-Management.aspx).
 
 ## Linux
 

@@ -30,6 +30,8 @@ DEFAULT_PACKAGE_CACHE_DIR = Path(
 )
 DEFAULT_MAX_CACHE_SIZE_BYTES = int(os.environ.get("ORT_BUILD_PACKAGE_CACHE_SIZE", f"{5 * 1024 * 1024 * 1024}"))  # 5 GiB
 
+CAFILE = os.environ.get("REQUESTS_CA_BUNDLE", certifi.where())
+
 
 class FileCache:
     def __init__(
@@ -58,9 +60,7 @@ class FileCache:
 
             # Defer writing the final file so we don't leave partial downloads if we get killed.
             with tempfile.SpooledTemporaryFile(mode="wr+b") as tmp_file:
-                with urllib.request.urlopen(
-                    url, context=ssl.create_default_context(cafile=certifi.where())
-                ) as response:
+                with urllib.request.urlopen(url, context=ssl.create_default_context(cafile=CAFILE)) as response:
                     length = int(response.getheader("content-length")) / 1024 / 1024
                     with tqdm.tqdm(
                         total=length,

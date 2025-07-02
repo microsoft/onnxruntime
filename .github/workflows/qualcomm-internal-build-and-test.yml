@@ -190,7 +190,7 @@ jobs:
 
   test-windows-arm64:
     if: ${{ inputs.do_all }}
-    runs-on: ["self-hosted", "Linux", "QDC"]
+    runs-on: ["self-hosted", "Windows", "ARM64", "Build"]
     needs: [build-windows-arm64]
     steps:
       - uses: actions/checkout@v4
@@ -204,24 +204,23 @@ jobs:
             ${{ github.workspace }}/build
 
       - name: Test Windows ARM64
-        env:
-          QDC_API_TOKEN: ${{ secrets.QDC_API_TOKEN }}
+        shell: cmd
         run: |
-          python3 qcom/build_and_test.py create_venv test_ort_qdc_windows_arm64 --only
+          python .\qcom\build_and_test.py create_venv extract_ort_windows_arm64 test_ort_windows_arm64 --only
 
       - name: Publish Test Report
         uses: mikepenz/action-junit-report@v4.0.4
         if: always() # always run even if the previous step fails
         with:
           check_name: windows-arm64-test-results
-          report_paths: ${{ github.workspace }}/build/qdc-windows/*.results.xml
+          report_paths: ${{ github.workspace }}/build/windows-arm64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
       - uses: actions/upload-artifact@v3
         if: always() # always run even if the previous step fails
         with:
-          name: ORT Windows ARM64 Test Results
+          name: ORT Windows arm64 Test Results
           path: |
-            ${{ github.workspace }}/build/qdc-windows/*.*
+            ${{ github.workspace }}/build/windows-arm64/RelWithDebInfo/RelWithDebInfo/*.results.xml
 
   test-windows-x86_64:
     if: ${{ inputs.do_all }}
