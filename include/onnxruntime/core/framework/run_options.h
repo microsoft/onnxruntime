@@ -43,7 +43,8 @@ struct OrtRunOptions {
 #endif
 
   // Stores the configurations for this run
-  // To add an configuration to this specific run, call OrtApis::AddRunConfigEntry
+  // To add a configuration value to this specific run, call OrtApis::AddRunConfigEntry
+  // To get a configuration value, call OrtApis::GetRunConfigEntry
   // The configuration keys and value formats are defined in
   // /include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h
   onnxruntime::ConfigOptions config_options;

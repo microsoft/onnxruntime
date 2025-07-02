@@ -942,6 +942,7 @@ struct RunOptions : detail::Base<OrtRunOptions> {
   const char* GetRunTag() const;               ///< Wraps OrtApi::RunOptionsGetRunTag
 
   RunOptions& AddConfigEntry(const char* config_key, const char* config_value);  ///< Wraps OrtApi::AddRunConfigEntry
+  const char* GetConfigEntry(const char* config_key);                            ///< Wraps OrtApi::GetRunConfigEntry
 
   /** \brief Terminates all currently executing Session::Run calls that were made using this RunOptions instance
    *
