@@ -33,8 +33,12 @@ class StreamCommandHandleRegistryImpl : public IStreamCommandHandleRegistry {
   // Wait is a little special as we need to consider the source stream the notification generated,
   // and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  WaitNotificationFn GetWaitHandle(const OrtDevice::DeviceType notification_owner_device_type,
-                                   const OrtDevice::DeviceType executor_device_type) const override {
+  WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                   const OrtDevice& executor_device) const override {
+    auto notification_owner_device_type = notification_owner_device.UsesCpuMemory() ? OrtDevice::CPU
+                                                                                    : notification_owner_device.Type();
+    auto executor_device_type = executor_device.UsesCpuMemory() ? OrtDevice::CPU : executor_device.Type();
+
     auto it = notification_wait_map_.find(GetWaitKey(notification_owner_device_type, executor_device_type));
     return it == notification_wait_map_.end() ? nullptr : it->second;
   }

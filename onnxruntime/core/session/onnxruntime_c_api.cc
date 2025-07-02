@@ -332,9 +332,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
 namespace {
 #if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) {
-  if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) {
+  if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
     return std::make_unique<CPUDataTransfer>();
   }
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
@@ -348,7 +349,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
 SparseTensor& ValidateFillInputArgs(OrtValue* v, const TensorShape& values_shape, const OrtMemoryInfo* data_mem_info) {
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
   if (sparse_tensor.IsDataTypeString()) {
-    if ((data_mem_info->device.Type() != OrtDevice::CPU) || sparse_tensor.Location().device.Type() != OrtDevice::CPU) {
+    if (!data_mem_info->device.UsesCpuMemory() || !sparse_tensor.Location().device.UsesCpuMemory()) {
       ORT_THROW("Strings can only reside in CPU memory");
     }
   }
