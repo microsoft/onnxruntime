@@ -5567,7 +5567,7 @@ struct OrtApi {
 
   /** \brief Returns the number of graph inputs.
    *
-   * Counts initializers that are included in the list of graph inputs.
+   * \note The count includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] num_inputs Output parameter set to the number of graph inputs.
@@ -5580,7 +5580,7 @@ struct OrtApi {
 
   /** \brief Returns the graph's inputs as OrtValueInfo instances.
    *
-   * Includes initializers that are included in the list of graph inputs.
+   * \note The result includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the graph's inputs.
