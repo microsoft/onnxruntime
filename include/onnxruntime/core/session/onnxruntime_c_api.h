@@ -5427,8 +5427,8 @@ struct OrtApi {
    *   - input_indices: [0, 1]
    *
    * \param[in] value_info The OrtValueInfo instance.
-   * \param[out] nodes Pre-allocated array of size `num_consumers` that will be filled with OrtNode instances.
-   * \param[out] input_indices Pre-allocated array of `num_consumers` elements that will be filled
+   * \param[out] nodes Pre-allocated array of size `num_consumers` that is filled with OrtNode instances.
+   * \param[out] input_indices Pre-allocated array of `num_consumers` elements that is filled
    *                           with input indices. Index is set to -1 for an "implicit" input to a consumer node
    *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
    * \param[in] num_consumers The size of the `consumer_nodes` and `consumer_input_indices` arrays.
@@ -5582,7 +5582,7 @@ struct OrtApi {
    * Includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] inputs Pre-allocated array of `num_inputs` elements that will be filled with OrtValueInfo*.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the graph's inputs.
    * \param[in] num_inputs The size of the `inputs` array.
    *                       Typical usage sets this to the result of Graph_GetNumInputs(). An error status is
    *                       returned if `num_inputs` is less than the number of graph inputs.
@@ -5608,7 +5608,7 @@ struct OrtApi {
   /** \brief Returns the graph's outputs as OrtValueInfo instances.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] outputs Pre-allocated array of `num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that is filled with the graph's outputs.
    * \param[in] num_outputs The size of the `outputs` array.
    *                        Typical usage sets this to the result of Graph_GetNumOutputs(). An error status is
    *                        returned if `num_outputs` is less than the number of graph outputs.
@@ -5645,7 +5645,7 @@ struct OrtApi {
    * Call ValueInfo_GetInitializerValue to get the initializer's data.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] initializers Pre-allocated array of `num_outputs` elements that will be filled with OrtValueInfo*.
+   * \param[out] initializers Pre-allocated array of `num_outputs` elements that is filled with the initializers.
    * \param[in] num_initializers The size of the `initializers` array. Typical usage sets this to the
    *                             result of Graph_GetNumInitializers(). An error status is returned if
    *                            `num_initializers` is less than the number of graph initializers.
@@ -5675,7 +5675,7 @@ struct OrtApi {
    * own node ordering if a different order is required.
    *
    * \param[in] graph The OrtGraph instance.
-   * \param[out] nodes Pre-allocated array of `num_nodes` elements that will be filled with OrtNode*.
+   * \param[out] nodes Pre-allocated array of `num_nodes` elements that is filled with the graph's nodes.
    * \param[in] num_nodes The size of the `nodes` array. Typical usage sets this to the
    *                      result of Graph_GetNumNodes(). An error status is returned if
    *                      `num_nodes` is less than the number of graph nodes.
@@ -5779,7 +5779,7 @@ struct OrtApi {
   /** \brief Returns the node's inputs as OrtValueInfo instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] inputs Pre-allocated array of `num_inputs` elements that will be filled with the result.
+   * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the node's inputs.
    * \param[in] num_inputs The size of the `inputs` array.
    *                       Typical usage sets this to the result of Node_GetNumInputs(). An error status is
    *                       returned if `num_inputs` is less than the number of node inputs.
@@ -5805,7 +5805,7 @@ struct OrtApi {
   /** \brief Returns the node's outputs as OrtValueInfo instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] outputs Pre-allocated array of `num_outputs` elements that will be filled with the result.
+   * \param[out] outputs Pre-allocated array of `num_outputs` elements that is filled with the node's outputs.
    * \param[in] num_outputs The size of the `outputs` array.
    *                        Typical usage sets this to the result of Node_GetNumOutputs(). An error status is
    *                        returned if `num_outputs` is less than the number of node outputs.
@@ -5834,15 +5834,16 @@ struct OrtApi {
 
   /** \brief Get the implicit inputs, as OrtValueInfo instances, that are used within the given node's subgraphs.
    *
-   * Certain operator types (e.g., If and Loop) contain nested subgraphs. The internal nodes within the nested subgraphs
-   * may use values from the outer scope. Those "outer scope" values are considered implicit inputs to the node that
-   * contains the subgraphs (e.g., the If or Loop node).
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
+   * The internal nodes within the nested subgraphs may use values from the outer scope. Those "outer scope" values
+   * are considered implicit inputs to the node that contains the subgraphs (e.g., the If or Loop node).
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] implicit_inputs Pre-allocated array of `num_implicit_inputs` elements that will be filled the result.
-   * \param[in] num_inputs The size of the `implicit_inputs` array.
-   *                       Typical usage sets this to the result of Node_GetNumImplicitInputs(). An error status is
-   *                       returned if `num_implicit_inputs` is less than the number of node implicit inputs.
+   * \param[out] implicit_inputs Pre-allocated array of `num_implicit_inputs` elements that is filled the node's
+   *                             implicit inputs.
+   * \param[in] num_implicit_inputs The size of the `implicit_inputs` array. Typical usage sets this to the result
+   *                                of Node_GetNumImplicitInputs(). An error status is returned if
+   *                                `num_implicit_inputs` is less than the number of node implicit inputs.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5866,7 +5867,7 @@ struct OrtApi {
   /** \brief Returns a node's attributes as OrtOpAttr instances.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] attributes Pre-allocated array of `num_attributes` elements that will be filled with the result.
+   * \param[out] attributes Pre-allocated array of `num_attributes` elements that is filled with the node's attributes.
    * \param[in] num_attributes The size of the `num_attributes` array.
    *                           Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
    *                           returned if `num_attributes` is less than the number of node attributes.
@@ -5904,7 +5905,7 @@ struct OrtApi {
 
   /** \brief Returns the number of subgraphs contained by the given node.
    *
-   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] num_subgraphs Output parameter set to the number of node subgraphs.
@@ -5917,10 +5918,10 @@ struct OrtApi {
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
-   * Certain operator types (e.g., If and Loop) contain nested subgraphs.
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
    *
    * \param[in] node The OrtNode instance.
-   * \param[out] subgraphs Pre-allocated array of `num_subgraphs` elements that will be filled with the result.
+   * \param[out] subgraphs Pre-allocated array of `num_subgraphs` elements that is filled with the node's subgraphs.
    * \param[in] num_subgraphs The size of the `num_subgraphs` array.
    *                          Typical usage sets this to the result of Node_GetNumSubgraphs(). An error status is
    *                          returned if `num_subgraphs` is less than the number of node subgraphs.
