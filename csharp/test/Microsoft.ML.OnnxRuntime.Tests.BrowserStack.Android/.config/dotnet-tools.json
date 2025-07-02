@@ -7,7 +7,6 @@
       "commands": [
         "browserstack-sdk"
       ],
-      "rollForward": false
     }
   }
 }
