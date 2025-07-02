@@ -141,7 +141,7 @@ typename std::enable_if<
     (boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16, float>, T1>::value && std::is_same<T2, float>::value) ||
         (std::is_integral<T1>::value && std::is_same<T2, int>::value),
     std::vector<T1>>::type
-ToType(const std::vector<T2>& vec, const std::vector<int64_t>& /*shape*/) {
+ToType(const std::vector<T2>& vec) {
   std::vector<T1> result;
   for (auto v : vec) {
     result.push_back(static_cast<T1>(v));
@@ -152,7 +152,7 @@ ToType(const std::vector<T2>& vec, const std::vector<int64_t>& /*shape*/) {
 
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
-ToType(const std::vector<int>& vec, std::vector<int64_t>& shape) {
+ToType(const std::vector<int>& vec) {
   // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;
   constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
@@ -199,11 +199,11 @@ void RunUnpackedData(
   auto expect_result = expect_success ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure;
   if (zero_points.empty()) {
     // If no zero points are provided, we can skip packing them.
-    RunGatherBlockQuantized(ToType<T1>(packed_data, packed_data_shape),
+    RunGatherBlockQuantized(ToType<T1>(packed_data),
                             packed_data_shape,
-                            ToType<Tind>(indices, indices_shape),
+                            ToType<Tind>(indices),
                             indices_shape,
-                            ToType<T2>(scales, scales_shape),
+                            ToType<T2>(scales),
                             scales_shape,
                             {},
                             {},
@@ -211,7 +211,7 @@ void RunUnpackedData(
                             quantize_axis,
                             block_size,
                             bits,
-                            ToType<T2>(output, output_shape),
+                            ToType<T2>(output),
                             output_shape,
                             expect_result);
     return;
@@ -222,19 +222,19 @@ void RunUnpackedData(
   std::vector<int64_t> packed_zero_point_shape = scales_shape;
   PackDataForUint8TypeIfNecessary<T1>(packed_zero_point, packed_zero_point_shape, bits);
 
-  RunGatherBlockQuantized(ToType<T1>(packed_data, packed_data_shape),
+  RunGatherBlockQuantized(ToType<T1>(packed_data),
                           packed_data_shape,
-                          ToType<Tind>(indices, indices_shape),
+                          ToType<Tind>(indices),
                           indices_shape,
-                          ToType<T2>(scales, scales_shape),
+                          ToType<T2>(scales),
                           scales_shape,
-                          ToType<T1>(packed_zero_point, packed_zero_point_shape),
+                          ToType<T1>(packed_zero_point),
                           packed_zero_point_shape,
                           gather_axis,
                           quantize_axis,
                           block_size,
                           bits,
-                          ToType<T2>(output, output_shape),
+                          ToType<T2>(output),
                           output_shape,
                           expect_result);
 }
