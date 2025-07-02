@@ -322,12 +322,13 @@ struct TensorCaster<std::string, DstType> {
 template <>
 struct TensorCaster<Int4x2, std::string> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<std::string>();
 
     // Unpack each Int4x2 into two separate string elements
     size_t out_idx = 0;
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -339,12 +340,13 @@ struct TensorCaster<Int4x2, std::string> {
 template <>
 struct TensorCaster<UInt4x2, std::string> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<std::string>();
 
     // Unpack each UInt4x2 into two separate string elements
     size_t out_idx = 0;
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -356,12 +358,12 @@ struct TensorCaster<UInt4x2, std::string> {
 template <>
 struct TensorCaster<std::string, Int4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<Int4x2>();
 
     // Every 2 strings combine into 1 Int4x2
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       // Parse each string and clamp to int4 range (-8 to 7)
       int v0 = std::stoi(in_data[i]);
@@ -386,12 +388,12 @@ struct TensorCaster<std::string, Int4x2> {
 template <>
 struct TensorCaster<std::string, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
     auto* out_data = out.MutableData<UInt4x2>();
 
     // Every 2 strings combine into 1 UInt4x2
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       // Parse each string and clamp to uint4 range (0 to 15)
       int v0 = std::stoi(in_data[i]);
@@ -442,10 +444,11 @@ struct TensorCaster<Int4x2, DstType,
 #endif
                                      >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -458,10 +461,11 @@ template <typename DstType>
 struct TensorCaster<Int4x2, DstType,
                     std::enable_if_t<std::is_floating_point_v<DstType>>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -473,10 +477,11 @@ struct TensorCaster<Int4x2, DstType,
 template <>
 struct TensorCaster<Int4x2, bool> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<bool>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -488,10 +493,11 @@ struct TensorCaster<Int4x2, bool> {
 template <>
 struct TensorCaster<Int4x2, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size() + 1) >> 1;
     const auto* in_data = in.Data<Int4x2>();
     auto* out_data = out.MutableData<UInt4x2>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size() + 1) >> 1; ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -506,35 +512,26 @@ struct TensorCaster<Int4x2, UInt4x2> {
 
 template <typename DstType>
 struct TensorCaster<UInt4x2, DstType,
-                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType>
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<DstType>::value
 #endif
                                      >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<DstType>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
       out_data[i] = Int4ElementConverter<DstType>::Convert(val);
-    }
-  }
-};
-
-template <typename DstType>
-struct TensorCaster<UInt4x2, DstType, std::enable_if_t<std::is_floating_point_v<DstType>>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const auto* in_data = in.Data<UInt4x2>();
-    auto* out_data = out.MutableData<DstType>();
-
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
-      // elem 0 is the low nibble, 1 the high nibble
-      auto val = in_data[i >> 1].GetElem(i & 0x1);
-
-      out_data[i] = static_cast<DstType>(val);
+      if constexpr (std::is_floating_point_v<DstType>) {
+        out_data[i] = static_cast<DstType>(val);
+      } else {
+        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
+      }
     }
   }
 };
@@ -542,10 +539,11 @@ struct TensorCaster<UInt4x2, DstType, std::enable_if_t<std::is_floating_point_v<
 template <>
 struct TensorCaster<UInt4x2, bool> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<bool>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size()); ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
@@ -557,10 +555,11 @@ struct TensorCaster<UInt4x2, bool> {
 template <>
 struct TensorCaster<UInt4x2, Int4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size() + 1) >> 1;
     const auto* in_data = in.Data<UInt4x2>();
     auto* out_data = out.MutableData<Int4x2>();
 
-    for (size_t i = 0; i < narrow<size_t>(shape.Size() + 1) >> 1; ++i) {
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
@@ -581,11 +580,11 @@ struct TensorCaster<SrcType, Int4x2,
 #endif
                                      >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<Int4x2>();
 
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
       int8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
@@ -604,11 +603,11 @@ struct TensorCaster<SrcType, Int4x2,
 template <>
 struct TensorCaster<bool, Int4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<bool>();
     auto* out_data = out.MutableData<Int4x2>();
 
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       int8_t low_val = in_data[i] ? 1 : 0;
       int8_t high_val = in_data[i + 1] ? 1 : 0;
@@ -632,11 +631,11 @@ struct TensorCaster<SrcType, UInt4x2,
 #endif
                                      >> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
     auto* out_data = out.MutableData<UInt4x2>();
 
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
       uint8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
@@ -655,11 +654,11 @@ struct TensorCaster<SrcType, UInt4x2,
 template <>
 struct TensorCaster<bool, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<bool>();
     auto* out_data = out.MutableData<UInt4x2>();
 
-    const size_t shape_size = narrow<size_t>(shape.Size());
-    size_t i = 0;
+    ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
       uint8_t low_val = in_data[i] ? 1 : 0;
       uint8_t high_val = in_data[i + 1] ? 1 : 0;
