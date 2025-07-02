@@ -5048,24 +5048,34 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 
 Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
                                             std::optional<std::string_view> new_name) {
-  const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-  ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), *tensor, node_proto.output(0)));
-
+  // Conver to TensorProto
+  ONNX_NAMESPACE::TensorProto tensor_proto;
+  ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), tensor_proto, node_proto.output(0)));
   if (new_name.has_value()) {
-    tensor->set_name(std::string(new_name.value()));
+    tensor_proto.set_name(std::string(new_name.value()));
   }
 
-  auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-  ORT_ENFORCE(insert_result.second, "Constant node name: ", tensor->name(),
-              " conflicts with graph initializer. Check that the node names have been made unique.");
-  if (GetNodeArg(tensor->name()) == nullptr) {
-    TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
-    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
+  // In the constant node, we won't have symbolic dims.
+  const auto tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
+  auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
+  const size_t size_in_bytes = ml_data->Size() * tensor_shape.Size();
+
+  if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
+    OrtValue ort_value;
+    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), ModelPath(), tensor_proto,
+                                                     CPUAllocator::DefaultInstance(), ort_value));
+
+    constexpr const bool use_tensor_buffer_true = true;
+    auto tensor_proto_to_add = utils::TensorToTensorProto(ort_value.Get<Tensor>(), tensor_proto.name(),
+                                                          use_tensor_buffer_true);
+    ORT_RETURN_IF_ERROR(AddInitializedOrtValue(tensor_proto_to_add, ort_value));
+  } else {
+    AddInitializedTensor(tensor_proto);
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
   if (node_proto.attribute(0).type() == AttributeProto_AttributeType_SPARSE_TENSOR) {
-    ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor->name()));
+    ORT_IGNORE_RETURN_VALUE(sparse_tensor_names_.emplace(tensor_proto.name()));
   }
 #endif
 
@@ -5491,7 +5501,7 @@ Status Graph::InlineFunction(Node& callnode) {
       }
     }
 
-    // Process constant nodes and iniitalizers after all other nodes
+    // Process constant nodes and initializers after all other nodes
     // so NodeArgs are created from the nodes
     for (const auto& subgraph_node : subgraph.Nodes()) {
       if (subgraph_node.OpType() == kConstant) {
@@ -5502,16 +5512,14 @@ Status Graph::InlineFunction(Node& callnode) {
       }
     }
 
-    for (auto& init : subgraph.name_to_initial_tensor_) {
-      const gsl::not_null<TensorProto*> tensor{graph_proto_->add_initializer()};
-      *tensor = *init.second;
-      tensor->set_name(tensor->name() + uniq_identifier);
-      auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
-      ORT_ENFORCE(insert_result.second, "Initializer name: ", tensor->name(), " in inlined subgraph: ",
-                  subgraph.Name(), " conflicts with graph initializer. Check Specializing code.");
-      if (GetNodeArg(tensor->name()) == nullptr) {
-        TypeProto t{utils::TypeProtoFromTensorProto(*tensor)};
-        ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor->name(), &t));
+    for (const auto& init : subgraph.name_to_initial_tensor_) {
+      const auto& [name, tensor_proto] = init;
+      auto tensor_proto_to_add = *tensor_proto;
+      tensor_proto_to_add.set_name(name + uniq_identifier);
+      if (OrtValue ort_value; subgraph.GetOrtValueInitializer(name, ort_value)) {
+        ORT_RETURN_IF_ERROR(AddInitializedOrtValue(tensor_proto_to_add, ort_value));
+      } else {
+        AddInitializedTensor(tensor_proto_to_add);
       }
     }
   }
