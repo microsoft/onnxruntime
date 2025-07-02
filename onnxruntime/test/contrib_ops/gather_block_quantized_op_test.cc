@@ -194,7 +194,7 @@ void RunUnpackedData(
   // Make a copy to avoid modifying the original unpacked data.
   std::vector<int> packed_data = unpacked_data;
   std::vector<int64_t> packed_data_shape = unpacked_data_shape;
-  PackDataForUint8TypeIfNecessary<T1>(packed_data, packed_data_shape, bits);
+  PackDataForUint8TypeIfNecessary<T1>(packed_data, packed_data_shape, static_cast<int>(bits));
 
   auto expect_result = expect_success ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure;
   if (zero_points.empty()) {
@@ -220,7 +220,7 @@ void RunUnpackedData(
   // Make a copy to avoid modifying the original unpacked data.
   std::vector<int> packed_zero_point = zero_points;
   std::vector<int64_t> packed_zero_point_shape = scales_shape;
-  PackDataForUint8TypeIfNecessary<T1>(packed_zero_point, packed_zero_point_shape, bits);
+  PackDataForUint8TypeIfNecessary<T1>(packed_zero_point, packed_zero_point_shape, static_cast<int>(bits));
 
   RunGatherBlockQuantized(ToType<T1>(packed_data),
                           packed_data_shape,
