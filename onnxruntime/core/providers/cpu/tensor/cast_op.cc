@@ -438,7 +438,7 @@ struct TensorCaster<float, MLFloat16> {
 
 template <typename DstType>
 struct TensorCaster<Int4x2, DstType,
-                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType>
 #if !defined(DISABLE_FLOAT8_TYPES)
                                      || IsOrtFloat8Type<DstType>::value
 #endif
@@ -452,24 +452,11 @@ struct TensorCaster<Int4x2, DstType,
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
-      out_data[i] = Int4ElementConverter<DstType>::Convert(val);
-    }
-  }
-};
-
-template <typename DstType>
-struct TensorCaster<Int4x2, DstType,
-                    std::enable_if_t<std::is_floating_point_v<DstType>>> {
-  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
-    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<Int4x2>();
-    auto* out_data = out.MutableData<DstType>();
-
-    for (ptrdiff_t i = 0; i < shape_size; ++i) {
-      // elem 0 is the low nibble, 1 the high nibble
-      auto val = in_data[i >> 1].GetElem(i & 0x1);
-
-      out_data[i] = static_cast<DstType>(val);
+      if constexpr (std::is_floating_point_v<DstType>) {
+        out_data[i] = static_cast<DstType>(val);
+      } else {
+        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
+      }
     }
   }
 };
