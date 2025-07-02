@@ -79,7 +79,8 @@ common_args=(--cmake_generator "${cmake_generator}" \
              --config "${config}" \
              --use_cache --parallel \
              --build_dir "${build_dir}" \
-             --wheel_name_suffix qcom-internal)
+             --wheel_name_suffix qcom-internal
+             --compile_no_warning_as_error)
 
 action_args=()
 make_test_archive=

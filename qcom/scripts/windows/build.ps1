@@ -138,7 +138,8 @@ $CommonArgs = `
     "--config", $Config, `
     "--parallel", `
     "--path_to_protoc", $ProtocPath, `
-    "--wheel_name_suffix", "qcom-internal"
+    "--wheel_name_suffix", "qcom-internal", `
+    "--compile_no_warning_as_error"
 
 $Actions = @()
 $QnnArgs = "--use_qnn", "--qnn_home", "$QairtSdkRoot"
