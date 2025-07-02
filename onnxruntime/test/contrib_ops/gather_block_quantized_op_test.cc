@@ -35,24 +35,63 @@ void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t
   for (const auto& dim : data_shape) {
     total_elements *= dim;
   }
-  int64_t total_columns = data_shape.back();
-  int64_t total_rows = total_elements / total_columns;
+  int64_t input_columns = data_shape.back();
+  int64_t total_rows = total_elements / input_columns;
 
   // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
   std::vector<int> packed_data;
-  int64_t packed_columns = (total_columns + 1) / 2;
-  packed_data.reserve(total_rows * packed_columns);
+  int64_t output_columns = (input_columns + 1) / 2;
+  packed_data.reserve(total_rows * output_columns);
   for (int64_t row = 0; row < total_rows; ++row) {
-    for (int64_t col = 0; col < total_columns; col += 2) {
-      int low_nibble = (data[row * total_columns + col] + 8) & 0xF;
-      int high_nibble = ((col + 1) < total_columns) ? ((data[row * total_columns + col + 1] + 8) & 0xF) : 0;
+    for (int64_t col = 0; col < input_columns; col += 2) {
+      int low_nibble = (data[row * input_columns + col] + 8) & 0xF;
+      int high_nibble = ((col + 1) < input_columns) ? ((data[row * input_columns + col + 1] + 8) & 0xF) : 0;
       int packed = (high_nibble << 4) | low_nibble;
       packed_data.push_back(packed);
     }
   }
 
   data = packed_data;
-  data_shape[data_shape.size() - 1] = packed_columns;
+  data_shape.back() = output_columns;
+}
+
+template <typename T>
+std::string VectorToString(const std::vector<T>& vec) {
+  std::ostringstream oss;
+  for (size_t i = 0; i < vec.size(); ++i) {
+    oss << vec[i];
+    if (i != vec.size() - 1) {
+      oss << ",";
+    }
+  }
+  return oss.str();
+}
+
+template <typename T>
+void CheckDataAndShape(const std::vector<T>& data, const std::vector<int64_t>& shape, std::string name = "") {
+  int64_t total_elements = 1;
+  for (const auto& dim : shape) {
+    total_elements *= dim;
+  }
+
+  if constexpr (std::is_same<T, UInt4x2>::value || std::is_same<T, Int4x2>::value) {
+    total_elements = (total_elements + 1) / 2;
+  }
+
+  // for (size_t i = 0; i < shape.size(); ++i) {
+  //   if constexpr (std::is_same<T, UInt4x2>::value || std::is_same<T, Int4x2>::value) {
+  //     // For UInt4x2 or Int4x2, the data was packed by ToType<T>, so we divide by 2
+  //     if (i == shape.size() - 1) {
+  //       total_elements *= (shape[i] + 1) / 2;
+  //       continue;
+  //     }
+  //   }
+  //   total_elements *= shape[i];
+  // }
+
+  ORT_ENFORCE(static_cast<int64_t>(data.size()) == total_elements, "Data size does not match the shape",
+              "Data size: ", data.size(), ", Expected size: ", total_elements,
+              ", Shape: ", VectorToString(shape), " Name:", name, " Type:", typeid(T).name());
 }
 
 // Combinations: types, gather_axis, quantize_axis, block_size, indices, scale shape vs data shape
@@ -72,6 +111,14 @@ void RunGatherBlockQuantized(const std::vector<T1>& data,
                              const std::vector<T2>& output,
                              const std::vector<int64_t>& output_shape,
                              OpTester::ExpectResult expect_result = OpTester::ExpectResult::kExpectSuccess) {
+  CheckDataAndShape<T1>(data, data_shape, "data in RunGatherBlockQuantized");
+  CheckDataAndShape<Tind>(indices, indices_shape, "indices in RunGatherBlockQuantized");
+  CheckDataAndShape<T2>(scales, scales_shape, "scales in RunGatherBlockQuantized");
+  if (!zero_points_shape.empty()) {
+    CheckDataAndShape<T1>(zero_points, zero_points_shape, "zero_points in RunGatherBlockQuantized");
+  }
+  CheckDataAndShape<T2>(output, output_shape, "output in RunGatherBlockQuantized");
+
   auto run_test = [&](bool indices_is_initializer) {
     OpTester test("GatherBlockQuantized", 1, kMSDomain);
 
@@ -103,7 +150,7 @@ typename std::enable_if<
     (boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16, float>, T1>::value && std::is_same<T2, float>::value) ||
         (std::is_integral<T1>::value && std::is_same<T2, int>::value),
     std::vector<T1>>::type
-ToType(const std::vector<T2>& vec) {
+ToType(const std::vector<T2>& vec, const std::vector<int64_t>& /*shape*/) {
   std::vector<T1> result;
   for (auto v : vec) {
     result.push_back(static_cast<T1>(v));
@@ -114,17 +161,39 @@ ToType(const std::vector<T2>& vec) {
 
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
-ToType(const std::vector<int>& vec) {
-  std::vector<T> result;
+ToType(const std::vector<int>& vec, std::vector<int64_t>& shape) {
+  // int64_t total_elements = 1;
+  // for (const auto& dim : shape) {
+  //   total_elements *= dim;
+  // }
+  // size_t input_columns = shape.back();
+  // size_t rows = total_elements / input_columns;
+
+  // std::vector<T> result;
+  // size_t output_columns = (input_columns + 1) / 2;
+  // result.reserve(rows * output_columns);
+
+  // size_t i = 0;
+  // constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
+  // for (size_t row = 0; row < rows; ++row) {
+  //   for (size_t col = 0; col < input_columns; col += 2) {
+  //     int low_nibble = (vec[i++] + offset) & 0xF;
+  //     int high_nibble = ((col + 1) < input_columns) ? ((vec[i++] + offset) & 0xF) : 0;
+  //     result.push_back(T(low_nibble, high_nibble));
+  //   }
+  // }
+
+  // shape.back() = output_columns;  // Update the last dimension to reflect packed columns
+
   size_t i = 0;
   constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
+  std::vector<T> result;
   for (i = 0; i + 1 < vec.size(); i += 2) {
     result.push_back(T(vec[i] + offset, vec[i + 1] + offset));
   }
   if (i < vec.size()) {
     result.push_back(T(vec[i] + offset, 0 + offset));
   }
-
   return result;
 }
 
@@ -145,6 +214,14 @@ void RunUnpackedData(
     const std::vector<float>& output,
     const std::vector<int64_t>& output_shape,
     bool expect_success) {
+  CheckDataAndShape<int>(unpacked_data, unpacked_data_shape, "unpacked_data");
+  CheckDataAndShape<int>(indices, indices_shape, "indices");
+  CheckDataAndShape<float>(scales, scales_shape, "scales");
+  if (!zero_points.empty()) {
+    CheckDataAndShape<int>(zero_points, scales_shape, "zero_points");
+  }
+  CheckDataAndShape<float>(output, output_shape, "output");
+
   // Make a copy to avoid modifying the original unpacked data.
   std::vector<int> packed_data = unpacked_data;
   std::vector<int64_t> packed_data_shape = unpacked_data_shape;
@@ -153,11 +230,11 @@ void RunUnpackedData(
   auto expect_result = expect_success ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure;
   if (zero_points.empty()) {
     // If no zero points are provided, we can skip packing them.
-    RunGatherBlockQuantized(ToType<T1>(packed_data),
+    RunGatherBlockQuantized(ToType<T1>(packed_data, packed_data_shape),
                             packed_data_shape,
-                            ToType<Tind>(indices),
+                            ToType<Tind>(indices, indices_shape),
                             indices_shape,
-                            ToType<T2>(scales),
+                            ToType<T2>(scales, scales_shape),
                             scales_shape,
                             {},
                             {},
@@ -165,76 +242,32 @@ void RunUnpackedData(
                             quantize_axis,
                             block_size,
                             bits,
-                            ToType<T2>(output),
+                            ToType<T2>(output, output_shape),
                             output_shape,
                             expect_result);
     return;
   }
 
-  std::vector<int64_t> zero_points_shape = scales_shape;
-  PackDataForUint8TypeIfNecessary<T1>(zero_points, zero_points_shape, bits);
+  // Make a copy to avoid modifying the original unpacked data.
+  std::vector<int> packed_zero_point = zero_points;
+  std::vector<int64_t> packed_zero_point_shape = scales_shape;
+  PackDataForUint8TypeIfNecessary<T1>(packed_zero_point, packed_zero_point_shape, bits);
 
-  RunGatherBlockQuantized(ToType<T1>(packed_data),
+  RunGatherBlockQuantized(ToType<T1>(packed_data, packed_data_shape),
                           packed_data_shape,
-                          ToType<Tind>(indices),
+                          ToType<Tind>(indices, indices_shape),
                           indices_shape,
-                          ToType<T2>(scales),
+                          ToType<T2>(scales, scales_shape),
                           scales_shape,
-                          ToType<T1>(zero_points),
-                          zero_points_shape,
+                          ToType<T1>(packed_zero_point, packed_zero_point_shape),
+                          packed_zero_point_shape,
                           gather_axis,
                           quantize_axis,
                           block_size,
                           bits,
-                          ToType<T2>(output),
+                          ToType<T2>(output, output_shape),
                           output_shape,
                           expect_result);
-}
-
-template <typename T>
-std::vector<T> ConvertZeroPoint(const std::vector<int>& vec, int bits) {
-  if constexpr (std::is_same_v<T, uint8_t>) {
-    std::vector<uint8_t> result;
-    if (bits == 4) {
-      for (size_t i = 0; i + 1 < vec.size(); i += 2) {
-        result.push_back(static_cast<uint8_t>((vec[i + 1] + 8) * 16 + vec[i] + 8));
-      }
-    } else {
-      ORT_ENFORCE(bits == 8, "Only 4 or 8 bits are supported for uint8_t zero points");
-      for (int v : vec) {
-        result.push_back(static_cast<uint8_t>(v + 128));
-      }
-    }
-    return result;
-  } else {
-    return ToType<T>(vec);
-  }
-}
-
-template <typename T>
-std::vector<int64_t> GetPackedShape(const std::vector<int64_t>& unpacked_shape, int bits) {
-  if constexpr (std::is_same<T, Int4x2>::value) {
-    return unpacked_shape;
-  }
-
-  if constexpr (std::is_same<T, UInt4x2>::value) {
-    return unpacked_shape;
-  }
-
-  if constexpr (std::is_same<T, uint8_t>::value) {
-    if (bits == 8) {
-      return unpacked_shape;
-    } else {
-      ORT_ENFORCE(bits == 4, "Only 4 or 8 bits are supported for uint8_t zero points");
-      std::vector<int64_t> packed_shape = unpacked_shape;
-      size_t last_dim_index = packed_shape.size() - 1;
-      packed_shape[last_dim_index] = (packed_shape[last_dim_index] + 1) / 2;
-      return packed_shape;
-    }
-  }
-
-  // Unsupported type, return the same shape as scales
-  return unpacked_shape;
 }
 
 template <typename T1, typename T2, typename Tind>
