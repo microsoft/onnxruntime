@@ -11,7 +11,7 @@ if(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64")
     # Include module to check compiler flags
     include(CheckCXXCompilerFlag)
     # Test if the compiler supports SVE
-    check_cxx_compiler_flag("-march=armv8-a+sve" COMPILER_SUPPORTS_SVE)
+    check_cxx_compiler_flag("-march=armv8.2-a+sve+fp16" COMPILER_SUPPORTS_SVE)
     if (COMPILER_SUPPORTS_SVE)
         message(STATUS "Compiler supports SVE!")
         add_compile_definitions(COMPILER_SUPPORTS_SVE=1) # Define COMPILER_SUPPORTS_SVE for source files
@@ -491,9 +491,9 @@ else()
           set_source_files_properties(${MLAS_SRC_DIR}/halfgemm_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/softmax_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
           set_source_files_properties(${MLAS_SRC_DIR}/eltwise_kernel_neon_fp16.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+fp16 ")
-          set_source_files_properties(${MLAS_SRC_DIR}/erf.cpp PROPERTIES COMPILE_FLAGS " -march=armv8-a+sve ")
-          set_source_files_properties(${MLAS_SRC_DIR}/compute.cpp PROPERTIES COMPILE_FLAGS " -march=armv8-a+sve ")
-          set_source_files_properties(${MLAS_SRC_DIR}/logistic.cpp PROPERTIES COMPILE_FLAGS " -march=armv8-a+sve ")
+          set_source_files_properties(${MLAS_SRC_DIR}/erf.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/compute.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
+          set_source_files_properties(${MLAS_SRC_DIR}/logistic.cpp PROPERTIES COMPILE_FLAGS " -march=armv8.2-a+sve+fp16 ")
         endif()
 
         if(ONNXRUNTIME_MLAS_MULTI_ARCH)

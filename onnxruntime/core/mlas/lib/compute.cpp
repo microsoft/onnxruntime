@@ -186,7 +186,7 @@ Return Value:
     return p;
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveComputeExpVector(
@@ -230,6 +230,7 @@ MlasSveComputeExpVector(
 
     return t0;
 }
+#endif
 
 void
 MLASCALL
@@ -295,7 +296,7 @@ Return Value:
 }
 
 //optimized version of MlasSveComputeExpF32Kernel
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 void
 MLASCALL
 MlasSveComputeExpF32Kernel(
@@ -331,6 +332,7 @@ MlasSveComputeExpF32Kernel(
         N -= stride;
     }
 }
+#endif
 
 template <>
 void
@@ -477,7 +479,7 @@ Return Value:
     return p;
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 MLAS_FORCEINLINE
 MLAS_SVFLOAT32
 MlasSveComputeSumExpVector(
@@ -510,6 +512,7 @@ MlasSveComputeSumExpVector(
     p = MlasSveMultiplyFloat32(Pred, p, MlasSveReinterpretAsFloat32(normal));
     return p;
 }
+#endif
 
 float
 MLASCALL
@@ -628,7 +631,7 @@ Return Value:
     return Accumulator;
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 float
 MLASCALL
 MlasSveComputeSumExpF32Kernel(
@@ -677,6 +680,7 @@ MlasSveComputeSumExpF32Kernel(
     }
     return sum;
 }
+#endif
 
 float
 MLASCALL
@@ -747,7 +751,7 @@ Return Value:
     return Maximum;
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 float MLASCALL
 MlasSveReduceMaximumF32Kernel(
     const float* Input,
@@ -796,6 +800,7 @@ MlasSveReduceMaximumF32Kernel(
     Maximum = MlasSveReduceMaximumFloat32(svptrue_b32(), MaximumVector0);
     return Maximum;
 }
+#endif
 
 void
 MLASCALL
@@ -877,7 +882,7 @@ MlasReduceMinimumMaximumF32Kernel(
     *Max = tmp_max;
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 void
 MLASCALL
 MlasSveReduceMinimumMaximumF32Kernel(
@@ -912,6 +917,7 @@ MlasSveReduceMinimumMaximumF32Kernel(
     *Min = MlasSveReduceMinimumFloat32(svptrue_b32(), MinimumVector);
     *Max = MlasSveReduceMaximumFloat32(svptrue_b32(), MaximumVector);
 }
+#endif
 
 void
 MLASCALL
@@ -975,7 +981,7 @@ Return Value:
     }
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 void
 MLASCALL
 MlasSveComputeSoftmaxOutputF32Kernel(
@@ -1002,6 +1008,7 @@ MlasSveComputeSoftmaxOutputF32Kernel(
         N -= stride;
     }
 }
+#endif
 
 void
 MLASCALL
@@ -1087,7 +1094,7 @@ Return Value:
     }
 }
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 void
 MLASCALL
 MlasSveComputeLogSoftmaxOutputF32Kernel(
@@ -1122,6 +1129,7 @@ MlasSveComputeLogSoftmaxOutputF32Kernel(
     }
     
 }
+#endif
 
 template <typename T>
 void
