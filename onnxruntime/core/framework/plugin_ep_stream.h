@@ -2,14 +2,18 @@
 // Licensed under the MIT License.
 #pragma once
 
+#include "core/common/logging/logging.h"
 #include "core/framework/stream_handles.h"
 #include "core/framework/error_code_helper.h"
 #include "core/session/onnxruntime_c_api.h"
+#include "core/session/ort_apis.h"
 
 // OrtSyncStream is an alias in the C API for onnxruntime::Stream
 // OrtSyncNotification is an alias in the C API for onnxruntime::synchronize::Notification
 struct OrtSyncStream : public onnxruntime::Stream {};
 struct OrtSyncNotification : onnxruntime::synchronize::Notification {};
+
+using onnxruntime::logging::Logger;
 
 namespace onnxruntime {
 namespace plugin_ep {
@@ -44,8 +48,8 @@ class Notification : public synchronize::Notification {
 
 class Stream : public onnxruntime::Stream {
  public:
-  Stream(const OrtDevice& memory_device, OrtSyncStreamImpl& impl)
-      : onnxruntime::Stream(&impl, memory_device), impl_{impl} {
+  Stream(const OrtDevice& memory_device, OrtSyncStreamImpl& impl, const logging::Logger& logger)
+      : onnxruntime::Stream(&impl, memory_device), impl_{impl}, logger_{logger} {
   }
 
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override {
@@ -66,7 +70,13 @@ class Stream : public onnxruntime::Stream {
 
   void Flush() override {
     // Implement the flush logic here if needed
-    impl_.Flush(&impl_);
+    auto* status = impl_.Flush(&impl_);
+
+    if (status != nullptr) {
+      LOGS(logger_, ERROR) << "Failed to flush stream: [" << OrtApis::GetErrorCode(status) << "] "
+                           << OrtApis::GetErrorMessage(status);
+      OrtApis::ReleaseStatus(status);
+    }
   }
 
   Status CleanUpOnRunEnd() override {
@@ -88,6 +98,7 @@ class Stream : public onnxruntime::Stream {
 
  private:
   OrtSyncStreamImpl& impl_;
+  const Logger& logger_;
 };
 
 }  // namespace plugin_ep

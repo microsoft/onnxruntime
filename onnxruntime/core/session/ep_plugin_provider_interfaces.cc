@@ -566,7 +566,7 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
           auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, &stream);
           ORT_ENFORCE(status == nullptr && stream != nullptr,
                       "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
-          return std::make_unique<plugin_ep::Stream>(device, *stream);
+          return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());
         });
 
     registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
