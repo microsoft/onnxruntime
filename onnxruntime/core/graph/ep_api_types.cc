@@ -22,23 +22,16 @@
 
 namespace onnxruntime {
 
-template <typename SrcElem, typename DstElem>
-static Status CheckAndCopyArray(std::string_view error_array_label, gsl::span<const SrcElem* const> src,
-                                gsl::span<const DstElem*> dst) {
-  const size_t num_elems = src.size();
-
-  if (dst.size() < num_elems) {
+template <typename DstElem>
+static Status CheckCopyDestination(std::string_view error_array_label, size_t src_size, gsl::span<DstElem const> dst) {
+  if (dst.size() < src_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                            "Not enough space for ", error_array_label, ": expected buffer with size >= ",
-                           src.size(), ", but got buffer of size ", dst.size());
+                           src_size, ", but got buffer of size ", dst.size());
   }
 
-  if (dst.data() == nullptr && num_elems > 0) {
+  if (dst.data() == nullptr && src_size > 0) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store ", error_array_label, " is NULL.");
-  }
-
-  for (size_t i = 0; i < num_elems; ++i) {
-    dst[i] = src[i];
   }
 
   return Status::OK();
@@ -179,7 +172,13 @@ size_t EpNode::GetNumInputs() const {
 }
 
 Status EpNode::GetInputs(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node inputs", inputs_, result)));
+  const size_t num_inputs = inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node inputs", num_inputs, result)));
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    result[i] = inputs_[i];
+  }
+
   return Status::OK();
 }
 
@@ -188,7 +187,13 @@ size_t EpNode::GetNumOutputs() const {
 }
 
 Status EpNode::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node outputs", outputs_, result)));
+  const size_t num_outputs = outputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node outputs", num_outputs, result)));
+
+  for (size_t i = 0; i < num_outputs; ++i) {
+    result[i] = outputs_[i];
+  }
+
   return Status::OK();
 }
 
@@ -198,7 +203,13 @@ Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
 }
 
 Status EpNode::GetImplicitInputs(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("node implicit inputs", implicit_inputs_, result)));
+  const size_t num_implicit_inputs = implicit_inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node implicit inputs", num_implicit_inputs, result)));
+
+  for (size_t i = 0; i < num_implicit_inputs; ++i) {
+    result[i] = implicit_inputs_[i];
+  }
+
   return Status::OK();
 }
 
@@ -207,7 +218,13 @@ size_t EpNode::GetNumAttributes() const {
 }
 
 Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<OrtOpAttr, OrtOpAttr>("node attributes", attributes_, result)));
+  const size_t num_attributes = attributes_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtOpAttr*>("node attributes", num_attributes, result)));
+
+  for (size_t i = 0; i < num_attributes; ++i) {
+    result[i] = attributes_[i];
+  }
+
   return Status::OK();
 }
 
@@ -218,16 +235,7 @@ Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
 
 Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> result) const {
   const size_t num_subgraphs = subgraphs_.size();
-
-  if (result.size() < num_subgraphs) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for node subgraphs: expected buffer of size >= ",
-                           subgraphs_.size(), ", but got buffer of size ", result.size());
-  }
-
-  if (result.data() == nullptr && num_subgraphs > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store node subgraphs is NULL.");
-  }
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node attributes", num_subgraphs, result)));
 
   for (size_t i = 0; i < num_subgraphs; ++i) {
     result[i] = subgraphs_[i].ep_subgraph.get();
@@ -657,7 +665,13 @@ size_t EpGraph::GetNumInputs() const {
 }
 
 Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph inputs", inputs_, result)));
+  const size_t num_inputs = inputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph inputs", num_inputs, result)));
+
+  for (size_t i = 0; i < num_inputs; ++i) {
+    result[i] = inputs_[i];
+  }
+
   return Status::OK();
 }
 
@@ -666,7 +680,13 @@ size_t EpGraph::GetNumOutputs() const {
 }
 
 Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph outputs", outputs_, result)));
+  const size_t num_outputs = outputs_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph outputs", num_outputs, result)));
+
+  for (size_t i = 0; i < num_outputs; ++i) {
+    result[i] = outputs_[i];
+  }
+
   return Status::OK();
 }
 
@@ -675,8 +695,13 @@ size_t EpGraph::GetNumInitializers() const {
 }
 
 Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> result) const {
-  ORT_RETURN_IF_ERROR((CheckAndCopyArray<EpValueInfo, OrtValueInfo>("graph initializers", initializer_value_infos_,
-                                                                    result)));
+  const size_t num_initializers = initializer_value_infos_.size();
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph initializers", num_initializers, result)));
+
+  for (size_t i = 0; i < num_initializers; ++i) {
+    result[i] = initializer_value_infos_[i];
+  }
+
   return Status::OK();
 }
 
@@ -686,16 +711,7 @@ size_t EpGraph::GetNumNodes() const {
 
 Status EpGraph::GetNodes(gsl::span<const OrtNode*> result) const {
   const size_t num_nodes = nodes_.size();
-
-  if (result.size() < num_nodes) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for graph nodes: expected buffer with size >= ",
-                           nodes_.size(), ", but got buffer of size ", result.size());
-  }
-
-  if (result.data() == nullptr && num_nodes > 0) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Buffer to store graph nodes is NULL.");
-  }
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtNode*>("graph nodes", num_nodes, result)));
 
   for (size_t i = 0; i < num_nodes; ++i) {
     result[i] = nodes_[i].get();
