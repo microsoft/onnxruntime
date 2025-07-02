@@ -257,7 +257,7 @@ class WebGpuContext final {
   SessionState session_status_{SessionState::Default};
 
   // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;  // External captured commands for graph mode, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;
