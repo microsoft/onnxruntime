@@ -1,11 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <cstdint>
 #include <vector>
 #include <type_traits>
 #include <memory>
 #include <utility>
-#include <cstdint>
+#include <sstream>
 
 #include "core/common/common.h"
 #include "core/framework/execution_provider.h"
@@ -74,20 +75,10 @@ void CheckDataAndShape(const std::vector<T>& data, const std::vector<int64_t>& s
     total_elements *= dim;
   }
 
+  // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   if constexpr (std::is_same<T, UInt4x2>::value || std::is_same<T, Int4x2>::value) {
     total_elements = (total_elements + 1) / 2;
   }
-
-  // for (size_t i = 0; i < shape.size(); ++i) {
-  //   if constexpr (std::is_same<T, UInt4x2>::value || std::is_same<T, Int4x2>::value) {
-  //     // For UInt4x2 or Int4x2, the data was packed by ToType<T>, so we divide by 2
-  //     if (i == shape.size() - 1) {
-  //       total_elements *= (shape[i] + 1) / 2;
-  //       continue;
-  //     }
-  //   }
-  //   total_elements *= shape[i];
-  // }
 
   ORT_ENFORCE(static_cast<int64_t>(data.size()) == total_elements, "Data size does not match the shape",
               "Data size: ", data.size(), ", Expected size: ", total_elements,
@@ -162,29 +153,7 @@ ToType(const std::vector<T2>& vec, const std::vector<int64_t>& /*shape*/) {
 template <typename T>
 typename std::enable_if<boost::mp11::mp_contains<TypeList<UInt4x2, Int4x2>, T>::value, std::vector<T>>::type
 ToType(const std::vector<int>& vec, std::vector<int64_t>& shape) {
-  // int64_t total_elements = 1;
-  // for (const auto& dim : shape) {
-  //   total_elements *= dim;
-  // }
-  // size_t input_columns = shape.back();
-  // size_t rows = total_elements / input_columns;
-
-  // std::vector<T> result;
-  // size_t output_columns = (input_columns + 1) / 2;
-  // result.reserve(rows * output_columns);
-
-  // size_t i = 0;
-  // constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
-  // for (size_t row = 0; row < rows; ++row) {
-  //   for (size_t col = 0; col < input_columns; col += 2) {
-  //     int low_nibble = (vec[i++] + offset) & 0xF;
-  //     int high_nibble = ((col + 1) < input_columns) ? ((vec[i++] + offset) & 0xF) : 0;
-  //     result.push_back(T(low_nibble, high_nibble));
-  //   }
-  // }
-
-  // shape.back() = output_columns;  // Update the last dimension to reflect packed columns
-
+  // UInt4x2 and Int4x2 uses global packing instead of per-row packing.
   size_t i = 0;
   constexpr int offset = std::is_same<T, Int4x2>::value ? 0 : 8;
   std::vector<T> result;
