@@ -877,7 +877,10 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 #endif
 
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
-  // The captured_commands_ vector will be automatically cleaned up
+  // Release all resources associated with the captured graph
+  if (!captured_commands_.empty()) {
+    context_.ReleaseGraphResources(captured_commands_);
+  }
   // The graph_buffer_mgr_ will be automatically cleaned up by unique_ptr
 
   WebGpuContextFactory::ReleaseContext(context_id_);

@@ -725,26 +725,31 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
                                           const ProgramArtifact& program_artifact,
                                           uint32_t x, uint32_t y, uint32_t z) {
   uint32_t entry_index = 0;
-  std::vector<wgpu::BindGroupEntry> bind_group_entries;
+  std::vector<WGPUBindGroupEntry> bind_group_entries;
   for (WGPUBuffer buffer : bind_buffers) {
     bind_group_entries.push_back({nullptr, entry_index++, buffer, 0, WGPU_WHOLE_SIZE, nullptr, nullptr});
   }
 
-  wgpu::BindGroupDescriptor bind_group_desc{};
-  bind_group_desc.layout = program_artifact.compute_pipeline.GetBindGroupLayout(0);
+  WGPUBindGroupLayout bind_group_layout = program_artifact.compute_pipeline.GetBindGroupLayout(0).MoveToCHandle();
+  WGPUBindGroupDescriptor bind_group_desc{};
+  bind_group_desc.layout = bind_group_layout;
   bind_group_desc.entryCount = bind_group_entries.size();
   bind_group_desc.entries = bind_group_entries.data();
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
-  auto bind_group = Device().CreateBindGroup(&bind_group_desc);
+
+  auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
   if (session_status_ == SessionState::Capturing) {
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
+                                            bind_group_layout,
                                             {x, y, z}});
   } else {
-    // Execute the command directly
     compute_pass_encoder.SetPipeline(program_artifact.compute_pipeline);
-    compute_pass_encoder.SetBindGroup(0, bind_group);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, bind_group, 0, nullptr);
     compute_pass_encoder.DispatchWorkgroups(x, y, z);
+
+    wgpuBindGroupRelease(bind_group);
+    wgpuBindGroupLayoutRelease(bind_group_layout);
   }
 }
 
@@ -778,7 +783,7 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
     const auto& compute_pass_encoder = GetComputePassEncoder();
     WriteTimestamp(num_pending_dispatches_ * 2);
     compute_pass_encoder.SetPipeline(command.compute_pipeline);
-    compute_pass_encoder.SetBindGroup(0, command.bind_group);
+    wgpuComputePassEncoderSetBindGroup(compute_pass_encoder.Get(), 0, command.bind_group, 0, nullptr);
     compute_pass_encoder.DispatchWorkgroups(command.dispatch_group[0], command.dispatch_group[1], command.dispatch_group[2]);
     WriteTimestamp(num_pending_dispatches_ * 2 + 1);
     ++num_pending_dispatches_;
@@ -807,6 +812,22 @@ void WebGpuContext::CaptureEnd() {
   session_status_ = SessionState::Default;
   external_captured_commands_ = nullptr;
   external_buffer_mgr_ = nullptr;
+}
+
+void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+  LOGS_DEFAULT(VERBOSE) << "ReleaseGraphResources: Releasing " << captured_commands.size() << " captured command resources";
+
+  for (auto& command : captured_commands) {
+    if (command.bind_group != nullptr) {
+      wgpuBindGroupRelease(command.bind_group);
+      command.bind_group = nullptr;
+    }
+
+    if (command.bind_group_layout != nullptr) {
+      wgpuBindGroupLayoutRelease(command.bind_group_layout);
+      command.bind_group_layout = nullptr;
+    }
+  }
 }
 
 void WebGpuContext::SetExternalBufferManager(webgpu::BufferManager* buffer_mgr) {

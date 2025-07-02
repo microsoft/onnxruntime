@@ -28,7 +28,8 @@ class ProgramBase;
 // Definition for CapturedCommandInfo in the webgpu namespace
 struct CapturedCommandInfo {
   wgpu::ComputePipeline compute_pipeline;
-  wgpu::BindGroup bind_group;
+  WGPUBindGroup bind_group;
+  WGPUBindGroupLayout bind_group_layout;
   std::array<uint32_t, 3> dispatch_group;
 };
 
@@ -124,10 +125,10 @@ class WebGpuContext final {
       current_compute_pass_encoder_ = nullptr;
     }
   }
-
   void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands);
   void CaptureEnd();
   void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
   void Flush();
 
