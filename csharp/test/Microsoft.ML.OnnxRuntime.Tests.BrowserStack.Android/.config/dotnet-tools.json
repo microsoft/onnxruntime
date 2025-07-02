@@ -1,12 +1,5 @@
 {
   "version": 1,
   "isRoot": true,
-  "tools": {
-    "browserstack-sdk": {
-      "version": "1.16.13",
-      "commands": [
-        "browserstack-sdk"
-      ],
-    }
-  }
+  "tools": {}
 }
