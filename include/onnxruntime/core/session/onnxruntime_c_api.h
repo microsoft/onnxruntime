@@ -5867,9 +5867,9 @@ struct OrtApi {
    *
    * \param[in] node The OrtNode instance.
    * \param[out] attributes Pre-allocated array of `num_attributes` elements that will be filled with the result.
-   * \param[in] num_inputs The size of the `num_attributes` array.
-   *                       Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
-   *                       returned if `num_attributes` is less than the number of node attributes.
+   * \param[in] num_attributes The size of the `num_attributes` array.
+   *                           Typical usage sets this to the result of Node_GetNumAttributes(). An error status is
+   *                           returned if `num_attributes` is less than the number of node attributes.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
