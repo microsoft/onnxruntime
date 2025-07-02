@@ -176,7 +176,7 @@ class RunExecutablesWithVenvTask(Task):
         self.__venv = venv
         self.__executables_and_args = executables_and_args
         self.__env = env
-        self.__cwd = cwd if cwd is not None else REPO_ROOT
+        self.__cwd = cwd
 
     def does_work(self) -> bool:
         return True
