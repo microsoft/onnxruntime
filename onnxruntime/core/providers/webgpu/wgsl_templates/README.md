@@ -75,10 +75,10 @@ This section includes instructions for how to use the template system in the dev
 
    - Using static code generator
 
-     Append `--wgsl_template static` to the ORT build script:
+     Static code generator is enabled by default:
 
      ```sh
-     ./build.sh --use_webgpu --wgsl_template static
+     ./build.sh --use_webgpu
      ```
 
      Rebuild is needed when any C/C++ source file or WGSL template file is updated.

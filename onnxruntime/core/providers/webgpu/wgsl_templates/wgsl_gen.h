@@ -24,7 +24,7 @@ namespace onnxruntime {
 namespace webgpu {
 namespace wgsl_gen {
 
-#if ORT_WGSL_TEMPLATE == 1  // Use static generator
+#ifndef ORT_WGSL_TEMPLATE_DYNAMIC  // Use static generator
 
 #define WGSL_TEMPLATE_PARAMETER(name, value) \
   .param_##name = static_cast<int>(value)
@@ -76,7 +76,7 @@ onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateP
 #include "wgsl_template_gen/index.h"
 #undef INCLUDED_BY_WGSL_GEN_HEADER
 
-#elif ORT_WGSL_TEMPLATE == 2  // Use dynamic generator
+#else  // Use dynamic generator
 
 #define WGSL_TEMPLATE_PARAMETER(name, value) \
   onnxruntime::webgpu::wgsl_gen::TemplateParam(#name, static_cast<int>(value))

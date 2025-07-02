@@ -6,8 +6,8 @@
  * @brief WGSL shader generation for WebGPU execution provider
  *
  * This file implements both static and dynamic WGSL template generation:
- * - Static generation (ORT_WGSL_TEMPLATE=1): Uses pre-compiled C++ template functions
- * - Dynamic generation (ORT_WGSL_TEMPLATE=2): Uses JavaScript templates executed via Duktape
+ * - Static generation: Uses pre-compiled C++ template functions
+ * - Dynamic generation (ORT_WGSL_TEMPLATE_DYNAMIC=1): Uses JavaScript templates executed via Duktape
  *
  * For dynamic generation, it bridges C++ objects (ShaderHelper, ShaderVariableHelper)
  * with JavaScript template functions to generate optimized WGSL shader code.
@@ -39,12 +39,12 @@ namespace wgsl_gen {
 // Template Generation Implementation Selection
 // ============================================================================
 // This file supports two modes of WGSL template generation controlled by
-// the ORT_WGSL_TEMPLATE macro:
-// - ORT_WGSL_TEMPLATE=1: Static generation using pre-compiled C++ functions
-// - ORT_WGSL_TEMPLATE=2: Dynamic generation using JavaScript templates via Duktape
+// the ORT_WGSL_TEMPLATE_DYNAMIC macro:
+// - ORT_WGSL_TEMPLATE_DYNAMIC not defined: Static generation using pre-compiled C++ functions
+// - ORT_WGSL_TEMPLATE_DYNAMIC=1: Dynamic generation using JavaScript templates via Duktape
 // ============================================================================
 
-#if ORT_WGSL_TEMPLATE == 1  // Use static generator
+#ifndef ORT_WGSL_TEMPLATE_DYNAMIC  // Use static generator
 
 #if defined(INCLUDED_BY_WGSL_GEN_IMPL)
 #error "macro INCLUDED_BY_WGSL_GEN_IMPL should not be defined yet."
@@ -54,7 +54,7 @@ namespace wgsl_gen {
 #include "wgsl_template_gen/index_impl.h"
 #undef INCLUDED_BY_WGSL_GEN_IMPL
 
-#elif ORT_WGSL_TEMPLATE == 2  // Use dynamic generator
+#else  // Use dynamic generator
 
 #include "duktape.h"
 
