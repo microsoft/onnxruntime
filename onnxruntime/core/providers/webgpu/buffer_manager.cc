@@ -473,7 +473,7 @@ void BufferManager::Upload(void* src, WGPUBuffer dst, size_t size) const {
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(staging_buffer, 0, dst, 0, buffer_size);
-  context_.Flush();
+  context_.Flush(*this);
 }
 
 void BufferManager::MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const {
@@ -560,7 +560,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   auto& command_encoder = context_.GetCommandEncoder();
   context_.EndComputePass();
   command_encoder.CopyBufferToBuffer(src, 0, staging_buffer, 0, buffer_size);
-  context_.Flush();
+  context_.Flush(*this);
 
   // TODO: revise wait in whole project
 
@@ -573,7 +573,7 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(const SessionState& session_status) {
+void BufferManager::RefreshPendingBuffers(const SessionState& session_status) const {
   storage_cache_->OnRefresh(session_status);
   uniform_cache_->OnRefresh(session_status);
   query_resolve_cache_->OnRefresh(session_status);

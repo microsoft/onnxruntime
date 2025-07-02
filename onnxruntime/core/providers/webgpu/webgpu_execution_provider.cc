@@ -781,18 +781,12 @@ WebGpuExecutionProvider::WebGpuExecutionProvider(int context_id,
         webgpu::BufferCacheMode::Graph,
         webgpu::BufferCacheMode::GraphSimple,
         webgpu::BufferCacheMode::Disabled);
-    context_.SetExternalBufferManager(graph_buffer_mgr_.get());
   }
 }
 
 std::vector<AllocatorPtr> WebGpuExecutionProvider::CreatePreferredAllocators() {
   AllocatorCreationInfo gpuBufferAllocatorCreationInfo([&](int) {
-    // Use graph_buffer_mgr_ if available, otherwise use context_.BufferManager()
-    if (graph_buffer_mgr_) {
-      return std::make_unique<webgpu::GpuBufferAllocator>(*graph_buffer_mgr_);
-    } else {
-      return std::make_unique<webgpu::GpuBufferAllocator>(context_.BufferManager());
-    }
+    return std::make_unique<webgpu::GpuBufferAllocator>(BufferManager());
   },
                                                        0, false);
   auto preferred_allocators = std::vector<AllocatorPtr>{CreateAllocator(gpuBufferAllocatorCreationInfo)};
@@ -862,12 +856,7 @@ std::shared_ptr<KernelRegistry> WebGpuExecutionProvider::GetKernelRegistry() con
 }
 
 std::unique_ptr<onnxruntime::IDataTransfer> WebGpuExecutionProvider::GetDataTransfer() const {
-  // Use graph_buffer_mgr_ if available, otherwise use context_.BufferManager()
-  if (graph_buffer_mgr_) {
-    return std::make_unique<webgpu::DataTransfer>(*graph_buffer_mgr_);
-  } else {
-    return std::make_unique<webgpu::DataTransfer>(context_.BufferManager());
-  }
+  return std::make_unique<webgpu::DataTransfer>(BufferManager());
 }
 
 #if defined(__wasm__)
@@ -911,9 +900,6 @@ Status WebGpuExecutionProvider::OnSessionInitializationEnd() {
   if (allocator_ != nullptr) {
     allocator_->OnSessionInitializationEnd();
   }
-  if (IsGraphCaptureEnabled()) {
-    context_.SetExternalBufferManager(nullptr);
-  }
   return Status::OK();
 }
 
@@ -925,16 +911,17 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
   if (profiler_->Enabled()) {
     context_.StartProfiling();
   }
-  if (IsGraphCaptureEnabled()) {
-    context_.SetExternalBufferManager(graph_buffer_mgr_.get());
-    if (IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-      context_.CaptureBegin(&captured_commands_);
-    }
+
+  if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
+    context_.CaptureBegin(&captured_commands_, *graph_buffer_mgr_);
   }
+
   return Status::OK();
 }
 
 Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxruntime::RunOptions& /*run_options*/) {
+  context_.Flush(BufferManager());
+
   if (IsGraphCaptureEnabled() && !IsGraphCaptured(0)) {
     if (IsGraphCaptureAllowed()) {
       context_.CaptureEnd();
@@ -943,8 +930,6 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
       IncrementRegularRunCountBeforeGraphCapture();
     }
   }
-
-  context_.Flush();
 
   if (profiler_->Enabled()) {
     context_.CollectProfilingData(profiler_->Events());
@@ -969,8 +954,16 @@ bool WebGpuExecutionProvider::IsGraphCaptured(int) const {
 
 Status WebGpuExecutionProvider::ReplayGraph(int) {
   ORT_ENFORCE(IsGraphCaptured(0));
-  context_.Replay(captured_commands_);
+  context_.Replay(captured_commands_, *graph_buffer_mgr_);
   return Status::OK();
+}
+
+webgpu::BufferManager& WebGpuExecutionProvider::BufferManager() const {
+  if (graph_buffer_mgr_) {
+    return *graph_buffer_mgr_;
+  } else {
+    return context_.BufferManager();
+  }
 }
 
 bool WebGpuExecutionProvider::IsGraphCaptureAllowed() const {

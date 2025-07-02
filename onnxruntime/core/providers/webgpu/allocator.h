@@ -24,8 +24,10 @@ class GpuBufferAllocator : public IAllocator {
   virtual void* Alloc(size_t size) override;
   virtual void Free(void* p) override;
   void GetStats(AllocatorStats* stats) override;
-
   void OnSessionInitializationEnd();
+
+  // Return the associated BufferManager
+  const BufferManager& GetBufferManager() const { return buffer_manager_; }
 
  private:
   AllocatorStats stats_;

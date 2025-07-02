@@ -125,15 +125,14 @@ class WebGpuContext final {
       current_compute_pass_encoder_ = nullptr;
     }
   }
-  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands);
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
   void CaptureEnd();
-  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands);
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
   void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  void Flush();
+  void Flush(const webgpu::BufferManager& buffer_mgr);
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
-  void SetExternalBufferManager(webgpu::BufferManager* buffer_mgr);
 
   inline webgpu::ValidationMode ValidationMode() const {
     return validation_mode_;
@@ -258,8 +257,7 @@ class WebGpuContext final {
   SessionState session_status_{SessionState::Default};
 
   // External vector to store captured commands, owned by EP
-  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;  // External buffer manager for graph mode, owned by EP
-  webgpu::BufferManager* external_buffer_mgr_ = nullptr;
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;  // External captured commands for graph mode, owned by EP
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;

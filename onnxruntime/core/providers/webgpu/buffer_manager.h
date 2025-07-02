@@ -77,7 +77,7 @@ class BufferManager {
   bool SupportsUMA() const;
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(const SessionState& session_status);
+  void RefreshPendingBuffers(const SessionState& session_status) const;
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;

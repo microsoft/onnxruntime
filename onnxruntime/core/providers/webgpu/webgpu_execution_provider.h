@@ -84,10 +84,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  webgpu::BufferManager& BufferManager() const;
 
  private:
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
+
   int context_id_;
   webgpu::WebGpuContext& context_;
   webgpu::WebGpuProfiler* profiler_ = nullptr;

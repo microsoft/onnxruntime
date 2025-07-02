@@ -401,6 +401,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   const size_t uniform_buffer_total_size = (current_offset + max_alignment_of_field - 1) / max_alignment_of_field * max_alignment_of_field;
 
   WGPUBuffer uniform_buffer = nullptr;
+  const webgpu::BufferManager& buffer_mgr = context.BufferManager();
   if (uniform_buffer_total_size > 0) {
     std::vector<uint8_t> uniform_data_buffer(uniform_buffer_total_size);
 
@@ -408,11 +409,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
       memcpy(uniform_data_buffer.data() + offset, uniform.data.data(), uniform.data.size());
     }
 
-    if (external_buffer_mgr_ != nullptr) {
-      uniform_buffer = external_buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    } else {
-      uniform_buffer = buffer_mgr_->Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
-    }
+    uniform_buffer = buffer_mgr.Create(uniform_buffer_total_size, wgpu::BufferUsage::CopyDst | wgpu::BufferUsage::Uniform);
     device_queue_.WriteBuffer(uniform_buffer, 0, uniform_data_buffer.data(), uniform_buffer_total_size);
   }
 
@@ -433,17 +430,11 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
   }
 
   LaunchComputePipeline(compute_pass_encoder, bind_buffers, *program_artifact, x, y, z);
-
   if (uniform_buffer) {
-    if (external_buffer_mgr_ != nullptr) {
-      external_buffer_mgr_->Release(uniform_buffer);
-    } else {
-      buffer_mgr_->Release(uniform_buffer);
-    }
+    buffer_mgr.Release(uniform_buffer);
   }
 
   WriteTimestamp(num_pending_dispatches_ * 2 + 1);
-
   ++num_pending_dispatches_;
 
   if (num_pending_dispatches_ >= max_num_pending_dispatches_ ||
@@ -451,7 +442,7 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
     EndComputePass();
   }
   if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-    Flush();
+    Flush(buffer_mgr);
     num_pending_dispatches_ = 0;
   }
 
@@ -667,7 +658,7 @@ Status WebGpuContext::PopErrorScope() {
   return status;
 }
 
-void WebGpuContext::Flush() {
+void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   if (!current_command_encoder_) {
     return;
   }
@@ -698,15 +689,10 @@ void WebGpuContext::Flush() {
     pending_queries_.emplace_back(std::move(pending_kernels_), query_read_buffer);
     pending_kernels_.clear();
   }
-
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
   if (session_status_ != SessionState::Replaying) {
-    if (external_buffer_mgr_ != nullptr) {
-      external_buffer_mgr_->RefreshPendingBuffers(session_status_);
-    } else {
-      buffer_mgr_->RefreshPendingBuffers(session_status_);
-    }
+    buffer_mgr.RefreshPendingBuffers(session_status_);
   }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
@@ -753,12 +739,11 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   }
 }
 
-void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands) {
+void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager) {
   LOGS_DEFAULT(VERBOSE) << "CaptureBegin with external storage";
   // Flush any pending commands before we change the status
-  Flush();
+  Flush(buffer_manager);
 
-  ORT_ENFORCE(external_buffer_mgr_ != nullptr, "External buffer manager must not be null when capturing commands.");
   external_captured_commands_ = captured_commands;
 
   // Make sure the external vector is empty before we start capturing
@@ -772,10 +757,9 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   session_status_ = SessionState::Capturing;
 }
 
-void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
+void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
   session_status_ = SessionState::Replaying;
-
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
@@ -792,13 +776,13 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
       EndComputePass();
     }
     if (num_pending_dispatches_ >= max_num_pending_dispatches_) {
-      Flush();
+      Flush(buffer_manager);
       num_pending_dispatches_ = 0;
     }
   }
 
   // Flush any remaining commands
-  Flush();
+  Flush(buffer_manager);
 
   session_status_ = SessionState::Default;
 }
@@ -806,12 +790,8 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
 void WebGpuContext::CaptureEnd() {
   LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
 
-  // Flush any pending commands before we change the status
-  Flush();
-
   session_status_ = SessionState::Default;
   external_captured_commands_ = nullptr;
-  external_buffer_mgr_ = nullptr;
 }
 
 void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands) {
@@ -828,10 +808,6 @@ void WebGpuContext::ReleaseGraphResources(std::vector<webgpu::CapturedCommandInf
       command.bind_group_layout = nullptr;
     }
   }
-}
-
-void WebGpuContext::SetExternalBufferManager(webgpu::BufferManager* buffer_mgr) {
-  external_buffer_mgr_ = buffer_mgr;
 }
 
 std::unordered_map<int32_t, WebGpuContextFactory::WebGpuContextInfo> WebGpuContextFactory::contexts_;
