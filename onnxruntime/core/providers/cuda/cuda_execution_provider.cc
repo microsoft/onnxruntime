@@ -350,6 +350,9 @@ std::optional<bool> CUDAExecutionProvider::ShouldConvertDataLayoutForOp(std::str
          (node_domain == kMSDomain && node_op_type == "GridSample");
 
 #else  // defined(ENABLE_CUDA_NHWC_OPS)
+  ORT_UNUSED_PARAMETER(node_domain);
+  ORT_UNUSED_PARAMETER(node_op_type);
+  ORT_UNUSED_PARAMETER(target_data_layout);
   return std::nullopt;
 #endif
 }
