@@ -629,9 +629,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
       auto status = OrtArenaCfg::FromKeyValuePairs(*allocator_options, arena_cfg);
     }
 
-    // pending Stream support being added to plugin EP API in separate PR
-    // ep_device.ep_factory->IsStreamAware(ep_device.ep_factory);
-    bool stream_aware_arena = false;
+    bool stream_aware_arena = ep_device.ep_factory->IsStreamAware(ep_device.ep_factory);
 
     AllocatorCreationInfo alloc_creation_info{
         [&ort_allocator](int) -> std::unique_ptr<IAllocator> {

@@ -94,6 +94,8 @@ class PluginExecutionProvider : public IExecutionProvider {
 
   std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
+  void RegisterStreamHandlers(IStreamCommandHandleRegistry&, AllocatorMap&) const override;
+
   // create per-session allocators
   // longer term we should prefer shared allocators in Environment and only create per-session allocators as
   // needed based on matching against allocator_mem_infos_.

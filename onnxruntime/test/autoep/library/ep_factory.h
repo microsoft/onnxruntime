@@ -49,6 +49,12 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                         OrtDataTransferImpl** data_transfer) noexcept;
 
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
+
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                               const OrtMemoryDevice* memory_device,
+                                                               OrtSyncStreamImpl** stream) noexcept;
+
   const std::string ep_name_;            // EP name
   const std::string vendor_{"Contoso"};  // EP vendor name
 

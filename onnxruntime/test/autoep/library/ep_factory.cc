@@ -8,6 +8,7 @@
 #include "ep.h"
 #include "ep_allocator.h"
 #include "ep_data_transfer.h"
+#include "ep_stream_support.h"
 
 ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
     : ApiPtrs(apis), ep_name_{ep_name} {
@@ -24,6 +25,9 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   ReleaseAllocator = ReleaseAllocatorImpl;
 
   CreateDataTransfer = CreateDataTransferImpl;
+
+  IsStreamAware = IsStreamAwareImpl;
+  CreateSyncStreamForDevice = CreateSyncStreamForDeviceImpl;
 
   // for the sake of this example we specify a CPU allocator with no arena and 1K alignment (arbitrary)
   // as well as GPU and GPU shared memory. the actual EP implementation would typically define two at most for a
@@ -243,6 +247,27 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateDataTransferImpl(OrtEpFactory* t
                                                                  OrtDataTransferImpl** data_transfer) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *data_transfer = factory.data_transfer_impl_.get();
+
+  return nullptr;
+}
+
+/*static*/
+bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+  return true;  // the example EP implements stream synchronization.
+}
+
+/*static*/
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+                                                                        const OrtMemoryDevice* memory_device,
+                                                                        OrtSyncStreamImpl** stream) noexcept {
+  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  *stream = nullptr;
+
+  // we only need stream synchronization on the device stream
+  if (factory.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
+    auto sync_stream = std::make_unique<StreamImpl>(factory);
+    *stream = sync_stream.release();
+  }
 
   return nullptr;
 }
