@@ -95,27 +95,21 @@ void GraphViewerToProto(const GraphViewer& graph_view,
       auto* p_initializer = graph_proto.add_initializer();
 
       // Do not save raw or external data into the graph, only the metadata
-      if (!include_initializer_data && (init->has_raw_data() || init->has_data_location()))
-      {
+      if (!include_initializer_data && (init->has_raw_data() || init->has_data_location())) {
         // Set datatype
-        if (init->has_data_type())
-        {
+        if (init->has_data_type()) {
           p_initializer->set_data_type(init->data_type());
         }
         // Set name
-        if (init->has_name())
-        {
+        if (init->has_name()) {
           p_initializer->set_name(init->name());
         }
 
         // Set dims
-        for (int i = 0; i < init->dims_size(); ++i)
-        {
+        for (int i = 0; i < init->dims_size(); ++i) {
           p_initializer->add_dims(init->dims()[i]);
         }
-      }
-      else
-      {
+      } else {
         ORT_THROW_IF_ERROR(get_initializer_with_data(*init, *p_initializer));
       }
     }
