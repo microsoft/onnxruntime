@@ -42,6 +42,42 @@ struct MLAS_CONV_WORK_BLOCK {
     ptrdiff_t TargetThreadCount;
 };
 
+#include <algorithm>
+#include <iostream>
+#include <fstream>
+#include <random>
+#include <chrono>
+#include <sstream>
+#include <sys/time.h>
+
+void PrintWorkBlockParameters(const MLAS_CONV_WORK_BLOCK* WorkBlock) {
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+
+    std::cout << "MLAS_CONV_WORK_BLOCK Parameters:\n"
+              << "  BatchCount: " << Parameters->BatchCount
+              << "  GroupCount: " << Parameters->GroupCount
+              << "  InputChannels: " << Parameters->InputChannels
+              << "  FilterCount: " << Parameters->FilterCount
+              << "  InputSize: " << Parameters->InputSize
+              << "  OutputSize: " << Parameters->OutputSize
+              << "  K: " << Parameters->K << "\n";
+
+    std::cout << "  InputShape: ";
+    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->InputShape[i] << " ";
+    std::cout << ";  OutputShape: ";
+    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->OutputShape[i] << " ";
+    std::cout << ";  KernelShape: ";
+    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->KernelShape[i] << " ";
+    std::cout << ";  DilationShape: ";
+    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->DilationShape[i] << " ";
+    std::cout << ";  Padding: ";
+    for (size_t i = 0; i < Parameters->Dimensions * 2; ++i) std::cout << Parameters->Padding[i] << " ";
+    std::cout << ";  StrideShape: ";
+    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->StrideShape[i] << " ";
+    std::cout << ";  Algorithm: " << Parameters->Algorithm
+              << "  Dimensions: " << Parameters->Dimensions << std::endl;
+}
+
 void
 MlasConvIm2Col(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -729,6 +765,58 @@ Return Value:
     }
 }
 
+void
+MlasConvExpandThenGemmSegmentedThreaded(
+    void* Context,
+    ptrdiff_t Index
+){
+    MLAS_CONV_WORK_BLOCK* WorkBlock = (MLAS_CONV_WORK_BLOCK*)Context;
+
+    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
+
+    const size_t GroupCount = Parameters->GroupCount;
+    const size_t BatchGroupCount = Parameters->BatchCount * GroupCount;
+
+    const size_t TargetThreadCount = WorkBlock->TargetThreadCount;
+
+    const size_t BatchGroupCountPerThread = BatchGroupCount / TargetThreadCount;
+    const size_t BatchGroupCountExtra = BatchGroupCount % TargetThreadCount;
+
+    size_t BatchGroupStart;
+    size_t BatchGroupEnd;
+
+    if (uint32_t(Index) < BatchGroupCountExtra) {
+        BatchGroupStart = (BatchGroupCountPerThread + 1) * Index;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread + 1;
+    } else {
+        BatchGroupStart = BatchGroupCountPerThread * Index + BatchGroupCountExtra;
+        BatchGroupEnd = BatchGroupStart + BatchGroupCountPerThread;
+    }
+
+    const size_t FilterCount = Parameters->FilterCount;
+    const size_t OutputSize = Parameters->OutputSize;
+    const size_t K = Parameters->K;
+
+    const size_t InputGroupSize = Parameters->InputChannels * Parameters->InputSize;
+    const size_t OutputGroupSize = FilterCount * OutputSize;
+    const size_t FilterGroupSize = FilterCount * K;
+
+    // std::cout << "Address of WorkBlock->WorkingBuffer" << WorkBlock->WorkingBuffer << std::endl;
+
+    for(size_t bg = BatchGroupStart; bg < BatchGroupEnd; bg++){
+        size_t group = bg % GroupCount;
+
+        const float* input = WorkBlock->Input + bg * InputGroupSize;
+        const float* filter = WorkBlock->Filter + group * FilterGroupSize;
+        float* output = WorkBlock->Output + bg * OutputGroupSize;
+        const float* bias = WorkBlock->Bias;
+        if(bias != nullptr){ bias += group * FilterCount; }
+        float* ColumnBuffer = WorkBlock->WorkingBuffer + Index * OutputSize * K;
+
+        MlasConvOperation(Parameters, input, filter, bias, ColumnBuffer, output, 0, OutputSize);
+    }
+}
+
 inline
 bool
 MlasConvTryMultithread(
@@ -912,6 +1000,48 @@ Return Value:
     }
 
 #endif
+
+    // auto AlgorithmToString = [](MLAS_CONV_ALGORITHM algorithm) -> const char* {
+    //     switch (algorithm) {
+    //         case MlasConvAlgorithmGemmDirect: return "MlasConvAlgorithmGemmDirect";
+    //         case MlasConvAlgorithmExpandThenGemm: return "MlasConvAlgorithmExpandThenGemm";
+    //         case MlasConvAlgorithmExpandThenGemmSegmented: return "MlasConvAlgorithmExpandThenGemmSegmented";
+    //         default: return "Unknown Algorithm";
+    //     }
+    // };
+
+    if (Algorithm == MlasConvAlgorithmExpandThenGemmSegmented && ((BatchCount > 1) || (GroupCount > 1))) {
+
+        const size_t BatchGroupCount = BatchCount * GroupCount;
+
+        int32_t TargetThreadCount = MlasGetMaximumThreadCount(ThreadPool);
+        // TargetThreadCount = 16;
+
+        if (size_t(TargetThreadCount) >= BatchGroupCount) {
+            TargetThreadCount = int32_t(BatchGroupCount);
+        }
+
+        MLAS_CONV_WORK_BLOCK WorkBlock;
+
+        WorkBlock.Parameters = Parameters;
+        WorkBlock.Input = Input;
+        WorkBlock.Filter = Filter;
+        WorkBlock.Bias = Bias;
+        WorkBlock.WorkingBuffer = WorkingBuffer;
+        WorkBlock.Output = Output;
+        WorkBlock.TargetThreadCount = TargetThreadCount;
+
+        // std::cout << "Algorithm: " << AlgorithmToString(Algorithm) <<  "; BatchCount:" << BatchCount <<  "; GroupCount:" << GroupCount << "; maxthreadnum:" << MlasGetMaximumThreadCount(ThreadPool) << "; TargetThreadCount:" << TargetThreadCount << std::endl;
+        // PrintWorkBlockParameters(&WorkBlock);
+
+        // struct timeval start,end;
+        // gettimeofday(&start, 0);
+        MlasExecuteThreaded(MlasConvExpandThenGemmSegmentedThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
+        // gettimeofday(&end, 0);
+        // float elapsed = (end.tv_sec - start.tv_sec) * 1000.0f + (end.tv_usec - start.tv_usec) / 1000.0f;
+        // std::cout << "Time elapsed: " << elapsed << "ms" << std::endl;
+        return;
+    }
 
     //
     // Iterate over each batch and group.
@@ -1295,6 +1425,18 @@ Return Value:
         Parameters->u.ExpandThenGemmSegmented.ThreadStrideN = StrideN;
 
         *WorkingBufferSize = TargetThreadCount * MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD;
+
+	if(Parameters->BatchCount >1 || Parameters->GroupCount > 1){
+
+            size_t WorkingBufferSizePreThread = std::max(Parameters->OutputSize * Parameters->K,
+                                                    std::max(Parameters->FilterCount * Parameters->OutputSize,
+                                                    static_cast<size_t>(MLAS_CONV_WORKING_BUFFER_SIZE_PER_THREAD)));
+            TargetThreadCount = MaximumThreadCount;
+            if (size_t(TargetThreadCount) >= Parameters->BatchCount * Parameters->GroupCount) {
+                TargetThreadCount = int32_t(Parameters->BatchCount * Parameters->GroupCount);
+            }
+            *WorkingBufferSize = TargetThreadCount * WorkingBufferSizePreThread;
+        }
     }
 }
 #if defined(_MSC_VER) && !defined(__clang__)
