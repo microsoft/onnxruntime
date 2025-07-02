@@ -1,21 +1,26 @@
+From 715b9463289feef7d6bf736502a166bd00d70785 Mon Sep 17 00:00:00 2001
+From: Fanchen Kong <fanchen.kong@intel.com>
+Date: Tue, 1 Jul 2025 13:42:35 +0800
+Subject: [PATCH] fix-build
+
+---
+ CMakeLists.txt | 29 ++++++++++-------------------
+ 1 file changed, 10 insertions(+), 19 deletions(-)
+
 diff --git a/CMakeLists.txt b/CMakeLists.txt
-index f0b3410ae..ba54c3bfe 100644
+index 9f6fb5e256..4387298e59 100644
 --- a/CMakeLists.txt
 +++ b/CMakeLists.txt
-@@ -1047,9 +1047,11 @@ ENDIF()
- IF(XNNPACK_BUILD_ALL_MICROKERNELS)
-   TARGET_INCLUDE_DIRECTORIES(microkernels-all PRIVATE include src)
+@@ -1125,7 +1125,7 @@ ELSE()
  ENDIF()
-+
- TARGET_INCLUDE_DIRECTORIES(datatype PRIVATE include src)
- TARGET_INCLUDE_DIRECTORIES(microkernels-prod PRIVATE include src)
--TARGET_INCLUDE_DIRECTORIES(hardware-config PRIVATE include src ${CPUINFO_SOURCE_DIR}/include)
-+TARGET_INCLUDE_DIRECTORIES(hardware-config PRIVATE include src)
-+
- TARGET_INCLUDE_DIRECTORIES(indirection PRIVATE include src)
- TARGET_INCLUDE_DIRECTORIES(microparams-init PRIVATE include src)
- TARGET_INCLUDE_DIRECTORIES(normalization PRIVATE include src)
-@@ -1104,14 +1106,9 @@ IF(NOT TARGET cpuinfo)
+ 
+ INCLUDE_DIRECTORIES(.)
+-TARGET_INCLUDE_DIRECTORIES(xnnpack-hardware-config PRIVATE include src ${CPUINFO_SOURCE_DIR}/include)
++TARGET_INCLUDE_DIRECTORIES(xnnpack-hardware-config PRIVATE include src)
+ IF(XNNPACK_BUILD_LIBRARY)
+   TARGET_INCLUDE_DIRECTORIES(XNNPACK PUBLIC include)
+   IF(WIN32)
+@@ -1164,14 +1164,9 @@ IF(NOT TARGET cpuinfo)
        "${CPUINFO_SOURCE_DIR}"
        "${CMAKE_BINARY_DIR}/cpuinfo")
    ELSE()
@@ -33,7 +38,7 @@ index f0b3410ae..ba54c3bfe 100644
    ENDIF()
  ENDIF()
  IF(XNNPACK_BUILD_LIBRARY)
-@@ -1129,16 +1126,12 @@ IF(NOT TARGET pthreadpool)
+@@ -1189,16 +1184,12 @@ IF(NOT TARGET pthreadpool)
        "${PTHREADPOOL_SOURCE_DIR}"
        "${CMAKE_BINARY_DIR}/pthreadpool")
    ELSE()
@@ -53,7 +58,7 @@ index f0b3410ae..ba54c3bfe 100644
    ENDIF()
  ENDIF()
  TARGET_LINK_LIBRARIES(xnnpack-base INTERFACE pthreadpool)
-@@ -1152,12 +1145,12 @@ IF(NOT TARGET fxdiv)
+@@ -1212,12 +1203,12 @@ IF(NOT TARGET fxdiv)
        "${FXDIV_SOURCE_DIR}"
        "${CMAKE_BINARY_DIR}/FXdiv")
    ELSE()
@@ -69,3 +74,6 @@ index f0b3410ae..ba54c3bfe 100644
      SET_PROPERTY(TARGET fxdiv PROPERTY LINKER_LANGUAGE C)
    ENDIF()
  ENDIF()
+-- 
+2.46.1
+
