@@ -346,7 +346,6 @@ def add_webassembly_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--enable_wasm_simd", action="store_true", help="Enable WebAssembly SIMD.")
     parser.add_argument("--enable_wasm_relaxed_simd", action="store_true", help="Enable WebAssembly Relaxed SIMD.")
     parser.add_argument("--enable_wasm_threads", action="store_true", help="Enable WebAssembly multi-threading.")
-    parser.add_argument("--enable_wasm_memory64", action="store_true", help="Enable WebAssembly 64-bit memory.")
     parser.add_argument("--disable_wasm_exception_catching", action="store_true", help="Disable exception catching.")
     parser.add_argument(
         "--enable_wasm_api_exception_catching",
@@ -604,18 +603,6 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
         help="Enable CUDA kernel profiling (requires CUPTI in PATH).",
     )
 
-    # --- ROCm ---
-    rocm_group = parser.add_argument_group("ROCm Execution Provider")
-    rocm_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
-    rocm_group.add_argument("--rocm_version", help="ROCm stack version.")
-    rocm_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
-    # ROCm-specific profiling
-    rocm_group.add_argument(
-        "--enable_rocm_profiling",
-        action="store_true",
-        help="Enable ROCm kernel profiling.",
-    )
-
     # --- DNNL (formerly MKL-DNN / oneDNN) ---
     dnnl_group = parser.add_argument_group("DNNL Execution Provider")
     dnnl_group.add_argument("--use_dnnl", action="store_true", help="Enable DNNL EP.")
@@ -731,6 +718,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group = parser.add_argument_group("MIGraphX Execution Provider")
     migx_group.add_argument("--use_migraphx", action="store_true", help="Enable MIGraphX EP.")
     migx_group.add_argument("--migraphx_home", help="Path to MIGraphX installation directory.")
+    migx_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
+    migx_group.add_argument("--rocm_version", help="ROCm stack version.")
+    migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")

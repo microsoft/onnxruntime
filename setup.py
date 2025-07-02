@@ -57,20 +57,15 @@ cuda_version = None
 is_cuda_version_12 = False
 rocm_version = None
 is_migraphx = False
-is_rocm = False
 is_openvino = False
 is_qnn = False
+qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
     cuda_version = parse_arg_remove_string(sys.argv, "--cuda_version=")
     if cuda_version:
         is_cuda_version_12 = cuda_version.startswith("12.")
-elif parse_arg_remove_boolean(sys.argv, "--use_rocm"):
-    is_rocm = True
-    rocm_version = parse_arg_remove_string(sys.argv, "--rocm_version=")
-    if parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
-        is_migraphx = True
 elif parse_arg_remove_boolean(sys.argv, "--use_migraphx"):
     is_migraphx = True
 elif parse_arg_remove_boolean(sys.argv, "--use_openvino"):
@@ -94,9 +89,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
-
-if is_rocm:
-    package_name = "onnxruntime-rocm" if not nightly_build else "ort-rocm-nightly"
+    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
 elif is_migraphx:
     package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
 
@@ -314,7 +307,7 @@ class InstallCommand(InstallCommandBase):
         return ret
 
 
-providers_cuda_or_rocm = "onnxruntime_providers_" + ("rocm" if is_rocm else "cuda")
+providers_cuda_or_rocm = "onnxruntime_providers_cuda"
 providers_tensorrt_or_migraphx = "onnxruntime_providers_" + ("migraphx" if is_migraphx else "tensorrt")
 providers_nv_tensorrt_rtx = "onnxruntime_providers_nv_tensorrt_rtx"
 providers_openvino = "onnxruntime_providers_openvino"
@@ -541,7 +534,6 @@ requirements_file = "requirements.txt"
 local_version = None
 enable_training = parse_arg_remove_boolean(sys.argv, "--enable_training")
 enable_training_apis = parse_arg_remove_boolean(sys.argv, "--enable_training_apis")
-enable_rocm_profiling = parse_arg_remove_boolean(sys.argv, "--enable_rocm_profiling")
 disable_auditwheel_repair = parse_arg_remove_boolean(sys.argv, "--disable_auditwheel_repair")
 default_training_package_device = parse_arg_remove_boolean(sys.argv, "--default_training_package_device")
 
@@ -722,8 +714,6 @@ if nightly_build:
 
 if local_version:
     version_number = version_number + local_version
-    if is_rocm and enable_rocm_profiling:
-        version_number = version_number + ".profiling"
 
 if wheel_name_suffix:
     if not (enable_training and wheel_name_suffix == "gpu"):
@@ -746,7 +736,7 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
     from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -775,9 +765,11 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
                     )
         elif rocm_version:
             f.write(f"rocm_version = '{rocm_version}'\n")
+        elif qnn_version:
+            f.write(f"qnn_version = '{qnn_version}'\n")
 
 
-save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
 
 extras_require = {}
 if package_name == "onnxruntime-gpu" and is_cuda_version_12:
