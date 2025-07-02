@@ -5433,7 +5433,8 @@ struct OrtApi {
    *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
    * \param[in] num_consumers The size of the `consumer_nodes` and `consumer_input_indices` arrays.
    *                          Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
-   *                          An error status returned if `num_consumers` is less than the number of actual consumers.
+   *                          An error status is returned if `num_consumers` is less than the number of actual
+   *                          consumers.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5564,7 +5565,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
-  /** \brief Returns the number of graphs inputs.
+  /** \brief Returns the number of graph inputs.
    *
    * Counts initializers that are included in the list of graph inputs.
    *
@@ -5594,7 +5595,7 @@ struct OrtApi {
   ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
                   _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
 
-  /** \brief Returns the number of graphs outputs.
+  /** \brief Returns the number of graph outputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] num_outputs Output parameter set to the number of graph outputs.

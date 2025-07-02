@@ -26,8 +26,8 @@ template <typename DstElem>
 static Status CheckCopyDestination(std::string_view error_array_label, size_t src_size, gsl::span<DstElem const> dst) {
   if (dst.size() < src_size) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
-                           "Not enough space for ", error_array_label, ": expected buffer with size >= ",
-                           src_size, ", but got buffer of size ", dst.size());
+                           "Not enough space for ", error_array_label, ": expected buffer with room for at least ",
+                           src_size, " elements, but got buffer with room for only ", dst.size(), " elements.");
   }
 
   if (dst.data() == nullptr && src_size > 0) {
