@@ -6613,7 +6613,6 @@ typedef enum OrtCompileApiFlags {
  * \since Version 1.22.
  */
 struct OrtCompileApi {
-  /// @}
   /// \name OrtModelCompilationOptions
   /// @{
   ORT_CLASS_RELEASE(ModelCompilationOptions);
