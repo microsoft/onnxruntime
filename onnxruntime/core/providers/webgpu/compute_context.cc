@@ -31,8 +31,7 @@ Status ComputeContext::PopErrorScope() {
 const webgpu::BufferManager& ComputeContext::BufferManager() const {
   OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
   AllocatorPtr allocator = kernel_context_.GetAllocator(gpu_device);
-  const GpuBufferAllocator* gpu_allocator = dynamic_cast<const GpuBufferAllocator*>(allocator.get());
-  ORT_ENFORCE(gpu_allocator != nullptr, "Failed to get GpuBufferAllocator from OpKernelContext");
+  const GpuBufferAllocator* gpu_allocator = static_cast<const GpuBufferAllocator*>(allocator.get());
   return gpu_allocator->GetBufferManager();
 }
 
