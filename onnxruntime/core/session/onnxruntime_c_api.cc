@@ -2895,6 +2895,20 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name) {
+  API_IMPL_BEGIN
+  if (name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name argument is null");
+  }
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
+  }
+
+  *name = attribute->attr_proto.name().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Out_ size_t* num_subgraphs) {
   API_IMPL_BEGIN
   if (num_subgraphs == nullptr) {
@@ -3602,6 +3616,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetAttributes,
     &OrtApis::Node_GetAttributeByName,
     &OrtApis::OpAttr_GetType,
+    &OrtApis::OpAttr_GetName,
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,

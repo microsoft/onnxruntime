@@ -305,7 +305,11 @@ TEST(MatMulNBits, Float32_8b_AccuracyLevel4) {
   TestMatMul8BitsTyped<float, 100, 288, 93, 32, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 93, 128, 4>();
   TestMatMul8BitsTyped<float, 100, 288, 1234, 16, 4>();
-  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>();
+
+  // Using a 2% larger tolerance for accuracy level int8 compared to the accuracy level f32/f16.
+  constexpr float abs_error = 0.1f * 1.02f;
+  constexpr float rel_error = 0.02f * 1.02f;
+  TestMatMul8BitsTyped<float, 2, 5120, 3072, 32, 4>(abs_error, rel_error);
 }
 
 TEST(MatMulNBits, Float32_8b_AccuracyLevel1) {
