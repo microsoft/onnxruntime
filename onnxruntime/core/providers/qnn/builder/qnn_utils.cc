@@ -133,7 +133,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
       out << scalar.int32Value;
       break;
     case QNN_DATATYPE_INT_64:
-      out << "int64_t is not supported in QNN except for UDO";
+      out << "int64_t is not supported";
       break;
     case QNN_DATATYPE_UINT_8:
       out << static_cast<int32_t>(scalar.uint8Value);
@@ -145,7 +145,7 @@ std::ostream& operator<<(std::ostream& out, const Qnn_Scalar_t& scalar) {
       out << scalar.uint32Value;
       break;
     case QNN_DATATYPE_UINT_64:
-      out << "uint64_t is not supported in QNN except for UDO";
+      out << "uint64_t is not supported";
       break;
     case QNN_DATATYPE_FLOAT_16:
       break;
