@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+#include "core/session/abi_key_value_pairs.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
@@ -37,6 +38,26 @@ struct OrtArenaCfg {
   int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
   int initial_growth_chunk_size_bytes;    // use -1 to allow ORT to choose the default
   int64_t max_power_of_two_extend_bytes;  // use -1 to allow ORT to choose the default
+
+  bool IsValid() {
+    return arena_extend_strategy >= -1 && arena_extend_strategy <= 1 &&
+           initial_chunk_size_bytes >= -1 &&
+           max_dead_bytes_per_chunk >= -1 &&
+           initial_growth_chunk_size_bytes >= -1 &&
+           max_power_of_two_extend_bytes >= -1;
+  }
+
+  // config key names that we parse in FromKeyValuePairs
+  struct ConfigKeyNames {
+    static constexpr const char* ArenaExtendStrategy = "arena.extend_strategy";
+    static constexpr const char* InitialChunkSizeBytes = "arena.initial_chunk_size_bytes";
+    static constexpr const char* MaxDeadBytesPerChunk = "arena.max_dead_bytes_per_chunk";
+    static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
+    static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
+    static constexpr const char* MaxMem = "arena.max_mem";
+  };
+
+  static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
 };
 
 namespace onnxruntime {
