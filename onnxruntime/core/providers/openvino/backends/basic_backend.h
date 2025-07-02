@@ -146,6 +146,7 @@ class BasicBackend : public IBackend {
   void EnableGPUThrottling(ov::AnyMap& device_config);
   void EnableStreams();
   void SetNumThreads(ov::AnyMap& device_config);
+  void SetOVDeviceConfiguration(ov::AnyMap& device_config);
   void ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
                                           const ov::PartialShape& partial_shape) const;
 

@@ -153,52 +153,28 @@ BackendManager::BackendManager(SessionContext& session_context,
                                                       model_stream);
     } catch (const OnnxRuntimeException& ex) {
       std::string exception_str = ex.what();
-      bool eligible_for_cpu_fallback = device_type.find("NPU") != std::string::npos &&
-                                       !session_context_.so_disable_cpu_ep_fallback &&
-                                       !subgraph_context_.is_ep_ctx_graph;
-#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
-      eligible_for_cpu_fallback = false;
-#else
-      if (eligible_for_cpu_fallback) {
-        LOGS_DEFAULT(VERBOSE) << exception_str;
-        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
-                              << "Falling back to OV CPU for execution";
-        session_context_.device_type = "CPU";
-        session_context_.precision = "FP32";
-        try {
-          concrete_backend_ = BackendFactory::MakeBackend(model_proto,
-                                                          session_context_,
-                                                          subgraph_context_,
-                                                          shared_context_,
-                                                          model_stream);
-        } catch (std::string const& msg) {
-          ORT_THROW(msg);
-        }
-      }
-#endif
-      if (!eligible_for_cpu_fallback) {
-        if (device_type.find("NPU") != std::string::npos &&
-            exception_str.find("intel_npu") != std::string::npos) {
-          // Handle NPU device related errors
+
+      if (session_context_.device_type.find("NPU") != std::string::npos &&
+          exception_str.find("intel_npu") != std::string::npos) {
+        // Handle NPU device related errors
 #ifndef NDEBUG
-          ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
+        ORT_THROW(exception_str + "\nModel needs to be recompiled\n");
 #else
-          std::string error_message = "UNKNOWN NPU ERROR";
-          std::string error_code = "code 0x0";
-          std::regex error_message_pattern(R"(\bZE_\w*\b)");
-          std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
-          std::smatch matches;
-          if (std::regex_search(exception_str, matches, error_message_pattern)) {
-            error_message = matches[0];
-          }
-          if (std::regex_search(exception_str, matches, error_code_pattern)) {
-            error_code = matches[0];
-          }
-          throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
-#endif
-        } else {
-          ORT_THROW(exception_str);
+        std::string error_message = "UNKNOWN NPU ERROR";
+        std::string error_code = "code 0x0";
+        std::regex error_message_pattern(R"(\bZE_\w*\b)");
+        std::regex error_code_pattern("code 0x[0-9a-fA-F]+");
+        std::smatch matches;
+        if (std::regex_search(exception_str, matches, error_message_pattern)) {
+          error_message = matches[0];
         }
+        if (std::regex_search(exception_str, matches, error_code_pattern)) {
+          error_code = matches[0];
+        }
+        throw std::runtime_error(error_message + ", " + error_code + "\nModel needs to be recompiled\n");
+#endif
+      } else {
+        ORT_THROW(exception_str);
       }
     }
   }

@@ -36,42 +36,14 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
   if (ValidateSubgraph(const_outputs_map_))
     return;
 
-  // OV Config
+  // Pre-requisite is provider_option "context" must be set
+  auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
+                               (session_context_.OpenVINO_Version.at(0) >= 2024 &&
+                                session_context_.OpenVINO_Version.at(1) > 2));
   ov::AnyMap device_config;
-  PopulateConfigValue(device_config);
-
-  // Enable caching
-  EnableCaching();
-
-  // Setting OpenCL queue throttling for GPU
-  EnableGPUThrottling(device_config);
-
-  // Enable streams; default=1 unless overridden by user configuration
-  EnableStreams();
-
-  // Set the inference_num_threads property of the CPU
-  SetNumThreads(device_config);
-
-  auto npuw_status =
-      std::any_of(device_config.begin(), device_config.end(), [&](const std::pair<std::string, ov::Any>& pair) {
-        return (pair.first.find("NPU_USE_NPUW") != std::string::npos) && (pair.second.is<std::string>()) &&
-               (pair.second.as<std::string>() == "YES");
-      });
-
-  if (npuw_status) {
-    LOGS_DEFAULT(INFO) << log_tag << "NPUW Enabled during compilation";
-  }
-
-  try {
-    // IO_BUFFER is enabled on GPU HW.
-    // Pre-requisite is provider_option "context" must be set
-    auto auto_unified_compile = ((hw_target.find("AUTO") == std::string::npos) ||
-                                 (session_context_.OpenVINO_Version.at(0) >= 2024 &&
-                                  session_context_.OpenVINO_Version.at(1) > 2));
-    bool disable_cpu_fallback = !(hw_target.find("NPU") != std::string::npos &&
-                                  !session_context_.so_disable_cpu_ep_fallback &&
-                                  !subgraph_context_.is_ep_ctx_graph);
-    if (subgraph_context_.is_ep_ctx_graph) {
+  SetOVDeviceConfiguration(device_config);
+  if (subgraph_context_.is_ep_ctx_graph) {
+    try {
       if (subgraph_context_.is_ep_ctx_ovir_encapsulated) {
         // model_file_path will use so_context_file_path if the onnx_model_path_name is not available,
         // especially in case of CreateSessionFormArray() where user must explicitly
@@ -104,41 +76,67 @@ BasicBackend::BasicBackend(std::unique_ptr<ONNX_NAMESPACE::ModelProto>& model_pr
                                                   device_config,
                                                   subgraph_context_.subgraph_name);
       }
-      model_stream.reset();  // Delete stream after it is no longer needed
-    } else if (!session_context_.has_external_weights &&
-               !subgraph_context_.has_dynamic_input_shape &&
-               !session_context_.so_context_enable &&
-               session_context_.reshape.empty() &&
-               !enable_causallm &&
-               auto_unified_compile) {
-      // Unified OV compile_model is efficient when ov model caching is enabled
-      // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
-      // Inputs with static dimensions
-      // Not enabled for models with external weights and when ep context is set.
-      const std::string model = model_proto->SerializeAsString();
-      // we have the serialized string, so we can release model proto to lower the peak memory consumption
-      if (disable_cpu_fallback) model_proto.reset();
-      exe_network_ = OVCore::Get()->CompileModel(model,
-                                                 hw_target,
-                                                 device_config,
-                                                 subgraph_context_.subgraph_name);
-    } else {  // For all other types use ov::ov_core read_model() to generate OV IR
-              // followed by ov::ov_core compile_model()
-      std::string model = model_proto->SerializeAsString();
-      // Reset model proto only when cpu fallback is disabled or when the model has dynamic input shapes.
-      // This is to avoid memory peak usage when the model is large.
-      if (!subgraph_context.has_dynamic_input_shape && disable_cpu_fallback) {
-        model_proto.reset();
-      }
-      auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
-      exe_network_ = OVCore::Get()->CompileModel(
-          ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
+      model_stream.reset();
+    } catch (const char* msg) {
+      ORT_THROW(msg);
+    }  // Delete stream after it is no longer needed
+  } else {
+    std::string model = model_proto->SerializeAsString();
+    if (!subgraph_context.has_dynamic_input_shape) {
+      model_proto.reset();
     }
-    LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
-  } catch (const char* msg) {
-    ORT_THROW(msg);
-  }
+    try {
+      // SetOVDeviceConfiguration(device_config);
+      if (!session_context_.has_external_weights &&
+          !subgraph_context_.has_dynamic_input_shape &&
+          !session_context_.so_context_enable &&
+          session_context_.reshape.empty() &&
+          !enable_causallm &&
+          auto_unified_compile) {
+        // Unified OV compile_model is efficient when ov model caching is enabled
+        // Unified OV compile_model API is supported with AUTO from version 2024.3 and above
+        // Inputs with static dimensions
+        // Not enabled for models with external weights and when ep context is set.
 
+        exe_network_ = OVCore::Get()->CompileModel(model,
+                                                   hw_target,
+                                                   device_config,
+                                                   subgraph_context_.subgraph_name);
+      } else {  // For all other types use ov::ov_core read_model() to generate OV IR
+                // followed by ov::ov_core compile_model()
+        auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+        exe_network_ = OVCore::Get()->CompileModel(
+            ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
+      }
+      LOGS_DEFAULT(INFO) << log_tag << "Loaded model to the plugin";
+    } catch (const OnnxRuntimeException& ex) {
+      std::string exception_str = ex.what();
+      bool eligible_for_cpu_fallback = session_context_.device_type.find("NPU") != std::string::npos &&
+                                       !session_context_.so_disable_cpu_ep_fallback &&
+                                       !subgraph_context_.is_ep_ctx_graph;
+#if defined(OPENVINO_DISABLE_NPU_FALLBACK)
+      eligible_for_cpu_fallback = false;
+#endif
+      if (eligible_for_cpu_fallback) {
+        LOGS_DEFAULT(WARNING) << "Model compilation failed at OV NPU."
+                              << "Falling back to OV CPU for execution";
+        session_context_.device_type = "CPU";
+        session_context_.precision = "FP32";
+        device_config.clear();
+        SetOVDeviceConfiguration(device_config);
+        try {
+          // Recreate the model with CPU device type
+          auto ov_model = CreateOVModel(std::move(model), session_context_, const_outputs_map_);
+          exe_network_ = OVCore::Get()->CompileModel(
+              ov_model, hw_target, device_config, enable_causallm, subgraph_context_.subgraph_name);
+        } catch (std::string const& msg) {
+          ORT_THROW(msg);
+        }
+      } else {
+        ORT_THROW(ex.what());
+      }
+    }
+  }
   int num_infer_req = (session_context_.num_of_threads > 0) ? session_context_.num_of_threads : 1;
   std::function<void(OVInferRequestPtr)> initializer = [](OVInferRequestPtr) {};
   auto metadata = shared_context_.shared_weights.metadata;
@@ -383,6 +381,32 @@ void BasicBackend::SetNumThreads(ov::AnyMap& device_config) {
   // inference_num_threads is applicable only for the CPU device
   if (session_context_.device_type.find("CPU") != std::string::npos)
     device_config.emplace(ov::inference_num_threads(session_context_.num_of_threads));
+}
+
+void BasicBackend::SetOVDeviceConfiguration(ov::AnyMap& device_config) {
+  PopulateConfigValue(device_config);
+
+  // Enable caching
+  EnableCaching();
+
+  // Setting OpenCL queue throttling for GPU
+  EnableGPUThrottling(device_config);
+
+  // Enable streams; default=1 unless overridden by user configuration
+  EnableStreams();
+
+  // Set the inference_num_threads property of the CPU
+  SetNumThreads(device_config);
+
+  auto npuw_status =
+      std::any_of(device_config.begin(), device_config.end(), [&](const std::pair<std::string, ov::Any>& pair) {
+        return (pair.first.find("NPU_USE_NPUW") != std::string::npos) && (pair.second.is<std::string>()) &&
+               (pair.second.as<std::string>() == "YES");
+      });
+
+  if (npuw_status) {
+    LOGS_DEFAULT(INFO) << log_tag << "NPUW Enabled during compilation";
+  }
 }
 
 void BasicBackend::ValidateOrtDimsAgainstPartialShape(const std::vector<int64_t>& ort_dims,
