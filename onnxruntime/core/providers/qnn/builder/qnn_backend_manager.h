@@ -391,7 +391,8 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
       LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
       std::string op_package_for_registration = op_package.interface;
       std::string suffix = "InterfaceProvider";
-      if (op_package_for_registration.compare(op_package.interface.size() - suffix.size(), suffix.size(), suffix) == 0) {
+      if (op_package_for_registration.size() >= suffix.size() &&
+          op_package_for_registration.compare(op_package_for_registration.size() - suffix.size(), suffix.size(), suffix) == 0) {
         op_package_for_registration.erase(op_package_for_registration.size() - suffix.size());
       }
       registerUDO(op_package.op_type, op_package_for_registration);

@@ -7,8 +7,13 @@
 #include <algorithm>
 #include <cassert>
 #include <limits>
+#include <map>
+#include <memory>
 #include <optional>
+#include <string>
+#include <unordered_map>
 #include <utility>
+#include <vector>
 
 #include "core/providers/qnn/ort_api.h"
 #include "core/providers/qnn/builder/qnn_utils.h"

@@ -3,8 +3,10 @@
 
 #pragma once
 
+#include <map>
 #include <memory>
 #include <unordered_map>
+#include <string>
 #include <vector>
 
 #include "core/providers/qnn/ort_api.h"
