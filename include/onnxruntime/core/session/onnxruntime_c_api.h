@@ -52,8 +52,9 @@ extern "C" {
 #define _In_opt_
 #define _In_opt_z_
 #define _Out_
-#define _Outptr_
 #define _Out_opt_
+#define _Outptr_
+#define _Outptr_opt_
 #define _Inout_
 #define _Inout_opt_
 #define _Frees_ptr_opt_
@@ -61,6 +62,7 @@ extern "C" {
 #define _Ret_notnull_
 #define _Check_return_
 #define _Outptr_result_maybenull_
+#define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
@@ -497,6 +499,7 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
 typedef enum OrtTypeTag {
   ORT_TYPE_TAG_Void,
   ORT_TYPE_TAG_OrtValueInfo,
+  ORT_TYPE_TAG_OrtOpAttr,
   ORT_TYPE_TAG_OrtNode,
   ORT_TYPE_TAG_OrtGraph,
 } OrtTypeTag;
@@ -791,9 +794,6 @@ typedef struct OrtCompileApi OrtCompileApi;
 
 struct OrtEpApi;
 typedef struct OrtEpApi OrtEpApi;
-
-struct OrtNodeComputeInfo;
-typedef struct OrtNodeComputeInfo OrtNodeComputeInfo;
 
 /** \brief The helper interface to get the right version of OrtApi
  *
@@ -4580,7 +4580,8 @@ struct OrtApi {
    *  \param[in] provider_options_values value of the provider options map
    *  \param[in] num_keys Length of the provider options map
    */
-  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type, _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
+  ORT_API2_STATUS(CreateAndRegisterAllocatorV2, _Inout_ OrtEnv* env, _In_ const char* provider_type,
+                  _In_ const OrtMemoryInfo* mem_info, _In_ const OrtArenaCfg* arena_cfg,
                   _In_reads_(num_keys) const char* const* provider_options_keys, _In_reads_(num_keys) const char* const* provider_options_values, _In_ size_t num_keys);
 
   /** \brief Run the model asynchronously in a thread owned by intra op thread pool
@@ -4959,6 +4960,8 @@ struct OrtApi {
    */
   ORT_API2_STATUS(SetEpDynamicOptions, _Inout_ OrtSession* sess, _In_reads_(kv_len) const char* const* keys,
                   _In_reads_(kv_len) const char* const* values, _In_ size_t kv_len);
+
+  /// @}
 
   /** \brief Release an OrtValueInfo instance if it was not added to an OrtGraph.
    * \since Version 1.22.
@@ -5876,6 +5879,52 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetImplicitInputs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** implicit_inputs);
 
+  /** \brief Returns a node's attributes as OrtOpAttr instances.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] attributes Output parameter set to the OrtArrayOfConstObjects instance containing the node's attributes
+   *                    as OrtOpAttr instances. Must be released by calling ReleaseArrayOfConstObjects.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes);
+
+  /** \brief Gets the OrtNode's attribute as OrtOpAttr by name.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[in] attribute_name The name of the attribute
+   * \param[out] attribute Output the attribute if its name matches 'attribute_name', otherwise output nullptr.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute);
+
+  /** \brief Get the attribute type as OrtOpAttrType from an OrtOpAttr.
+   *
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] type Output the attribute type as OrtOpAttrType.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type);
+
+  /** \brief Get the attribute name from an OrtOpAttr.
+   *
+   * \param[in] attribute The OrtOpAttr instance.
+   * \param[out] name Output parameter set to the attribute's name. The name is a null-terminated string.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name);
+
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
    * Certain operator types (e.g., If and Loop) contain nested subgraphs.
@@ -5904,7 +5953,117 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetParentGraph, _In_ const OrtNode* node,
                   _Outptr_result_maybenull_ const OrtGraph** parent_graph);
-                  
+
+  /// \name OrtRunOptions
+  /// @{
+
+  /** \brief Get a run configuration entry.
+   *
+   * If a run configuration entry with key `config_key` doesn't exist, `config_value` will be set to NULL.
+   *
+   * `config_key`s are defined in onnxruntime_run_options_config_keys.h.
+   *
+   * \param[in] options The OrtRunOptions instance.
+   * \param[in] config_key The configuration entry key. A null-terminated string.
+   * \param[out] config_value Output parameter set to the configuration entry value. Either a null-terminated string if
+   *                          a configuration entry exists or NULL otherwise.
+   *                          Do not free this value. It is owned by `options` and will be invalidated if another call
+   *                          to `AddRunConfigEntry()` overwrites it.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   */
+  ORT_API2_STATUS(GetRunConfigEntry, _In_ const OrtRunOptions* options,
+                  _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
+
+  /// @}
+
+  /** \brief Get the OrtMemoryInfo for the device.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to query.
+   * \return A pointer to the OrtMemoryInfo for the device.
+   *
+   * \since Version 1.23
+   */
+  ORT_API_T(const OrtMemoryInfo*, EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device);
+
+  /** \brief Create/replace a shared allocator for the OrtEpDevice in the OrtEnv.
+   *
+   * OrtEpDevice maps to the EP factory, and the factory provides the allocator implementation.
+   *
+   * Both OrtDeviceMemoryType_DEFAULT and OrtDeviceMemoryType_HOST_ACCESSIBLE are optional for an EP to provide.
+   * It is EP implementation dependent as to what is available.
+   *
+   * If a shared allocator already exists for the OrtEpDevice and OrtDeviceMemoryType, it is replaced. This allows
+   * changing the shared allocator configuration from the default. e.g. adding an arena.
+   *
+   * \param[in] env The OrtEnv instance to create the shared allocator in.
+   * \param[in] ep_device The OrtEpDevice instance to create the shared allocator for.
+   * \param[in] mem_type The memory type to use for the shared allocator.
+   * \param[in] allocator_type The type of allocator to create (e.g. OrtAllocatorType::OrtArenaAllocator).
+   * \param[in] allocator_options Optional key-value pairs to configure the allocator. If arena based, see
+   *                              include/onnxruntime/core/framework/allocator.h for the keys and values that can be
+   *                              used.
+   * \param[out] allocator A pointer to the created shared allocator. Owned by the OrtEnv instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType mem_type, _In_ OrtAllocatorType allocator_type,
+                  _In_opt_ const OrtKeyValuePairs* allocator_options,
+                  _Outptr_opt_ OrtAllocator** allocator);
+
+  /** \brief Get a shared allocator from the OrtEnv.
+   *
+   * By default there is a shared allocator created for all OrtEpDevice instances, so if you get the OrtMemoryInfo
+   * from the OrtEpDevice using EpDevice_MemoryInfo a shared allocator is guaranteed to exist.
+   *
+   * This will also match and return custom allocators added with RegisterAllocator.
+   *
+   * It is not an error to not find a matching allocator.
+   *
+   * \param[in] env The OrtEnv instance to get the shared allocator from.
+   * \param[in] mem_info The OrtMemoryInfo instance to get the shared allocator for.
+   * \param[out] allocator A pointer to the shared allocator, or nullptr if no shared allocator exists for
+   *                       the given memory info.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetSharedAllocator, _In_ OrtEnv* env, _In_ const OrtMemoryInfo* mem_info,
+                  _Outptr_result_maybenull_ OrtAllocator** allocator);
+
+  /** \brief Release a shared allocator from the OrtEnv for the OrtEpDevice and memory type.
+   *
+   * This will release the shared allocator for the given OrtEpDevice and memory type.
+   * If no shared allocator exists, this is a no-op.
+   *
+   * \param[in] env The OrtEnv instance to release the shared allocator from.
+   * \param[in] ep_device The OrtEpDevice instance to release the shared allocator for.
+   * \param[in] mem_type The memory type of the shared allocator to release.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDevice* ep_device,
+                  _In_ OrtDeviceMemoryType mem_type);
+
+  /** \brief Get a const pointer to the raw data inside a tensor
+   *
+   * Used to read the internal tensor data directly.
+   * \note The returned pointer is valid until the \p value is destroyed.
+   *
+   * \param[in] value A tensor type (string tensors are not supported)
+   * \param[out] out Filled in with a pointer to the internal storage
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 
   /// @}
   /// \name OrtMIGraphXProviderOptions
@@ -5986,7 +6145,7 @@ struct OrtApi {
    *
    * \since Version 1.xx.
    */
-  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);  
 };
 
 /*

@@ -129,11 +129,11 @@ jobs:
       parameters:
         Today: $(Today)
         ${{ if eq(parameters.BuildStaticLib, true)}}:
-          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }} | static
+          AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }} | static
         ${{ else }}:
-          AdditionalKey: wasm_inferencing_webgpu_exp | ${{ parameters.BuildConfig }}
+          AdditionalKey: wasm_inferencing_webgpu | ${{ parameters.BuildConfig }}
         CacheDir: $(ORT_CACHE_DIR)/wasm_inferencing_webgpu
-        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_jsep --use_webnn --target onnxruntime_webassembly --skip_tests'
+        Arguments: '$(CommonBuildArgs) --build_dir $(Build.BinariesDirectory)/wasm_inferencing_webgpu --use_webgpu --use_webnn --target onnxruntime_webassembly --skip_tests'
         DisplayName: 'Build (simd + threads + WebGPU experimental)'
         WithCache: ${{ parameters.WithCache }}
 
