@@ -513,7 +513,6 @@ struct TensorCaster<UInt4x2, DstType,
       // elem 0 is the low nibble, 1 the high nibble
       auto val = in_data[i >> 1].GetElem(i & 0x1);
 
-      out_data[i] = Int4ElementConverter<DstType>::Convert(val);
       if constexpr (std::is_floating_point_v<DstType>) {
         out_data[i] = static_cast<DstType>(val);
       } else {
