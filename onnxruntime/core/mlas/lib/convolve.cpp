@@ -42,42 +42,6 @@ struct MLAS_CONV_WORK_BLOCK {
     ptrdiff_t TargetThreadCount;
 };
 
-#include <algorithm>
-#include <iostream>
-#include <fstream>
-#include <random>
-#include <chrono>
-#include <sstream>
-#include <sys/time.h>
-
-void PrintWorkBlockParameters(const MLAS_CONV_WORK_BLOCK* WorkBlock) {
-    const MLAS_CONV_PARAMETERS* Parameters = WorkBlock->Parameters;
-
-    std::cout << "MLAS_CONV_WORK_BLOCK Parameters:\n"
-              << "  BatchCount: " << Parameters->BatchCount
-              << "  GroupCount: " << Parameters->GroupCount
-              << "  InputChannels: " << Parameters->InputChannels
-              << "  FilterCount: " << Parameters->FilterCount
-              << "  InputSize: " << Parameters->InputSize
-              << "  OutputSize: " << Parameters->OutputSize
-              << "  K: " << Parameters->K << "\n";
-
-    std::cout << "  InputShape: ";
-    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->InputShape[i] << " ";
-    std::cout << ";  OutputShape: ";
-    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->OutputShape[i] << " ";
-    std::cout << ";  KernelShape: ";
-    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->KernelShape[i] << " ";
-    std::cout << ";  DilationShape: ";
-    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->DilationShape[i] << " ";
-    std::cout << ";  Padding: ";
-    for (size_t i = 0; i < Parameters->Dimensions * 2; ++i) std::cout << Parameters->Padding[i] << " ";
-    std::cout << ";  StrideShape: ";
-    for (size_t i = 0; i < Parameters->Dimensions; ++i) std::cout << Parameters->StrideShape[i] << " ";
-    std::cout << ";  Algorithm: " << Parameters->Algorithm
-              << "  Dimensions: " << Parameters->Dimensions << std::endl;
-}
-
 void
 MlasConvIm2Col(
     const MLAS_CONV_PARAMETERS* Parameters,
@@ -1001,15 +965,6 @@ Return Value:
 
 #endif
 
-    // auto AlgorithmToString = [](MLAS_CONV_ALGORITHM algorithm) -> const char* {
-    //     switch (algorithm) {
-    //         case MlasConvAlgorithmGemmDirect: return "MlasConvAlgorithmGemmDirect";
-    //         case MlasConvAlgorithmExpandThenGemm: return "MlasConvAlgorithmExpandThenGemm";
-    //         case MlasConvAlgorithmExpandThenGemmSegmented: return "MlasConvAlgorithmExpandThenGemmSegmented";
-    //         default: return "Unknown Algorithm";
-    //     }
-    // };
-
     if (Algorithm == MlasConvAlgorithmExpandThenGemmSegmented && ((BatchCount > 1) || (GroupCount > 1))) {
 
         const size_t BatchGroupCount = BatchCount * GroupCount;
@@ -1031,15 +986,8 @@ Return Value:
         WorkBlock.Output = Output;
         WorkBlock.TargetThreadCount = TargetThreadCount;
 
-        // std::cout << "Algorithm: " << AlgorithmToString(Algorithm) <<  "; BatchCount:" << BatchCount <<  "; GroupCount:" << GroupCount << "; maxthreadnum:" << MlasGetMaximumThreadCount(ThreadPool) << "; TargetThreadCount:" << TargetThreadCount << std::endl;
-        // PrintWorkBlockParameters(&WorkBlock);
-
-        // struct timeval start,end;
-        // gettimeofday(&start, 0);
         MlasExecuteThreaded(MlasConvExpandThenGemmSegmentedThreaded, &WorkBlock, TargetThreadCount, ThreadPool);
-        // gettimeofday(&end, 0);
-        // float elapsed = (end.tv_sec - start.tv_sec) * 1000.0f + (end.tv_usec - start.tv_usec) / 1000.0f;
-        // std::cout << "Time elapsed: " << elapsed << "ms" << std::endl;
+
         return;
     }
 
