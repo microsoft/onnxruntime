@@ -2047,7 +2047,7 @@ TEST(AttentionTest, AttentionPastState_dynamic) {
   test.AddInput<float>("past", past_dims, past_data);
 
   test.AddReferenceOutputs("testdata/attention_past_state.onnx", 0.005f);
-  test.Run(OpTester::ExpectResult::kExpectSuccess, "", {kOpenVINOExecutionProvider});
+  test.Run();
 }
 #endif  //! defined(__wasm__)
 

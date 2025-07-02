@@ -4102,8 +4102,8 @@ TEST(ReductionOpTest, ReduceSum_noop_axes_input_initializer_opset_18) {
   test.Run(
       OpTester::ExpectResult::kExpectSuccess,
       "",
-      {kOpenVINOExecutionProvider} // OpenVINO: Disabled temporarily
-    );
+      {kOpenVINOExecutionProvider}  // OpenVINO: Disabled temporarily
+  );
 }
 
 TEST(ReductionOpTest, ReduceSum_empty_axes_input_initializer_opset_18) {
