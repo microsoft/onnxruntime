@@ -876,6 +876,21 @@ std::unique_ptr<onnxruntime::IExternalDataLoader> WebGpuExecutionProvider::GetEx
 }
 #endif
 
+std::optional<bool> WebGpuExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                          std::string_view node_op_type,
+                                                                          DataLayout target_data_layout) const {
+  if (target_data_layout != DataLayout::NHWC) {
+    return std::nullopt;
+  }
+
+  // NHWC for Resize operator is not implemented on kWebGpuExecutionProvider
+  if (node_domain == kOnnxDomain && node_op_type == "Resize") {
+    return false;
+  }
+
+  return std::nullopt;
+}
+
 WebGpuExecutionProvider::~WebGpuExecutionProvider() {
   // Release all resources associated with the captured graph
   if (!captured_commands_.empty()) {

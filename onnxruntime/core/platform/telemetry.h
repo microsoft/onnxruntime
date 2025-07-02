@@ -78,6 +78,10 @@ class Telemetry {
                                   const std::wstring_view& driver_names,
                                   const std::wstring_view& driver_versions) const;
 
+  virtual void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                  const std::vector<std::string>& requested_execution_provider_ids,
+                                  const std::vector<std::string>& available_execution_provider_ids) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };

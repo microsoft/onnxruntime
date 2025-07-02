@@ -44,6 +44,7 @@
 #include "core/providers/rocm/rocm_provider_factory.h"
 #include "core/providers/rocm/gpu_data_transfer.h"
 #endif
+#include "core/session/allocator_adapters.h"
 #include "core/session/environment.h"
 #include "core/session/IOBinding.h"
 #include "core/session/inference_session_utils.h"
@@ -2839,30 +2840,40 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsUseSameOrtCreatedAllo
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
-  st = env->RegisterAllocator(allocator_ptr);
+  // convert to OrtAllocator* to use the public method used to register allocators by the ORT API
+  OrtAllocatorImplWrappingIAllocator ort_allocator(CreateAllocator(device_info));
+  st = env->RegisterAllocator(&ort_allocator);
   ASSERT_STATUS_OK(st);
-  // create sessions to share the allocator
 
-  SessionOptions so1;
-  ASSERT_STATUS_OK(so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
-  InferenceSessionTestSharingAllocator sess1(so1, *env);
-  ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
-  ASSERT_STATUS_OK(sess1.Initialize());
+  {
+    // create sessions to share the allocator
+    SessionOptions so1;
+    ASSERT_STATUS_OK(so1.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+    InferenceSessionTestSharingAllocator sess1(so1, *env);
+    ASSERT_STATUS_OK(sess1.Load(MODEL_URI));
+    ASSERT_STATUS_OK(sess1.Initialize());
 
-  SessionOptions so2;
-  ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
-  InferenceSessionTestSharingAllocator sess2(so2, *env);
-  ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
-  ASSERT_STATUS_OK(sess2.Initialize());
+    SessionOptions so2;
+    ASSERT_STATUS_OK(so2.config_options.AddConfigEntry(kOrtSessionOptionsConfigUseEnvAllocators, "1"));
+    InferenceSessionTestSharingAllocator sess2(so2, *env);
+    ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
+    ASSERT_STATUS_OK(sess2.Initialize());
 
-  // This line ensures the allocator in the session is the same as that in the env
-  ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
-            allocator_ptr.get());
+    // Need to undo the wrapping that happens in Environment::RegisterAllocator to be able to compare the pointers
+    const OrtAllocator* session_allocator = reinterpret_cast<IAllocatorImplWrappingOrtAllocator*>(
+                                                sess1.GetSessionState().GetAllocator(mem_info).get())
+                                                ->GetWrappedOrtAllocator();
 
-  // This line ensures the underlying IAllocator* is the same across 2 sessions.
-  ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
-            sess2.GetSessionState().GetAllocator(mem_info).get());
+    // This line ensures the allocator in the session is the same as that in the env
+    ASSERT_EQ(session_allocator, &ort_allocator);
+
+    // This line ensures the underlying IAllocator* is the same across 2 sessions.
+    ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
+              sess2.GetSessionState().GetAllocator(mem_info).get());
+  }
+
+  // registered as the allocator will become invalid before the environment is destroyed
+  ASSERT_STATUS_OK(env->UnregisterAllocator(mem_info));
 }
 
 // Ensure sessions don't use the same allocator. It uses ORT created allocator.
@@ -2887,8 +2898,8 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
       [mem_info](int) { return std::make_unique<CPUAllocator>(mem_info); },
       0, use_arena};
 
-  AllocatorPtr allocator_ptr = CreateAllocator(device_info);
-  st = env->RegisterAllocator(allocator_ptr);
+  OrtAllocatorImplWrappingIAllocator ort_allocator(CreateAllocator(device_info));
+  st = env->RegisterAllocator(&ort_allocator);
   ASSERT_STATUS_OK(st);
   // create sessions to share the allocator
 
@@ -2904,9 +2915,13 @@ TEST(InferenceSessionTests, AllocatorSharing_EnsureSessionsDontUseSameOrtCreated
   ASSERT_STATUS_OK(sess2.Load(MODEL_URI));
   ASSERT_STATUS_OK(sess2.Initialize());
 
+  // Need to undo the wrapping that happens in Environment::RegisterAllocator to be able to compare the pointers
+  const OrtAllocator* session_allocator = reinterpret_cast<IAllocatorImplWrappingOrtAllocator*>(
+                                              sess1.GetSessionState().GetAllocator(mem_info).get())
+                                              ->GetWrappedOrtAllocator();
+
   // This line ensures the allocator in the session is the same as that in the env
-  ASSERT_EQ(sess1.GetSessionState().GetAllocator(mem_info).get(),
-            allocator_ptr.get());
+  ASSERT_EQ(session_allocator, &ort_allocator);
 
   // This line ensures the underlying OrtAllocator* is the same across 2 sessions.
   ASSERT_NE(sess1.GetSessionState().GetAllocator(mem_info).get(),
