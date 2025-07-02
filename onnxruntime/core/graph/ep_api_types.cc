@@ -171,12 +171,12 @@ size_t EpNode::GetNumInputs() const {
   return inputs_.size();
 }
 
-Status EpNode::GetInputs(gsl::span<const OrtValueInfo*> result) const {
+Status EpNode::GetInputs(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_inputs = inputs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node inputs", num_inputs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node inputs", num_inputs, dst)));
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    result[i] = inputs_[i];
+    dst[i] = inputs_[i];
   }
 
   return Status::OK();
@@ -186,12 +186,12 @@ size_t EpNode::GetNumOutputs() const {
   return outputs_.size();
 }
 
-Status EpNode::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
+Status EpNode::GetOutputs(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_outputs = outputs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node outputs", num_outputs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node outputs", num_outputs, dst)));
 
   for (size_t i = 0; i < num_outputs; ++i) {
-    result[i] = outputs_[i];
+    dst[i] = outputs_[i];
   }
 
   return Status::OK();
@@ -202,12 +202,12 @@ Status EpNode::GetNumImplicitInputs(size_t& num_implicit_inputs) const {
   return Status::OK();
 }
 
-Status EpNode::GetImplicitInputs(gsl::span<const OrtValueInfo*> result) const {
+Status EpNode::GetImplicitInputs(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_implicit_inputs = implicit_inputs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node implicit inputs", num_implicit_inputs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("node implicit inputs", num_implicit_inputs, dst)));
 
   for (size_t i = 0; i < num_implicit_inputs; ++i) {
-    result[i] = implicit_inputs_[i];
+    dst[i] = implicit_inputs_[i];
   }
 
   return Status::OK();
@@ -217,12 +217,12 @@ size_t EpNode::GetNumAttributes() const {
   return attributes_.size();
 }
 
-Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> result) const {
+Status EpNode::GetAttributes(gsl::span<const OrtOpAttr*> dst) const {
   const size_t num_attributes = attributes_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtOpAttr*>("node attributes", num_attributes, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtOpAttr*>("node attributes", num_attributes, dst)));
 
   for (size_t i = 0; i < num_attributes; ++i) {
-    result[i] = attributes_[i];
+    dst[i] = attributes_[i];
   }
 
   return Status::OK();
@@ -233,12 +233,12 @@ Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   return Status::OK();
 }
 
-Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> result) const {
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> dst) const {
   const size_t num_subgraphs = subgraphs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node attributes", num_subgraphs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node attributes", num_subgraphs, dst)));
 
   for (size_t i = 0; i < num_subgraphs; ++i) {
-    result[i] = subgraphs_[i].ep_subgraph.get();
+    dst[i] = subgraphs_[i].ep_subgraph.get();
   }
 
   return Status::OK();
@@ -664,12 +664,12 @@ size_t EpGraph::GetNumInputs() const {
   return inputs_.size();
 }
 
-Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> result) const {
+Status EpGraph::GetInputs(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_inputs = inputs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph inputs", num_inputs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph inputs", num_inputs, dst)));
 
   for (size_t i = 0; i < num_inputs; ++i) {
-    result[i] = inputs_[i];
+    dst[i] = inputs_[i];
   }
 
   return Status::OK();
@@ -679,12 +679,12 @@ size_t EpGraph::GetNumOutputs() const {
   return outputs_.size();
 }
 
-Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> result) const {
+Status EpGraph::GetOutputs(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_outputs = outputs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph outputs", num_outputs, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph outputs", num_outputs, dst)));
 
   for (size_t i = 0; i < num_outputs; ++i) {
-    result[i] = outputs_[i];
+    dst[i] = outputs_[i];
   }
 
   return Status::OK();
@@ -694,12 +694,12 @@ size_t EpGraph::GetNumInitializers() const {
   return initializer_value_infos_.size();
 }
 
-Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> result) const {
+Status EpGraph::GetInitializers(gsl::span<const OrtValueInfo*> dst) const {
   const size_t num_initializers = initializer_value_infos_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph initializers", num_initializers, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtValueInfo*>("graph initializers", num_initializers, dst)));
 
   for (size_t i = 0; i < num_initializers; ++i) {
-    result[i] = initializer_value_infos_[i];
+    dst[i] = initializer_value_infos_[i];
   }
 
   return Status::OK();
@@ -709,12 +709,12 @@ size_t EpGraph::GetNumNodes() const {
   return nodes_.size();
 }
 
-Status EpGraph::GetNodes(gsl::span<const OrtNode*> result) const {
+Status EpGraph::GetNodes(gsl::span<const OrtNode*> dst) const {
   const size_t num_nodes = nodes_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtNode*>("graph nodes", num_nodes, result)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtNode*>("graph nodes", num_nodes, dst)));
 
   for (size_t i = 0; i < num_nodes; ++i) {
-    result[i] = nodes_[i].get();
+    dst[i] = nodes_[i].get();
   }
 
   return Status::OK();
