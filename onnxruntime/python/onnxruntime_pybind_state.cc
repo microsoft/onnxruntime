@@ -1987,7 +1987,7 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
       .def_property_readonly(
           "metadata",
           [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
-            return hw_device->metadata.entries;
+            return hw_device->metadata.Entries();
           },
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
 
@@ -2005,13 +2005,13 @@ for model inference.)pbdoc");
       .def_property_readonly(
           "ep_metadata",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
-            return ep_device->ep_metadata.entries;
+            return ep_device->ep_metadata.Entries();
           },
           R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
           [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
-            return ep_device->ep_options.entries;
+            return ep_device->ep_options.Entries();
           },
           R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
