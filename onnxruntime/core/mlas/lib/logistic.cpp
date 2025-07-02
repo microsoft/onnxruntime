@@ -59,7 +59,7 @@ MLAS_INTERNAL_DATA const struct {
     0.5f,
 };
 
-__attribute__((target("arch=armv8-a+sve")))
+#ifdef __ARM_FEATURE_SVE
 void 
 MLASCALL
 MlasSveLogisticKernel(
@@ -143,6 +143,7 @@ Return Value:
         N -= stride;
     }
 }
+#endif
 
 void
 MLASCALL
