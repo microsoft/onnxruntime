@@ -368,8 +368,63 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr EpDevice_Device;
 
         public IntPtr GetEpApi;
+
         public IntPtr GetTensorSizeInBytes;
-        
+        public IntPtr AllocatorGetStats;
+
+        public IntPtr CreateMemoryInfo_V2;
+
+        public IntPtr CreateArrayOfConstObjects;
+        public IntPtr ReleaseArrayOfConstObjects;
+        public IntPtr ArrayOfConstObjects_GetObjectType;
+        public IntPtr ArrayOfConstObjects_GetData;
+        public IntPtr ArrayOfConstObjects_GetMutableData;
+        public IntPtr ArrayOfConstObjects_GetSize;
+        public IntPtr ArrayOfConstObjects_GetElementAt;
+        public IntPtr ArrayOfConstObjects_SetElementAt;
+        public IntPtr ArrayOfConstObjects_AppendElement;
+
+        public IntPtr ValueInfo_GetValueProducer;
+        public IntPtr ValueInfo_GetValueNumConsumers;
+        public IntPtr ValueInfo_GetValueConsumers;
+        public IntPtr ValueInfo_GetInitializerValue;
+        public IntPtr ValueInfo_IsRequiredGraphInput;
+        public IntPtr ValueInfo_IsOptionalGraphInput;
+        public IntPtr ValueInfo_IsGraphOutput;
+        public IntPtr ValueInfo_IsConstantInitializer;
+        public IntPtr ValueInfo_IsFromOuterScope;
+        public IntPtr Graph_GetName;
+        public IntPtr Graph_GetOnnxIRVersion;
+        public IntPtr Graph_GetInputs;
+        public IntPtr Graph_GetOutputs;
+        public IntPtr Graph_GetInitializers;
+        public IntPtr Graph_GetNodes;
+        public IntPtr Graph_GetParentNode;
+        public IntPtr Node_GetId;
+        public IntPtr Node_GetName;
+        public IntPtr Node_GetOperatorType;
+        public IntPtr Node_GetDomain;
+        public IntPtr Node_GetSinceVersion;
+        public IntPtr Node_GetInputs;
+        public IntPtr Node_GetOutputs;
+        public IntPtr Node_GetImplicitInputs;
+        public IntPtr Node_GetAttributes;
+        public IntPtr Node_GetAttributeByName;
+        public IntPtr OpAttr_GetType;
+        public IntPtr OpAttr_GetName;
+        public IntPtr Node_GetSubgraphs;
+        public IntPtr Node_GetParentGraph;
+
+        public IntPtr GetRunConfigEntry;
+
+        public IntPtr EpDevice_MemoryInfo;
+
+        public IntPtr CreateSharedAllocator;
+        public IntPtr GetSharedAllocator;
+        public IntPtr ReleaseSharedAllocator;
+
+        public IntPtr GetTensorData;
+
         public IntPtr CreateMIGraphXProviderOptions;
         public IntPtr UpdateMIGraphXProviderOptions;
         public IntPtr GetMIGraphXProviderOptionsAsString;
