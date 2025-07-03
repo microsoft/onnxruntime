@@ -31,6 +31,7 @@
 #include "core/graph/constants.h"
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
+#include "core/graph/ep_api_types.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -114,12 +115,12 @@ using namespace onnxruntime;
 #define TENSOR_READ_API_BEGIN                          \
   API_IMPL_BEGIN                                       \
   auto v = reinterpret_cast<const ::OrtValue*>(value); \
-  auto& tensor = v->Get<onnxruntime::Tensor>();
+  const auto& tensor = v->Get<onnxruntime::Tensor>();
 
 #define TENSOR_READWRITE_API_BEGIN \
   API_IMPL_BEGIN                   \
   auto v = (value);                \
-  auto tensor = v->GetMutable<onnxruntime::Tensor>();
+  auto* tensor = v->GetMutable<onnxruntime::Tensor>();
 
 namespace {
 // Create tensor. Allocates memory. Tensor owns memory. Allocator is wrapped and stored in a shared_ptr in Tensor.
@@ -331,9 +332,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
 namespace {
 #if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) {
-  if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) {
+  if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
     return std::make_unique<CPUDataTransfer>();
   }
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
@@ -347,7 +349,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
 SparseTensor& ValidateFillInputArgs(OrtValue* v, const TensorShape& values_shape, const OrtMemoryInfo* data_mem_info) {
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
   if (sparse_tensor.IsDataTypeString()) {
-    if ((data_mem_info->device.Type() != OrtDevice::CPU) || sparse_tensor.Location().device.Type() != OrtDevice::CPU) {
+    if (!data_mem_info->device.UsesCpuMemory() || !sparse_tensor.Location().device.UsesCpuMemory()) {
       ORT_THROW("Strings can only reside in CPU memory");
     }
   }
@@ -785,7 +787,7 @@ ORT_API_STATUS_IMPL(OrtApis::SetEpDynamicOptions, _Inout_ OrtSession* sess,
   Status status;
 
   if (kv_len == 0) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no imputs were passed");
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "no inputs were passed");
   } else {
     status = session->SetEpDynamicOptions(keys_span,
                                           values_span);
@@ -1086,6 +1088,13 @@ ORT_API_STATUS_IMPL(OrtApis::GetTensorMutableData, _Inout_ OrtValue* value, _Out
   //  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "this API does not support strings");
   //}
   *output = tensor->MutableDataRaw();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetTensorData, _Inout_ const OrtValue* value, _Outptr_ const void** output) {
+  TENSOR_READ_API_BEGIN
+  *output = tensor.DataRaw();
   return nullptr;
   API_IMPL_END
 }
@@ -2239,6 +2248,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfg, _In_ size_t max_mem, int arena_exte
   cfg->initial_chunk_size_bytes = initial_chunk_size_bytes;
   cfg->max_dead_bytes_per_chunk = max_dead_bytes_per_chunk;
   cfg->max_dead_bytes_per_chunk = -1L;
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
+  }
+
   *out = cfg.release();
   return nullptr;
   API_IMPL_END
@@ -2268,6 +2282,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateArenaCfgV2, _In_reads_(num_keys) const char* 
 
       return CreateStatus(ORT_INVALID_ARGUMENT, oss.str().c_str());
     }
+  }
+
+  if (!cfg->IsValid()) {
+    return CreateStatus(ORT_INVALID_ARGUMENT, "Invalid configuration value was provided.");
   }
 
   *out = cfg.release();
@@ -2842,6 +2860,96 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetImplicitInputs, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributes, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** attributes) {
+  API_IMPL_BEGIN
+  if (attributes == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attributes' argument is NULL");
+  }
+
+  std::unique_ptr<OrtArrayOfConstObjects> array;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetAttributes(array));
+
+  *attributes = array.release();
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetAttributeByName, _In_ const OrtNode* node, _In_ const char* attribute_name, _Outptr_ const OrtOpAttr** attribute) {
+  API_IMPL_BEGIN
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'attribute' argument is NULL");
+  }
+
+  const EpNode* ep_node = EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetAttributeByName.");
+  }
+
+  *attribute = ep_node->GetAttribute(attribute_name);
+
+  if (*attribute) {
+    return nullptr;
+  } else {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Attribute does not exist.");
+  }
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _Out_ OrtOpAttrType* type) {
+  API_IMPL_BEGIN
+  const auto attr = attribute->attr_proto;
+  auto onnx_attr_type = attribute->attr_proto.type();
+  switch (onnx_attr_type) {
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_UNDEFINED: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_UNDEFINED;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_INTS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_INTS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOAT: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOAT;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_FLOATS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_FLOATS;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRING: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRING;
+      break;
+    }
+    case ONNX_NAMESPACE::AttributeProto_AttributeType::AttributeProto_AttributeType_STRINGS: {
+      *type = OrtOpAttrType::ORT_OP_ATTR_STRINGS;
+      break;
+    }
+    default:
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "Unexpected attribute type.");
+  }
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name) {
+  API_IMPL_BEGIN
+  if (name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name argument is null");
+  }
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
+  }
+
+  *name = attribute->attr_proto.name().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs) {
   API_IMPL_BEGIN
   if (subgraphs == nullptr) {
@@ -3067,6 +3175,10 @@ ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpOptions, _In_ const OrtEpDe
 
 ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevice* ep_device) {
   return ep_device->device;
+}
+
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->device_memory_info;
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -3501,6 +3613,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetTensorSizeInBytes,
     &OrtApis::AllocatorGetStats,
+
     &OrtApis::CreateMemoryInfo_V2,
 
     &OrtApis::CreateArrayOfConstObjects,
@@ -3537,9 +3650,22 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetInputs,
     &OrtApis::Node_GetOutputs,
     &OrtApis::Node_GetImplicitInputs,
+    &OrtApis::Node_GetAttributes,
+    &OrtApis::Node_GetAttributeByName,
+    &OrtApis::OpAttr_GetType,
+    &OrtApis::OpAttr_GetName,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 
+    &OrtApis::GetRunConfigEntry,
+
+    &OrtApis::EpDevice_MemoryInfo,
+
+    &OrtApis::CreateSharedAllocator,
+    &OrtApis::GetSharedAllocator,
+    &OrtApis::ReleaseSharedAllocator,
+
+    &OrtApis::GetTensorData,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

@@ -41,20 +41,6 @@ class OpBuilderRegistrations {
     }
   }
 
-  void RegisterUDOBuilder(const std::string& op_type, std::unique_ptr<IOpBuilder> builder) {
-    auto builder_type = builder->GetOpBuilderType();
-    auto pos_in_builder_type_map = builder_type_builder_map_.find(builder_type);
-    if (pos_in_builder_type_map != builder_type_builder_map_.end()) {
-      // already have this builder type, re-use it for this op_type
-      op_builder_map_[op_type] = pos_in_builder_type_map->second;
-    } else {
-      // New Op builder, add to vector and all the maps
-      builders_.push_back(std::move(builder));
-      op_builder_map_[op_type] = builders_.back().get();
-      builder_type_builder_map_[builder_type] = builders_.back().get();
-    }
-  }
-
  private:
   std::vector<std::unique_ptr<IOpBuilder>> builders_;
   // <onnx_op_type, IOpBuilder*>
@@ -62,7 +48,6 @@ class OpBuilderRegistrations {
   // <Op_builder_type, IOpBuilder*>
   std::unordered_map<std::string, const IOpBuilder*> builder_type_builder_map_;
 };
-void RegisterUDOBuilder(const std::string& op_type, const std::string& op_package);
 
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
@@ -126,6 +111,7 @@ void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_
 
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
-void CreateUDOBuilder(const std::string& op_type, const std::string& op_package, OpBuilderRegistrations& op_registrations);
+void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 }  // namespace qnn
 }  // namespace onnxruntime

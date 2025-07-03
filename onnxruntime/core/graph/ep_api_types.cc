@@ -91,6 +91,20 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
   ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_inputs, ep_node_inputs);
   ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_outputs, ep_node_outputs);
 
+  const auto& node_attrs = node.GetAttributes();
+  std::unordered_map<std::string, std::unique_ptr<ONNX_NAMESPACE::AttributeProto>> ep_node_attributes_map;
+  std::vector<OrtOpAttr*> ep_node_attributes;
+
+  if (node_attrs.size() > 0) {
+    ep_node_attributes.reserve(node_attrs.size());
+
+    for (const auto& item : node_attrs) {
+      auto attr = std::make_unique<ONNX_NAMESPACE::AttributeProto>(item.second);  // Copy AttributeProto and owned by this EpNode object.
+      ep_node_attributes.push_back(reinterpret_cast<OrtOpAttr*>(attr.get()));
+      ep_node_attributes_map.emplace(item.first, std::move(attr));
+    }
+  }
+
   std::vector<SubgraphState> ep_node_subgraphs;
   std::vector<EpValueInfo*> ep_node_implicit_inputs;
 
@@ -115,6 +129,8 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
   ep_node->inputs_ = std::move(ep_node_inputs);
   ep_node->outputs_ = std::move(ep_node_outputs);
+  ep_node->attributes_map_ = std::move(ep_node_attributes_map);
+  ep_node->attributes_ = std::move(ep_node_attributes);
   ep_node->implicit_inputs_ = std::move(ep_node_implicit_inputs);
   ep_node->subgraphs_ = std::move(ep_node_subgraphs);
 
@@ -169,6 +185,17 @@ Status EpNode::GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& result
   return Status::OK();
 }
 
+Status EpNode::GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
+  result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtOpAttr);
+  result->storage.reserve(attributes_.size());
+
+  for (const OrtOpAttr* attr : attributes_) {
+    result->storage.push_back(attr);
+  }
+
+  return Status::OK();
+}
+
 Status EpNode::GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& result) const {
   result = std::make_unique<OrtArrayOfConstObjects>(ORT_TYPE_TAG_OrtGraph);
   result->storage.reserve(subgraphs_.size());
@@ -195,6 +222,15 @@ gsl::span<const EpValueInfo* const> EpNode::GetImplicitInputsSpan() const {
 
 gsl::span<const EpValueInfo* const> EpNode::GetOutputsSpan() const {
   return outputs_;
+}
+
+const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
+  auto iter = attributes_map_.find(name);
+  if (iter == attributes_map_.end()) {
+    return nullptr;
+  } else {
+    return reinterpret_cast<const OrtOpAttr*>(iter->second.get());
+  }
 }
 
 //
@@ -485,12 +521,18 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
     initializer_value_infos.push_back(value_info);
 
-    // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-    // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-    // OrtValue instances is merged.
+    // Initialize OrtValue for the initializer.
     auto initializer_value = std::make_unique<OrtValue>();
-    ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
-                                                     initializer_allocator, *initializer_value));
+    bool graph_has_ortvalue = graph_viewer.GetGraph().GetOrtValueInitializer(initializer_name, *initializer_value,
+                                                                             /*check_outer_scope*/ false);
+
+    if (!graph_has_ortvalue) {
+      // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+      // This should only happen for small initializers that are needed for ONNX shape inferencing.
+      ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), graph_viewer.ModelPath(), *tensor_proto,
+                                                       initializer_allocator, *initializer_value));
+    }
+
     initializer_values.emplace(value_info->GetName(), std::move(initializer_value));
   }
 
@@ -538,24 +580,27 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 
       EpValueInfo* outer_value_info = value_info_iter->second.get();
       bool is_constant = false;
+      auto outer_initializer_value = std::make_unique<OrtValue>();
       const ONNX_NAMESPACE::TensorProto* outer_initializer = parent_graph->GetInitializer(implicit_name,
-                                                                                          /*check_outer_scope*/ true,
-                                                                                          is_constant);
+                                                                                          *outer_initializer_value,
+                                                                                          is_constant,
+                                                                                          /*check_outer_scope*/ true);
       outer_value_info->SetFlag(EpValueInfo::kIsOuterScope);
 
       if (outer_initializer != nullptr) {
         outer_value_info->SetFlag(is_constant ? EpValueInfo::kIsConstantInitializer : EpValueInfo::kIsOptionalGraphInput);
       }
 
-      // Temporary: Copy onnx::TensorProto into OrtValue objects owned by this EpGraph.
-      // TODO: Remove this logic once a separate PR that updates onnxruntime::Graph to store initializers as
-      // OrtValue instances is merged.
+      // Add the OrtValue if this is an initializer.
       if (outer_initializer != nullptr) {
-        auto initializer_value = std::make_unique<OrtValue>();
-        ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
-                                                         *outer_initializer, initializer_allocator,
-                                                         *initializer_value));
-        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(initializer_value));
+        if (!outer_initializer_value->IsAllocated()) {
+          // onnxruntime::Graph does not have an OrtValue for this initializer, so create one from the TensorProto.
+          // This should only happen for small initializers that are needed for ONNX shape inferencing.
+          ORT_RETURN_IF_ERROR(utils::TensorProtoToOrtValue(Env::Default(), parent_graph->ModelPath(),
+                                                           *outer_initializer, initializer_allocator,
+                                                           *outer_initializer_value));
+        }
+        outer_scope_initializer_values.emplace(outer_value_info->GetName(), std::move(outer_initializer_value));
       }
     }
   }
