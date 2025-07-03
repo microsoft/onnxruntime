@@ -252,7 +252,7 @@ inline std::string_view GetWebNNOpType(const std::string_view onnx_op_type) {
 }
 
 // Get corresponding input name of WebNN op type by ONNX op type from op_input_map
-inline std::string_view getWebNNInputName(const std::string_view onnx_op_type, const int input_index) {
+inline std::string_view GetWebNNInputName(const std::string_view onnx_op_type, const int input_index) {
   const auto it = op_inputs_map.find(onnx_op_type);
 
   if (it != op_inputs_map.end()) {
