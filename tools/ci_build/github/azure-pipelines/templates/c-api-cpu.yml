@@ -61,7 +61,7 @@ stages:
   jobs:
   - job: Run_NUnit_Appium_BrowserStack_Sample
     pool:
-      name: 'Win-CPU'
+      name: 'onnxruntime-Win-CPU-2022'
       os: windows
     steps:
     - checkout: self
