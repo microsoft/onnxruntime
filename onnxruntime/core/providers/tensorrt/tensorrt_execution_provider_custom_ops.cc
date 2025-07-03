@@ -84,8 +84,13 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
       auto full_path = env.GetRuntimePath() +
                              PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin") LIBRARY_EXTENSION);
 #else
+#ifdef _WIN32
       auto full_path = env.GetRuntimePath() +
                              PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin_" ORT_DEF2STR(NV_TENSORRT_MAJOR)) LIBRARY_EXTENSION);
+#else
+      auto full_path = env.GetRuntimePath() +
+                             PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin") LIBRARY_EXTENSION ORT_TSTR("." ORT_DEF2STR(NV_TENSORRT_MAJOR)));
+#endif
 #endif
 
       ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, false, &library_handle));
