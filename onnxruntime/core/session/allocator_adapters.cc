@@ -41,8 +41,8 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
         [](const OrtAllocator* this_, OrtKeyValuePairs** stats) noexcept -> OrtStatusPtr {
       API_IMPL_BEGIN
       auto kvp = std::make_unique<OrtKeyValuePairs>();
-      auto stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
-      kvp->CopyFromMap(stats_map);
+      const auto& stats_map = static_cast<const OrtAllocatorImplWrappingIAllocator*>(this_)->Stats();
+      kvp->CopyFromMap(std::map<std::string, std::string>(stats_map.begin(), stats_map.end()));
       *stats = reinterpret_cast<OrtKeyValuePairs*>(kvp.release());
       return nullptr;
       API_IMPL_END

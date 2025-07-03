@@ -107,7 +107,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     // C API. Test the C++ API because if it works the C API must also work.
     // ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
     //    session_options, env, devices.data(), devices.size(),
-    //    provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    //    provider_options.Keys().data(), provider_options.Values().data(), provider_options.Entries().size()));
     std::vector<Ort::ConstEpDevice> ep_devices;
     ep_devices.reserve(devices.size());
     for (const auto* device : devices) {
@@ -370,7 +370,7 @@ static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_device
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Expected to be able to select 2 devices.");
   }
 
-  if (model_metadata->entries.empty()) {
+  if (model_metadata->Entries().empty()) {
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Model metadata was empty.");
   }
 
