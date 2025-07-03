@@ -14,6 +14,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
@@ -32,6 +33,12 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
   if (ep_metadata) {
     ep_device->ep_metadata = *ep_metadata;
+  }
+
+  const std::string ep_version = ep_factory->GetVersion(ep_factory);
+  if (!ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, ep_version)) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "The provided EP metadata should not explicitly specify the EP version.");
   }
 
   if (ep_options) {

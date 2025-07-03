@@ -14,6 +14,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
+  GetVersion = GetVersionImpl;
 
   GetSupportedDevices = GetSupportedDevicesImpl;
 
@@ -87,6 +88,12 @@ const char* ORT_API_CALL ExampleEpFactory::GetVendorImpl(const OrtEpFactory* thi
 }
 
 /*static*/
+const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+  return factory->ep_version_.c_str();
+}
+
+/*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                                   const OrtHardwareDevice* const* devices,
                                                                   size_t num_devices,
@@ -107,7 +114,6 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       factory->ort_api.CreateKeyValuePairs(&ep_options);
 
       // random example using made up values
-      factory->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
       // OrtEpDevice copies ep_metadata and ep_options.

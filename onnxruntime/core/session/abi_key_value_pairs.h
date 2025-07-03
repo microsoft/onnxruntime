@@ -18,28 +18,31 @@ struct OrtKeyValuePairs {
     entries = src;
     Sync();
   }
-  void Add(const char* key, const char* value) {
+
+  bool Add(const char* key, const char* value) {
     // ignore if either are nullptr.
     if (key && value) {
-      Add(std::string(key), std::string(value));
+      return Add(std::string(key), std::string(value));
     }
+    return false;
   }
 
-  void Add(const std::string& key, const std::string& value) {
+  bool Add(const std::string& key, const std::string& value) {
     if (key.empty()) {  // ignore empty keys
-      return;
+      return false;
     }
 
-    auto iter_inserted = entries.insert({key, value});
-    bool inserted = iter_inserted.second;
+    auto [it, inserted] = entries.insert({key, value});
     if (inserted) {
-      const auto& entry = *iter_inserted.first;
+      const auto& entry = *it;
       keys.push_back(entry.first.c_str());
       values.push_back(entry.second.c_str());
     } else {
       // rebuild is easier and changing an entry is not expected to be a common case.
       Sync();
     }
+
+    return inserted;
   }
 
   // we don't expect this to be common. reconsider using std::vector if it turns out to be.

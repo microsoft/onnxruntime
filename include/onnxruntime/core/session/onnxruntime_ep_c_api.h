@@ -351,10 +351,10 @@ struct OrtEp {
 
   /** \brief Get the execution provider name.
    *
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   *
    * \param[in] this_ptr The OrtEp instance.
    * \return The execution provider name.
-   *
-   * \note Returned string is owned by ORT and valid until UnregisterExecutionProviderLibrary is called.
    *
    * \since Version 1.22.
    */
@@ -579,6 +579,8 @@ struct OrtEpFactory {
 
   /** \brief Get the name of the execution provider that the factory creates.
    *
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \return The name of the execution provider the factory creates.
    *
@@ -587,6 +589,8 @@ struct OrtEpFactory {
   const char*(ORT_API_CALL* GetName)(const OrtEpFactory* this_ptr);
 
   /** \brief Get the name of vendor who owns the execution provider that the factory creates.
+   *
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \return vendor The vendor name of the execution provider the factory creates.
@@ -658,6 +662,17 @@ struct OrtEpFactory {
    * \since Version 1.22.
    */
   void(ORT_API_CALL* ReleaseEp)(OrtEpFactory* this_ptr, struct OrtEp* ep);
+
+  /** \brief Get the version of the execution provider that the factory creates.
+   *
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \return The execution provider version string.
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* GetVersion)(_In_ const OrtEpFactory* this_ptr);
 
   /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
    *
