@@ -254,7 +254,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
       RETURN_IF(num_inputs != 2 || num_outputs != 1, ep->ort_api, "Mul should have 2 inputs and 1 output");
 
       std::vector<const OrtValueInfo*> inputs(num_inputs);
-      std::vector<const OrtValueInfo*> outputs(num_inputs);
+      std::vector<const OrtValueInfo*> outputs(num_outputs);
       RETURN_IF_ERROR(ep->ort_api.Node_GetInputs(node, inputs.data(), inputs.size()));
       RETURN_IF_ERROR(ep->ort_api.Node_GetOutputs(node, outputs.data(), outputs.size()));
 
