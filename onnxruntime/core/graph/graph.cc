@@ -5048,7 +5048,6 @@ Node& Graph::FuseSubGraph(const IndexedSubGraph& sub_graph,
 
 Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& node_proto,
                                             std::optional<std::string_view> new_name) {
-  // Conver to TensorProto
   ONNX_NAMESPACE::TensorProto tensor_proto;
   ORT_RETURN_IF_ERROR(utils::ConstantNodeProtoToTensorProto(node_proto, ModelPath(), tensor_proto, node_proto.output(0)));
   if (new_name.has_value()) {
@@ -5071,6 +5070,11 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
     ORT_RETURN_IF_ERROR(AddInitializedOrtValue(tensor_proto_to_add, ort_value));
   } else {
     AddInitializedTensor(tensor_proto);
+  }
+
+  if (GetNodeArg(tensor_proto.name()) == nullptr) {
+    TypeProto t{utils::TypeProtoFromTensorProto(tensor_proto)};
+    ORT_IGNORE_RETURN_VALUE(GetOrCreateNodeArg(tensor_proto.name(), &t));
   }
 
 #if !defined(DISABLE_SPARSE_TENSORS)
@@ -5194,8 +5198,24 @@ Status Graph::InlineIfSubgraph(bool condition_value, Node& if_node, const loggin
       assert(node_arg != nullptr);
       auto new_name = GenerateNodeArgName(make_unique(src_name));
       NodeArg& new_arg = GetOrCreateNodeArg(new_name, node_arg->TypeAsProto());
-      ORT_IGNORE_RETURN_VALUE(name_to_nodearg.emplace(src_name, &new_arg));
+      ORT_IGNORE_RETURN_VALUE(name_to_nodearg.insert_or_assign(src_name, &new_arg));
       tensor->set_name(std::move(new_name));
+    }
+
+    // We have the following cases:
+    // No external data, just copy the proto. If it was too big,
+    // it would have already been converted to OrtInitializer.
+    // External data in file - copy the proto, it can be loaded during session finalization
+    //          or it would be loaded by EP
+    // External data in memory two cases
+    // - points to flatbuffers ort format (no OrtValue), simply copy the proto
+    // - points to external data in memory (OrtValue), create a copy of OrtValue and tensor_proto
+
+    if (utils::HasExternalDataInMemory(*tensor)) {
+      OrtValue ort_value;
+      if (graph_to_inline.GetOrtValueInitializer(src_name, ort_value)) {
+        ortvalue_initializers_.insert_or_assign(tensor->name(), std::move(ort_value));
+      }  // else this is coming from flatbuffers with no OrtValue
     }
 
     auto insert_result = name_to_initial_tensor_.emplace(tensor->name(), tensor);
