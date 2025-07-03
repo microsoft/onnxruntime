@@ -86,7 +86,7 @@ stages:
         BROWSERSTACK_USERNAME: $(browserstack_username)
         BROWSERSTACK_ACCESS_KEY: $(browserstack_access_key)
 
-    - task: PublishPipelineArtifact@1
+    - task: 1ES.PublishPipelineArtifact@1
       displayName: 'Publish BrowserStack test results'
       inputs:
         targetPath: '$(Build.SourcesDirectory)\android\log'
