@@ -129,9 +129,6 @@ Status DequantizeLinear::ComputeInternal(ComputeContext& context) const {
   int64_t axis = (axis_ >= 0) ? axis_ : axis_ + x_shape.NumDimensions();
 
   int max_components = GetMaxComponents(x_size);
-  if (max_components != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "DequantizeLinear: components must be 4, but got ", max_components);
-  }
 
   // scaler - single scaler for all elements
   bool per_layer = x_scale_rank == 0 || (x_scale_rank == 1 && x_scale->Shape()[0] == 1);
