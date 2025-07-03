@@ -1,5 +1,13 @@
 {
   "version": 1,
   "isRoot": true,
-  "tools": {}
+  "tools": {
+    "browserstack-sdk": {
+      "version": "1.16.13",
+      "commands": [
+        "browserstack-sdk"
+      ],
+      "rollForward": false
+    }
+  }
 }

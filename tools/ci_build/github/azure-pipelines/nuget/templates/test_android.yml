@@ -57,6 +57,12 @@ stages:
           targetPath: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI\bin\Release\net8.0-android\publish'
           artifactName: 'maui-android-apk'
 
+      - task: 1ES.PublishPipelineArtifact@1
+        displayName: Publish Android BrowserStack Project Log
+        inputs:
+          targetPath: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.BrowserStack.Android\log'
+          artifactName: 'browserstack-android-log'
+
       - task: PowerShell@2
         displayName: Run BrowserStack test
         inputs:
