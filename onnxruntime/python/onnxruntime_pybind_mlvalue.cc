@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 #include "onnxruntime_pybind_mlvalue.h"
 #include "python/onnxruntime_pybind_state_common.h"
+#include <nanobind/stl/string.h>
 
 #define NO_IMPORT_ARRAY
 #define NPY_NO_DEPRECATED_API NPY_1_7_API_VERSION
@@ -679,7 +680,7 @@ static std::unique_ptr<Tensor> CreateTensor(const AllocatorPtr& alloc, const std
     }
   } else {
     p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
-    CopyDataToTensor(darray, npy_type, p_tensor, mem_cpy_to_device);
+    CopyDataToTensor(darray, npy_type, *p_tensor, mem_cpy_to_device);
   }
 
   return p_tensor;
@@ -771,7 +772,7 @@ static void CreateTensorMLValueOwned(const OrtPybindSingleUseAllocatorPtr& pybin
   } else {
     // We still need to copy elements properly from the contiguous buffer
     p_tensor = std::make_unique<Tensor>(element_type, shape, alloc);
-    CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, p_tensor);
+    CopyDataToTensor(pybind_alloc->GetContiguous(), npy_type, *p_tensor);
   }
 
   auto ml_tensor = DataTypeImpl::GetType<Tensor>();
@@ -860,6 +861,7 @@ void CreateMapMLValue_VectorMap(Py_ssize_t& pos, PyObject*& key, const std::stri
                   DataTypeImpl::GetType<std::vector<std::map<KeyType, ValueType>>>()->GetDeleteFunc());
 }
 
+#if 0
 static void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const std::string& name_input, PyObject*& value,
                                          PyObject* iterator, PyObject* item, AllocatorPtr alloc, OrtValue* p_mlvalue) {
   // If iterator is NULL, it returns a single Map,
@@ -930,6 +932,7 @@ static void CreateMapMLValue_AgnosticMap(Py_ssize_t& pos, PyObject*& key, const 
     }
   }
 }
+#
 
 static void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* item, AllocatorPtr alloc,
                                                const std::string& name_input, OrtValue* p_mlvalue) {
@@ -956,31 +959,34 @@ static void CreateMapMLValue_AgnosticVectorMap(PyObject* iterator, PyObject* ite
   }
 }
 #endif
+#endif
 
-static void CreateGenericIterableMLValue(PyObject* iterator, AllocatorPtr alloc, const std::string& name_input,
+static void CreateGenericIterableMLValue(nb::iterator iterator, AllocatorPtr alloc, const std::string& name_input,
                                          OrtValue* p_mlvalue) {
-  PyObject* item;
-  OrtValue ml_value;
-  item = PyIter_Next(iterator);
-  if (item == NULL) {
+  // 1. Check if the iterator is at the end (i.e., the iterable is empty).
+  if (iterator == nb::iterator::sentinel()) {
     throw std::runtime_error("Input '" + name_input + "' must not be empty.");
   }
-  if (PyObjectCheck_NumpyArray(item)) {
-    PyObject* pType = PyObject_Type(item);
-    PyObject* pStr = PyObject_Str(pType);
-    py::str spyType = py::reinterpret_borrow<py::str>(pStr);
-    std::string sType = spyType;
-    Py_XDECREF(pType);
-    Py_XDECREF(pStr);
+
+  // 2. Get the first item from the iterator using the dereference operator.
+  // nanobind's nb::object manages the reference count automatically.
+  nb::object item(*iterator);
+
+  // 3. Use nb::isinstance for clean, type-safe checking.
+  if (nb::isinstance<nb::ndarray>(item)) {
+    // 4. Get the type name directly and safely cast it to a C++ string.
+    std::string sType = nb::cast<std::string>(item.type().name());
     throw std::runtime_error("Iterable of " + sType + " should be given as array for input '" +
-                             name_input + std::string("'."));
+                             name_input + "'.");
   } else {
     // We expect a dictionary.
-    if (!PyDict_Check(item)) {
+    if (!nb::isinstance<nb::dict>(item)) {
       throw std::runtime_error("Input must be a list of dictionaries or a single numpy array for input '" +
-                               name_input + std::string("'."));
+                               name_input + "'.");
     }
 #if !defined(DISABLE_ML_OPS)
+    // Pass the iterator and the first item (which we already have) to the next function.
+    // This avoids consuming the first item and then having to reconstruct it.
     CreateMapMLValue_AgnosticVectorMap(iterator, item, alloc, name_input, p_mlvalue);
 #else
     ORT_UNUSED_PARAMETER(alloc);
