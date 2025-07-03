@@ -218,6 +218,7 @@ Status PerformanceRunner::RunParallelDuration() {
 
   // Join
   tpool->Schedule([this, &counter, &m, &cv]() {
+    ORT_UNUSED_PARAMETER(this);
     std::unique_lock<std::mutex> lock(m);
     cv.wait(lock, [&counter]() { return counter == 0; });
   });
