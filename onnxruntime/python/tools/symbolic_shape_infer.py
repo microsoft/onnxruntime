@@ -2674,245 +2674,129 @@ class SymbolicShapeInference:
         return None
 
     def _infer_impl(self, start_sympy_data=None):
-        self.sympy_data_ = start_sympy_data or {}
-        self.out_mp_.graph.ClearField("value_info")
-        self._apply_suggested_merge(graph_input_only=True)
-        self.input_symbols_ = set()
-        for i in self.out_mp_.graph.input:
-            input_shape = get_shape_from_value_info(i)
-            if input_shape is None:
-                continue
+    self.sympy_data_ = start_sympy_data or {}
+    self.out_mp_.graph.ClearField("value_info")
+    self._apply_suggested_merge(graph_input_only=True)
+    self.input_symbols_ = set()
+    for i in self.out_mp_.graph.input:
+        input_shape = get_shape_from_value_info(i)
+        if input_shape is None:
+            continue
 
-            if is_sequence(i.type):
-                input_dims = i.type.sequence_type.elem_type.tensor_type.shape.dim
-            else:
-                input_dims = i.type.tensor_type.shape.dim
-
-            for i_dim, dim in enumerate(input_shape):
-                if dim is None:
-                    # some models use None for symbolic dim in input, replace it with a string
-                    input_dims[i_dim].dim_param = str(self._new_symbolic_dim(i.name, i_dim))
-
-            self.input_symbols_.update([d for d in input_shape if type(d) is str])
-
-        for s in self.input_symbols_:
-            if s in self.suggested_merge_:
-                s_merge = self.suggested_merge_[s]
-                assert s_merge in self.symbolic_dims_
-                self.symbolic_dims_[s] = self.symbolic_dims_[s_merge]
-            else:
-                # Since inputs are not produced by other ops, we can assume positivity
-                self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
-        # create a temporary ModelProto for single node inference
-        # note that we remove initializer to have faster inference
-        # for tensor ops like Reshape/Tile/Expand that read initializer, we need to do sympy computation based inference anyways
-        self.tmp_mp_ = onnx.ModelProto()
-        self.tmp_mp_.CopyFrom(self.out_mp_)
-        self.tmp_mp_.graph.ClearField("initializer")
-
-        # compute prerequesite for node for topological sort
-        # node with subgraphs may have dependency on implicit inputs, which will affect topological sort
-        prereq_for_node = {}  # map from node to all its inputs, including implicit ones in subgraph
-
-        def get_prereq(node):
-            names = {i for i in node.input if i}
-            subgraphs = []
-            if node.op_type == "If":
-                subgraphs = [
-                    get_attribute(node, "then_branch"),
-                    get_attribute(node, "else_branch"),
-                ]
-            elif node.op_type in ["Loop", "Scan"]:
-                subgraphs = [get_attribute(node, "body")]
-            for g in subgraphs:
-                g_outputs_and_initializers = {i.name for i in g.initializer}
-                g_prereq = set()
-                for n in g.node:
-                    g_outputs_and_initializers.update(n.output)
-                for n in g.node:
-                    g_prereq.update([i for i in get_prereq(n) if i not in g_outputs_and_initializers])
-                names.update(g_prereq)
-                # remove subgraph inputs from g_prereq since those are local-only
-                for i in g.input:
-                    if i.name in names:
-                        names.remove(i.name)
-            return names
-
-        for n in self.tmp_mp_.graph.node:
-            prereq_for_node[n.output[0]] = get_prereq(n)
-
-        # topological sort nodes, note there might be dead nodes so we check if all graph outputs are reached to terminate
-        sorted_nodes = []
-        sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
-        if any(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
-            # Loop/Scan will have some graph output in graph inputs, so don't do topological sort
-            sorted_nodes = self.out_mp_.graph.node
+        if is_sequence(i.type):
+            input_dims = i.type.sequence_type.elem_type.tensor_type.shape.dim
         else:
-            while not all(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
-                old_sorted_nodes_len = len(sorted_nodes)
-                for node in self.out_mp_.graph.node:
-                    if (node.output[0] not in sorted_known_vi) and all(
-                        i in sorted_known_vi for i in prereq_for_node[node.output[0]] if i
-                    ):
-                        sorted_known_vi.update(node.output)
-                        sorted_nodes.append(node)
-                if old_sorted_nodes_len == len(sorted_nodes) and not all(
-                    o.name in sorted_known_vi for o in self.out_mp_.graph.output
+            input_dims = i.type.tensor_type.shape.dim
+
+        for i_dim, dim in enumerate(input_shape):
+            if dim is None:
+                input_dims[i_dim].dim_param = str(self._new_symbolic_dim(i.name, i_dim))
+
+        self.input_symbols_.update([d for d in input_shape if type(d) is str])
+
+    for s in self.input_symbols_:
+        if s in self.suggested_merge_:
+            s_merge = self.suggested_merge_[s]
+            assert s_merge in self.symbolic_dims_
+            self.symbolic_dims_[s] = self.symbolic_dims_[s_merge]
+        else:
+            self.symbolic_dims_[s] = sympy.Symbol(s, integer=True, positive=True)
+
+    self.tmp_mp_ = onnx.ModelProto()
+    self.tmp_mp_.CopyFrom(self.out_mp_)
+    self.tmp_mp_.graph.ClearField("initializer")
+
+    prereq_for_node = {}
+
+    def get_prereq(node):
+        names = {i for i in node.input if i}
+        subgraphs = []
+        if node.op_type == "If":
+            subgraphs = [
+                get_attribute(node, "then_branch"),
+                get_attribute(node, "else_branch"),
+            ]
+        elif node.op_type in ["Loop", "Scan"]:
+            subgraphs = [get_attribute(node, "body")]
+        for g in subgraphs:
+            g_outputs_and_initializers = {i.name for i in g.initializer}
+            g_prereq = set()
+            for n in g.node:
+                g_outputs_and_initializers.update(n.output)
+            for n in g.node:
+                g_prereq.update([i for i in get_prereq(n) if i not in g_outputs_and_initializers])
+                names.update(g_prereq)
+        return names
+
+    for n in self.tmp_mp_.graph.node:
+        prereq_for_node[n.output[0]] = get_prereq(n)
+
+    sorted_nodes = []
+    sorted_known_vi = {i.name for i in list(self.out_mp_.graph.input) + list(self.out_mp_.graph.initializer)}
+    if any(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
+        sorted_nodes = self.out_mp_.graph.node
+    else:
+        while not all(o.name in sorted_known_vi for o in self.out_mp_.graph.output):
+            old_sorted_nodes_len = len(sorted_nodes)
+            for node in self.out_mp_.graph.node:
+                if (node.output[0] not in sorted_known_vi) and all(
+                    i in sorted_known_vi for i in prereq_for_node[node.output[0]] if i
                 ):
-                    raise Exception("Invalid model with cyclic graph")
+                    sorted_known_vi.update(node.output)
+                    sorted_nodes.append(node)
+            if old_sorted_nodes_len == len(sorted_nodes) and not all(
+                o.name in sorted_known_vi for o in self.out_mp_.graph.output
+            ):
+                raise Exception("Invalid model with cyclic graph")
 
-        for node in sorted_nodes:
-            assert all(i in self.known_vi_ for i in node.input if i)
-            self._onnx_infer_single_node(node)
-            known_aten_op = False
-            if node.op_type in self.dispatcher_:
-                self.dispatcher_[node.op_type](node)
-            elif node.op_type in ["ConvTranspose"]:
-                # onnx shape inference ops like ConvTranspose may have empty shape for symbolic input
-                # before adding symbolic compute for them
-                # mark the output type as UNDEFINED to allow guessing of rank
-                vi = self.known_vi_[node.output[0]]
-                if len(vi.type.tensor_type.shape.dim) == 0:
-                    vi.type.tensor_type.elem_type = onnx.TensorProto.UNDEFINED
-            elif node.op_type == "ATen" and node.domain == "org.pytorch.aten":
-                for attr in node.attribute:
-                    # TODO: Is overload_name needed?
-                    if attr.name == "operator":
-                        aten_op_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
-                        if aten_op_name in self.aten_op_dispatcher_:
-                            known_aten_op = True
-                            self.aten_op_dispatcher_[aten_op_name](node)
-                        break
+    for node in sorted_nodes:
+        assert all(i in self.known_vi_ for i in node.input if i)
+        self._onnx_infer_single_node(node)
+        known_aten_op = False
+        if node.op_type in self.dispatcher_:
+            self.dispatcher_[node.op_type](node)
+        elif node.op_type == "ATen" and node.domain == "org.pytorch.aten":
+            for attr in node.attribute:
+                if attr.name == "operator":
+                    aten_op_name = attr.s.decode("utf-8") if isinstance(attr.s, bytes) else attr.s
+                    if aten_op_name in self.aten_op_dispatcher_:
+                        known_aten_op = True
+                        self.aten_op_dispatcher_[aten_op_name](node)
+                    break
 
-            if self.verbose_ > 2:
-                logger.debug(node.op_type + ": " + node.name)  # noqa: G003
-                for i, name in enumerate(node.input):
-                    logger.debug("  Input %s: %s %s", i, name, "initializer" if name in self.initializers_ else "")
+        if self.verbose_ > 2:
+            logger.debug(node.op_type + ": " + node.name)
+            for i, name in enumerate(node.input):
+                logger.debug("  Input %s: %s %s", i, name, "initializer" if name in self.initializers_ else "")
 
-            # onnx automatically merge dims with value, i.e. Mul(['aaa', 'bbb'], [1000, 1]) -> [1000, 'bbb']
-            # symbolic shape inference needs to apply merge of 'aaa' -> 1000 in this case
-            if node.op_type in [
-                "Add",
-                "Sub",
-                "Mul",
-                "Div",
-                "MatMul",
-                "MatMulInteger",
-                "MatMulInteger16",
-                "Where",
-                "Sum",
-            ]:
-                vi = self.known_vi_[node.output[0]]
-                out_rank = len(get_shape_from_type_proto(vi.type))
-                in_shapes = [self._get_shape(node, i) for i in range(len(node.input))]
-                for d in range(out_rank - (2 if node.op_type in ["MatMul", "MatMulInteger", "MatMulInteger16"] else 0)):
-                    in_dims = [s[len(s) - out_rank + d] for s in in_shapes if len(s) + d >= out_rank]
-                    if len(in_dims) > 1:
-                        self._check_merged_dims(in_dims, allow_broadcast=True)
+        if node.output[0] in self.known_vi_:
+            vi = self.known_vi_[node.output[0]]
+            out_shape = get_shape_from_value_info(vi)
+            out_type_undefined = vi.type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
 
-            for i_o in range(len(node.output)):
-                # Special cases:
-                # 1) We do not care about the training related outputs of SkipLayerNormalization
-                # 2) We do not care about the extraneous constant outputs in RotaryEmbedding because
-                # the RotaryEmbedding op created during export can be replaced by the RotaryEmbedding
-                # contrib op
-                if (
-                    node.op_type == "SkipLayerNormalization" or node.op_type == "SkipSimplifiedLayerNormalization"
-                ) and i_o in [1, 2]:
-                    continue
-                if node.op_type == "RotaryEmbedding" and len(node.output) > 1:
-                    # Skip symbolic shape inference for RotaryEmbedding functions that have extraneous outputs
-                    # generated by `export_modules_as_functions`
-                    continue
-
-                vi = self.known_vi_[node.output[i_o]]
-                out_type = vi.type
-                out_type_kind = out_type.WhichOneof("value")
-
-                # do not process shape for non-tensors
-                if out_type_kind not in ["tensor_type", "sparse_tensor_type", None]:
-                    if self.verbose_ > 2:
-                        if out_type_kind == "sequence_type":
-                            seq_cls_type = out_type.sequence_type.elem_type.WhichOneof("value")
-                            if seq_cls_type == "tensor_type":
-                                logger.debug(
-                                    "  {}: sequence of {} {}".format(  # noqa: G001
-                                        node.output[i_o],
-                                        str(get_shape_from_value_info(vi)),
-                                        onnx.TensorProto.DataType.Name(
-                                            vi.type.sequence_type.elem_type.tensor_type.elem_type
-                                        ),
-                                    )
-                                )
-                            else:
-                                logger.debug(f"  {node.output[i_o]}: sequence of {seq_cls_type}")
-                        else:
-                            logger.debug(f"  {node.output[i_o]}: {out_type_kind}")
-                    continue
-
-                out_shape = get_shape_from_value_info(vi)
-                out_type_undefined = out_type.tensor_type.elem_type == onnx.TensorProto.UNDEFINED
-                if self.verbose_ > 2:
-                    logger.debug(
-                        f"  {node.output[i_o]}: {out_shape!s} {onnx.TensorProto.DataType.Name(vi.type.tensor_type.elem_type)}"
-                    )
-                    if node.output[i_o] in self.sympy_data_:
-                        logger.debug("  Sympy Data: " + str(self.sympy_data_[node.output[i_o]]))  # noqa: G003
-
-                # onnx >= 1.11.0, use unk__#index instead of None when the shape dim is uncertain
-                if (
-                    out_shape is not None and (None in out_shape or self._is_shape_contains_none_dim(out_shape))
-                ) or out_type_undefined:
-                    if self.auto_merge_:
-                        if node.op_type in [
-                            "Add",
-                            "Sub",
-                            "Mul",
-                            "Div",
-                            "MatMul",
-                            "MatMulInteger",
-                            "MatMulInteger16",
-                            "Concat",
-                            "Where",
-                            "Sum",
-                            "Equal",
-                            "Less",
-                            "Greater",
-                            "LessOrEqual",
-                            "GreaterOrEqual",
-                            "Min",
-                            "Max",
-                        ]:
-                            shapes = [self._get_shape(node, i) for i in range(len(node.input))]
-                            if node.op_type in [
-                                "MatMul",
-                                "MatMulInteger",
-                                "MatMulInteger16",
-                            ]:
-                                if None in out_shape or self._is_shape_contains_none_dim(out_shape):
-                                    if None in out_shape:
-                                        idx = out_shape.index(None)
-                                    else:
-                                        idx = out_shape.index(self._is_shape_contains_none_dim(out_shape))
-                                    dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
-                                    # only support auto merge for MatMul for dim < rank-2 when rank > 2
-                                    assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
-                                    assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
+            if (out_shape is not None and (None in out_shape or self._is_shape_contains_none_dim(out_shape))) or out_type_undefined:
+                if self.auto_merge_:
+                    if node.op_type in [
+                        "Add", "Sub", "Mul", "Div", "MatMul", "MatMulInteger", "MatMulInteger16", "Concat", "Where", "Sum",
+                        "Equal", "Less", "Greater", "LessOrEqual", "GreaterOrEqual", "Min", "Max"
+                    ]:
+                        shapes = [self._get_shape(node, i) for i in range(len(node.input))]
+                        if node.op_type in ["MatMul", "MatMulInteger", "MatMulInteger16"]:
+                            if None in out_shape or self._is_shape_contains_none_dim(out_shape):
+                                if None in out_shape:
+                                    idx = out_shape.index(None)
+                                else:
+                                    idx = out_shape.index(self._is_shape_contains_none_dim(out_shape))
+                                dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
+                                assert len(shapes[0]) > 2 and dim_idx[0] < len(shapes[0]) - 2
+                                assert len(shapes[1]) > 2 and dim_idx[1] < len(shapes[1]) - 2
                         elif node.op_type == "Expand":
-                            # auto merge for cases like Expand([min(batch, 1), min(seq, 512)], [batch, seq])
-                            shapes = [
-                                self._get_shape(node, 0),
-                                self._get_value(node, 1),
-                            ]
-                        else:
-                            shapes = []
+                            shapes = [self._get_shape(node, 0), self._get_value(node, 1)]
 
                         if shapes:
                             for idx in range(len(out_shape)):
                                 if out_shape[idx] is not None and not self._is_none_dim(out_shape[idx]):
                                     continue
-                                # note that the broadcasting rule aligns from right to left
-                                # if a tensor has a lower rank (dim_idx[idx] < 0), it would automatically broadcast and need no merge
                                 dim_idx = [len(s) - len(out_shape) + idx for s in shapes]
                                 if len(dim_idx) > 0:
                                     self._add_suggested_merge(
@@ -2928,86 +2812,79 @@ class SymbolicShapeInference:
                     else:
                         self.run_ = False
 
-                    # create new dynamic dims for ops not handled by symbolic shape inference
-                    if self.run_ is False and node.op_type not in self.dispatcher_ and not known_aten_op:
-                        is_unknown_op = out_type_undefined and (out_shape is None or len(out_shape) == 0)
-                        if is_unknown_op:
-                            # unknown op to ONNX, maybe from higher opset or other domain
-                            # only guess the output rank from input 0 when using guess_output_rank option
-                            out_rank = self._get_shape_rank(node, 0) if self.guess_output_rank_ else -1
+                if self.run_ is False and node.op_type not in self.dispatcher_ and not known_aten_op:
+                    is_unknown_op = out_type_undefined and (out_shape is None or len(out_shape) == 0)
+                    if is_unknown_op:
+                        out_rank = self._get_shape_rank(node, 0) if self.guess_output_rank_ else -1
+                    else:
+                        out_rank = len(out_shape)
+
+                    if out_rank >= 0:
+                        new_shape = self._new_symbolic_shape(out_rank, node, i_o)
+                        if out_type_undefined:
+                            out_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
                         else:
-                            # valid ONNX op, but not handled by symbolic shape inference, just assign dynamic shape
-                            out_rank = len(out_shape)
-
-                        if out_rank >= 0:
-                            new_shape = self._new_symbolic_shape(out_rank, node, i_o)
-                            if out_type_undefined:
-                                # guess output data type from input vi if not defined
-                                out_dtype = self.known_vi_[node.input[0]].type.tensor_type.elem_type
-                            else:
-                                # otherwise, use original data type
-                                out_dtype = vi.type.tensor_type.elem_type
-                            vi.CopyFrom(
-                                helper.make_tensor_value_info(
-                                    vi.name,
-                                    out_dtype,
-                                    get_shape_from_sympy_shape(new_shape),
-                                )
+                            out_dtype = vi.type.tensor_type.elem_type
+                        vi.CopyFrom(
+                            helper.make_tensor_value_info(
+                                vi.name,
+                                out_dtype,
+                                get_shape_from_sympy_shape(new_shape),
                             )
+                        )
 
-                            if self.verbose_ > 0:
-                                if is_unknown_op:
-                                    logger.debug(
-                                        f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"
-                                    )
-                                if self.verbose_ > 2:
-                                    logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")
+                        if self.verbose_ > 0:
+                            if is_unknown_op:
+                                logger.debug(
+                                    f"Possible unknown op: {node.op_type} node: {node.name}, guessing {vi.name} shape"
+                                )
+                            if self.verbose_ > 2:
+                                logger.debug(f"  {node.output[i_o]}: {new_shape!s} {vi.type.tensor_type.elem_type}")
 
-                            self.run_ = True
-                            continue  # continue the inference after guess, no need to stop as no merge is needed
+                        self.run_ = True
+                        continue
 
-                    if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
-                        logger.debug("Stopping at incomplete shape inference at %s: %s", node.op_type, node.name)
-                        logger.debug("node inputs:")
-                        for i in node.input:
-                            if i in self.known_vi_:
-                                logger.debug(self.known_vi_[i])
-                            else:
-                                logger.debug(f"not in known_vi_ for {i}")
-                        logger.debug("node outputs:")
-                        for o in node.output:
-                            if o in self.known_vi_:
-                                logger.debug(self.known_vi_[o])
-                            else:
-                                logger.debug(f"not in known_vi_ for {o}")
-                        if self.auto_merge_ and not out_type_undefined:
-                            logger.debug("Merging: " + str(self.suggested_merge_))  # noqa: G003
-                    return False
+                if self.verbose_ > 0 or not self.auto_merge_ or out_type_undefined:
+                    logger.debug("Stopping at incomplete shape inference at %s: %s", node.op_type, node.name)
+                    logger.debug("node inputs:")
+                    for i in node.input:
+                        if i in self.known_vi_:
+                            logger.debug(self.known_vi_[i])
+                        else:
+                            logger.debug(f"not in known_vi_ for {i}")
+                    logger.debug("node outputs:")
+                    for o in node.output:
+                        if o in self.known_vi_:
+                            logger.debug(self.known_vi_[o])
+                        else:
+                            logger.debug(f"not in known_vi_ for {o}")
+                    if self.auto_merge_ and not out_type_undefined:
+                        logger.debug("Merging: " + str(self.suggested_merge_))
+                return False
 
-        self.run_ = False
-        return True
-
+    self.run_ = False
+    return True
     def _update_output_from_vi(self):
         for output in self.out_mp_.graph.output:
             if output.name in self.known_vi_:
                 output.CopyFrom(self.known_vi_[output.name])
 
     @staticmethod
-    def infer_shapes(in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
-        onnx_opset = get_opset(in_mp)
-        if (not onnx_opset) or onnx_opset < 7:
-            logger.warning("Only support models of onnx opset 7 and above.")
-            return None
-        symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
-        all_shapes_inferred = False
-        symbolic_shape_inference._preprocess(in_mp)
-        while symbolic_shape_inference.run_:
-            all_shapes_inferred = symbolic_shape_inference._infer_impl()
-        symbolic_shape_inference._update_output_from_vi()
-        if not all_shapes_inferred:
-            onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
-            raise Exception("Incomplete symbolic shape inference")
-        return symbolic_shape_inference.out_mp_
+   def infer_shapes(in_mp, int_max=2**31 - 1, auto_merge=False, guess_output_rank=False, verbose=0):
+    onnx_opset = get_opset(in_mp)
+    if (not onnx_opset) or onnx_opset < 7:
+        logger.warning("Only support models of onnx opset 7 and above.")
+        return None
+    symbolic_shape_inference = SymbolicShapeInference(int_max, auto_merge, guess_output_rank, verbose)
+    all_shapes_inferred = False
+    symbolic_shape_inference._preprocess(in_mp)
+    while symbolic_shape_inference.run_:
+        all_shapes_inferred = symbolic_shape_inference._infer_impl(symbolic_shape_inference.sympy_data_.copy())
+    symbolic_shape_inference._update_output_from_vi()
+    if not all_shapes_inferred:
+        onnx.save_model(symbolic_shape_inference.out_mp_, "sym_shape_infer_temp.onnx", save_as_external_data=True)
+        logger.warning("Incomplete symbolic shape inference. Check the temp model for details.")
+    return symbolic_shape_inference.out_mp_
 
 
 def parse_arguments():
