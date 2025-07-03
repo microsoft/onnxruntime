@@ -6081,7 +6081,7 @@ struct OrtApi {
    * \return An OrtKeyValuePairs instance containing all session configuration entries.
    *         Note: the user should call OrtApi::ReleaseKeyValuePairs.
    *
-   * \since Version 1.22.
+   * \since Version 1.23.
    */
   OrtKeyValuePairs*(ORT_API_CALL* GetSessionOptionConfigEntries)(_In_ const OrtSessionOptions* options);
 };
