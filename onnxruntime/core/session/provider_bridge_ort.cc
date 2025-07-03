@@ -281,7 +281,7 @@ struct ProviderHostImpl : ProviderHost {
   void CPUAllocator__Free(CPUAllocator* p, void* allocation) override { return p->CPUAllocator::Free(allocation); }
 
   std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAAllocator(device_id, name); }
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(name); }
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override { return GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(device_id, name); }
 
   void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
   void cuda__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) override { return GetProviderInfo_CUDA().cuda__Impl_Cast(stream, input_data, output_data, count); }
@@ -1941,9 +1941,9 @@ void UnloadSharedProviders() {
 }
 
 // Used by test code
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) {
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) {
   if (auto* info = onnxruntime::TryGetProviderInfo_CUDA())
-    return info->CreateCUDAPinnedAllocator(name);
+    return info->CreateCUDAPinnedAllocator(device_id, name);
 
   return nullptr;
 }
