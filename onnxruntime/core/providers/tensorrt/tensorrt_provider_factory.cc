@@ -121,6 +121,11 @@ struct Tensorrt_Provider : Provider {
     info.onnx_bytestream_size = options.trt_onnx_bytestream_size;
     info.op_types_to_exclude = options.trt_op_types_to_exclude == nullptr ? "" : options.trt_op_types_to_exclude;
     info.preview_features = options.trt_preview_features == nullptr ? "" : options.trt_preview_features;
+    info.dla_local_dram_size = options.trt_dla_local_dram_size;
+    info.dla_global_dram_size = options.trt_dla_global_dram_size;
+    info.dla_managed_sram_size = options.trt_dla_managed_sram_size;
+    info.tactic_dram_size = options.trt_tactic_dram_size;
+    info.tactic_shared_memory_size = options.trt_tactic_shared_memory_size;
 
     return std::make_shared<TensorrtProviderFactory>(info);
   }

@@ -1435,6 +1435,11 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
     engine_hw_compatible_ = info.engine_hw_compatible;
     op_types_to_exclude_ = info.op_types_to_exclude;
     preview_features_ = ParseTrtPreviewFeatures(info.preview_features);
+    dla_local_dram_size_ = info.dla_local_dram_size;
+    dla_global_dram_size_ = info.dla_global_dram_size;
+    dla_managed_sram_size_ = info.dla_managed_sram_size;
+    tactic_dram_size_ = info.tactic_dram_size;
+    tactic_shared_memory_size_ = info.tactic_shared_memory_size;
   } else {
     try {
       const std::string max_partition_iterations_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kMaxPartitionIterations);
@@ -1489,6 +1494,20 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
           const std::string dla_core_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDLACore);
           if (!dla_core_env.empty()) {
             dla_core_ = std::stoi(dla_core_env);
+          }
+          const std::string dla_local_dram_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDlaLocalDramSize);
+          if (!dla_local_dram_size_env.empty()) {
+            dla_local_dram_size_ = std::stoull(dla_local_dram_size_env);
+          }
+
+          const std::string dla_global_dram_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDlaGlobalDramSize);
+          if (!dla_global_dram_size_env.empty()) {
+            dla_global_dram_size_ = std::stoull(dla_global_dram_size_env);
+          }
+
+          const std::string dla_managed_sram_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kDlaManagedSramSize);
+          if (!dla_managed_sram_size_env.empty()) {
+            dla_managed_sram_size_ = std::stoull(dla_managed_sram_size_env);
           }
         }
       }
@@ -1629,6 +1648,16 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
       const std::string op_types_to_exclude_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kOpTypesToExclude);
       if (!op_types_to_exclude_env.empty()) {
         op_types_to_exclude_ = op_types_to_exclude_env;
+      }
+
+      const std::string tactic_dram_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticDramSize);
+      if (!tactic_dram_size_env.empty()) {
+        tactic_dram_size_ = std::stoull(tactic_dram_size_env);
+      }
+
+      const std::string tactic_shared_memory_size_env = onnxruntime::GetEnvironmentVar(tensorrt_env_vars::kTacticSharedMemorySize);
+      if (!tactic_shared_memory_size_env.empty()) {
+        tactic_shared_memory_size_ = std::stoull(tactic_shared_memory_size_env);
       }
 
     } catch (const std::invalid_argument& ex) {
@@ -1836,7 +1865,12 @@ TensorrtExecutionProvider::TensorrtExecutionProvider(const TensorrtExecutionProv
                         << ", trt_cache_prefix: " << cache_prefix_
                         << ", trt_engine_hw_compatible: " << engine_hw_compatible_
                         << ", trt_onnx_model_bytestream_size_: " << onnx_model_bytestream_size_
-                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_;
+                        << ", trt_op_types_to_exclude: " << op_types_to_exclude_
+                        << ", trt_dla_local_dram_size: " << dla_local_dram_size_
+                        << ", trt_dla_global_dram_size: " << dla_global_dram_size_
+                        << ", trt_dla_managed_sram_size: " << dla_managed_sram_size_
+                        << ", trt_tactic_dram_size: " << tactic_dram_size_
+                        << ", trt_tactic_shared_memory_size: " << tactic_shared_memory_size_;
 }
 
 TensorrtExecutionProvider::~TensorrtExecutionProvider() {
@@ -2956,7 +2990,12 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
   }
-
+  if (tactic_dram_size_ > 0) {
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_DRAM, tactic_dram_size_);
+  }
+  if (tactic_shared_memory_size_ > 0) {
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, tactic_shared_memory_size_);
+  }
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
 #if defined(_MSC_VER)
 #pragma warning(push)
@@ -3193,6 +3232,15 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         trt_config->setDefaultDeviceType(nvinfer1::DeviceType::kDLA);
         trt_config->setDLACore(dla_core_);
         trt_node_name_with_precision += "_dlacore" + std::to_string(dla_core_);
+        if (dla_local_dram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_LOCAL_DRAM, dla_local_dram_size_);
+        }
+        if (dla_global_dram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_GLOBAL_DRAM, dla_global_dram_size_);
+        }
+        if (dla_managed_sram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_MANAGED_SRAM, dla_managed_sram_size_);
+        }
       }
     }
   }
@@ -3597,7 +3645,7 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           engine_decryption_, engine_encryption_, timing_cache_enable_, global_cache_path_, force_timing_cache_match_,
           detailed_build_log_, build_heuristics_enable_, sparsity_enable_, builder_optimization_level_,
           auxiliary_streams_, !tactic_sources_.empty(), tactics, cuda_graph_enable_, cache_prefix_, cache_suffix, engine_hw_compatible_,
-          preview_features_};
+          preview_features_, dla_global_dram_size_, dla_local_dram_size_, dla_managed_sram_size_, tactic_dram_size_, tactic_shared_memory_size_};
     *state = p.release();
     return 0;
   };
@@ -3773,6 +3821,23 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       auto trt_config = std::unique_ptr<nvinfer1::IBuilderConfig>(trt_builder->createBuilderConfig());
       if (max_workspace_size_ > 0) {
         trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
+      }
+      if (tactic_dram_size_ > 0) {
+        trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_DRAM, tactic_dram_size_);
+      }
+      if (tactic_shared_memory_size_ > 0) {
+        trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, tactic_shared_memory_size_);
+      }
+      if (dla_enable_) {
+        if (dla_local_dram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_LOCAL_DRAM, dla_local_dram_size_);
+        }
+        if (dla_global_dram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_GLOBAL_DRAM, dla_global_dram_size_);
+        }
+        if (dla_managed_sram_size_ > 0) {
+          trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kDLA_MANAGED_SRAM, dla_managed_sram_size_);
+        }
       }
       for (auto trt_profile : trt_profiles) {
         trt_config->addOptimizationProfile(trt_profile);
