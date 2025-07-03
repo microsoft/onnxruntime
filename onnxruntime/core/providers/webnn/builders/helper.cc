@@ -172,7 +172,7 @@ bool IsInputRankSupportedByOp(const Node& node, const emscripten::val& wnn_limit
   const auto& input_defs = node.InputDefs();
 
   for (const auto& input : inputs) {
-    // If it is an optional input and is not presented, skip.
+    // If it is an optional input and is absent, skip.
     if (!TensorExists(input_defs, input.index)) {
       continue;
     }
