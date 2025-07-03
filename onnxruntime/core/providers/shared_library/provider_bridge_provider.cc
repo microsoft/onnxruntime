@@ -361,7 +361,6 @@ std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() {
 }
 #endif
 
-#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXAllocator(device_id, name);
 }
@@ -369,7 +368,6 @@ std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const cha
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name) {
   return g_host->CreateMIGraphXPinnedAllocator(device_id, name);
 }
-#endif
 
 std::string GetEnvironmentVar(const std::string& var_name) {
   return g_host->GetEnvironmentVar(var_name);
