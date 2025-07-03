@@ -554,18 +554,18 @@ constexpr bool kPipelineMode = true;  // CI pipeline?
 TEST(MatMulNBits, Float16_Comprehensive) {
   if constexpr (kPipelineMode) {
     GTEST_SKIP() << "Skipping in pipeline mode";  // This test has too many combinations. Skip it in CI pipeline.
-  }
+  } else {
+    constexpr float abs_error = 0.02f;
 
-  constexpr float abs_error = 0.02f;
-
-  for (auto M : {1, 2, 100}) {
-    for (auto N : {1, 2, 32, 288}) {
-      for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
-        for (auto block_size : {16, 32, 64, 128}) {
-          for (auto has_g_idx : {false, true}) {
-            for (auto has_zero_point : {false, true}) {
-              for (auto is_zero_point_4bit : {false, true}) {
-                RunTest<MLFloat16>(M, N, K, block_size, has_zero_point, is_zero_point_4bit, abs_error, has_g_idx);
+    for (auto M : {1, 2, 100}) {
+      for (auto N : {1, 2, 32, 288}) {
+        for (auto K : {16, 32, 64, 128, 256, 1024, 93, 1234}) {
+          for (auto block_size : {16, 32, 64, 128}) {
+            for (auto has_g_idx : {false, true}) {
+              for (auto has_zero_point : {false, true}) {
+                for (auto is_zero_point_4bit : {false, true}) {
+                  RunTest<MLFloat16>(M, N, K, block_size, has_zero_point, is_zero_point_4bit, abs_error, has_g_idx);
+                }
               }
             }
           }
