@@ -1155,7 +1155,8 @@ def generate_build_tree(
                         else:
                             if not compile_flag.startswith("/"):
                                 log.warning(
-                                    "Flag (%s) is not started with - or /. It will be passed from nvcc to host (MSVC) compiler."
+                                    "Flag (%s) is not started with - or /. It will be passed to host (MSVC) compiler.",
+                                    compile_flag,
                                 )
                             msvc_flags = msvc_flags + " " + compile_flag
                     if len(msvc_flags) != 0:
