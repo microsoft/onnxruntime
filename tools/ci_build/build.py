@@ -1107,7 +1107,8 @@ def generate_build_tree(
         if is_windows() and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
             if args.use_cuda:
-                cudaflags.append("-allow-unsupported-compiler")
+                cudaflags.append("--allow-unsupported-compiler")
+                cudaflags.append("-D_ALLOW_COMPILER_AND_STL_VERSION_MISMATCH")
             if njobs > 1:
                 if args.parallel == 0:
                     cflags += ["/MP"]
