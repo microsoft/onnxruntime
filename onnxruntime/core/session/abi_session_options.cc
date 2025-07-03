@@ -279,6 +279,9 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
 }
 
 ORT_API(OrtKeyValuePairs*, OrtApis::GetSessionOptionConfigEntries, _In_ const OrtSessionOptions* options) {
+  if (!options) {
+    return nullptr; // Return nullptr to indicate invalid input.
+  }
   auto& config_options = options->value.config_options.GetConfigOptionsMap();
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   for (auto& kv : config_options) {
