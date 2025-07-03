@@ -6072,7 +6072,7 @@ struct OrtApi {
   /** \brief Get Session configuration entries.
    *
    * \param[in] options The session options.
-   * \return An OrtKeyValuePairs instance containing the all session config enties.
+   * \return An OrtKeyValuePairs instance containing all session configuration entries.
    *         Note: the user should call OrtApi::ReleaseKeyValuePairs.
    *
    * \since Version 1.22.
