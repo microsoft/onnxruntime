@@ -203,9 +203,8 @@ Status PerformanceRunner::RunParallelDuration() {
       counter++;
       tpool->Schedule([this, &counter, &m, &cv]() {
         auto status = RunOneIteration<false>();
-        if (!status.IsOK()) {
+        if (!status.IsOK())
           std::cerr << status.ErrorMessage();
-        }
         // Simplified version of Eigen::Barrier
         std::lock_guard<std::mutex> lg(m);
         counter--;
@@ -217,11 +216,8 @@ Status PerformanceRunner::RunParallelDuration() {
   } while (duration_seconds.count() < performance_test_config_.run_config.duration_in_seconds);
 
   // Join
-  tpool->Schedule([this, &counter, &m, &cv]() {
-    ORT_UNUSED_PARAMETER(this);
-    std::unique_lock<std::mutex> lock(m);
-    cv.wait(lock, [&counter]() { return counter == 0; });
-  });
+  std::unique_lock<std::mutex> lock(m);
+  cv.wait(lock, [&counter]() { return counter == 0; });
 
   return Status::OK();
 }
