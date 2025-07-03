@@ -19,7 +19,7 @@ __global__ void _Scale(
 #pragma unroll
   for (int i = 0; i < NumElementsPerThread; i++) {
     if (id < N) {
-        input_value[i] = input_data[id];
+      input_value[i] = input_data[id];
       id += NumThreadsPerBlock;
     }
   }
@@ -50,13 +50,13 @@ void Impl_Scale(
       N);
 }
 
-#define SPECIALIZE_SCALE_IMPL(T)        \
-template void Impl_Scale<T>(            \
-    cudaStream_t stream,                \
-    const T* input_data,                \
-    const float scale_value,            \
-    T* output_data,                     \
-    size_t count);
+#define SPECIALIZE_SCALE_IMPL(T) \
+  template void Impl_Scale<T>(   \
+      cudaStream_t stream,       \
+      const T* input_data,       \
+      const float scale_value,   \
+      T* output_data,            \
+      size_t count);
 
 SPECIALIZE_SCALE_IMPL(half)
 SPECIALIZE_SCALE_IMPL(float)

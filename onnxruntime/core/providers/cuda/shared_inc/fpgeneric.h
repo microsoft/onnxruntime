@@ -12,7 +12,7 @@
 // NV_TODO: investigate cub support for half
 
 #pragma once
-
+#include <cuda_bf16.h>
 #include "core/providers/cuda/cuda_common.h"
 
 // Generalize library calls to be use in template functions
@@ -169,11 +169,32 @@ inline cublasStatus_t cublasGemmHelper(
   return cublasGemmEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, B, CUDA_R_16BF, ldb, &h_b, C,
                       CUDA_R_16BF, ldc, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
 }
+
+inline cublasStatus_t cublasGemmHelper(
+    cublasHandle_t handle, cublasOperation_t transa, cublasOperation_t transb, int m,
+    int n, int k, const nv_bfloat16* alpha, const nv_bfloat16* A, int lda,
+    const nv_bfloat16* B, int ldb, const nv_bfloat16* beta, nv_bfloat16* C, int ldc,
+    const cudaDeviceProp& /*prop*/, bool /*use_tf32*/) {
+  float h_a = __bfloat162float(*alpha);
+  float h_b = __bfloat162float(*beta);
+
+  // accumulating in FP32
+  return cublasGemmEx(handle, transa, transb, m, n, k, &h_a, A, CUDA_R_16BF, lda, B, CUDA_R_16BF, ldb, &h_b, C,
+                      CUDA_R_16BF, ldc, CUBLAS_COMPUTE_32F, CUBLAS_GEMM_DEFAULT);
+}
+
 #else
 inline cublasStatus_t cublasGemmHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int, int, int,
                                        const onnxruntime::BFloat16*, const onnxruntime::BFloat16*, int,
                                        const onnxruntime::BFloat16*, int, const onnxruntime::BFloat16*,
-                                       onnxruntime::BFloat16*, int, const cudaDeviceProp&, bool /*use_tf32*/) {
+                                       onnxruntime::BFloat16*, int, const cudaDeviceProp&, bool) {
+  return CUBLAS_STATUS_NOT_SUPPORTED;
+}
+
+inline cublasStatus_t cublasGemmHelper(cublasHandle_t, cublasOperation_t, cublasOperation_t, int,
+                                       int, int, const nv_bfloat16*, const nv_bfloat16*, int,
+                                       const nv_bfloat16*, int, const nv_bfloat16*,
+                                       nv_bfloat16*, int, const cudaDeviceProp&, bool) {
   return CUBLAS_STATUS_NOT_SUPPORTED;
 }
 #endif

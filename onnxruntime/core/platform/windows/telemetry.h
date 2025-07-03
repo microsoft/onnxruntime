@@ -71,6 +71,10 @@ class WindowsTelemetry : public Telemetry {
                           const std::wstring_view& driver_names,
                           const std::wstring_view& driver_versions) const override;
 
+  void LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                          const std::vector<std::string>& requested_execution_provider_ids,
+                          const std::vector<std::string>& available_execution_provider_ids) const override;
+
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;
