@@ -39,6 +39,9 @@ struct ModelSavingOptions {
 #else
   int64_t allocation_granularity = 4096;
 #endif
+  // Force embed all external initializer into the Onnx file
+  // Used for EPContext model generation while some nodes fallback on CPU which has external data dependency
+  bool force_embed_external_ini = false;
 };
 
 }  // namespace onnxruntime

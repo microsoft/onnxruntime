@@ -453,7 +453,7 @@ if (NOT onnxruntime_MINIMAL_BUILD)
 
     list(APPEND onnxruntime_test_providers_src ${orttraining_test_trainingops_cpu_src})
 
-    if (onnxruntime_USE_CUDA OR onnxruntime_USE_ROCM)
+    if (onnxruntime_USE_CUDA)
       file(GLOB_RECURSE orttraining_test_trainingops_cuda_src CONFIGURE_DEPENDS
         "${ORTTRAINING_SOURCE_DIR}/test/training_ops/cuda/*"
         )
@@ -611,10 +611,6 @@ endif()
 if(onnxruntime_USE_MIGRAPHX)
   list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_migraphx)
   list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_migraphx onnxruntime_providers_shared)
-endif()
-
-if(onnxruntime_USE_ROCM)
-  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_rocm)
 endif()
 
 if(onnxruntime_USE_COREML)
@@ -790,9 +786,6 @@ endif()
 if (onnxruntime_USE_NCCL)
   target_include_directories(onnxruntime_test_utils PRIVATE ${NCCL_INCLUDE_DIRS})
 endif()
-if (onnxruntime_USE_ROCM)
-  target_include_directories(onnxruntime_test_utils PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-endif()
 onnxruntime_add_include_to_target(onnxruntime_test_utils onnxruntime_common onnxruntime_framework onnxruntime_session GTest::gtest GTest::gmock onnx onnx_proto flatbuffers::flatbuffers nlohmann_json::nlohmann_json Boost::mp11 safeint_interface Eigen3::Eigen)
 if (onnxruntime_USE_DML)
   target_add_dml(onnxruntime_test_utils)
@@ -837,9 +830,15 @@ set(all_tests ${onnxruntime_test_common_src} ${onnxruntime_test_ir_src} ${onnxru
         ${onnxruntime_test_flatbuffers_src} ${onnxruntime_test_lora_src})
 
 if (onnxruntime_ENABLE_CUDA_EP_INTERNAL_TESTS)
+  if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_REDUCED_OPS_BUILD AND NOT onnxruntime_DISABLE_CONTRIB_OPS)
+    set(onnxruntime_test_cuda_kernels_src_patterns "${TEST_SRC_DIR}/contrib_ops/cuda_kernels/*.cc")
+  endif()
+
   file(GLOB onnxruntime_test_providers_cuda_ut_src CONFIGURE_DEPENDS
     "${TEST_SRC_DIR}/providers/cuda/test_cases/*"
+    ${onnxruntime_test_cuda_kernels_src_patterns}
   )
+
   # onnxruntime_providers_cuda_ut is only for unittests.
   onnxruntime_add_shared_library_module(onnxruntime_providers_cuda_ut ${onnxruntime_test_providers_cuda_ut_src} $<TARGET_OBJECTS:onnxruntime_providers_cuda_obj>)
   config_cuda_provider_shared_module(onnxruntime_providers_cuda_ut)
@@ -901,12 +900,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten" OR IOS)
    message("Disable model tests in onnxruntime_test_all")
    list(REMOVE_ITEM all_tests
       "${TEST_SRC_DIR}/providers/cpu/model_tests.cc"
-    )
-endif()
-if (USE_ROCM)
-    # The following unit test takes about 40 minutes.
-    list(REMOVE_ITEM all_tests
-      "${TEST_SRC_DIR}/contrib_ops/matmul_4bits_test.cc"
     )
 endif()
 
@@ -990,16 +983,7 @@ endif()
 if (onnxruntime_DEBUG_NODE_INPUTS_OUTPUTS)
   target_compile_definitions(onnxruntime_test_all PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
 endif()
-if (onnxruntime_USE_ROCM)
-  if (onnxruntime_USE_COMPOSABLE_KERNEL)
-    target_compile_definitions(onnxruntime_test_all PRIVATE USE_COMPOSABLE_KERNEL)
-    if (onnxruntime_USE_COMPOSABLE_KERNEL_CK_TILE)
-      target_compile_definitions(onnxruntime_test_all PRIVATE USE_COMPOSABLE_KERNEL_CK_TILE)
-    endif()
-  endif()
-  target_compile_options(onnxruntime_test_all PRIVATE -D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1)
-  target_include_directories(onnxruntime_test_all PRIVATE  ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-endif()
+
 if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   target_link_libraries(onnxruntime_test_all PRIVATE Python::Python)
 endif()
@@ -1127,9 +1111,7 @@ if (NOT IOS)
 
     target_link_libraries(onnx_test_runner PRIVATE onnx_test_runner_common ${GETOPT_LIB_WIDE} ${onnx_test_libs} nlohmann_json::nlohmann_json)
     target_include_directories(onnx_test_runner PRIVATE ${ONNXRUNTIME_ROOT})
-    if (onnxruntime_USE_ROCM)
-      target_include_directories(onnx_test_runner PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-    endif()
+    
     if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
       target_link_libraries(onnx_test_runner PRIVATE Python::Python)
     endif()
@@ -1250,9 +1232,7 @@ if (NOT onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
     target_include_directories(onnxruntime_perf_test PRIVATE   ${onnx_test_runner_src_dir} ${ONNXRUNTIME_ROOT}
           ${onnxruntime_graph_header} ${onnxruntime_exec_src_dir}
           ${CMAKE_CURRENT_BINARY_DIR})
-    if (onnxruntime_USE_ROCM)
-      target_include_directories(onnxruntime_perf_test PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/orttraining)
-    endif()
+    
     if (WIN32)
       target_compile_options(onnxruntime_perf_test PRIVATE ${disabled_warnings})
       if (NOT DEFINED SYS_PATH_LIB)
@@ -1358,9 +1338,7 @@ endif()
     if (onnxruntime_USE_CUDA)
       list(APPEND onnxruntime_shared_lib_test_LIBS)
     endif()
-    if (onnxruntime_USE_ROCM)
-      list(APPEND onnxruntime_shared_lib_test_LIBS hip::host)
-    endif()
+    
     if (onnxruntime_USE_TENSORRT)
       list(APPEND onnxruntime_shared_lib_test_LIBS ${TENSORRT_LIBRARY_INFER})
     endif()
@@ -1394,10 +1372,7 @@ endif()
     if (onnxruntime_USE_NV)
       target_include_directories(onnxruntime_shared_lib_test PRIVATE ${CUDAToolkit_INCLUDE_DIRS})
     endif()
-    if (onnxruntime_USE_ROCM)
-      target_include_directories(onnxruntime_shared_lib_test PRIVATE ${onnxruntime_ROCM_HOME}/include)
-      target_compile_definitions(onnxruntime_shared_lib_test PRIVATE __HIP_PLATFORM_AMD__)
-    endif()
+    
 
     if (CMAKE_SYSTEM_NAME STREQUAL "Android")
       target_sources(onnxruntime_shared_lib_test PRIVATE
@@ -1454,10 +1429,7 @@ endif()
       DEPENDS ${all_dependencies}
     )
 
-    if (onnxruntime_USE_ROCM)
-      target_include_directories(onnxruntime_test_debug_node_inputs_outputs PRIVATE ${onnxruntime_ROCM_HOME}/hipfft/include ${onnxruntime_ROCM_HOME}/include ${onnxruntime_ROCM_HOME}/hipcub/include ${onnxruntime_ROCM_HOME}/hiprand/include ${onnxruntime_ROCM_HOME}/rocrand/include)
-      target_include_directories(onnxruntime_test_debug_node_inputs_outputs PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}/amdgpu/onnxruntime)
-    endif(onnxruntime_USE_ROCM)
+    
 
     target_compile_definitions(onnxruntime_test_debug_node_inputs_outputs
       PRIVATE DEBUG_NODE_INPUTS_OUTPUTS)
@@ -1493,6 +1465,8 @@ endif()
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd6326>")
       target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /wd26426>"
                   "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/wd26426>")
+      target_compile_options(onnxruntime_mlas_test PRIVATE "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /bigobj>"
+                  "$<$<NOT:$<COMPILE_LANGUAGE:CUDA>>:/bigobj>")
     endif()
     if(IOS)
       set_target_properties(onnxruntime_mlas_test PROPERTIES
@@ -1601,14 +1575,6 @@ if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
     if (HAS_QSPECTRE)
       list(APPEND custom_op_lib_option "$<$<COMPILE_LANGUAGE:CUDA>:SHELL:--compiler-options /Qspectre>")
     endif()
-  endif()
-
-  if (onnxruntime_USE_ROCM)
-    list(APPEND custom_op_src_patterns
-        "${ONNXRUNTIME_SHARED_LIB_TEST_SRC_DIR}/rocm_ops.hip"
-        "${TEST_SRC_DIR}/testdata/custom_op_library/rocm/rocm_ops.*")
-    list(APPEND custom_op_lib_include ${onnxruntime_ROCM_HOME}/include)
-    list(APPEND custom_op_lib_option "-D__HIP_PLATFORM_AMD__=1 -D__HIP_PLATFORM_HCC__=1")
   endif()
 
   file(GLOB custom_op_src ${custom_op_src_patterns})
@@ -1827,8 +1793,9 @@ endif()
 if (WIN32 AND onnxruntime_BUILD_SHARED_LIB AND
     NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND
     NOT onnxruntime_MINIMAL_BUILD)
-  onnxruntime_add_shared_library_module(example_plugin_ep
-                                        ${TEST_SRC_DIR}/autoep/library/example_plugin_ep.cc)
+  file(GLOB onnxruntime_autoep_test_library_src "${TEST_SRC_DIR}/autoep/library/*.h"
+                                                "${TEST_SRC_DIR}/autoep/library/*.cc")
+  onnxruntime_add_shared_library_module(example_plugin_ep ${onnxruntime_autoep_test_library_src})
   target_include_directories(example_plugin_ep PRIVATE ${REPO_ROOT}/include/onnxruntime/core/session)
   target_link_libraries(example_plugin_ep PRIVATE onnxruntime)
 
@@ -1935,8 +1902,7 @@ endif()
 if (NOT onnxruntime_MINIMAL_BUILD AND NOT onnxruntime_EXTENDED_MINIMAL_BUILD
                                   AND NOT ${CMAKE_SYSTEM_NAME} MATCHES "Darwin|iOS|visionOS|tvOS"
                                   AND NOT CMAKE_SYSTEM_NAME STREQUAL "Android"
-                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten"
-                                  AND NOT onnxruntime_USE_ROCM)
+                                  AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
   file(GLOB_RECURSE test_execution_provider_srcs
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.h"
     "${REPO_ROOT}/onnxruntime/test/testdata/custom_execution_provider_library/*.cc"

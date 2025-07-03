@@ -630,6 +630,10 @@ class InferenceSession {
     return weight_hash_;
   }
 
+  uint32_t GetCurrentSessionId() const {
+    return session_id_;
+  }
+
  protected:
 #if !defined(ORT_MINIMAL_BUILD)
 

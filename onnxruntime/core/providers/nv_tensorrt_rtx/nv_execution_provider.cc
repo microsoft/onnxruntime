@@ -1304,11 +1304,9 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
-        ;
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
       },
-      0);
+      narrow<OrtDevice::DeviceId>(device_id_));
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
@@ -2561,7 +2559,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                               onnx,
                               onnx_size,
                               trt_engine.get(),
-                              true /* serialize refitted engine to disk */,
+                              false /* serialize refitted engine to disk */,
                               detailed_build_log_);
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2745,7 +2743,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
                                 trt_engine,
-                                true /* serialize refitted engine to disk */,
+                                false /* serialize refitted engine to disk */,
                                 detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -3260,8 +3258,8 @@ OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                     0 /*CPU device id always be 0*/);
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     default_device_.Id());
   return default_device_;
 }
 

@@ -65,17 +65,29 @@ NvExecutionProviderInfo NvExecutionProviderInfo::FromProviderOptions(const Provi
   info.onnx_bytestream = onnx_bytestream;
 
   // EP context settings
-  const auto embed_enable = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
-  if (embed_enable == "0") {
+  // when EP context is enabled, default is to embed the engine in the context model
+  // weight stripped engine is always enabled when EP context is enabled
+
+  const auto ep_context_enable = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEnable, "0");
+  if (ep_context_enable == "0") {
     info.dump_ep_context_model = false;
-  } else if (embed_enable == "1") {
+  } else if (ep_context_enable == "1") {
     info.dump_ep_context_model = true;
+    info.weight_stripped_engine_enable = true;
   } else {
     ORT_THROW("Invalid ", kOrtSessionOptionEpContextEnable, " must 0 or 1");
   }
   info.ep_context_file_path = session_options.GetConfigOrDefault(kOrtSessionOptionEpContextFilePath, "");
 
-  const auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "1"));
+  // If embed mode is not specified, default to 1 if dump_ep_context_model is true, otherwise 0
+  auto embed_mode = std::stoi(session_options.GetConfigOrDefault(kOrtSessionOptionEpContextEmbedMode, "-1"));
+  if (embed_mode == -1) {
+    if (info.dump_ep_context_model)
+      embed_mode = 1;
+    else
+      embed_mode = 0;
+  }
+
   if (0 <= embed_mode || embed_mode < 2) {
     info.ep_context_embed_mode = embed_mode;
   } else {

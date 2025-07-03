@@ -8,8 +8,8 @@
 namespace onnxruntime {
 namespace lean {
 
-template void run_mha_fwd_lean_dispatch<cutlass::half_t, 64>(Flash_fwd_params &params, cudaStream_t stream);
+template void run_mha_fwd_lean_dispatch<cutlass::half_t, 64>(Flash_fwd_params& params, cudaStream_t stream);
 
-}  // namespace flash
+}  // namespace lean
 }  // namespace onnxruntime
 #endif

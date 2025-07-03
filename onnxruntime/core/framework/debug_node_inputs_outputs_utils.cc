@@ -398,15 +398,13 @@ void DumpTensor(
     const SessionState& session_state) {
   // check tensor is on CPU before dumping it
   auto& tensor_location = tensor.Location();
-  if (tensor_location.device.Type() == OrtDevice::CPU ||
-      tensor_location.mem_type == OrtMemTypeCPUInput ||
-      tensor_location.mem_type == OrtMemTypeCPUOutput) {
+  if (tensor_location.device.UsesCpuMemory()) {
     tensor_metadata.device_type = "CPU";
     DumpCpuTensor(dump_options, tensor, tensor_metadata, tensor_statistics);
   } else {
     std::cout << tensor_location << "\n";
 
-#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_DML)
+#if defined(USE_CUDA) || defined(USE_DML)
     const auto data_type = tensor.DataType();
     // Dumping GPU only when cuda is enabled.
     if (tensor_location.device.Type() == OrtDevice::GPU) {
