@@ -1917,10 +1917,9 @@ std::vector<AllocatorPtr> TensorrtExecutionProvider::CreatePreferredAllocators()
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+        return CreateCUDAPinnedAllocator(device_id, onnxruntime::CUDA_PINNED);
       },
-      0);
+      narrow<OrtDevice::DeviceId>(device_id_));
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
@@ -2959,6 +2958,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
   }
 
   // Force Pow + Reduce ops in layer norm to run in FP32 to avoid overflow
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
   if ((fp16_enable_ || bf16_enable_) && layer_norm_fp32_fallback_) {
     for (auto idx = 1; idx < trt_network->getNbLayers() - 1; ++idx) {
       auto layer = trt_network->getLayer(idx);
@@ -2972,6 +2975,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
       }
     }
   }
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
@@ -3146,6 +3152,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     }
   }
 
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
   // Set precision flags
   std::string trt_node_name_with_precision = fused_node.Name();
   if (fp16_enable_) {
@@ -3163,7 +3173,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
     trt_node_name_with_precision += "_int8";
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] INT8 mode is enabled";
   }
-
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
   // Set DLA
   if (fp16_enable_ || int8_enable_) {
     if (dla_enable_ && dla_core_ >= 0) {  // DLA can only run with FP16 and INT8
@@ -3779,7 +3791,10 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
           return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, "TensorRT EP failed to set INT8 dynamic range.");
         }
       }
-
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)
+#endif
       // Set precision
       if (trt_state->int8_enable) {
         trt_config->setFlag(nvinfer1::BuilderFlag::kINT8);
@@ -3793,7 +3808,9 @@ Status TensorrtExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphView
         trt_config->setFlag(nvinfer1::BuilderFlag::kBF16);
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] BF16 mode is enabled";
       }
-
+#if defined(_MSC_VER)
+#pragma warning(pop)
+#endif
       // Set DLA (DLA can only run with FP16 or INT8)
       if ((trt_state->fp16_enable || trt_state->int8_enable) && trt_state->dla_enable) {
         LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] use DLA core " << trt_state->dla_core;
@@ -4517,8 +4534,8 @@ OrtDevice TensorrtExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                     0 /*CPU device id always be 0*/);
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     default_device_.Id());
   return default_device_;
 }
 

@@ -40,6 +40,7 @@ from util import (  # noqa: E402
     is_linux,
     is_macOS,
     is_windows,
+    parse_qnn_version_from_sdk_yaml,
     run,
 )
 
@@ -349,6 +350,7 @@ def generate_build_tree(
     rocm_home,
     nccl_home,
     tensorrt_home,
+    tensorrt_rtx_home,
     migraphx_home,
     acl_home,
     acl_libs,
@@ -486,7 +488,6 @@ def generate_build_tree(
         "-Donnxruntime_ENABLE_CPU_FP16_OPS=" + ("ON" if args.enable_training else "OFF"),
         "-Donnxruntime_USE_NCCL=" + ("ON" if args.enable_nccl else "OFF"),
         "-Donnxruntime_BUILD_BENCHMARKS=" + ("ON" if args.build_micro_benchmarks else "OFF"),
-        "-Donnxruntime_USE_ROCM=" + ("ON" if args.use_rocm else "OFF"),
         "-Donnxruntime_GCOV_COVERAGE=" + ("ON" if args.code_coverage else "OFF"),
         "-Donnxruntime_ENABLE_MEMORY_PROFILE=" + ("ON" if args.enable_memory_profile else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_LINE_NUMBER_INFO=" + ("ON" if args.enable_cuda_line_info else "OFF"),
@@ -500,12 +501,10 @@ def generate_build_tree(
         + ("ON" if args.enable_wasm_exception_throwing_override else "OFF"),
         "-Donnxruntime_WEBASSEMBLY_RUN_TESTS_IN_BROWSER=" + ("ON" if args.wasm_run_tests_in_browser else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_THREADS=" + ("ON" if args.enable_wasm_threads else "OFF"),
-        "-Donnxruntime_ENABLE_WEBASSEMBLY_MEMORY64=" + ("ON" if args.enable_wasm_memory64 else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_DEBUG_INFO=" + ("ON" if args.enable_wasm_debug_info else "OFF"),
         "-Donnxruntime_ENABLE_WEBASSEMBLY_PROFILING=" + ("ON" if args.enable_wasm_profiling else "OFF"),
         "-Donnxruntime_ENABLE_LAZY_TENSOR=" + ("ON" if args.enable_lazy_tensor else "OFF"),
         "-Donnxruntime_ENABLE_CUDA_PROFILING=" + ("ON" if args.enable_cuda_profiling else "OFF"),
-        "-Donnxruntime_ENABLE_ROCM_PROFILING=" + ("ON" if args.enable_rocm_profiling else "OFF"),
         "-Donnxruntime_USE_XNNPACK=" + ("ON" if args.use_xnnpack else "OFF"),
         "-Donnxruntime_USE_WEBNN=" + ("ON" if args.use_webnn else "OFF"),
         "-Donnxruntime_USE_CANN=" + ("ON" if args.use_cann else "OFF"),
@@ -559,7 +558,7 @@ def generate_build_tree(
             vcpkg_installation_root = os.path.join(os.path.abspath(build_dir), "vcpkg")
             if not os.path.exists(vcpkg_installation_root):
                 run_subprocess(
-                    ["git", "clone", "-b", "2025.03.19", "https://github.com/microsoft/vcpkg.git", "--recursive"],
+                    ["git", "clone", "-b", "2025.06.13", "https://github.com/microsoft/vcpkg.git", "--recursive"],
                     cwd=build_dir,
                 )
         vcpkg_toolchain_path = Path(vcpkg_installation_root) / "scripts" / "buildsystems" / "vcpkg.cmake"
@@ -647,12 +646,7 @@ def generate_build_tree(
         # Choose the cmake triplet
         triplet = None
         if args.build_wasm:
-            # The support for wasm64 is still in development.
-            if args.enable_wasm_memory64:
-                # The triplet wasm64-emscripten doesn't exist in vcpkg's official repo.
-                triplet = "wasm64-emscripten"
-            else:
-                triplet = "wasm32-emscripten"
+            triplet = "wasm32-emscripten"
         elif args.android:
             if args.android_abi == "armeabi-v7a":
                 triplet = "arm-neon-android"
@@ -708,8 +702,6 @@ def generate_build_tree(
             cmake_args.append("-DCMAKE_C_COMPILER_LAUNCHER=ccache")
             if args.use_cuda:
                 cmake_args.append("-DCMAKE_CUDA_COMPILER_LAUNCHER=ccache")
-            if args.use_rocm:
-                cmake_args.append("-DCMAKE_HIP_COMPILER_LAUNCHER=ccache")
     if args.external_graph_transformer_path:
         cmake_args.append("-Donnxruntime_EXTERNAL_TRANSFORMER_SRC_PATH=" + args.external_graph_transformer_path)
 
@@ -728,11 +720,13 @@ def generate_build_tree(
             cmake_args += ["-Donnxruntime_ENABLE_WEBASSEMBLY_RELAXED_SIMD=ON"]
     if args.use_migraphx:
         cmake_args.append("-Donnxruntime_MIGRAPHX_HOME=" + migraphx_home)
-    if args.use_rocm:
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+
+    if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.use_nv_tensorrt_rtx:
+        cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -1392,7 +1386,7 @@ def setup_cann_vars(args):
 
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
@@ -1893,13 +1887,13 @@ def build_python_wheel(
     use_cann,
     use_azure,
     use_qnn,
+    qnn_home,
     wheel_name_suffix,
     enable_training,
     nightly_build=False,
     default_training_package_device=False,
     use_ninja=False,
     enable_training_apis=False,
-    enable_rocm_profiling=False,
 ):
     for config in configs:
         cwd = get_config_build_dir(build_dir, config)
@@ -1919,8 +1913,6 @@ def build_python_wheel(
             args.append("--enable_training")
         if enable_training_apis:
             args.append("--enable_training_apis")
-        if enable_rocm_profiling:
-            args.append("--enable_rocm_profiling")
 
         # The following arguments are mutually exclusive
         if use_cuda:
@@ -1953,6 +1945,9 @@ def build_python_wheel(
             args.append("--use_cann")
         elif use_qnn:
             args.append("--use_qnn")
+            qnn_version = parse_qnn_version_from_sdk_yaml(qnn_home)
+            if qnn_version:
+                args.append(f"--qnn_version={qnn_version}")
         elif use_azure:
             args.append("--use_azure")
 
@@ -2360,7 +2355,10 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    tensorrt_rtx_home = ""
+    if args.use_nv_tensorrt_rtx:
+        tensorrt_rtx_home = args.tensorrt_rtx_home
+    if args.use_tensorrt:
         tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths
@@ -2503,6 +2501,7 @@ def main():
             rocm_home,
             nccl_home,
             tensorrt_home,
+            tensorrt_rtx_home,
             migraphx_home,
             acl_home,
             acl_libs,
@@ -2573,13 +2572,13 @@ def main():
                 args.use_cann,
                 args.use_azure,
                 args.use_qnn,
+                args.qnn_home,
                 args.wheel_name_suffix,
                 args.enable_training,
                 nightly_build=nightly_build,
                 default_training_package_device=default_training_package_device,
                 use_ninja=(args.cmake_generator == "Ninja"),
                 enable_training_apis=args.enable_training_apis,
-                enable_rocm_profiling=args.enable_rocm_profiling,
             )
 
         if args.build_nuget:

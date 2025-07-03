@@ -166,8 +166,7 @@ Status CudaCastStd(cudaStream_t stream, const InT* input, OutT* output, size_t n
       input,
       output,
       static_cast<int>(num_of_element),
-      CastStd<OutT, InT>()
-      );
+      CastStd<OutT, InT>());
   return Status::OK();
 }
 
@@ -197,8 +196,7 @@ Status CudaCastSat(cudaStream_t stream, const InT* input, OutT* output, size_t n
       output,
       static_cast<int>(num_of_element),
       CastSat<OutT, InT>(),
-      saturate
-      );
+      saturate);
   return Status::OK();
 }
 

@@ -109,7 +109,7 @@ Status LaunchConcatKVInPlace(contrib::GroupQueryAttentionParameters& parameters,
                              const int max_threads_per_block) {
   const int max_sequence_length = parameters.seqlen_present_kv_cache;
   const int* seqlens_k = (parameters.is_first_prompt && !parameters.is_subsequent_prompt) ? nullptr
-                                                                              : reinterpret_cast<const int*>(data.seqlens_k);
+                                                                                          : reinterpret_cast<const int*>(data.seqlens_k);
 
   assert(parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BSNH ||
          parameters.past_kv_format == AttentionQkvFormat::Q_K_V_BNSH);
