@@ -278,6 +278,15 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
   API_IMPL_END
 }
 
+ORT_API(OrtKeyValuePairs*, OrtApis::GetSessionOptionConfigEntries, _In_ const OrtSessionOptions* options) {
+  auto& config_options = options->value.config_options.GetConfigOptionsMap();
+  auto kvps = std::make_unique<OrtKeyValuePairs>();
+  for (auto& kv : config_options) {
+    kvps->Add(kv.first.c_str(), kv.second.c_str());
+  }
+  return reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+}
+
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
                     _In_ const OrtValue* val) {
   API_IMPL_BEGIN
