@@ -433,4 +433,81 @@ void WindowsTelemetry::LogDriverInfoEvent(const std::string_view device_class, c
                     TraceLoggingWideString(driver_versions.data(), "driverVersions"));
 }
 
+void WindowsTelemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                          const std::vector<std::string>& requested_execution_provider_ids,
+                                          const std::vector<std::string>& available_execution_provider_ids) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  // Build requested execution provider string
+  std::string requested_execution_provider_string;
+  bool first = true;
+  for (const auto& ep_id : requested_execution_provider_ids) {
+    if (first) {
+      first = false;
+    } else {
+      requested_execution_provider_string += ',';
+    }
+    requested_execution_provider_string += ep_id;
+  }
+
+  // Build available execution provider string
+  std::string available_execution_provider_string;
+  first = true;
+  for (const auto& ep_id : available_execution_provider_ids) {
+    if (first) {
+      first = false;
+    } else {
+      available_execution_provider_string += ',';
+    }
+    available_execution_provider_string += ep_id;
+  }
+
+  TraceLoggingWrite(telemetry_provider_handle,
+                    "EpAutoSelection",
+                    TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                    TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                    TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                    TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                    TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                    // Telemetry info
+                    TraceLoggingUInt8(0, "schemaVersion"),
+                    TraceLoggingUInt32(session_id, "sessionId"),
+                    TraceLoggingString(selection_policy.c_str(), "selectionPolicy"),
+                    TraceLoggingString(requested_execution_provider_string.c_str(), "requestedExecutionProviderIds"),
+                    TraceLoggingString(available_execution_provider_string.c_str(), "availableExecutionProviderIds"));
+}
+
+void WindowsTelemetry::LogProviderOptions(const std::string& provider_id, const std::string& provider_options_string, bool captureState) const {
+  if (global_register_count_ == 0 || enabled_ == false)
+    return;
+
+  // Difference is MeasureEvent & isCaptureState, but keep in sync otherwise
+  if (!captureState) {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "ProviderOptions",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      TraceLoggingKeyword(MICROSOFT_KEYWORD_MEASURES),
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingString(provider_id.c_str(), "providerId"),
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+  } else {
+    TraceLoggingWrite(telemetry_provider_handle,
+                      "ProviderOptions_CaptureState",
+                      TraceLoggingBool(true, "UTCReplace_AppSessionGuid"),
+                      TelemetryPrivacyDataTag(PDT_ProductAndServiceUsage),
+                      // Not a measure event
+                      TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
+                      TraceLoggingLevel(WINEVENT_LEVEL_INFO),
+                      // Telemetry info
+                      TraceLoggingUInt8(0, "schemaVersion"),
+                      TraceLoggingString(provider_id.c_str(), "providerId"),
+                      TraceLoggingString(provider_options_string.c_str(), "providerOptions"));
+  }
+}
+
 }  // namespace onnxruntime

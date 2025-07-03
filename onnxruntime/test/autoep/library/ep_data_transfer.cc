@@ -10,11 +10,38 @@
 bool ORT_API_CALL ExampleDataTransfer::CanCopyImpl(void* this_ptr,
                                                    const OrtMemoryDevice* src_memory_device,
                                                    const OrtMemoryDevice* dst_memory_device) noexcept {
+  static constexpr uint32_t VendorId = 0xBE57;  // Example vendor ID for demonstration purposes.
+
   auto& impl = *static_cast<ExampleDataTransfer*>(this_ptr);
   bool src_is_our_device = impl.ep_api.MemoryDevice_AreEqual(src_memory_device, impl.device_mem_info);
   bool dst_is_our_device = impl.ep_api.MemoryDevice_AreEqual(dst_memory_device, impl.device_mem_info);
 
-  return src_is_our_device || dst_is_our_device;
+  if (src_is_our_device && dst_is_our_device) {
+    return true;
+  }
+
+  // implementation should check if the copy is possible, which may require checking the device type, the memory type
+  // and the vendor and device IDs as needed.
+  OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_memory_device);
+  OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_memory_device);
+  // OrtDeviceMemoryType src_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(src_memory_device);
+  // OrtDeviceMemoryType dst_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(dst_memory_device);
+  // uint32_t src_device_vendor_id = impl.ep_api.MemoryDevice_GetVendorId(src_memory_device);
+  // uint32_t dst_device_vendor_id = impl.ep_api.MemoryDevice_GetVendorId(dst_memory_device);
+  // uint32_t src_device_device_id = impl.ep_api.MemoryDevice_GetDeviceId(src_memory_device);
+  // uint32_t dst_device_device_id = impl.ep_api.MemoryDevice_GetDeviceId(dst_memory_device);
+
+  if (src_is_our_device) {
+    // check device type and vendor to see if compatible
+    return (dst_device_type == OrtMemoryInfoDeviceType_CPU);
+  }
+
+  if (dst_is_our_device) {
+    // check device type and vendor to see if compatible
+    return (src_device_type == OrtMemoryInfoDeviceType_CPU);
+  }
+
+  return false;
 }
 
 // function to copy one or more tensors.
@@ -41,6 +68,7 @@ OrtStatus* ORT_API_CALL ExampleDataTransfer::CopyTensorsImpl(void* this_ptr,
 
     OrtMemoryInfoDeviceType src_device_type = impl.ep_api.MemoryDevice_GetDeviceType(src_device);
     OrtMemoryInfoDeviceType dst_device_type = impl.ep_api.MemoryDevice_GetDeviceType(dst_device);
+
     //  OrtDeviceMemoryType src_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(src_device);
     //  OrtDeviceMemoryType dst_mem_type = impl.ep_api.MemoryDevice_GetMemoryType(dst_device);
     //   bool copy_involves_pinned_memory = src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE ||
