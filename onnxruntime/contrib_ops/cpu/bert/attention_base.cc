@@ -15,7 +15,8 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* past,
                                   const Tensor* attention_bias,
                                   void* parameters,
-                                  const Tensor* past_seq_len) const {
+                                  const Tensor* past_seq_len,
+                                  const Tensor* head_sink) const {
   // Abbreviation and Meanings:
   //   B:    batch_size
   //   S:    sequence_length (input sequence length of query)
@@ -39,6 +40,7 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
   //   mask_index              : see below
   //   past         (K/V)      : (2, B, N, P, H) or NULL
   //   attention_bias          : (B or 1, N or 1, S, T) or NULL
+  //   head_sink               : (N)
 
   // For mask_index, the following shapes are supported:
   //     NULL, (B, 1), (1, 1)
@@ -210,6 +212,18 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
     }
   }
 
+  if (head_sink != nullptr) {
+    const auto& head_sink_dims = head_sink->GetDims();
+    if (head_sink_dims.size() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "Input 'head_sink' is expected to have 1 dimension, got ",
+                            head_sink_dims.size());
+    }
+    if (head_sink_dims[0] != num_heads_) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                            "Input 'head_sink' dimension 0 should have same length as number of heads");
+    }
+  }
+
   if (parameters != nullptr) {
     AttentionParameters* output_parameters = reinterpret_cast<AttentionParameters*>(parameters);
     output_parameters->batch_size = static_cast<int>(batch_size);
@@ -307,12 +321,13 @@ Status AttentionBase::CheckInputs(const TensorShape& input_shape,
                                   const Tensor* attention_bias,
                                   void* parameters,
                                   const int max_threads_per_block,
-                                  const Tensor* past_seq_len) const {
+                                  const Tensor* past_seq_len,
+                                  const Tensor* head_sink) const {
   if (num_heads_ > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, attention_bias, parameters, past_seq_len);
+  return CheckInputs(input_shape, weights_shape, bias_shape, mask_index, past, attention_bias, parameters, past_seq_len, head_sink);
 }
 
 Tensor* AttentionBase::GetPresent(OpKernelContext* context,

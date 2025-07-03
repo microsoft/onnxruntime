@@ -22,7 +22,8 @@ class AttentionBase {
                      const Tensor* attention_bias,
                      void* parameters,
                      const int max_threads_per_block,  // for CUDA
-                     const Tensor* past_seq_len = nullptr) const;
+                     const Tensor* past_seq_len = nullptr,
+                     const Tensor* head_sink = nullptr) const;
 
   Tensor* GetPresent(OpKernelContext* context,
                      const Tensor* past,
@@ -66,7 +67,8 @@ class AttentionBase {
                      const Tensor* past,
                      const Tensor* attention_bias,
                      void* parameters,
-                     const Tensor* past_seq_len = nullptr) const;
+                     const Tensor* past_seq_len = nullptr,
+                     const Tensor* head_sink = nullptr) const;
 
   int num_heads_;                          // number of attention heads
   bool is_unidirectional_;                 // whether every token can only attend to previous tokens.
