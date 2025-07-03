@@ -332,9 +332,10 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSparseTensorAsOrtValue, _Inout_ OrtAllocator*
 namespace {
 #if !defined(DISABLE_SPARSE_TENSORS)
 std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, const OrtDevice& dst_device) {
-  if (src_device.Type() == OrtDevice::CPU && dst_device.Type() == OrtDevice::CPU) {
+  if (src_device.UsesCpuMemory() && dst_device.UsesCpuMemory()) {
     return std::make_unique<CPUDataTransfer>();
   }
+
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (src_device.Type() == OrtDevice::GPU || dst_device.Type() == OrtDevice::GPU) {
     if (auto* provider_info = TryGetProviderInfo_CUDA()) {
@@ -348,7 +349,7 @@ std::unique_ptr<IDataTransfer> GetDataTransfer(const OrtDevice& src_device, cons
 SparseTensor& ValidateFillInputArgs(OrtValue* v, const TensorShape& values_shape, const OrtMemoryInfo* data_mem_info) {
   auto& sparse_tensor = SparseTensor::GetSparseTensorFromOrtValue(*v);
   if (sparse_tensor.IsDataTypeString()) {
-    if ((data_mem_info->device.Type() != OrtDevice::CPU) || sparse_tensor.Location().device.Type() != OrtDevice::CPU) {
+    if (!data_mem_info->device.UsesCpuMemory() || !sparse_tensor.Location().device.UsesCpuMemory()) {
       ORT_THROW("Strings can only reside in CPU memory");
     }
   }
@@ -2935,6 +2936,20 @@ ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetType, _In_ const OrtOpAttr* attribute, _O
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::OpAttr_GetName, _In_ const OrtOpAttr* attribute, _Outptr_ const char** name) {
+  API_IMPL_BEGIN
+  if (name == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "name argument is null");
+  }
+  if (attribute == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "attribute argument is null");
+  }
+
+  *name = attribute->attr_proto.name().c_str();
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node, _Outptr_ OrtArrayOfConstObjects** subgraphs) {
   API_IMPL_BEGIN
   if (subgraphs == nullptr) {
@@ -3638,6 +3653,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetAttributes,
     &OrtApis::Node_GetAttributeByName,
     &OrtApis::OpAttr_GetType,
+    &OrtApis::OpAttr_GetName,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetParentGraph,
 

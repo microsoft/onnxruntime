@@ -5,6 +5,7 @@
 
 #include <map>
 #include <string>
+#include <utility>
 #include <vector>
 
 #include "QnnInterface.h"
@@ -331,6 +332,53 @@ class QnnModelWrapper {
   ModelSettings model_settings_ = {};
   utils::QnnJSONGraph json_qnn_graph_;
 };  // QnnModelWrapper
+
+template <typename T>
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const T& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  if (std::is_same<T, float>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_FLOAT_32;
+    qnn_scalar.floatValue = static_cast<float>(scalar);
+  } else if (std::is_same<T, uint32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_UINT_32;
+    qnn_scalar.uint32Value = static_cast<uint32_t>(scalar);
+  } else if (std::is_same<T, int32_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_32;
+    qnn_scalar.int32Value = static_cast<int32_t>(scalar);
+  } else if (std::is_same<T, int64_t>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_INT_64;
+    qnn_scalar.int64Value = static_cast<int64_t>(scalar);
+  } else if (std::is_same<T, bool>::value) {
+    qnn_scalar.dataType = QNN_DATATYPE_BOOL_8;
+    qnn_scalar.bool8Value = static_cast<uint8_t>(scalar);
+  } else {
+    ORT_RETURN_IF(true, "QNN EP: Unsupported scalar dtype");
+  }
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
+
+inline Status AddQnnScalar(QnnModelWrapper& qnn_model_wrapper,
+                           const NodeIndex& node_index,
+                           const std::string& node_name,
+                           const std::string& scalar,
+                           const std::string& qnn_scalar_param_name,
+                           std::vector<std::string>& param_names) {
+  Qnn_Scalar_t qnn_scalar = QNN_SCALAR_INIT;
+  qnn_scalar.dataType = QNN_DATATYPE_STRING;
+  qnn_scalar.stringValue = scalar.c_str();
+  QnnParamWrapper qnn_param_wrapper(node_index, node_name, qnn_scalar_param_name, qnn_scalar);
+  param_names.push_back(qnn_param_wrapper.GetParamTensorName());
+  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param_wrapper));
+  return Status::OK();
+}
 
 }  // namespace qnn
 }  // namespace onnxruntime

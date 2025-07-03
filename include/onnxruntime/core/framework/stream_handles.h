@@ -26,7 +26,9 @@ class Notification;
 // i.e. different cuda stream on different GPU.
 class Stream {
  public:
-  Stream(StreamHandle h, const OrtDevice& d) : handle_(h), device_(d) {}
+  Stream(StreamHandle h, const OrtDevice& d)
+      : handle_(h), device_(d) {
+  }
 
   virtual ~Stream() = default;
   virtual std::unique_ptr<synchronize::Notification> CreateNotification(size_t /*num_consumers*/) {
@@ -168,8 +170,8 @@ class IStreamCommandHandleRegistry {
   virtual ~IStreamCommandHandleRegistry() = default;
   // Wait is a little special as we need to consider the source stream the notification generated, and the stream we are waiting.
   // i.e., for an cuda event what notify the memory copy, it could be wait on a CPU stream, or on another cuda stream.
-  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(OrtDevice::DeviceType notification_ower_device_type,
-                                                         OrtDevice::DeviceType executor_device_type) const = 0;
+  [[nodiscard]] virtual WaitNotificationFn GetWaitHandle(const OrtDevice& notification_owner_device,
+                                                         const OrtDevice& executor_device) const = 0;
 
   // Get the stream creation function registered for the given device type.
   [[nodiscard]] virtual CreateStreamFn GetCreateStreamFn(OrtDevice::DeviceType execution_device_type) const = 0;
