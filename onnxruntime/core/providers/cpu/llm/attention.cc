@@ -538,7 +538,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   void* out_tmp_data = nullptr;
   if (parameters.transpose_output) {
     // Compute the attentionScore * Value: out_tmp(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
-    allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
+    out_tmp_data = allocator->Alloc(SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * parameters.v_head_size * sizeof(T));
   }
   BufferUniquePtr out_tmp_buffer(out_tmp_data, out_tmp_data == nullptr ? BufferDeleter(nullptr) : BufferDeleter(std::move(allocator)));
 
@@ -629,7 +629,7 @@ void AttentionBase<T>::PrepareMask(const U* mask_index,
     make_copy(p_mask, mask_index, batch_size * sequence_length * all_sequence_length);
     if (causal) {
       for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+        for (int s_i = 0; s_i < sequence_length; s_i++) {
           for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
             p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
           }
@@ -644,7 +644,7 @@ void AttentionBase<T>::PrepareMask(const U* mask_index,
       memset(p_mask, 0, sequence_length * all_sequence_length * sizeof(T));
     }
     if (causal) {
-      for (int s_i = 0; s_i < sequence_length - 1; s_i++) {
+      for (int s_i = 0; s_i < sequence_length; s_i++) {
         for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
           p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
         }
