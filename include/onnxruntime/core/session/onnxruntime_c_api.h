@@ -6074,6 +6074,16 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
+
+  /** \brief Get Session configuration entries.
+   *
+   * \param[in] options The session options.
+   * \return An OrtKeyValuePairs instance containing the all session config enties.
+   *         Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \since Version 1.22.
+   */
+  OrtKeyValuePairs*(ORT_API_CALL* GetSessionOptionConfigEntries)(_In_ const OrtSessionOptions* options);
 };
 
 /*
