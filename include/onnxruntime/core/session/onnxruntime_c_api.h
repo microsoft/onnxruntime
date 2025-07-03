@@ -64,6 +64,7 @@ extern "C" {
 #define _Outptr_result_maybenull_
 #define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
+#define _In_reads_opt_
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
 #define _Inout_updates_all_(X)
