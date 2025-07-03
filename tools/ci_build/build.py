@@ -350,6 +350,7 @@ def generate_build_tree(
     rocm_home,
     nccl_home,
     tensorrt_home,
+    tensorrt_rtx_home,
     migraphx_home,
     acl_home,
     acl_libs,
@@ -723,8 +724,10 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
 
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.use_nv_tensorrt_rtx:
+        cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -1384,7 +1387,7 @@ def setup_cann_vars(args):
 
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
@@ -2353,7 +2356,10 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    tensorrt_rtx_home = ""
+    if args.use_nv_tensorrt_rtx:
+        tensorrt_rtx_home = args.tensorrt_rtx_home
+    if args.use_tensorrt:
         tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths
@@ -2496,6 +2502,7 @@ def main():
             rocm_home,
             nccl_home,
             tensorrt_home,
+            tensorrt_rtx_home,
             migraphx_home,
             acl_home,
             acl_libs,

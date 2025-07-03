@@ -113,13 +113,10 @@ jobs:
             cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.wasm ${{ github.workspace }}/artifacts/wasm/
             cp ${{ github.workspace }}/build/wasm_inferencing_jsep/${{ inputs.build_config }}/ort-wasm-simd-threaded.jsep.mjs ${{ github.workspace }}/artifacts/wasm/
           fi
-
-      - name: Create WebGPU Artifacts
-        if: ${{ inputs.skip_publish != true && inputs.build_webgpu == true }}
-        run: |
-          mkdir -p ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm_webgpu/
-          cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm_webgpu/
+          if [ -d ${{ github.workspace }}/build/wasm_inferencing_webgpu ]; then
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.wasm ${{ github.workspace }}/artifacts/wasm/
+            cp ${{ github.workspace }}/build/wasm_inferencing_webgpu/${{ inputs.build_config }}/ort-wasm-simd-threaded.asyncify.mjs ${{ github.workspace }}/artifacts/wasm/
+          fi
 
       - name: Upload WASM artifacts
         if: ${{ inputs.skip_publish != true }}
@@ -127,13 +124,6 @@ jobs:
         with:
           name: ${{ inputs.build_config }}_wasm
           path: ${{ github.workspace }}/artifacts/wasm
-
-      - name: Upload WebGPU artifacts
-        if: ${{ inputs.skip_publish != true && inputs.build_webgpu == true }}
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ inputs.build_config }}_wasm_webgpu
-          path: ${{ github.workspace }}/artifacts/wasm_webgpu
 
       - name: Test (Node.js) (simd + threads)
         # onnxruntime_test_all is currently only supported in Debug build because it requires exception, which is disabled in Release build.
