@@ -685,4 +685,24 @@ ORT_API_STATUS_IMPL(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDe
                     _In_ OrtDeviceMemoryType mem_type);
 
 ORT_API_STATUS_IMPL(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
+
+ORT_API_STATUS_IMPL(GetInputsMemoryInfo, _In_ const OrtSession* session,
+                    _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
+                    _In_ size_t num_inputs);
+
+ORT_API_STATUS_IMPL(GetOutputsMemoryInfo, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
+                    _In_ size_t num_outputs);
+
+ORT_API_STATUS_IMPL(CreateSyncStreamForDevice, _In_ const OrtEpDevice* ep_device,
+                    _Outptr_ OrtSyncStream** stream);
+
+ORT_API(void, ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* stream);
+
+ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
+                    _In_reads_(num_tensors) const OrtValue** src_tensors,
+                    _In_reads_(num_tensors) OrtValue** dst_tensors,
+                    _In_reads_opt_(num_tensors) OrtSyncStream** streams,
+                    _In_ size_t num_tensors);
+
 }  // namespace OrtApis

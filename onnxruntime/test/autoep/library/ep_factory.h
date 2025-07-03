@@ -51,7 +51,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept;
 
-  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+  static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(const OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
                                                                OrtSyncStreamImpl** stream) noexcept;
 

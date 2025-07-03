@@ -3313,6 +3313,56 @@ std::pair<common::Status, const OutputDefList*> InferenceSession::GetModelOutput
   return std::make_pair(common::Status::OK(), &model_->MainGraph().GetOutputs());
 }
 
+common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType type,
+                                                          InlinedVector<const OrtMemoryInfo*>& memory_info) const {
+  memory_info.clear();
+
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> result;
+  switch (type) {
+    case SessionInputOutputType::kInput:
+      result = GetModelInputs();
+      break;
+    case SessionInputOutputType::kOutput:
+      result = GetModelOutputs();
+      break;
+    case SessionInputOutputType::kOverridableInitializer:
+      // add if/when needed
+      return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT,
+                            "GetInputOutputMemoryInfo for kOverridableInitializer is not implemented.");
+    default:
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "Unexpected SessionInputOutputType of ", static_cast<uint8_t>(type));
+  }
+
+  if (result.first != common::Status::OK()) {
+    return result.first;
+  }
+
+  const auto& def_list = *result.second;
+  memory_info.reserve(def_list.size());
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    if (type == SessionInputOutputType::kOutput) {
+      ORT_RETURN_IF_ERROR(session_state_->GetOutputNodeInfo(def->Name(), node_info_vec));
+    } else {
+      ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+    }
+
+    // all entries are for the same OrtDevice so use the first one.
+    // we need to get an OrtMemoryInfo* that will remain valid, so we have to get the allocator for the OrtDevice
+    // from the session state and use it's OrtMemoryInfo.
+    auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
+    memory_info.push_back(&allocator->Info());
+  }
+
+  return Status::OK();
+}
+
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {
   {
     std::lock_guard<std::mutex> l(session_mutex_);

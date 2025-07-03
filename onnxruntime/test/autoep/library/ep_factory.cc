@@ -257,10 +257,10 @@ bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(const OrtEpFactory* this_ptr,
                                                                         const OrtMemoryDevice* memory_device,
                                                                         OrtSyncStreamImpl** stream) noexcept {
-  auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
+  auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);
   *stream = nullptr;
 
   // we only need stream synchronization on the device stream

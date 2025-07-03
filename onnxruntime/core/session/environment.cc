@@ -9,6 +9,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
@@ -110,6 +111,22 @@ std::unordered_set<OrtAllocator*>::const_iterator FindExistingAllocator(const st
                         const auto* alloc_mem_info = alloc_ptr->Info(alloc_ptr);
                         return AreOrtMemoryInfosEquivalent(*alloc_mem_info, mem_info, match_name);
                       });
+}
+
+Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
+                                    std::unique_ptr<plugin_ep::DataTransfer>& data_transfer) {
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = ep_factory.CreateDataTransfer(&ep_factory, &data_transfer_impl);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+  }
+
+  if (data_transfer_impl != nullptr) {
+    data_transfer = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  }
+
+  return Status::OK();
 }
 }  // namespace
 
@@ -477,6 +494,14 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
     for (const auto& internal_factory : internal_factories) {
       internal_ep_factories_.insert(internal_factory);
+
+      std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
+      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*internal_factory, data_transfer));
+
+      if (data_transfer) {
+        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister
+        ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+      }
     }
 
     ep_libraries_[registration_name] = std::move(ep_info);
@@ -531,6 +556,10 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
     // something goes wrong in any of the following steps..
     ep_libraries_.erase(ep_name);
+
+    for (auto* data_transfer : ep_info->data_transfers) {
+      ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
+    }
 
     for (auto* internal_factory : ep_info->internal_factories) {
       internal_ep_factories_.erase(internal_factory);

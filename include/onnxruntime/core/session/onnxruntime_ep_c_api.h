@@ -13,10 +13,6 @@ ORT_RUNTIME_CLASS(EpGraphSupportInfo);
 ORT_RUNTIME_CLASS(MemoryDevice);  // opaque class to wrap onnxruntime::OrtDevice
 ORT_RUNTIME_CLASS(NodeComputeContext);
 
-// Opaque class to create an onnxruntime::Stream. Will be filled out in separate PR.
-// Adding here for OrtDataTransferImpl as the stream type is required by the IDataTransfer API.
-ORT_RUNTIME_CLASS(SyncStream);
-
 // Opaque class to wrap onnxruntime::synchronize::Notification
 ORT_RUNTIME_CLASS(SyncNotification);
 
@@ -840,7 +836,8 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr, _Outptr_ OrtDataTransferImpl** data_transfer);
+  ORT_API2_STATUS(CreateDataTransfer, _In_ const OrtEpFactory* this_ptr,
+                  _Outptr_ OrtDataTransferImpl** data_transfer);
 
   /** \brief Check if execution providers created by the factory are stream aware.
    *
@@ -865,7 +862,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ const OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };
