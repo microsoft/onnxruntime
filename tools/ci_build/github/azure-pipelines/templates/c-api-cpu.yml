@@ -56,7 +56,7 @@ parameters:
 
 stages:
 
-- stage: Run NUnit Appium BrowserStack Sample
+- stage: Run_NUnit_Appium_BrowserStack_Sample
   dependsOn: Setup # Setup stage defined in set_packaging_variables_stage.yml creates the ReleaseVersionSuffix variable
   jobs:
   - job: Run_NUnit_Appium_BrowserStack_Sample
@@ -66,6 +66,11 @@ stages:
     steps:
     - checkout: self
       persistCredentials: true
+
+    - task: NuGetToolInstaller@0
+      displayName: Use Nuget 6.10.x
+      inputs:
+        versionSpec: 6.10.x
 
     - task: PowerShell@2
       displayName: Install MAUI workloads
