@@ -65,7 +65,7 @@ template <string_template_filepath TemplateName>
 struct TemplateParameter;
 
 // Allow specialization for specific templates.
-template <string_template_filepath TemplateName, typename TemplateParameterType = TemplateParameter<TemplateName>::type>
+template <string_template_filepath TemplateName, typename TemplateParameterType = typename TemplateParameter<TemplateName>::type>
 onnxruntime::common::Status ApplyTemplate(ShaderHelper& shader_helper, TemplateParameterType parameter);
 
 #if defined(INCLUDED_BY_WGSL_GEN_HEADER)
