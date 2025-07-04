@@ -42,7 +42,7 @@ class QuantizationParams:
         for k, v in data.items():
             if not isinstance(k, str):
                 raise TypeError(f"Keys must be strings not {type(k)} for k={k!r}.")
-            if k != "axis" and not isinstance(v, (int, str, np.ndarray)):
+            if k != "axis" and not isinstance(v, (int, str, np.ndarray, float)):
                 raise TypeError(f"Values must be numpy arrays, int, float, str not {type(v)} for k={k!r}.")
             if k == "axis" and not isinstance(v, int) and v is not None:
                 raise TypeError(f"Axis value must be an int or None, not {type(v)}.")
