@@ -278,7 +278,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetSessionOptionConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out) {
+ORT_API_STATUS_IMPL(OrtApis::GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out) {
   API_IMPL_BEGIN
   if (options == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "options is nullptr");
