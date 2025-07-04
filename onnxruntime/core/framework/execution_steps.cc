@@ -34,11 +34,16 @@ Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              const bool& /*terminate_flag*/,
                              bool& continue_flag) {
   ORT_ENFORCE(wait_handle_, "WaitOnEPStep.wait_handle is null");
-  wait_handle_(*ctx.GetDeviceStream(stream_idx), *ctx.GetNotification(notification_idx_));
-  // update streams clock status
-  if (ctx.GetDeviceStream(stream_idx)) {
-    ctx.GetDeviceStream(stream_idx)->UpdateStreamClock(ctx.GetNotification(notification_idx_)->GetStreamSyncTable());
+
+  auto* stream = ctx.GetDeviceStream(stream_idx);
+  auto& notification = *ctx.GetNotification(notification_idx_);
+  wait_handle_(stream, notification);
+
+  // update the stream's clock status
+  if (stream != nullptr) {
+    stream->UpdateStreamClock(notification.GetStreamSyncTable());
   }
+
   LOGS(ctx.GetLogger(), VERBOSE) << "stream " << stream_idx << " wait on Notification with id: " << notification_idx_;
   continue_flag = true;
   return Status::OK();
