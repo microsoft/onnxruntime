@@ -37,16 +37,19 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
     ep_device->ep_metadata = *ep_metadata;
   }
 
-  if (ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version) !=
-      ep_device->ep_metadata.Entries().end()) {
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                 "The provided EP metadata should not explicitly specify the EP version.");
-  }
+  // Add EP version from OrtEpFactory to metadata. OrtEpFactory::GetVersion is supported since 1.23.
+  if (ep_factory->ort_version_supported >= uint32_t{23}) {
+    if (ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version) !=
+        ep_device->ep_metadata.Entries().end()) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "The provided EP metadata should not explicitly specify the EP version.");
+    }
 
-  {
-    std::string ep_version = ep_factory->GetVersion(ep_factory);
-    ORT_API_RETURN_IF_STATUS_NOT_OK(ParseSemVerVersion(ep_version, nullptr));
-    ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, std::move(ep_version));
+    {
+      std::string ep_version = ep_factory->GetVersion(ep_factory);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(ParseSemVerVersion(ep_version, nullptr));
+      ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, std::move(ep_version));
+    }
   }
 
   if (ep_options) {
