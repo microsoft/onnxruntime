@@ -314,6 +314,7 @@ struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -327,6 +328,10 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+    return ORT_VERSION;
   }
 
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
