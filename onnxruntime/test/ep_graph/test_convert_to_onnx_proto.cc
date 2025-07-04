@@ -3,6 +3,9 @@
 
 #include "test_convert_to_onnx_proto.h"
 
+#include <algorithm>
+#include <string>
+#include <string_view>
 #include <unordered_map>
 #include <vector>
 
@@ -56,41 +59,34 @@ static Ort::Status GetOrtValueInfoName(const OrtValueInfo& ort_value_info, /*out
 static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info, onnx::ValueInfoProto& value_info_proto);
 
 struct OrtValueInfoStorage {
-  std::unordered_map<std::string, const OrtValueInfo*> map;
-  std::vector<const OrtValueInfo*> array;
+  std::unordered_map<std::string_view, const OrtValueInfo*> map;
+  std::vector<std::pair<std::string_view, const OrtValueInfo*>> array;
+  std::vector<std::string> value_names;  // Storage for value names used in map and array.
 
-  bool HasValueInfo(const char* name) {
+  bool HasValueInfo(const char* name) const {
     return map.count(name) != 0;
   }
 
-  Ort::Status AddOrGetName(const OrtValueInfo* ort_value_info, std::string& name) {
+  Ort::Status Add(const OrtValueInfo* ort_value_info, const char* value_name) {
     const OrtApi& ort_api = Ort::GetApi();
 
     C_API_RETURN_IF(ort_value_info == nullptr, ort_api, "Tried to add NULL OrtValueInfo");
-
-    const char* value_name = nullptr;
-    C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(ort_value_info, &value_name));
-    name = std::string{value_name};
-
-    if (HasValueInfo(value_name)) {
-      return Ort::Status{nullptr};
-    }
-
-    map.emplace(name, ort_value_info);
-    array.push_back(ort_value_info);
-  }
-
-  Ort::Status Add(const OrtValueInfo* ort_value_info) {
-    const OrtApi& ort_api = Ort::GetApi();
-
-    C_API_RETURN_IF(ort_value_info == nullptr, ort_api, "Tried to add NULL OrtValueInfo");
-
-    const char* value_name = nullptr;
-    C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(ort_value_info, &value_name));
     C_API_RETURN_IF(HasValueInfo(value_name), ort_api, "Tried to add existing OrtValueInfo");
 
-    map.emplace(std::string{value_name}, ort_value_info);
-    array.push_back(ort_value_info);
+    value_names.push_back(value_name);
+    map.emplace(value_names.back(), ort_value_info);
+    array.emplace_back(value_names.back(), ort_value_info);
+
+    return Ort::Status{nullptr};
+  }
+
+  void SortByName() {
+    std::sort(array.begin(), array.end(),
+              [](const std::pair<std::string_view, const OrtValueInfo*>& a,
+                 const std::pair<std::string_view, const OrtValueInfo*>& b) -> bool {
+                return a.first < b.first;
+              });
+    std::sort(value_names.begin(), value_names.end());
   }
 };
 
@@ -101,7 +97,8 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             size_t external_data_size_threshold) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  OrtValueInfoStorage activation_ort_value_info_storage;
+  OrtValueInfoStorage ort_value_info_storage;
+  OrtValueInfoStorage initializer_ort_value_info_storage;
 
   (void)save_as_external_data;
   (void)external_data_location;
@@ -169,44 +166,71 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
           continue;
         }
 
-        std::string ort_value_info_name;
-        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoName(*ort_value_info, ort_value_info_name));
-        node_proto->add_input(ort_value_info_name);
+        std::string value_name;
+        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoName(*ort_value_info, value_name));
+        node_proto->add_input(value_name);
 
         OrtValueInfoFlags flags = {};
         CXX_API_RETURN_IF_ERROR(GetOrtValueInfoFlags(*ort_value_info, flags));
 
-#if 0
-        if (flags.is_required_graph_input || flags.is_graph_output) {
-          // Don't add graph inputs or outputs to graph_proto's list of value_infos.
-          // Do nothing, but do not skip because a graph output "could" come from a constant initializer.
-        }
+        // Don't add graph inputs or graph outputs to graph_proto's list of value_infos.
+        // Do add initializers (constant and non-constant) to graph_proto's list of initializer tensors.
 
-        if (flags.is_optional_graph_input) {
-          // Don't add optional graph inputs to graph_proto's list of value_infos.
-          // However, we need to add the non-constant initializer to graph_proto's list initializer tensors.
-          // TODO
-        }
+        if (flags.IsOptionalGraphInput()) {
+          if (!initializer_ort_value_info_storage.HasValueInfo(value_name.c_str())) {
+            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info, value_name.c_str()));
+          }
+        } else if (flags.IsConstantInitializer()) {
+          if (!ort_value_info_storage.HasValueInfo(value_name.c_str())) {
+            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info, value_name.c_str()));
+          }
 
-        if (flags.is_constant_initializer) {
-          // Add constant initializer's value_info to graph_proto's list of value_infos.
-          // Add constant initializer's data to graph_proto's list of initializer tensors.
-          // TODO
+          if (!initializer_ort_value_info_storage.HasValueInfo(value_name.c_str())) {
+            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info, value_name.c_str()));
+          }
+        } else if (flags.IsInternal()) {
+          if (!ort_value_info_storage.HasValueInfo(value_name.c_str())) {
+            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info, value_name.c_str()));
+          }
         }
-
-        if (flags.is_from_outer_scope) {
-          // Don't need to handle this explicitly. If this is a constant initializer from an outer scope, then we've
-          // handled it above.
-        }
-
-        if (flags.IsInternal()) {
-        }
-#endif
-
-        //std::string ort_value_info_name;
-        //activation_ort_value_info_storage.AddOrGetName(ort_value_info, ort_value_info_name);
       }
     }
+
+    if (num_outputs > 0) {
+      std::vector<const OrtValueInfo*> ort_outputs(num_outputs);
+      C_API_RETURN_IF_ERROR(ort_api.Node_GetOutputs(ort_node, ort_outputs.data(), ort_outputs.size()));
+
+      for (const OrtValueInfo* ort_value_info : ort_outputs) {
+        if (ort_value_info == nullptr) {
+          // missing optional output.
+          node_proto->add_output("");
+          continue;
+        }
+
+        std::string value_name;
+        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoName(*ort_value_info, value_name));
+        node_proto->add_output(value_name);
+
+        OrtValueInfoFlags flags = {};
+        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoFlags(*ort_value_info, flags));
+
+        if (flags.IsInternal()) {
+          if (!ort_value_info_storage.HasValueInfo(value_name.c_str())) {
+            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info, value_name.c_str()));
+          }
+        }
+      }
+    }
+  }
+
+  // Sort to ensure consistent ordering of value_infos and intializers in GraphProto.
+  ort_value_info_storage.SortByName();
+  initializer_ort_value_info_storage.SortByName();
+
+  // Add sorted value_infos to GraphProto.
+  for (const std::pair<std::string_view, const OrtValueInfo*>& it : ort_value_info_storage.array) {
+    onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_value_info()->Add();
+    CXX_API_RETURN_IF_ERROR(OrtValueInfoToProto(*it.second, *value_info_proto));
   }
 
   return Ort::Status{nullptr};
@@ -234,6 +258,18 @@ static Ort::Status GetOrtValueInfoFlags(const OrtValueInfo& ort_value_info, OrtV
 
   if (is_optional_graph_input) {
     flags.flags |= OrtValueInfoFlags::kIsOptionalGraphInput;
+  }
+
+  if (is_graph_output) {
+    flags.flags |= OrtValueInfoFlags::kIsGraphOutput;
+  }
+
+  if (is_constant_initializer) {
+    flags.flags |= OrtValueInfoFlags::kIsConstantInitializer;
+  }
+
+  if (is_from_outer_scope) {
+    flags.flags |= OrtValueInfoFlags::kIsOuterScope;
   }
 
   result = flags;
