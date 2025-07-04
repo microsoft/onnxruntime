@@ -5,6 +5,8 @@
 
 #include "core/providers/webgpu/compute_context.h"
 #include "core/providers/webgpu/webgpu_context.h"
+#include "core/providers/webgpu/allocator.h"
+#include "core/providers/webgpu/buffer_manager.h"
 
 namespace onnxruntime {
 namespace webgpu {
@@ -24,6 +26,13 @@ Status ComputeContext::PopErrorScope() {
     return webgpu_context_.PopErrorScope();
   }
   return Status::OK();
+}
+
+const webgpu::BufferManager& ComputeContext::BufferManager() const {
+  OrtDevice gpu_device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0);
+  AllocatorPtr allocator = kernel_context_.GetAllocator(gpu_device);
+  const GpuBufferAllocator* gpu_allocator = static_cast<const GpuBufferAllocator*>(allocator.get());
+  return gpu_allocator->GetBufferManager();
 }
 
 }  // namespace webgpu

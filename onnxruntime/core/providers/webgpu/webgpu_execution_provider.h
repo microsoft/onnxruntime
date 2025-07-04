@@ -8,6 +8,7 @@
 #include "core/framework/session_options.h"
 #include "core/graph/constants.h"
 #include "core/providers/providers.h"
+#include "core/providers/webgpu/buffer_manager.h"
 
 struct pthreadpool;
 namespace onnxruntime {
@@ -18,9 +19,11 @@ template <typename T>
 KernelCreateInfo BuildKernelCreateInfo();
 
 class WebGpuContext;
-enum class BufferCacheMode;
 class WebGpuProfiler;
 class GpuBufferAllocator;
+
+// Forward declare CapturedCommandInfo which is now defined in webgpu_context.h
+struct CapturedCommandInfo;
 }  // namespace webgpu
 
 struct WebGpuExecutionProviderConfig {
@@ -81,10 +84,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool IsGraphCaptureEnabled() const override;
   bool IsGraphCaptured(int graph_annotation_id) const override;
   Status ReplayGraph(int graph_annotation_id) override;
+  webgpu::BufferManager& BufferManager() const;
 
  private:
   bool IsGraphCaptureAllowed() const;
   void IncrementRegularRunCountBeforeGraphCapture();
+
   int context_id_;
   webgpu::WebGpuContext& context_;
   webgpu::WebGpuProfiler* profiler_ = nullptr;
@@ -95,6 +100,12 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
   webgpu::GpuBufferAllocator* allocator_ = nullptr;
+
+  // Buffer manager specifically for graph capture mode
+  std::unique_ptr<webgpu::BufferManager> graph_buffer_mgr_ = nullptr;
+
+  // Store captured commands directly in the EP instead of in WebGpuContext
+  std::vector<webgpu::CapturedCommandInfo> captured_commands_;
 };
 
 }  // namespace onnxruntime
