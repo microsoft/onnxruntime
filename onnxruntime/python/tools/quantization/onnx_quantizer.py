@@ -785,12 +785,12 @@ class ONNXQuantizer(BaseQuantizer):
         weight_zero_point = (
             onnx.numpy_helper.to_array(weight_zp_init) if weight_zp_init is not None else None
         )
-        is_per_channel = self.quantized_value_map[weight_name].axis is not None
+        is_per_channel = self.per_channel
         if (
             weight_zero_point is not None
             and weight_zero_point.size
             and not weight_zero_point.any()
-            and self.weight_qType in (onnx_proto.TensorProto.INT8)
+            and self.weight_qType in (onnx_proto.TensorProto.INT8,)
         ):
             bias_initializer = find_by_name(bias_name, self.model.initializer())
             did_update, new_weight_scale = self._adjust_weight_scale_for_int32_bias(
