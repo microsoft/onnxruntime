@@ -2827,7 +2827,9 @@ static void MatmulWithQuantWeightShapeInference(ONNX_NAMESPACE::InferenceContext
 }
 
 void RegisterContribSchemas() {
-  ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(AttnLSTM, RegisterAttnLSTMContribOpSchema);
+  static onnx::OpSchemaRegistry::OpSchemaRegisterOnce(op_schema_register_onceAttnLSTM126) =
+      
+      RegisterAttnLSTMContribOpSchema(onnx::OpSchema("AttnLSTM", "C:\\Users\\chunye.wang\\workspace\\cp-dev\\source\\onnxruntime\\onnxruntime\\core\\graph\\contrib_ops\\contrib_defs.cc", 2830));
   ONNX_CONTRIB_OPERATOR_SCHEMA_ELSEWHERE(Range, RegisterRangeOpSchema);
 
   ONNX_CONTRIB_OPERATOR_SCHEMA(LayerNormalization)
