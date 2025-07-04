@@ -636,6 +636,43 @@ class ONNXQuantizer(BaseQuantizer):
             return self.parent.find_quantized_value(input_name)
         return None
 
+    def adjust_single_weight_scale_if_needed(
+        self,
+        bias_val: float,
+        input_scale: np.ndarray,
+        weight_scale: np.ndarray,
+        weight_scale_dtype: np.dtype,
+        weight_name: str,
+        bias_name: str,
+        qrange: np.ndarray,
+        multiplicative_epsilon: float,
+        idx: int = None
+    ) -> tuple[bool, np.ndarray]:
+        """Adjust a single weight scale to ensure the int32 bias does not overflow."""
+        absmax = np.abs(bias_val)
+        bias_smallest_valid_scale = multiplicative_epsilon * (2.0 * absmax) / qrange
+
+        input_scale_fp64 = np.array(input_scale.item(), dtype=np.float64)
+        weight_scale_fp64 = np.array(weight_scale.item(), dtype=np.float64)
+        bias_candidate_scale = input_scale_fp64 * weight_scale_fp64
+
+        if (bias_candidate_scale < bias_smallest_valid_scale) and (bias_candidate_scale > 0.0):
+            ratio = bias_smallest_valid_scale / bias_candidate_scale
+            new_scale = weight_scale_fp64 * ratio
+            if idx is None:
+                logging.info(
+                    f"Increasing scale for weight `{weight_name}` by the ratio {ratio} to "
+                    f"ensure bias `{bias_name}` has a valid scale."
+                )
+                return True, np.array(new_scale, dtype=weight_scale_dtype)
+            else:
+                logging.info(
+                    f"Increased scale[{idx}] for weight `{weight_name}` by ratio {ratio} "
+                    f"to ensure bias `{bias_name}` has a valid scale."
+                )
+                return True, new_scale.astype(weight_scale_dtype)
+        return False, weight_scale
+    
     def _adjust_weight_scale_for_int32_bias(
         self,
         input_scale: np.ndarray,
@@ -650,7 +687,6 @@ class ONNXQuantizer(BaseQuantizer):
             return False, None
 
         bias_float_data = tensor_proto_to_array(bias_tp)
-
         int32_info = np.iinfo(np.int32)
         multiplicative_epsilon = 1.0001
         qrange = np.array(int32_info.max, dtype=np.float64) - np.array(int32_info.min + 1, dtype=np.float64)
@@ -661,40 +697,21 @@ class ONNXQuantizer(BaseQuantizer):
             rmin = np.minimum(bias_float_data.min(), np.array(0, dtype=np.float64))
             rmax = np.maximum(bias_float_data.max(), np.array(0, dtype=np.float64))
             absmax = np.maximum(np.abs(rmin), np.abs(rmax))
-            bias_smallest_valid_scale = multiplicative_epsilon * (2.0 * absmax) / qrange
-
-            input_scale_fp64 = np.array(input_scale.item(), dtype=np.float64)
-            weight_scale_fp64 = np.array(weight_scale.item(), dtype=np.float64)
-            bias_candidate_scale = input_scale_fp64 * weight_scale_fp64
-
-            if (bias_candidate_scale < bias_smallest_valid_scale) and (bias_candidate_scale > 0.0):
-                ratio = bias_smallest_valid_scale / bias_candidate_scale
-                logging.info(
-                    f"Increasing scale for weight `{weight_name}` by the ratio {ratio} to "
-                    f"ensure bias `{bias_tp.name}` has a valid scale."
-                )
-                new_scale = weight_scale_fp64 * ratio
-                weight_scale = np.array(new_scale, dtype=weight_scale_dtype)
+            changed, new_scale = self.adjust_single_weight_scale_if_needed(
+                absmax, input_scale, weight_scale, weight_scale_dtype,
+                weight_name, bias_tp.name, qrange, multiplicative_epsilon
+            )
+            if changed:
+                weight_scale = new_scale
                 updated = True
         elif weight_scale.shape and len(weight_scale.shape) == 1:
-            num_elems = weight_scale.shape[0]
-
-            for i in range(num_elems):
-                bias_rmax = np.abs(bias_float_data[i])
-                bias_smallest_valid_scale = multiplicative_epsilon * (2.0 * bias_rmax) / qrange
-
-                input_scale_fp64 = np.array(input_scale.item(), dtype=np.float64)
-                weight_scale_fp64 = np.array(weight_scale[i].item(), dtype=np.float64)
-                bias_candidate_scale = input_scale_fp64 * weight_scale_fp64
-
-                if (bias_candidate_scale < bias_smallest_valid_scale) and (bias_candidate_scale > 0.0):
-                    ratio = bias_smallest_valid_scale / bias_candidate_scale
-                    logging.info(
-                        f"Increased scale[{i}] for weight `{weight_name}` by ratio {ratio} "
-                        f"to ensure bias `{bias_tp.name}` has a valid scale."
-                    )
-                    new_scale = weight_scale_fp64 * ratio
-                    weight_scale[i] = new_scale.astype(weight_scale_dtype)
+            for i in range(weight_scale.shape[0]):
+                changed, new_scale = self.adjust_single_weight_scale_if_needed(
+                    bias_float_data[i], input_scale, weight_scale[i], weight_scale_dtype,
+                    weight_name, bias_tp.name, qrange, multiplicative_epsilon, idx=i
+                )
+                if changed:
+                    weight_scale[i] = new_scale
                     updated = True
 
         return updated, weight_scale
@@ -773,7 +790,7 @@ class ONNXQuantizer(BaseQuantizer):
             weight_zero_point is not None
             and weight_zero_point.size
             and not weight_zero_point.any()
-            and self.weight_qType in (onnx_proto.TensorProto.INT8, onnx_proto.TensorProto.INT16)
+            and self.weight_qType in (onnx_proto.TensorProto.INT8)
         ):
             bias_initializer = find_by_name(bias_name, self.model.initializer())
             did_update, new_weight_scale = self._adjust_weight_scale_for_int32_bias(
