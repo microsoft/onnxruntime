@@ -330,7 +330,7 @@ struct CudaEpFactory : OrtEpFactory {
     return factory->vendor.c_str();
   }
 
-  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return ORT_VERSION;
   }
 
