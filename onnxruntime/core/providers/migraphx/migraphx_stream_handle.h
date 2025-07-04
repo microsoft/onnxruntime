@@ -7,7 +7,7 @@
 #include "migraphx_call.h"
 
 namespace onnxruntime {
-void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
+void WaitMIGraphXNotificationOnDevice(Stream* stream, synchronize::Notification& notification);
 
 struct MIGraphXStream : Stream {
   MIGraphXStream(hipStream_t stream,
