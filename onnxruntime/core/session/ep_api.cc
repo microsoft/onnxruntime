@@ -37,8 +37,8 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
     ep_device->ep_metadata = *ep_metadata;
   }
 
-  if (ep_device->ep_metadata.entries.find(kOrtEpDevice_EpMetadataKey_Version) !=
-      ep_device->ep_metadata.entries.end()) {
+  if (ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version) !=
+      ep_device->ep_metadata.Entries().end()) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
                                  "The provided EP metadata should not explicitly specify the EP version.");
   }
