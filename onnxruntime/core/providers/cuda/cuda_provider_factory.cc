@@ -308,6 +308,7 @@ CUDA_Provider* GetProvider() {
 }  // namespace onnxruntime
 
 #include "core/framework/error_code_helper.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
