@@ -764,6 +764,15 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         } else {
           ORT_THROW("[ERROR] [OpenVINO] The value for the key 'enable_qdq_optimizer' should be a boolean i.e. true or false. Default value is false.\n");
         }
+      } else if (key == "enable_causallm") {
+        if (value == "true" || value == "True" ||
+            value == "false" || value == "False") {
+          ov_options[key] = value;
+        } else {
+          ORT_THROW(
+              "[ERROR] [OpenVINO] The value for the key 'enable_causallm' should be a boolean i.e. true or false."
+              " Default value is false. This provider option must be used with CausalLM Models viz. LLMs & SLMs only.\n");
+        }
       } else if (key == "disable_dynamic_shapes") {
         if (value == "true" || value == "True" ||
             value == "false" || value == "False") {
@@ -817,11 +826,14 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
         device_memory_name_ = std::move(value);
       } else if (key == "device_luid") {
         ov_options[key] = value;
+      } else if (key == "reshape_input") {
+        ov_options[key] = value;
       } else {
         ORT_THROW(
             "[ERROR] [OpenVINO] wrong key type entered. Choose from the following runtime key options that are available for OpenVINO."
             " ['device_type', 'device_id', 'num_of_threads', 'load_config', 'cache_dir', 'num_streams', "
-            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer', 'model_priority'] \n");
+            "'enable_opencl_throttling', 'disable_dynamic_shapes', 'enable_qdq_optimizer',"
+            " 'enable_causallm', 'model_priority'] \n");
       }
     }
     session_options.AppendExecutionProvider_OpenVINO_V2(ov_options);

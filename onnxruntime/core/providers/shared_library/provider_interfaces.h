@@ -1097,7 +1097,8 @@ struct ProviderHost {
                                     ONNX_NAMESPACE::GraphProto& graph_proto,
                                     bool include_initializers,
                                     bool include_outer_scope_args,
-                                    int execution_order) noexcept = 0;
+                                    int execution_order,
+                                    bool include_initializer_data) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
   virtual IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const = 0;
 
