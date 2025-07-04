@@ -2053,6 +2053,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>bits</tt> : int</dt>
+<dd>Number of bits used for weight quantization. Must be either 4 or 8. </dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
