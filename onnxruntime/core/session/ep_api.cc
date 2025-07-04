@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <vector>
+
+#include "core/common/semver.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/ort_value.h"
@@ -41,8 +43,11 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
                                  "The provided EP metadata should not explicitly specify the EP version.");
   }
 
-  const std::string ep_version = ep_factory->GetVersion(ep_factory);
-  ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, ep_version);
+  {
+    std::string ep_version = ep_factory->GetVersion(ep_factory);
+    ORT_API_RETURN_IF_STATUS_NOT_OK(ParseSemVerVersion(ep_version, nullptr));
+    ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, std::move(ep_version));
+  }
 
   if (ep_options) {
     ep_device->ep_options = *ep_options;

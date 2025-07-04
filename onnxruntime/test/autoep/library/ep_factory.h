@@ -51,9 +51,9 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   static OrtStatus* ORT_API_CALL CreateDataTransferImpl(OrtEpFactory* this_ptr,
                                                         OrtDataTransferImpl** data_transfer) noexcept;
 
-  const std::string ep_name_;            // EP name
-  const std::string vendor_{"Contoso"};  // EP vendor name
-  const std::string ep_version_{"0.1"};  // EP version
+  const std::string ep_name_;              // EP name
+  const std::string vendor_{"Contoso"};    // EP vendor name
+  const std::string ep_version_{"0.1.0"};  // EP version
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;

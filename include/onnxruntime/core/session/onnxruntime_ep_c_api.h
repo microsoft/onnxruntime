@@ -665,6 +665,9 @@ struct OrtEpFactory {
 
   /** \brief Get the version of the execution provider that the factory creates.
    *
+   * The version string should adhere to the Semantic Versioning 2.0 specification
+   * (https://github.com/semver/semver/blob/v2.0.0/semver.md).
+   *
    * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
