@@ -9,10 +9,93 @@
 #include <iostream>
 #include <algorithm>
 #include "mlasi_kleidiai.h"
+#include <functional>
+#include <unordered_map>
 
 #include "kai/ukernels/matmul/imatmul_clamp_f32_f32p_f32p/kai_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa.h"
 #include "kai/ukernels/matmul/pack/kai_lhs_imatmul_pack_x32p2vlx1_x32p_sme.h"
 #include "kai/ukernels/matmul/pack/kai_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme.h"
+
+// Right-hand-side (weights) cache key
+struct RhsCacheKey {
+    size_t co, ci, kh, kw, dilationh, dilationw;
+    size_t weights_hash;
+
+    bool operator==(const RhsCacheKey& other) const {
+        return co == other.co && ci == other.ci &&
+               kh == other.kh && kw == other.kw &&
+               dilationh == other.dilationh && dilationw == other.dilationw &&
+               weights_hash == other.weights_hash;
+    }
+};
+
+
+// Left-hand-side (input indirection) cache key
+struct LhsCacheKey {
+    size_t ci, ih, iw;
+    size_t padding, sh, sw;
+    size_t kh, kw;
+    size_t dilationh, dilationw;
+    size_t data_hash;
+
+    bool operator==(const LhsCacheKey& other) const {
+        return ci == other.ci && ih == other.ih && iw == other.iw &&
+               padding == other.padding && sh == other.sh && sw == other.sw &&
+               kh == other.kh && kw == other.kw &&
+               dilationh == other.dilationh && dilationw == other.dilationw &&
+               data_hash == other.data_hash;
+    }
+};
+
+// Derived from 2^32 * (sqrt(5) - 1) / 2 ≈ 0.6180339887 (reciprocal of the golden ratio)
+// Based on Knuth's multiplicative hashing method
+constexpr size_t HASH_GOLDEN_RATIO_CONST = 0x9e3779b9;
+
+size_t HashWeights(const float* data, size_t count = 16) {
+    size_t h = 0;
+    for (size_t i = 0; i < count; ++i) {
+        h ^= std::hash<float>()(data[i]) + HASH_GOLDEN_RATIO_CONST + (h << 6) + (h >> 2);
+    }
+    return h;
+}
+
+namespace std {
+    // Specialize hash type for cache keys and do it within namespace std.
+    // Doing this allows standard containers like std::unordered_map to find
+    // the appropriate hash function via template specialization, as ADL
+    // (argument-dependent lookup) does not apply to std::hash.
+    template<>
+    struct hash<RhsCacheKey> {
+        size_t operator()(const RhsCacheKey& k) const {
+            return k.weights_hash ^
+                (std::hash<size_t>()(k.co) << 1) ^
+                (std::hash<size_t>()(k.ci) << 2) ^
+                (std::hash<size_t>()(k.kh) << 3) ^
+                (std::hash<size_t>()(k.kw) << 4) ^
+                (std::hash<size_t>()(k.dilationh) << 5) ^
+                (std::hash<size_t>()(k.dilationw) << 6);
+        }
+    };
+
+    template<>
+    struct hash<LhsCacheKey> {
+        size_t operator()(const LhsCacheKey& k) const {
+            return k.data_hash ^
+                (std::hash<size_t>()(k.ci) << 1) ^
+                (std::hash<size_t>()(k.ih) << 2) ^
+                (std::hash<size_t>()(k.iw) << 3) ^
+                (std::hash<size_t>()(k.padding) << 4) ^
+                (std::hash<size_t>()(k.sh) << 5) ^
+                (std::hash<size_t>()(k.sw) << 6) ^
+                (std::hash<size_t>()(k.kh) << 7) ^
+                (std::hash<size_t>()(k.kw) << 8) ^
+                (std::hash<size_t>()(k.dilationh) << 9) ^
+                (std::hash<size_t>()(k.dilationw) << 10);
+        }
+    };
+
+}
+
 
 static constexpr size_t ComputeKernelSize(const size_t D, const size_t K) {
     // D - dilation size
@@ -59,7 +142,7 @@ static size_t ComputeMlasWorkingBufferSize(const size_t co,
     return m * co;
 }
 
-static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
+static bool CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
 
     //functional checks - logically can the conv be performed
     if ((Parameters->Dimensions != 2) ||
@@ -74,8 +157,7 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
          ComputeConvOutSize(Parameters->InputShape[1],
                             ComputeKernelSize(Parameters->DilationShape[1],Parameters->KernelShape[1]),
                             Parameters->Padding[1], Parameters->StrideShape[1]) == 0)) {
-
-        throw ARMKleidiAI::NotSupported();
+        return false;
     }
 
     //optimization checks - is the implementation optimal for the conv request
@@ -97,8 +179,9 @@ static void CheckCapabilitiesSme(const MLAS_CONV_PARAMETERS* Parameters) {
     MLAS_UNREFERENCED_PARAMETER(n_step);
 
     if (N == 1 || Parameters->KernelShape[0] < 3 || Parameters->KernelShape[1] < 3) {
-        throw ARMKleidiAI::NotSupported();
+        return false;
     }
+    return true;
 }
 
 //General purpose axis swapping
@@ -123,7 +206,7 @@ static auto Transpose4D(std::array<const size_t,4> shape_in,
                   el[3]];
     };
 
-    auto out_ = std::make_unique_for_overwrite<float[]>(shape_in[0] * shape_in[1] * shape_in[2] * shape_in[3]);
+    auto out_ = std::make_unique<float[]>(shape_in[0] * shape_in[1] * shape_in[2] * shape_in[3]);
     auto out = out_.get();
 
     const size_t set_stride[]{shape_out[1] * shape_out[2] * shape_out[3], shape_out[2] * shape_out[3], shape_out[3]};
@@ -162,7 +245,7 @@ static std::unique_ptr<float[]> NChwToNhwc(const size_t n,
     const auto d_h = ComputeKernelSize(dilationh, h);
     const auto d_w = ComputeKernelSize(dilationw, w);
 
-    auto t = std::make_unique_for_overwrite<float[]>(n*d_h*d_w*c);
+    auto t = std::make_unique<float[]>(n*d_h*d_w*c);
     if (zero_fill) {
         std::fill(&t.get()[0], &t.get()[n*d_h*d_w*c], 0.f);
     }
@@ -253,65 +336,25 @@ static void MultiThreadedLHSPackSme(MLAS_THREADPOOL* ThreadPool, const size_t ci
     });
 }
 
-using CacheKey = float const * const;
-//Generate a unique key for rhs weight packing caching
-static CacheKey GenerateRhsKey(const size_t co, const size_t ci,
-                               const size_t kh, const size_t kw,
-                               const size_t dilationh, const size_t dilationw,
-                               const float* weights) {
-
-    //Weights, co, ci, kh, kw are constants. Dilation factors could vary
-    //Encode the dilation factors into key
-    auto key = &weights[(dilationh*2) + dilationw];
-    if (key != std::clamp(key, &weights[0], &weights[(co * ci * kh * kw) - 1])) {
-        throw std::invalid_argument("Invalid Rhs key");
-    }
-    return key;
-}
-
-//Generate a unique key for lhs indirection pointer array caching
-static CacheKey GenerateLhsKey(const size_t ci,
-                               const size_t ih, const size_t iw,
-                               const size_t padding, const size_t sh, const size_t sw,
-                               const size_t kh, const size_t kw,
-                               const size_t dilationh, const size_t dilationw,
-                               const float* data) {
-    //Data, ci, ih, iw are constants.
-    //Encode the others into key
-    const auto d_kh = ComputeKernelSize(dilationh, kh);
-    const auto d_kw = ComputeKernelSize(dilationw, kw);
-
-    auto ih_out_size = ComputeConvOutSize(ih, d_kh, padding, sh);
-    auto iw_out_size = ComputeConvOutSize(iw, d_kw, padding, sw);
-
-    auto key = &data[ih_out_size * 2 + iw_out_size];
-    if (key != std::clamp(key, &data[0], &data[(ci * ih * iw) - 1])) {
-        throw std::invalid_argument("Invalid Lhs key");
-    }
-    return key;
-}
-
-static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(CacheKey key,
-                                                          const size_t co, const size_t ci,
+static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(const size_t co, const size_t ci,
                                                           const size_t kh, const size_t kw,
                                                           const size_t dilationh, const size_t dilationw,
                                                           const float* weights, const float* bias,
                                                           MLAS_THREADPOOL* ThreadPool)
 {
     //cache of prepacked kai rhs weights and biases
-    static std::map<CacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
+    static std::unordered_map<RhsCacheKey, std::shared_ptr<std::byte[]>> rhs_cache;
 
-    //sanity check key
-    if (rhs_cache.count(key) > 1) {
-        throw std::invalid_argument("Invalid conv rhs key");
-    }
+    RhsCacheKey key = { co, ci, kh, kw, dilationh, dilationw, HashWeights(weights) };
 
-    if (auto found = rhs_cache.find(key); found != rhs_cache.end()) {
+    auto found = rhs_cache.find(key);
+    if (found != rhs_cache.end()) {
         return found->second;
     } else {
         // prepare mlas filter weights for kai rhs packing
         // dilated nhwc format
         auto nhwc = NChwToNhwc(co, ci, kh, kw, weights, dilationh, dilationw, true, ThreadPool);
+
 
         //dilation, axis swap (n x k -> k x n) where n == co, k == d_kh x d_kw x ci
         const auto d_kh = ComputeKernelSize(dilationh,kh);
@@ -321,13 +364,20 @@ static std::shared_ptr<std::byte[]> RhsPackWeightsBiasSme(CacheKey key,
         auto t_weights = Transpose4D({co,d_kh,d_kw,ci},&nhwc[0],{1,2,3,0});
 
         const auto packed_size = kai_get_rhs_packed_size_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(co,d_kh*d_kw,ci);
-        auto packed = std::make_shared_for_overwrite<std::byte[]>(packed_size);
-
-        kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(
-            co, d_kh*d_kw, ci, co * sizeof(float), &t_weights[0], bias, packed.get()
-        );
+        auto packed = std::shared_ptr<std::byte[]>(new std::byte[packed_size], std::default_delete<std::byte[]>());
 
         rhs_cache[key] = packed;
+
+        std::vector<float> bias_copy;
+        if (bias) {
+            bias_copy.assign(bias, bias + co);
+        } else {
+            bias_copy.resize(co, 0.0f);
+        }
+
+        kai_run_rhs_imatmul_pack_kxn_x32p2vlx1b_x32_x32_sme(
+            co, d_kh*d_kw, ci, co * sizeof(float), &t_weights[0], bias_copy.data(), packed.get()
+        );
 
         return packed;
     }
@@ -344,7 +394,9 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
     const auto m_step = kai_get_m_step_imatmul_clamp_f32_f32p2vlx1_f32p2vlx1b_2vlx2vl_sme2_mopa();
     const auto lhs_ptrs_k = kh * kw;
     const auto lhs_ptrs_m = m_step * MlasDivRoundup(m, m_step);
-    auto lhs_ptrs = std::make_shared_for_overwrite<const void*[]>(lhs_ptrs_k * lhs_ptrs_m);
+    auto lhs_ptrs = std::shared_ptr<const void*[]>(new const void*[lhs_ptrs_k * lhs_ptrs_m],
+                                                std::default_delete<const void*[]>());
+
 
     auto ih_out_size = ComputeConvOutSize(ih, kh, padding, 1);
     auto iw_out_size = ComputeConvOutSize(iw, kw, padding, 1);
@@ -399,8 +451,7 @@ static std::shared_ptr<const void*[]> LhsPtrFill(const size_t ci, const size_t i
     return lhs_ptrs;
 }
 
-static std::unique_ptr<std::byte[]> LhsPackImageDataSme(CacheKey key,
-                                                        const size_t ci, const size_t ih, const size_t iw,
+static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const size_t ih, const size_t iw,
                                                         const size_t kh, const size_t kw, const size_t sh,
                                                         const size_t sw, const size_t padding, const float* in,
                                                         MLAS_THREADPOOL* ThreadPool)
@@ -408,21 +459,24 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(CacheKey key,
     static const std::array<float, 256> pad_ptr{0.f};
     assert(pad_ptr.size() > ci);
 
+    LhsCacheKey key = {
+        ci, ih, iw,
+        padding, sh, sw,
+        kh, kw,
+        1, 1,
+        HashWeights(in)
+    };
+
     //create lhs in format required for imatmul
     const auto m = ComputeConvOutSize(ih, kh, padding, sh) * ComputeConvOutSize(iw, kw, padding, sw);
 
     const auto lhs_size = kai_get_lhs_packed_size_lhs_imatmul_pack_x32p2vlx1_x32p_sme(m,kh*kw,ci);
-    auto lhs = std::make_unique_for_overwrite<std::byte[]>(lhs_size);
+    auto lhs = std::make_unique<std::byte[]>(lhs_size);
 
     auto nhwc = NChwToNhwc(1, ci, ih, iw, in, 1, 1, false, ThreadPool);
 
     //cache of computed lhs ptr offsets
-    static std::map<CacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
-
-    // sanity check key
-    if (lhs_ptrs_cache.count(key) > 1) {
-        throw std::invalid_argument("Invalid conv lhs_ptrs key");
-    }
+    static std::unordered_map<LhsCacheKey, std::shared_ptr<const void*[]>> lhs_ptrs_cache;
 
     std::shared_ptr<const void*[]> lhs_ptrs;
     if (auto found = lhs_ptrs_cache.find(key); found != lhs_ptrs_cache.end()) {
@@ -501,11 +555,9 @@ static void ConvolveSme(const size_t co, //channels out
             result = tmp_mlas_aligned;
         }
 
-        auto rhs_key = GenerateRhsKey(co, ci, kh, kw, dilationh, dilationw, weights);
-        auto lhs_key = GenerateLhsKey(ci, ih, iw, padding, sh, sw, kh, kw, dilationh, dilationw, in);
+        auto lhs = LhsPackImageDataSme(ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, ThreadPool);
+        auto rhs = RhsPackWeightsBiasSme(co, ci, kh, kw, dilationh, dilationw, weights, bias, ThreadPool);
 
-        auto lhs = LhsPackImageDataSme(lhs_key, ci, ih, iw, d_kh, d_kw, sh, sw, padding, in, ThreadPool);
-        auto rhs = RhsPackWeightsBiasSme(rhs_key, co, ci, kh, kw, dilationh, dilationw, weights, bias, ThreadPool);
 
         MlasTrySimpleParallel(ThreadPool,
             static_cast<ptrdiff_t>(dim[0]*dim[1]*dim[2]),
@@ -556,12 +608,14 @@ static void ConvolveSme(const size_t co, //channels out
         in += ci * ih * iw;
         out += m * co;
         weights += co * ci * kh * kw;
-        bias += co;
+        if(bias){
+            bias += co;
+        }
     }
 }
 
 void MLASCALL
-ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
+ArmKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
                 size_t Dimensions,
                 size_t BatchCount,
                 size_t GroupCount,
@@ -580,7 +634,9 @@ ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 {
     //Check dimensions before accessing
     if (Dimensions < 2) {
-        throw ARMKleidiAI::NotSupported();
+        ::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+        Activation, WorkingBufferSize, Beta, ThreadPool);
     }
 
     Parameters->Activation = Activation;
@@ -616,7 +672,12 @@ ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
     Parameters->ThreadCount = MlasGetMaximumThreadCount(ThreadPool);
 
-    CheckCapabilitiesSme(Parameters);
+    if(!CheckCapabilitiesSme(Parameters)){
+        ::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+        Activation, WorkingBufferSize, Beta, ThreadPool);
+        return;
+    }
 
     //Allocate an aligned buffer for MlasTranspose()
     *WorkingBufferSize = ComputeMlasWorkingBufferSize(Parameters->FilterCount,
@@ -629,7 +690,7 @@ ARMKleidiAI::MlasConvPrepare(MLAS_CONV_PARAMETERS* Parameters,
 
 void
 MLASCALL
-ARMKleidiAI::MlasConv(
+ArmKleidiAI::MlasConv(
     const MLAS_CONV_PARAMETERS* Parameters,
     const float* Input,
     const float* Filter,
@@ -639,7 +700,11 @@ ARMKleidiAI::MlasConv(
     MLAS_THREADPOOL* ThreadPool
     )
 {
-    CheckCapabilitiesSme(Parameters);
+    if(!CheckCapabilitiesSme(Parameters)){
+        //Fallback to Default Mlas
+        ::MlasConv(Parameters,Input,Filter, Bias, WorkingBuffer,Output,ThreadPool);
+        return;
+    };
 
     ConvolveSme(Parameters->FilterCount, Parameters->InputChannels,          // channel out, in
                 Parameters->InputShape[0], Parameters->InputShape[1],        // image dimensions

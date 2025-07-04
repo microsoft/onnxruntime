@@ -2065,3 +2065,14 @@ MlasFlashAttention(
     MlasFlashAttentionThreadedArgs* args,
     MLAS_THREADPOOL* ThreadPool
 );
+
+#ifdef USE_KLEIDIAI
+/**
+ * @brief Function to override the packing mechanism decision if kleidi ai is included
+ * @param enable     enable kleidiai packing (allow or disallow depending on true/false)
+ * @return
+*/
+void
+MLASCALL
+MlasGemmBatchPackUseKleidi(bool enable);
+#endif

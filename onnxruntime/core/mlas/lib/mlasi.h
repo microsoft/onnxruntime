@@ -747,6 +747,31 @@ void
     float Scale,
     int8_t ZeroPoint);
 
+typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
+
 template<typename InputType, typename FilterType>
 struct MLAS_QUANT_KERNEL
 {
@@ -763,6 +788,37 @@ struct MLAS_QUANT_KERNEL
         size_t KernelSize
         );
 };
+typedef
+void
+(MLASCALL MLAS_CONV_FLOAT_FN)(
+    const MLAS_CONV_PARAMETERS* Parameters,
+    const float* Input,
+    const float* Filter,
+    const float* Bias,
+    float* WorkingBuffer,
+    float* Output,
+    MLAS_THREADPOOL* ThreadPool
+    );
+typedef
+void
+(MLASCALL MLAS_CONV_PREPARE_FLOAT_FN)(
+    MLAS_CONV_PARAMETERS* Parameters,
+    size_t Dimensions,
+    size_t BatchCount,
+    size_t GroupCount,
+    size_t InputChannels,
+    const int64_t* InputShape,
+    const int64_t* KernelShape,
+    const int64_t* DilationShape,
+    const int64_t* Padding,
+    const int64_t* StrideShape,
+    const int64_t* OutputShape,
+    size_t FilterCount,
+    const MLAS_ACTIVATION* Activation,
+    size_t* WorkingBufferSize,
+    float Beta,
+    MLAS_THREADPOOL* ThreadPool
+    );
 
 extern "C" {
 
@@ -1164,6 +1220,12 @@ struct MLAS_PLATFORM {
     // TODO: move to cpuinfo
     bool Avx2Supported_ = false;
     bool Avx512Supported_ = false;
+    // Default MLAS initialisation
+    MLAS_GEMM_BATCH_KERNEL* MlasGemmBatch;
+    MLAS_GEMM_PACK_B_SIZE_KERNEL* MlasGemmPackBSize;
+    MLAS_GEMM_PACK_B_KERNEL* MlasGemmPackB;
+    MLAS_CONV_PREPARE_FLOAT_FN* MlasConvPrepare;
+    MLAS_CONV_FLOAT_FN* MlasConv;
 
 #if defined(MLAS_TARGET_AMD64_IX86) || defined(MLAS_TARGET_POWER)
     MLAS_GEMM_FLOAT_KERNEL* GemmFloatKernel;

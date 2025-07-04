@@ -19,7 +19,7 @@
 
 size_t
 MLASCALL
-ARMKleidiAI::MlasDynamicQgemmPackBSize(
+ArmKleidiAI::MlasDynamicQgemmPackBSize(
     size_t N,
     size_t K
 ) {
@@ -34,7 +34,7 @@ ARMKleidiAI::MlasDynamicQgemmPackBSize(
 
 void
 MLASCALL
-ARMKleidiAI::MlasDynamicQgemmPackB(
+ArmKleidiAI::MlasDynamicQgemmPackB(
     size_t N,
     size_t K,
     const int8_t* B,
@@ -75,7 +75,7 @@ ARMKleidiAI::MlasDynamicQgemmPackB(
 
 void
 MLASCALL
-ARMKleidiAI::MlasDynamicQGemmBatch(
+ArmKleidiAI::MlasDynamicQGemmBatch(
     const MLAS_GEMM_DYN_QUANT_SHAPE_PARAMS& Shape,
     const MLAS_GEMM_DYN_QUANT_DATA_PARAMS* DataParams,
     const size_t BatchN,
@@ -92,7 +92,7 @@ ARMKleidiAI::MlasDynamicQGemmBatch(
 
         //Dynamic Quantize A - lhs
         auto lhs_size = kai_get_lhs_packed_size_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr);
-        auto lhs = std::make_unique_for_overwrite<std::byte[]>(lhs_size);
+        auto lhs = std::make_unique<std::byte[]>(lhs_size);
 
         kai_run_lhs_quant_pack_qai8dxp_f32(Shape.M, Shape.K, mr, kr, sr, 0, DataParams->A,
                                            Shape.K*sizeof(float), lhs.get());

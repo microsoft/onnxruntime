@@ -8,33 +8,7 @@
 
 #include "mlasi.h"
 
-namespace ARMKleidiAI {
-
-class NotSupported : public std::exception{};
-
-
-#if (defined(USE_KLEIDIAI) && (defined(__aarch64__) || defined(__APPLE__))) && !defined(_MSVC_LANG)
-
-#define kai_check_if_supported(check)            \
-    do {                                         \
-        try {                                    \
-            check;                               \
-        } catch (ARMKleidiAI::NotSupported& e) {    \
-            (void)e;                             \
-            /*intentionally fall through and     \
-              fallback*/                         \
-            /*Gather usage stats for integration \
-              coverage*/                         \
-        }                                        \
-    }                                            \
-    while (0)
-#else
-
-#define kai_check_if_supported(check)
-
-#endif
-
-
+namespace ArmKleidiAI {
 //
 // Buffer packing routines.
 //
@@ -73,18 +47,6 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     );
 
-void MLASCALL
-MlasGemmBatch_SME2_N1(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool
-);
-
 size_t
 MLASCALL
 MlasDynamicQgemmPackBSize(
@@ -102,7 +64,6 @@ MlasDynamicQgemmPackB(
     const float* Bias,
     void* PackedB
 );
-
 
 //pack symmetric quantized B and dynamic quantized A
 void

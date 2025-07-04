@@ -17,7 +17,7 @@ Abstract:
 #include <cassert>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
@@ -204,9 +204,10 @@ MlasDynamicQGemmBatch (
     const size_t BatchN,
     MLAS_THREADPOOL* ThreadPool
 ) {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
-    );
+#ifdef USE_KLEIDIAI
+    //No fallback
+    ArmKleidiAI::MlasDynamicQGemmBatch(Shape, DataParams, BatchN, ThreadPool);
+#endif
 
     MLAS_UNREFERENCED_PARAMETER(Shape);
     MLAS_UNREFERENCED_PARAMETER(DataParams);
@@ -324,14 +325,16 @@ MlasDynamicQgemmPackBSize(
     size_t K
 )
 {
-    kai_check_if_supported(
-        return ARMKleidiAI::MlasDynamicQgemmPackBSize(N, K);
-    );
+    size_t bytes = 0;
+#ifdef USE_KLEIDIAI
+    //No fallback available
+    bytes = ArmKleidiAI::MlasDynamicQgemmPackBSize(N, K);
+#endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);
 
-    return 0;
+    return bytes;
 }
 
 
@@ -408,9 +411,10 @@ MlasDynamicQgemmPackB(
     void* PackedB
 )
 {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
-    );
+#ifdef USE_KLEIDIAI
+    //No fallback
+    ArmKleidiAI::MlasDynamicQgemmPackB(N, K, B, Scales, Bias, PackedB);
+#endif
 
     MLAS_UNREFERENCED_PARAMETER(N);
     MLAS_UNREFERENCED_PARAMETER(K);

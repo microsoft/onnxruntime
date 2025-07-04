@@ -15,7 +15,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "kleidiai/mlasi_kleidiai.h"
 
 //
 // Define the number of working buffer elements required per thread.
@@ -862,10 +862,17 @@ Return Value:
 
 --*/
 {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasConv(Parameters, Input, Filter, Bias, WorkingBuffer, Output, ThreadPool);
-        return;
-    );
+#ifdef USE_KLEIDIAI
+    //KleidiAI
+    thread_local bool kleidiai_conv_attempted = false;
+    if (!kleidiai_conv_attempted &&
+        GetMlasPlatform().MlasConv == &ArmKleidiAI::MlasConv) {
+        kleidiai_conv_attempted = true;
+        GetMlasPlatform().MlasConv(Parameters,Input,Filter,Bias,WorkingBuffer,Output,ThreadPool);
+        kleidiai_conv_attempted = false;
+         return;
+    }
+#endif
 
     const size_t FilterCount = Parameters->FilterCount;
     const size_t OutputSize = Parameters->OutputSize;
@@ -1100,12 +1107,18 @@ Return Value:
 
 --*/
 {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels, InputShape,
-                                     KernelShape, DilationShape, Padding, StrideShape, OutputShape, FilterCount,
-                                     Activation, WorkingBufferSize, Beta, ThreadPool);
-        return;
-    );
+#ifdef USE_KLEIDIAI
+    thread_local bool kleidiai_convprep_attempted = false;
+    if (!kleidiai_convprep_attempted &&
+        GetMlasPlatform().MlasConvPrepare == &ArmKleidiAI::MlasConvPrepare) {
+        kleidiai_convprep_attempted = true;
+        GetMlasPlatform().MlasConvPrepare(Parameters, Dimensions, BatchCount, GroupCount, InputChannels,
+        InputShape,KernelShape,DilationShape, Padding, StrideShape, OutputShape, FilterCount,
+        Activation, WorkingBufferSize, Beta, ThreadPool);
+        kleidiai_convprep_attempted = false;
+         return;
+    }
+#endif
 
     //
     // Save the convolution parameters.

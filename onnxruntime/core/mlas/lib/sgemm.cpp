@@ -16,7 +16,7 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "kleidiAI/mlasi_kleidiai.h"
+#include "kleidiai/mlasi_kleidiai.h"
 //
 // Define the number of rows from matrix A to transpose to a local buffer.
 //
@@ -1554,6 +1554,17 @@ Return Value:
             DataParams->alpha, A, lda, B, ldb, DataParams->beta, C, ldc);
     }
 }
+#ifdef USE_KLEIDIAI
+// variable to enable or disable kleidi pack routines.
+// work around for unsupported cases in fusedmatmul
+static bool g_kleidiPackEnabled = true;
+
+void
+MLASCALL
+MlasGemmBatchPackUseKleidi(bool enable) {
+    g_kleidiPackEnabled = enable;
+}
+#endif
 #if defined(_MSC_VER) && !defined(__clang__)
 #pragma warning(push)
 // Chance of arithmetic overflow could be reduced
@@ -1572,11 +1583,19 @@ MlasGemmBatch(
     MLAS_THREADPOOL* ThreadPool
     )
 {
+#ifdef USE_KLEIDIAI
+    //Check if external implementation (e.g. KleidiAI)
+    thread_local bool kleidiai_attempted = false;
 
-    kai_check_if_supported(
-        ARMKleidiAI::MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
-        return;
-    );
+    if (!kleidiai_attempted &&
+        GetMlasPlatform().MlasGemmBatch == &ArmKleidiAI::MlasGemmBatch &&
+        g_kleidiPackEnabled) {
+        kleidiai_attempted = true;
+        GetMlasPlatform().MlasGemmBatch(TransA, TransB, M, N, K, Data, BatchSize, ThreadPool);
+        kleidiai_attempted = false;
+         return;
+    }
+#endif
 
     //
     // Compute the number of target threads given the complexity of the SGEMM
@@ -1668,9 +1687,21 @@ Return Value:
     //
     // Compute the number of bytes required to hold the packed buffer.
     //
-    kai_check_if_supported(
-        return ARMKleidiAI::MlasGemmPackBSize(TransA, TransB, N, K);
-    );
+#ifdef USE_KLEIDIAI
+    //Kleidi
+    thread_local bool kleidiai_pbsize_attempted = false;
+    if (!kleidiai_pbsize_attempted &&
+        GetMlasPlatform().MlasGemmPackBSize == &ArmKleidiAI::MlasGemmPackBSize &&
+        g_kleidiPackEnabled) {
+        kleidiai_pbsize_attempted = true;
+        size_t bytes_required;
+        bytes_required = GetMlasPlatform().MlasGemmPackBSize(TransA, TransB, N, K);
+        kleidiai_pbsize_attempted = false;
+        if (bytes_required != 0){// If ArmKleidiAI::MlasGemmPackBSize ran to completion
+            return bytes_required;
+        }
+    }
+#endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
     MLAS_UNREFERENCED_PARAMETER(TransB);
 
@@ -1726,10 +1757,17 @@ Return Value:
 
 --*/
 {
-    kai_check_if_supported(
-        ARMKleidiAI::MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
-        return;
-    );
+#ifdef USE_KLEIDIAI
+    thread_local bool kai_gemmPb_atttempted;
+    if (!kai_gemmPb_atttempted &&
+        GetMlasPlatform().MlasGemmPackB == &ArmKleidiAI::MlasGemmPackB &&
+        g_kleidiPackEnabled) {
+        kai_gemmPb_atttempted = true;
+        GetMlasPlatform().MlasGemmPackB(TransA, TransB, N, K, B, ldb, PackedB);
+        kai_gemmPb_atttempted = false;
+         return;
+    }
+#endif
     MLAS_UNREFERENCED_PARAMETER(TransA);
 
 
