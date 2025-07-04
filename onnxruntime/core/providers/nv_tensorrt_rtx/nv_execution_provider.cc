@@ -1304,7 +1304,7 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED, device_id);
       },
       narrow<OrtDevice::DeviceId>(device_id_));
 
@@ -3258,8 +3258,8 @@ OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                     default_device_.Id());
+    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     0 /*CPU device id always be 0*/);
   return default_device_;
 }
 
