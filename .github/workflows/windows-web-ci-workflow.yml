@@ -83,22 +83,6 @@ jobs:
         run: |
           copy ${{ github.workspace }}\artifacts_wasm\ort-*.mjs ${{ github.workspace }}\js\web\dist\
 
-      - name: Download WebAssembly WebGPU artifacts
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ inputs.build_config }}_wasm_webgpu
-          path: ${{ github.workspace }}/artifacts_wasm_webgpu
-
-      - name: Binplace dist files (.wasm) for WebGPU
-        shell: cmd
-        run: |
-          copy ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.wasm ${{ github.workspace }}\js\web\dist\
-
-      - name: Binplace dist files (.mjs) for WebGPU
-        shell: cmd
-        run: |
-          copy ${{ github.workspace }}\artifacts_wasm_webgpu\ort-*.mjs ${{ github.workspace }}\js\web\dist\
-
       - name: npm ci for /js/
         run: npm ci
         working-directory: ${{ github.workspace }}/js

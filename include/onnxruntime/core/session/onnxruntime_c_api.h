@@ -5364,13 +5364,14 @@ struct OrtApi {
    * \param[in] vendor_id PCI Vendor ID. Use 0 for a generic allocator (e.g. WebGPU).
    * \param[in] device_id Device ID if there are multiple devices of the same type. e.g. 2 GPU devices.
    * \param[in] mem_type Memory type. Use OrtDeviceMemoryType_DEFAULT for device memory, and
-   *                                  OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer
-   *                                  between the device and the CPU.
+   *                     OrtDeviceMemoryType_HOST_ACCESSIBLE (if applicable) for memory used to transfer between the
+   *                     device and the CPU. Use the device_type and device_id of the GPU/NPU that the memory is also
+   *                     accessible to.
    * \param[in] alignment Alignment of the memory if required. Pass 0 for default alignment.
    * \param[in] allocator_type Allocator type. If OrtAllocatorType::OrtArenaAllocator, the ORT arena will be used.
    *                           Caveat: Support for OrtArenaAllocator is currently limited to usage of internal ORT
    *                           allocators via CreateAllocator/CreateAndRegisterAllocator/CreateAndRegisterAllocatorV2.
-   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtAPi::ReleaseMemoryInfo
+   * \param[out] out Newly created ::OrtMemoryInfo. Must be freed with OrtApi::ReleaseMemoryInfo
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5433,7 +5434,8 @@ struct OrtApi {
    *                           that contains a subgraph (e.g., If, Loop) with nodes that use the value internally.
    * \param[in] num_consumers The size of the `consumer_nodes` and `consumer_input_indices` arrays.
    *                          Typical usage sets this to the value of ValueInfo_GetValueNumConsumers().
-   *                          An error status returned if `num_consumers` is less than the number of actual consumers.
+   *                          An error status is returned if `num_consumers` is less than the number of actual
+   *                          consumers.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5564,9 +5566,9 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
-  /** \brief Returns the number of graphs inputs.
+  /** \brief Returns the number of graph inputs.
    *
-   * Counts initializers that are included in the list of graph inputs.
+   * \note The count includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] num_inputs Output parameter set to the number of graph inputs.
@@ -5579,7 +5581,7 @@ struct OrtApi {
 
   /** \brief Returns the graph's inputs as OrtValueInfo instances.
    *
-   * Includes initializers that are included in the list of graph inputs.
+   * \note The result includes initializers that are included in the list of graph inputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] inputs Pre-allocated array of `num_inputs` elements that is filled with the graph's inputs.
@@ -5594,7 +5596,7 @@ struct OrtApi {
   ORT_API2_STATUS(Graph_GetInputs, _In_ const OrtGraph* graph,
                   _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);
 
-  /** \brief Returns the number of graphs outputs.
+  /** \brief Returns the number of graph outputs.
    *
    * \param[in] graph The OrtGraph instance.
    * \param[out] num_outputs Output parameter set to the number of graph outputs.
