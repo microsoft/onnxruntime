@@ -60,7 +60,7 @@ Status TestAutoSelectEPsImpl(const Environment& env, InferenceSession& sess, con
     // add ep_options to SessionOptions with prefix.
     // preserve any user provided values.
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
-    for (const auto& [key, value] : ep_device->ep_options.entries) {
+    for (const auto& [key, value] : ep_device->ep_options.Entries()) {
       auto prefixed_key = ep_options_prefix + key;
       if (session_options.config_options.configurations.count(key) == 0) {
         // add the default value with prefix
@@ -353,7 +353,7 @@ Status CreateIExecutionProviderFactoryForEpDevices(const Environment& env,
     // first add the default values with prefix followed by user specified values so those win
     const std::string prefix = OrtSessionOptions::GetProviderOptionPrefix(ep_device->ep_name.c_str());
     auto& config_options = session_options.config_options;
-    for (const auto& [key, value] : ep_device->ep_options.entries) {
+    for (const auto& [key, value] : ep_device->ep_options.Entries()) {
       ORT_RETURN_IF_ERROR(config_options.AddConfigEntry((prefix + key).c_str(), value.c_str()));
     }
 

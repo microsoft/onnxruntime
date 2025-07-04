@@ -148,6 +148,7 @@ class CPUIDInfo {
 #if defined(__linux__)
 
   void ArmLinuxInit();
+  std::string GetArmLinuxVendor();
 
 #elif defined(_WIN32)
 
@@ -157,6 +158,7 @@ class CPUIDInfo {
 #elif defined(__APPLE__)
 
   void ArmAppleInit();
+  std::string GetArmAppleVendor();
 
 #endif
 
