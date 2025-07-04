@@ -9,6 +9,7 @@
 #include "core/framework/allocator.h"
 #include "core/framework/allocator_utils.h"
 #include "core/framework/error_code_helper.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/graph/constants.h"
 #include "core/graph/op.h"
 #include "core/platform/device_discovery.h"
@@ -110,6 +111,22 @@ std::unordered_set<OrtAllocator*>::const_iterator FindExistingAllocator(const st
                         const auto* alloc_mem_info = alloc_ptr->Info(alloc_ptr);
                         return AreOrtMemoryInfosEquivalent(*alloc_mem_info, mem_info, match_name);
                       });
+}
+
+Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
+                                    std::unique_ptr<plugin_ep::DataTransfer>& data_transfer) {
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = ep_factory.CreateDataTransfer(&ep_factory, &data_transfer_impl);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+  }
+
+  if (data_transfer_impl != nullptr) {
+    data_transfer = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  }
+
+  return Status::OK();
 }
 }  // namespace
 
@@ -425,9 +442,15 @@ Environment::~Environment() = default;
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
-  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
-  allocator = it != shared_ort_allocators_.end() ? *it : nullptr;
+  // do exact match first
+  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ true);
+  if (it != shared_ort_allocators_.end()) {
+    allocator = *it;
+  } else {
+    // match any other allocator (custom or otherwise) for the OrtMemoryInfo
+    it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
+    allocator = it != shared_ort_allocators_.end() ? *it : nullptr;
+  }
 
   // use the default CPU allocator if there's no custom or EP provided CPU allocator
   if (!allocator && (mem_info.device.Type() == OrtDevice::CPU &&
@@ -479,6 +502,14 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
 
     for (const auto& internal_factory : internal_factories) {
       internal_ep_factories_.insert(internal_factory);
+
+      std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
+      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*internal_factory, data_transfer));
+
+      if (data_transfer) {
+        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister
+        ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
+      }
     }
 
     ep_libraries_[registration_name] = std::move(ep_info);
@@ -533,6 +564,10 @@ Status Environment::UnregisterExecutionProviderLibrary(const std::string& ep_nam
     // remove from map and global list of OrtEpDevice* before unloading so we don't get a leftover entry if
     // something goes wrong in any of the following steps..
     ep_libraries_.erase(ep_name);
+
+    for (auto* data_transfer : ep_info->data_transfers) {
+      ORT_RETURN_IF_ERROR(data_transfer_mgr_.UnregisterDataTransfer(data_transfer));
+    }
 
     for (auto* internal_factory : ep_info->internal_factories) {
       internal_ep_factories_.erase(internal_factory);
@@ -631,9 +666,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
       auto status = OrtArenaCfg::FromKeyValuePairs(*allocator_options, arena_cfg);
     }
 
-    // pending Stream support being added to plugin EP API in separate PR
-    // ep_device.ep_factory->IsStreamAware(ep_device.ep_factory);
-    bool stream_aware_arena = false;
+    bool stream_aware_arena = ep_device.ep_factory->IsStreamAware(ep_device.ep_factory);
 
     AllocatorCreationInfo alloc_creation_info{
         [&ort_allocator](int) -> std::unique_ptr<IAllocator> {

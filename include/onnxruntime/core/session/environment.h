@@ -15,6 +15,7 @@
 #include "core/common/status.h"
 #include "core/framework/allocator.h"
 #include "core/framework/execution_provider.h"
+#include "core/framework/data_transfer_manager.h"
 #include "core/platform/device_discovery.h"
 #include "core/platform/threadpool.h"
 
@@ -140,6 +141,10 @@ class Environment {
                                OrtDeviceMemoryType mem_type, OrtAllocatorType allocator_type,
                                const OrtKeyValuePairs* allocator_options, OrtAllocator** allocator);
   Status ReleaseSharedAllocator(const OrtEpDevice& ep_device, OrtDeviceMemoryType mem_type);
+
+  const DataTransferManager& GetDataTransferManager() const {
+    return data_transfer_mgr_;
+  }
 #endif  // !defined(ORT_MINIMAL_BUILD)
 
   // return a shared allocator from a plugin EP or custom allocator added with RegisterAllocator
@@ -207,7 +212,8 @@ class Environment {
 
     std::unique_ptr<EpLibrary> library;
     std::vector<std::unique_ptr<OrtEpDevice>> execution_devices;
-    std::vector<EpFactoryInternal*> internal_factories;  // factories that can create IExecutionProvider instances
+    std::vector<EpFactoryInternal*> internal_factories;    // factories that can create IExecutionProvider instances
+    std::vector<plugin_ep::DataTransfer*> data_transfers;  // data transfer instances for this EP.
 
    private:
     EpInfo() = default;
@@ -223,6 +229,9 @@ class Environment {
 
   // lookup set for internal EPs so we can create an IExecutionProvider directly
   std::unordered_set<EpFactoryInternal*> internal_ep_factories_;
+
+  DataTransferManager data_transfer_mgr_;  // plugin EP IDataTransfer instances
+
 #endif  // !defined(ORT_MINIMAL_BUILD)
 };
 

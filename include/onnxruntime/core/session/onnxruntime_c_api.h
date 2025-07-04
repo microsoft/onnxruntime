@@ -64,6 +64,7 @@ extern "C" {
 #define _Outptr_result_maybenull_
 #define _Outptr_result_maybenull_z_
 #define _In_reads_(X)
+#define _In_reads_opt_
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
 #define _Inout_updates_all_(X)
@@ -321,6 +322,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(SyncStream);  // Opaque class to create an onnxruntime::Stream.
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -6074,6 +6076,110 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
+
+  /** \brief Get the OrtMemoryInfo for each input of the session.
+   *
+   * The memory info can be used to determine where the input tensors are required.
+   *
+   * The session must be fully initialized before calling this function as the input locations are not known until
+   * this has occurred.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] inputs_memory_info Pre-allocated array of size `num_inputs` that will be filled with
+   *                                OrtMemoryInfo instances for each input tensor.
+   * \param[in] num_inputs The number of inputs in the session. Must match SessionGetInputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetInputsMemoryInfo, _In_ const OrtSession* session,
+                  _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
+                  _In_ size_t num_inputs);
+
+  /** \brief Get the OrtMemoryInfo for each output of the session.
+   *
+   * The memory info can be used to determine where the output tensors are allocated.
+   *
+   * The session must be fully initialized before calling this function as the input locations are not known until
+   * this has occurred.
+   *
+   * \param[in] session The OrtSession instance.
+   * \param[out] outputs_memory_info Pre-allocated array of size `num_outputs` that will be filled with
+   *                                 OrtMemoryInfo instances for each output tensor.
+   * \param[in] num_outputs The number of outputs in the session. Must match SessionGetOutputCount.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(GetOutputsMemoryInfo, _In_ const OrtSession* session,
+                  _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
+                  _In_ size_t num_outputs);
+
+  /** \brief Create an OrtSyncStream for the given OrtEpDevice.
+   *
+   * The OrtSyncStream can be used to enable asynchronous operations.
+   * e.g. async usage of CopyTensors to provide into to an OrtSession Run call.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
+   * \param[out] stream Output parameter set to the created OrtSyncStream instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _Outptr_ OrtSyncStream** stream);
+
+  /** \brief Get the handle of the sync stream.
+   *
+   * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
+   *
+   * \param[in] stream The OrtSyncStream instance to get the handle from.
+   * \param[out] handle The native handle of the stream.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle);
+
+  ORT_CLASS_RELEASE(SyncStream);
+
+  // copy tensors. copy should be between two location overall.
+  // i.e. all src_tensors should have the same OrtMemoryInfo and all dst_tensors should have the same OrtMemoryInfo.
+  // the OrtSyncStream is optional. if provided the copy may be performed asynchronously. the same OrtSyncStream
+  // instance can be used for all applicable tensors in the copy operation.
+  /** \brief Copy OrtValue instances containing Tensors between devices.
+   *
+   * The overall copy must be between two devices.
+   * i.e. all src_tensors must have the same OrtMemoryInfo and all dst_tensors must have the same OrtMemoryInfo.
+   *
+   * OrtValue instances can be created by:
+   *   - Use GetSharedAllocator to get the shared allocator for the OrtMemoryInfo if you need to allocate memory
+   *     on the device.
+   *   - Use CreateTensorAsOrtValue, CreateTensorWithDataAsOrtValue or CreateTensorWithDataAndDeleterAsOrtValue
+   *     to create an OrtValue containing a tensor depending on whether you have existing data or not, and whether
+   *     you want ORT to free the existing data once it is done with the OrtValue.
+   *
+   * \param[in] env The OrtEnv instance to use. The data transfer implementation is provided by an execution provider
+   *                that is registered in this OrtEnv.
+   * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
+   * \param[in] dst_tensors Array of OrtValue instances that will be filled with the copied tensors.
+   * \param[in] streams Optional array of OrtSyncStream instances that can be used to perform the copy asynchronously.
+   * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors`, `dst_tensors`, and `streams`
+   *                        must match this value.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CopyTensors, _In_ const OrtEnv* env,
+                  _In_reads_(num_tensors) const OrtValue** src_tensors,
+                  _In_reads_(num_tensors) OrtValue** dst_tensors,
+                  _In_reads_opt_(num_tensors) OrtSyncStream** streams,
+                  _In_ size_t num_tensors);
 };
 
 /*
