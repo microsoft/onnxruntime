@@ -5076,6 +5076,8 @@ struct OrtApi {
 
   /** \brief Add a key-value pair to the OrtKeyValuePairs instance.
    *
+   * If a pair with the same key already exists, it is overwritten.
+   *
    * \param[in] kvps OrtKeyValuePairs instance.
    * \param[in] key Key to be added.
    * \param[in] value Value to be added.
