@@ -219,7 +219,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this
   // matching should work.
   if (memory_info == factory.cpu_memory_info_.get()) {
     // create a CPU allocator. use the basic OrtAllocator for this example.
-    auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info);
+    auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
     *allocator = cpu_allocator.release();
   } else if (memory_info == factory.default_gpu_memory_info_.get()) {
     // create a GPU allocator
@@ -257,7 +257,7 @@ bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this
 }
 
 /*static*/
-OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(const OrtEpFactory* this_ptr,
+OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                         const OrtMemoryDevice* memory_device,
                                                                         OrtSyncStreamImpl** stream) noexcept {
   auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);

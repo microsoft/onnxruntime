@@ -134,6 +134,17 @@ typedef struct OrtSyncStreamImpl {
    */
   ORT_API_T(void, Release, _In_ void* this_ptr);
 
+  /** \brief Get the handle of the stream.
+   *
+   * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
+   *
+   * \param[in] this_ptr Pointer to the OrtSyncStreamImpl instance.
+   * \return The handle of the stream.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API_T(void*, GetHandle, _In_ void* this_ptr);
+
   /** \brief Create an OrtSyncNotification for the OrtSyncStream
    *
    * \param[in] this_ptr Pointer to the OrtSyncStreamImpl instance
@@ -836,7 +847,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateDataTransfer, _In_ const OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr,
                   _Outptr_ OrtDataTransferImpl** data_transfer);
 
   /** \brief Check if execution providers created by the factory are stream aware.
@@ -862,7 +873,7 @@ struct OrtEpFactory {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ const OrtEpFactory* this_ptr,
+  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };

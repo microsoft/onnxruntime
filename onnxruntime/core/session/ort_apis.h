@@ -699,8 +699,10 @@ ORT_API_STATUS_IMPL(GetOutputsMemoryInfo, _In_ const OrtSession* session,
                     _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
                     _In_ size_t num_outputs);
 
-ORT_API_STATUS_IMPL(CreateSyncStreamForDevice, _In_ const OrtEpDevice* ep_device,
+ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _Outptr_ OrtSyncStream** stream);
+
+ORT_API_STATUS_IMPL(SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle);
 
 ORT_API(void, ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* stream);
 

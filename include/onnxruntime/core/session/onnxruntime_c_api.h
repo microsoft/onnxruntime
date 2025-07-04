@@ -6115,8 +6115,33 @@ struct OrtApi {
                   _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
                   _In_ size_t num_outputs);
 
-  ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ const OrtEpDevice* ep_device,
+  /** \brief Create an OrtSyncStream for the given OrtEpDevice.
+   *
+   * The OrtSyncStream can be used to enable asynchronous operations.
+   * e.g. async usage of CopyTensors to provide into to an OrtSession Run call.
+   *
+   * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
+   * \param[out] stream Output parameter set to the created OrtSyncStream instance.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                   _Outptr_ OrtSyncStream** stream);
+
+  /** \brief Get the handle of the sync stream.
+   *
+   * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
+   *
+   * \param[in] stream The OrtSyncStream instance to get the handle from.
+   * \param[out] handle The native handle of the stream.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23
+   */
+  ORT_API2_STATUS(SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle);
 
   ORT_CLASS_RELEASE(SyncStream);
 

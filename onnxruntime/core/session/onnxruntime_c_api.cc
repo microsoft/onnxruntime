@@ -3199,7 +3199,7 @@ ORT_API_STATUS_IMPL(OrtApis::GetOutputsMemoryInfo, _In_ const OrtSession* sessio
                                   outputs_memory_info, num_outputs);
 }
 
-ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForDevice, _In_ const OrtEpDevice* ep_device,
+ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _Outptr_ OrtSyncStream** ort_stream) {
   if (ep_device == nullptr || ort_stream == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and stream must be provided.");
@@ -3214,10 +3214,9 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForDevice, _In_ const OrtEpDevice* 
   const OrtMemoryDevice* ort_mem_device = static_cast<const OrtMemoryDevice*>(&ep_device->device_memory_info->device);
 
   // get the stream implementation from the EP factory
-  // TODO: Should CreateSyncStreamForDevice take a const OrtEpFactory to work from here, or should we route this
-  // request to the Environment which has a non-const OrtEpFactory that we could use.
   OrtSyncStreamImpl* stream_impl = nullptr;
-  ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(factory, ort_mem_device, &stream_impl));
+  ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(), ort_mem_device,
+                                                             &stream_impl));
 
   if (stream_impl == nullptr) {
     // unexpected given we already checked the OrtEpDevice has device_memory_info
@@ -3231,6 +3230,11 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForDevice, _In_ const OrtEpDevice* 
   // cast to base type, and to API alias type
   *ort_stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(stream.release()));
 
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle) {
+  *handle = stream->GetHandle();
   return nullptr;
 }
 
@@ -3786,8 +3790,11 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetInputsMemoryInfo,
     &OrtApis::GetOutputsMemoryInfo,
-    &OrtApis::CreateSyncStreamForDevice,
+
+    &OrtApis::CreateSyncStreamForEpDevice,
+    &OrtApis::SyncStream_GetHandle,
     &OrtApis::ReleaseSyncStream,
+
     &OrtApis::CopyTensors,
 };
 

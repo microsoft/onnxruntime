@@ -24,12 +24,12 @@ class Notification : public synchronize::Notification {
       : synchronize::Notification(stream), impl_{impl} {
   }
 
-  static void WaitNotificationOnDevice(onnxruntime::Stream& stream, synchronize::Notification& notification) {
+  static void WaitNotificationOnDevice(onnxruntime::Stream* stream, synchronize::Notification& notification) {
     auto* this_ptr = static_cast<Notification*>(&notification);
-    this_ptr->impl_.WaitOnDevice(&this_ptr->impl_, static_cast<OrtSyncStream*>(&stream));
+    this_ptr->impl_.WaitOnDevice(&this_ptr->impl_, static_cast<OrtSyncStream*>(stream));
   }
 
-  static void WaitNotificationOnHost(onnxruntime::Stream& /*stream*/, synchronize::Notification& notification) {
+  static void WaitNotificationOnHost(onnxruntime::Stream* /*stream*/, synchronize::Notification& notification) {
     auto* this_ptr = static_cast<Notification*>(&notification);
     this_ptr->impl_.WaitOnHost(&this_ptr->impl_);
   }
