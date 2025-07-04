@@ -116,4 +116,12 @@ void Telemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selec
   ORT_UNUSED_PARAMETER(available_execution_provider_ids);
 }
 
+void Telemetry::LogProviderOptions(const std::string& provider_id,
+                                   const std::string& provider_options_string,
+                                   bool captureState) const {
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(provider_options_string);
+  ORT_UNUSED_PARAMETER(captureState);
+}
+
 }  // namespace onnxruntime

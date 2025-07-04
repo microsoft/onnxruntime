@@ -415,7 +415,9 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 #if defined(USE_CUDA) || defined(USE_CUDA_PROVIDER_INTERFACE)
   if (provider_type == onnxruntime::kCudaExecutionProvider) {
     if (mem_info.device.MemType() == OrtDevice::MemType::HOST_ACCESSIBLE) {
-      AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(onnxruntime::CUDA_PINNED);
+      AllocatorPtr allocator_ptr = GetProviderInfo_CUDA().CreateCUDAPinnedAllocator(
+          static_cast<int16_t>(mem_info.device.Id()),
+          onnxruntime::CUDA_PINNED);
       return RegisterAllocatorImpl(allocator_ptr);
     } else {
       CUDAExecutionProviderInfo cuda_ep_info;
