@@ -260,6 +260,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  sum += thread_sum[i]\n;"
                             << "}\n"
+                            << (use_smooth_softmax_ ? "sum += exp(-max_value);\n" : "")
                             << "if (sum == 0) {\n"
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
                             << "    x[offset + i] = x_value_t(x_element_t(1.0)/x_element_t(seq_causal_length));\n"
@@ -280,7 +281,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt) {
+                             const Tensor* seqlen_k, bool is_first_prompt, bool use_smooth_softmax) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -289,7 +290,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
   }
   const int elementsPerThread = (total_sequence_length_comp + work_group_size - 1) / work_group_size;
 
-  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, seqlen_k};
+  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, seqlen_k, use_smooth_softmax};
   if (seqlen_k != nullptr) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
   }
@@ -457,7 +458,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
+                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));

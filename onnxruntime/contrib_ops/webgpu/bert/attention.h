@@ -69,8 +69,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
-  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, const Tensor* seqlen_k = nullptr)
-      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k) {
+  InPlaceSoftmaxProgram(const std::string& kernel_name, int work_group_size, int components, const Tensor* seqlen_k = nullptr, bool use_smooth_softmax = false)
+      : Program{kernel_name}, work_group_size_(work_group_size), components_(components), seqlen_k_(seqlen_k), use_smooth_softmax_(use_smooth_softmax) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -87,6 +87,7 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   int work_group_size_;
   int components_;
   const Tensor* seqlen_k_;
+  bool use_smooth_softmax_;
 };
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {

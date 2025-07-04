@@ -168,6 +168,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 total_seqlen_tensor,
                                                                 scale_,
                                                                 softcap_));
+  params.use_smooth_softmax = use_smooth_softmax_;
+
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);
