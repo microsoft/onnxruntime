@@ -382,6 +382,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // sum is the second term of the same expression    : Σ_j=1:b e^(Xi[j]-Mi)
   // o_ratio is the part of the first term of o'_i expression above : d'_(i-1) * e^(M_(i-1)-M_i) / d'_i
   //
+
+  // TODO: support smooth softmax and head_sink
   shader.MainFunctionBody() << R"MAIN_FN(
     var local_max_temp = max(qk_1, qk_2);
     if (sg_size > 8)
@@ -901,7 +903,7 @@ Status ApplyFlashAttention(const Tensor* Q, const Tensor* K, const Tensor* V, co
     bool has_attention_bias = attention_bias != nullptr;
     bool is_qualcomm = context.AdapterInfo().vendor == std::string_view{"qualcomm"};
     bool is_fp16 = (Q->GetElementType() == ONNX_NAMESPACE::TensorProto_DataType_FLOAT16);
-    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, is_fp16, parameters.head_size_, parameters.num_heads_};
+    FlashAttentionProgram program{"FlashAttention", has_attention_bias, is_qualcomm, is_fp16, parameters.head_size_, parameters.num_heads_, parameters.use_smooth_softmax_};
     program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_key, ProgramTensorMetadataDependency::TypeAndRank, 4},
                        {present_value, ProgramTensorMetadataDependency::TypeAndRank, 4}});
