@@ -114,6 +114,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       factory->ort_api.CreateKeyValuePairs(&ep_options);
 
       // random example using made up values
+      factory->ort_api.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
       // OrtEpDevice copies ep_metadata and ep_options.
