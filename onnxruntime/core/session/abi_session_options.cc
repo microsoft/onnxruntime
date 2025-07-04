@@ -278,16 +278,19 @@ ORT_API_STATUS_IMPL(OrtApis::GetSessionConfigEntry, _In_ const OrtSessionOptions
   API_IMPL_END
 }
 
-ORT_API(OrtKeyValuePairs*, OrtApis::GetSessionOptionConfigEntries, _In_ const OrtSessionOptions* options) {
-  if (!options) {
-    return nullptr; // Return nullptr to indicate invalid input.
+ORT_API_STATUS_IMPL(OrtApis::GetSessionOptionConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out) {
+  API_IMPL_BEGIN
+  if (options == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "options is nullptr");
   }
   auto& config_options = options->value.config_options.GetConfigOptionsMap();
   auto kvps = std::make_unique<OrtKeyValuePairs>();
   for (auto& kv : config_options) {
     kvps->Add(kv.first.c_str(), kv.second.c_str());
   }
-  return reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+  *out = reinterpret_cast<OrtKeyValuePairs*>(kvps.release());
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::AddInitializer, _Inout_ OrtSessionOptions* options, _In_z_ const char* name,
