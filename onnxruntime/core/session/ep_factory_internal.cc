@@ -8,7 +8,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
 #include "core/session/ort_apis.h"
-#include "onnxruntime_config.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 namespace onnxruntime {
 
