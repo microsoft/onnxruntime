@@ -1821,10 +1821,10 @@ static OrtStatus* ORT_API_CALL PyEpSelectionPolicyWrapper(_In_ const OrtEpDevice
                                                           _In_ void* state) {
   PyEpSelectionDelegate* actual_delegate = reinterpret_cast<PyEpSelectionDelegate*>(state);
   std::vector<const OrtEpDevice*> py_ep_devices(ep_devices, ep_devices + num_devices);
-  std::unordered_map<std::string, std::string> py_model_metadata =
-      model_metadata ? model_metadata->entries : std::unordered_map<std::string, std::string>{};
-  std::unordered_map<std::string, std::string> py_runtime_metadata =
-      runtime_metadata ? runtime_metadata->entries : std::unordered_map<std::string, std::string>{};
+  std::map<std::string, std::string> py_model_metadata =
+      model_metadata ? model_metadata->Entries() : std::map<std::string, std::string>{};
+  std::map<std::string, std::string> py_runtime_metadata =
+      runtime_metadata ? runtime_metadata->Entries() : std::map<std::string, std::string>{};
 
   *num_selected = 0;
   std::vector<const OrtEpDevice*> py_selected;
@@ -1953,8 +1953,8 @@ void addObjectMethods(py::module& m, ExecutionProviderRegistrationFn ep_registra
           R"pbdoc(Hardware device's unique identifier.)pbdoc")
       .def_property_readonly(
           "metadata",
-          [](OrtHardwareDevice* hw_device) -> std::unordered_map<std::string, std::string> {
-            return hw_device->metadata.entries;
+          [](OrtHardwareDevice* hw_device) -> std::map<std::string, std::string> {
+            return hw_device->metadata.Entries();
           },
           R"pbdoc(Hardware device's metadata as string key/value pairs.)pbdoc");
 
@@ -1971,14 +1971,14 @@ for model inference.)pbdoc");
           R"pbdoc(The execution provider's vendor name.)pbdoc")
       .def_property_readonly(
           "ep_metadata",
-          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
-            return ep_device->ep_metadata.entries;
+          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+            return ep_device->ep_metadata.Entries();
           },
           R"pbdoc(The execution provider's additional metadata for the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
           "ep_options",
-          [](OrtEpDevice* ep_device) -> std::unordered_map<std::string, std::string> {
-            return ep_device->ep_options.entries;
+          [](OrtEpDevice* ep_device) -> std::map<std::string, std::string> {
+            return ep_device->ep_options.Entries();
           },
           R"pbdoc(The execution provider's options used to configure the provider to use the OrtHardwareDevice.)pbdoc")
       .def_property_readonly(
@@ -2045,7 +2045,7 @@ for model inference.)pbdoc");
     } else if (strcmp(name, onnxruntime::CUDA_PINNED) == 0) {
       return std::make_unique<OrtMemoryInfo>(
           onnxruntime::CUDA_PINNED, type,
-          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
                     static_cast<OrtDevice::DeviceId>(id)),
           mem_type);
     } else {

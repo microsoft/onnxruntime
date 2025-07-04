@@ -75,6 +75,10 @@ class WindowsTelemetry : public Telemetry {
                           const std::vector<std::string>& requested_execution_provider_ids,
                           const std::vector<std::string>& available_execution_provider_ids) const override;
 
+  void LogProviderOptions(const std::string& provider_id,
+                          const std::string& provider_options_string,
+                          bool captureState) const override;
+
   using EtwInternalCallback = std::function<void(LPCGUID SourceId, ULONG IsEnabled, UCHAR Level,
                                                  ULONGLONG MatchAnyKeyword, ULONGLONG MatchAllKeyword,
                                                  PEVENT_FILTER_DESCRIPTOR FilterData, PVOID CallbackContext)>;

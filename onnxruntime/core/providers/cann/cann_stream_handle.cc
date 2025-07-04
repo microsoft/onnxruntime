@@ -57,11 +57,11 @@ void CannStream::Flush() {
 }
 
 // CPU Stream command handles
-void WaitCannNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<CannNotification*>(&notification)->wait_on_device(stream);
+void WaitCannNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  static_cast<CannNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitCannNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitCannNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<CannNotification*>(&notification)->wait_on_host();
 }
 

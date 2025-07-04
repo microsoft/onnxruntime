@@ -60,6 +60,7 @@ rocm_version = None
 is_migraphx = False
 is_openvino = False
 is_qnn = False
+qnn_version = None
 # The following arguments are mutually exclusive
 if wheel_name_suffix == "gpu":
     # TODO: how to support multiple CUDA versions?
@@ -89,6 +90,7 @@ elif parse_arg_remove_boolean(sys.argv, "--use_azure"):
 elif parse_arg_remove_boolean(sys.argv, "--use_qnn"):
     is_qnn = True
     package_name = "onnxruntime-qnn"
+    qnn_version = parse_arg_remove_string(sys.argv, "--qnn_version=")
 elif is_migraphx:
     package_name = "onnxruntime-migraphx" if not nightly_build else "ort-migraphx-nightly"
 
@@ -771,7 +773,7 @@ with open(requirements_path) as f:
     install_requires = f.read().splitlines()
 
 
-def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version):
+def save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version):
     sys.path.append(path.join(path.dirname(__file__), "onnxruntime", "python"))
     from onnxruntime_collect_build_info import find_cudart_versions
 
@@ -800,9 +802,11 @@ def save_build_and_package_info(package_name, version_number, cuda_version, rocm
                     )
         elif rocm_version:
             f.write(f"rocm_version = '{rocm_version}'\n")
+        elif qnn_version:
+            f.write(f"qnn_version = '{qnn_version}'\n")
 
 
-save_build_and_package_info(package_name, version_number, cuda_version, rocm_version)
+save_build_and_package_info(package_name, version_number, cuda_version, rocm_version, qnn_version)
 
 extras_require = {}
 if package_name == "onnxruntime-gpu" and is_cuda_version_12:

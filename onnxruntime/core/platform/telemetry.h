@@ -82,6 +82,10 @@ class Telemetry {
                                   const std::vector<std::string>& requested_execution_provider_ids,
                                   const std::vector<std::string>& available_execution_provider_ids) const;
 
+  virtual void LogProviderOptions(const std::string& provider_id,
+                                  const std::string& provider_options_string,
+                                  bool captureState) const;
+
  private:
   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(Telemetry);
 };

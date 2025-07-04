@@ -1613,8 +1613,8 @@ OrtDevice MIGraphXExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) 
   if (mem_type == OrtMemTypeCPUInput)
     return OrtDevice();
   if (mem_type == OrtMemTypeCPUOutput)
-    return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
-                     0 /*CPU device id always be 0*/);
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
+                     default_device_.Id());
   return default_device_;
 }
 
