@@ -27,28 +27,32 @@ void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t
     return;
   }
 
-  if (bits == 8) {
-    return;  // No packing needed for 8 bits
-  }
   ORT_ENFORCE(bits == 4);
 
   int64_t total_elements = 1;
   for (const auto& dim : data_shape) {
     total_elements *= dim;
   }
+
   int64_t input_columns = data_shape.back();
   int64_t total_rows = total_elements / input_columns;
-
-  // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
   std::vector<int> packed_data;
-  int64_t output_columns = (input_columns + 1) / 2;
-  packed_data.reserve(total_rows * output_columns);
-  for (int64_t row = 0; row < total_rows; ++row) {
-    for (int64_t col = 0; col < input_columns; col += 2) {
-      int low_nibble = (data[row * input_columns + col] + 8) & 0xF;
-      int high_nibble = ((col + 1) < input_columns) ? ((data[row * input_columns + col + 1] + 8) & 0xF) : 0;
-      int packed = (high_nibble << 4) | low_nibble;
-      packed_data.push_back(packed);
+
+  if (bits == 4) {
+    // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
+    int64_t output_columns = (input_columns + 1) / 2;
+    packed_data.reserve(total_rows * output_columns);
+    for (int64_t row = 0; row < total_rows; ++row) {
+      for (int64_t col = 0; col < input_columns; col += 2) {
+        int low_nibble = (data[row * input_columns + col] + 8) & 0xF;
+        int high_nibble = ((col + 1) < input_columns) ? ((data[row * input_columns + col + 1] + 8) & 0xF) : 0;
+        int packed = (high_nibble << 4) | low_nibble;
+        packed_data.push_back(packed);
+      }
+    }
+  } else {
+    for (const auto& value : data) {
+      packed_data.push_back(value + 128); // convert int8 to uint8
     }
   }
 
@@ -468,12 +472,6 @@ void Test_GatherAxis0_WithZeroPoints_Uint8(int bits = 4) {
   std::vector<float> output = {6, 8, 10, 12, 6, 8, 10, 12, 6, 8, 10, 12, 6, 8, 10, 12, 10, 2,
                                3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 3, 4, 5, 6, 4, 0,
                                -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -6, -4, -2, 0, -5, -1};
-  if (bits == 8) {
-    output = {
-        24.f, 28.f, 26.f, 28.f, 28.f, 28.f, 22.f, 28.f, 24.f, 28.f, 26.f, 28.f, 28.f, 28.f, 22.f, 28.f, -510.f, -510.f,
-        -1.f, -1.f, 0.f, -1.f, 1.f, -1.f, 2.f, -1.f, -1.f, -1.f, 0.f, -1.f, 1.f, -1.f, 2.f, -1.f, 0.f, 0.f,
-        -508.f, -510.f, -506.f, -510.f, -504.f, -510.f, -510.f, -510.f, -508.f, -510.f, -506.f, -510.f, -504.f, -510.f, -510.f, -510.f, -1.f, -1.f};
-  }
   std::vector<int64_t> output_shape = {1, 3, 18};
 
   constexpr int64_t gather_axis = 0;

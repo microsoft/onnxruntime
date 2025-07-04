@@ -18,17 +18,18 @@ namespace contrib {
 
 namespace {
 template <typename T1>
-int32_t GetDataElement(const T1* data_ptr, int64_t data_idx) {
+int32_t Get4BitElement(const T1* data_ptr, int64_t data_idx) {
   return static_cast<int32_t>(data_ptr[data_idx >> 1].GetElem(narrow<size_t>(data_idx & 1)));
 }
 
 template <>
-int32_t GetDataElement<uint8_t>(const uint8_t* data_ptr, int64_t data_idx) {
+int32_t Get4BitElement<uint8_t>(const uint8_t* data_ptr, int64_t data_idx) {
   const uint8_t data_val_u8 = data_ptr[data_idx >> 1];
   // Weights are stored as (nibble2)(nibble1) in uint8_t.
   auto data_val = static_cast<int32_t>((data_idx & 1) ? ((data_val_u8 >> 4) & 0x0F) : (data_val_u8 & 0x0F));
   return data_val;
 }
+
 }  // namespace
 
 template <typename T1, typename Tind>
@@ -217,7 +218,16 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
     int64_t output_idx = output_idx_base;
     int64_t data_idx = data_idx_base;
     for (int64_t i = 0; i < gather_block; ++i, ++output_idx, ++data_idx) {
-      auto data_val = GetDataElement(data_ptr, data_idx);
+      int32_t data_val;
+      if constexpr (!std::is_same_v<T1, uint8_t>){
+        data_val = Get4BitElement(data_ptr, data_idx);
+      } else { // unit8_t
+        if (bits_ == 4) {
+          data_val = Get4BitElement(data_ptr, data_idx);
+        } else { // buts_ == 8
+          data_val = static_cast<int32_t>(data_ptr[data_idx]);
+        }
+      }
 
       int64_t x = data_idx / quantize_full_block;
       int64_t y = data_idx % quantize_full_block / quantize_N;
@@ -227,21 +237,15 @@ Status GatherBlockQuantized<T1, Tind>::CopyDataAndDequantize(const T1* data_ptr,
       int32_t zp_val;
 
       if constexpr (std::is_same_v<T1, uint8_t>) {
-        // The default zero point for uint8 weights as stored by MatMulNBits op is 8.
         if (zero_points_ptr) {
           if (bits_ == 4) {
-            // For uint8_t with bits=4, the zero points are stored as int4 in uint8_t.
-            // The zero point is stored in the same way as data, so we can use GetDataElement.
             uint8_t packed = zero_points_ptr[scale_idx >> 1];
             if (scale_idx & 1) {
-              // Get the second nibble.
               zp_val = static_cast<int32_t>((packed >> 4) & 0x0F);
             } else {
-              // Get the first nibble.
               zp_val = static_cast<int32_t>(packed & 0x0F);
             }
-          } else {
-            // For uint8_t with bits=8, the zero points are stored as uint8_t.
+          } else { // bits_ == 8
             zp_val = static_cast<int32_t>(zero_points_ptr[scale_idx]);
           }
         } else {

@@ -586,6 +586,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     cuda_group.add_argument("--enable_cuda_nhwc_ops", action="store_true", help="[Deprecated] Default enabled.")
     cuda_group.add_argument("--disable_cuda_nhwc_ops", action="store_true", help="Disable CUDA NHWC layout ops.")
     cuda_group.add_argument("--enable_cuda_minimal_build", action="store_true", help="Enable CUDA minimal build.")
+    cuda_group.add_argument("--fast_build", action="store_true", help="Only build essential for testing purpose.")
     cuda_group.add_argument(
         "--nvcc_threads",
         nargs="?",
