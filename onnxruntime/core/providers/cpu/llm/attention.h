@@ -69,6 +69,7 @@ class AttentionBase : public OpKernel {
                              T* output_qk,                             // Q*K output
                              concurrency::ThreadPool* tp,              // thread pool
                              float scale,                              // scale factor
+                             float softcap,                            // softcap value
                              const T* attn_bias_data,                  // attention bias
                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                              bool past_present_share_buffer = false,

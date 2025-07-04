@@ -37,6 +37,11 @@ inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* t
 }
 
 template <typename T>
+inline void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T softcap) {
+  MlasComputeSoftcap(scores, scores, sequence_length, softcap);
+}
+
+template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
@@ -189,6 +194,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              T* output_qk,                             // Q*K output
                                              ThreadPool* tp,                           // thread pool
                                              float scale,                              // scale factor
+                                             float softcap,                            // softcap value
                                              const T* attn_bias_data,                  // attention bias
                                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                                              bool past_present_share_buffer,
@@ -286,6 +292,9 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                   Q + q_input_chunk_length * i, k,
                                   (mask_data != nullptr || attn_bias_data != nullptr) ? 1.0f : 0.0f,
                                   output, nullptr);
+        if (softcap > 0.0f) {
+          ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), softcap);
+        }
       }
     });
   }
@@ -530,6 +539,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                               output_qk_data,
                               tp,
                               parameters.scale,
+                              parameters.softcap,
                               attn_bias_data,
                               attn_bias_dims,
                               past_present_share_buffer,
