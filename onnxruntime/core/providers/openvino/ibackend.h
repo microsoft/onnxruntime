@@ -14,9 +14,10 @@ namespace openvino_ep {
 
 class IBackend {
  public:
-  virtual void Infer(OrtKernelContext* context) = 0;
-  virtual ov::CompiledModel& GetOVCompiledModel() = 0;
+  virtual void Infer(OrtKernelContext* context) const = 0;
+  virtual ov::CompiledModel GetOVCompiledModel() = 0;
   virtual ~IBackend() = default;
+  virtual void RewindKVCache(size_t index) {}
 };
 using ptr_stream_t = std::unique_ptr<std::istream>;
 class BackendFactory {
