@@ -14,6 +14,7 @@
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test_allocator.h"
 #include "test/shared_lib/utils.h"
@@ -564,7 +565,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
 
   auto metadata = test_ep_device->EpMetadata();
-  ASSERT_STREQ(metadata.GetValue("version"), "0.1");
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
+  ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");

@@ -210,7 +210,8 @@ class TestAutoEP(AutoEpTestCase):
         self.assertEqual(test_ep_device.ep_vendor, "Contoso")
 
         ep_metadata = test_ep_device.ep_metadata
-        self.assertEqual(ep_metadata["version"], "0.1")
+        self.assertEqual(ep_metadata["version"], "0.1.0")
+        self.assertEqual(ep_metadata["supported_devices"], "CrackGriffin 7+")
 
         ep_options = test_ep_device.ep_options
         self.assertEqual(ep_options["run_really_fast"], "true")

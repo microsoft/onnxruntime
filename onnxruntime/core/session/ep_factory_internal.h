@@ -39,6 +39,7 @@ class EpFactoryInternal : public OrtEpFactory {
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  const char* GetVersion() const noexcept;
 
   OrtStatus* GetSupportedDevices(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                  _In_ size_t num_devices,
