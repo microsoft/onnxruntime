@@ -28,9 +28,9 @@ from .quant_utils import (
     get_qmin_qmax_for_qType,
     get_qrange_for_qType,
     ms_domain,
+    quantize_onnx_initializer,
     save_and_reload_model_with_shape_infer,
     tensor_proto_to_array,
-    quantize_onnx_initializer,
 )
 from .registry import CreateOpQuantizer
 
@@ -638,16 +638,16 @@ class ONNXQuantizer(BaseQuantizer):
 
     def adjust_single_weight_scale_if_needed(
         self,
-        bias_val: float,
-        input_scale: np.ndarray,
-        weight_scale: np.ndarray,
-        weight_scale_dtype: np.dtype,
-        weight_name: str,
-        bias_name: str,
-        qrange: np.ndarray,
-        multiplicative_epsilon: float,
-        idx: int = None
-    ) -> tuple[bool, np.ndarray]:
+        bias_val,
+        input_scale,
+        weight_scale,
+        weight_scale_dtype,
+        weight_name,
+        bias_name,
+        qrange,
+        multiplicative_epsilon,
+        idx=None,
+    ):
         """Adjust a single weight scale to ensure the int32 bias does not overflow."""
         absmax = np.abs(bias_val)
         bias_smallest_valid_scale = multiplicative_epsilon * (2.0 * absmax) / qrange
@@ -672,7 +672,7 @@ class ONNXQuantizer(BaseQuantizer):
                 )
                 return True, new_scale.astype(weight_scale_dtype)
         return False, weight_scale
-    
+
     def _adjust_weight_scale_for_int32_bias(
         self,
         input_scale: np.ndarray,
@@ -698,8 +698,14 @@ class ONNXQuantizer(BaseQuantizer):
             rmax = np.maximum(bias_float_data.max(), np.array(0, dtype=np.float64))
             absmax = np.maximum(np.abs(rmin), np.abs(rmax))
             changed, new_scale = self.adjust_single_weight_scale_if_needed(
-                absmax, input_scale, weight_scale, weight_scale_dtype,
-                weight_name, bias_tp.name, qrange, multiplicative_epsilon
+                absmax,
+                input_scale,
+                weight_scale,
+                weight_scale_dtype,
+                weight_name,
+                bias_tp.name,
+                qrange,
+                multiplicative_epsilon,
             )
             if changed:
                 weight_scale = new_scale
@@ -707,8 +713,15 @@ class ONNXQuantizer(BaseQuantizer):
         elif weight_scale.shape and len(weight_scale.shape) == 1:
             for i in range(weight_scale.shape[0]):
                 changed, new_scale = self.adjust_single_weight_scale_if_needed(
-                    bias_float_data[i], input_scale, weight_scale[i], weight_scale_dtype,
-                    weight_name, bias_tp.name, qrange, multiplicative_epsilon, idx=i
+                    bias_float_data[i],
+                    input_scale,
+                    weight_scale[i],
+                    weight_scale_dtype,
+                    weight_name,
+                    bias_tp.name,
+                    qrange,
+                    multiplicative_epsilon,
+                    idx=i,
                 )
                 if changed:
                     weight_scale[i] = new_scale
@@ -782,9 +795,7 @@ class ONNXQuantizer(BaseQuantizer):
         # Adjust weight scale if quantizing to int32 may overflow due to a small scale
         weight_zp_name = self.quantized_value_map[weight_name].zp_name
         weight_zp_init = find_by_name(weight_zp_name, self.model.initializer())
-        weight_zero_point = (
-            onnx.numpy_helper.to_array(weight_zp_init) if weight_zp_init is not None else None
-        )
+        weight_zero_point = onnx.numpy_helper.to_array(weight_zp_init) if weight_zp_init is not None else None
         is_per_channel = self.per_channel
         if (
             weight_zero_point is not None

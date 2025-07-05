@@ -4,10 +4,9 @@ import unittest
 
 import numpy as np
 import onnx
-from onnx import TensorProto, helper
+from op_test_utils import TestDataFeeds, check_model_correctness
 
 from onnxruntime.quantization import QuantFormat, QuantType, quantize_static
-from op_test_utils import TestDataFeeds, check_model_correctness
 
 
 class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
@@ -22,8 +21,8 @@ class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
 
     def build_conv_test_model(self, input_shape, weight_shape, onnx_float_type):
         np_float_type = onnx.helper.tensor_dtype_to_np_dtype(onnx_float_type)
-        input_0 = helper.make_tensor_value_info("input_0", onnx_float_type, input_shape)
-        output_0 = helper.make_tensor_value_info("output_0", onnx_float_type, None)
+        input_0 = onnx.helper.make_tensor_value_info("input_0", onnx_float_type, input_shape)
+        output_0 = onnx.helper.make_tensor_value_info("output_0", onnx_float_type, None)
 
         tiny_value = 1e-7 if np_float_type == np.float32 else 0.007782
 
@@ -46,10 +45,10 @@ class TestAdjustWeightScaleForInt32BiasQOperator(unittest.TestCase):
                 bias_data[i] = 1400 if (i % 2 == 0) else -1200
         bias = onnx.numpy_helper.from_array(bias_data, "bias")
 
-        conv_node = helper.make_node("Conv", ["input_0", "weight", "bias"], ["output_0"], name="Conv0")
-        graph = helper.make_graph([conv_node], "Convfloat", [input_0], [output_0], initializer=[weight, bias])
-        opset_imports = [helper.make_opsetid("", 21)]
-        model = helper.make_model(graph, opset_imports=opset_imports)
+        conv_node = onnx.helper.make_node("Conv", ["input_0", "weight", "bias"], ["output_0"], name="Conv0")
+        graph = onnx.helper.make_graph([conv_node], "Convfloat", [input_0], [output_0], initializer=[weight, bias])
+        opset_imports = [onnx.helper.make_opsetid("", 21)]
+        model = onnx.helper.make_model(graph, opset_imports=opset_imports)
         model = onnx.shape_inference.infer_shapes(model)
         onnx.checker.check_model(model, True)
         return model
