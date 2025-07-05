@@ -36,27 +36,6 @@
 
 namespace ort_ep_utils {
 
-struct OrtValueInfoFlags {
-  enum Flags {
-    kFlagNone = 0,
-    kIsRequiredGraphInput = 1 << 0,
-    kIsOptionalGraphInput = 1 << 1,
-    kIsGraphOutput = 1 << 2,
-    kIsConstantInitializer = 1 << 3,
-    kIsOuterScope = 1 << 4,
-  };
-
-  size_t flags = 0;
-
-  bool IsRequiredGraphInput() const { return flags & kIsRequiredGraphInput; }
-  bool IsOptionalGraphInput() const { return flags & kIsOptionalGraphInput; }
-  bool IsGraphOutput() const { return flags & kIsGraphOutput; }
-  bool IsConstantInitializer() const { return flags & kIsConstantInitializer; }
-  bool IsFromOuterScope() const { return flags & kIsOuterScope; }
-  bool IsInternal() const { return flags == 0; }
-};
-
-static Ort::Status GetOrtValueInfoFlags(const OrtValueInfo& ort_value_info, /*out*/ OrtValueInfoFlags& flags);
 static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_info,
                                                   bool get_symbolic_dims,
                                                   /*out*/ ONNXTensorElementDataType& elem_type,
@@ -138,6 +117,59 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   //
   // Set GraphProto value_infos, nodes, initializers.
   //
+
+  auto track_ort_value_info = [&](const OrtValueInfo& ort_value_info,
+                                  /*out*/ const char** value_name_out = nullptr) -> Ort::Status {
+    const char* value_name = nullptr;
+    C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(&ort_value_info, &value_name));
+
+    if (value_name_out != nullptr) {
+      *value_name_out = value_name;
+    }
+
+    bool is_required_graph_input = false;
+    bool is_optional_graph_input = false;
+    bool is_graph_output = false;
+    bool is_constant_initializer = false;
+    bool is_from_outer_scope = false;
+
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsRequiredGraphInput(&ort_value_info, &is_required_graph_input));
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsOptionalGraphInput(&ort_value_info, &is_optional_graph_input));
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(&ort_value_info, &is_graph_output));
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(&ort_value_info, &is_constant_initializer));
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsFromOuterScope(&ort_value_info, &is_from_outer_scope));
+
+    bool is_internal = !is_required_graph_input && !is_optional_graph_input && !is_graph_output &&
+                       !is_constant_initializer && !is_from_outer_scope;
+
+    // Don't add graph inputs or graph outputs to GraphProto's list of value_infos.
+    // Do add initializers (constant and non-constant) to GraphProto's list of initializer tensors.
+
+    if (is_from_outer_scope) {
+      // For values defined in an outer scope, just add the value info (not the initializer if it is one).
+      if (!ort_value_info_storage.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      }
+    } else if (is_optional_graph_input) {
+      if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(&ort_value_info));
+      }
+    } else if (is_constant_initializer) {
+      if (!ort_value_info_storage.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      }
+
+      if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(&ort_value_info));
+      }
+    } else if (is_internal) {
+      if (!ort_value_info_storage.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      }
+    }
+
+    return Ort::Status{nullptr};
+  };
 
   size_t num_nodes = 0;
   C_API_RETURN_IF_ERROR(ort_api.Graph_GetNumNodes(&ort_graph, &num_nodes));
@@ -224,37 +256,9 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         }
 
         const char* value_name = nullptr;
-        C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(ort_value_info, &value_name));
+        CXX_API_RETURN_IF_ERROR(track_ort_value_info(*ort_value_info, &value_name));
+
         node_proto->add_input(value_name);
-
-        OrtValueInfoFlags flags = {};
-        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoFlags(*ort_value_info, flags));
-
-        // Don't add graph inputs or graph outputs to graph_proto's list of value_infos.
-        // Do add initializers (constant and non-constant) to graph_proto's list of initializer tensors.
-
-        if (flags.IsFromOuterScope()) {
-          // For values defined in an outer scope, just add the value info (not the initializer if it is one).
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsOptionalGraphInput()) {
-          if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsConstantInitializer()) {
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-
-          if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsInternal()) {
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-        }
       }
     }
 
@@ -266,38 +270,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
       for (const OrtValueInfo* ort_value_info : ort_implicit_inputs) {
         assert(ort_value_info != nullptr);
-
-        const char* value_name = nullptr;
-        C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(ort_value_info, &value_name));
-
-        OrtValueInfoFlags flags = {};
-        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoFlags(*ort_value_info, flags));
-
-        // Don't add graph inputs or graph outputs to graph_proto's list of value_infos.
-        // Do add initializers (constant and non-constant) to graph_proto's list of initializer tensors.
-
-        if (flags.IsFromOuterScope()) {
-          // For values defined in an outer scope, just add the value info (not the initializer if it is one).
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsOptionalGraphInput()) {
-          if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsConstantInitializer()) {
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-
-          if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
-          }
-        } else if (flags.IsInternal()) {
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-        }
+        CXX_API_RETURN_IF_ERROR(track_ort_value_info(*ort_value_info, /*value_name_out*/ nullptr));
       }
     }
 
@@ -314,22 +287,14 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         }
 
         const char* value_name = nullptr;
-        C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(ort_value_info, &value_name));
+        CXX_API_RETURN_IF_ERROR(track_ort_value_info(*ort_value_info, &value_name));
+
         node_proto->add_output(value_name);
-
-        OrtValueInfoFlags flags = {};
-        CXX_API_RETURN_IF_ERROR(GetOrtValueInfoFlags(*ort_value_info, flags));
-
-        if (flags.IsInternal()) {
-          if (!ort_value_info_storage.HasValueInfo(value_name)) {
-            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
-          }
-        }
       }
     }
   }
 
-  // Sort to ensure consistent ordering of value_infos and intializers in GraphProto.
+  // Sort to ensure consistent ordering of value_infos and initializers in GraphProto.
   ort_value_info_storage.SortByName();
   initializer_ort_value_info_storage.SortByName();
 
@@ -388,46 +353,6 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
     }
   }
 
-  return Ort::Status{nullptr};
-}
-
-static Ort::Status GetOrtValueInfoFlags(const OrtValueInfo& ort_value_info, OrtValueInfoFlags& result) {
-  const OrtApi& ort_api = Ort::GetApi();
-  OrtValueInfoFlags flags = {};
-
-  bool is_required_graph_input = false;
-  bool is_optional_graph_input = false;
-  bool is_graph_output = false;
-  bool is_constant_initializer = false;
-  bool is_from_outer_scope = false;
-
-  C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsRequiredGraphInput(&ort_value_info, &is_required_graph_input));
-  C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsOptionalGraphInput(&ort_value_info, &is_optional_graph_input));
-  C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsGraphOutput(&ort_value_info, &is_graph_output));
-  C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(&ort_value_info, &is_constant_initializer));
-  C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsFromOuterScope(&ort_value_info, &is_from_outer_scope));
-
-  if (is_required_graph_input) {
-    flags.flags |= OrtValueInfoFlags::kIsRequiredGraphInput;
-  }
-
-  if (is_optional_graph_input) {
-    flags.flags |= OrtValueInfoFlags::kIsOptionalGraphInput;
-  }
-
-  if (is_graph_output) {
-    flags.flags |= OrtValueInfoFlags::kIsGraphOutput;
-  }
-
-  if (is_constant_initializer) {
-    flags.flags |= OrtValueInfoFlags::kIsConstantInitializer;
-  }
-
-  if (is_from_outer_scope) {
-    flags.flags |= OrtValueInfoFlags::kIsOuterScope;
-  }
-
-  result = flags;
   return Ort::Status{nullptr};
 }
 
