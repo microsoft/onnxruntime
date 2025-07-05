@@ -272,7 +272,12 @@ __launch_bounds__(blockSize)
       }
     }
 
+#if CUDA_VERSION >= 12090
     float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, ::cuda::maximum());
+#else
+    float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
+#endif
+
     if (tid == 0) {
       max_shared = max_block;
     }
@@ -292,7 +297,12 @@ __launch_bounds__(blockSize)
       }
     }
 
+#if CUDA_VERSION >= 12090
     float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, ::cuda::std::plus());
+#else
+    float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+#endif
+
     if (tid == 0) {
       sum_shared = sum_block;
     }
@@ -334,7 +344,12 @@ __launch_bounds__(blockSize)
         max_input = x;
     }
 
+#if CUDA_VERSION >= 12090
     float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, ::cuda::maximum());
+#else
+    float max_block = BlockReduce(block_reduce_temp).Reduce(max_input, cub::Max());
+#endif
+
     if (tid == 0) {
       max_shared = max_block;
     }
@@ -346,7 +361,12 @@ __launch_bounds__(blockSize)
       sum_input += x;
     }
 
+#if CUDA_VERSION >= 12090
     float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, ::cuda::std::plus());
+#else
+    float sum_block = BlockReduce(block_reduce_temp).Reduce(sum_input, cub::Sum());
+#endif
+
     if (tid == 0) {
       sum_shared = sum_block;
     }

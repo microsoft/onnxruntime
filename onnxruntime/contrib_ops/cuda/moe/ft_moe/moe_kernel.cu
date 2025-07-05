@@ -84,7 +84,12 @@ __launch_bounds__(TPB) __global__
     threadData = max(static_cast<float>(input[idx]), threadData);
   }
 
+#if CUDA_VERSION >= 12090
   const float maxElem = BlockReduce(tmpStorage).Reduce(threadData, ::cuda::maximum());
+#else
+  const float maxElem = BlockReduce(tmpStorage).Reduce(threadData, cub::Max());
+#endif
+
   if (threadIdx.x == 0) {
     float_max = maxElem;
   }
