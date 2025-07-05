@@ -136,7 +136,8 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }
 
-  Status GetSubgraphs(gsl::span<const OrtGraph*> /*subgraphs*/) const override {
+  Status GetSubgraphs(gsl::span<const OrtGraph*> /*subgraphs*/,
+                      gsl::span<const char*> /*attribute_names*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }

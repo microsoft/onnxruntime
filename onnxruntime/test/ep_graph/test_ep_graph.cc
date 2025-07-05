@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
@@ -12,6 +13,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include "test/ep_graph/ort_graph_to_proto.h"
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -66,6 +68,50 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, SerializeToProto_Mnist) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const onnxruntime::Model& original_model = test_graph->GetModel();
+  ONNX_NAMESPACE::ModelProto model_proto = original_model.ToProto();
+  model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
+
+  // Serialize OrtGraph to GraphProto. Save initializers to external file.
+  std::ofstream ext_ini_ofs("mnist_generated.bin", std::ios::binary);
+  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
+  ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto,
+                                [&ext_ini_ofs](const char* name, const void* data, size_t bytes,
+                                               std::string& location, int64_t& offset) -> bool {
+                                  (void)name;
+                                  offset = ext_ini_ofs.tellp();
+                                  location = "mnist_generated.bin";
+                                  ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+                                  ext_ini_ofs.flush();
+                                  return true;  // True if is external initializer.
+                                });
+
+  std::ofstream ofs(ORT_TSTR("mnist_generated.onnx"), std::ios::binary);
+  model_proto.SerializeToOstream(&ofs);
+  ofs.flush();
+}
+
+TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const onnxruntime::Model& original_model = test_graph->GetModel();
+  ONNX_NAMESPACE::ModelProto model_proto = original_model.ToProto();
+
+  // Serialize OrtGraph to GraphProto
+  model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
+  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
+  ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto);
+
+  std::ofstream ofs(ORT_TSTR("three_layer_nested_subgraph_generated.onnx"), std::ios::binary);
+  model_proto.SerializeToOstream(&ofs);
+  ofs.flush();
 }
 
 //
@@ -470,9 +516,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     }
 
     // Check node subgraphs
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
+        node->GetAttributeNameToSubgraphMap();
 
-    if (!node_subgraphs.empty()) {
+    if (!node_subgraphs_map.empty()) {
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
 
@@ -489,14 +536,27 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       // Recursively check subgraphs.
       size_t api_num_node_subgraphs = 0;
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_node_subgraphs));
+      ASSERT_EQ(api_num_node_subgraphs, node_subgraphs_map.size());
 
       std::vector<const OrtGraph*> api_node_subgraphs(api_num_node_subgraphs);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
+      std::vector<const char*> api_subgraph_attr_names(api_num_node_subgraphs);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size(),
+                                                    api_subgraph_attr_names.data()));
 
-      for (size_t subgraph_idx = 0; subgraph_idx < node_subgraphs.size(); subgraph_idx++) {
-        auto subgraph_viewer = std::make_unique<GraphViewer>(*node_subgraphs[subgraph_idx]);
-        const OrtGraph* api_subgraph = api_node_subgraphs[subgraph_idx];
+      for (const auto& [attr_name, subgraph] : node_subgraphs_map) {
+        // find index of this subgraph.
+        size_t api_subgraph_idx = api_num_node_subgraphs;
+        for (size_t subgraph_idx = 0; subgraph_idx < api_num_node_subgraphs; subgraph_idx++) {
+          if (api_subgraph_attr_names[subgraph_idx] == attr_name) {
+            api_subgraph_idx = subgraph_idx;
+            break;
+          }
+        }
+        ASSERT_NE(api_subgraph_idx, api_num_node_subgraphs);
 
+        // Recursively check the subgraph
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
+        const OrtGraph* api_subgraph = api_node_subgraphs[api_subgraph_idx];
         CheckGraphCApi(*subgraph_viewer, *api_subgraph);
       }
     }
