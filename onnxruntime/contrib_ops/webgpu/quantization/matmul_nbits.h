@@ -18,7 +18,13 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
       : Program{"MatMulNBitsWideTileProgram"}, has_zero_points_{has_zero_points}, tile_m_(tile_m), tile_n_(tile_n), nbits_(nbits) {}
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"block_size", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"Batch", ProgramUniformVariableDataType::Uint32},
+                                          {"M", ProgramUniformVariableDataType::Uint32},
+                                          {"N", ProgramUniformVariableDataType::Uint32},
+                                          {"K", ProgramUniformVariableDataType::Uint32},
+                                          {"K_div_4", ProgramUniformVariableDataType::Uint32},
+                                          {"K_div_16", ProgramUniformVariableDataType::Uint32},
+                                          {"K_div_32", ProgramUniformVariableDataType::Uint32},
                                           {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
                                           {"num_N_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_M_tile", ProgramUniformVariableDataType::Uint32});
