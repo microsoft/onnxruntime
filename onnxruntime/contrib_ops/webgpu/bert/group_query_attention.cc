@@ -152,6 +152,7 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   const Tensor* total_seqlen_tensor = context.Input<Tensor>(6);
   const Tensor* cos_cache = context.Input<Tensor>(7);
   const Tensor* sin_cache = context.Input<Tensor>(8);
+  const Tensor* head_sink = context->Input<Tensor>(11);
 
   GroupQueryAttentionParameters params = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -167,7 +168,8 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
                                                                 seqlen_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
-                                                                softcap_));
+                                                                softcap_,
+                                                                head_sink));
   WebgpuAttentionParameters parameters(params);
   TensorShapeVector output_shape(3);
   output_shape[0] = static_cast<int64_t>(parameters.batch_size_);

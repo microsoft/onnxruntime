@@ -54,6 +54,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
   const Tensor* sin_cache = context->Input<Tensor>(8);
   const Tensor* position_ids = context->Input<Tensor>(9);
   const Tensor* attention_bias = context->Input<Tensor>(10);
+  const Tensor* head_sink = context->Input<Tensor>(11);
 
   GroupQueryAttentionParameters parameters = {};
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckInputs(query,
@@ -69,7 +70,8 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 seqlens_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
-                                                                softcap_));
+                                                                softcap_,
+                                                                head_sink));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
@@ -206,7 +208,7 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   // Compute the attention score and apply the score to V
   return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        attention_bias, past_key, past_value, output, present_k, present_v,
+                        head_sink->Data<T>(), attention_bias, past_key, past_value, output, present_k, present_v,
                         seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib

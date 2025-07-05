@@ -159,6 +159,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* total_seqlen = ctx->Input<Tensor>(6);
   const Tensor* cos_cache = ctx->Input<Tensor>(7);
   const Tensor* sin_cache = ctx->Input<Tensor>(8);
+  const Tensor* head_sink = context->Input<Tensor>(11);
 
   auto& device_prop = GetDeviceProp();
   std::call_once(
@@ -195,6 +196,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                                 total_seqlen,
                                                                 is_past_bsnh_,
                                                                 scale_,
+                                                                head_sink,
                                                                 max_thr_per_blk));
 
   const int batch_size = parameters.batch_size;

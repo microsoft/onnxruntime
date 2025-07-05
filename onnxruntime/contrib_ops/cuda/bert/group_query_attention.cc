@@ -78,6 +78,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
+  const Tensor* head_sink = context->Input<Tensor>(11);
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -98,6 +99,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 total_seqlen,
                                                                 scale_,
                                                                 softcap_,
+                                                                head_sink,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;

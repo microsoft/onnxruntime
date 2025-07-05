@@ -7,6 +7,7 @@
 #include "core/providers/common.h"
 #include "contrib_ops/cpu/bert/attention_common.h"
 #include "contrib_ops/cpu/bert/attention_parameters.h"
+#include "core/util/shape_checker.h"
 
 namespace onnxruntime {
 namespace contrib {
@@ -26,7 +27,8 @@ Status CheckInputs(const T* query,
                    const T* seqlens_k,
                    const T* total_seqlen,
                    float scale,
-                   float softcap) {
+                   float softcap,
+                   const T* head_sink) {
   // Note: Here S* is seqlen_past_kv_cache, S+ is seqlen_present_kv_cache
   //     past_key                   : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
   //     past_value                 : (B, N_k, S*, H) or (B, N_k, S+, H) or nullptr
@@ -241,6 +243,8 @@ Status CheckInputs(const T* query,
     }
   }
 
+  ASSERT_TENSOR_1D(head_sink, num_heads);
+
   if (parameters != nullptr) {
     GroupQueryAttentionParameters* output_parameters = reinterpret_cast<GroupQueryAttentionParameters*>(parameters);
     output_parameters->batch_size = batch_size;
@@ -282,12 +286,13 @@ Status CheckInputs(const T* query,
                    const T* total_seqlen,
                    float scale,
                    float softcap,
+                   const T* head_sink,
                    int max_threads_per_block) {
   if (max_threads_per_block > 0 && num_heads > max_threads_per_block) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "num_heads should be no larger than ", max_threads_per_block);
   }
 
-  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap);
+  return CheckInputs(query, key, value, past_key, past_value, cos_cache, sin_cache, parameters, num_heads, kv_num_heads, seqlens_k, total_seqlen, scale, softcap, head_sink);
 }
 
 template <typename T = Tensor>
