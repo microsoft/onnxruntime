@@ -1156,9 +1156,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "kv_sequence_length.",
                 "T")
         .Output(3,
-                "attention_scores",
-                "buffer in which to store attention scores",
-                "tensor(float)",
+                "output_qk",
+                "Values of QK matrix multiplication, either before or after SoftMax noramlization",
+                "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")

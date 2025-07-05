@@ -160,6 +160,7 @@ struct GroupQueryAttentionParameters {
   bool use_smooth_softmax;
   float scale;
   float softcap;
+  int output_post_softmax_qk;
   AttentionQkvFormat qkv_format;
   AttentionQkvFormat past_kv_format;
   int zeros_count;
