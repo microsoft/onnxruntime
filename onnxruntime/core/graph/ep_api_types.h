@@ -272,16 +272,6 @@ struct EpGraph : public OrtGraph {
   /// <returns></returns>
   static Status Create(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result);
 
-  /// <summary>
-  /// The real implementation of creating an EpGraph instance.
-  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
-  /// </summary>
-  /// <param name="ep_graph"></param>
-  /// <param name="graph_viewer"></param>
-  /// <param name="result"></param>
-  /// <returns></returns>
-  static Status GreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
-
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
 
@@ -345,6 +335,16 @@ struct EpGraph : public OrtGraph {
   const OrtValue* GetInitializerValue(std::string_view name) const;
 
  private:
+  /// <summary>
+  /// The real implementation of creating an EpGraph instance.
+  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
+  /// </summary>
+  /// <param name="ep_graph"></param>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
 

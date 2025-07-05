@@ -502,7 +502,7 @@ EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
 EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(*graph_viewer.get()), model_(std::move(model)), graph_viewer_from_graph_in_model_(std::move(graph_viewer)) {}
 
-Status EpGraph::GreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
   std::unordered_map<std::string, std::unique_ptr<EpValueInfo>> value_infos_map;
 
