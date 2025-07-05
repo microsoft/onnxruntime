@@ -14,6 +14,7 @@
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 
 #include "test_allocator.h"
 #include "test/shared_lib/utils.h"
@@ -107,7 +108,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
     // C API. Test the C++ API because if it works the C API must also work.
     // ASSERT_ORTSTATUS_OK(Ort::GetApi().SessionOptionsAppendExecutionProvider_V2(
     //    session_options, env, devices.data(), devices.size(),
-    //    provider_options.keys.data(), provider_options.values.data(), provider_options.entries.size()));
+    //    provider_options.Keys().data(), provider_options.Values().data(), provider_options.Entries().size()));
     std::vector<Ort::ConstEpDevice> ep_devices;
     ep_devices.reserve(devices.size());
     for (const auto* device : devices) {
@@ -370,7 +371,7 @@ static OrtStatus* ORT_API_CALL PolicyDelegate(_In_ const OrtEpDevice** ep_device
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Expected to be able to select 2 devices.");
   }
 
-  if (model_metadata->entries.empty()) {
+  if (model_metadata->Entries().empty()) {
     return Ort::GetApi().CreateStatus(ORT_INVALID_ARGUMENT, "Model metadata was empty.");
   }
 
@@ -564,7 +565,8 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibraryCxxApi) {
   ASSERT_STREQ(test_ep_device->EpVendor(), "Contoso");
 
   auto metadata = test_ep_device->EpMetadata();
-  ASSERT_STREQ(metadata.GetValue("version"), "0.1");
+  ASSERT_STREQ(metadata.GetValue(kOrtEpDevice_EpMetadataKey_Version), "0.1.0");
+  ASSERT_STREQ(metadata.GetValue("supported_devices"), "CrackGriffin 7+");
 
   auto options = test_ep_device->EpOptions();
   ASSERT_STREQ(options.GetValue("run_really_fast"), "true");

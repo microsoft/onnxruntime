@@ -121,7 +121,7 @@ std::istream& operator>>(std::istream& stream, SharedContext::SharedWeights::Met
 namespace backend_utils {
 
 bool IsDebugEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_DEBUG");
   if (!env_name.empty()) {
     return true;
   }
@@ -129,7 +129,7 @@ bool IsDebugEnabled() {
 }
 
 bool IsCILogEnabled() {
-  const std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
+  static std::string env_name = onnxruntime::GetEnvironmentVar("ORT_OPENVINO_ENABLE_CI_LOG");
   if (!env_name.empty()) {
     return true;
   }
@@ -146,6 +146,10 @@ CreateOVModel(std::string&& model,
   try {
     auto ov_model = OVCore::Get()->ReadModel(std::move(model), session_context.onnx_model_path_name.string());
 
+    if (!session_context.reshape.empty()) {
+      LOGS_DEFAULT(INFO) << log_tag << "Reshaping the ov tensor to specified shape";
+      ov_model->reshape(session_context.reshape);
+    }
     // Check for Constant Folding
     if ((session_context.device_type != "NPU") && !session_context.is_wholly_supported_graph) {
       ov::pass::ConstantFolding pass_const_obj;
@@ -176,32 +180,6 @@ CreateOVModel(std::string&& model,
 }
 
 Ort::UnownedValue
-GetOutputTensor(Ort::KernelContext& context, size_t batch_size,
-                OVInferRequestPtr infer_request,
-                std::string output_name,
-                const SubGraphContext::string_index_map_t& output_names) {
-  auto graph_output_blob = infer_request->GetTensor(output_name);
-
-  auto graph_output_dims = graph_output_blob->get_shape();
-
-  if (batch_size > 1) {
-    // Add the batch size as dim 0.
-    graph_output_dims.insert(graph_output_dims.begin(), batch_size);
-  }
-  size_t num_dims = graph_output_dims.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(graph_output_dims[j]);
-  }
-  auto it = output_names.find(output_name);
-  if (it == output_names.end()) {
-    ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
-  }
-  int index = it->second;
-  return context.GetOutput(index, output_shape.get(), num_dims);
-}
-
-Ort::UnownedValue
 GetOutputTensor(Ort::KernelContext& context,
                 std::string output_name,
                 const SubGraphContext::string_index_map_t& output_names,
@@ -216,14 +194,9 @@ GetOutputTensor(Ort::KernelContext& context,
     ORT_THROW(log_tag + "Output names mismatch between OpenVINO and ONNX");
   }
   int index = it->second;
-  auto shape = node->get_shape();
+  auto output_shape = ParameterShape::ToOrtShape(node->get_shape());
 
-  size_t num_dims = shape.size();
-  std::unique_ptr<int64_t[]> output_shape(new int64_t[num_dims]);
-  for (size_t j = 0; j < num_dims; j++) {
-    output_shape[j] = static_cast<int64_t>(shape[j]);
-  }
-  return context.GetOutput(index, output_shape.get(), num_dims);
+  return context.GetOutput(index, output_shape);
 }
 
 int GetFirstAvailableDevice(SessionContext& session_context) {
@@ -306,15 +279,6 @@ void FillInputBlob(OVTensorPtr inputBlob, size_t batch_slice_idx,
   const char* tensor_data = tensor.GetTensorData<char>();
   const char* batch_memory_offset = tensor_data + input_data_size * batch_slice_idx;
   std::memcpy(input_data, batch_memory_offset, input_data_size);
-}
-
-void FillOutputBlob(OVTensorPtr outputBlob, Ort::UnownedValue& output_tensor,
-                    size_t batch_slice_idx) {
-  auto output_data = outputBlob->data();
-  size_t output_data_size = outputBlob->get_byte_size();
-  char* tensor_data = output_tensor.GetTensorMutableData<char>();
-  char* batch_memory_offset = tensor_data + output_data_size * batch_slice_idx;
-  std::memcpy(batch_memory_offset, output_data, output_data_size);
 }
 
 void printPerformanceCounts(const std::vector<OVProfilingInfo>& performanceMap,
@@ -434,6 +398,33 @@ void DestroyOVTensors(SharedContext::SharedWeights::Metadata::Map& metadata_map)
     }
   }
   metadata_map.clear();
+}
+
+bool IsModelStreamXML(std::istream& model_stream) {
+  std::streampos originalPos = model_stream.tellg();
+
+  // first, get the total size of model_stream in bytes
+  model_stream.seekg(0, std::ios::end);
+  auto end_pos = model_stream.tellg();
+  //  Restore the stream position
+  model_stream.seekg(originalPos);
+  auto total_size = end_pos - originalPos;
+
+  // Choose 32 bytes to hold content of:
+  // '<?xml version-"1.0"?> <net '
+  const std::streamsize header_check_len = 32;
+  ORT_ENFORCE(total_size > header_check_len);
+
+  // read 32 bytes into header
+  std::string header(header_check_len, '\0');
+  model_stream.read(&header[0], header_check_len);
+  // Clear any read errors
+  model_stream.clear();
+  // Restore the stream position
+  model_stream.seekg(originalPos);
+
+  // return true if the header starts with '<?xml' and also includes '<net '
+  return ((header.rfind("<?xml", 0) == 0) && (header.find("<net ") != std::string::npos));
 }
 
 }  // namespace backend_utils
