@@ -1184,6 +1184,11 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                "additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)",
                "T",
                OpSchema::Optional)
+        .Input(11,
+               "head_sink",
+               "1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.",
+               "T",
+               OpSchema::Optional)
         .Output(0,
                 "output",
                 "3D output tensor with shape (batch_size, sequence_length, hidden_size)",
