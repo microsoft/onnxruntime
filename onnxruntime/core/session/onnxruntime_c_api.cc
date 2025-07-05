@@ -2786,6 +2786,8 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
     }
   }
 
+  // TODO: There is an edge case where the OrtValueInfo is outer scope and it's upper-level graph's input (not the initializer).
+
   ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
 
   auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
