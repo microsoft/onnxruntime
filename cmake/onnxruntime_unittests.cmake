@@ -1955,7 +1955,7 @@ if (onnxruntime_USE_WEBGPU AND WIN32 AND onnxruntime_BUILD_SHARED_LIB AND NOT CM
   )
 endif()
 
-# onnxruntime_ep_graph_test tests the implementation of the public OrtGraph APIs for use in plugin EPs.
+# onnxruntime_ep_graph_test tests the implementation of the public OrtGraph APIs for use in plugin EPs (OrtEp).
 if (onnxruntime_BUILD_SHARED_LIB AND NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND NOT onnxruntime_MINIMAL_BUILD)
   file(GLOB_RECURSE onnxruntime_ep_graph_test_SRC "${ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR}/*.h"
                                                   "${ONNXRUNTIME_EP_GRAPH_TEST_SRC_DIR}/*.cc")
