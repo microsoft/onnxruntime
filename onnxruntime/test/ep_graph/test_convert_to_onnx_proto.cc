@@ -4,6 +4,7 @@
 #include "test_convert_to_onnx_proto.h"
 
 #include <algorithm>
+#include <charconv>
 #include <string>
 #include <string_view>
 #include <unordered_map>
@@ -56,6 +57,11 @@ struct OrtValueInfoFlags {
 
 static Ort::Status GetOrtValueInfoFlags(const OrtValueInfo& ort_value_info, /*out*/ OrtValueInfoFlags& flags);
 static Ort::Status GetOrtValueInfoName(const OrtValueInfo& ort_value_info, /*out*/ std::string& name);
+static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_info,
+                                                  bool get_symbolic_dims,
+                                                  /*out*/ ONNXTensorElementDataType& elem_type,
+                                                  /*out*/ std::vector<int64_t>& dims,
+                                                  /*out*/ std::vector<std::string>& symbolic_dims);
 static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info, onnx::ValueInfoProto& value_info_proto);
 
 struct OrtValueInfoStorage {
@@ -92,17 +98,11 @@ struct OrtValueInfoStorage {
 
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::GraphProto& graph_proto,
-                            bool save_as_external_data,
-                            const ORTCHAR_T* external_data_location,
-                            size_t external_data_size_threshold) {
+                            WriteInitializerDataFunc write_initializer_data_func) {
   const OrtApi& ort_api = Ort::GetApi();
 
   OrtValueInfoStorage ort_value_info_storage;
   OrtValueInfoStorage initializer_ort_value_info_storage;
-
-  (void)save_as_external_data;
-  (void)external_data_location;
-  (void)external_data_size_threshold;
 
   //
   // Set GraphProto metadata
@@ -147,6 +147,20 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   for (size_t i = 0; i < num_nodes; i++) {
     const OrtNode* ort_node = nodes[i];
     onnx::NodeProto* node_proto = graph_proto.add_node();
+
+    const char* node_name = nullptr;
+    const char* node_domain = nullptr;
+    const char* node_op_type = nullptr;
+    C_API_RETURN_IF_ERROR(ort_api.Node_GetName(ort_node, &node_name));
+    C_API_RETURN_IF_ERROR(ort_api.Node_GetDomain(ort_node, &node_domain));
+    C_API_RETURN_IF_ERROR(ort_api.Node_GetOperatorType(ort_node, &node_op_type));
+
+    node_proto->set_name(node_name);
+    node_proto->set_domain(node_domain);
+    node_proto->set_op_type(node_op_type);
+
+    // TODO: Handle node attributes
+    // TODO: Handle node subgraphs
 
     size_t num_inputs = 0;
     size_t num_implicit_inputs = 0;
@@ -221,6 +235,8 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         }
       }
     }
+
+    // TODO: Handle node implicit inputs
   }
 
   // Sort to ensure consistent ordering of value_infos and intializers in GraphProto.
@@ -231,6 +247,52 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   for (const std::pair<std::string_view, const OrtValueInfo*>& it : ort_value_info_storage.array) {
     onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_value_info()->Add();
     CXX_API_RETURN_IF_ERROR(OrtValueInfoToProto(*it.second, *value_info_proto));
+  }
+
+  // Add sorted initializers to GraphProto
+  for (const std::pair<std::string_view, const OrtValueInfo*>& it : initializer_ort_value_info_storage.array) {
+    const OrtValueInfo* initializer_value_info = it.second;
+    std::string initializer_name = std::string(it.first);
+    std::vector<int64_t> initializer_dims;
+    std::vector<std::string> initializer_sym_dims;
+    ONNXTensorElementDataType initializer_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+    CXX_API_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(*initializer_value_info, /*get_sym_dims*/ false,
+                                                           initializer_elem_type, initializer_dims, initializer_sym_dims));
+
+    onnx::TensorProto* tensor_proto = graph_proto.add_initializer();
+    tensor_proto->set_name(initializer_name);
+    tensor_proto->set_data_type(initializer_elem_type);
+
+    auto* tensor_proto_dims = tensor_proto->mutable_dims();
+    for (int64_t dim : initializer_dims) {
+      tensor_proto_dims->Add(dim);
+    }
+
+    const OrtValue* ort_value = nullptr;
+    C_API_RETURN_IF_ERROR(ort_api.ValueInfo_GetInitializerValue(initializer_value_info, &ort_value));
+
+    const void* data = nullptr;
+    size_t data_bytes = 0;
+    C_API_RETURN_IF_ERROR(ort_api.GetTensorData(ort_value, &data));
+    C_API_RETURN_IF_ERROR(ort_api.GetTensorSizeInBytes(ort_value, &data_bytes));
+
+    std::string ext_location;
+    int64_t ext_offset = 0;
+    bool is_external = write_initializer_data_func(initializer_name.c_str(), data, data_bytes, ext_location, ext_offset);
+
+    if (is_external) {
+      auto* ext_data_entries = tensor_proto->mutable_external_data();
+      onnx::StringStringEntryProto* location_entry = ext_data_entries->Add();
+      onnx::StringStringEntryProto* offset_entry = ext_data_entries->Add();
+
+      location_entry->set_key("location");
+      location_entry->set_value(ext_location);
+      offset_entry->set_key("offset");
+      offset_entry->set_value(std::to_string(ext_offset));
+    } else {
+      // User wants to store data inline the TensorProto's raw_data
+      tensor_proto->set_raw_data(data, data_bytes);
+    }
   }
 
   return Ort::Status{nullptr};
@@ -285,8 +347,11 @@ static Ort::Status GetOrtValueInfoName(const OrtValueInfo& ort_value_info, /*out
   return Ort::Status{nullptr};
 }
 
-static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
-                                       onnx::ValueInfoProto& value_info_proto) {
+static Ort::Status GetOrtValueInfoTensorTypeShape(const OrtValueInfo& ort_value_info,
+                                                  bool get_symbolic_dims,
+                                                  /*out*/ ONNXTensorElementDataType& elem_type,
+                                                  /*out*/ std::vector<int64_t>& dims,
+                                                  /*out*/ std::vector<std::string>& symbolic_dims) {
   const OrtApi& ort_api = Ort::GetApi();
 
   const OrtTypeInfo* ort_type_info = nullptr;
@@ -294,42 +359,62 @@ static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
 
   ONNXType ort_onnx_type = ONNX_TYPE_UNKNOWN;
   C_API_RETURN_IF_ERROR(ort_api.GetOnnxTypeFromTypeInfo(ort_type_info, &ort_onnx_type));
-
-  // We currently only support ONNX tensors. Support for other types (e.g., ONNX_TYPE_SEQUENCE) can be added later.
-  C_API_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, ort_api,
-                  "Internal error: OrtValueInfoToProto currently only supports ONNX_TYPE_TENSOR");
-
-  std::string value_name;
-  CXX_API_RETURN_IF_ERROR(GetOrtValueInfoName(ort_value_info, value_name));
-  value_info_proto.set_name(value_name);
-
-  onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
+  C_API_RETURN_IF(ort_onnx_type != ONNX_TYPE_TENSOR, ort_api, "Expected OrtValueInfo to represent a Tensor");
 
   const OrtTensorTypeAndShapeInfo* ort_type_shape = nullptr;
   ONNXTensorElementDataType ort_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
   C_API_RETURN_IF_ERROR(ort_api.CastTypeInfoToTensorInfo(ort_type_info, &ort_type_shape));
   C_API_RETURN_IF_ERROR(ort_api.GetTensorElementType(ort_type_shape, &ort_elem_type));
 
-  type_proto_tensor->set_elem_type(ort_elem_type);
+  size_t num_dims = 0;
+  C_API_RETURN_IF_ERROR(ort_api.GetDimensionsCount(ort_type_shape, &num_dims));
 
-  size_t ort_num_dims = 0;
-  C_API_RETURN_IF_ERROR(ort_api.GetDimensionsCount(ort_type_shape, &ort_num_dims));
-
-  std::vector<int64_t> ort_dims(ort_num_dims, 0);
+  std::vector<int64_t> ort_dims(num_dims, 0);
   C_API_RETURN_IF_ERROR(ort_api.GetDimensions(ort_type_shape, ort_dims.data(), ort_dims.size()));
 
-  std::vector<const char*> ort_dim_syms(ort_num_dims, nullptr);
-  C_API_RETURN_IF_ERROR(ort_api.GetSymbolicDimensions(ort_type_shape, ort_dim_syms.data(), ort_dim_syms.size()));
+  elem_type = ort_elem_type;
+  dims = std::move(ort_dims);
+
+  if (get_symbolic_dims) {
+    std::vector<const char*> ort_dim_syms(num_dims, nullptr);
+    C_API_RETURN_IF_ERROR(ort_api.GetSymbolicDimensions(ort_type_shape, ort_dim_syms.data(), ort_dim_syms.size()));
+
+    symbolic_dims.reserve(num_dims);
+    for (const char* sym_dim : ort_dim_syms) {
+      symbolic_dims.push_back(sym_dim);
+    }
+  }
+
+  return Ort::Status{nullptr};
+}
+
+// Create an onnx::ValueInfoProto from an OrtValueInfo (name, type, shape).
+static Ort::Status OrtValueInfoToProto(const OrtValueInfo& ort_value_info,
+                                       onnx::ValueInfoProto& value_info_proto) {
+  std::vector<int64_t> ort_dims;
+  std::vector<std::string> ort_dim_syms;
+  ONNXTensorElementDataType ort_elem_type = ONNX_TENSOR_ELEMENT_DATA_TYPE_UNDEFINED;
+
+  // We currently only support ONNX tensors. Support for other types (e.g., ONNX_TYPE_SEQUENCE) can be added later.
+  CXX_API_RETURN_IF_ERROR(GetOrtValueInfoTensorTypeShape(ort_value_info, /*get_sym_dims*/ true,
+                                                         ort_elem_type, ort_dims, ort_dim_syms));
+
+  std::string value_name;
+  CXX_API_RETURN_IF_ERROR(GetOrtValueInfoName(ort_value_info, value_name));
+  value_info_proto.set_name(value_name);
+
+  onnx::TypeProto_Tensor* type_proto_tensor = value_info_proto.mutable_type()->mutable_tensor_type();
+  type_proto_tensor->set_elem_type(ort_elem_type);
 
   onnx::TensorShapeProto* shape_proto = type_proto_tensor->mutable_shape();
 
-  for (size_t dim_idx = 0; dim_idx < ort_num_dims; dim_idx++) {
+  for (size_t dim_idx = 0; dim_idx < ort_dims.size(); dim_idx++) {
     onnx::TensorShapeProto_Dimension* dim_proto = shape_proto->add_dim();
 
     if (ort_dims[dim_idx] >= 0) {
       dim_proto->set_dim_value(ort_dims[dim_idx]);
     } else {
-      const std::string dim_param = ort_dim_syms[dim_idx];
+      const std::string& dim_param = ort_dim_syms[dim_idx];
 
       // If dim_param is empty, leave dim_proto with neither the dim_value or dim_param set,
       // which represents an unknown dimension.
