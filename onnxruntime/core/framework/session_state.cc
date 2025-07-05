@@ -107,19 +107,24 @@ SessionState::SessionState(Graph& graph,
 {
   enable_mem_pattern_ = sess_options_.enable_mem_pattern &&
                         sess_options_.execution_mode == ExecutionMode::ORT_SEQUENTIAL;
-  if (parent_allocators) {
-    allocators_ = parent_allocators;
-  } else {
-    allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
-    allocators_ = allocators_unique_ptr_.get();
-    // The allocator registration rule:
-    // Each location (OrtDevice) will only have 1 allocator used for whole session.
-    // The EP which is registered first will have higher priority
-    for (auto& ep : execution_providers_) {
-      auto allocators = ep->CreatePreferredAllocators();
-      for (auto& alloc : allocators) {
-        allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
-      }
+
+  allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+  allocators_ = allocators_unique_ptr_.get();
+
+  // Fill in parent allocators
+  if (parent_allocators && parent_allocators->size() > 0) {
+    for (auto& alloc_pair : *parent_allocators) {
+      allocators_->insert({alloc_pair.first, alloc_pair.second});
+    }
+  }
+
+  // The allocator registration rule:
+  // Each location (OrtDevice) will only have 1 allocator used for whole session.
+  // The EP which is registered first will have higher priority
+  for (auto& ep : execution_providers_) {
+    auto allocators = ep->CreatePreferredAllocators();
+    for (auto& alloc : allocators) {
+      allocators_->insert({alloc->Info().device, alloc});  // DON'T overwrite existing key
     }
   }
 }

@@ -2102,6 +2102,20 @@ common::Status InferenceSession::Initialize() {
     }
 #endif
 
+    std::unique_ptr<AllocatorMap> allocators_unique_ptr_ = std::make_unique<AllocatorMap>();
+    AllocatorMap* allocators_ = allocators_unique_ptr_.get();
+
+    bool use_env_allocators =
+        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
+    if (use_env_allocators) {
+      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
+      // session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
+
+      for (auto& alloc : environment_.GetRegisteredSharedAllocators()) {
+        allocators_->insert({alloc->Info().device, alloc});
+      }
+    }
+
     // now that we have all the execution providers, create the session state
     session_state_ = std::make_unique<SessionState>(
         model_->MainGraph(),
@@ -2113,14 +2127,8 @@ common::Status InferenceSession::Initialize() {
         *session_logger_,
         session_profiler_,
         session_options_,
-        prepacked_weights_container_);
-
-    bool use_env_allocators =
-        session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigUseEnvAllocators, "0") == "1";
-    if (use_env_allocators) {
-      LOGS(*session_logger_, INFO) << "This session will use the allocator registered with the environment.";
-      session_state_->UpdateAllocatorsWithEnvAllocators(environment_.GetRegisteredSharedAllocators());
-    }
+        prepacked_weights_container_,
+        allocators_);
 
     for (auto& ep : execution_providers_) {
       auto tuning_ctx = ep->GetTuningContext();
