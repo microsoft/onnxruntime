@@ -77,7 +77,7 @@ struct OrtValueInfoStorage {
 
 Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::GraphProto& graph_proto,
-                            WriteInitializerDataFunc write_initializer_data_func) {
+                            HandleInitializerDataFunc handle_initializer_data_func) {
   const OrtApi& ort_api = Ort::GetApi();
 
   //
@@ -336,8 +336,11 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
     std::string ext_location;
     int64_t ext_offset = 0;
-    bool is_external = write_initializer_data_func != nullptr &&
-                       write_initializer_data_func(initializer_name, data, data_bytes, ext_location, ext_offset);
+    bool is_external = false;
+
+    if (handle_initializer_data_func != nullptr) {
+      handle_initializer_data_func(initializer_value_info, data, data_bytes, is_external, ext_location, ext_offset);
+    }
 
     if (is_external) {
       tensor_proto->set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
@@ -548,7 +551,7 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
       break;
     }
     default: {
-      std::string err_msg = "Unexpected OrtOpAttrType with value " + static_cast<int>(attr_type);
+      std::string err_msg = "Unexpected OrtOpAttrType with value " + std::to_string(static_cast<int>(attr_type));
       return Ort::Status(err_msg.c_str(), ORT_FAIL);
     }
   }

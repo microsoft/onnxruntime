@@ -82,18 +82,25 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
   std::ofstream ext_ini_ofs("mnist_generated.bin", std::ios::binary);
   ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
   ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto,
-                                [&ext_ini_ofs](const char* name, const void* data, size_t bytes,
-                                               std::string& location, int64_t& offset) -> bool {
-                                  (void)name;
+                                [&ext_ini_ofs](const OrtValueInfo* value_info,
+                                               const void* data, size_t bytes, bool& is_external,
+                                               std::string& location, int64_t& offset) -> Ort::Status {
+                                  // OrtValueInfo* could be used to query initializer's name, type, shape,
+                                  // node consumers, etc.
+                                  (void)value_info;
+
                                   if (bytes <= 127) {
-                                    return false;  // Keep small initializers stored inside the TensorProto.
+                                    is_external = false;  // Keep small initializers stored inside the TensorProto.
+                                    return Ort::Status{nullptr};
                                   }
 
                                   offset = ext_ini_ofs.tellp();
                                   location = "mnist_generated.bin";
                                   ext_ini_ofs.write(static_cast<const char*>(data), bytes);
                                   ext_ini_ofs.flush();
-                                  return true;  // True if is external initializer.
+                                  is_external = true;  // True if is external initializer.
+
+                                  return Ort::Status{nullptr};
                                 });
 
   std::ofstream ofs(ORT_TSTR("mnist_generated.onnx"), std::ios::binary);
