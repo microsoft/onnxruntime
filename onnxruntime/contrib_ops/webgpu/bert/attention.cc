@@ -69,8 +69,8 @@ Status TransferBSDToBNSH(onnxruntime::webgpu::ComputeContext& context, int num_h
   return context.RunProgram(program);
 };
 
-void InitVarStub(std::ostringstream& ss, const Tensor* seqlen_k) {
-  if (seqlen_k != nullptr) {
+void InitVarStub(std::ostringstream& ss, bool has_seqlen_k) {
+  if (has_seqlen_k) {
     ss << "total_sequence_length = u32(seqlen_k[batch_idx]) + 1;\n";
     ss << "var past_sequence_length: u32 = select(total_sequence_length - sequence_length, 0u, uniforms.is_first_prompt > 0);\n";
   } else {
@@ -87,7 +87,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_attention_bias_) {
     shader.AddInput("attention_bias", ShaderUsage::UseUniform);
   }
-  if (seqlen_k_ != nullptr) {
+  if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
   shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias);
@@ -107,7 +107,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let sequence_length = uniforms.M;\n"
                             << "var total_sequence_length = uniforms.N;\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_);
+  InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str();
   shader.MainFunctionBody() << "let kOffset = (batch_head_idx / uniforms.n_reps) * uniforms.kv_sequence_length * uniforms.K;\n";
   if (has_present_key_) {
@@ -182,7 +182,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
   const int components = parameters.head_size_ % 4 == 0 ? 4 : (parameters.head_size_ % 2 == 0 ? 2 : 1);
 
   AttentionProbsProgram program{"AttentionProbs", feed_past_key, has_present_key, has_attention_bias, tile_size,
-                                components, parameters.is_first_prompt_, seqlen_k, parameters.past_present_share_buffer_};
+                                components, parameters.is_first_prompt_, seqlen_k != nullptr, parameters.past_present_share_buffer_};
   program.AddInputs({{Q, ProgramTensorMetadataDependency::TypeAndRank, components},
                      {K, ProgramTensorMetadataDependency::TypeAndRank, components}});
   if (feed_past_key) {
@@ -224,8 +224,11 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 }
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  if (seqlen_k_) {
+  if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
+  }
+  if (has_head_sink_) {
+    shader.AddInput("head_sink", ShaderUsage::UseUniform);
   }
   shader.AddOutput("x", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AdditionalImplementation() << "var<workgroup> thread_max: array<f32, " << work_group_size_ << ">;\n"
@@ -233,21 +236,32 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
   shader.MainFunctionBody() << "let sequence_length = uniforms.sequence_length;\n"
                             << "let batch_idx = u32(workgroup_idx / sequence_length) / uniforms.num_heads;\n"
+                            << "let head_idx = u32(workgroup_idx / sequence_length) % uniforms.num_heads;\n"
                             << "var total_sequence_length = uniforms.total_sequence_length_comp * " << components_ << ";\n";
   std::ostringstream oss;
-  InitVarStub(oss, seqlen_k_);
+  InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str()
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n"
-                            << "let seq_causal_length = " << (seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
+                            << "let seq_causal_length = " << (has_seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
                             << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
                             << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
                             << "  thread_max_vector = max(f32_val_t(x[offset + i]), thread_max_vector);\n"
                             << "}\n"
                             << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
-                            << "workgroupBarrier();\n"
-                            << "var max_value =  f32(-3.402823e+38f);\n"
-                            << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
+                            << "workgroupBarrier();\n";
+
+  if (has_head_sink_) {
+    // Handle head sink
+    shader.MainFunctionBody() << "let sink_value: f32 = head_sink[head_idx];\n"
+                              << "var max_value = sink_value;\n";
+  } else if (use_smooth_softmax_) {
+    shader.MainFunctionBody() << "var max_value: f32 = 0.0;\n";
+  } else {
+    shader.MainFunctionBody() << "var max_value = f32(-3.402823e+38f);\n";
+  }
+
+  shader.MainFunctionBody() << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
                             << "var sum_vector = f32_val_t(0);\n"
@@ -259,8 +273,15 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var sum: f32 = 0;\n"
                             << "for (var i = 0u; i < " << work_group_size_ << "; i++) {\n"
                             << "  sum += thread_sum[i]\n;"
-                            << "}\n"
-                            << "if (sum == 0) {\n"
+                            << "}\n";
+
+  if (has_head_sink_) {
+    shader.MainFunctionBody() << "sum += exp(sink_value - max_value);\n";
+  } else if (use_smooth_softmax_) {
+    shader.MainFunctionBody() << "sum += exp(-max_value);\n";
+  }
+
+  shader.MainFunctionBody() << "if (sum == 0) {\n"
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
                             << "    x[offset + i] = x_value_t(x_element_t(1.0)/x_element_t(seq_causal_length));\n"
                             << "  }\n"
@@ -270,7 +291,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "    x[offset + i] = x_value_t(exp(f32input - max_value) / sum);\n"
                             << "  }\n"
                             << "}\n";
-  if (seqlen_k_) {
+  if (has_seqlen_k_) {
     shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
                               << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
                               << "}\n";
@@ -280,7 +301,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 }
 
 Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tensor* probs, int32_t batch_size, int32_t num_heads, int32_t past_sequence_length, int32_t sequence_length, int32_t total_sequence_length,
-                             const Tensor* seqlen_k, bool is_first_prompt) {
+                             const Tensor* seqlen_k, bool is_first_prompt, bool use_smooth_softmax, const Tensor* head_sink) {
   const int components = seqlen_k != nullptr ? 1 : (total_sequence_length % 4 == 0 ? 4 : (total_sequence_length % 2 == 0 ? 2 : 1));
   int work_group_size = 64;
   const int total_sequence_length_comp = (total_sequence_length + components - 1) / components;
@@ -289,12 +310,15 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
   }
   const int elementsPerThread = (total_sequence_length_comp + work_group_size - 1) / work_group_size;
 
-  InPlaceSoftmaxProgram program{"InPlaceSoftmax", work_group_size, components, seqlen_k};
+  InPlaceSoftmaxProgram program{work_group_size, components, use_smooth_softmax, seqlen_k != nullptr, head_sink != nullptr};
   if (seqlen_k != nullptr) {
     program.AddInput({seqlen_k, ProgramTensorMetadataDependency::TypeAndRank});
   }
+  if (head_sink != nullptr) {
+    program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
+  }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .CacheHint(work_group_size)
+      .CacheHint(work_group_size, use_smooth_softmax)
       .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
@@ -443,7 +467,7 @@ Status ComputeVxAttentionScore(onnxruntime::webgpu::ComputeContext& context, int
 
 Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const Tensor* attention_bias,
                       const Tensor* past_key, const Tensor* past_value, Tensor* output, Tensor* present_key, Tensor* present_value,
-                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* seqlen_k) {
+                      WebgpuAttentionParameters& parameters, onnxruntime::webgpu::ComputeContext& context, const Tensor* head_sink, const Tensor* seqlen_k) {
   const int output_count = std::min({context.OutputCount(), 1 + (past_key != nullptr ? 1 : 0) + (past_value != nullptr ? 1 : 0)});
   const int past_sequence_length = output_count > 1 ? parameters.past_sequence_length_ : 0;
   const int total_sequence_length =
@@ -457,7 +481,7 @@ Status ApplyAttention(const Tensor* Q, const Tensor* K, const Tensor* V, const T
                                             parameters, past_sequence_length, total_sequence_length, seqlen_k));
 
   ORT_RETURN_IF_ERROR(ComputeInPlaceSoftmax(context, &probs,
-                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_));
+                                            parameters.batch_size_, parameters.num_heads_, parameters.past_sequence_length_, parameters.sequence_length_, total_sequence_length, seqlen_k, parameters.is_first_prompt_, parameters.use_smooth_softmax_, head_sink));
 
   ORT_RETURN_IF_ERROR(ComputeVxAttentionScore(context, output_count, &probs, V, past_value, output, present_value,
                                               parameters, past_sequence_length, total_sequence_length, seqlen_k));

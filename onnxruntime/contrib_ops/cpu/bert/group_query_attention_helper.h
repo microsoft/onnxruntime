@@ -340,6 +340,7 @@ Status CheckInputs(const T* query,
 template <typename T = Tensor>
 Status CheckCustomAttentionInputs(const T* position_ids,
                                   const T* attention_bias,
+                                  const T* head_sink,
                                   const GroupQueryAttentionParameters& parameters) {
   if (position_ids != nullptr) {
     const auto& pos_ids_shape = position_ids->Shape();
@@ -374,6 +375,18 @@ Status CheckCustomAttentionInputs(const T* position_ids,
     if (attn_bias_shape[3] != parameters.total_sequence_length) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
                              "attention_bias dimension 3 must be equal to total_sequence_length, got ", attn_bias_shape[3]);
+    }
+  }
+
+  if (head_sink != nullptr) {
+    const auto& head_sink_shape = head_sink->Shape();
+    if (head_sink_shape.NumDimensions() != 1) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "head_sink must be a 1D tensor");
+    }
+
+    if (head_sink_shape[0] != parameters.num_heads) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "head_sink dimension 0 must be equal to the num heads, got ", head_sink_shape[0]);
     }
   }
 
