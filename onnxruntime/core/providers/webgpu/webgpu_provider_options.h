@@ -53,6 +53,7 @@ constexpr const char* kBufferCacheMode_Disabled = "disabled";
 constexpr const char* kBufferCacheMode_LazyRelease = "lazyRelease";
 constexpr const char* kBufferCacheMode_Simple = "simple";
 constexpr const char* kBufferCacheMode_Bucket = "bucket";
+constexpr const char* kBufferCacheMode_DynamicBucket = "dynamicBucket";
 
 constexpr const char* kValidationMode_Disabled = "disabled";
 constexpr const char* kValidationMode_wgpuOnly = "wgpuOnly";

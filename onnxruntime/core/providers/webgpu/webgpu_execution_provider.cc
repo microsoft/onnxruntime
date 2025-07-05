@@ -896,6 +896,9 @@ Status WebGpuExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_
     context_.StartProfiling();
   }
 
+  // Start tracking memory usage for this session run.
+  context_.BufferManager().OnRunStart();
+
   if (IsGraphCaptureEnabled() && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
     ORT_NOT_IMPLEMENTED("graph capture not implemented");
   }
@@ -917,6 +920,9 @@ Status WebGpuExecutionProvider::OnRunEnd(bool /* sync_stream */, const onnxrunti
   if (profiler_->Enabled()) {
     context_.CollectProfilingData(profiler_->Events());
   }
+
+  // Update memory patterns from this session run.
+  context_.BufferManager().OnRunEnd();
 
   context_.OnRunEnd();
 

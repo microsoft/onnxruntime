@@ -249,6 +249,136 @@ class BucketCacheManager : public IBufferCacheManager {
   std::vector<size_t> buckets_keys_;
 };
 
+class DynamicBucketCacheManager : public IBufferCacheManager {
+ public:
+  DynamicBucketCacheManager() {}
+
+  ~DynamicBucketCacheManager() {
+    for (auto& pair : buckets_) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+    }
+  }
+
+  void OnRunStart() override {
+    current_run_usage_.clear();
+  }
+
+  void OnRunEnd() override {
+    // Update memory patterns based on this session run.
+    for (const auto& usage : current_run_usage_) {
+      auto& pattern = memory_patterns_[usage.first];
+      pattern.request_size = usage.first;
+      pattern.frequency = usage.second;
+    }
+
+    // Adjust buckets based on the collected memory patterns every 2 runs.
+    // The reason for this is to allow the cache to adapt to the memory usage patterns
+    // of previous runs of last completed token generation session.
+    static size_t run_id = 0;
+    if ((run_id + 1) % 2 == 0) {
+      AdjustBuckets();
+    }
+    ++run_id;
+  }
+
+  size_t CalculateBufferSize(size_t request_size) override {
+    size_t normalized_request_size = NormalizeBufferSize(request_size);
+
+    // Track usage for the current run
+    current_run_usage_[normalized_request_size]++;
+
+    // Check if we already have a bucket for this size. If not, create a new bucket so that it can cache buffers of
+    // this size in the current session run if the buffer is quickly released in the same session.
+    if (buckets_.find(normalized_request_size) == buckets_.end()) {
+      buckets_.emplace(normalized_request_size, std::vector<WGPUBuffer>());
+      buckets_keys_.push_back(normalized_request_size);
+      std::sort(buckets_keys_.begin(), buckets_keys_.end());
+    }
+
+    return normalized_request_size;
+  }
+
+  WGPUBuffer TryAcquireCachedBuffer(size_t buffer_size) override {
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end() && !it->second.empty()) {
+      auto buffer = it->second.back();
+      it->second.pop_back();
+      return buffer;
+    }
+    return nullptr;
+  }
+
+  void RegisterBuffer(WGPUBuffer /*buffer*/, size_t /*request_size*/) override {
+    // no-op
+  }
+
+  void ReleaseBuffer(WGPUBuffer buffer) override {
+    auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
+
+    auto it = buckets_.find(buffer_size);
+    if (it != buckets_.end()) {
+      it->second.emplace_back(buffer);
+    } else {
+      wgpuBufferRelease(buffer);
+    }
+  }
+
+  void OnRefresh() override {
+    // no-op
+  }
+
+  // Analyze memory patterns and adjust bucket sizes.
+  void AdjustBuckets() {
+    // Store old buckets to handle transitions.
+    auto old_buckets = std::move(buckets_);
+
+    // Clear and recreate buckets structure.
+    buckets_keys_.clear();
+    buckets_.clear();
+
+    // Create new buckets based on patterns.
+    for (const auto& pattern : memory_patterns_) {
+      // The request size here is already normalized, so we can use it directly as the bucket size key.
+      size_t bucket_size = pattern.second.request_size;
+      buckets_keys_.push_back(bucket_size);
+
+      // Initialize bucket vector.
+      auto& bucket = buckets_[bucket_size];
+
+      auto old_bucket_it = old_buckets.find(bucket_size);
+      if (old_bucket_it != old_buckets.end()) {
+        // Transfer buffers from old to new bucket.
+        bucket = std::move(old_bucket_it->second);
+        old_bucket_it->second.clear();
+        old_buckets.erase(old_bucket_it);
+      }
+    }
+
+    // Sort bucket sizes.
+    std::sort(buckets_keys_.begin(), buckets_keys_.end());
+
+    // Release any remaining buffers in old buckets that were not hit by the memoryusage patterns.
+    for (auto& pair : old_buckets) {
+      for (auto& buffer : pair.second) {
+        wgpuBufferRelease(buffer);
+      }
+      pair.second.clear();
+    }
+    old_buckets.clear();
+
+    // Clear patterns for next adjustment period.
+    memory_patterns_.clear();
+  }
+
+ private:
+  std::unordered_map<size_t, size_t> current_run_usage_;            // Tracks usage in current session run.
+  std::unordered_map<size_t, MemoryUsagePattern> memory_patterns_;  // Tracks patterns across session runs.
+  std::unordered_map<size_t, std::vector<WGPUBuffer>> buckets_;
+  std::vector<size_t> buckets_keys_;
+};
+
 std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode cache_mode) {
   switch (cache_mode) {
     case BufferCacheMode::Disabled:
@@ -259,6 +389,8 @@ std::unique_ptr<IBufferCacheManager> CreateBufferCacheManager(BufferCacheMode ca
       return std::make_unique<SimpleCacheManager>();
     case BufferCacheMode::Bucket:
       return std::make_unique<BucketCacheManager>();
+    case BufferCacheMode::DynamicBucket:
+      return std::make_unique<DynamicBucketCacheManager>();
     default:
       ORT_NOT_IMPLEMENTED("Unsupported buffer cache mode");
   }
@@ -277,6 +409,9 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode) {
       break;
     case BufferCacheMode::Bucket:
       os << "Bucket";
+      break;
+    case BufferCacheMode::DynamicBucket:
+      os << "DynamicBucket";
       break;
     default:
       os << "Unknown(" << static_cast<int>(mode) << ")";
