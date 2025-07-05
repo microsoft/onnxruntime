@@ -80,9 +80,6 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             WriteInitializerDataFunc write_initializer_data_func) {
   const OrtApi& ort_api = Ort::GetApi();
 
-  OrtValueInfoStorage ort_value_info_storage;
-  OrtValueInfoStorage initializer_ort_value_info_storage;
-
   //
   // Set GraphProto metadata
   //
@@ -118,8 +115,12 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   // Set GraphProto value_infos, nodes, initializers.
   //
 
-  auto track_ort_value_info = [&](const OrtValueInfo& ort_value_info,
-                                  /*out*/ const char** value_name_out = nullptr) -> Ort::Status {
+  OrtValueInfoStorage value_infos;              // OrtValueInfos stored in GraphProto.value_info
+  OrtValueInfoStorage initializer_value_infos;  // OrtValueInfos for initializers stored in GraphProto.initializer.
+
+  auto track_ort_value_info = [&ort_api, &value_infos,
+                               &initializer_value_infos](const OrtValueInfo& ort_value_info,
+                                                         /*out*/ const char** value_name_out = nullptr) -> Ort::Status {
     const char* value_name = nullptr;
     C_API_RETURN_IF_ERROR(ort_api.GetValueInfoName(&ort_value_info, &value_name));
 
@@ -147,24 +148,24 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
     if (is_from_outer_scope) {
       // For values defined in an outer scope, just add the value info (not the initializer if it is one).
-      if (!ort_value_info_storage.HasValueInfo(value_name)) {
-        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      if (!value_infos.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(value_infos.Add(&ort_value_info));
       }
     } else if (is_optional_graph_input) {
-      if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-        CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(&ort_value_info));
+      if (!initializer_value_infos.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(initializer_value_infos.Add(&ort_value_info));
       }
     } else if (is_constant_initializer) {
-      if (!ort_value_info_storage.HasValueInfo(value_name)) {
-        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      if (!value_infos.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(value_infos.Add(&ort_value_info));
       }
 
-      if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
-        CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(&ort_value_info));
+      if (!initializer_value_infos.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(initializer_value_infos.Add(&ort_value_info));
       }
     } else if (is_internal) {
-      if (!ort_value_info_storage.HasValueInfo(value_name)) {
-        CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(&ort_value_info));
+      if (!value_infos.HasValueInfo(value_name)) {
+        CXX_API_RETURN_IF_ERROR(value_infos.Add(&ort_value_info));
       }
     }
 
@@ -177,6 +178,8 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   std::vector<const OrtNode*> nodes(num_nodes);
   C_API_RETURN_IF_ERROR(ort_api.Graph_GetNodes(&ort_graph, nodes.data(), nodes.size()));
 
+  // Loop through all nodes (topological order): add NodeProto instances to GraphProto and track OrtValueInfos
+  // that will be stored in GraphProto.value_info and GraphProto.initializer.
   for (size_t i = 0; i < num_nodes; i++) {
     const OrtNode* ort_node = nodes[i];
     onnx::NodeProto* node_proto = graph_proto.add_node();
@@ -295,17 +298,17 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   }
 
   // Sort to ensure consistent ordering of value_infos and initializers in GraphProto.
-  ort_value_info_storage.SortByName();
-  initializer_ort_value_info_storage.SortByName();
+  value_infos.SortByName();
+  initializer_value_infos.SortByName();
 
   // Add sorted value_infos to GraphProto.
-  for (const std::pair<const char*, const OrtValueInfo*>& it : ort_value_info_storage.array) {
+  for (const std::pair<const char*, const OrtValueInfo*>& it : value_infos.array) {
     onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_value_info()->Add();
     CXX_API_RETURN_IF_ERROR(OrtValueInfoToProto(*it.second, *value_info_proto));
   }
 
-  // Add sorted initializers to GraphProto
-  for (const std::pair<const char*, const OrtValueInfo*>& it : initializer_ort_value_info_storage.array) {
+  // Add sorted initializers to GraphProto as TensorProto objects.
+  for (const std::pair<const char*, const OrtValueInfo*>& it : initializer_value_infos.array) {
     const OrtValueInfo* initializer_value_info = it.second;
     const char* initializer_name = it.first;
     std::vector<int64_t> initializer_dims;
