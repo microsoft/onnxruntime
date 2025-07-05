@@ -332,6 +332,17 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   return Status::OK();
 }
 
+template<typename T = Tensor>
+Status CheckOutputs(const T* output_qk, int output_post_softmax_qk)
+{
+  if (output_post_softmax_qk >= 0 && output_qk == nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "output_post_softmax_qk flag was configured but output buffer was not provided");
+  }
+
+  return Status::OK();
+}
+
 }  // namespace group_query_attention_helper
 }  // namespace contrib
 }  // namespace onnxruntime

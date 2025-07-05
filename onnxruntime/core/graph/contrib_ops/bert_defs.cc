@@ -1082,6 +1082,10 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
               "Use a smooth factor in softmax.",
               AttributeProto::INT,
               static_cast<int64_t>(-1))
+        .Attr("output_post_softmax_qk",
+              "Output values of QK matrix multiplication before (0) or after (1) softmax normalization. Default value is -1 (don't output).",
+              AttributeProto::INT,
+              static_cast<int64_t>(-1))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
@@ -1156,9 +1160,9 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "kv_sequence_length.",
                 "T")
         .Output(3,
-                "attention_scores",
-                "buffer in which to store attention scores",
-                "tensor(float)",
+                "output_qk",
+                "Values of QK matrix multiplication, either before or after SoftMax noramlization",
+                "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
         .TypeConstraint("M", {"tensor(int32)"}, "Constrain mask to int tensor.")
