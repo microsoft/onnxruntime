@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <fstream>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
@@ -12,6 +13,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
+#include "test/ep_graph/test_convert_to_onnx_proto.h"
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -66,6 +68,50 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, SerializeToProto_Mnist) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/mnist.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const onnxruntime::Model& original_model = test_graph->GetModel();
+  ONNX_NAMESPACE::ModelProto model_proto = original_model.ToProto();
+  model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
+
+  // Serialize OrtGraph to GraphProto. Save initializers to external file.
+  std::ofstream ext_ini_ofs("mnist_generated.bin", std::ios::binary);
+  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
+  ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto,
+                                [&ext_ini_ofs](const char* name, const void* data, size_t bytes,
+                                               std::string& location, int64_t& offset) -> bool {
+                                  (void)name;
+                                  offset = ext_ini_ofs.tellp();
+                                  location = "mnist_generated.bin";
+                                  ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+                                  ext_ini_ofs.flush();
+                                  return true;  // True if is external initializer.
+                                });
+
+  std::ofstream ofs(ORT_TSTR("mnist_generated.onnx"), std::ios::binary);
+  model_proto.SerializeToOstream(&ofs);
+  ofs.flush();
+}
+
+TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  const onnxruntime::Model& original_model = test_graph->GetModel();
+  ONNX_NAMESPACE::ModelProto model_proto = original_model.ToProto();
+
+  // Serialize OrtGraph to GraphProto
+  model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
+  ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
+  ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto);
+
+  std::ofstream ofs(ORT_TSTR("three_layer_nested_subgraph_generated.onnx"), std::ios::binary);
+  model_proto.SerializeToOstream(&ofs);
+  ofs.flush();
 }
 
 //

@@ -34,7 +34,7 @@
     }                                                              \
   } while (0)
 
-namespace test {
+namespace ort_ep_utils {
 
 struct OrtValueInfoFlags {
   enum Flags {
@@ -110,6 +110,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   const char* graph_name = nullptr;
   C_API_RETURN_IF_ERROR(ort_api.Graph_GetName(&ort_graph, &graph_name));
   graph_proto.set_name(graph_name);
+  graph_proto.set_doc_string("SERIALIZED FROM ORTGRAPH");
 
   //
   // Set GraphProto inputs and outputs
@@ -205,6 +206,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         onnx::GraphProto* subgraph_proto = attr_proto->mutable_g();
 
         attr_proto->set_name(subgraph_attr_name);
+        attr_proto->set_type(onnx::AttributeProto_AttributeType_GRAPH);
         CXX_API_RETURN_IF_ERROR(OrtGraphToProto(*ort_subgraph, *subgraph_proto));
       }
     }
@@ -231,7 +233,12 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         // Don't add graph inputs or graph outputs to graph_proto's list of value_infos.
         // Do add initializers (constant and non-constant) to graph_proto's list of initializer tensors.
 
-        if (flags.IsOptionalGraphInput()) {
+        if (flags.IsFromOuterScope()) {
+          // For values defined in an outer scope, just add the value info (not the initializer if it is one).
+          if (!ort_value_info_storage.HasValueInfo(value_name)) {
+            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
+          }
+        } else if (flags.IsOptionalGraphInput()) {
           if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
             CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
           }
@@ -269,7 +276,12 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
         // Don't add graph inputs or graph outputs to graph_proto's list of value_infos.
         // Do add initializers (constant and non-constant) to graph_proto's list of initializer tensors.
 
-        if (flags.IsOptionalGraphInput()) {
+        if (flags.IsFromOuterScope()) {
+          // For values defined in an outer scope, just add the value info (not the initializer if it is one).
+          if (!ort_value_info_storage.HasValueInfo(value_name)) {
+            CXX_API_RETURN_IF_ERROR(ort_value_info_storage.Add(ort_value_info));
+          }
+        } else if (flags.IsOptionalGraphInput()) {
           if (!initializer_ort_value_info_storage.HasValueInfo(value_name)) {
             CXX_API_RETURN_IF_ERROR(initializer_ort_value_info_storage.Add(ort_value_info));
           }
@@ -356,9 +368,11 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 
     std::string ext_location;
     int64_t ext_offset = 0;
-    bool is_external = write_initializer_data_func(initializer_name, data, data_bytes, ext_location, ext_offset);
+    bool is_external = write_initializer_data_func != nullptr &&
+                       write_initializer_data_func(initializer_name, data, data_bytes, ext_location, ext_offset);
 
     if (is_external) {
+      tensor_proto->set_data_location(onnx::TensorProto_DataLocation_EXTERNAL);
       auto* ext_data_entries = tensor_proto->mutable_external_data();
       onnx::StringStringEntryProto* location_entry = ext_data_entries->Add();
       onnx::StringStringEntryProto* offset_entry = ext_data_entries->Add();
@@ -369,6 +383,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       offset_entry->set_value(std::to_string(ext_offset));
     } else {
       // User wants to store data inline the TensorProto's raw_data
+      tensor_proto->set_data_location(onnx::TensorProto_DataLocation_DEFAULT);
       tensor_proto->set_raw_data(data, data_bytes);
     }
   }
@@ -596,8 +611,10 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
         }
 
         strs->Add()->assign(str_begin, at - str_begin);
-
-        at++;  // Skip '\0' to get to the beginning of the next string.
+        if (at < end) {
+          assert(*at == '\0');
+          at++;  // Skip '\0' to get to the beginning of the next string.
+        }
       }
 
       break;
@@ -610,4 +627,4 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
 
   return Ort::Status{nullptr};
 }
-}  // namespace test
+}  // namespace ort_ep_utils

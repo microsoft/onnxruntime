@@ -7,7 +7,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "onnx/onnx_pb.h"
 
-namespace test {
+namespace ort_ep_utils {
 
 // Signature of user-provided function to write initializer data.
 // If function returns false, initializer data will be stored inline within the TensorProto as raw_data.
