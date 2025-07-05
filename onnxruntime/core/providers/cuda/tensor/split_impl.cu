@@ -196,7 +196,7 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
                    void* output_data2, const gsl::span<const int64_t>& input_shape) {
   CUDA_LONG outer_size = 1;
   for (size_t i = 0; i < input_shape.size() - 1; ++i) {
-      outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
+    outer_size *= static_cast<CUDA_LONG>(input_shape[i]);
   }
   CUDA_LONG inner_size_in_byte = static_cast<CUDA_LONG>(input_shape[input_shape.size() - 1] * element_size);
 
@@ -234,16 +234,16 @@ Status Split3Inner(cudaStream_t stream, const size_t element_size, const int64_t
   }
 
   switch (VEC_SIZE) {
-#define CASE_ELEMENT_TYPE(type)                                                                       \
-    _Split3InnerKernel<type><<<outer_size, threadsPerBlock, 0, stream>>>(                             \
-                                                            size0_in_byte,                            \
-                                                            size1_in_byte,                            \
-                                                            size2_in_byte,                             \
-                                                            input_data,        \
-                                                            output_data0,      \
-                                                            output_data1,      \
-                                                            output_data2,      \
-                                                            inner_size_in_byte)
+#define CASE_ELEMENT_TYPE(type)                                         \
+  _Split3InnerKernel<type><<<outer_size, threadsPerBlock, 0, stream>>>( \
+      size0_in_byte,                                                    \
+      size1_in_byte,                                                    \
+      size2_in_byte,                                                    \
+      input_data,                                                       \
+      output_data0,                                                     \
+      output_data1,                                                     \
+      output_data2,                                                     \
+      inner_size_in_byte)
     case 16:
       CASE_ELEMENT_TYPE(int4);
       break;

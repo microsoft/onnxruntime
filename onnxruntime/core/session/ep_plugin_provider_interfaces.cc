@@ -8,10 +8,10 @@
 #include <unordered_set>
 #include <utility>
 #include <vector>
-#include "core/framework/abi_pointer_array.h"
 #include "core/framework/compute_capability.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
+#include "core/framework/plugin_data_transfer.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -30,12 +30,13 @@ namespace onnxruntime {
 
 PluginExecutionProviderFactory::PluginExecutionProviderFactory(OrtEpFactory& ep_factory,
                                                                gsl::span<const OrtEpDevice* const> ep_devices)
-    : ep_factory_{ep_factory} {
-  devices_.reserve(ep_devices.size());
+    : ep_factory_{ep_factory},
+      devices_{ep_devices.begin(), ep_devices.end()} {
+  hardware_devices_.reserve(ep_devices.size());
   ep_metadata_.reserve(ep_devices.size());
 
   for (const auto* ep_device : ep_devices) {
-    devices_.push_back(ep_device->device);
+    hardware_devices_.push_back(ep_device->device);
     ep_metadata_.push_back(&ep_device->ep_metadata);
   }
 }
@@ -44,15 +45,16 @@ std::unique_ptr<IExecutionProvider>
 PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_options,
                                                const OrtLogger& session_logger) {
   OrtEp* ort_ep = nullptr;
-  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, devices_.data(), ep_metadata_.data(),
-                                                          devices_.size(), &session_options, &session_logger, &ort_ep));
+  Status status = ToStatusAndRelease(ep_factory_.CreateEp(&ep_factory_, hardware_devices_.data(), ep_metadata_.data(),
+                                                          hardware_devices_.size(), &session_options, &session_logger,
+                                                          &ort_ep));
 
   if (!status.IsOK()) {
     ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
   auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                              session_options);
+                                                              session_options, ep_factory_, devices_);
   ep_wrapper->SetLogger(session_logger.ToInternal());
 
   return ep_wrapper;
@@ -84,10 +86,24 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options)
+PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
+                                                 OrtEpFactory& ep_factory,
+                                                 gsl::span<const OrtEpDevice* const> ep_devices)
     : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
-      ort_ep_(std::move(ep)) {
+      ort_ep_(std::move(ep)),
+      ep_factory_(ep_factory),
+      ep_devices_(ep_devices.begin(), ep_devices.end()) {
   generate_ep_ctx_model_ = session_options.value.GetEpContextGenerationOptions().enable;
+
+  for (const auto* ep_device : ep_devices_) {
+    if (ep_device->device_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->device_memory_info);
+    }
+
+    if (ep_device->host_accessible_memory_info != nullptr) {
+      allocator_mem_infos_.push_back(ep_device->host_accessible_memory_info);
+    }
+  }
 }
 
 PluginExecutionProvider::~PluginExecutionProvider() {
@@ -392,6 +408,21 @@ const InlinedVector<const Node*> PluginExecutionProvider::GetEpContextNodes() co
   return result;
 }
 
+namespace {
+
+struct DataLayoutMapping {
+  DataLayout data_layout;
+  OrtEpDataLayout api_data_layout;
+};
+
+// Maps enum values between `onnxruntime::DataLayout` and `OrtEpDataLayout`.
+constexpr std::array kDataLayoutMappings{
+    DataLayoutMapping{DataLayout::NCHW, OrtEpDataLayout::OrtEpDataLayout_NCHW},
+    DataLayoutMapping{DataLayout::NHWC, OrtEpDataLayout::OrtEpDataLayout_NHWC},
+};
+
+}  // namespace
+
 DataLayout PluginExecutionProvider::GetPreferredLayout() const {
   if (ort_ep_->GetPreferredDataLayout == nullptr) {
     return Base::GetPreferredLayout();
@@ -401,16 +432,48 @@ DataLayout PluginExecutionProvider::GetPreferredLayout() const {
 
   ORT_THROW_IF_ERROR(ToStatusAndRelease(ort_ep_->GetPreferredDataLayout(ort_ep_.get(), &api_data_layout)));
 
-  switch (api_data_layout) {
-    case OrtEpDataLayout::OrtEpDataLayout_NCHW:
-      return DataLayout::NCHW;
+  const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
+                                                [api_data_layout](const DataLayoutMapping& mapping) {
+                                                  return mapping.api_data_layout == api_data_layout;
+                                                });
 
-    case OrtEpDataLayout::OrtEpDataLayout_NHWC:
-      return DataLayout::NHWC;
+  ORT_ENFORCE(data_layout_mapping != kDataLayoutMappings.end(),
+              "OrtEp::GetPreferredDataLayout() returned an invalid data layout: ", static_cast<int>(api_data_layout));
 
-    default:
-      ORT_THROW("OrtEp::GetPreferredDataLayout() returned an invalid data layout: ",
-                static_cast<int>(api_data_layout));
+  return data_layout_mapping->data_layout;
+}
+
+std::optional<bool> PluginExecutionProvider::ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                                          std::string_view node_op_type,
+                                                                          DataLayout target_data_layout) const {
+  if (ort_ep_->ShouldConvertDataLayoutForOp == nullptr) {
+    return Base::ShouldConvertDataLayoutForOp(node_domain, node_op_type, target_data_layout);
+  }
+
+  const auto data_layout_mapping = std::find_if(kDataLayoutMappings.begin(), kDataLayoutMappings.end(),
+                                                [target_data_layout](const DataLayoutMapping& mapping) {
+                                                  return mapping.data_layout == target_data_layout;
+                                                });
+
+  ORT_ENFORCE(data_layout_mapping != kDataLayoutMappings.end(),
+              "Unable to map target_data_layout (", static_cast<int>(target_data_layout), ") to OrtEpDataLayout.");
+
+  // Ensure domain and op type strings are null-terminated.
+  const std::string node_domain_str{node_domain}, node_op_type_str{node_op_type};
+  int should_convert = -1;
+
+  ORT_THROW_IF_ERROR(ToStatusAndRelease(
+      ort_ep_->ShouldConvertDataLayoutForOp(ort_ep_.get(),
+                                            node_domain_str.c_str(), node_op_type_str.c_str(),
+                                            data_layout_mapping->api_data_layout,
+                                            &should_convert)));
+
+  if (should_convert > 0) {
+    return true;
+  } else if (should_convert == 0) {
+    return false;
+  } else {
+    return std::nullopt;
   }
 }
 
@@ -441,6 +504,43 @@ Status PluginExecutionProvider::SetEpDynamicOptions(gsl::span<const char* const>
                     ") must be the same.");
 
   return ToStatusAndRelease(ort_ep_->SetDynamicOptions(ort_ep_.get(), keys.data(), values.data(), keys.size()));
+}
+std::unique_ptr<onnxruntime::IDataTransfer> PluginExecutionProvider::GetDataTransfer() const {
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = ep_factory_.CreateDataTransfer(&ep_factory_, &data_transfer_impl);
+  if (status != nullptr) {
+    ORT_THROW("Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+  }
+
+  if (data_transfer_impl == nullptr) {
+    return {};
+  }
+
+  return std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+}
+
+std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
+  std::vector<AllocatorPtr> allocators;
+  allocators.reserve(allocator_mem_infos_.size());
+
+  for (const auto* memory_info : allocator_mem_infos_) {
+    OrtAllocator* ort_allocator_ptr = nullptr;
+    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
+
+    // throw or log? start with throw
+    if (ort_status != nullptr) {
+      ORT_THROW("Error creating allocator: ", ToStatusAndRelease(ort_status).ToString());
+    }
+
+    auto ort_allocator = OrtAllocatorUniquePtr(
+        ort_allocator_ptr,
+        [this](OrtAllocator* allocator) {
+          ep_factory_.ReleaseAllocator(&ep_factory_, allocator);
+        });
+    allocators.push_back(std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator)));
+  }
+
+  return allocators;
 }
 
 }  // namespace onnxruntime

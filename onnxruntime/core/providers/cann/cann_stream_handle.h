@@ -12,7 +12,7 @@
 #include "core/providers/cann/cann_call.h"
 
 namespace onnxruntime {
-void WaitCannNotificationOnDevice(Stream& stream, synchronize::Notification& notification);
+void WaitCannNotificationOnDevice(Stream* stream, synchronize::Notification& notification);
 
 struct CannStream : Stream {
   CannStream(aclrtStream stream, const OrtDevice& device, bool own_flag);

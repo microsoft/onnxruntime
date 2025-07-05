@@ -54,7 +54,6 @@ class ExecutionProviders {
               auto it = exec_provider_options_.find(provider_id);
               if (it != exec_provider_options_.end()) {
                 const auto& options = it->second;
-
                 LogProviderOptions(provider_id, options, true);
               }
             }
@@ -96,22 +95,6 @@ class ExecutionProviders {
     exec_providers_.push_back(p_exec_provider);
     return Status::OK();
   }
-
-#ifdef _WIN32
-  void LogProviderOptions(const std::string& provider_id, const ProviderOptions& providerOptions, bool captureState) {
-    for (const auto& config_pair : providerOptions) {
-      TraceLoggingWrite(
-          telemetry_provider_handle,
-          "ProviderOptions",
-          TraceLoggingKeyword(static_cast<uint64_t>(onnxruntime::logging::ORTTraceLoggingKeyword::Session)),
-          TraceLoggingLevel(WINEVENT_LEVEL_INFO),
-          TraceLoggingString(provider_id.c_str(), "ProviderId"),
-          TraceLoggingString(config_pair.first.c_str(), "Key"),
-          TraceLoggingString(config_pair.second.c_str(), "Value"),
-          TraceLoggingBool(captureState, "isCaptureState"));
-    }
-  }
-#endif
 
   const IExecutionProvider* Get(const onnxruntime::Node& node) const {
     return Get(node.GetExecutionProviderType());
@@ -156,6 +139,19 @@ class ExecutionProviders {
   // Some compilers emit incomprehensive output if this is allowed
   // with a container that has unique_ptr or something move-only.
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(ExecutionProviders);
+
+  void LogProviderOptions(const std::string& provider_id, const ProviderOptions& options, bool capture_state) {
+    const Env& env = Env::Default();
+    // Convert ProviderOptions to string for telemetry logging
+    std::string provider_options_str;
+    for (const auto& config_pair : options) {
+      if (!provider_options_str.empty()) {
+        provider_options_str += ",";
+      }
+      provider_options_str += config_pair.first + ":" + config_pair.second;
+    }
+    env.GetTelemetryProvider().LogProviderOptions(provider_id, provider_options_str, capture_state);
+  }
 
   std::vector<std::shared_ptr<IExecutionProvider>> exec_providers_;
   std::vector<std::string> exec_provider_ids_;

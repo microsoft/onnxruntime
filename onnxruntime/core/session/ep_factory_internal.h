@@ -37,14 +37,15 @@ class EpFactoryInternal : public OrtEpFactory {
                     GetSupportedFunc&& get_supported_func,
                     CreateFunc&& create_func);
 
-  const char* GetName() const { return ep_name_.c_str(); }
-  const char* GetVendor() const { return vendor_.c_str(); }
+  const char* GetName() const noexcept { return ep_name_.c_str(); }
+  const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  const char* GetVersion() const noexcept;
 
   OrtStatus* GetSupportedDevices(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
                                  _In_ size_t num_devices,
                                  _Inout_ OrtEpDevice** ep_devices,
                                  _In_ size_t max_ep_devices,
-                                 _Out_ size_t* num_ep_devices);
+                                 _Out_ size_t* num_ep_devices) noexcept;
 
   // we don't implement this. CreateIExecutionProvider should be used.
   OrtStatus* CreateEp(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,

@@ -7,8 +7,12 @@
 #include <unordered_map>
 
 #include "core/common/hash_combine.h"
+#include "core/framework/ortdevice.h"
 #include "core/session/abi_key_value_pairs.h"
 #include "core/session/onnxruntime_c_api.h"
+
+// alias API type to internal type
+struct OrtMemoryDevice : OrtDevice {};
 
 struct OrtHardwareDevice {
   OrtHardwareDeviceType type;
@@ -22,7 +26,7 @@ struct OrtHardwareDevice {
     onnxruntime::HashCombine(hd.vendor_id, h);
     onnxruntime::HashCombine(hd.vendor, h);
     onnxruntime::HashCombine(hd.type, h);
-    for (const auto& [key, value] : hd.metadata.entries) {
+    for (const auto& [key, value] : hd.metadata.Entries()) {
       onnxruntime::HashCombine(key, h);
       onnxruntime::HashCombine(value, h);
     }
@@ -47,8 +51,7 @@ struct equal_to<OrtHardwareDevice> {
            lhs.vendor_id == rhs.vendor_id &&
            lhs.device_id == rhs.device_id &&
            lhs.vendor == rhs.vendor &&
-           lhs.metadata.keys == rhs.metadata.keys &&
-           lhs.metadata.values == rhs.metadata.values;
+           lhs.metadata.Entries() == rhs.metadata.Entries();
   }
 };
 }  // namespace std
@@ -62,4 +65,6 @@ struct OrtEpDevice {
   OrtKeyValuePairs ep_options;
 
   OrtEpFactory* ep_factory;
+  const OrtMemoryInfo* device_memory_info{nullptr};
+  const OrtMemoryInfo* host_accessible_memory_info{nullptr};
 };

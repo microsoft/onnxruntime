@@ -173,51 +173,51 @@ __device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant,
 __device__ __forceinline__ void Convert8xInt4To8xBF16s(uint32_t value, __nv_bfloat162* bf16_2x4) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
   const int i0 = (value >> 0) & 0xF;
-    const int i1 = (value >> 4) & 0xF;
-    const int i2 = (value >> 8) & 0xF;
-    const int i3 = (value >> 12) & 0xF;
-    const int i4 = (value >> 16) & 0xF;
-    const int i5 = (value >> 20) & 0xF;
-    const int i6 = (value >> 24) & 0xF;
-    const int i7 = (value >> 28) & 0xF;
+  const int i1 = (value >> 4) & 0xF;
+  const int i2 = (value >> 8) & 0xF;
+  const int i3 = (value >> 12) & 0xF;
+  const int i4 = (value >> 16) & 0xF;
+  const int i5 = (value >> 20) & 0xF;
+  const int i6 = (value >> 24) & 0xF;
+  const int i7 = (value >> 28) & 0xF;
 
-    bf16_2x4[0] = __floats2bfloat162_rn(static_cast<float>(i0), static_cast<float>(i4));
-    bf16_2x4[1] = __floats2bfloat162_rn(static_cast<float>(i1), static_cast<float>(i5));
-    bf16_2x4[2] = __floats2bfloat162_rn(static_cast<float>(i2), static_cast<float>(i6));
-    bf16_2x4[3] = __floats2bfloat162_rn(static_cast<float>(i3), static_cast<float>(i7));
+  bf16_2x4[0] = __floats2bfloat162_rn(static_cast<float>(i0), static_cast<float>(i4));
+  bf16_2x4[1] = __floats2bfloat162_rn(static_cast<float>(i1), static_cast<float>(i5));
+  bf16_2x4[2] = __floats2bfloat162_rn(static_cast<float>(i2), static_cast<float>(i6));
+  bf16_2x4[3] = __floats2bfloat162_rn(static_cast<float>(i3), static_cast<float>(i7));
 #endif
 }
 
 __device__ __forceinline__ void AccumulateEightElements4b(uint32_t values_quant, nv_bfloat16 scale, uint8_t zp, const nv_bfloat16* a, nv_bfloat16* sums) {
 #if defined(__CUDA_ARCH__) && __CUDA_ARCH__ >= 800
-    __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
-    nv_bfloat16 zp_adjust = -scale * __uint2bfloat16_rn(zp);
-    __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
+  __nv_bfloat162 scale_bf162 = __bfloat162bfloat162(scale);
+  nv_bfloat16 zp_adjust = -scale * __uint2bfloat16_rn(zp);
+  __nv_bfloat162 zp_adjust2 = __bfloat162bfloat162(zp_adjust);
 
-    const uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
+  const uint4 vec_a = *(reinterpret_cast<const uint4*>(a));
 
-    constexpr uint32_t kLowHalf2 = 0x5410;
-    constexpr uint32_t kHighHalf2 = 0x7632;
+  constexpr uint32_t kLowHalf2 = 0x5410;
+  constexpr uint32_t kHighHalf2 = 0x7632;
 
-    uint4 vec_permuted;
-    asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.x) : "r"(vec_a.x), "r"(vec_a.z), "r"(kLowHalf2));
-    asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.y) : "r"(vec_a.x), "r"(vec_a.z), "r"(kHighHalf2));
-    asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.z) : "r"(vec_a.y), "r"(vec_a.w), "r"(kLowHalf2));
-    asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.w) : "r"(vec_a.y), "r"(vec_a.w), "r"(kHighHalf2));
+  uint4 vec_permuted;
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.x) : "r"(vec_a.x), "r"(vec_a.z), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.y) : "r"(vec_a.x), "r"(vec_a.z), "r"(kHighHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.z) : "r"(vec_a.y), "r"(vec_a.w), "r"(kLowHalf2));
+  asm volatile("prmt.b32 %0, %1, %2, %3;\n" : "=r"(vec_permuted.w) : "r"(vec_a.y), "r"(vec_a.w), "r"(kHighHalf2));
 
-    __nv_bfloat162 elements[4];  // [04, 15, 26, 37]
-    Convert8xInt4To8xBF16s(values_quant, elements);
+  __nv_bfloat162 elements[4];  // [04, 15, 26, 37]
+  Convert8xInt4To8xBF16s(values_quant, elements);
 
-    __nv_bfloat162 v0 = __hfma2(elements[0], scale_bf162, zp_adjust2);
-    __nv_bfloat162 v1 = __hfma2(elements[1], scale_bf162, zp_adjust2);
-    __nv_bfloat162 v2 = __hfma2(elements[2], scale_bf162, zp_adjust2);
-    __nv_bfloat162 v3 = __hfma2(elements[3], scale_bf162, zp_adjust2);
+  __nv_bfloat162 v0 = __hfma2(elements[0], scale_bf162, zp_adjust2);
+  __nv_bfloat162 v1 = __hfma2(elements[1], scale_bf162, zp_adjust2);
+  __nv_bfloat162 v2 = __hfma2(elements[2], scale_bf162, zp_adjust2);
+  __nv_bfloat162 v3 = __hfma2(elements[3], scale_bf162, zp_adjust2);
 
-    __nv_bfloat162* sums_bf162 = reinterpret_cast<__nv_bfloat162*>(sums);
-    sums_bf162[0] = __hfma2(v0, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.x), sums_bf162[0]);
-    sums_bf162[1] = __hfma2(v1, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.y), sums_bf162[1]);
-    sums_bf162[2] = __hfma2(v2, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.z), sums_bf162[2]);
-    sums_bf162[3] = __hfma2(v3, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.w), sums_bf162[3]);
+  __nv_bfloat162* sums_bf162 = reinterpret_cast<__nv_bfloat162*>(sums);
+  sums_bf162[0] = __hfma2(v0, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.x), sums_bf162[0]);
+  sums_bf162[1] = __hfma2(v1, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.y), sums_bf162[1]);
+  sums_bf162[2] = __hfma2(v2, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.z), sums_bf162[2]);
+  sums_bf162[3] = __hfma2(v3, *reinterpret_cast<const __nv_bfloat162*>(&vec_permuted.w), sums_bf162[3]);
 #endif
 }
 

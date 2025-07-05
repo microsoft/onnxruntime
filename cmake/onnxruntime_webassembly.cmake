@@ -224,113 +224,11 @@ else()
   if (onnxruntime_USE_WEBGPU)
     string(APPEND EXPORTED_FUNCTIONS ",_wgpuBufferRelease,_wgpuCreateInstance")
   endif()
-
-  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    set(MAXIMUM_MEMORY "17179869184")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s MEMORY64=1"
-    )
-    string(APPEND CMAKE_C_FLAGS " -sMEMORY64 -Wno-experimental")
-    string(APPEND CMAKE_CXX_FLAGS " -sMEMORY64 -Wno-experimental")
-    set(SMEMORY_FLAG "-sMEMORY64")
-
-    target_compile_options(onnx PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_common PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_session PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_framework PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(nsync_cpp PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnx_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    # target_compile_options(protoc PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(libprotobuf-lite PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_providers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_mlas PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_optimizer PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_graph PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_flatbuffers PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(onnxruntime_util PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(re2 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_private_handle_accessor PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_commandlineflag PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_commandlineflag_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_marshalling PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_reflection PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_config PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_flags_program_name PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_cord PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_cordz_info PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_cord_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_cordz_functions PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_cordz_handle PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_crc_cord_state PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_crc32c PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_crc_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_crc_cpu_detect PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_raw_hash_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_hashtablez_sampler PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_exponential_biased PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_conditions PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_check_op PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_message PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_format PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_str_format_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_log_sink_set PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_globals PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_sink PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_entry PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_globals PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_city PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_low_level_hash PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_bad_variant_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_vlog_config_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_synchronization PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_kernel_timeout_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_time_zone PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_civil_time PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_graphcycles_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_bad_optional_access PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_fnmatch PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_examine_stack PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_symbolize PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_malloc_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_demangle_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_demangle_rust PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_decode_rust_punycode PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_utf8_for_code_point PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_stacktrace PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_debugging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_proto PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_strerror PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_internal_nullguard PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_strings PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_strings_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_int128 PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_string_view PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_base PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_spinlock_wait PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_throw_delegate PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_raw_logging_internal PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    target_compile_options(absl_log_severity PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    if (onnxruntime_USE_EXTENSIONS)
-        target_compile_options(ortcustomops PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-        target_compile_options(ocos_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-        target_compile_options(noexcep_operators PRIVATE ${SMEMORY_FLAG} -Wno-experimental)
-    endif()
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js\""
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js_64.js")
-  else ()
-    set(MAXIMUM_MEMORY "4294967296")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
-    )
-    list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
-  endif ()
-
+  set(MAXIMUM_MEMORY "4294967296")
+  target_link_options(onnxruntime_webassembly PRIVATE
+    "SHELL:--post-js \"${ONNXRUNTIME_ROOT}/wasm/js_post_js.js\""
+  )
+  list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/js_post_js.js")
   target_link_options(onnxruntime_webassembly PRIVATE
     "SHELL:-s EXPORTED_RUNTIME_METHODS=[${EXPORTED_RUNTIME_METHODS}]"
     "SHELL:-s EXPORTED_FUNCTIONS=${EXPORTED_FUNCTIONS}"
@@ -347,42 +245,7 @@ else()
     --no-entry
     "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre.js\""
   )
-  if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    set(SIGNATURE_CONVERSIONS "OrtRun:_pppppppp,\
-OrtRunWithBinding:_ppppp,\
-OrtGetTensorData:_ppppp,\
-OrtCreateTensor:p_pppp_,\
-OrtCreateSession:pppp,\
-OrtReleaseSession:_p,\
-OrtGetInputOutputCount:_ppp,\
-OrtCreateSessionOptions:pp__p_ppppp,\
-OrtReleaseSessionOptions:_p,\
-OrtAppendExecutionProvider:_pp,\
-OrtAddSessionConfigEntry:_ppp,\
-OrtGetInputName:ppp,\
-OrtGetOutputName:ppp,\
-OrtCreateRunOptions:ppp_p,\
-OrtReleaseRunOptions:_p,\
-OrtReleaseTensor:_p,\
-OrtFree:_p,\
-OrtCreateBinding:_p,\
-OrtBindInput:_ppp,\
-OrtBindOutput:_ppp_,\
-OrtClearBoundOutputs:_p,\
-OrtReleaseBinding:_p,\
-OrtGetLastError:_pp,\
-JsepOutput:pp_p,\
-JsepGetNodeName:pp,\
-JsepOutput:pp_p,\
-jsepCopy:_pp_,\
-jsepCopyAsync:_pp_,\
-jsepDownload:_pp_")
-    target_link_options(onnxruntime_webassembly PRIVATE
-      "SHELL:-s ERROR_ON_UNDEFINED_SYMBOLS=0"
-      "SHELL:-s SIGNATURE_CONVERSIONS='${SIGNATURE_CONVERSIONS}'"
-    )
-  endif ()
-
+  
   if (onnxruntime_USE_JSEP)
     # NOTE: "-s ASYNCIFY=1" is required for JSEP to work with WebGPU
     #       This flag allows async functions to be called from sync functions, in the cost of binary size and
@@ -393,13 +256,7 @@ jsepDownload:_pp_")
       "SHELL:--pre-js \"${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js\""
     )
     list(APPEND onnxruntime_webassembly_script_deps "${ONNXRUNTIME_ROOT}/wasm/pre-jsep.js")
-
-    if (onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-      target_link_options(onnxruntime_webassembly PRIVATE
-        "SHELL:-s ASYNCIFY_EXPORTS=['OrtRun']"
-        "SHELL:-s ASYNCIFY_IMPORTS=['Module.jsepCopy','Module.jsepCopyAsync','jsepDownload']"
-      )
-    endif()
+    
   endif()
 
   if (onnxruntime_USE_WEBGPU)
@@ -469,9 +326,7 @@ jsepDownload:_pp_")
   endif()
 
   # Set link flag to enable exceptions support, this will override default disabling exception throwing behavior when disable exceptions.
-  if (NOT onnxruntime_ENABLE_WEBASSEMBLY_MEMORY64)
-    target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
-  endif()
+  target_link_options(onnxruntime_webassembly PRIVATE "SHELL:-s DISABLE_EXCEPTION_THROWING=0")
 
   if (onnxruntime_ENABLE_WEBASSEMBLY_PROFILING)
     target_link_options(onnxruntime_webassembly PRIVATE --profiling --profiling-funcs)

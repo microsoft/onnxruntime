@@ -107,4 +107,21 @@ void Telemetry::LogDriverInfoEvent(const std::string_view device_class,
   ORT_UNUSED_PARAMETER(driver_versions);
 }
 
+void Telemetry::LogAutoEpSelection(uint32_t session_id, const std::string& selection_policy,
+                                   const std::vector<std::string>& requested_execution_provider_ids,
+                                   const std::vector<std::string>& available_execution_provider_ids) const {
+  ORT_UNUSED_PARAMETER(session_id);
+  ORT_UNUSED_PARAMETER(selection_policy);
+  ORT_UNUSED_PARAMETER(requested_execution_provider_ids);
+  ORT_UNUSED_PARAMETER(available_execution_provider_ids);
+}
+
+void Telemetry::LogProviderOptions(const std::string& provider_id,
+                                   const std::string& provider_options_string,
+                                   bool captureState) const {
+  ORT_UNUSED_PARAMETER(provider_id);
+  ORT_UNUSED_PARAMETER(provider_options_string);
+  ORT_UNUSED_PARAMETER(captureState);
+}
+
 }  // namespace onnxruntime
