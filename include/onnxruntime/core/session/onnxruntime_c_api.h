@@ -5706,11 +5706,11 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
-  /** \brief Create a 'sub-graph' from a subset of nodes in an OrtGraph.
+  /** \brief Create a "sub-graph" from a subset of nodes in an OrtGraph.
    *
-   * NOTE:
-   * A 'sub-graph' is a graph formed by a subset of nodes within the current OrtGraph and it's a non-nested subgraph.
-   * However, a subgraph refers to a nested subgraph contained by control flow nodes.
+   * A "sub-graph" refers to a graph formed from a subset of nodes within the current OrtGraph and is not a nested subgraph.
+   * In contrast, a subgraph typically refers to a nested subgraph contained within a control flow node.
+   * If you are looking to retrieve nested subgraphs from a control flow node, use the Node_GetSubgraphs API.
    *
    * Regarding how initializers should be handled when constructing a new graph, in some cases,
    * initializers that refer to a memory location in OrtValue can not be handled by some hardware backends
