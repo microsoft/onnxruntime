@@ -247,8 +247,10 @@ struct OrtNode {
   /// Gets the node's subgraphs (e.g., subgraphs contained by an If or Loop node).
   /// </summary>
   /// <param name="subgraphs">Buffer into which to copy the subgraphs.</param>
+  /// <param name="attribute_names">Buffer into which to copy the attribute name for each subgraph.</param>
   /// <returns>A status indicating success or an error.</returns>
-  virtual onnxruntime::Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const = 0;
+  virtual onnxruntime::Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                                           gsl::span<const char*> attribute_names) const = 0;
 
   /// <summary>
   /// Gets the node's parent graph, which is the graph that contains this node.

@@ -129,11 +129,12 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
     ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_implicit_inputs, ep_node_implicit_inputs);
 
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
-    ep_node_subgraphs.reserve(node_subgraphs.size());
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraphs_map = node.GetAttributeNameToSubgraphMap();
+    ep_node_subgraphs.reserve(subgraphs_map.size());
 
-    for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
+    for (const auto& [attr_name, subgraph] : subgraphs_map) {
       SubgraphState subgraph_state;
+      subgraph_state.attribute_name = attr_name;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
       ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
@@ -233,12 +234,14 @@ Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   return Status::OK();
 }
 
-Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> dst) const {
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> subgraphs, gsl::span<const char*> attribute_names) const {
   const size_t num_subgraphs = subgraphs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node attributes", num_subgraphs, dst)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node subgraphs", num_subgraphs, subgraphs)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const char*>("node subgraph attributes", num_subgraphs, attribute_names)));
 
   for (size_t i = 0; i < num_subgraphs; ++i) {
-    dst[i] = subgraphs_[i].ep_subgraph.get();
+    subgraphs[i] = subgraphs_[i].ep_subgraph.get();
+    attribute_names[i] = subgraphs_[i].attribute_name.c_str();
   }
 
   return Status::OK();

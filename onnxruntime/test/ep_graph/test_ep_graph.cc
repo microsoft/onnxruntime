@@ -470,9 +470,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     }
 
     // Check node subgraphs
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
+        node->GetAttributeNameToSubgraphMap();
 
-    if (!node_subgraphs.empty()) {
+    if (!node_subgraphs_map.empty()) {
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
 
@@ -489,14 +490,27 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       // Recursively check subgraphs.
       size_t api_num_node_subgraphs = 0;
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_node_subgraphs));
+      ASSERT_EQ(api_num_node_subgraphs, node_subgraphs_map.size());
 
       std::vector<const OrtGraph*> api_node_subgraphs(api_num_node_subgraphs);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
+      std::vector<const char*> api_subgraph_attr_names(api_num_node_subgraphs);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size(),
+                                                    api_subgraph_attr_names.data()));
 
-      for (size_t subgraph_idx = 0; subgraph_idx < node_subgraphs.size(); subgraph_idx++) {
-        auto subgraph_viewer = std::make_unique<GraphViewer>(*node_subgraphs[subgraph_idx]);
-        const OrtGraph* api_subgraph = api_node_subgraphs[subgraph_idx];
+      for (const auto& [attr_name, subgraph] : node_subgraphs_map) {
+        // find index of this subgraph.
+        size_t api_subgraph_idx = api_num_node_subgraphs;
+        for (size_t subgraph_idx = 0; subgraph_idx < api_num_node_subgraphs; subgraph_idx++) {
+          if (api_subgraph_attr_names[subgraph_idx] == attr_name) {
+            api_subgraph_idx = subgraph_idx;
+            break;
+          }
+        }
+        ASSERT_NE(api_subgraph_idx, api_num_node_subgraphs);
 
+        // Recursively check the subgraph
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
+        const OrtGraph* api_subgraph = api_node_subgraphs[api_subgraph_idx];
         CheckGraphCApi(*subgraph_viewer, *api_subgraph);
       }
     }

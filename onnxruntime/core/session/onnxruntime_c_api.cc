@@ -2922,10 +2922,12 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetNumSubgraphs, _In_ const OrtNode* node, _Ou
 }
 
 ORT_API_STATUS_IMPL(OrtApis::Node_GetSubgraphs, _In_ const OrtNode* node,
-                    _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs) {
+                    _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
+                    _Out_writes_(num_subgraphs) const char** attribute_names) {
   API_IMPL_BEGIN
   gsl::span<const OrtGraph*> graphs_span(subgraphs, num_subgraphs);
-  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(graphs_span));
+  gsl::span<const char*> attr_names_span(attribute_names, num_subgraphs);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetSubgraphs(graphs_span, attr_names_span));
   return nullptr;
   API_IMPL_END
 }
