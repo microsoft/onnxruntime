@@ -13,7 +13,7 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#include "test/ep_graph/test_convert_to_onnx_proto.h"
+#include "test/ep_graph/ort_graph_to_proto.h"
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"

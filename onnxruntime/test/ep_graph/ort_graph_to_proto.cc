@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "test_convert_to_onnx_proto.h"
+#include "ort_graph_to_proto.h"
 
 #include <algorithm>
 #include <charconv>
