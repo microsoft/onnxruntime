@@ -469,7 +469,8 @@ QNBitGemmPerGemmWorkspaceSize(
     size_t K,
     size_t BlkLen,
     bool /* HasZeroPoint */,
-    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType
+    MLAS_QNBIT_GEMM_COMPUTE_TYPE ComputeType,
+    size_t /* BlkBitWidth */
 )
 {
     MLAS_UNREFERENCED_PARAMETER(N);
