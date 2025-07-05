@@ -16,6 +16,9 @@ namespace ort_ep_utils {
 // Otherwise, if the function returns true, OrtGraphToProto() assumes that this function stores the initializer data
 // in a file. In this case, OrtGraphToProto() configures the corresponding TensorProto to point the location and
 // offset returned via the `location` and `offset` output parameters.
+//
+// It is recommended to keep small initializers with byte size <= 127 stored inline the TensorProto to ensure
+// ONNX shape inference works correctly with the serialized ONNX model.
 using WriteInitializerDataFunc = std::function<bool(const char* name, const void* data, size_t size,
                                                     std::string& location, int64_t& offset)>;
 

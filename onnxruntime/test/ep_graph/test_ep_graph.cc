@@ -85,6 +85,10 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
                                 [&ext_ini_ofs](const char* name, const void* data, size_t bytes,
                                                std::string& location, int64_t& offset) -> bool {
                                   (void)name;
+                                  if (bytes <= 127) {
+                                    return false;  // Keep small initializers stored inside the TensorProto.
+                                  }
+
                                   offset = ext_ini_ofs.tellp();
                                   location = "mnist_generated.bin";
                                   ext_ini_ofs.write(static_cast<const char*>(data), bytes);
