@@ -51,7 +51,7 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
   int32_t max_of_4 = max(max(static_cast<int>(ch4.x), static_cast<int>(ch4.y)),
                          max(static_cast<int>(ch4.z), static_cast<int>(ch4.w)));
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const int32_t max_all = BlockReduceInt32(unioned_tmp_storage.i32).Reduce(max_of_4, ::cuda::maximum());
 #else
   const int32_t max_all = BlockReduceInt32(unioned_tmp_storage.i32).Reduce(max_of_4, cub::Max());
@@ -69,7 +69,7 @@ QOrderMaskedSoftmaxKernel(const int8_t* src, const float* lookup_table, const in
       four_masks.w ? lookup_table[255 - max_in_block + ch4.w] : 0.0f};
   float sum_of_4 = epow_of_4.x + epow_of_4.y + epow_of_4.z + epow_of_4.w;
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const float sum_all = BlockReduceFP32(unioned_tmp_storage.f32).Reduce(sum_of_4, ::cuda::std::plus());
 #else
   const float sum_all = BlockReduceFP32(unioned_tmp_storage.f32).Reduce(sum_of_4, cub::Sum());

@@ -96,7 +96,7 @@ __device__ inline void Softmax(const int total_sequence_length,
     }
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum());
 #else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max());
@@ -119,7 +119,7 @@ __device__ inline void Softmax(const int total_sequence_length,
     }
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, ::cuda::std::plus());
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_sum, cub::Sum());
@@ -181,7 +181,7 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
   // Infinity divided by Infinity is a NAN. Thus, softmax gets a NAN if one or more item are large enough.
   // a math transform as below is leveraged to get a stable softmax:
   // e^xi/(e^x1 + ...e^xn) = e^(xi - max) / (e^(x1 - max) + ... + e^(xn - max))
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto max = BlockReduce(tmp_storage).Reduce(input_data, ::cuda::maximum(), end);
 #else
   const auto max = BlockReduce(tmp_storage).Reduce(input_data, cub::Max(), end);
@@ -198,7 +198,7 @@ __device__ inline void SoftmaxSmall(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
@@ -259,7 +259,7 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     thread_data_max = max(thread_data_max, input_data);
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
 #else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
@@ -278,7 +278,7 @@ __global__ void SoftmaxLargeKernel(const int total_sequence_length,
     thread_data_exp += cached_data[i];
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
@@ -371,7 +371,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     return;
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, ::cuda::maximum(), total_sequence_length);
 #else
   const float max = BlockReduce(tmp_storage).Reduce(max_thread_data, cub::Max(), total_sequence_length);
@@ -390,7 +390,7 @@ __global__ void SoftmaxWithRawMaskLargeKernel(const int total_sequence_length,
     sum_thread_data_exp += ev;
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, ::cuda::std::plus(), TPB);
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(sum_thread_data_exp, cub::Sum(), TPB);
@@ -478,7 +478,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
     return;
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const float max = BlockReduce(tmp_storage).Reduce(thread_data, ::cuda::maximum(), total_sequence_length);
 #else
   const float max = BlockReduce(tmp_storage).Reduce(thread_data, cub::Max(), total_sequence_length);
@@ -492,7 +492,7 @@ __device__ inline void SoftmaxWithRawMaskSmall(const int total_sequence_length,
 
   float thread_data_exp = threadIdx.x < total_sequence_length ? expf(thread_data - max_block) : 0.0f;
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), total_sequence_length);
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), total_sequence_length);
@@ -643,7 +643,7 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
 
   float thread_data_max = is_valid ? input_data : float(-CUDART_INF_F);
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, ::cuda::maximum(), end);
 #else
   const auto max = BlockReduce(tmp_storage).Reduce(thread_data_max, cub::Max(), end);
@@ -660,7 +660,7 @@ __device__ inline void SoftmaxSmallPacked(const int total_sequence_length,
     thread_data_exp = expf(input_data - max_block);
   }
 
-#if CUDA_VERSION >= 12090
+#if CUDART_VERSION >= 12090
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, ::cuda::std::plus(), end);
 #else
   const auto sum = BlockReduce(tmp_storage).Reduce(thread_data_exp, cub::Sum(), end);
