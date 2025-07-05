@@ -620,7 +620,7 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
       break;
     }
     default: {
-      std::string err_msg = "Unexpected OrtOpAttrType with value " + attr_type;
+      std::string err_msg = "Unexpected OrtOpAttrType with value " + static_cast<int>(attr_type);
       return Ort::Status(err_msg.c_str(), ORT_FAIL);
     }
   }
