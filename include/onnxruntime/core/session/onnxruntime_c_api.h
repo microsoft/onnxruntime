@@ -5706,25 +5706,30 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
-  /** \brief Create a sub-graph from a subset of nodes in an OrtGraph.
+  /** \brief Create a 'sub-graph' from a subset of nodes in an OrtGraph.
    *
-   * NOTE: A 'sub-graph' is a graph formed by a subset of nodes within the current OrtGraph.
-   *       However, the control flow nodes have nested Graph instance/s which are called 'subgraph'.
+   * NOTE:
+   * A 'sub-graph' is a graph formed by a subset of nodes within the current OrtGraph and it's a non-nested subgraph.
+   * However, a subgraph refers to a nested subgraph contained by control flow nodes.
    *
    * Regarding how initializers should be handled when constructing a new graph, in some cases,
-   * initializers that refer to a memory location in OrtValue can not be handled by some hardware backends (unlike those that are on disk).
-   * This prevents us from sharing the data and we have to make a copy here. In that case, set copy_in_memory_initializer to true.
+   * initializers that refer to a memory location in OrtValue can not be handled by some hardware backends
+   * (unlike those that are on disk). This prevents us from sharing the data and we have to make a copy here.
+   * In that case, set copy_in_memory_initializer to true.
    *
    * \param[in] graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
-   * \param[in] copy_in_memory_initializer When constructing the graph, do copy the initializers from source graph to dst graph.
+   * \param[in] num_nodes Number of nodes.
+   * \param[in] copy_in_memory_initializer When constructing the graph, do copy the initializers from source graph
+                to dst graph.
    * \param[out] sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes, _In_ bool copy_in_memory_initializer, _Outptr_ OrtGraph** sub_graph);
+  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
+                  _In_ bool copy_in_memory_initializer, _Outptr_ OrtGraph** sub_graph);
 
   /// @}
 

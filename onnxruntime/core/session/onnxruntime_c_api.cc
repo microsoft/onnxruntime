@@ -2699,8 +2699,12 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
                     _In_ bool copy_in_memory_initializer,
                     _Outptr_ OrtGraph** dst_graph) {
   API_IMPL_BEGIN
+
+  if (num_nodes == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_nodes' argument should be > 0");
+  }
+
   const GraphViewer& graph_viewer = EpGraph::ToInternal(src_graph)->GetGraphViewer();
-  graph_viewer.DomainToVersionMap();
 
   // This API constructs an onnxruntime::Graph from scratch using a given set of nodes,
   // obtains a corresponding onnxruntime::GraphViewer, and passes it to EpGraph::Create to create an EpGraph instance.
@@ -2708,7 +2712,20 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
   // The goal is to first construct an onnxruntime::Graph instance.
   // The Graph constructor requires a pointer to an ONNX::GraphProto.
   // Therefore it's simpler to create an onnxruntime::Model which holds both Graph and ONNX::ModelProto (contains ONNX::GraphProto)
-  std::unique_ptr<Model> model = std::make_unique<Model>(graph_viewer.Name(), true, graph_viewer.GetGraph().GetLogger());
+
+  const ModelOptions& options = {};
+  const std::vector<ONNX_NAMESPACE::FunctionProto> func_protos = {};
+
+  std::unique_ptr<Model> model = std::make_unique<Model>(graph_viewer.Name(),
+                                                         true,
+                                                         ModelMetaData(),
+                                                         PathString(),
+                                                         IOnnxRuntimeOpSchemaRegistryList(),
+                                                         graph_viewer.DomainToVersionMap(),
+                                                         func_protos,
+                                                         graph_viewer.GetGraph().GetLogger(),
+                                                         options);
+
   Graph& new_graph = model->MainGraph();
 
   // Builds the new graph by adding the node one by one
