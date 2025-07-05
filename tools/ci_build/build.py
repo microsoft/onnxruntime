@@ -881,7 +881,12 @@ def generate_build_tree(
     if args.use_snpe:
         cmake_args += ["-Donnxruntime_USE_SNPE=ON"]
 
-    cmake_args += ["-Donnxruntime_USE_KLEIDIAI=" + ("OFF" if args.no_kleidiai else "ON")]
+    # Set onnxruntime_USE_KLEIDIAI based on the machine architecture (only if its not explicitly configured by the user)
+    if not any(arg.startswith("-Donnxruntime_USE_KLEIDIAI=") for arg in cmake_args):
+        target_arch = platform.machine().lower()
+        default_kleidiai = "ON" if target_arch in ("aarch64", "arm64") else "OFF"
+        cmake_args += [f"-Donnxruntime_USE_KLEIDIAI={default_kleidiai}"]
+
 
     if is_macOS() and (args.macos or args.ios or args.visionos or args.tvos):
         # Note: Xcode CMake generator doesn't have a good support for Mac Catalyst yet.

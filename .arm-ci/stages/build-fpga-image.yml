@@ -1,0 +1,63 @@
+# #
+# # SPDX-FileCopyrightText: Copyright 2025 Arm Limited and/or its affiliates <open-source-office@arm.com>
+# #
+# # SPDX-License-Identifier: MIT
+# #
+# # based on https://confluence.arm.com/display/MLENG/Testing+Models+on+TC24+FPGA neds some work and has bits missing
+# # such as container dependencies and the service account needs artifactory access plus a scratch dir (or we bake in
+# # dependencies for making image)
+# build_and_publish_fpga_image:
+#   stage: build-fpga-image
+#     extends:
+#       - .default_settings
+#       - .common_setup
+#   image: mleng--registry.eu-west-1.artifactory.aws.arm.com/kleidi-integrations/onnxrt-builder:0.0.2
+#   script:
+#     # --- CONFIGURE PATHS ---
+#     - export TOOLCHAIN_PATH="/path/to/arm-gnu-toolchain-13.3.rel1-x86_64-aarch64-none-linux-gnu"
+#     - export TOOLCHAIN_FILE="toolchain.cmake"
+#     - export ARTIFACTORY_URL="https://artifactory.example.com/artifactory"
+#     - export REPO_PATH="generic-local/fpga-images/$CI_COMMIT_REF_NAME"
+#     - export IMAGE_DIR="image_out"
+#     - export AUTH_HEADER="Authorization: Bearer $ARTIFACTORY_API_TOKEN"
+
+#     # --- CREATE TOOLCHAIN FILE ---
+#     - |
+#       cat <<EOF > $TOOLCHAIN_FILE
+#       SET(CMAKE_SYSTEM_NAME Linux)
+#       SET(CMAKE_SYSTEM_VERSION 1)
+#       SET(CMAKE_C_COMPILER "${TOOLCHAIN_PATH}/bin/aarch64-none-linux-gnu-gcc")
+#       SET(CMAKE_CXX_COMPILER "${TOOLCHAIN_PATH}/bin/aarch64-none-linux-gnu-g++")
+#       SET(CMAKE_FIND_ROOT_PATH_MODE_PROGRAM NEVER)
+#       SET(CMAKE_FIND_ROOT_PATH_MODE_LIBRARY ONLY)
+#       SET(CMAKE_FIND_ROOT_PATH_MODE_INCLUDE ONLY)
+#       SET(CMAKE_FIND_ROOT_PATH_MODE_PACKAGE ONLY)
+#       EOF
+
+#     # --- PREPARE WORKLOAD STRUCTURE ---
+#     - mkdir -p workload/work/{lib,model}
+#     - cp onnxruntime/build/Linux/Release/onnxruntime_perf_test workload/work/
+#     - cp -av onnxruntime/build/Linux/Release/libonnxruntime.so* workload/work/lib/
+#     - cp /path/to/encoder.onnx workload/work/model/
+
+#     # --- FETCH IMAGE SCRIPTS ---
+#     - mkdir cme_test && cd cme_test
+#     - curl -O login10.euhpc2.arm.com:/arm/scratch/rwalker/cme_fpga/make_image
+#     - curl -O login10.euhpc2.arm.com:/arm/scratch/rwalker/cme_fpga/base_dir.tar.gz
+#     - tar -xf base_dir.tar.gz
+#     - ./make_image ./base_dir ../workload ../$IMAGE_DIR
+#     - cd ..
+
+#     # --- UPLOAD TO ARTIFACTORY ---
+#     - echo "Uploading FPGA image to Artifactory..."
+#     - for file in $(ls $IMAGE_DIR); do
+#         echo "Uploading $file...";
+#         curl -H "$AUTH_HEADER" -T "$IMAGE_DIR/$file" "$ARTIFACTORY_URL/$REPO_PATH/$file";
+#       done
+
+#   only:
+#     - branches
+#   rules:
+#     - if: '$CI_COMMIT_BRANCH'
+#   variables:
+#     GIT_DEPTH: 1
