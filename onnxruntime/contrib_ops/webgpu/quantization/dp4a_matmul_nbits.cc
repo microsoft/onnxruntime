@@ -266,13 +266,22 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
         // During the compute phase, we have the 64x64 tile split into
         // subtiles of 16x16. We have a grid of 4x4 subtiles.
-        let subtile_id = u32(local_idx / subtile_size);
-        let subtile_idx = u32(subtile_id / 4);
-        let subtile_idy = u32(subtile_id % 4);
-        let base_A = subtile_idx * 16;
-        let base_B = subtile_idy * 16;
+        var subtile_id = u32(local_idx / subtile_size);
+        var subtile_idx = u32(subtile_id / 4);
+        var subtile_idy = u32(subtile_id % 4);
+        var base_A = subtile_idx * 16;
+        var base_B = subtile_idy * 16;
         // For each subtile we have 16 threads assigned.
-        let a_idx = u32(local_idx % subtile_size);
+        var a_idx = u32(local_idx % subtile_size);
+
+        if (sg_size == 32) {
+          subtile_id = u32(local_idx / sg_size);
+          subtile_idx = u32(subtile_id / 4);
+          subtile_idy = u32(subtile_id % 4);
+          base_A = subtile_idx * 32;
+          base_B = subtile_idy * 16;
+          a_idx = u32(local_idx % sg_size);
+        }
 
         var lane_output1: vec4<output_element_t>;
         var lane_output2: vec4<output_element_t>;
@@ -382,6 +391,29 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
                 lane_output4[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13), subgroupShuffle(own_scale_b, 13) * own_scale_a);
                 lane_output4[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14), subgroupShuffle(own_scale_b, 14) * own_scale_a);
                 lane_output4[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15), subgroupShuffle(own_scale_b, 15) * own_scale_a);
+            } else if (sg_size == 32) {
+                var own_b0: vec4<u32> = tile_B[sg_id/16][base_B + sg_id % 16];
+                var own_scale_b: output_element_t  = scale_B[base_B + sg_id % 16];
+                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+                lane_output1[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b0, 16), subgroupShuffle(own_scale_b, 0) * own_scale_a);
+                lane_output1[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b0, 17), subgroupShuffle(own_scale_b, 1) * own_scale_a);
+                lane_output1[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b0, 18), subgroupShuffle(own_scale_b, 2) * own_scale_a);
+                lane_output1[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b0, 19), subgroupShuffle(own_scale_b, 3) * own_scale_a);
+
+                lane_output2[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b0, 20), subgroupShuffle(own_scale_b, 4) * own_scale_a);
+                lane_output2[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b0, 21), subgroupShuffle(own_scale_b, 5) * own_scale_a);
+                lane_output2[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b0, 22), subgroupShuffle(own_scale_b, 6) * own_scale_a);
+                lane_output2[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b0, 23), subgroupShuffle(own_scale_b, 7) * own_scale_a);
+
+                lane_output3[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b0, 24), subgroupShuffle(own_scale_b, 8) * own_scale_a);
+                lane_output3[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b0, 25), subgroupShuffle(own_scale_b, 9) * own_scale_a);
+                lane_output3[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b0, 26), subgroupShuffle(own_scale_b, 10) * own_scale_a);
+                lane_output3[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b0, 27), subgroupShuffle(own_scale_b, 11) * own_scale_a);
+
+                lane_output4[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b0, 28), subgroupShuffle(own_scale_b, 12) * own_scale_a);
+                lane_output4[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b0, 29), subgroupShuffle(own_scale_b, 13) * own_scale_a);
+                lane_output4[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b0, 30), subgroupShuffle(own_scale_b, 14) * own_scale_a);
+                lane_output4[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b0, 31), subgroupShuffle(own_scale_b, 15) * own_scale_a);
             }
             else
             {
