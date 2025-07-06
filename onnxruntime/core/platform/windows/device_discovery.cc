@@ -35,8 +35,8 @@ using Microsoft::WRL::ComPtr;
 
 //// For DXCore info.
 #include <initguid.h>
-#include <dxcore.h>
-#include <dxcore_interface.h>
+#include <directx/dxcore.h>
+#include <directx/dxcore_interface.h>
 #include <wil/com.h>
 
 #include "core/common/cpuid_info.h"
