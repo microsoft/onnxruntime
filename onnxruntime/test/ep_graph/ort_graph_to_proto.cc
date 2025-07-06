@@ -101,6 +101,10 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       *value_name_out = value_name;
     }
 
+    if (value_infos.count(value_name) != 0 || initializer_value_infos.count(value_name) != 0) {
+      return Ort::Status{nullptr};  // Already processed this OrtValueInfo.
+    }
+
     bool is_required_graph_input = false;
     bool is_optional_graph_input = false;
     bool is_graph_output = false;
@@ -113,33 +117,18 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
     C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsConstantInitializer(&ort_value_info, &is_constant_initializer));
     C_API_RETURN_IF_ERROR(ort_api.ValueInfo_IsFromOuterScope(&ort_value_info, &is_from_outer_scope));
 
-    bool is_internal = !is_required_graph_input && !is_optional_graph_input && !is_graph_output &&
-                       !is_constant_initializer && !is_from_outer_scope;
-
     // Don't add graph inputs or graph outputs to GraphProto's list of value_infos.
     // Do add initializers (constant and non-constant) to GraphProto's list of initializer tensors.
-
+    // For values defined in an outer scope, just add the value info but not the initializer.
     if (is_from_outer_scope) {
-      // For values defined in an outer scope, just add the value info (not the initializer if it is one).
-      if (value_infos.count(value_name) == 0) {
-        value_infos.emplace(value_name, &ort_value_info);
-      }
+      value_infos.emplace(value_name, &ort_value_info);
     } else if (is_optional_graph_input) {
-      if (initializer_value_infos.count(value_name) == 0) {
-        initializer_value_infos.emplace(value_name, &ort_value_info);
-      }
+      initializer_value_infos.emplace(value_name, &ort_value_info);
     } else if (is_constant_initializer) {
-      if (value_infos.count(value_name) == 0) {
-        value_infos.emplace(value_name, &ort_value_info);
-      }
-
-      if (initializer_value_infos.count(value_name) == 0) {
-        initializer_value_infos.emplace(value_name, &ort_value_info);
-      }
-    } else if (is_internal) {
-      if (value_infos.count(value_name) == 0) {
-        value_infos.emplace(value_name, &ort_value_info);
-      }
+      value_infos.emplace(value_name, &ort_value_info);
+      initializer_value_infos.emplace(value_name, &ort_value_info);
+    } else if (!is_required_graph_input && !is_graph_output) {
+      value_infos.emplace(value_name, &ort_value_info);  // This is an internal OrtValueInfo.
     }
 
     return Ort::Status{nullptr};
@@ -271,13 +260,13 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   }
 
   // Add value_infos to GraphProto as ValueInfoProto objects.
-  for (const std::pair<std::string_view, const OrtValueInfo*>& entry : value_infos) {
+  for (const std::pair<const std::string_view, const OrtValueInfo*>& entry : value_infos) {
     onnx::ValueInfoProto* value_info_proto = graph_proto.mutable_value_info()->Add();
     CXX_API_RETURN_IF_ERROR(OrtValueInfoToProto(*entry.second, *value_info_proto));
   }
 
   // Add initializers to GraphProto as TensorProto objects.
-  for (const std::pair<std::string_view, const OrtValueInfo*>& entry : initializer_value_infos) {
+  for (const std::pair<const std::string_view, const OrtValueInfo*>& entry : initializer_value_infos) {
     const OrtValueInfo* initializer_value_info = entry.second;
     std::string initializer_name = std::string{entry.first};  // Need a null-terminated string.
     std::vector<int64_t> initializer_dims;
