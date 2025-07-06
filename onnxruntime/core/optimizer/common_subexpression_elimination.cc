@@ -476,7 +476,6 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
   graph_outputs.insert(graph_viewer.GetOutputs().begin(), graph_viewer.GetOutputs().end());
 
   for (NodeIndex node_index : node_topology_list) {
-
     Node* node = graph.GetNode(node_index);
     // In the context of a model containing EPContext nodes, it's highly unlikely that two EPContext nodes will
     // produce the same results.
