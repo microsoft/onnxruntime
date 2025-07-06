@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <filesystem>
 #include <fstream>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
@@ -108,6 +109,7 @@ static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& outpu
 TEST(EpGraphTest, SerializeToProto_Mnist) {
   const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/mnist.onnx");
   const ORTCHAR_T* serialized_model_path = ORT_TSTR("mnist_serialized.onnx");
+  std::filesystem::remove(serialized_model_path);
 
   {
     auto test_graph = TestGraph::Load(original_model_path);
@@ -118,6 +120,7 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
 
     // Serialize OrtGraph to GraphProto. Save initializers to external file.
     std::string ext_ini_file_path = "mnist_serialized.bin";
+    std::filesystem::remove(ext_ini_file_path);
     std::ofstream ext_ini_ofs(ext_ini_file_path, std::ios::binary);
     auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* value_info,
                                                                       const void* data, size_t bytes,
@@ -147,6 +150,9 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
     ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
+    ASSERT_TRUE(std::filesystem::exists(ext_ini_file_path));
   }
 
   // Compare output of the original and serialized models. Should be identical.
@@ -196,6 +202,7 @@ static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::ve
 TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
   const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/three_layer_nested_subgraph.onnx");
   const ORTCHAR_T* serialized_model_path = ORT_TSTR("three_layer_nested_subgraph_serialized.onnx");
+  std::filesystem::remove(serialized_model_path);
 
   {
     auto test_graph = TestGraph::Load(original_model_path);
@@ -211,6 +218,8 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
     ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
   }
 
   // Compare output of the original and serialized models. Should be identical.
