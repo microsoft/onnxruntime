@@ -1,4 +1,5 @@
 #include <algorithm>
+#include <regex>
 #include "core/providers/openvino/openvino_parser_utils.h"
 #include "core/providers/shared_library/provider_api.h"
 
@@ -114,6 +115,125 @@ std::string OpenVINOParserUtils::ParsePrecision(const ProviderOptions& provider_
       return "";
     }
   }
+}
+
+reshape_t OpenVINOParserUtils::ParseInputShape(const std::string& reshape_input_definition) {
+  reshape_t parsed_shape_map;
+
+  // Return empty map for empty input
+  if (reshape_input_definition.empty()) {
+    ORT_THROW("Empty input shape definition provided in reshape_input parameter");
+  }
+
+  // Regular expressions for parsing
+  const std::regex tensor_pattern(R"(([^\[\],]+)\s*\[(.*?)\])");  // e.g. "input_1[1..5, 2, 3..4],data[1,2,3]"
+  // const std::regex dimension_pattern(R"(\s*(\d+(?:\.\.\d+)?)\s*)");  // e.g. "1..5", "2", "3..4"
+  const std::regex dimension_pattern(R"(\s*([^,\s]+)\s*)");
+  // Find all tensor shape definitions using regex
+  auto tensor_begin = std::sregex_iterator(
+      reshape_input_definition.begin(),
+      reshape_input_definition.end(),
+      tensor_pattern);
+  auto tensor_end = std::sregex_iterator();
+
+  // If no matches found, throw error
+  if (tensor_begin == tensor_end) {
+    ORT_THROW("Invalid input shape definition format: " + reshape_input_definition);
+  }
+
+  // Process each tensor definition e.g. "input_1[1..5, 2, 3..4],data[1,2,3]"
+  for (std::sregex_iterator i = tensor_begin; i != tensor_end; ++i) {
+    std::smatch tensor_match = *i;
+
+    // Extract tensor name and trim whitespace
+    std::string tensor_name = tensor_match[1].str();  // Group 1: tensor name e.g. "input_1"
+    tensor_name = TrimWhitespace(tensor_name);
+
+    if (tensor_name.empty()) {
+      ORT_THROW("Empty tensor name provided in reshape_input parameter");
+    }
+
+    // Extract dimensions string
+    std::string dimensions_str = tensor_match[2].str();  // Group 2: dimensions string [e.g. "1..5, 2, 3..4"]
+    std::vector<ov::Dimension> dimensions;
+
+    // Find all dimension e.g. "1..5", "2", "3..4" using regex
+    auto dim_begin = std::sregex_iterator(
+        dimensions_str.begin(),
+        dimensions_str.end(),
+        dimension_pattern);
+    auto dim_end = std::sregex_iterator();
+
+    // Process each dimension
+    for (std::sregex_iterator j = dim_begin; j != dim_end; ++j) {
+      std::smatch dim_match = *j;
+      std::string dim_value = dim_match[1].str();
+
+      // Check if dimension is a range
+      size_t range_separator_pos = dim_value.find("..");
+      if (range_separator_pos != std::string::npos) {
+        // Parse range
+        dimensions.push_back(ParseDimensionRange(dim_value, tensor_name));
+      } else {
+        // Parse single value
+        bool is_valid_integer = !dim_value.empty() &&
+                                std::all_of(dim_value.begin(), dim_value.end(), [](char c) {
+                                  return std::isdigit(static_cast<unsigned char>(c));
+                                });
+
+        if (!is_valid_integer) {
+          ORT_THROW("Invalid dimension value: '" + dim_value + "' for tensor: " + tensor_name);
+        }
+
+        dimensions.push_back(std::stoi(dim_value));
+      }
+    }
+
+    // Store parsed shape in result map
+    parsed_shape_map[tensor_name] = ov::PartialShape(dimensions);
+  }
+
+  return parsed_shape_map;
+}
+
+// Helper function to trim whitespace from a string
+std::string OpenVINOParserUtils::TrimWhitespace(const std::string& str) {
+  const std::string whitespace = " \t\n\r\f\v";
+  size_t start = str.find_first_not_of(whitespace);
+
+  if (start == std::string::npos) {
+    return "";
+  }
+
+  size_t end = str.find_last_not_of(whitespace);
+  return str.substr(start, end - start + 1);
+}
+
+// Helper function to parse dimension range (e.g. "1..5")
+ov::Dimension OpenVINOParserUtils::ParseDimensionRange(const std::string& range_str, const std::string& tensor_name) {
+  size_t range_separator_pos = range_str.find("..");
+  if (range_separator_pos == std::string::npos) {
+    ORT_THROW("Invalid dimension range format: " + range_str);
+  }
+
+  std::string range_start_str = TrimWhitespace(range_str.substr(0, range_separator_pos));
+  std::string range_end_str = TrimWhitespace(range_str.substr(range_separator_pos + 2));
+
+  // Validate range values
+  if (range_start_str.empty() || range_end_str.empty() ||
+      !std::all_of(range_start_str.begin(), range_start_str.end(), ::isdigit) ||
+      !std::all_of(range_end_str.begin(), range_end_str.end(), ::isdigit)) {
+    ORT_THROW("Invalid dimension range format: '" + range_str + "' for tensor: " + tensor_name);
+  }
+
+  int range_start = std::stoi(range_start_str);
+  int range_end = std::stoi(range_end_str);
+
+  if (range_start > range_end) {
+    ORT_THROW("Invalid dimension range (start > end): " + range_str + " for tensor: " + tensor_name);
+  }
+
+  return ov::Dimension(range_start, range_end);
 }
 
 }  // namespace openvino_ep

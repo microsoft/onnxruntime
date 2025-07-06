@@ -1390,8 +1390,9 @@ struct ProviderHostImpl : ProviderHost {
                             ONNX_NAMESPACE::GraphProto& graph_proto,
                             bool include_initializers,
                             bool include_outer_scope_args,
-                            int execution_order) noexcept override {
-    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order));
+                            int execution_order,
+                            bool include_initializer_data) noexcept override {
+    GraphViewerToProto(*p, graph_proto, include_initializers, include_outer_scope_args, static_cast<ExecutionOrder>(execution_order), include_initializer_data);
   }
   const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const override { return p->GetProducerNode(node_arg_name); }
   IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const override { return p->GetSchemaRegistry(); }
