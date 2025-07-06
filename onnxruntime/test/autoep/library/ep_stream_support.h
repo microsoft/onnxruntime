@@ -24,9 +24,8 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
   }
 
  private:
-  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                                                        _In_ size_t num_consumers,
-                                                        _Outptr_ OrtSyncNotification** sync_notification) noexcept;
+  static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr,
+                                                        _Outptr_ OrtSyncNotificationImpl** sync_notification) noexcept;
   static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr) noexcept;
   static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;

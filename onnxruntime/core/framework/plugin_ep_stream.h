@@ -52,19 +52,29 @@ class Stream : public onnxruntime::Stream {
       : onnxruntime::Stream(&impl, memory_device), impl_{impl}, logger_{logger} {
   }
 
+  // add Notification for use with user provided input. ORT waits on the Notification before running steps in the
+  // inferencing that requires the data associated with the stream.
+  OrtStatus* EnableInputNotification();
+
+  // add Notification to provide a user that output data is available. the user waits on the Notification and ORT
+  // activates it when inferencing output is available.
+  OrtStatus* EnableOutputNotification();
+
+  void WaitOnInput();  // ORT will wait until inferencing until SignalInputAvailable is called
+
+  void SignalInputAvailable();   // called by user to indicate that async input has been added to the stream
+  void SignalOutputAvailable();  // called by ORT to indicate that inferencing output has been added to the stream
+
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override {
-    OrtSyncNotification* notification = nullptr;
-    OrtSyncStream* stream = static_cast<OrtSyncStream*>(static_cast<onnxruntime::Stream*>(this));
+    std::unique_ptr<Notification> plugin_notification;
 
-    // call the implementation, which will use the ORT API to create a plugin_ep::Notification, which will be
-    // returned as an OrtSyncNotification (the API alias for synchronize::Notification)
-    auto* ort_status = impl_.CreateNotification(&impl_, stream, num_consumers, &notification);
-
-    std::unique_ptr<synchronize::Notification> result;
-    if (ort_status == nullptr) {
-      result.reset(static_cast<synchronize::Notification*>(notification));
+    auto* ort_status = CreateNotificationImpl(num_consumers, plugin_notification);
+    if (ort_status != nullptr) {
+      ORT_THROW("Failed to create Notification: [", OrtApis::GetErrorCode(ort_status), "] ",
+                OrtApis::GetErrorMessage(ort_status));
     }
 
+    std::unique_ptr<synchronize::Notification> result(plugin_notification.release());
     return result;
   }
 
@@ -92,13 +102,36 @@ class Stream : public onnxruntime::Stream {
     return impl_;
   }
 
+  // when being used for user provided input this will return a Notification pointer that we need to connect to the
+  // internal Stream and wait on.
+  // otherwise returns nullptr.
+  Notification* GetInputNotification() {
+    return input_notification_.get();
+  }
+
+  // when being used for a user provided OrtSyncStream for model output this will return a Notification pointer and
+  // we activate the notification when the output data is added to the stream.
+  // otherwise returns nullptr.
+  Notification* GetOutputNotification() {
+    return output_notification_.get();
+  }
+
   ~Stream() override {
     impl_.Release(&impl_);
   }
 
  private:
+  OrtSyncStream* ToApiStream() {
+    return static_cast<OrtSyncStream*>(static_cast<onnxruntime::Stream*>(this));
+  }
+
+  OrtStatus* CreateNotificationImpl(size_t num_consumers, std::unique_ptr<Notification>& result);
+
   OrtSyncStreamImpl& impl_;
   const Logger& logger_;
+
+  std::unique_ptr<Notification> input_notification_;
+  std::unique_ptr<Notification> output_notification_;
 };
 
 }  // namespace plugin_ep

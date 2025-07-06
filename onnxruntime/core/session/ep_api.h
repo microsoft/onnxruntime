@@ -37,6 +37,6 @@ ORT_API(uint32_t, MemoryDevice_GetVendorId, _In_ const OrtMemoryDevice* memory_d
 ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
 
 ORT_API(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream);
-ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
-                    _Outptr_ OrtSyncNotification** notification);
+// ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
+//                     _Outptr_ OrtSyncNotification** notification);
 }  // namespace OrtExecutionProviderApi

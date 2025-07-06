@@ -71,7 +71,7 @@ static common::Status SyncProviders(const SessionState::NameNodeInfoMapType& nod
 common::Status IOBinding::SynchronizeInputs() {
   ORT_RETURN_IF_ERROR(SyncProviders(session_state_.GetInputNodeInfoMap(), session_state_));
   return Status::OK();
-}
+} 
 
 common::Status IOBinding::SynchronizeOutputs() {
   ORT_RETURN_IF_ERROR(SyncProviders(session_state_.GetOutputNodeInfoMap(), session_state_));

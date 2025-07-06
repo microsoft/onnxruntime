@@ -479,6 +479,12 @@ class InferenceSession {
   common::Status GetInputOutputMemoryInfo(SessionInputOutputType type,
                                           InlinedVector<const OrtMemoryInfo*>& memory_info) const;
   /**
+   * Get the OrtEpDevice (if available) for the inputs of the model.
+   *
+   * This is required for a user to know the location of the input/output when autoep selection is enabled.
+   */
+  common::Status GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& memory_info) const;
+  /**
    * Get the current number of in-progress concurrent Run calls.
    */
   int GetCurrentNumRuns() const;

@@ -425,6 +425,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
                                     OrtSyncStream** streams,
                                     size_t num_tensors) noexcept {
     auto& impl = *static_cast<CudaDataTransferImpl*>(this_ptr);
+    bool need_stream_sync = false;
 
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtValue* src_tensor = src_tensors[idx];
@@ -472,7 +473,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
 
               // For device memory to device memory copy, no host-side synchronization is performed by cudaMemcpy.
               // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
-              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+              need_stream_sync = true;
             }
           }
         } else {
@@ -486,7 +487,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
               // For cudaMemcpy from pageable host memory to device memory, DMA to final destination may not
               // have completed.
               // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
-              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+              need_stream_sync = true;
             }
           }
         }
@@ -512,6 +513,10 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
         ORT_ENFORCE(dst_data != src_data);
         memcpy(dst_data, src_data, bytes);
       }
+    }
+
+    if (need_stream_sync) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     }
 
     return nullptr;

@@ -3338,9 +3338,7 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
                              "Unexpected SessionInputOutputType of ", static_cast<uint8_t>(type));
   }
 
-  if (result.first != common::Status::OK()) {
-    return result.first;
-  }
+  ORT_RETURN_IF_ERROR(result.first);
 
   const auto& def_list = *result.second;
   memory_info.reserve(def_list.size());
@@ -3358,6 +3356,39 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
     // from the session state and use it's OrtMemoryInfo.
     auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
     memory_info.push_back(&allocator->Info());
+  }
+
+  return Status::OK();
+}
+
+common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& ep_devices) const {
+  ep_devices.clear();
+
+  if (!is_inited_) {
+    return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
+  }
+
+  std::pair<common::Status, const OutputDefList*> inputs = GetModelInputs();
+
+  ORT_RETURN_IF_ERROR(inputs.first);
+
+  const auto& def_list = *inputs.second;
+  ep_devices.reserve(def_list.size());
+
+  const auto& available_eps = environment_.GetOrtEpDevices();
+
+  for (const auto* def : def_list) {
+    InlinedVector<SessionState::NodeInfo> node_info_vec;
+    ORT_RETURN_IF_ERROR(session_state_->GetInputNodeInfo(def->Name(), node_info_vec));
+
+    // if we have a lot of inputs or there are a lot of execution providers it may be worth creating a map
+    // instead of doing a linear search each time.
+    const auto& ep_name = node_info_vec.front().p_node->GetExecutionProviderType();
+    auto it = std::find_if(available_eps.begin(), available_eps.end(), [&ep_name](const OrtEpDevice* entry) {
+      return entry->ep_name == ep_name;
+    });
+
+    ep_devices.push_back(it != available_eps.end() ? *it : nullptr);
   }
 
   return Status::OK();

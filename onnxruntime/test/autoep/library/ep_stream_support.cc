@@ -8,18 +8,10 @@
 //
 
 /*static*/
-OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                                                           _In_ size_t /*num_consumers*/,
-                                                           _Outptr_ OrtSyncNotification** sync_notification) noexcept {
+OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr,
+                                                           _Outptr_ OrtSyncNotificationImpl** notification) noexcept {
   auto& impl = *static_cast<StreamImpl*>(this_ptr);
-  auto notification = std::make_unique<NotificationImpl>(impl);
-  auto* status = impl.ep_api.CreateSyncNotification(stream, notification.get(), sync_notification);
-
-  if (status != nullptr) {
-    return status;  // error occurred
-  }
-
-  notification.release();
+  *notification = std::make_unique<NotificationImpl>(impl).release();
   return nullptr;
 }
 

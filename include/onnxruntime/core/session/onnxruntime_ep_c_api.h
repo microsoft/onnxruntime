@@ -145,18 +145,17 @@ typedef struct OrtSyncStreamImpl {
    */
   ORT_API_T(void*, GetHandle, _In_ void* this_ptr);
 
-  /** \brief Create an OrtSyncNotification for the OrtSyncStream
+  /** \brief Create an OrtSyncNotificationImpl for the OrtSyncStream
    *
    * \param[in] this_ptr Pointer to the OrtSyncStreamImpl instance
    * \param[in] stream The OrtSyncStream instance to create the notification for.
-   * \param[in] num_consumers The number of consumers that will use this notification.
-   * \param[out] notification Pointer to the OrtSyncNotification instance that will be created.
+   * \param[in] num_consumers The number of consumers that will use this notification. 0 if unknown/irrelevant.
+   * \param[out] notification Pointer to the OrtSyncNotificationImpl instance that will be created.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(CreateNotification, _In_ void* this_ptr, _In_ struct OrtSyncStream* stream,
-                  _In_ size_t num_consumers,
-                  _Outptr_ OrtSyncNotification** notification);
+  ORT_API2_STATUS(CreateNotification, _In_ void* this_ptr,
+                  _Outptr_ OrtSyncNotificationImpl** notification);
 
   /** \brief Flush the stream.
    *
@@ -449,25 +448,25 @@ struct OrtEpApi {
    */
   ORT_API_T(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream);
 
-  //
-  // onnxruntime::synchronize::Notification.
-  // We have a derived class on the ORT side and implement the virtual functions via OrtSyncNotificationImpl.
-  //
+  ////
+  //// onnxruntime::synchronize::Notification.
+  //// We have a derived class on the ORT side and implement the virtual functions via OrtSyncNotificationImpl.
+  ////
 
-  /** \brief Create a new OrtSyncNotification instance for the given OrtSyncStream.
-   *
-   * ORT will release the OrtSyncNotification instance when it is no longer needed by calling the Release function.
-   *
-   * \param[in] stream The OrtSyncStream instance to create the OrtSyncNotification for.
-   * \param[in] impl The OrtSyncNotificationImpl instance that implements the notification behavior.
-   * \param[out] notification Pointer to the created OrtSyncNotification instance.
-   *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
-   *
-   * \since Version 1.23.
-   */
-  ORT_API2_STATUS(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
-                  _Outptr_ OrtSyncNotification** notification);
+  ///** \brief Create a new OrtSyncNotification instance for the given OrtSyncStream.
+  // *
+  // * ORT will release the OrtSyncNotification instance when it is no longer needed by calling the Release function.
+  // *
+  // * \param[in] stream The OrtSyncStream instance to create the OrtSyncNotification for.
+  // * \param[in] impl The OrtSyncNotificationImpl instance that implements the notification behavior.
+  // * \param[out] notification Pointer to the created OrtSyncNotification instance.
+  // *
+  // * \snippet{doc} snippets.dox OrtStatus Return Value
+  // *
+  // * \since Version 1.23.
+  // */
+  // ORT_API2_STATUS(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
+  //                _Outptr_ OrtSyncNotification** notification);
 };
 
 /**
