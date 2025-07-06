@@ -631,6 +631,10 @@ ORT_API_STATUS_IMPL(ValueInfo_IsFromOuterScope, _In_ const OrtValueInfo* value_i
 // OrtGraph
 ORT_API_STATUS_IMPL(Graph_GetName, _In_ const OrtGraph* graph, _Outptr_ const char** graph_name);
 ORT_API_STATUS_IMPL(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
+ORT_API_STATUS_IMPL(Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets);
+ORT_API_STATUS_IMPL(Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                    _Out_writes_(num_operator_sets) const char** domains,
+                    _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets);
 ORT_API_STATUS_IMPL(Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs);
 ORT_API_STATUS_IMPL(Graph_GetInputs, _In_ const OrtGraph* graph,
                     _Out_writes_(num_inputs) const OrtValueInfo** inputs, _In_ size_t num_inputs);

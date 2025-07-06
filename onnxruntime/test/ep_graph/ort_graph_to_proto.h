@@ -53,4 +53,17 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
                             onnx::GraphProto& graph_proto,
                             HandleInitializerDataFunc handle_initializer_data_func = nullptr);
 
+/// <summary>
+/// Serializes the provided top-level OrtGraph to a onnx::ModelProto.
+/// Allows the caller to provide a function that specifies whether an initializer should be stored
+/// within a TensorProto, written to a file, or remain as an in-memory external initializer (not valid ONNX).
+/// </summary>
+/// <param name="ort_graph">OrtGraph instance to serialize.</param>
+/// <param name="model_proto">Destination ModelProto into which to serialize the input OrtGraph.</param>
+/// <param name="handle_initializer_data_func">Optional function called to allow the user to determine
+///                                            where the initializer data is stored.</param>
+/// <returns>An Ort::Status indicating success or an error.</returns>
+Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
+                            onnx::ModelProto& model_proto,
+                            HandleInitializerDataFunc handle_initializer_data_func = nullptr);
 }  // namespace ort_ep_utils

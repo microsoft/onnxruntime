@@ -272,6 +272,14 @@ struct EpGraph : public OrtGraph {
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 
+  // Gets the number of operator sets that the graph's model uses.
+  Status GetNumOperatorSets(size_t& num_operator_sets) const override;
+
+  // Gets the operator sets that the graph's model uses. An operator set is uniquely identified by a
+  // (domain, opset version) pair.
+  Status GetOperatorSets(gsl::span<const char*> domains,
+                         gsl::span<int64_t> opset_versions) const override;
+
   // Get the number of graph inputs, including initializers that are listed as graph inputs.
   size_t GetNumInputs() const override;
 

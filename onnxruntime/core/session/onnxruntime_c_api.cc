@@ -2591,6 +2591,29 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph,
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets) {
+  API_IMPL_BEGIN
+  if (num_operator_sets == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_operator_sets' argument is NULL");
+  }
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetNumOperatorSets(*num_operator_sets));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                    _Out_writes_(num_operator_sets) const char** domains,
+                    _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets) {
+  API_IMPL_BEGIN
+  gsl::span<const char*> domains_span(domains, num_operator_sets);
+  gsl::span<int64_t> versions_span(opset_versions, num_operator_sets);
+  ORT_API_RETURN_IF_STATUS_NOT_OK(graph->GetOperatorSets(domains_span, versions_span));
+
+  return nullptr;
+  API_IMPL_END
+}
+
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetNumInputs, _In_ const OrtGraph* graph, _Out_ size_t* num_inputs) {
   API_IMPL_BEGIN
   if (num_inputs == nullptr) {
@@ -3596,6 +3619,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ValueInfo_IsFromOuterScope,
     &OrtApis::Graph_GetName,
     &OrtApis::Graph_GetOnnxIRVersion,
+    &OrtApis::Graph_GetNumOperatorSets,
+    &OrtApis::Graph_GetOperatorSets,
     &OrtApis::Graph_GetNumInputs,
     &OrtApis::Graph_GetInputs,
     &OrtApis::Graph_GetNumOutputs,

@@ -105,7 +105,7 @@ static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& outpu
 }
 
 // Test serializing an OrtGraph (MNIST) to GraphProto. Saves initializers to external file.
-// Runs both models and checks that outputs are identical.
+// Checks that the outputs of the serialized and original models are identical.
 TEST(EpGraphTest, SerializeToProto_Mnist) {
   const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/mnist.onnx");
   const ORTCHAR_T* serialized_model_path = ORT_TSTR("mnist_serialized.onnx");
@@ -114,9 +114,6 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
   {
     auto test_graph = TestGraph::Load(original_model_path);
     ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
-
-    ONNX_NAMESPACE::ModelProto model_proto = test_graph->GetModel().ToProto();
-    model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
 
     // Serialize OrtGraph to GraphProto. Save initializers to external file.
     std::string ext_ini_file_path = "mnist_serialized.bin";
@@ -144,8 +141,8 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
       return Ort::Status{nullptr};
     };
 
-    ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
-    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto, handle_initializer_data);
+    ONNX_NAMESPACE::ModelProto model_proto;
+    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
@@ -198,7 +195,7 @@ static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::ve
 }
 
 // Test serializing an OrtGraph to GraphProto. The model has 3 layers of nested subgraphs.
-// Runs both models and checks that outputs are identical.
+// Checks that the outputs of the serialized and original models are identical.
 TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
   const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/three_layer_nested_subgraph.onnx");
   const ORTCHAR_T* serialized_model_path = ORT_TSTR("three_layer_nested_subgraph_serialized.onnx");
@@ -208,12 +205,9 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
     auto test_graph = TestGraph::Load(original_model_path);
     ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
-    ONNX_NAMESPACE::ModelProto model_proto = test_graph->GetModel().ToProto();
-
-    // Serialize OrtGraph to GraphProto
-    model_proto.clear_graph();  // Clear GraphProto so we can replace it with version we create.
-    ONNX_NAMESPACE::GraphProto* graph_proto = model_proto.mutable_graph();
-    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), *graph_proto);
+    // Serialize OrtGraph to ModelProto (all initializers stored within TensorProtos).
+    ONNX_NAMESPACE::ModelProto model_proto;
+    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto);
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);

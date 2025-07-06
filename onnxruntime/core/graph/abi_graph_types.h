@@ -283,6 +283,23 @@ struct OrtGraph {
   virtual int64_t GetOnnxIRVersion() const = 0;
 
   /// <summary>
+  /// Gets the number of operator sets (domain, opset version) the graph's model relies on.
+  /// </summary>
+  /// <param name="num_operator_sets">Output parameter set to the number of operator sets.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetNumOperatorSets(size_t& num_operator_sets) const = 0;
+
+  /// <summary>
+  /// Gets the operator sets the graph's model relies on. An operator set is uniquely identified by a
+  /// (domain, opset version) pair.
+  /// </summary>
+  /// <param name="domains">Buffer into which to copy the domains.</param>
+  /// <param name="opset_versions">Buffer into which to copy the opset version for each domain.</param>
+  /// <returns>A status indicating success or an error.</returns>
+  virtual onnxruntime::Status GetOperatorSets(gsl::span<const char*> domains,
+                                              gsl::span<int64_t> opset_versions) const = 0;
+
+  /// <summary>
   /// Returns the number of graph inputs, including initializers that appear in the list of graph inputs.
   /// </summary>
   /// <returns>The number of graph inputs.</returns>

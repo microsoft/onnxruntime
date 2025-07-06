@@ -5570,6 +5570,45 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
+  /** \brief Returns the number of operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_operator_sets Output parameter set to the number of operator sets that the graph's model uses.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets);
+
+  /** \brief Returns the operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] domains Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                     null-terminated domain names.
+   * \param[out] opset_versions Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                            the opset version of the corresponding domain in the `domains` array.
+   * \param[in] num_operator_sets The size of the `domains` and `opset_versions` arrays.
+   *                              Typical usage sets this to the result of Graph_GetNumOperatorSets().
+   *                              An error status is returned if `num_operator_sets` is less than the actual number
+   *                              of operator sets.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_operator_sets) const char** domains,
+                  _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets);
+
   /** \brief Returns the number of graph inputs.
    *
    * \note The count includes initializers that are included in the list of graph inputs.

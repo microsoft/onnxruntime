@@ -54,7 +54,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
   const char* graph_name = nullptr;
   C_API_RETURN_IF_ERROR(ort_api.Graph_GetName(&ort_graph, &graph_name));
   graph_proto.set_name(graph_name);
-  graph_proto.set_doc_string("SERIALIZED FROM ORTGRAPH");
+  graph_proto.set_doc_string("Serialized from OrtGraph");
 
   //
   // Set GraphProto inputs and outputs
@@ -317,6 +317,51 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
       tensor_proto->set_raw_data(data, data_bytes);
     }
   }
+
+  return Ort::Status{nullptr};
+}
+
+Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
+                            onnx::ModelProto& model_proto,
+                            HandleInitializerDataFunc handle_initializer_data_func) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  // Check that OrtGraph is a top-level graph (no parent node).
+  const OrtNode* parent_node = nullptr;
+  C_API_RETURN_IF_ERROR(ort_api.Graph_GetParentNode(&ort_graph, &parent_node));
+  C_API_RETURN_IF(parent_node != nullptr, ort_api, "Cannot serialize nested OrtGraph into a ModelProto");
+
+  // Set model description.
+  model_proto.set_doc_string("Serialized from OrtGraph");
+  model_proto.set_producer_name("ort_ep_utils::OrtGraphToProto");
+
+  // Set ir version.
+  int64_t ir_version = 0;
+  C_API_RETURN_IF_ERROR(ort_api.Graph_GetOnnxIRVersion(&ort_graph, &ir_version));
+  model_proto.set_ir_version(ir_version);
+
+  // Set operator sets.
+  size_t num_operator_sets = 0;
+  C_API_RETURN_IF_ERROR(ort_api.Graph_GetNumOperatorSets(&ort_graph, &num_operator_sets));
+  C_API_RETURN_IF(num_operator_sets == 0, ort_api, "OrtGraph should have at least one operator set.");
+
+  std::vector<const char*> domains(num_operator_sets, nullptr);
+  std::vector<int64_t> opset_versions(num_operator_sets);
+  C_API_RETURN_IF_ERROR(ort_api.Graph_GetOperatorSets(&ort_graph, domains.data(), opset_versions.data(),
+                                                      num_operator_sets));
+
+  auto* operator_sets = model_proto.mutable_opset_import();
+
+  for (size_t i = 0; i < num_operator_sets; ++i) {
+    onnx::OperatorSetIdProto* operator_set = operator_sets->Add();
+    operator_set->set_domain(domains[i]);
+    operator_set->set_version(opset_versions[i]);
+  }
+
+  model_proto.clear_graph();
+  onnx::GraphProto* graph_proto = model_proto.mutable_graph();
+
+  CXX_API_RETURN_IF_ERROR(OrtGraphToProto(ort_graph, *graph_proto, handle_initializer_data_func));
 
   return Ort::Status{nullptr};
 }
