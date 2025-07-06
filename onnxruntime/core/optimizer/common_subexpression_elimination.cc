@@ -423,7 +423,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
     Node* node = graph.GetNode(node_index);
 
     // In the context of a model containing EPContext nodes, it's highly unlikely that two EPContext nodes will
-    // procude the same results.
+    // produce the same results.
     // Furthermore, the EquivalenceClass constructor includes the node and all its attributes in the hash calculation,
     // which can be particularly time-consuming when the "ep_cache_context" attribute contains a large binary blob.
     // Therefore, EPContext nodes are excluded from this process.
@@ -479,7 +479,7 @@ Status CommonSubexpressionElimination::ApplyImpl(Graph& graph, bool& modified, i
 
     Node* node = graph.GetNode(node_index);
     // In the context of a model containing EPContext nodes, it's highly unlikely that two EPContext nodes will
-    // procude the same results.
+    // produce the same results.
     // Furthermore, the EquivalenceClass constructor includes the node and all its attributes in the hash calculation,
     // which can be particularly time-consuming when the "ep_cache_context" attribute contains a large binary blob.
     // Therefore, EPContext nodes are excluded from this process.
