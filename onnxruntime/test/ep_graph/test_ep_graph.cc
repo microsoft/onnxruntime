@@ -331,9 +331,8 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   }
 
   OrtGraph* sub_graph;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetSubGraph(&api_graph, selected_nodes.data(), selected_nodes.size(), true, &sub_graph));
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetSubGraph(&api_graph, selected_nodes.data(), selected_nodes.size(), false, true, &sub_graph));
 
-  /*
   bool debug = true;
   if (debug) {
     // Convert OrtGraph to ModelProto and dump it to disk for debug purpose.
@@ -355,7 +354,6 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
     std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
     model_proto->SerializeToOstream(&dump);
   }
-  */
 
   ort_api.ReleaseGraph(sub_graph);
 }

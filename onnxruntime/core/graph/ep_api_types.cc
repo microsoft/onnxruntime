@@ -499,8 +499,48 @@ void EpGraph::IndexToEpNodeMap::SetEpNode(NodeIndex node_index, EpNode* ep_node)
 EpGraph::EpGraph(const GraphViewer& graph_viewer, PrivateTag)
     : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(graph_viewer) {}
 
-EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer, std::unique_ptr<Model> model, PrivateTag)
-    : OrtGraph(OrtGraphIrApi::kEpApi), graph_viewer_(*graph_viewer.get()), model_(std::move(model)), graph_viewer_from_graph_in_model_(std::move(graph_viewer)) {}
+EpGraph::EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
+                 std::unique_ptr<Model> model,
+                 std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+                 PrivateTag)
+    : OrtGraph(OrtGraphIrApi::kEpApi),
+      graph_viewer_(*graph_viewer.get()),
+      owned_model_(std::move(model)),
+      owned_graph_viewer_(std::move(graph_viewer)),
+      owned_indexed_sub_graph_(std::move(indexed_sub_graph)) {}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(std::unique_ptr<GraphViewer> src_graph_viewer,
+                       std::unique_ptr<Model> model,
+                       /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto& graph_viewer = *src_graph_viewer.get();
+  auto ep_graph = std::make_unique<EpGraph>(std::move(src_graph_viewer),
+                                            std::move(model),
+                                            /* indexed_sub_graph */ nullptr,
+                                            PrivateTag{});
+
+  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(std::unique_ptr<GraphViewer> src_graph_viewer,
+                       std::unique_ptr<IndexedSubGraph> src_indexed_sub_graph,
+                       /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto& graph_viewer = *src_graph_viewer.get();
+  auto ep_graph = std::make_unique<EpGraph>(std::move(src_graph_viewer),
+                                            /* model */ nullptr,
+                                            std::move(src_indexed_sub_graph),
+                                            PrivateTag{});
+
+  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+}
+
+// Static class function to create a std::unique_ptr<EpGraph>.
+Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
+  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
+
+  return CreateImpl(std::move(ep_graph), graph_viewer, result);
+}
 
 Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
   AllocatorPtr initializer_allocator = CPUAllocator::DefaultInstance();
@@ -654,21 +694,6 @@ Status EpGraph::CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer&
   result = std::move(ep_graph);
 
   return Status::OK();
-}
-
-// Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(std::unique_ptr<GraphViewer> graph_viewer_in_model, std::unique_ptr<Model> model, /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto& graph_viewer = *graph_viewer_in_model.get();
-  auto ep_graph = std::make_unique<EpGraph>(std::move(graph_viewer_in_model), std::move(model), PrivateTag{});
-
-  return CreateImpl(std::move(ep_graph), graph_viewer, result);
-}
-
-// Static class function to create a std::unique_ptr<EpGraph>.
-Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result) {
-  auto ep_graph = std::make_unique<EpGraph>(graph_viewer, PrivateTag{});
-
-  return CreateImpl(std::move(ep_graph), graph_viewer, result);
 }
 
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
