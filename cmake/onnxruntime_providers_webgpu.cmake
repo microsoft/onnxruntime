@@ -145,6 +145,9 @@
       message(FATAL_ERROR "Node is required for WGSL template generation but was not found")
     endif()
 
+    message(STATUS "Using npm executable: ${NPM_EXECUTABLE}")
+    message(STATUS "Using node executable: ${NODE_EXECUTABLE}")
+
     # Install npm dependencies
     add_custom_command(
       OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
