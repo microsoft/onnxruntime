@@ -136,24 +136,21 @@
     set(WGSL_GENERATED_ROOT "${CMAKE_CURRENT_BINARY_DIR}/wgsl_generated")
 
     # Find npm and node executables
-    find_program(NPM_EXECUTABLE "npm.cmd" "npm" REQUIRED)
+    find_program(NPM_EXECUTABLE "npm.cmd" "npm" REQUIRED NO_DEFAULT_PATH)
     if(NOT NPM_EXECUTABLE)
       message(FATAL_ERROR "npm is required for WGSL template generation but was not found")
     endif()
-    find_program(NODE_EXECUTABLE "node" REQUIRED)
+    find_program(NODE_EXECUTABLE "node" REQUIRED NO_DEFAULT_PATH)
     if (NOT NODE_EXECUTABLE)
       message(FATAL_ERROR "Node is required for WGSL template generation but was not found")
     endif()
 
-    message(STATUS "Using npm executable: ${NPM_EXECUTABLE}")
-    message(STATUS "Using node executable: ${NODE_EXECUTABLE}")
+    message(STATUS "[WebGPU WGSL Template] Using npm executable: ${NPM_EXECUTABLE}")
+    message(STATUS "[WebGPU WGSL Template] Using node executable: ${NODE_EXECUTABLE}")
 
     # Install npm dependencies
     add_custom_command(
       OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
-      COMMAND printenv
-      COMMAND which node
-      COMMAND which npm
       COMMAND ${NPM_EXECUTABLE} ci
       COMMAND ${CMAKE_COMMAND} -E touch "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
       DEPENDS "${WGSL_TEMPLATES_DIR}/package.json" "${WGSL_TEMPLATES_DIR}/package-lock.json"
