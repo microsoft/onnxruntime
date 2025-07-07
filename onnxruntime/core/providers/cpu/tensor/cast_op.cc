@@ -58,6 +58,9 @@ using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>,
 #if !defined(DISABLE_FLOAT8_TYPES)
 template <typename T>
 using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, T>;
+#else
+template <typename T>
+struct IsOrtFloat8Type : std::false_type {};
 #endif
 
 template <typename T>
@@ -128,11 +131,7 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
-#else
-typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type
-#endif
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
@@ -162,11 +161,7 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
-#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
-#else
-typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
-#endif
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
@@ -202,13 +197,9 @@ struct Int4ElementConverter {
   static DstType Convert(int8_t val) {
     if constexpr (IsOrtFloat16Type<DstType>::value) {
       return DstType(static_cast<float>(val));
-    }
-#if !defined(DISABLE_FLOAT8_TYPES)
-    else if constexpr (IsOrtFloat8Type<DstType>::value) {
+    } else if constexpr (IsOrtFloat8Type<DstType>::value) {
       return DstType(static_cast<float>(val), true);
-    }
-#endif
-    else {
+    } else {
       return static_cast<DstType>(val);
     }
   }
@@ -259,11 +250,7 @@ struct ToInt4ElementConverter<double> {
 
 template <typename SrcType>
 struct ToInt4ElementConverter<SrcType,
-                              std::enable_if_t<IsOrtFloat16Type<SrcType>::value
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                               || IsOrtFloat8Type<SrcType>::value
-#endif
-                                               >> {
+                              std::enable_if_t<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
   static int8_t ConvertToInt4(const SrcType& val) {
     return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
   }
@@ -272,7 +259,6 @@ struct ToInt4ElementConverter<SrcType,
     return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
   }
 };
-
 
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
@@ -435,11 +421,7 @@ struct TensorCaster<float, MLFloat16> {
 
 template <typename DstType>
 struct TensorCaster<Int4x2, DstType,
-                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType>
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                     || IsOrtFloat8Type<DstType>::value
-#endif
-                                     >> {
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType> || IsOrtFloat8Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<Int4x2>();
@@ -496,11 +478,7 @@ struct TensorCaster<Int4x2, UInt4x2> {
 
 template <typename DstType>
 struct TensorCaster<UInt4x2, DstType,
-                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType>
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                     || IsOrtFloat8Type<DstType>::value
-#endif
-                                     >> {
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType> || IsOrtFloat8Type<DstType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<UInt4x2>();
@@ -557,11 +535,7 @@ struct TensorCaster<UInt4x2, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, Int4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                     || IsOrtFloat8Type<SrcType>::value
-#endif
-                                     >> {
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
@@ -608,11 +582,7 @@ struct TensorCaster<bool, Int4x2> {
 
 template <typename SrcType>
 struct TensorCaster<SrcType, UInt4x2,
-                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value
-#if !defined(DISABLE_FLOAT8_TYPES)
-                                     || IsOrtFloat8Type<SrcType>::value
-#endif
-                                     >> {
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<SrcType>();
