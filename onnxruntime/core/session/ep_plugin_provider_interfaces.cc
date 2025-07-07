@@ -99,8 +99,19 @@ static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_
 
   // Check assertion that all OrtEpDevice instances must have the same device_memory_info
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
-                               [&device_memory_info](const OrtEpDevice* ep_device) {
-                                 return ep_device->device_memory_info == device_memory_info;
+                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
+                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
+
+                                 if (mem_a == mem_b) {
+                                   return true;  // Point to the same OrtMemoryInfo instance.
+                                 }
+
+                                 if (mem_a == nullptr || mem_b == nullptr) {
+                                   return false;  // One is nullptr and the other is not.
+                                 }
+
+                                 // Both non-null but point to different instances. Use operator==.
+                                 return *mem_a == *mem_b;
                                });
   if (!all_match) {
     ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,

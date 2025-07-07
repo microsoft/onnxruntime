@@ -254,6 +254,26 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
     ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
   }
 
+  // 2 OrtEpDevice instances with the different (but equivalent) device_memory_info pointers.
+  // PluginExecutionProvider should decide to use a OrtDevice that is equal to the devices used by both
+  // device_memory_info pointers.
+  {
+    auto ort_device = test_plugin_ep::MakeTestOrtDevice(OrtDevice::CPU, OrtDevice::MemType::DEFAULT);
+    auto ort_memory_info_0 = std::make_unique<OrtMemoryInfo>("TestOrtEp CPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                             ort_device, OrtMemTypeDefault);
+    auto ort_memory_info_1 = std::make_unique<OrtMemoryInfo>("TestOrtEp CPU", OrtAllocatorType::OrtDeviceAllocator,
+                                                             ort_device, OrtMemTypeDefault);
+
+    auto ort_hw_device_gpu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_GPU);
+    auto ort_hw_device_npu = test_plugin_ep::MakeTestOrtHardwareDevice(OrtHardwareDeviceType_NPU);
+    auto ort_ep_device_gpu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_gpu.get(), ort_memory_info_0.get());
+    auto ort_ep_device_npu = test_plugin_ep::MakeTestOrtEpDevice(ort_hw_device_npu.get(), ort_memory_info_1.get());
+    std::vector<const OrtEpDevice*> ep_devices{ort_ep_device_gpu.get(), ort_ep_device_npu.get()};
+
+    auto [ep, ort_ep] = test_plugin_ep::MakeTestOrtEp(ep_devices);
+    ASSERT_EQ(ep->GetOrtDeviceByMemType(OrtMemTypeDefault), ort_device);
+  }
+
   // 1 OrtEpDevice with only a host_accessible_memory_info.
   // PluginExecutionProvider should decide to use a default OrtDevice (cpu).
   {
