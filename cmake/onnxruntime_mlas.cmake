@@ -274,6 +274,15 @@ function(setup_kleidiai)
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
 
+  if(CMAKE_SYSTEM_NAME STREQUAL "iOS")
+    if(CMAKE_OSX_ARCHITECTURES MATCHES "arm64")
+      message(STATUS "Applying -march=armv8.2-a+bf16 for KleidiAI on arm64 iOS")
+      target_compile_options(kleidiai PRIVATE -march=armv8.2-a+bf16)
+    else()
+      message(STATUS "Skipping -march flag; simulator architecture: ${CMAKE_OSX_ARCHITECTURES}")
+    endif()
+  endif()
+
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
