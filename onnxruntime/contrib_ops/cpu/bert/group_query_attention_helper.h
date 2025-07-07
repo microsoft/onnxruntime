@@ -379,6 +379,11 @@ Status CheckCustomAttentionInputs(const T* position_ids,
   }
 
   if (head_sink != nullptr) {
+    if (parameters.use_smooth_softmax) {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                             "head_sink should not be provided when use_smooth_softmax is true.");
+    }
+
     const auto& head_sink_shape = head_sink->Shape();
     if (head_sink_shape.NumDimensions() != 1) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "head_sink must be a 1D tensor");

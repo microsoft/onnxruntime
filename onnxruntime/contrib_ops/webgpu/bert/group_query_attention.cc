@@ -194,7 +194,9 @@ Status GroupQueryAttention::ComputeInternal(onnxruntime::webgpu::ComputeContext&
   Tensor* present_value = context.Output(2, present_kv_shape);
   parameters.past_present_share_buffer_ = present_key != nullptr && present_value != nullptr && past_key != nullptr && past_value != nullptr && past_key->DataRaw() == present_key->DataRaw() && past_value->DataRaw() == present_value->DataRaw();
 
-  if (!do_rotary_ && CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
+  if (!do_rotary_ &&
+      head_sink == nullptr && !use_smooth_softmax_ &&
+      CanApplyFlashAttention(attention_bias, present_key, present_value, parameters, context)) {
     return ApplyFlashAttention(query, key, value, attention_bias, output, past_key, present_key, past_value,
                                present_value, parameters, context);
   }
