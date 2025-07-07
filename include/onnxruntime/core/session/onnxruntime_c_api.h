@@ -272,6 +272,7 @@ typedef enum OrtOpAttrType {
   ORT_OP_ATTR_FLOATS,
   ORT_OP_ATTR_STRING,
   ORT_OP_ATTR_STRINGS,
+  ORT_OP_ATTR_BYTES,
 } OrtOpAttrType;
 
 //! @}
