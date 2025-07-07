@@ -15,8 +15,10 @@ Abstract:
 --*/
 
 #include "mlasi.h"
-#include "kleidiai/mlasi_kleidiai.h"
 
+#ifdef USE_KLEIDIAI
+#include "kleidiai/mlasi_kleidiai.h"
+#endif
 //
 // Define the number of working buffer elements required per thread.
 //

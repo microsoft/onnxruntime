@@ -17,7 +17,11 @@ Abstract:
 #include <cassert>
 #include "core/mlas/lib/mlasi.h"
 #include "qgemm.h"
+
+#ifdef USE_KLEIDIAI
 #include "kleidiai/mlasi_kleidiai.h"
+#endif
+
 
 //
 // Define the parameters to execute segments of a QGEMM operation on worker
