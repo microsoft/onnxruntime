@@ -88,7 +88,7 @@ struct PluginEpMetaDefNameFunctor {
 
 static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
   // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
-  // If there are multiple OrtEpDevice instances,the device_memory_info must be consistent for all.
+  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
 
   if (ep_devices.empty()) {
     // Should never be the case that we have no OrtEpDevices, but just in case.
