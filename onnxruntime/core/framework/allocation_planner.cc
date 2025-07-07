@@ -2018,6 +2018,7 @@ class PlannerImpl {
         execution_plan.emplace_back(nullptr);
       }
     }
+
     // 2. Determining following things:
     //    a. which node needs to generate the notification
     //    b. which node needs to trigger downstream
@@ -2046,10 +2047,16 @@ class PlannerImpl {
       return producer_topoindex < yieldOp_index_in_toposort && yieldOp_index_in_toposort < consumer_topoindex;
     };
 #endif
+
     size_t num_trigger_points = 0;
     InlinedHashMap<NodeIndex, size_t> node_to_trigger_points;
+
+    // map of node that will generate a notification to plan_.notification_owners entry
     InlinedHashMap<NodeIndex, NotificationIndex> node_to_notification;
+
+    // map of waiting node index to pairs of nodes + notification fn that it is waiting on
     std::map<NodeIndex, std::map<NodeIndex, WaitNotificationFn>> node_to_wait;
+
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
@@ -2068,17 +2075,24 @@ class PlannerImpl {
         }
       }
     }
+
     for (size_t i = 0; i < num_logic_streams_; ++i) {
       for (auto node_index : stream_nodes_[i]) {
         auto* node = graph_viewer_.GetNode(node_index);
         auto stream_device = execution_plan[i]->device_;
-        // Neither trigger ActivateNotification/WaitOnEPStep for Shape op (whose output is ready for all the EPs), nor
-        // upstream is on CPU device (As currently we never invoke RegisterWaitFn(CPU, ...) for all kinds of EP, thus no wait_handle can be retrieved for this case)
+        // We don't need an ActivateNotificationStep or WaitOnEPStep for Shape as it always runs on CPU and isn't
+        // dependent on input from other devices.
+        // We also skip CPU streams as there is no wait function for CPU -> Device, so GetWaitHandle will always return
+        // null. EPs only register Device -> Device and Device -> CPU wait handlers currently.
         if (node->OpType() != "Shape" && !stream_device.UsesCpuMemory()) {
+          // for each node consuming one or more outputs from the current node
           for (auto it = node->OutputNodesBegin(); it != node->OutputNodesEnd(); ++it) {
             bool output_consumed_in_subgraph = true;
+
+            // find the output/s the downstream node consumes
             for (auto* output : node->OutputDefs()) {
               if (output->Exists()) {
+                // TODO: is this correct or do we need to iterate ImplicitInputDefs as well?
                 if (std::find(it->InputDefs().begin(), it->InputDefs().end(), output) != it->InputDefs().end()) {
                   output_consumed_in_subgraph = false;  // output directly consumed in current graph
                   OrtValueIndex output_arg_idx;
@@ -2086,7 +2100,7 @@ class PlannerImpl {
                   // there are two cases we need notification:
                   // 1. the consumer is not in the same stream
                   // 2. the consumer is in the same stream(non-cpu device), but it consumes a CPU tensor from an non-shape op.
-                  //    for example, a resize cuda kernel consumer a tensor from MemCpyToHost cuda kernel on the same stream.
+                  //    for example, a resize cuda kernel consumes a tensor from MemCpyToHost cuda kernel on the same stream.
                   //    in this case, the FIFO can't guarantee the cpu tensor is ready when resize kernel is launching
                   const auto& output_arg_device = AllocPlan(output_arg_idx).location;
                   WaitNotificationFn wait_handle = stream_handle_registry.GetWaitHandle(stream_device,
@@ -2094,15 +2108,17 @@ class PlannerImpl {
                   if ((plan_.node_stream_map_[it->Index()] != i || output_arg_device.UsesCpuMemory()) &&
                       wait_handle != nullptr) {
                     if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                      node_to_notification[node_index] = plan_.notification_owners.size();
-                      plan_.notification_owners.push_back(i);
+                      node_to_notification[node_index] = plan_.notification_owner_stream.size();
+                      plan_.notification_owner_stream.push_back(i);
                     }
+
                     // if node_index is already in the map, it will NOT be overwritten by insert()
                     node_to_wait[it->Index()].insert({node_index, wait_handle});
                   }
                 }
               }
             }
+
             if (output_consumed_in_subgraph) {
               const auto downstream = plan_.node_stream_map_[it->Index()];
               if (downstream != i) {
@@ -2111,8 +2127,8 @@ class PlannerImpl {
                                                                                       downstream_device);
                 if (wait_handle) {
                   if (node_to_notification.find(node_index) == node_to_notification.end()) {
-                    node_to_notification[node_index] = plan_.notification_owners.size();
-                    plan_.notification_owners.push_back(i);
+                    node_to_notification[node_index] = plan_.notification_owner_stream.size();
+                    plan_.notification_owner_stream.push_back(i);
                   }
                   node_to_wait[it->Index()].insert({node_index, wait_handle});
                 }
@@ -2143,6 +2159,7 @@ class PlannerImpl {
           // add dependency for current logic stream
           dependence_graph_[node_index].insert(stream_nodes_[i][j - 1]);
         }
+
         auto* node = graph_viewer_.GetNode(node_index);
         std::unordered_set<NodeIndex> visited;  // TODO(leca): See the bug description in PlannerTest.MultiStreamMultiOutput. Can remove this variable once this bug is fixed
         for (auto it = node->InputNodesBegin(); it != node->InputNodesEnd(); ++it) {
@@ -2150,7 +2167,8 @@ class PlannerImpl {
             continue;
           }
           visited.insert(it->Index());
-          //  check whether we need to add barrier
+
+          // add barrier if input node is not in this logic stream
           if (std::find(stream_nodes_[i].begin(), stream_nodes_[i].end(), it->Index()) == stream_nodes_[i].end()
 #ifdef ENABLE_TRAINING
               && !AreNodesSeparatedByYield(it->Index(), node_index)
@@ -2162,17 +2180,21 @@ class PlannerImpl {
             size_t trigger_point_index = trigger_point_it->second;
             // push a barrier
             size_t barrier_id = plan_.num_barriers++;
-            plan_.downstream_map[trigger_point_index].push_back({i,
-                                                                 static_cast<int>(execution_plan[i]->steps_.size())});
+            // we add to the downstream map which causes TriggerDownstreamStep to run which decrements the
+            // barrier from the downstream stream when the downstream node is ready.
+            plan_.downstream_map[trigger_point_index].push_back(
+                {i, static_cast<int>(execution_plan[i]->steps_.size())});
             execution_plan[i]->steps_.emplace_back(std::make_unique<BarrierStep>(barrier_id, node_index));
           }
         }
 
+        // if current node has a waiter for a notification add WaitOnEPStep.
         auto wait_it = node_to_wait.find(node_index);
         if (wait_it != node_to_wait.end()) {
-          for (auto wait_param : wait_it->second) {
-            execution_plan[i]->steps_.emplace_back(std::make_unique<WaitOnEPStep>(wait_param.second,
-                                                                                  node_to_notification[wait_param.first], node_index));
+          for (const auto& [node_producing_notification, notification_fn] : wait_it->second) {
+            execution_plan[i]->steps_.emplace_back(
+                std::make_unique<WaitOnEPStep>(notification_fn,
+                                               node_to_notification[node_producing_notification], node_index));
           }
         }
 
@@ -2180,6 +2202,7 @@ class PlannerImpl {
           // add dependency for model graph
           dependence_graph_[it->Index()].insert(node_index);
         }
+
 // push launch kernel command
 #if defined(ORT_MINIMAL_BUILD)
         execution_plan[i]->steps_.emplace_back(std::make_unique<LaunchKernelStep>(node_index));
