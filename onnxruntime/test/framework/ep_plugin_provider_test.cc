@@ -91,15 +91,15 @@ struct MakeTestOrtEpResult {
 // Creates an IExecutionProvider that wraps a TestOrtEp.
 // The TestOrtEp is also exposed so that tests can manipulate its function pointers directly.
 MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {}) {
+  // Default OrtHardwareDevice and OrtEpDevice used if the caller does not explicitly provide ep_devices.
+  static std::unique_ptr<OrtHardwareDevice> ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
+  static std::unique_ptr<OrtEpDevice> ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
+
   auto ort_ep_raw = std::make_unique<TestOrtEp>().release();
   auto ort_ep = UniqueOrtEp(ort_ep_raw, OrtEpDeleter{g_test_ort_ep_factory});
   auto ort_session_options = Ort::SessionOptions{};
-  std::unique_ptr<OrtHardwareDevice> ort_hw_device;
-  std::unique_ptr<OrtEpDevice> ort_ep_device;
 
   if (ep_devices.empty()) {
-    ort_hw_device = MakeTestOrtHardwareDevice(OrtHardwareDeviceType_CPU);
-    ort_ep_device = MakeTestOrtEpDevice(ort_hw_device.get());
     ep_devices.push_back(ort_ep_device.get());
   }
 
