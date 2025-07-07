@@ -5707,7 +5707,7 @@ struct OrtApi {
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
   /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
-   * 
+   *
    * Note:
    * 'create_standalone_ortgraph' needs to be true in order to use 'copy_in_memory_initializer'.
    * Regarding how initializers should be handled when constructing a new graph, in some cases,

@@ -7,13 +7,11 @@
 #include "core/graph/graph.h"
 #include "core/graph/ep_api_types.h"
 
-
-
 namespace onnxruntime {
 namespace ep_graph_utils {
 /// <summary>
 /// Constructs an onnxruntime::Graph from scratch using a given subset of nodes in src_graph.
-/// The newly created onnxruntime::Graph is stored in onnxruntime::Model. 
+/// The newly created onnxruntime::Graph is stored in onnxruntime::Model.
 /// </summary>
 /// <param name="graph">target graph</param>
 /// <param name="new_initializer">TensorProto with external data contained in ort_value</param>
