@@ -272,15 +272,14 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
         var base_A = subtile_idx * 16;
         var base_B = subtile_idy * 16;
         // For each subtile we have 16 threads assigned.
-        var a_idx = u32(local_idx % subtile_size);
+        var b_idx = u32(local_idx % subtile_size);
 
-        if (sg_size == 32) {
+        if (sg_size < 128) {
           subtile_id = u32(local_idx / sg_size);
-          subtile_idx = u32(subtile_id / 2);
-          subtile_idy = u32(subtile_id % 2);
+          subtile_idx = u32(subtile_id % 4);
+          subtile_idy = u32(subtile_id / 4);
           base_A = subtile_idx * 16;
-          base_B = subtile_idy * 32;
-          a_idx = u32(local_idx % sg_size);
+          base_B = subtile_idy * sg_size;
         }
 
         //var lane_output1: vec4<output_element_t>;
@@ -361,41 +360,33 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
     )MAIN_FN";
   } else {
     shader.MainFunctionBody() << R"MAIN_FN(
-            if (sg_size == 16)
-            {
-            // Compute phase: Perform matmul for this subtile 16 x 32 x 16.
-            // Step 1: Load from shared memory into registers across entire subgroup.
-                var own_a0: vec4<u32> = tile_A[0][base_A + a_idx];
-                var own_a1: vec4<u32> = tile_A[1][base_A + a_idx];
-                var own_scale_a: output_element_t = scale_A[base_A + a_idx];
+            if (sg_size < 128) {
                 var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
                 var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
                 var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
-                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
-                lane_outputs[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 0), own_a1, subgroupShuffle(own_b1, 0), subgroupShuffle(own_scale_b, 0) * own_scale_a);
-                lane_outputs[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 1), own_a1, subgroupShuffle(own_b1, 1), subgroupShuffle(own_scale_b, 1) * own_scale_a);
-                lane_outputs[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 2), own_a1, subgroupShuffle(own_b1, 2), subgroupShuffle(own_scale_b, 2) * own_scale_a);
-                lane_outputs[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 3), own_a1, subgroupShuffle(own_b1, 3), subgroupShuffle(own_scale_b, 3) * own_scale_a);
+                lane_outputs[0] += SDP8AI(tile_A[0][base_A + 0], own_b0, tile_A[1][base_A + 0], own_b1, own_scale_b * scale_A[base_A + 0]);
+                lane_outputs[1] += SDP8AI(tile_A[0][base_A + 1], own_b0, tile_A[1][base_A + 1], own_b1, own_scale_b * scale_A[base_A + 1]);
+                lane_outputs[2] += SDP8AI(tile_A[0][base_A + 2], own_b0, tile_A[1][base_A + 2], own_b1, own_scale_b * scale_A[base_A + 2]);
+                lane_outputs[3] += SDP8AI(tile_A[0][base_A + 3], own_b0, tile_A[1][base_A + 3], own_b1, own_scale_b * scale_A[base_A + 3]);
 
-                lane_outputs[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 4), own_a1, subgroupShuffle(own_b1, 4), subgroupShuffle(own_scale_b, 4) * own_scale_a);
-                lane_outputs[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 5), own_a1, subgroupShuffle(own_b1, 5), subgroupShuffle(own_scale_b, 5) * own_scale_a);
-                lane_outputs[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 6), own_a1, subgroupShuffle(own_b1, 6), subgroupShuffle(own_scale_b, 6) * own_scale_a);
-                lane_outputs[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 7), own_a1, subgroupShuffle(own_b1, 7), subgroupShuffle(own_scale_b, 7) * own_scale_a);
+                lane_outputs[4] += SDP8AI(tile_A[0][base_A + 4], own_b0, tile_A[1][base_A + 4], own_b1, own_scale_b * scale_A[base_A + 4]);
+                lane_outputs[5] += SDP8AI(tile_A[0][base_A + 5], own_b0, tile_A[1][base_A + 5], own_b1, own_scale_b * scale_A[base_A + 5]);
+                lane_outputs[6] += SDP8AI(tile_A[0][base_A + 6], own_b0, tile_A[1][base_A + 6], own_b1, own_scale_b * scale_A[base_A + 6]);
+                lane_outputs[7] += SDP8AI(tile_A[0][base_A + 7], own_b0, tile_A[1][base_A + 7], own_b1, own_scale_b * scale_A[base_A + 7]);
 
-                lane_outputs[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 8), own_a1, subgroupShuffle(own_b1, 8), subgroupShuffle(own_scale_b, 8) * own_scale_a);
-                lane_outputs[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 9), own_a1, subgroupShuffle(own_b1, 9), subgroupShuffle(own_scale_b, 9) * own_scale_a);
-                lane_outputs[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 10), own_a1, subgroupShuffle(own_b1, 10), subgroupShuffle(own_scale_b, 10) * own_scale_a);
-                lane_outputs[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 11), own_a1, subgroupShuffle(own_b1, 11), subgroupShuffle(own_scale_b, 11) * own_scale_a);
+                lane_outputs[8] += SDP8AI(tile_A[0][base_A + 8], own_b0, tile_A[1][base_A + 8], own_b1, own_scale_b * scale_A[base_A + 8]);
+                lane_outputs[9] += SDP8AI(tile_A[0][base_A + 9], own_b0, tile_A[1][base_A + 9], own_b1, own_scale_b * scale_A[base_A + 9]);
+                lane_outputs[10] += SDP8AI(tile_A[0][base_A + 10], own_b0, tile_A[1][base_A + 10], own_b1, own_scale_b * scale_A[base_A + 10]);
+                lane_outputs[11] += SDP8AI(tile_A[0][base_A + 11], own_b0, tile_A[1][base_A + 11], own_b1, own_scale_b * scale_A[base_A + 11]);
 
-                lane_outputs[0] += SDP8AI(own_a0, subgroupShuffle(own_b0, 12), own_a1, subgroupShuffle(own_b1, 12), subgroupShuffle(own_scale_b, 12) * own_scale_a);
-                lane_outputs[1] += SDP8AI(own_a0, subgroupShuffle(own_b0, 13), own_a1, subgroupShuffle(own_b1, 13), subgroupShuffle(own_scale_b, 13) * own_scale_a);
-                lane_outputs[2] += SDP8AI(own_a0, subgroupShuffle(own_b0, 14), own_a1, subgroupShuffle(own_b1, 14), subgroupShuffle(own_scale_b, 14) * own_scale_a);
-                lane_outputs[3] += SDP8AI(own_a0, subgroupShuffle(own_b0, 15), own_a1, subgroupShuffle(own_b1, 15), subgroupShuffle(own_scale_b, 15) * own_scale_a);
-            } else if (sg_size == 32) {
-                var own_b0: vec4<u32> = tile_B[0][base_B + sg_id];
-                var own_b1: vec4<u32> = tile_B[1][base_B + sg_id];
-                var own_scale_b: output_element_t  = scale_B[base_B + sg_id];
-                // Step 2: Access registers across the subgroup using subgroupShuffle and perform the matmul.
+                lane_outputs[12] += SDP8AI(tile_A[0][base_A + 12], own_b0, tile_A[1][base_A + 12], own_b1, own_scale_b * scale_A[base_A + 12]);
+                lane_outputs[13] += SDP8AI(tile_A[0][base_A + 13], own_b0, tile_A[1][base_A + 13], own_b1, own_scale_b * scale_A[base_A + 13]);
+                lane_outputs[14] += SDP8AI(tile_A[0][base_A + 14], own_b0, tile_A[1][base_A + 14], own_b1, own_scale_b * scale_A[base_A + 14]);
+                lane_outputs[15] += SDP8AI(tile_A[0][base_A + 15], own_b0, tile_A[1][base_A + 15], own_b1, own_scale_b * scale_A[base_A + 15]);
+            } else {
+                var own_b0: vec4<u32> = tile_B[0][base_B + b_idx];
+                var own_b1: vec4<u32> = tile_B[1][base_B + b_idx];
+                var own_scale_b: output_element_t  = scale_B[base_B + b_idx];
                 lane_outputs[0] += SDP8AI(tile_A[0][base_A + 0], own_b0, tile_A[1][base_A + 0], own_b1, own_scale_b * scale_A[base_A + 0]);
                 lane_outputs[1] += SDP8AI(tile_A[0][base_A + 1], own_b0, tile_A[1][base_A + 1], own_b1, own_scale_b * scale_A[base_A + 1]);
                 lane_outputs[2] += SDP8AI(tile_A[0][base_A + 2], own_b0, tile_A[1][base_A + 2], own_b1, own_scale_b * scale_A[base_A + 2]);
@@ -422,6 +413,7 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
             workgroupBarrier();
         }
 
+        if (sg_size < 128) {
         let b_global = b_global_base + base_B + sg_id;
         if (b_global < uniforms.N) {
           for (var idx = 0u; idx < 16u; idx++) {
@@ -431,6 +423,18 @@ Status DP4AMatMulNBitsProgram::GenerateShaderCode(ShaderHelper& shader) const {
               output[output_idx] = lane_outputs[idx];
             }
           }
+        }
+        } else {
+        let b_global = b_global_base + base_B + b_idx;
+        if (b_global < uniforms.N) {
+          for (var idx = 0u; idx < 16u; idx++) {
+            let a_global = a_global_base + base_A + idx;
+            if (a_global < uniforms.M) {
+              let output_idx = a_global * uniforms.N + b_global;
+              output[output_idx] = lane_outputs[idx];
+            }
+          }
+        }
         }
     )MAIN_FN";
 
