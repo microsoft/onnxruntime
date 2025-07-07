@@ -2718,6 +2718,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
     *dst_graph = result.release();
     return nullptr;
 #else
+    ORT_UNUSED_PARAMETER(src_graph);
+    ORT_UNUSED_PARAMETER(nodes);
+    ORT_UNUSED_PARAMETER(copy_in_memory_initializer);
+    ORT_UNUSED_PARAMETER(dst_graph);
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "\'create_standalone_ortgraph\'= true is not supported in this API in a minimal build.");
 #endif
   }

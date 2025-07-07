@@ -107,6 +107,11 @@ OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
   ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
   out_model = std::move(model);
 #else
+  ORT_UNUSED_PARAMETER(src_graph);
+  ORT_UNUSED_PARAMETER(nodes);
+  ORT_UNUSED_PARAMETER(num_nodes);
+  ORT_UNUSED_PARAMETER(copy_in_memory_initializer);
+  ORT_UNUSED_PARAMETER(out_model);
   return OrtApis::CreateStatus(OrtErrorCode::ORT_NOT_IMPLEMENTED, "The GetSubGraphAsModelFromGraph is not supported in a minimal build.");
 #endif
   return nullptr;
