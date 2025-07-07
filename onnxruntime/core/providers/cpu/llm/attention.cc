@@ -279,13 +279,23 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
         if (nullptr != present) {
           // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
-          k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
+          if (head_i < kv_num_heads) {
+            k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, ki);
+          } else {
+            k = present + ki * present_chunk_length;
+          }
         } else if (nullptr != present_key) {
           if (past_present_share_buffer) {
-            k = present_key + cache_chunk_length * i;
-            memcpy(const_cast<T*>(k) + past_chunk_length, K + head_size * i, head_size * sizeof(T));
+            k = present_key + cache_chunk_length * ki;
+            if (head_i < kv_num_heads) {
+              memcpy(const_cast<T*>(k) + past_chunk_length, K + head_size * ki, head_size * sizeof(T));
+            }
           } else {
-            k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, i);
+            if (head_i < kv_num_heads) {
+              k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
+            } else {
+              k = present_key + ki * present_chunk_length;
+            }
           }
         }
 
@@ -403,13 +413,23 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
 
           if (nullptr != present) {
             // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
-            v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
+            if (head_i < kv_num_heads) {
+              v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, ki);
+            } else {
+              v = present + ki * present_chunk_length;
+            }
           } else if (nullptr != present_value) {
             if (past_present_share_buffer) {
-              v = present_value + cache_chunk_length * i;
-              memcpy(const_cast<T*>(v) + past_chunk_length, V + v_head_size * i, v_head_size * sizeof(T));
+              v = present_value + cache_chunk_length * ki;
+              if (head_i < kv_num_heads) {
+                memcpy(const_cast<T*>(v) + past_chunk_length, V + v_head_size * ki, v_head_size * sizeof(T));
+              }
             } else {
-              v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, i);
+              if (head_i < kv_num_heads) {
+                v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, ki);
+              } else {
+                v = present_value + ki * present_chunk_length;
+              }
             }
           }
 
