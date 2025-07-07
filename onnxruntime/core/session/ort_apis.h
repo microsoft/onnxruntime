@@ -720,6 +720,8 @@ ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_opt_(num_tensors) OrtSyncStream** streams,
                     _In_ size_t num_tensors);
 
-ORT_API_STATUS_IMPL(SignalSyncStream, _In_ OrtSyncStream* stream);
+ORT_API_STATUS_IMPL(CreateInputSyncNotification, _In_ OrtSyncStream* stream);
+ORT_API_STATUS_IMPL(ActivateInputSyncNotification, _In_ OrtSyncStream* stream);
+ORT_API_STATUS_IMPL(ReleaseInputSyncNotification, _In_ OrtSyncStream* stream);
 
 }  // namespace OrtApis

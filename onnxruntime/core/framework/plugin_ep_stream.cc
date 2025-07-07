@@ -16,43 +16,31 @@ OrtStatus* Stream::CreateNotificationImpl(size_t /*num_consumers*/, std::unique_
   return nullptr;
 }
 
-OrtStatus* Stream::EnableInputNotification() {
-  assert(input_notification_ == nullptr);
-  ORT_API_RETURN_IF_ERROR(CreateNotificationImpl(0, input_notification_));
+OrtStatus* Stream::CreateInputNotification() {
+  if (input_notification_ != nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Cannot create a new notification when one already exists for this stream. "
+                                 "Call ReleaseInputNotification first.");
+  }
 
+  return CreateNotificationImpl(0, input_notification_);
+}
+
+OrtStatus* Stream::ActivateInputNotification() {
+  if (input_notification_ == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                 "Cannot activate a notification that does not exist. "
+                                 "Call CreateInputNotification first.");
+  }
+
+  input_notification_->ActivateAndUpdate();
   return nullptr;
 }
 
-OrtStatus* Stream::EnableOutputNotification() {
-  assert(output_notification_ == nullptr);
-  ORT_API_RETURN_IF_ERROR(CreateNotificationImpl(0, output_notification_));
-
-  return nullptr;
-}
-
-void Stream::WaitOnInput() {
-  if (!input_notification_) {
-    return;
+void Stream::ReleaseInputNotification() {
+  if (input_notification_) {
+    input_notification_.reset();
   }
-
-  input_notification_->WaitNotificationOnDevice(ToApiStream(), *input_notification_);
 }
-
-void Stream::SignalInputAvailable() {
-  if (!input_notification_) {
-    return;
-  }
-
-  input_notification_->Activate();  // TODO: do we need to call ActivateAndUpdate here or does it not matter?
-}
-
-void Stream::SignalOutputAvailable() {
-  if (!output_notification_) {
-    return;
-  }
-
-  output_notification_->Activate();  // TODO: do we need to call ActivateAndUpdate here or does it not matter?
-}
-
 }  // namespace plugin_ep
 }  // namespace onnxruntime

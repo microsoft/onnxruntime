@@ -705,6 +705,9 @@ struct CudaEpFactory : OrtEpFactory {
   }
 
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {
+    gpu_memory_infos.reserve(num_devices);
+    host_accessible_memory_infos.reserve(num_devices);
+
     for (int device_id = 0; device_id < num_devices; ++device_id) {
       OrtMemoryInfo* mem_info = nullptr;
       RETURN_IF_ERROR(ort_api.CreateMemoryInfo_V2("CUDA", OrtMemoryInfoDeviceType_GPU,
@@ -715,7 +718,7 @@ struct CudaEpFactory : OrtEpFactory {
                                                   OrtAllocatorType::OrtDeviceAllocator,
                                                   &mem_info));
 
-      gpu_memory_infos[device_id] = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+      gpu_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
 
       // HOST_ACCESSIBLE memory should use the non-CPU device type
       mem_info = nullptr;
@@ -727,8 +730,9 @@ struct CudaEpFactory : OrtEpFactory {
                                                   OrtAllocatorType::OrtDeviceAllocator,
                                                   &mem_info));
 
-      host_accessible_memory_infos[device_id] = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+      host_accessible_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
     }
+
     return nullptr;
   }
 

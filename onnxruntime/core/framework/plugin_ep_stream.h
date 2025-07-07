@@ -52,19 +52,6 @@ class Stream : public onnxruntime::Stream {
       : onnxruntime::Stream(&impl, memory_device), impl_{impl}, logger_{logger} {
   }
 
-  // add Notification for use with user provided input. ORT waits on the Notification before running steps in the
-  // inferencing that requires the data associated with the stream.
-  OrtStatus* EnableInputNotification();
-
-  // add Notification to provide a user that output data is available. the user waits on the Notification and ORT
-  // activates it when inferencing output is available.
-  OrtStatus* EnableOutputNotification();
-
-  void WaitOnInput();  // ORT will wait until inferencing until SignalInputAvailable is called
-
-  void SignalInputAvailable();   // called by user to indicate that async input has been added to the stream
-  void SignalOutputAvailable();  // called by ORT to indicate that inferencing output has been added to the stream
-
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override {
     std::unique_ptr<Notification> plugin_notification;
 
@@ -102,18 +89,16 @@ class Stream : public onnxruntime::Stream {
     return impl_;
   }
 
+  // Create Notification for use with user provided input.
+  OrtStatus* CreateInputNotification();
+  OrtStatus* ActivateInputNotification();  // called by user to indicate that async input has been added to the stream
+  void ReleaseInputNotification();
+
   // when being used for user provided input this will return a Notification pointer that we need to connect to the
-  // internal Stream and wait on.
+  // internal Stream so it can wait on it.
   // otherwise returns nullptr.
   Notification* GetInputNotification() {
     return input_notification_.get();
-  }
-
-  // when being used for a user provided OrtSyncStream for model output this will return a Notification pointer and
-  // we activate the notification when the output data is added to the stream.
-  // otherwise returns nullptr.
-  Notification* GetOutputNotification() {
-    return output_notification_.get();
   }
 
   ~Stream() override {
@@ -131,7 +116,6 @@ class Stream : public onnxruntime::Stream {
   const Logger& logger_;
 
   std::unique_ptr<Notification> input_notification_;
-  std::unique_ptr<Notification> output_notification_;
 };
 
 }  // namespace plugin_ep

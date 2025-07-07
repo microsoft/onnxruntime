@@ -6224,8 +6224,12 @@ struct OrtApi {
                   _In_reads_opt_(num_tensors) OrtSyncStream** streams,
                   _In_ size_t num_tensors);
 
-  // signal to indicate input is available
-  ORT_API2_STATUS(SignalSyncStream, _In_ OrtSyncStream* stream);
+  // create a Notification for input being available.
+  // user should call Activate.
+  // ORT will wait on the notification if the stream is provided to Run
+  ORT_API2_STATUS(CreateInputSyncNotification, _In_ OrtSyncStream* stream);
+  ORT_API2_STATUS(ActivateInputSyncNotification, _In_ OrtSyncStream* stream);
+  ORT_API2_STATUS(ReleaseInputSyncNotification, _In_ OrtSyncStream* stream);
 };
 
 /*

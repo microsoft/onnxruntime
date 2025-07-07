@@ -437,7 +437,10 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-Environment::~Environment() = default;
+Environment::~Environment() {
+  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed
+  shared_allocators_.clear();
+}
 
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};

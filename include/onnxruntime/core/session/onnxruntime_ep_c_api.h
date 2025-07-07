@@ -817,7 +817,7 @@ struct OrtEpFactory {
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_info The OrtMemoryInfo to create the allocator for.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
-   * \param[out] allocator The created OrtAllocator instance.
+   * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -826,7 +826,7 @@ struct OrtEpFactory {
   ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryInfo* memory_info,
                   _In_ const OrtKeyValuePairs* allocator_options,
-                  _Outptr_ OrtAllocator** allocator);
+                  _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
    *
@@ -840,14 +840,14 @@ struct OrtEpFactory {
    * that the execution provider supports.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[out] data_transfer The created OrtDataTransferImpl instance.
+   * \param[out] data_transfer The created OrtDataTransferImpl instance. Set to nullptr if not required.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(CreateDataTransfer, _In_ OrtEpFactory* this_ptr,
-                  _Outptr_ OrtDataTransferImpl** data_transfer);
+                  _Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer);
 
   /** \brief Check if execution providers created by the factory are stream aware.
    *
