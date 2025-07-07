@@ -17,11 +17,11 @@ namespace ep_graph_utils {
 /// <param name="new_initializer">TensorProto with external data contained in ort_value</param>
 /// <param name="ort_value">ort_value with data</param>
 /// <returns></returns>
-OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
-                                         const OrtNode** nodes,
-                                         size_t num_nodes,
-                                         bool copy_in_memory_initializer,
-                                         std::unique_ptr<Model>& out_model);
+Status GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
+                                   const OrtNode** nodes,
+                                   size_t num_nodes,
+                                   bool copy_in_memory_initializer,
+                                   std::unique_ptr<Model>& out_model);
 }  // namespace ep_graph_utils
 
 }  // namespace onnxruntime

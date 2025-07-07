@@ -8,16 +8,17 @@
 #include "core/graph/ep_api_types.h"
 #include "core/graph/graph_utils.h"
 #include "core/framework/error_code_helper.h"
+#include "core/common/common.h"
 
 #include <memory>
 
 namespace onnxruntime {
 namespace ep_graph_utils {
-OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
-                                         const OrtNode** nodes,
-                                         size_t num_nodes,
-                                         bool copy_in_memory_initializer,
-                                         std::unique_ptr<Model>& out_model) {
+Status GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
+                                   const OrtNode** nodes,
+                                   size_t num_nodes,
+                                   bool copy_in_memory_initializer,
+                                   std::unique_ptr<Model>& out_model) {
 #if !defined(ORT_MINIMAL_BUILD)
 
   const GraphViewer& graph_viewer = EpGraph::ToInternal(src_graph)->GetGraphViewer();
@@ -52,7 +53,7 @@ OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
 
     const auto& ep_node = EpNode::ToInternal(ort_node);
     if (ep_node == nullptr) {
-      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node should be a EpNode.");
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "node should be a EpNode.");
     }
 
     const auto& node = ep_node->GetInternalNode();
@@ -104,7 +105,11 @@ OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
 
   // TODO: There is an edge case where the OrtValueInfo is outer scope and it's upper-level graph's input (not the initializer).
 
-  ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
+  auto status = new_graph.Resolve();
+  if (status != Status::OK()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, status.ErrorMessage());
+  }
+
   out_model = std::move(model);
 #else
   ORT_UNUSED_PARAMETER(src_graph);
@@ -114,7 +119,7 @@ OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
   ORT_UNUSED_PARAMETER(out_model);
   return OrtApis::CreateStatus(OrtErrorCode::ORT_NOT_IMPLEMENTED, "The GetSubGraphAsModelFromGraph is not supported in a minimal build.");
 #endif
-  return nullptr;
+  return Status::OK();
 }
 }  // namespace ep_graph_utils
 }  // namespace onnxruntime

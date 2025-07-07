@@ -2709,7 +2709,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
   if (create_standalone_ortgraph) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::unique_ptr<Model> model;
-    ep_graph_utils::GetSubgraphAsModelFromGraph(src_graph, nodes, num_nodes, copy_in_memory_initializer, model);
+    ORT_API_RETURN_IF_STATUS_NOT_OK(ep_graph_utils::GetSubgraphAsModelFromGraph(src_graph, nodes, num_nodes, copy_in_memory_initializer, model));
     Graph& new_graph = model->MainGraph();
     auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
     std::unique_ptr<EpGraph> result;
