@@ -7,11 +7,25 @@
     add_compile_definitions(BUILD_QNN_EP_STATIC_LIB=1)
   endif()
 
-  file(GLOB_RECURSE
-       onnxruntime_providers_qnn_ep_srcs CONFIGURE_DEPENDS
-       "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
-       "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
-  )
+  # Static library: use qnn/ directory
+  # Shared library: use qnn-abi/ directory
+  if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
+    message(STATUS "QNN EP: Using STATIC library build - qnn/ directory")
+    file(GLOB_RECURSE
+         onnxruntime_providers_qnn_ep_srcs CONFIGURE_DEPENDS
+         "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.h"
+         "${ONNXRUNTIME_ROOT}/core/providers/qnn/*.cc"
+    )
+  else()
+    message(STATUS "QNN EP: Using SHARED library build - qnn-abi/ directory")
+    file(GLOB_RECURSE
+         onnxruntime_providers_qnn_ep_srcs CONFIGURE_DEPENDS
+         "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/*.h"
+         "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/*.cc"
+    )
+  endif()
+
+  set(example_plugin_ep_utils_srcs "${ONNXRUNTIME_ROOT}/test/autoep/library/example_plugin_ep_utils.cc")
 
   function(extract_qnn_sdk_version_from_yaml QNN_SDK_YAML_FILE QNN_VERSION_OUTPUT)
     file(READ "${QNN_SDK_YAML_FILE}" QNN_SDK_YAML_CONTENT)
@@ -38,8 +52,9 @@
     #
     # Build QNN EP as a static library
     #
-    set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs})
-    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
+    set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs} ${example_plugin_ep_utils_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_ep_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/test FILES ${example_plugin_ep_utils_srcs})
     onnxruntime_add_static_library(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_srcs})
     onnxruntime_add_include_to_target(onnxruntime_providers_qnn onnxruntime_common onnxruntime_framework onnx
                                                                 onnx_proto protobuf::libprotobuf-lite
@@ -81,15 +96,29 @@
          "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.h"
          "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
     )
-    set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs}
-                                       ${onnxruntime_providers_qnn_shared_lib_srcs})
 
-    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_srcs})
+    # Add shared utilities that are needed by the QNN provider
+    set(onnxruntime_providers_qnn_shared_utils_srcs
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/ort_api.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/ort_api.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/qnn_telemetry.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/qnn_telemetry.h"
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/rpcmem_library.cc"
+        "${ONNXRUNTIME_ROOT}/core/providers/qnn/rpcmem_library.h"
+    )
+
+    set(onnxruntime_providers_qnn_srcs ${onnxruntime_providers_qnn_ep_srcs}
+                                       ${onnxruntime_providers_qnn_shared_lib_srcs}
+                                       ${onnxruntime_providers_qnn_shared_utils_srcs}
+                                       ${example_plugin_ep_utils_srcs})
+
+    source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_qnn_ep_srcs} ${onnxruntime_providers_qnn_shared_lib_srcs} ${onnxruntime_providers_qnn_shared_utils_srcs})
+    source_group(TREE ${ONNXRUNTIME_ROOT}/test FILES ${example_plugin_ep_utils_srcs})
 
     set(onnxruntime_providers_qnn_all_srcs ${onnxruntime_providers_qnn_srcs})
     if(WIN32)
       # Sets the DLL version info on Windows: https://learn.microsoft.com/en-us/windows/win32/menurc/versioninfo-resource
-      list(APPEND onnxruntime_providers_qnn_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/qnn/onnxruntime_providers_qnn.rc")
+      list(APPEND onnxruntime_providers_qnn_all_srcs "${ONNXRUNTIME_ROOT}/core/providers/qnn-abi/onnxruntime_providers_qnn.rc")
     endif()
 
     onnxruntime_add_shared_library_module(onnxruntime_providers_qnn ${onnxruntime_providers_qnn_all_srcs})
@@ -147,7 +176,7 @@
             RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR})
 
     set(onnxruntime_providers_qnn_target onnxruntime_providers_qnn)
-    
+
     if (MSVC OR ${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
       add_custom_command(
         TARGET ${onnxruntime_providers_qnn_target} POST_BUILD

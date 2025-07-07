@@ -6,8 +6,11 @@
 #include <vector>
 
 #include "core/providers/qnn/ort_api.h"
+#if !BUILD_QNN_EP_STATIC_LIB
+#include "core/providers/qnn-abi/builder/qnn_model.h"
+#else
 #include "core/providers/qnn/builder/qnn_model.h"
-
+#endif
 #pragma once
 
 namespace onnxruntime {

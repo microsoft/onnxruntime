@@ -109,6 +109,41 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
 }
+
+TEST(OrtEpLibrary, QnnAbiEp_SharedLibraryCodePathExecution) {
+  const std::filesystem::path& library_path =
+#if _WIN32
+      "./onnxruntime_providers_qnn.dll";
+#else
+      "./libonnxruntime_providers_qnn.so";
+#endif
+  const std::string& registration_name = "QnnAbiTestProvider";
+
+  ort_env->RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+
+  {
+    std::vector<Ort::ConstEpDevice> ep_devices = ort_env->GetEpDevices();
+
+    // Find the OrtEpDevice associated with our example plugin EP.
+    Ort::ConstEpDevice plugin_ep_device;
+    for (Ort::ConstEpDevice& device : ep_devices) {
+      if (std::string(device.EpName()) == registration_name) {
+        plugin_ep_device = device;
+        break;
+      }
+    }
+    ASSERT_NE(plugin_ep_device, nullptr);
+    std::cout << "Found plugin EP: " << plugin_ep_device.EpName() << std::endl;
+    // Create session with example plugin EP
+    Ort::SessionOptions session_options;
+    std::unordered_map<std::string, std::string> ep_options;
+    session_options.AppendExecutionProvider_V2(*ort_env, std::vector<Ort::ConstEpDevice>{plugin_ep_device}, ep_options);
+
+    RunModelWithPluginEp(session_options);
+  }
+
+  ort_env->UnregisterExecutionProviderLibrary(registration_name.c_str());
+}
 }  // namespace test
 }  // namespace onnxruntime
 
