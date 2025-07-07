@@ -257,22 +257,14 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
 
   // setup allocator/automated dellocate for workspace
   size_t workspace_size = 0;
-  // size_t workspace_alignment = 0;
   xnn_allocator* allocator = GetStoredAllocator().second;
   auto deallocator = [allocator](void* ptr) { allocator->aligned_deallocate(allocator->context, ptr); };
   std::unique_ptr<void, decltype(deallocator)> workspace(nullptr, deallocator);
 
-  auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc; //_f32;
-  // if (op_type_ == OpComputeType::op_compute_type_fp16) {
-  //   reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_f16;
-  // } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
-  //   reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_u8;
-  // } else if (op_type_ == OpComputeType::op_compute_type_qs8) {
-  //   reshape_fn = xnn_reshape_resize_bilinear2d_nhwc_s8;
-  // }
+  auto reshape_fn = xnn_reshape_resize_bilinear2d_nhwc;
 
   auto status = reshape_fn(op0_.get(), N, H, W, C, C, C,
-                           &workspace_size, /*&workspace_alignment, */threadpool);
+                           &workspace_size, threadpool);
   if (status != xnn_status_success) {
     return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "xnn_reshape_resize_bilinear2d_nhwc_", OpTypeToString(op_type_),
                            " returned ", status);

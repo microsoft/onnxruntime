@@ -44,6 +44,3 @@ index 94bcad92e3..be7dfe95fd 100644
    SET_PROPERTY(SOURCE ${ALL_NEON_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=neon ")
    SET_PROPERTY(SOURCE ${ALL_NEONFP16_MICROKERNEL_SRCS} APPEND_STRING PROPERTY COMPILE_FLAGS " -march=armv7-a -mfpu=neon-fp16 ")
    # GCC requires -mfp16-format=ieee to define __fp16 type, but Clang doesn't support this option at all.
--- 
-2.46.1
-

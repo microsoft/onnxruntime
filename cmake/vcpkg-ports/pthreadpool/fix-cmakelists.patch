@@ -1,12 +1,3 @@
-From 3621e82fb4b46cfe1960cf13fdea92e8760a305d Mon Sep 17 00:00:00 2001
-From: Fanchen Kong <fanchen.kong@intel.com>
-Date: Wed, 2 Jul 2025 09:58:02 +0800
-Subject: [PATCH] fix-cmakelists
-
----
- CMakeLists.txt | 29 ++++++++++++-----------------
- 1 file changed, 12 insertions(+), 17 deletions(-)
-
 diff --git a/CMakeLists.txt b/CMakeLists.txt
 index efff8cc..1a0f7e9 100644
 --- a/CMakeLists.txt
@@ -89,6 +80,4 @@ index efff8cc..1a0f7e9 100644
  
  IF(PTHREADPOOL_BUILD_TESTS)
    # ---[ Build google test
--- 
-2.46.1
 
