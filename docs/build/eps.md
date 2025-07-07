@@ -243,12 +243,16 @@ See more information on the NV TensorRT RTX Execution Provider [here](../executi
 {: .no_toc }
 
  * Follow [instructions for CUDA execution provider](#cuda) to install CUDA and setup environment variables.
- * Intall TensorRT for RTX from nvidia.com (TODO: add link when available)
+ * Intall TensorRT for RTX from [here](https://developer.nvidia.com/tensorrt-rtx))
 
 ### Build Instructions
 {: .no_toc }
-`build.bat --config Release --parallel 32 --build_dir _build --build_shared_lib --use_nv_tensorrt_rtx --tensorrt_home "C:\dev\TensorRT-RTX-1.1.0.3" --cuda_home "C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v12.9" --cmake_generator "Visual Studio 17 2022" --use_vcpkg`
-Replace the --tensorrt_home and --cuda_home with correct paths to CUDA and TensorRT-RTX installations.
+
+```bash
+`build.bat --config Release --parallel 32 --build_dir _build --build_shared_lib --use_nv_tensorrt_rtx --tensorrt_rtx_home <path to TensorRT for RTX home>  --cuda_home <path to CUDA home> --cmake_generator "Visual Studio 17 2022" --use_vcpkg` 
+'''
+
+Update the --tensorrt_rtx_home and --cuda_home with correct paths to CUDA and TensorRT-RTX installations.
 
 ## oneDNN
 
