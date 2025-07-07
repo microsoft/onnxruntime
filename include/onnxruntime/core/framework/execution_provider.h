@@ -79,8 +79,8 @@ class IExecutionProvider {
       : default_device_(device), type_{type} {
   }
 
-  IExecutionProvider(const std::string& type, OrtDevice device, const logging::Logger* logger)
-      : default_device_(device), type_{type}, logger_{logger} {
+  IExecutionProvider(const std::string& type, OrtDevice device, const logging::Logger& logger)
+      : default_device_(device), type_{type}, logger_{&logger} {
   }
 
   /*

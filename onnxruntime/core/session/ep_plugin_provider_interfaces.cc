@@ -120,7 +120,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), &logger),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()) {
