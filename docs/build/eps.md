@@ -250,7 +250,7 @@ See more information on the NV TensorRT RTX Execution Provider [here](../executi
 
 ```bash
 `build.bat --config Release --parallel 32 --build_dir _build --build_shared_lib --use_nv_tensorrt_rtx --tensorrt_rtx_home <path to TensorRT for RTX home>  --cuda_home <path to CUDA home> --cmake_generator "Visual Studio 17 2022" --use_vcpkg` 
-'''
+```
 
 Update the --tensorrt_rtx_home and --cuda_home with correct paths to CUDA and TensorRT-RTX installations.
 
