@@ -6,7 +6,6 @@
 
 #include "core/common/inlined_containers.h"
 #include "core/framework/allocator.h"
-#include "core/providers/shared_library/provider_api.h"
 #include <mutex>
 
 namespace onnxruntime {
@@ -57,13 +56,9 @@ class CUDAPinnedAllocator : public IAllocator {
   CUDAPinnedAllocator(const char* name, OrtDevice::DeviceId device_id)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
-                          OrtDevice(OrtDevice::CPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
-                                    0 /*CPU device always with id 0*/),
-                          OrtMemTypeCPUOutput)) {
-    if (device_id != 0) {
-      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Device ID was non 0 for a CudaPinned allocator. The ID will be ignored.";
-    }
-  }
+                          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                                    device_id),
+                          OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
