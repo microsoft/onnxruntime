@@ -12,7 +12,6 @@
 #include <vector>
 
 #include "core/common/inlined_containers.h"
-#include "core/framework/abi_pointer_array.h"
 #include "core/framework/allocator.h"
 #include "core/graph/basic_types.h"
 #include "core/graph/abi_graph_types.h"
@@ -155,23 +154,38 @@ struct EpNode : public OrtNode {
   // Gets the opset version in which this node's operator was first defined.
   Status GetSinceVersion(int& since_version) const override;
 
-  // Gets the node's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  // Get the number of node inputs.
+  size_t GetNumInputs() const override;
 
-  // Gets the node's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
+  // Gets the node's inputs.
+  Status GetInputs(gsl::span<const OrtValueInfo*> inputs) const override;
 
-  // Gets the node's implicit inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  // Get the number of node outputs.
+  size_t GetNumOutputs() const override;
 
-  // Gets the node's attributes as OrtOpAttr instances wrapped in an OrtArrayOfConstObjects.
-  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& attrs) const override;
+  // Gets the node's outputs.
+  Status GetOutputs(gsl::span<const OrtValueInfo*> outputs) const override;
+
+  // Gets the number of implicit inputs.
+  Status GetNumImplicitInputs(size_t& num_implicit_inputs) const override;
+
+  // Gets the node's implicit inputs.
+  Status GetImplicitInputs(gsl::span<const OrtValueInfo*> inputs) const override;
+
+  // Get the number of node attributes.
+  size_t GetNumAttributes() const override;
+
+  // Gets the node's attributes.
+  Status GetAttributes(gsl::span<const OrtOpAttr*> attrs) const override;
+
+  // Gets the number of subgraphs contained by this node.
+  Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& subgraphs) const override;
+  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
-  Status GetParentGraph(const OrtGraph*& parent_graph) const override;
+  Status GetGraph(const OrtGraph*& parent_graph) const override;
 
   //
   // Helper functions used when working directly with an EpNode.
@@ -257,20 +271,31 @@ struct EpGraph : public OrtGraph {
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
 
-  // Gets the graph's inputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  // Get the number of graph inputs, including initializers that are listed as graph inputs.
+  size_t GetNumInputs() const override;
+
+  // Gets the graph's inputs as OrtValueInfo instances.
   // Includes initializers that are graph inputs.
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& inputs) const override;
+  Status GetInputs(gsl::span<const OrtValueInfo*> inputs) const override;
 
-  // Gets the graph's outputs as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& outputs) const override;
+  // Get the number of graph outputs.
+  size_t GetNumOutputs() const override;
 
-  // Gets the graph's initializers as OrtValueInfo instances wrapped in an OrtArrayOfConstObjects.
+  // Gets the graph's outputs as OrtValueInfo instances.
+  Status GetOutputs(gsl::span<const OrtValueInfo*> outputs) const override;
+
+  // Get the number of graph initializers, including both constant and non-constant initializers.
+  size_t GetNumInitializers() const override;
+
+  // Gets the graph's initializers as OrtValueInfo instances.
   // Includes both constant initializers and non-constant initializers (aka optional graph inputs).
-  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& initializers) const override;
+  Status GetInitializers(gsl::span<const OrtValueInfo*> initializers) const override;
 
-  // Gets the graph's nodes as OrtNode instances wrapped in an OrtArrayOfConstObjects.
-  // The nodes are sorted in a default "reverse DFS" topological order.
-  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& nodes) const override;
+  // Get the number of nodes in the graph.
+  size_t GetNumNodes() const override;
+
+  // Gets the graph's nodes. The nodes are sorted in a default "reverse DFS" topological order.
+  Status GetNodes(gsl::span<const OrtNode*> nodes) const override;
 
   // Gets the graph's parent node or nullptr if this is not a nested subgraph.
   Status GetParentNode(const OrtNode*& parent_node) const override;
