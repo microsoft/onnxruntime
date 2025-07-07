@@ -114,6 +114,7 @@ stages:
           -p:OrtPackageId="Microsoft.ML.OnnxRuntime.Gpu"
           -p:IsReleaseBuild=${{ parameters.IsReleaseBuild }}
           -p:ReleaseVersionSuffix=$(ReleaseVersionSuffix)
+          -p:PackageVersion=$(OnnxRuntimeVersion)
         workingDirectory: '$(Build.SourcesDirectory)\csharp'
 
     - template: ../templates/win-esrp-dll.yml
