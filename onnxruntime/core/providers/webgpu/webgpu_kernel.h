@@ -20,7 +20,7 @@ class WebGpuKernel : public OpKernel {
  public:
   explicit WebGpuKernel(const OpKernelInfo& info)
       : OpKernel(info),
-        ep_(*reinterpret_cast<const WebGpuExecutionProvider*>(info.GetExecutionProvider())) {
+        ep_(*static_cast<const WebGpuExecutionProvider*>(info.GetExecutionProvider())) {
   }
 
   Status Compute(OpKernelContext* p_op_kernel_context) const override {
