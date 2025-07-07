@@ -72,13 +72,13 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       const T* cos_data;
       const T* sin_data;
       int cache_offset;
-      if (position_ids_format == 0) {
-        cache_offset = (b * sequence_length + s) * half_rotary_emb_dim;
-      } else {
-        // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-        const int position_id = static_cast<int>(position_ids[b * sequence_length + s]);
-        cache_offset = position_id * half_rotary_emb_dim;
+      // position_ids_format == 0 means position_ids is nullptr
+      // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
+      int b_s_index = b * sequence_length + s;
+      if (position_ids_format != 0) {
+        b_s_index = static_cast<int>(position_ids[b_s_index]);
       }
+      cache_offset = b_s_index * half_rotary_embedding_dim;
       cos_data = cos_cache + cache_offset;
       sin_data = sin_cache + cache_offset;
 

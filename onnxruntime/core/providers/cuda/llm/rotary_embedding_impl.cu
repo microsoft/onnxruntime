@@ -54,13 +54,11 @@ __global__ void RotaryEmbeddingBSNH(T* output,                    // BxSxNxH
 
   // position_ids_format == 0 means position_ids is nullptr
   // position_ids_format == 1 means position_ids is a 2D array of size (batch_size, sequence_length)
-  if (position_ids_format == 0) {
-    cache_offset = (b * sequence_length + s) * half_rotary_embedding_dim;
-  } else {
-    // Cache is (M, H/2) or (M, rotary_embedding_dim/2)
-    const int position_id = static_cast<int>(position_ids[b * sequence_length + s]);
-    cache_offset = position_id * half_rotary_embedding_dim;
+  int b_s_index = b * sequence_length + s;
+  if (position_ids_format != 0) {
+    b_s_index = static_cast<int>(position_ids[b_s_index]);
   }
+  cache_offset = b_s_index * half_rotary_embedding_dim;
   const T* cos_data = cos_cache + cache_offset;
   const T* sin_data = sin_cache + cache_offset;
 
@@ -89,10 +87,14 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
   int4 in_strides;
   int4 out_strides;
   if (is_input_bnsh_format) {
-    int in_head_stride = sequence_length * head_size;
-    int out_head_stride = sequence_length * head_size;
-    in_strides = int4{num_heads * in_head_stride, in_head_stride, in_head_stride / sequence_length, 1};
-    out_strides = int4{num_heads * out_head_stride, out_head_stride, out_head_stride / sequence_length, 1};
+    // Semantic meaning of the strides:
+    // int in_head_stride = sequence_length * head_size;
+    // int out_head_stride = sequence_length * head_size;
+    // in_strides = int4{num_heads * in_head_stride, in_head_stride, in_head_stride / sequence_length, 1};
+    // out_strides = int4{num_heads * out_head_stride, out_head_stride, out_head_stride / sequence_length, 1};
+    // Simplify to:
+    in_strides = int4{num_heads * sequence_length * head_size, sequence_length * head_size, head_size, 1};
+    out_strides = int4{num_heads * sequence_length * head_size, sequence_length * head_size, head_size, 1};
   } else {
     int in_head_stride = head_size;
     int out_head_stride = head_size;
