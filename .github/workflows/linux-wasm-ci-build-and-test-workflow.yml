@@ -50,6 +50,12 @@ jobs:
         with:
           node-version: "22"
 
+      - name: check Node.js and npm versions
+        run: |
+          node --version
+          npm --version
+          printenv
+
       - name: Set up Python
         uses: actions/setup-python@v5
         with:

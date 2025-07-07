@@ -148,6 +148,9 @@
     # Install npm dependencies
     add_custom_command(
       OUTPUT "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
+      COMMAND printenv
+      COMMAND which node
+      COMMAND which npm
       COMMAND ${NPM_EXECUTABLE} ci
       COMMAND ${CMAKE_COMMAND} -E touch "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete"
       DEPENDS "${WGSL_TEMPLATES_DIR}/package.json" "${WGSL_TEMPLATES_DIR}/package-lock.json"
