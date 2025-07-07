@@ -645,8 +645,8 @@ ORT_API_STATUS_IMPL(Graph_GetNumNodes, _In_ const OrtGraph* graph, _Out_ size_t*
 ORT_API_STATUS_IMPL(Graph_GetNodes, const OrtGraph* graph,
                     _Out_writes_(num_nodes) const OrtNode** nodes, _In_ size_t num_nodes);
 ORT_API_STATUS_IMPL(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
-ORT_API_STATUS_IMPL(Graph_GetSubGraph, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
-                    _In_ bool to_create_standalone_sub_graph, _In_ bool copy_in_memory_initializer,
+ORT_API_STATUS_IMPL(Graph_GetGraphView, _In_ const OrtGraph* graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
+                    _In_ bool create_standalone_ortgraph, _In_ bool copy_in_memory_initializer,
                     _Outptr_ OrtGraph** subgraph);
 
 // OrtNode

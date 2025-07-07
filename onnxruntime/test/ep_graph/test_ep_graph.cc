@@ -331,7 +331,7 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   }
 
   OrtGraph* sub_graph;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetSubGraph(&api_graph, selected_nodes.data(), selected_nodes.size(), false, true, &sub_graph));
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetGraphView(&api_graph, selected_nodes.data(), selected_nodes.size(), false, true, &sub_graph));
 
   bool debug = true;
   if (debug) {

@@ -12,13 +12,14 @@
 namespace onnxruntime {
 namespace ep_graph_utils {
 /// <summary>
-/// Adds a new initializer to 'graph' with new_initializer that points to the OrtValue buffer
+/// Constructs an onnxruntime::Graph from scratch using a given subset of nodes in src_graph.
+/// The newly created onnxruntime::Graph is stored in onnxruntime::Model. 
 /// </summary>
 /// <param name="graph">target graph</param>
 /// <param name="new_initializer">TensorProto with external data contained in ort_value</param>
 /// <param name="ort_value">ort_value with data</param>
 /// <returns></returns>
-OrtStatusPtr GetSubGraphAsModelFromGraph(const OrtGraph* src_graph,
+OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
                                          const OrtNode** nodes,
                                          size_t num_nodes,
                                          bool copy_in_memory_initializer,

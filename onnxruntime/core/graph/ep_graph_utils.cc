@@ -13,7 +13,7 @@
 
 namespace onnxruntime {
 namespace ep_graph_utils {
-OrtStatusPtr GetSubGraphAsModelFromGraph(const OrtGraph* src_graph,
+OrtStatusPtr GetSubgraphAsModelFromGraph(const OrtGraph* src_graph,
                                          const OrtNode** nodes,
                                          size_t num_nodes,
                                          bool copy_in_memory_initializer,
@@ -107,9 +107,9 @@ OrtStatusPtr GetSubGraphAsModelFromGraph(const OrtGraph* src_graph,
   ORT_API_RETURN_IF_STATUS_NOT_OK(new_graph.Resolve());
   out_model = std::move(model);
 #else
-  fprintf(stderr, "The GetSubGraphAsModelFromGraph is not supported in a minimal build.\n");
-  return nullptr;
+  return OrtApis::CreateStatus(OrtErrorCode::ORT_NOT_IMPLEMENTED, "The GetSubGraphAsModelFromGraph is not supported in a minimal build.");
 #endif
+  return nullptr;
 }
 }  // namespace ep_graph_utils
 }  // namespace onnxruntime

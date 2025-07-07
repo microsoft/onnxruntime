@@ -2694,10 +2694,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
                     _In_ const OrtNode** nodes,
                     _In_ size_t num_nodes,
-                    _In_ bool to_create_standalone_sub_graph,
+                    _In_ bool create_standalone_ortgraph,
                     _In_ bool copy_in_memory_initializer,
                     _Outptr_ OrtGraph** dst_graph) {
   API_IMPL_BEGIN
@@ -2706,10 +2706,10 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_nodes' argument should be > 0");
   }
 
-  if (to_create_standalone_sub_graph) {
+  if (create_standalone_ortgraph) {
 #if !defined(ORT_MINIMAL_BUILD)
     std::unique_ptr<Model> model;
-    ep_graph_utils::GetSubGraphAsModelFromGraph(src_graph, nodes, num_nodes, copy_in_memory_initializer, model);
+    ep_graph_utils::GetSubgraphAsModelFromGraph(src_graph, nodes, num_nodes, copy_in_memory_initializer, model);
     Graph& new_graph = model->MainGraph();
     auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
     std::unique_ptr<EpGraph> result;
@@ -2718,7 +2718,7 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetSubGraph, _In_ const OrtGraph* src_graph,
     *dst_graph = result.release();
     return nullptr;
 #else
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "\'to_create_standalone_sub_graph\'= true is not supported in this API in a minimal build.");
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "\'create_standalone_ortgraph\'= true is not supported in this API in a minimal build.");
 #endif
   }
 
@@ -3709,7 +3709,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetNumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,
-    &OrtApis::Graph_GetSubGraph,
+    &OrtApis::Graph_GetGraphView,
     &OrtApis::Node_GetId,
     &OrtApis::Node_GetName,
     &OrtApis::Node_GetOperatorType,

@@ -5706,27 +5706,22 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
-  /** \brief Create a "sub-graph" from a subset of nodes in an OrtGraph.
-   *
-   * A "sub-graph" refers to a graph formed from a subset of nodes within the current OrtGraph and is not a
-   * nested subgraph. In contrast, a subgraph typically refers to a nested subgraph contained within a
-   * control flow node. If you are looking to retrieve nested subgraphs from a control flow node, use the
-   * Node_GetSubgraphs API.
+  /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
    * 
    * Note:
-   * 'to_create_standalone_sub_graph' needs to be true to use 'copy_in_memory_initializer'.
+   * 'create_standalone_ortgraph' needs to be true in order to use 'copy_in_memory_initializer'.
    * Regarding how initializers should be handled when constructing a new graph, in some cases,
    * initializers that refer to a memory location in OrtValue can not be handled by some hardware backends
-   * (unlike those that are on disk). This prevents us from sharing the data and we have to make a copy here.
+   * (unlike those that are on disk). This prevents us from sharing the data and we have to make a copy.
    * In that case, set copy_in_memory_initializer to true.
    *
    * \param[in] src_graph The source OrtGraph instance.
    * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
    * \param[in] num_nodes Number of nodes.
-   * \param[in] to_create_standalone_sub_graph If it's false, this API constructs a sub-graph as a OrtGraph instance
-   *            that requires the 'src_graph' to be around in order to access the nodes. If it's true, this API
-   *            constructs a standalone sub-graph instead.
-   * \param[in] copy_in_memory_initializer Only be used when 'to_create_standalone_sub_graph' is true.
+   * \param[in] create_standalone_ortgraph If it's false, this API constructs an OrtGraph that contains a subset of
+   *            nodes from 'src_graph' OrtGraph which needs be around in order to access the nodes.
+   *            If it's true, this API constructs a standalone OrtGraph instead.
+   * \param[in] copy_in_memory_initializer Only be used when 'create_standalone_ortgraph' is true.
                 When constructing the graph, do copy the initializers from source graph to dst graph.
    * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
    *
@@ -5734,8 +5729,8 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Graph_GetSubGraph, _In_ const OrtGraph* src_graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
-                  _In_ bool to_create_standalone_sub_graph, _In_ bool copy_in_memory_initializer,
+  ORT_API2_STATUS(Graph_GetGraphView, _In_ const OrtGraph* src_graph, _In_ const OrtNode** nodes, _In_ size_t num_nodes,
+                  _In_ bool create_standalone_ortgraph, _In_ bool copy_in_memory_initializer,
                   _Outptr_ OrtGraph** dst_sub_graph);
 
   /// @}
