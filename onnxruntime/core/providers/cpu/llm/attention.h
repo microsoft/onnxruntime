@@ -75,7 +75,8 @@ class AttentionBase : public OpKernel {
                              const T* attn_bias_data,                  // attention bias
                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                              bool past_present_share_buffer = false,
-                             int max_sequence_length = 0) const;
+                             int max_sequence_length = 0,
+                             attention_helper::QKMatMulOutputMode qk_matmul_output_mode = attention_helper::QKMatMulOutputMode::kQK) const;
 
   Tensor* GetPresent(OpKernelContext* context,
                      const Tensor* past,

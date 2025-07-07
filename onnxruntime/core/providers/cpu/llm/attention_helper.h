@@ -22,9 +22,10 @@ enum AttentionType {
 };
 
 enum QKMatMulOutputMode {
-  kNone = 0,  // No output
-  kQK = 1,    // Output Q*K
-  kQKV = 2,   // Output Q*K and V
+  kQK = 0,         // Output Q*K
+  kQKMask = 1,     // Output Q*K + Mask
+  kQKSoftCap = 2,  // Output SoftCap(Q*K + Mask)
+  kQKSoftMax = 3,  // Output SoftMax(SoftCap(Q*K + Mask))
 };
 
 // Parameters deduced from node attributes and inputs/outputs.

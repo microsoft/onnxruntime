@@ -48,10 +48,11 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
   qk_matmul_output_mode_ = static_cast<QKMatMulOutputMode>(mode);
-  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kNone ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
-                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKV,
-              "qk_matmul_output_mode must be 0 (None), 1 (QK), or 2 (QKV)");
+  ORT_ENFORCE(qk_matmul_output_mode_ == QKMatMulOutputMode::kQK ||
+                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKMask ||
+                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
+                  qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
+              "qk_matmul_output_mode must be 0, 1, 2, or 3.");
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
@@ -199,7 +200,8 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              const T* attn_bias_data,                  // attention bias
                                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                                              bool past_present_share_buffer,
-                                             int max_sequence_length) const {
+                                             int max_sequence_length,
+                                             attention_helper::QKMatMulOutputMode qk_matmul_output_mode) const {
   const int total_sequence_length = past_sequence_length + kv_sequence_length;              // T = P + L
   const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;   // P x H
   const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;     // S x H
@@ -246,6 +248,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
         const ptrdiff_t mask_offset = SafeInt<ptrdiff_t>(batch_index) * probs_matrix_size;
 
         T* output = attention_probs + output_offset;
+        T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
 
         if (attn_bias_data != nullptr) {
           // Attention bias has shape (B or 1, N or 1, S, T)
@@ -308,22 +311,37 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                   Q + q_input_chunk_length * i, k,
                                   (mask_data != nullptr || attn_bias_data != nullptr) ? 1.0f : 0.0f,
                                   output, nullptr);
+        if (out_qk != nullptr) {
+          if (qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask) {
+            memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
+          } else if (qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
+            if (mask_data == nullptr) {
+              memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
+            } else {
+              // This can be optimized with vectorized add using MlasAddFloat32x4.
+              for (ptrdiff_t j = 0; j < probs_matrix_size; j++) {
+                out_qk[j] = output[j] - mask_data[mask_offset + j];
+              }
+            }
+          }
+        }
         if (softcap > 0.0f) {
           ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), softcap);
+        }
+        if (out_qk != nullptr && qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
+          memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
         }
       }
     });
   }
 
-  if (output_qk != nullptr) {
-    // Output the scaled Q*K^T if needed.
-    memcpy(output_qk, attention_probs,
-           SafeInt<size_t>(batch_size) * num_heads * sequence_length * total_sequence_length * sizeof(T));
-  }
-
   const int N = batch_size * num_heads * sequence_length;
   const int D = total_sequence_length;
   ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
+
+  if (output_qk != nullptr && qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
+    memcpy(output_qk, attention_probs, SafeInt<size_t>(batch_size) * num_heads * sequence_length * total_sequence_length * sizeof(T));
+  }
 }
 
 template <typename T>
@@ -576,7 +594,8 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                               attn_bias_data,
                               attn_bias_dims,
                               past_present_share_buffer,
-                              max_sequence_length);
+                              max_sequence_length,
+                              parameters.qk_matmul_output_mode);
 
   void* out_tmp_data = nullptr;
   if (parameters.transpose_output) {
