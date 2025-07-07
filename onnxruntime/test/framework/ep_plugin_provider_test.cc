@@ -9,6 +9,7 @@
 #include "core/session/abi_devices.h"
 #include "core/session/onnxruntime_cxx_api.h"
 #include "test/util/include/asserts.h"
+#include "test/util/include/test_environment.h"
 
 namespace onnxruntime::test {
 
@@ -102,10 +103,12 @@ MakeTestOrtEpResult MakeTestOrtEp(std::vector<const OrtEpDevice*> ep_devices = {
     ep_devices.push_back(ort_ep_device.get());
   }
 
+  auto& logging_manager = DefaultLoggingManager();
   auto ep = std::make_unique<PluginExecutionProvider>(std::move(ort_ep),
                                                       *static_cast<const OrtSessionOptions*>(ort_session_options),
                                                       g_test_ort_ep_factory,
-                                                      ep_devices);
+                                                      ep_devices,
+                                                      logging_manager.DefaultLogger());
 
   auto result = MakeTestOrtEpResult{std::move(ep), ort_ep_raw};
   return result;

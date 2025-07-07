@@ -53,11 +53,9 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
     ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
-  auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                              session_options, ep_factory_, devices_);
-  ep_wrapper->SetLogger(session_logger.ToInternal());
-
-  return ep_wrapper;
+  return std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+                                                   session_options, ep_factory_, devices_,
+                                                   *session_logger.ToInternal());
 }
 
 /// <summary>
@@ -86,18 +84,21 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
+static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ort_ep, gsl::span<const OrtEpDevice* const> ep_devices,
+                                         const logging::Logger& logger) {
   // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
   // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
 
   if (ep_devices.empty()) {
     // Should never be the case that we have no OrtEpDevices, but just in case.
+    LOGS(logger, WARNING) << "Creating a PluginExecutionProvider named '" << ort_ep.GetName(&ort_ep)
+                          << "' without any OrtEpDevice instances.";
     return OrtDevice();
   }
 
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
-  // Check assertion that all OrtEpDevice instances must have the same device_memory_info
+  // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
   bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
                                [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
                                  const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
@@ -123,8 +124,9 @@ static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_
 
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
-                                                 gsl::span<const OrtEpDevice* const> ep_devices)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices)),
+                                                 gsl::span<const OrtEpDevice* const> ep_devices,
+                                                 const logging::Logger& logger)
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices, logger), &logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()) {
