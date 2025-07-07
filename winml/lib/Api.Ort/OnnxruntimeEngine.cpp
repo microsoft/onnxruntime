@@ -571,9 +571,11 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromDefaultAllocator(
     ort_api
   );
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -688,15 +690,19 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalD3DResource(
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
 
   Microsoft::WRL::ComPtr<OnnxruntimeValue> out_value;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    &out_value, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      &out_value, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
 
   // Cache the allocator on the value so it destructs appropriately when the value is dropped
   Microsoft::WRL::ComPtr<DmlAllocatorWrapper> dml_allocator_resource_wrapper;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<DmlAllocatorWrapper>(
-    &dml_allocator_resource_wrapper, std::move(unique_dml_allocator_resource)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<DmlAllocatorWrapper>(
+      &dml_allocator_resource_wrapper, std::move(unique_dml_allocator_resource)
+    )
+  );
 
   RETURN_IF_FAILED(out_value->SetParameter(dml_allocator_resource_wrapper.Get()));
 
@@ -756,9 +762,11 @@ HRESULT OnnxruntimeEngine::CreateTensorValueFromExternalBuffer(
   );
   auto unique_value = UniqueOrtValue(ort_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -776,9 +784,11 @@ HRESULT OnnxruntimeEngine::CreateSequenceOfValuesValue(IValue** values, size_t s
   );
 
   UniqueOrtValue unique_value(ort_value, ort_api->ReleaseValue);
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -791,9 +801,11 @@ HRESULT OnnxruntimeEngine::CreateSequenceOfValuesValue(IValue** values, size_t s
 HRESULT OnnxruntimeEngine::CreateNullValue(_Out_ IValue** out) {
   auto ort_api = engine_factory_->UseOrtApi();
   auto unique_value = UniqueOrtValue(nullptr, ort_api->ReleaseValue);
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, this, std::move(unique_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -980,7 +992,8 @@ HRESULT CreateMapValue(
   std::vector<int64_t> shape = {static_cast<int64_t>(map.Size())};
 
   winrt::com_ptr<_winml::IValue> key_value;
-  RETURN_IF_FAILED(engine->CreateTensorValueFromDefaultAllocator(shape.data(), shape.size(), key_kind, key_value.put())
+  RETURN_IF_FAILED(
+    engine->CreateTensorValueFromDefaultAllocator(shape.data(), shape.size(), key_kind, key_value.put())
   );
   auto keys_ort_value = static_cast<OnnxruntimeValue*>(key_value.get())->UseOrtValue();
 
@@ -999,9 +1012,11 @@ HRESULT CreateMapValue(
   RETURN_HR_IF_NOT_OK_MSG(ort_api->CreateValue(inputs, 2, ONNXType::ONNX_TYPE_MAP, &map_value), ort_api);
   auto unique_map_ort_value = UniqueOrtValue(map_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, engine, std::move(unique_map_ort_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, engine, std::move(unique_map_ort_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -1084,9 +1099,11 @@ HRESULT CreateSequenceOfMapsValue(
   );
   auto unique_sequence_ort_value = UniqueOrtValue(sequence_value, ort_api->ReleaseValue);
 
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    out, engine, std::move(unique_sequence_ort_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      out, engine, std::move(unique_sequence_ort_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
   return S_OK;
 }
 
@@ -1176,9 +1193,11 @@ HRESULT OnnxruntimeEngine::FillSequenceOfMapsValue(
     auto unique_element_value = UniqueOrtValue(elements_ort_value, ort_api->ReleaseValue);
 
     winrt::com_ptr<IValue> element_value;
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-      element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)
-    ));
+    RETURN_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+        element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)
+      )
+    );
 
     wf::IInspectable map_inspectable = CreateMap(key_kind, value_kind);
     RETURN_IF_FAILED(FillFromMapValue(
@@ -1217,9 +1236,11 @@ HRESULT OnnxruntimeEngine::GetSequenceOfTensorValues(
     auto unique_element_value = UniqueOrtValue(elements_ort_value, ort_api->ReleaseValue);
 
     winrt::com_ptr<IValue> element_value;
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-      element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)
-    ));
+    RETURN_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+        element_value.put(), this, std::move(unique_element_value), UniqueOrtAllocator(nullptr, nullptr)
+      )
+    );
     out_values.push_back(element_value);
   }
 
@@ -1275,9 +1296,11 @@ HRESULT OnnxruntimeEngine::CreateOneInputAcrossDevices(const char* name, IValue*
       );
       auto unique_dest_ort_value = UniqueOrtValue(dest_ort_value, ort_api->ReleaseValue);
 
-      RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-        out, this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)
-      ));
+      RETURN_IF_FAILED(
+        Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+          out, this, std::move(unique_dest_ort_value), UniqueOrtAllocator(nullptr, nullptr)
+        )
+      );
       return S_OK;
     }
   }
@@ -1391,18 +1414,22 @@ HRESULT OnnxruntimeEngine::FillFromMapValue(
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_map_value, 0, ort_allocator, &keys_ort_value), ort_api);
   auto unique_keys_value = UniqueOrtValue(keys_ort_value, ort_api->ReleaseValue);
   winrt::com_ptr<IValue> keys_value;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    keys_value.put(), this, std::move(unique_keys_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      keys_value.put(), this, std::move(unique_keys_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
 
   // get the keys
   OrtValue* values_ort_value = nullptr;
   RETURN_HR_IF_NOT_OK_MSG(ort_api->GetValue(ort_map_value, 1, ort_allocator, &values_ort_value), ort_api);
   auto unique_values_value = UniqueOrtValue(values_ort_value, ort_api->ReleaseValue);
   winrt::com_ptr<IValue> values_value;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
-    values_value.put(), this, std::move(unique_values_value), UniqueOrtAllocator(nullptr, nullptr)
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeValue>(
+      values_value.put(), this, std::move(unique_values_value), UniqueOrtAllocator(nullptr, nullptr)
+    )
+  );
 
   std::vector<int64_t> keys_shape;
   keys_value->GetTensorShape(keys_shape);

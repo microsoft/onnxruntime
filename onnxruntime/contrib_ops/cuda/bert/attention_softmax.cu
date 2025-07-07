@@ -29,16 +29,16 @@ namespace onnxruntime {
 namespace contrib {
 namespace attention_softmax_cuda {
 
-#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                 \
-  [&] {                                                         \
-    const dim3 grid(num_heads* sequence_length, batch_size, 1); \
-    if (attn_bias != nullptr) {                                 \
-      constexpr static bool HAS_BIAS = true;                    \
-      return __VA_ARGS__();                                     \
-    } else {                                                    \
-      constexpr static bool HAS_BIAS = false;                   \
-      return __VA_ARGS__();                                     \
-    }                                                           \
+#define DISPATCH_BIAS(attn_bias, HAS_BIAS, ...)                  \
+  [&] {                                                          \
+    const dim3 grid(num_heads * sequence_length, batch_size, 1); \
+    if (attn_bias != nullptr) {                                  \
+      constexpr static bool HAS_BIAS = true;                     \
+      return __VA_ARGS__();                                      \
+    } else {                                                     \
+      constexpr static bool HAS_BIAS = false;                    \
+      return __VA_ARGS__();                                      \
+    }                                                            \
   }()
 
 // Macro to declare variables:
