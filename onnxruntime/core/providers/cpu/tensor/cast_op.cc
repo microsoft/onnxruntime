@@ -191,8 +191,6 @@ struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
 
-namespace {
-
 constexpr int INT4_MIN = -8;
 constexpr int INT4_MAX = 7;
 constexpr unsigned int UINT4_MIN = 0;
@@ -275,7 +273,6 @@ struct ToInt4ElementConverter<SrcType,
   }
 };
 
-}  // anonymous namespace
 
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
