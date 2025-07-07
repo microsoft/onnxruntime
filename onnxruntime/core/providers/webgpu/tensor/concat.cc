@@ -59,7 +59,7 @@ void AppendAssignOutputDataFunction(std::ostream& os, gsl::span<const ShaderVari
     } else {
       os << "  } else if (input_index == " << i << "u) {\n";
     }
-    os << "     " << output.SetByOffset("global_idx", inputs[i]->GetByIndices("indices")) << ";\n";
+    os << "     " << output.SetByOffset("global_idx + uniforms.output_offset", inputs[i]->GetByIndices("indices")) << ";\n";
   }
   os << "  }\n"
         "}\n";
@@ -125,81 +125,58 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   }
 
   size_t non_empty_input_count = sizes_in_concat_axis.size();
+  uint32_t input_index_offset = 0;  // Track which input we're starting from
+  uint32_t output_buffer_offset = 0;  // Track where in output buffer to write
   if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
-    // Run concat operation in multiple passes when storage buffer limit is exceeded
     LOGS_DEFAULT(WARNING) << "Storage buffer limit exceeded for Concat. "
                              "Running operation in multiple passes.";
     size_t max_inputs_per_pass = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;  // Reserve 1 for output
 
-    std::vector<Tensor> intermediate_tensors;
     std::vector<const Tensor*> current_inputs;
-
     for (int i = 0; i < input_count; ++i) {
       current_inputs.push_back(prepare.inputs[i].tensor);
     }
 
-    // Process inputs in passes until we have few enough to process in one final pass
-    while (current_inputs.size() > max_inputs_per_pass) {
+    // Process inputs in passes of size max_inputs_per_pass
+    while (input_index_offset < current_inputs.size()) {
+      uint32_t num_inputs_this_pass = std::min(static_cast<uint32_t>(max_inputs_per_pass),
+                                               static_cast<uint32_t>(current_inputs.size()) - input_index_offset);
+      
       // Calculate output shape for this pass
-      auto pass_shape = current_inputs[0]->Shape();
+      auto pass_shape = current_inputs[input_index_offset]->Shape();
       int64_t pass_concat_axis_size = 0;
-      for (size_t i = 0; i < max_inputs_per_pass; ++i) {
-        pass_concat_axis_size += current_inputs[i]->Shape()[axis];
+      for (uint32_t i = 0; i < num_inputs_this_pass; ++i) {
+        pass_concat_axis_size += current_inputs[input_index_offset + i]->Shape()[axis];
       }
       pass_shape[axis] = pass_concat_axis_size;
 
-      // Create intermediate tensor to store result of this pass
-      auto intermediate = context.CreateGPUTensor(current_inputs[0]->DataType(), std::move(pass_shape));
-
+      // Create program and add inputs for this pass
       ConcatProgram pass_program{axis};
       std::vector<uint32_t> pass_sizes_in_concat_axis;
-      pass_sizes_in_concat_axis.reserve(max_inputs_per_pass);
+      pass_sizes_in_concat_axis.reserve(num_inputs_this_pass);
       uint32_t pass_sum = 0;
 
-      for (size_t i = 0; i < max_inputs_per_pass; ++i) {
-        pass_program.AddInput({current_inputs[i], ProgramTensorMetadataDependency::TypeAndRank});
-        auto axis_size = current_inputs[i]->Shape()[axis];
+      for (size_t i = 0; i < num_inputs_this_pass; ++i) {
+        pass_program.AddInput({current_inputs[input_index_offset + i], ProgramTensorMetadataDependency::TypeAndRank});
+        auto axis_size = current_inputs[input_index_offset + i]->Shape()[axis];
         pass_sum += static_cast<uint32_t>(axis_size);
         pass_sizes_in_concat_axis.push_back(pass_sum);
       }
 
-      uint32_t pass_output_size = onnxruntime::narrow<int32_t>(intermediate.Shape().Size());
+      uint32_t pass_output_size = onnxruntime::narrow<int32_t>(pass_shape.Size());
 
-      pass_program.CacheHint(absl::StrJoin(std::make_tuple(max_inputs_per_pass, prepare.axis), ","))
-          .AddOutputs({&intermediate})
+      // Run concat shader for this pass
+      pass_program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_pass, prepare.axis), ","))
+          .AddOutputs({prepare.output_tensor})
           .SetDispatchGroupSize((pass_output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
           .AddUniformVariables({gsl::span<const uint32_t>(pass_sizes_in_concat_axis.data(), pass_sizes_in_concat_axis.size()),
-                                pass_output_size});
+                                pass_output_size, output_buffer_offset});  // Use output_buffer_offset
 
       ORT_RETURN_IF_ERROR(context.RunProgram(pass_program));
 
-      // Remove processed inputs and add the intermediate result
-      current_inputs.erase(current_inputs.begin(), current_inputs.begin() + max_inputs_per_pass);
-      intermediate_tensors.push_back(std::move(intermediate));
-      current_inputs.insert(current_inputs.begin(), &intermediate_tensors.back());
-    }
-
-    // Final pass: concatenate remaining inputs (including any intermediate results) into final output
-    if (!current_inputs.empty()) {
-      ConcatProgram final_program{axis};
-      std::vector<uint32_t> final_sizes_in_concat_axis;
-      final_sizes_in_concat_axis.reserve(current_inputs.size());
-      uint32_t final_sum = 0;
-
-      for (const auto* tensor : current_inputs) {
-        final_program.AddInput({tensor, ProgramTensorMetadataDependency::TypeAndRank});
-        auto axis_size = tensor->Shape()[axis];
-        final_sum += static_cast<uint32_t>(axis_size);
-        final_sizes_in_concat_axis.push_back(final_sum);
-      }
-
-      final_program.CacheHint(absl::StrJoin(std::make_tuple(current_inputs.size(), prepare.axis), ","))
-          .AddOutputs({prepare.output_tensor})
-          .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-          .AddUniformVariables({gsl::span<const uint32_t>(final_sizes_in_concat_axis.data(), final_sizes_in_concat_axis.size()),
-                                output_size});
-
-      ORT_RETURN_IF_ERROR(context.RunProgram(final_program));
+      // Update offsets for next pass
+      input_index_offset += num_inputs_this_pass;
+      output_buffer_offset += pass_output_size;
     }
 
     return Status::OK();
@@ -209,7 +186,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       .AddOutputs({prepare.output_tensor})
       .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
-                            output_size});
+                            output_size, 0u});  // Use 0 for single pass
   return context.RunProgram(program);
 }
 

@@ -459,16 +459,16 @@ TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
-  test.AddInput<int32_t>("input1", {1, 1}, {1});
-  test.AddInput<int32_t>("input2", {1, 1}, {2});
-  test.AddInput<int32_t>("input3", {1, 1}, {3});
-  test.AddInput<int32_t>("input4", {1, 1}, {4});
-  test.AddInput<int32_t>("input5", {1, 1}, {5});
-  test.AddInput<int32_t>("input6", {1, 1}, {6});
-  test.AddInput<int32_t>("input7", {1, 1}, {7});
-  test.AddInput<int32_t>("input8", {1, 1}, {8});
-  test.AddInput<int32_t>("input9", {1, 1}, {9});
-  test.AddOutput<int32_t>("concat_result", {1, 9}, {1, 2, 3, 4, 5, 6, 7, 8, 9});
+  test.AddInput<int32_t>("input1", {1, 2}, {1, 1});
+  test.AddInput<int32_t>("input2", {1, 2}, {2, 2});
+  test.AddInput<int32_t>("input3", {1, 2}, {3, 3});
+  test.AddInput<int32_t>("input4", {1, 2}, {4, 4});
+  test.AddInput<int32_t>("input5", {1, 2}, {5, 5});
+  test.AddInput<int32_t>("input6", {1, 2}, {6, 6});
+  test.AddInput<int32_t>("input7", {1, 2}, {7, 7});
+  test.AddInput<int32_t>("input8", {1, 2}, {8, 8});
+  test.AddInput<int32_t>("input9", {1, 2}, {9, 9});
+  test.AddOutput<int32_t>("concat_result", {1, 18}, {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
   test.Run();
 }
 #endif  // USE_WEBGPU
