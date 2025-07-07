@@ -467,9 +467,8 @@ struct TensorCaster<Int4x2, UInt4x2> {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
-      // Convert to unsigned by clamping at 0
-      uint8_t low_unsigned = static_cast<uint8_t>(std::max(0, static_cast<int>(low_nibble)) & 0x0F);
-      uint8_t high_unsigned = static_cast<uint8_t>(std::max(0, static_cast<int>(high_nibble)) & 0x0F);
+      uint8_t low_unsigned = static_cast<uint8_t>(low_nibble) & 0x0F;
+      uint8_t high_unsigned = static_cast<uint8_t>(high_nibble) & 0x0F;
 
       out_data[i] = UInt4x2(low_unsigned, high_unsigned);
     }
@@ -524,9 +523,8 @@ struct TensorCaster<UInt4x2, Int4x2> {
       auto low_nibble = in_data[i].GetElem(0);
       auto high_nibble = in_data[i].GetElem(1);
 
-      // Convert to signed by clamping to int4 range (-8 to 7)
-      int8_t low_signed = static_cast<int8_t>(std::clamp(static_cast<int>(low_nibble), INT4_MIN, INT4_MAX));
-      int8_t high_signed = static_cast<int8_t>(std::clamp(static_cast<int>(high_nibble), INT4_MIN, INT4_MAX));
+      int8_t low_signed = static_cast<int8_t>((low_nibble & 0x0F) << 4) >> 4;
+      int8_t high_signed = static_cast<int8_t>((high_nibble & 0x0F) << 4) >> 4;
 
       out_data[i] = Int4x2(low_signed, high_signed);
     }

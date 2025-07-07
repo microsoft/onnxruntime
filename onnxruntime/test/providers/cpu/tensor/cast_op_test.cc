@@ -337,6 +337,23 @@ TEST(CastOpTest, Int4x2ToInt64) {
   TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_int64_output), shape);
 }
 
+TEST(CastOpTest, Int4x2ToUInt64) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const std::vector<Int4x2> int4x2_input = {
+      Int4x2(-8, 7),  // boundary values
+      Int4x2(0, -1),  // zero and negative
+      Int4x2(3, -5),  // positive and negative
+      Int4x2(6, 2)    // both positive
+  };
+
+  // Negative values will be cast to their unsigned representation
+  const std::vector<uint64_t> expected_uint32_output = {18446744073709551608, 7, 0, 18446744073709551615, 3, 18446744073709551611, 6, 2};
+
+  // WHEN, THEN
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint32_output), shape);
+}
+
 TEST(CastOpTest, UInt4x2ToUInt8) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
@@ -681,16 +698,16 @@ TEST(CastOpTest, Int4x2ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<Int4x2> int4x2_input = {
-      Int4x2(-8, 7),  // negative values get clamped to 0
-      Int4x2(0, -1),  // -1 becomes 0
-      Int4x2(3, -5),  // -5 becomes 0
-      Int4x2(6, 2)    // positive values remain
+      Int4x2(-8, 7),  // negative values
+      Int4x2(0, -1),  // -1 becomes max unsigned value
+      Int4x2(3, -5),  // positive and negative values
+      Int4x2(6, 2)    // positive values
   };
 
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(0, 7),  // -8 clamped to 0
-      UInt4x2(0, 0),  // -1 clamped to 0
-      UInt4x2(3, 0),  // -5 clamped to 0
+      UInt4x2(8, 7),  // -8 becomes 8
+      UInt4x2(0, 15), // -1 becomes 15
+      UInt4x2(3, 11), // -5 becomes 11
       UInt4x2(6, 2)   // unchanged
   };
 
@@ -702,17 +719,17 @@ TEST(CastOpTest, UInt4x2ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<UInt4x2> uint4x2_input = {
-      UInt4x2(0, 15),  // 15 is out of int4 range, should be clamped to 7
-      UInt4x2(1, 14),  // 14 is out of int4 range, should be clamped to 7
-      UInt4x2(7, 8),   // 8 is out of int4 range, should be clamped to 7
+      UInt4x2(0, 15),  // 15 is out of int4 range
+      UInt4x2(1, 14),  // 14 is out of int4 range
+      UInt4x2(7, 8),   // 8 is out of int4 range
       UInt4x2(3, 6)    // both within range
   };
 
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(0, 7),  // 15 clamped to 7
-      Int4x2(1, 7),  // 14 clamped to 7
-      Int4x2(7, 7),  // 8 clamped to 7
-      Int4x2(3, 6)   // unchanged
+      Int4x2(0, -1),  // 15 becomes -1
+      Int4x2(1, -2),  // 14 becomes -2
+      Int4x2(7, -8),  // 8 becomes -8
+      Int4x2(3, 6)    // unchanged
   };
 
   // WHEN, THEN
@@ -722,14 +739,14 @@ TEST(CastOpTest, UInt4x2ToInt4x2) {
 TEST(CastOpTest, Int8ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<int8_t> int8_input = {-10, 15, 0, -1, 3, -5, 6, 2};
+  const std::vector<int8_t> int8_input = {-10, 15, 0, -1, 3, -5, -128, 127};
 
   // values outside int4 range get clamped
   const std::vector<Int4x2> expected_int4x2_output = {
       Int4x2(-8, 7),  // -10 clamped to -8, 15 clamped to 7
       Int4x2(0, -1),
       Int4x2(3, -5),
-      Int4x2(6, 2)};
+      Int4x2(-8, 7)};
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int8_input), gsl::make_span(expected_int4x2_output), shape);
