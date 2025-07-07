@@ -102,10 +102,8 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
   }
 
 #ifdef XNN_CACHE_ENABLE
-  // xnn_code_cache_t code_cache = GetCodeCache();
   xnn_weights_cache_t weight_cache = GetWeightsCache();
 #else
-  // xnn_code_cache_t code_cache = nullptr;
   xnn_weights_cache_t weight_cache = nullptr;
 #endif
 
@@ -122,7 +120,6 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         foutput_min,
         foutput_max,
         flags,
-        // code_cache,
         weight_cache,
         &p);
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
@@ -136,7 +133,6 @@ Status MatMul::PrePack(const Tensor& tensor, int input_idx, AllocatorPtr alloc,
         foutput_min,
         foutput_max,
         flags,
-        // code_cache,
         weight_cache,
         &p);
   }
