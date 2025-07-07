@@ -167,17 +167,17 @@ ORT_API(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream
   return &plugin_stream->GetImplementation();
 }
 
-ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
-                    _Outptr_ OrtSyncNotification** notification) {
-  auto* plugin_stream = static_cast<plugin_ep::Stream*>(static_cast<Stream*>(stream));
-  auto notification_impl = std::make_unique<plugin_ep::Notification>(*plugin_stream, *impl);
-
-  // static_cast to base class and then to API alias
-  *notification =
-      static_cast<OrtSyncNotification*>(static_cast<synchronize::Notification*>(notification_impl.release()));
-
-  return nullptr;
-}
+// ORT_API_STATUS_IMPL(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
+//                     _Outptr_ OrtSyncNotification** notification) {
+//   auto* plugin_stream = static_cast<plugin_ep::Stream*>(static_cast<Stream*>(stream));
+//   auto notification_impl = std::make_unique<plugin_ep::Notification>(*plugin_stream, *impl);
+//
+//   // static_cast to base class and then to API alias
+//   *notification =
+//       static_cast<OrtSyncNotification*>(static_cast<synchronize::Notification*>(notification_impl.release()));
+//
+//   return nullptr;
+// }
 
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
@@ -202,7 +202,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
 
     &OrtExecutionProviderApi::SyncStream_GetStreamImpl,
-    &OrtExecutionProviderApi::CreateSyncNotification,
+    // &OrtExecutionProviderApi::CreateSyncNotification,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

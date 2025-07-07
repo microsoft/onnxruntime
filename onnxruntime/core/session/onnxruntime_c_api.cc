@@ -3154,8 +3154,16 @@ ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevi
   return ep_device->device;
 }
 
-ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device) {
-  return ep_device->device_memory_info;
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
+        _In_ OrtDeviceMemoryType memory_type) {
+  switch (memory_type) {
+    case OrtDeviceMemoryType_DEFAULT:
+      return ep_device->device_memory_info;
+    case OrtDeviceMemoryType_HOST_ACCESSIBLE:
+      return ep_device->host_accessible_memory_info;
+    default:
+      return nullptr;
+  }
 }
 
 namespace {
@@ -3185,28 +3193,61 @@ OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
 }
 }  // namespace
 
-ORT_API_STATUS_IMPL(OrtApis::GetInputsMemoryInfo, _In_ const OrtSession* ort_session,
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForInputs, _In_ const OrtSession* ort_session,
                     _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
                     _In_ size_t num_inputs) {
+  API_IMPL_BEGIN
   return GetInputOutputMemoryInfo(ort_session, InferenceSession::SessionInputOutputType::kInput,
                                   inputs_memory_info, num_inputs);
+  API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::GetOutputsMemoryInfo, _In_ const OrtSession* session,
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSession* session,
                     _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
                     _In_ size_t num_outputs) {
+  API_IMPL_BEGIN
   return GetInputOutputMemoryInfo(session, InferenceSession::SessionInputOutputType::kOutput,
                                   outputs_memory_info, num_outputs);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
+                    _In_ size_t num_inputs) {
+  API_IMPL_BEGIN
+  if (ort_session == nullptr || inputs_ep_devices == nullptr || num_inputs == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForInputs.");
+  }
+
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtEpDevice*> ep_devices;
+
+  ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForInputs(ep_devices));
+
+  auto num_values = ep_devices.size();
+  if (num_values > num_inputs) {
+    auto msg = MakeString("Number of inputs ", ep_devices.size(), " exceeds the provided size of ", num_inputs);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    inputs_ep_devices[i] = (i < num_values) ? ep_devices[i] : nullptr;
+  }
+
+  return nullptr;
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
                     _Outptr_ OrtSyncStream** ort_stream) {
+  API_IMPL_BEGIN
   if (ep_device == nullptr || ort_stream == nullptr) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and stream must be provided.");
   }
 
   const auto* factory = ep_device->ep_factory;
-  if (!factory->IsStreamAware(factory) || ep_device->device_memory_info) {
+  if (!factory->IsStreamAware(factory)) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
   }
 
@@ -3231,11 +3272,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   *ort_stream = static_cast<OrtSyncStream*>(static_cast<Stream*>(stream.release()));
 
   return nullptr;
+
+  API_IMPL_END
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle) {
+  API_IMPL_BEGIN
   *handle = stream->GetHandle();
   return nullptr;
+  API_IMPL_END
 }
 
 ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_stream) {
@@ -3252,6 +3297,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) OrtValue** dst_tensors,
                     _In_reads_opt_(num_tensors) OrtSyncStream** streams,
                     _In_ size_t num_tensors) {
+  API_IMPL_BEGIN
   if (env == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid arguments provided to CopyTensors.");
   }
@@ -3267,7 +3313,9 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
         return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "OrtValue must contain Tensor with data.");
       }
 
-      if (i > 0 && *mem_info != value->Get<Tensor>().Location()) {
+      if (i == 0) {
+        mem_info = &value->Get<Tensor>().Location();
+      } else if (*mem_info != value->Get<Tensor>().Location()) {
         return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "All OrtValue instances must have the same OrtMemoryInfo");
       }
     }
@@ -3301,6 +3349,36 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
   ORT_API_RETURN_IF_STATUS_NOT_OK(data_transfer->CopyTensors(pairs));
 
   return nullptr;
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
+  API_IMPL_BEGIN
+  // we only ever expose the plugin_ep::Stream
+  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
+
+  return stream->CreateInputNotification();
+
+  API_IMPL_END
+}
+ORT_API_STATUS_IMPL(OrtApis::ActivateInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
+  API_IMPL_BEGIN
+  // we only ever expose the plugin_ep::Stream
+  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
+  return stream->ActivateInputNotification();
+
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::ReleaseInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
+  API_IMPL_BEGIN
+  // we only ever expose the plugin_ep::Stream
+  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
+  stream->ReleaseInputNotification();
+
+  return nullptr;
+  API_IMPL_END
 }
 
 static constexpr OrtApiBase ort_api_base = {
@@ -3737,6 +3815,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::AllocatorGetStats,
 
     &OrtApis::CreateMemoryInfo_V2,
+    &OrtApis::MemoryInfoGetDeviceMemType,
+    &OrtApis::MemoryInfoGetVendorId,
 
     &OrtApis::ValueInfo_GetValueProducer,
     &OrtApis::ValueInfo_GetValueNumConsumers,
@@ -3788,14 +3868,19 @@ static constexpr OrtApi ort_api_1_to_23 = {
 
     &OrtApis::GetTensorData,
 
-    &OrtApis::GetInputsMemoryInfo,
-    &OrtApis::GetOutputsMemoryInfo,
+    &OrtApis::SessionGetMemoryInfoForInputs,
+    &OrtApis::SessionGetMemoryInfoForOutputs,
+    &OrtApis::SessionGetEpDeviceForInputs,
 
     &OrtApis::CreateSyncStreamForEpDevice,
     &OrtApis::SyncStream_GetHandle,
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
+
+    &OrtApis::CreateInputSyncNotification,
+    &OrtApis::ActivateInputSyncNotification,
+    &OrtApis::ReleaseInputSyncNotification,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

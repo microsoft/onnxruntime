@@ -437,7 +437,10 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
                 provider_type + " is not implemented in CreateAndRegisterAllocatorV2()"};
 }
 
-Environment::~Environment() = default;
+Environment::~Environment() {
+  // need to make sure all the OrtAllocator instances are released prior to any plugin EPs being freed
+  shared_allocators_.clear();
+}
 
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};
@@ -625,7 +628,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                               const OrtKeyValuePairs* allocator_options,
                                               OrtAllocator** allocator_out,
                                               bool replace_existing) {
-  // if we're replacing an existing allocator we don't care who added it
+  // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
+  // one will be used for an inference session. ignore the name so that is the case.
   if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
       it != shared_allocators_.end()) {
     if (!replace_existing) {
@@ -660,7 +664,7 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   AllocatorPtr shared_allocator;
 
   if (allocator_type == OrtArenaAllocator) {
-    // wrap with arena
+    // wrap with ORT arena
     OrtArenaCfg arena_cfg;
     if (allocator_options != nullptr) {
       auto status = OrtArenaCfg::FromKeyValuePairs(*allocator_options, arena_cfg);

@@ -425,6 +425,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
                                     OrtSyncStream** streams,
                                     size_t num_tensors) noexcept {
     auto& impl = *static_cast<CudaDataTransferImpl*>(this_ptr);
+    bool need_stream_sync = false;
 
     for (size_t idx = 0; idx < num_tensors; ++idx) {
       const OrtValue* src_tensor = src_tensors[idx];
@@ -472,7 +473,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
 
               // For device memory to device memory copy, no host-side synchronization is performed by cudaMemcpy.
               // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
-              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+              need_stream_sync = true;
             }
           }
         } else {
@@ -486,7 +487,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
               // For cudaMemcpy from pageable host memory to device memory, DMA to final destination may not
               // have completed.
               // see https://docs.nvidia.com/cuda/cuda-runtime-api/api-sync-behavior.html
-              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
+              need_stream_sync = true;
             }
           }
         }
@@ -512,6 +513,10 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
         ORT_ENFORCE(dst_data != src_data);
         memcpy(dst_data, src_data, bytes);
       }
+    }
+
+    if (need_stream_sync) {
+      CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(nullptr));
     }
 
     return nullptr;
@@ -700,6 +705,9 @@ struct CudaEpFactory : OrtEpFactory {
   }
 
   OrtStatus* CreateMemoryInfoForDevices(int num_devices) {
+    gpu_memory_infos.reserve(num_devices);
+    host_accessible_memory_infos.reserve(num_devices);
+
     for (int device_id = 0; device_id < num_devices; ++device_id) {
       OrtMemoryInfo* mem_info = nullptr;
       RETURN_IF_ERROR(ort_api.CreateMemoryInfo_V2("CUDA", OrtMemoryInfoDeviceType_GPU,
@@ -710,7 +718,7 @@ struct CudaEpFactory : OrtEpFactory {
                                                   OrtAllocatorType::OrtDeviceAllocator,
                                                   &mem_info));
 
-      gpu_memory_infos[device_id] = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+      gpu_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
 
       // HOST_ACCESSIBLE memory should use the non-CPU device type
       mem_info = nullptr;
@@ -722,8 +730,9 @@ struct CudaEpFactory : OrtEpFactory {
                                                   OrtAllocatorType::OrtDeviceAllocator,
                                                   &mem_info));
 
-      host_accessible_memory_infos[device_id] = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+      host_accessible_memory_infos.emplace_back(MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo));
     }
+
     return nullptr;
   }
 
