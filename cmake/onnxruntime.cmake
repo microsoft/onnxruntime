@@ -22,13 +22,14 @@ endif()
 function(get_c_cxx_api_headers HEADERS_VAR)
   set(_headers
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_c_api.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_api.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_cxx_inline.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_c_api.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_ep_device_ep_metadata_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_float16.h"
+    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_run_options_config_keys.h"
     "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_session_options_config_keys.h"
-    "${REPO_ROOT}/include/onnxruntime/core/session/onnxruntime_lite_custom_op.h"
   )
 
   if (onnxruntime_ENABLE_TRAINING_APIS)

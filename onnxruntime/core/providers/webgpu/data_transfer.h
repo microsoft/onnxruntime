@@ -9,11 +9,11 @@
 namespace onnxruntime {
 namespace webgpu {
 
-class WebGpuContext;
+class BufferManager;
 
 class DataTransfer : public IDataTransfer {
  public:
-  DataTransfer(const WebGpuContext& context) : context_{context} {};
+  DataTransfer(const BufferManager& buffer_manager) : buffer_manager_{buffer_manager} {};
   ~DataTransfer() {};
 
   bool CanCopy(const OrtDevice& src_device, const OrtDevice& dst_device) const override;
@@ -21,7 +21,7 @@ class DataTransfer : public IDataTransfer {
   common::Status CopyTensor(const Tensor& src, Tensor& dst) const override;
 
  private:
-  const WebGpuContext& context_;
+  const BufferManager& buffer_manager_;
 };
 
 }  // namespace webgpu

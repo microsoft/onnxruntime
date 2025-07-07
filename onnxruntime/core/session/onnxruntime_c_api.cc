@@ -2985,7 +2985,8 @@ ORT_API(void, OrtApis::AddKeyValuePair, _In_ OrtKeyValuePairs* kvps,
 ORT_API(const char*, OrtApis::GetKeyValue, _In_ const OrtKeyValuePairs* kvps, _In_ const char* key) {
   const char* value = nullptr;
 
-  if (auto entry = kvps->entries.find(key); entry != kvps->entries.end()) {
+  const auto& entries = kvps->Entries();
+  if (auto entry = entries.find(key); entry != entries.end()) {
     value = entry->second.c_str();
   }
 
@@ -2994,9 +2995,9 @@ ORT_API(const char*, OrtApis::GetKeyValue, _In_ const OrtKeyValuePairs* kvps, _I
 
 ORT_API(void, OrtApis::GetKeyValuePairs, _In_ const OrtKeyValuePairs* kvps,
         _Outptr_ const char* const** keys, _Outptr_ const char* const** values, _Out_ size_t* num_entries) {
-  *keys = kvps->keys.data();
-  *values = kvps->values.data();
-  *num_entries = kvps->entries.size();
+  *keys = kvps->Keys().data();
+  *values = kvps->Values().data();
+  *num_entries = kvps->Entries().size();
 }
 
 ORT_API(void, OrtApis::RemoveKeyValuePair, _Frees_ptr_opt_ OrtKeyValuePairs* kvps, _In_ const char* key) {
@@ -3631,6 +3632,8 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSharedAllocator,
 
     &OrtApis::GetTensorData,
+
+    &OrtApis::GetSessionOptionsConfigEntries,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

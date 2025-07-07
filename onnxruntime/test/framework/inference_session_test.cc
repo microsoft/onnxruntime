@@ -217,7 +217,7 @@ static void CreateMatMulModel(std::unique_ptr<onnxruntime::Model>& p_model, Prov
   if (provider_type == kCpuExecutionProvider) {
     node.SetExecutionProviderType(provider_type);
   } else {
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
     node.SetExecutionProviderType(provider_type);
 #endif
   }
@@ -286,55 +286,89 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
                                bool is_preallocate_output_vec,
                                ProviderType allocation_provider,
                                IExecutionProvider* gpu_provider,
-                               OrtDevice* output_device) {
+                               OrtDevice* output_device,
+                               bool enable_graph_capture) {
   std::unique_ptr<IOBinding> io_binding;
   Status st = session_object.NewIOBinding(&io_binding);
   ASSERT_TRUE(st.IsOK());
-  auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
 
   // bind a value to A with input that will produce invalid output in order to test replacement of a feed
   std::vector<float> values_mul_x_tmp = {12.f, 11.f, 10.f, 9.f, 8.f, 7.f, 6.f, 5.f, 4.f, 3.f, 2.f, 1.f};
   std::vector<int64_t> dims_mul_x_A_tmp = {3, 4};
-  OrtValue input_tmp;
-  CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
-  ASSERT_STATUS_OK(io_binding->BindInput("A", input_tmp));
-  const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
-
-  // prepare inputs
   std::vector<float> values_mul_x = {0.0f, 1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f, 7.0f, 8.0f, 9.0f, 10.0f, 11.0f};
-
-  /*
-      0 1 2 3     0 1 2
-      4 5 6 7     3 4 5
-      8 9 10 11   6 7 8
-      9 10 11
-      */
-  // bind one input to cpu allocator from bind_provider_type, and another on user provided CPU memory
-  // so both code pathes are covered
-  OrtValue input_ml_value_A;
   std::vector<int64_t> dims_mul_x_A = {3, 4};
-  CreateMLValue<float>(input_allocator, dims_mul_x_A, values_mul_x, &input_ml_value_A);
-
-  OrtValue input_ml_value_B;
   std::vector<int64_t> dims_mul_x_B = {4, 3};
-  CreateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], dims_mul_x_B, values_mul_x,
-                       &input_ml_value_B);
 
-  ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
-  ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
+  auto cpu_alloc = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
+  onnxruntime::AllocatorPtr gpu_alloc = nullptr;
+  if (allocation_provider == kWebGpuExecutionProvider) {
+    // Use session_object.GetAllocator to get the OrtAllocator for WebGPU.
+    // Otherwise, gpu_provider->CreatePreferredAllocators() will create a new OrtAllocator which will go to the create UMA path.
+    // And it can't be used for copying buffer to buffer since the target buffer is still in mapped state.
+    OrtMemoryInfo mem_info(WEBGPU_BUFFER, OrtAllocatorType::OrtDeviceAllocator, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0));
+    gpu_alloc = session_object.GetAllocator(mem_info);
+  } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+    gpu_alloc = gpu_provider->CreatePreferredAllocators()[0];
+  }
+  if (enable_graph_capture) {
+    // For graph capture, all inputs/outputs should be in preallocated gpu memory.
+    ASSERT_TRUE(is_preallocate_output_vec);
+    OrtValue input_ml_value_A_cpu;
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_A, values_mul_x, &input_ml_value_A_cpu);
+    auto& cpu_tensor_a = input_ml_value_A_cpu.Get<Tensor>();
+    Tensor gpu_tensor_a(cpu_tensor_a.DataType(), cpu_tensor_a.Shape(), gpu_alloc);
+    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a, gpu_tensor_a);
+    ASSERT_TRUE(st.IsOK());
+    OrtValue input_ml_value_A;
+    Tensor::InitOrtValue(std::move(gpu_tensor_a), input_ml_value_A);
 
-  // check location of 'A' post-binding has changed to validate that the previous value was replaced
-  ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
+    OrtValue input_ml_value_B_cpu;
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B_cpu);
+    auto& cpu_tensor_b = input_ml_value_B_cpu.Get<Tensor>();
+    Tensor gpu_tensor_b(cpu_tensor_b.DataType(), cpu_tensor_b.Shape(), gpu_alloc);
+    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_b, gpu_tensor_b);
+    ASSERT_TRUE(st.IsOK());
+    OrtValue input_ml_value_B;
+    Tensor::InitOrtValue(std::move(gpu_tensor_b), input_ml_value_B);
 
+    ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
+    ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
+  } else {
+    auto input_allocator = io_binding->GetCPUAllocator(bind_provider_type);
+    OrtValue input_tmp;
+    CreateMLValue<float>(input_allocator, dims_mul_x_A_tmp, values_mul_x_tmp, &input_tmp);
+    ASSERT_STATUS_OK(io_binding->BindInput("A", input_tmp));
+    const void* tmp_A = io_binding->GetInputs()[0].Get<Tensor>().DataRaw();  // location of data post binding
+
+    // prepare inputs
+    /*
+        0 1 2 3     0 1 2
+        4 5 6 7     3 4 5
+        8 9 10 11   6 7 8
+        9 10 11
+        */
+    // bind one input to cpu allocator from bind_provider_type, and another on user provided CPU memory
+    // so both code pathes are covered
+    OrtValue input_ml_value_A;
+    CreateMLValue<float>(input_allocator, dims_mul_x_A, values_mul_x, &input_ml_value_A);
+
+    OrtValue input_ml_value_B;
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_B, values_mul_x, &input_ml_value_B);
+
+    ASSERT_STATUS_OK(io_binding->BindInput("A", input_ml_value_A));
+    ASSERT_STATUS_OK(io_binding->BindInput("B", input_ml_value_B));
+
+    // check location of 'A' post-binding has changed to validate that the previous value was replaced
+    ASSERT_TRUE(io_binding->GetInputs()[0].Get<Tensor>().DataRaw() != tmp_A);
+  }
   // prepare outputs
   std::vector<int64_t> expected_output_dims = {3, 3};
   OrtValue output_ml_value;
   if (is_preallocate_output_vec) {
     if (allocation_provider == kCpuExecutionProvider) {
-      AllocateMLValue<float>(TestCPUExecutionProvider()->CreatePreferredAllocators()[0], expected_output_dims,
-                             &output_ml_value);
-    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
-      AllocateMLValue<float>(gpu_provider->CreatePreferredAllocators()[0], expected_output_dims, &output_ml_value);
+      AllocateMLValue<float>(cpu_alloc, expected_output_dims, &output_ml_value);
+    } else if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
+      AllocateMLValue<float>(gpu_alloc, expected_output_dims, &output_ml_value);
     } else {
       ORT_THROW("Unsupported provider");
     }
@@ -351,6 +385,7 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
 
   // prepare expected inputs and outputs
   std::vector<float> expected_values_mul_y = {42, 48, 54, 114, 136, 158, 186, 224, 262};
+  std::vector<float> expected_values_mul_y_2 = {174, 216, 258, 102, 128, 154, 30, 40, 50};
 
   // Now run
   st = session_object.Run(run_options, *io_binding.get());
@@ -358,24 +393,24 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
   std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
   ASSERT_TRUE(st.IsOK());
 
-  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider)) ||
+  if ((is_preallocate_output_vec && (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider)) ||
       (output_device && output_device->Type() == OrtDevice::GPU)) {
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
     // in this case we need to copy the tensor from cuda to cpu
     std::vector<OrtValue>& outputs = io_binding->GetOutputs();
     ASSERT_EQ(1u, outputs.size());
     auto& rtensor = outputs.front().Get<Tensor>();
     auto element_type = rtensor.DataType();
     auto& shape = rtensor.Shape();
-    auto cpu_allocator = TestCPUExecutionProvider()->CreatePreferredAllocators()[0];
-    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type,
-                                                                  shape,
-                                                                  cpu_allocator);
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
 #ifdef USE_CUDA
     st = GetProviderInfo_CUDA().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
 #ifdef USE_ROCM
     st = GetProviderInfo_ROCM().CreateGPUDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+#endif
+#ifdef USE_WEBGPU
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
 #endif
     ASSERT_TRUE(st.IsOK());
     OrtValue ml_value;
@@ -385,10 +420,39 @@ void RunModelWithBindingMatMul(InferenceSession& session_object,
     VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y);
 #endif
   } else {
-    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider) {
+    if (allocation_provider == kCudaExecutionProvider || allocation_provider == kRocmExecutionProvider || allocation_provider == kWebGpuExecutionProvider) {
       ASSERT_STATUS_OK(gpu_provider->Sync());
     }
     VerifyOutputs(io_binding->GetOutputs(), expected_output_dims, expected_values_mul_y);
+  }
+
+  if (enable_graph_capture) {
+    // Update input_a's value. Run again. Replay the captured graph
+    OrtValue input_a2;
+    CreateMLValue<float>(cpu_alloc, dims_mul_x_A_tmp, values_mul_x_tmp, &input_a2);
+    auto& cpu_tensor_a2 = input_a2.Get<Tensor>();
+    st = gpu_provider->GetDataTransfer()->CopyTensor(cpu_tensor_a2, const_cast<Tensor&>(io_binding->GetInputs()[0].Get<Tensor>()));
+    ASSERT_TRUE(st.IsOK());
+
+    st = session_object.Run(run_options, *io_binding.get());
+
+    std::cout << "Run returned status: " << st.ErrorMessage() << std::endl;
+    ASSERT_TRUE(st.IsOK());
+
+    // Copy the tensor from gpu to cpu
+    std::vector<OrtValue>& outputs = io_binding->GetOutputs();
+    ASSERT_EQ(1u, outputs.size());
+    auto& rtensor = outputs.front().Get<Tensor>();
+    auto element_type = rtensor.DataType();
+    auto& shape = rtensor.Shape();
+    std::unique_ptr<Tensor> cpu_tensor = std::make_unique<Tensor>(element_type, shape, cpu_alloc);
+    st = gpu_provider->GetDataTransfer()->CopyTensor(rtensor, *cpu_tensor.get());
+    ASSERT_TRUE(st.IsOK());
+    OrtValue ml_value;
+    ml_value.Init(cpu_tensor.release(),
+                  DataTypeImpl::GetType<Tensor>(),
+                  DataTypeImpl::GetType<Tensor>()->GetDeleteFunc());
+    VerifyOutputs({ml_value}, expected_output_dims, expected_values_mul_y_2);
   }
 }
 
@@ -1059,16 +1123,16 @@ static void TestBindHelper(const std::string& log_str,
                            ProviderType run_provider_type,
                            bool preallocate_output,
                            ProviderType allocation_provider = kCpuExecutionProvider,
-                           OrtDevice* output_device = nullptr) {
+                           OrtDevice* output_device = nullptr,
+                           bool enable_graph_capture = false) {
   SessionOptions so;
 
   so.session_logid = "InferenceSessionTests." + log_str;
   so.session_log_verbosity_level = 1;  // change to 1 for detailed logging
-
   InferenceSession session_object{so, GetEnvironment()};
   IExecutionProvider* gpu_provider{};
 
-  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider) {
+  if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
 #ifdef USE_CUDA
     auto provider = DefaultCudaExecutionProvider();
     gpu_provider = provider.get();
@@ -1076,6 +1140,15 @@ static void TestBindHelper(const std::string& log_str,
 #endif
 #ifdef USE_ROCM
     auto provider = DefaultRocmExecutionProvider();
+    gpu_provider = provider.get();
+    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+#endif
+#ifdef USE_WEBGPU
+    ConfigOptions config_options{};
+    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                              enable_graph_capture ? webgpu::options::kEnableGraphCapture_ON : webgpu::options::kEnableGraphCapture_OFF)
+                    .IsOK());
+    auto provider = WebGpuExecutionProviderWithOptions(config_options);
     gpu_provider = provider.get();
     ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
 #endif
@@ -1100,7 +1173,8 @@ static void TestBindHelper(const std::string& log_str,
                             preallocate_output,
                             allocation_provider,
                             gpu_provider,
-                            output_device);
+                            output_device,
+                            enable_graph_capture);
 }
 
 TEST(InferenceSessionTests, TestBindCpu) {
@@ -1187,12 +1261,15 @@ TEST(InferenceSessionTests, InvalidInputTypeOfTensorElement) {
   ASSERT_TRUE(!st.IsOK());
 }
 
-#if defined(USE_CUDA) || defined(USE_ROCM)
+#if defined(USE_CUDA) || defined(USE_ROCM) || defined(USE_WEBGPU)
 #if USE_CUDA
 constexpr const char* kGpuExecutionProvider = kCudaExecutionProvider;
 #elif USE_ROCM
 constexpr const char* kGpuExecutionProvider = kRocmExecutionProvider;
+#elif USE_WEBGPU
+constexpr const char* kGpuExecutionProvider = kWebGpuExecutionProvider;
 #endif
+
 TEST(InferenceSessionTests, TestBindCuda) {
   TestBindHelper("TestBindCuda",
                  kGpuExecutionProvider,
@@ -1223,7 +1300,7 @@ TEST(InferenceSessionTests, TestBindCudaPreallocateOutputOnCpu2) {
                  true /* preallocate output on CPU */,
                  kCpuExecutionProvider);
 }
-
+#ifndef USE_WEBGPU
 TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
   OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA, 0);
 
@@ -1234,7 +1311,17 @@ TEST(InferenceSessionTests, TestBindCudaSpecifyOutputDeviceOnCuda) {
                  kGpuExecutionProvider,
                  &device /* specify output device */);
 }
-
+#else
+TEST(InferenceSessionTests, TestGraphCapture) {
+  TestBindHelper("TestGraphCapture",
+                 kGpuExecutionProvider,
+                 kGpuExecutionProvider,
+                 true /* preallocate output on GPU */,
+                 kGpuExecutionProvider,
+                 nullptr,
+                 true /* enable graph capture*/);
+}
+#endif  // !USE_WEBGPU
 #endif
 
 TEST(InferenceSessionTests, ModelWithoutOpset) {
