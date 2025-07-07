@@ -192,71 +192,104 @@ constexpr unsigned int UINT4_MIN = 0;
 constexpr unsigned int UINT4_MAX = 15;
 
 // Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
-template <typename DstType>
+template <typename SrcType>
 struct Int4ElementConverter {
-  static DstType Convert(int8_t val) {
-    if constexpr (IsOrtFloat16Type<DstType>::value) {
-      return DstType(static_cast<float>(val));
-    } else if constexpr (IsOrtFloat8Type<DstType>::value) {
-      return DstType(static_cast<float>(val), true);
+  static int8_t ConvertToInt4(const SrcType& val) {
+    // Truncate to 4 bits and sign-extend properly
+    uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
+    // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const SrcType& val) {
+    // Truncate to 4 bits
+    return static_cast<uint8_t>(val) & 0x0F;
+  }
+
+  static SrcType Convert(int8_t val) {
+    if constexpr (IsOrtFloat16Type<SrcType>::value) {
+      return SrcType(static_cast<float>(val));
+    } else if constexpr (IsOrtFloat8Type<SrcType>::value) {
+      return SrcType(static_cast<float>(val), true);
     } else {
-      return static_cast<DstType>(val);
+      return static_cast<SrcType>(val);
     }
   }
 };
 
-// Helper struct for converting from any type to Int4/UInt4 elements
-template <typename SrcType, typename Enable = void>
-struct ToInt4ElementConverter {
-  // Default implementation for most numeric types
-  static int8_t ConvertToInt4(const SrcType& val) {
-    int result = static_cast<int>(val);
-    // Clamp to int4 range (-8 to 7)
-    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
-  }
-
-  static uint8_t ConvertToUInt4(const SrcType& val) {
-    unsigned int result = static_cast<unsigned int>(val);
-    // Clamp to uint4 range (0 to 15)
-    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
-  }
-};
-
 template <>
-struct ToInt4ElementConverter<float> {
+struct Int4ElementConverter<float> {
   static int8_t ConvertToInt4(const float& val) {
     int result = static_cast<int>(std::roundf(val));
-    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
 
   static uint8_t ConvertToUInt4(const float& val) {
-    unsigned int result = static_cast<unsigned int>(std::max(0.0f, std::roundf(val)));
-    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
+    int result = static_cast<int>(std::roundf(val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static float Convert(int8_t val) {
+    return static_cast<float>(val);
   }
 };
 
 template <>
-struct ToInt4ElementConverter<double> {
+struct Int4ElementConverter<double> {
   static int8_t ConvertToInt4(const double& val) {
     int result = static_cast<int>(std::round(val));
-    return static_cast<int8_t>(std::clamp(result, INT4_MIN, INT4_MAX));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
 
   static uint8_t ConvertToUInt4(const double& val) {
-    unsigned int result = static_cast<unsigned int>(std::max(0.0, std::round(val)));
-    return static_cast<uint8_t>(std::min(result, UINT4_MAX));
+    int result = static_cast<int>(std::round(val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static double Convert(int8_t val) {
+    return static_cast<double>(val);
   }
 };
 
-template <typename SrcType>
-struct ToInt4ElementConverter<SrcType,
-                              std::enable_if_t<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
-  static int8_t ConvertToInt4(const SrcType& val) {
-    return ToInt4ElementConverter<float>::ConvertToInt4(static_cast<float>(val));
+template <>
+struct Int4ElementConverter<MLFloat16> {
+  static int8_t ConvertToInt4(const MLFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
 
-  static uint8_t ConvertToUInt4(const SrcType& val) {
-    return ToInt4ElementConverter<float>::ConvertToUInt4(static_cast<float>(val));
+  static uint8_t ConvertToUInt4(const MLFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static MLFloat16 Convert(int8_t val) {
+    return MLFloat16(static_cast<float>(val));
+  }
+};
+
+template <>
+struct Int4ElementConverter<BFloat16> {
+  static int8_t ConvertToInt4(const BFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const BFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static BFloat16 Convert(int8_t val) {
+    return BFloat16(static_cast<float>(val));
   }
 };
 
@@ -346,28 +379,26 @@ struct TensorCaster<std::string, Int4x2> {
     auto* out_data = out.MutableData<Int4x2>();
 
     // Every 2 strings combine into 1 Int4x2
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      // Parse each string and clamp to int4 range (-8 to 7)
-      int v0 = std::stoi(in_data[i]);
-      int v1 = std::stoi(in_data[i + 1]);
-      int8_t val0 = static_cast<int8_t>(std::clamp(v0, INT4_MIN, INT4_MAX));
-      int8_t val1 = static_cast<int8_t>(std::clamp(v1, INT4_MIN, INT4_MAX));
+    const ptrdiff_t out_size = (shape_size + 1) >> 1;
+    for (ptrdiff_t i = 0; i < out_size; ++i) {
+      const ptrdiff_t in_idx = i << 1;
 
-      out_data[i >> 1] = Int4x2(val0, val1);
-    }
+      // Parse first value and truncate to lower 4 bits with sign extension
+      int v0 = std::stoi(in_data[in_idx]);
+      int8_t val0 = static_cast<int8_t>((v0 & 0xF) | (-(v0 & 0x8) & 0xF0));
 
-    // Handle odd number of elements - pad with 0
-    if (i < shape_size) {
-      int v0 = std::stoi(in_data[i]);
-      int8_t val0 = static_cast<int8_t>(std::clamp(v0, INT4_MIN, INT4_MAX));
+      // Parse second value (or use 0 if odd number of elements)
+      int8_t val1 = 0;
+      if (in_idx + 1 < shape_size) {
+        int v1 = std::stoi(in_data[in_idx + 1]);
+        val1 = static_cast<int8_t>((v1 & 0xF) | (-(v1 & 0x8) & 0xF0));
+      }
 
-      out_data[i >> 1] = Int4x2(val0, 0);
+      out_data[i] = Int4x2(val0, val1);
     }
   }
 };
 
-// TensorCaster specialization for string to UInt4x2
 template <>
 struct TensorCaster<std::string, UInt4x2> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
@@ -376,23 +407,22 @@ struct TensorCaster<std::string, UInt4x2> {
     auto* out_data = out.MutableData<UInt4x2>();
 
     // Every 2 strings combine into 1 UInt4x2
-    ptrdiff_t i = 0;
-    for (; i < shape_size - 1; i += 2) {
-      // Parse each string and clamp to uint4 range (0 to 15)
-      int v0 = std::stoi(in_data[i]);
-      int v1 = std::stoi(in_data[i + 1]);
-      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
-      uint8_t val1 = static_cast<uint8_t>(std::clamp(v1, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
+    const ptrdiff_t out_size = (shape_size + 1) >> 1;
+    for (ptrdiff_t i = 0; i < out_size; ++i) {
+      const ptrdiff_t in_idx = i << 1;
 
-      out_data[i >> 1] = UInt4x2(val0, val1);
-    }
+      // Parse first value and truncate to lower 4 bits
+      int v0 = std::stoi(in_data[in_idx]);
+      uint8_t val0 = static_cast<uint8_t>(v0 & 0xF);
 
-    // Handle odd number of elements - pad with 0
-    if (i < shape_size) {
-      int v0 = std::stoi(in_data[i]);
-      uint8_t val0 = static_cast<uint8_t>(std::clamp(v0, static_cast<int>(UINT4_MIN), static_cast<int>(UINT4_MAX)));
+      // Parse second value (or use 0 if odd number of elements)
+      uint8_t val1 = 0;
+      if (in_idx + 1 < shape_size) {
+        int v1 = std::stoi(in_data[in_idx + 1]);
+        val1 = static_cast<uint8_t>(v1 & 0xF);
+      }
 
-      out_data[i >> 1] = UInt4x2(val0, 0);
+      out_data[i] = UInt4x2(val0, val1);
     }
   }
 };
@@ -541,14 +571,14 @@ struct TensorCaster<SrcType, Int4x2,
 
     ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
-      int8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
+      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t high_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
 
       out_data[i >> 1] = Int4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
-      int8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
 
       out_data[i >> 1] = Int4x2(low_val, 0);
     }
@@ -588,14 +618,14 @@ struct TensorCaster<SrcType, UInt4x2,
 
     ptrdiff_t i = 0;
     for (; i < shape_size - 1; i += 2) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
-      uint8_t high_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
+      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
 
       out_data[i >> 1] = UInt4x2(low_val, high_val);
     }
 
     if (i < shape_size) {
-      uint8_t low_val = ToInt4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
 
       out_data[i >> 1] = UInt4x2(low_val, 0);
     }

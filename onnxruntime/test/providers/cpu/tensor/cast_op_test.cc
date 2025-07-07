@@ -300,7 +300,7 @@ TEST(CastOpTest, Int4x2ToUInt32) {
   };
 
   // Negative values will be cast to their unsigned representation
-  const std::vector<uint32_t> expected_uint32_output = {4294967288, 7, 0, 4294967295, 3, 4294967291, 6, 2};
+  const std::vector<uint32_t> expected_uint32_output = {4294967288, 7, 0, UINT32_MAX, 3, 4294967291, 6, 2};
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint32_output), shape);
@@ -348,7 +348,7 @@ TEST(CastOpTest, Int4x2ToUInt64) {
   };
 
   // Negative values will be cast to their unsigned representation
-  const std::vector<uint64_t> expected_uint32_output = {18446744073709551608, 7, 0, 18446744073709551615, 3, 18446744073709551611, 6, 2};
+  const std::vector<uint64_t> expected_uint32_output = {18446744073709551608, 7, 0, UINT64_MAX, 3, 18446744073709551611, 6, 2};
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint32_output), shape);
@@ -705,10 +705,10 @@ TEST(CastOpTest, Int4x2ToUInt4x2) {
   };
 
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(8, 7),  // -8 becomes 8
-      UInt4x2(0, 15), // -1 becomes 15
-      UInt4x2(3, 11), // -5 becomes 11
-      UInt4x2(6, 2)   // unchanged
+      UInt4x2(8, 7),   // -8 becomes 8
+      UInt4x2(0, 15),  // -1 becomes 15
+      UInt4x2(3, 11),  // -5 becomes 11
+      UInt4x2(6, 2)    // unchanged
   };
 
   // WHEN, THEN
@@ -741,12 +741,12 @@ TEST(CastOpTest, Int8ToInt4x2) {
   const std::vector<int64_t> shape{2, 2, 2};
   const std::vector<int8_t> int8_input = {-10, 15, 0, -1, 3, -5, -128, 127};
 
-  // values outside int4 range get clamped
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(-8, 7),  // -10 clamped to -8, 15 clamped to 7
-      Int4x2(0, -1),
-      Int4x2(3, -5),
-      Int4x2(-8, 7)};
+      Int4x2(6, -1),  // -10 truncated to 6, 15 truncated to -1
+      Int4x2(0, -1),  // 0 unchanged, -1 unchanged
+      Int4x2(3, -5),  // 3 unchanged, -5 unchanged
+      Int4x2(0, -1)   // -128 truncated to 0, 127 truncated to -1
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int8_input), gsl::make_span(expected_int4x2_output), shape);
@@ -755,14 +755,15 @@ TEST(CastOpTest, Int8ToInt4x2) {
 TEST(CastOpTest, UInt8ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<uint8_t> uint8_input = {20, 15, 0, 1, 7, 25, 3, 12};
+  const std::vector<uint8_t> uint8_input = {20, 255, 0, 17, 7, 240, 15, 31};
 
-  // values outside uint4 range get clamped
+  // values get truncated to lower 4 bits
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(15, 15),  // 20 clamped to 15
-      UInt4x2(0, 1),
-      UInt4x2(7, 15),  // 25 clamped to 15
-      UInt4x2(3, 12)};
+      UInt4x2(4, 15),  // 20 (0x14) truncated to 4, 255 (0xFF) truncated to 15
+      UInt4x2(0, 1),   // 0 (0x00) truncated to 0, 17 (0x11) truncated to 1
+      UInt4x2(7, 0),   // 7 (0x07) truncated to 7, 240 (0xF0) truncated to 0
+      UInt4x2(15, 15)  // 15 (0x0F) truncated to 15, 31 (0x1F) truncated to 15
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(uint8_input), gsl::make_span(expected_uint4x2_output), shape);
@@ -771,14 +772,15 @@ TEST(CastOpTest, UInt8ToUInt4x2) {
 TEST(CastOpTest, Int16ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<int16_t> int16_input = {-10, 15, 0, -1, 3, -5, 6, 2};
+  const std::vector<int16_t> int16_input = {-10, 32767, 0, -32768, 3, -5, 240, 31};
 
-  // values outside int4 range get clamped
+  // values get truncated to lower 4 bits and sign-extended
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(-8, 7),  // -10 clamped to -8, 15 clamped to 7
-      Int4x2(0, -1),
-      Int4x2(3, -5),
-      Int4x2(6, 2)};
+      Int4x2(6, -1),  // -10 (0xFFF6) truncated to 6, 32767 (0x7FFF) truncated to -1
+      Int4x2(0, 0),   // 0 (0x0000) truncated to 0, -32768 (0x8000) truncated to 0
+      Int4x2(3, -5),  // 3 (0x0003) truncated to 3, -5 (0xFFFB) truncated to -5
+      Int4x2(0, -1)   // 240 (0x00F0) truncated to 0, 31 (0x001F) truncated to -1
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int16_input), gsl::make_span(expected_int4x2_output), shape);
@@ -787,14 +789,15 @@ TEST(CastOpTest, Int16ToInt4x2) {
 TEST(CastOpTest, UInt16ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<uint16_t> uint16_input = {20, 15, 0, 1, 7, 25, 3, 12};
+  const std::vector<uint16_t> uint16_input = {20, 65535, 0, 256, 7, 240, 15, 4095};
 
-  // values outside uint4 range get clamped
+  // values get truncated to lower 4 bits
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(15, 15),  // 20 clamped to 15
-      UInt4x2(0, 1),
-      UInt4x2(7, 15),  // 25 clamped to 15
-      UInt4x2(3, 12)};
+      UInt4x2(4, 15),  // 20 (0x0014) truncated to 4, 65535 (0xFFFF) truncated to 15
+      UInt4x2(0, 0),   // 0 (0x0000) truncated to 0, 256 (0x0100) truncated to 0
+      UInt4x2(7, 0),   // 7 (0x0007) truncated to 7, 240 (0x00F0) truncated to 0
+      UInt4x2(15, 15)  // 15 (0x000F) truncated to 15, 4095 (0x0FFF) truncated to 15
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(uint16_input), gsl::make_span(expected_uint4x2_output), shape);
@@ -803,14 +806,15 @@ TEST(CastOpTest, UInt16ToUInt4x2) {
 TEST(CastOpTest, Int32ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<int32_t> int32_input = {-10, 15, 0, -1, 3, -5, 6, 2};
+  const std::vector<int32_t> int32_input = {-10, INT32_MAX, 0, INT32_MIN, 3, -5, 4080, 287};
 
-  // values outside int4 range get clamped
+  // values get truncated to lower 4 bits and sign-extended
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(-8, 7),  // -10 clamped to -8, 15 clamped to 7
-      Int4x2(0, -1),
-      Int4x2(3, -5),
-      Int4x2(6, 2)};
+      Int4x2(6, -1),  // -10 (0xFFFFFFF6) truncated to 6, 2147483647 (0x7FFFFFFF) truncated to -1
+      Int4x2(0, 0),   // 0 (0x00000000) truncated to 0, -2147483648 (0x80000000) truncated to 0
+      Int4x2(3, -5),  // 3 (0x00000003) truncated to 3, -5 (0xFFFFFFFB) truncated to -5
+      Int4x2(0, -1)   // 4080 (0x00000FF0) truncated to 0, 287 (0x0000011F) truncated to -1
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int32_input), gsl::make_span(expected_int4x2_output), shape);
@@ -819,12 +823,12 @@ TEST(CastOpTest, Int32ToInt4x2) {
 TEST(CastOpTest, Int32ToInt4x2OddNumberOfElements) {
   // GIVEN
   const std::vector<int64_t> odd_shape{5};
-  const std::vector<int32_t> odd_input = {-8, 7, 0, -1, 3};
+  const std::vector<int32_t> odd_input = {-10, INT32_MAX, 0, INT32_MIN, 4095};
 
   const std::vector<Int4x2> expected_odd_output = {
-      Int4x2(-8, 7),
-      Int4x2(0, -1),
-      Int4x2(3, 0)  // last element paired with 0
+      Int4x2(6, -1),  // -10 truncated to 6, 2147483647 truncated to -1
+      Int4x2(0, 0),   // 0 truncated to 0, -2147483648 truncated to 0
+      Int4x2(-1, 0)   // 4095 truncated to -1, paired with 0
   };
 
   // WHEN, THEN
@@ -844,14 +848,15 @@ TEST(CastOpTest, Int32ToInt4x2EmptyTensor) {
 TEST(CastOpTest, UInt32ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<uint32_t> uint32_input = {20, 15, 0, 1, 7, 25, 3, 12};
+  const std::vector<uint32_t> uint32_input = {20, UINT32_MAX, 0, 256, 7, 240, 15, 4095};
 
-  // values outside uint4 range get clamped
+  // values get truncated to lower 4 bits
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(15, 15),  // 20 clamped to 15
-      UInt4x2(0, 1),
-      UInt4x2(7, 15),  // 25 clamped to 15
-      UInt4x2(3, 12)};
+      UInt4x2(4, 15),  // 20 truncated to 4, 4294967295 truncated to 15
+      UInt4x2(0, 0),   // 0 truncated to 0, 256 truncated to 0
+      UInt4x2(7, 0),   // 7 truncated to 7, 240 truncated to 0
+      UInt4x2(15, 15)  // 15 truncated to 15, 4095 truncated to 15
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(uint32_input), gsl::make_span(expected_uint4x2_output), shape);
@@ -860,14 +865,15 @@ TEST(CastOpTest, UInt32ToUInt4x2) {
 TEST(CastOpTest, Int64ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<int64_t> int64_input = {-10, 15, 0, -1, 3, -5, 6, 2};
+  const std::vector<int64_t> int64_input = {-10, INT64_MAX, 0, INT64_MIN, 3, -5, 65520, 4111};
 
-  // values outside int4 range get clamped
+  // values get truncated to lower 4 bits and sign-extended
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(-8, 7),  // -10 clamped to -8, 15 clamped to 7
-      Int4x2(0, -1),
-      Int4x2(3, -5),
-      Int4x2(6, 2)};
+      Int4x2(6, -1),  // -10 truncated to 6, 9223372036854775807 truncated to -1
+      Int4x2(0, 0),   // 0 truncated to 0, -9223372036854775808 truncated to 0
+      Int4x2(3, -5),  // 3 truncated to 3, -5 truncated to -5
+      Int4x2(0, -1)   // 65520 truncated to 0, 4111 truncated to -1
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(int64_input), gsl::make_span(expected_int4x2_output), shape);
@@ -876,14 +882,15 @@ TEST(CastOpTest, Int64ToInt4x2) {
 TEST(CastOpTest, UInt64ToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<uint64_t> uint64_input = {20, 15, 0, 1, 7, 25, 3, 12};
+  const std::vector<uint64_t> uint64_input = {20, UINT64_MAX, 0, 256, 7, 240, 15, 4095};
 
-  // values outside uint4 range get clamped
+  // values get truncated to lower 4 bits
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(15, 15),  // 20 clamped to 15
-      UInt4x2(0, 1),
-      UInt4x2(7, 15),  // 25 clamped to 15
-      UInt4x2(3, 12)};
+      UInt4x2(4, 15),  // 20 truncated to 4, 18446744073709551615 truncated to 15
+      UInt4x2(0, 0),   // 0 truncated to 0, 256 truncated to 0
+      UInt4x2(7, 0),   // 7 truncated to 7, 240 truncated to 0
+      UInt4x2(15, 15)  // 15 truncated to 15, 4095 truncated to 15
+  };
 
   // WHEN, THEN
   TestCastOp(gsl::make_span(uint64_input), gsl::make_span(expected_uint4x2_output), shape);
@@ -892,13 +899,13 @@ TEST(CastOpTest, UInt64ToUInt4x2) {
 TEST(CastOpTest, FloatToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<float> float_input = {-10.7f, 15.3f, 0.4f, -1.6f, 3.8f, -5.2f, 6.1f, 2.9f};
+  const std::vector<float> float_input = {-10.7f, 15.3f, 0.4f, -1.6f, 3.8f, -5.2f, 240.1f, 31.9f};
 
   const std::vector<Int4x2> expected_int4x2_output = {
-      Int4x2(-8, 7),  // -10.7 rounded to -11, clamped to -8; 15.3 rounded to 15, clamped to 7
-      Int4x2(0, -2),  // 0.4 rounded to 0; -1.6 rounded to -2
-      Int4x2(4, -5),  // 3.8 rounded to 4; -5.2 rounded to -5
-      Int4x2(6, 3)    // 6.1 rounded to 6; 2.9 rounded to 3
+      Int4x2(5, -1),  // -10.7 rounded to -11 (0xF5), truncated to 5, sign-extended to 5; 15.3 rounded to 15 (0x0F), sign-extended to -1
+      Int4x2(0, -2),  // 0.4 rounded to 0; -1.6 rounded to -2 (0xFE), truncated to 14 (0x0E), sign-extended to -2
+      Int4x2(4, -5),  // 3.8 rounded to 4; -5.2 rounded to -5 (0xFB), truncated to 11 (0x0B), sign-extended to -5
+      Int4x2(0, 0)    // 240.1 rounded to 240 (0xF0), truncated to 0; 31.9 rounded to 32 (0x20), truncated to 0
   };
 
   // WHEN, THEN
@@ -908,13 +915,13 @@ TEST(CastOpTest, FloatToInt4x2) {
 TEST(CastOpTest, DoubleToUInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
-  const std::vector<double> double_input = {20.7, 15.3, 0.4, 1.6, 7.8, 25.2, 3.1, 12.9};
+  const std::vector<double> double_input = {20.7, 255.3, 0.4, 1.6, 7.8, 240.2, 15.1, 31.9};
 
   const std::vector<UInt4x2> expected_uint4x2_output = {
-      UInt4x2(15, 15),  // 20.7 rounded to 21, clamped to 15; 15.3 rounded to 15
-      UInt4x2(0, 2),    // 0.4 rounded to 0; 1.6 rounded to 2
-      UInt4x2(8, 15),   // 7.8 rounded to 8; 25.2 rounded to 25, clamped to 15
-      UInt4x2(3, 13)    // 3.1 rounded to 3; 12.9 rounded to 13
+      UInt4x2(5, 15),  // 20.7 rounded to 21, truncated to 5; 255.3 rounded to 255, truncated to 15
+      UInt4x2(0, 2),   // 0.4 rounded to 0; 1.6 rounded to 2
+      UInt4x2(8, 0),   // 7.8 rounded to 8; 240.2 rounded to 240, truncated to 0
+      UInt4x2(15, 0)   // 15.1 rounded to 15; 31.9 rounded to 32, truncated to 0
   };
 
   // WHEN, THEN
@@ -925,20 +932,21 @@ TEST(CastOpTest, MLFloat16ToInt4x2) {
   // GIVEN
   const std::vector<int64_t> shape{2, 2, 2};
   const MLFloat16 mlfloat16_array[8] = {
-      MLFloat16(static_cast<float>(-8)),
-      MLFloat16(static_cast<float>(7)),
-      MLFloat16(static_cast<float>(0)),
-      MLFloat16(static_cast<float>(-1)),
-      MLFloat16(static_cast<float>(3)),
-      MLFloat16(static_cast<float>(-5)),
-      MLFloat16(static_cast<float>(6)),
-      MLFloat16(static_cast<float>(2))};
+      MLFloat16(static_cast<float>(-10.7f)),
+      MLFloat16(static_cast<float>(15.3f)),
+      MLFloat16(static_cast<float>(0.4f)),
+      MLFloat16(static_cast<float>(-1.6f)),
+      MLFloat16(static_cast<float>(3.8f)),
+      MLFloat16(static_cast<float>(-5.2f)),
+      MLFloat16(static_cast<float>(240.1f)),
+      MLFloat16(static_cast<float>(31.9f))};
 
   const std::vector<Int4x2> expected_int4x2 = {
-      Int4x2(-8, 7),
-      Int4x2(0, -1),
-      Int4x2(3, -5),
-      Int4x2(6, 2)};
+      Int4x2(5, -1),  // -10.7 rounded to -11 (0xF5), truncated to 5; 15.3 rounded to 15 (0x0F), sign-extended to -1
+      Int4x2(0, -2),  // 0.4 rounded to 0; -1.6 rounded to -2 (0xFE), truncated to 14 (0x0E), sign-extended to -2
+      Int4x2(4, -5),  // 3.8 rounded to 4; -5.2 rounded to -5 (0xFB), truncated to 11 (0x0B), sign-extended to -5
+      Int4x2(0, 0)    // 240.1 rounded to 240 (0xF0), truncated to 0; 31.9 rounded to 32 (0x20), truncated to 0
+  };
 
   // WHEN, THEN
   TestCastOp(
@@ -952,22 +960,23 @@ TEST(CastOpTest, MLFloat16ToUInt4x2) {
   // 8 MLFloat16 values will compress to 4 UInt4x2 values
   const std::vector<int64_t> shape{2, 4};  // Shape that contains 8 elements
 
-  // MLFloat16 values: 0, 15, 8, 7, 3, 12, 10, 5
+  // MLFloat16 values with edge cases and truncation scenarios
   const MLFloat16 mlfloat16_array[8] = {
-      MLFloat16(static_cast<float>(0)),
-      MLFloat16(static_cast<float>(15)),
-      MLFloat16(static_cast<float>(8)),
-      MLFloat16(static_cast<float>(7)),
-      MLFloat16(static_cast<float>(3)),
-      MLFloat16(static_cast<float>(12)),
-      MLFloat16(static_cast<float>(10)),
-      MLFloat16(static_cast<float>(5))};
+      MLFloat16(static_cast<float>(20.7f)),
+      MLFloat16(static_cast<float>(255.3f)),
+      MLFloat16(static_cast<float>(0.4f)),
+      MLFloat16(static_cast<float>(1.6f)),
+      MLFloat16(static_cast<float>(7.8f)),
+      MLFloat16(static_cast<float>(240.2f)),
+      MLFloat16(static_cast<float>(15.1f)),
+      MLFloat16(static_cast<float>(31.9f))};
 
   const std::vector<UInt4x2> expected_uint4x2 = {
-      UInt4x2(0, 15),
-      UInt4x2(8, 7),
-      UInt4x2(3, 12),
-      UInt4x2(10, 5)};
+      UInt4x2(5, 15),  // 20.7 rounded to 21, truncated to 5; 255.3 rounded to 255, truncated to 15
+      UInt4x2(0, 2),   // 0.4 rounded to 0; 1.6 rounded to 2
+      UInt4x2(8, 0),   // 7.8 rounded to 8; 240.2 rounded to 240, truncated to 0
+      UInt4x2(15, 0)   // 15.1 rounded to 15; 31.9 rounded to 32, truncated to 0
+  };
 
   // WHEN, THEN
   TestCastOp(
@@ -976,23 +985,23 @@ TEST(CastOpTest, MLFloat16ToUInt4x2) {
       shape);
 }
 
-TEST(CastOpTest, MLFloat16ToInt4x2BoundaryValuesClamping) {
+TEST(CastOpTest, MLFloat16ToInt4x2BoundaryValues) {
   // GIVEN
-  // Test MLFloat16 values that need clamping to Int4x2 range (-8 to 7)
+  // Test MLFloat16 values that need truncation to Int4x2 range
   const std::vector<int64_t> shape{3, 2};
   const MLFloat16 mlfloat16_array[6] = {
-      MLFloat16(static_cast<float>(-10)),    // Below min, should clamp to -8
-      MLFloat16(static_cast<float>(9)),      // Above max, should clamp to 7
-      MLFloat16(static_cast<float>(-8)),     // At min, should remain -8
-      MLFloat16(static_cast<float>(7)),      // At max, should remain 7
+      MLFloat16(static_cast<float>(-10)),    // Truncated to lower 4 bits
+      MLFloat16(static_cast<float>(9)),      // Truncated to lower 4 bits
+      MLFloat16(static_cast<float>(-8)),     // Truncated to lower 4 bits
+      MLFloat16(static_cast<float>(7)),      // Truncated to lower 4 bits
       MLFloat16(static_cast<float>(-0.6f)),  // Should round to -1
       MLFloat16(static_cast<float>(1.7f))    // Should round to 2
   };
 
-  // Values should be clamped to int4 range (-8 to 7)
+  // Values get truncated to lower 4 bits and sign-extended
   const std::vector<Int4x2> expected_int4x2 = {
-      Int4x2(-8, 7),  // -10 clamped to -8, 9 clamped to 7
-      Int4x2(-8, 7),  // -8 and 7 already at boundaries
+      Int4x2(6, -7),  // -10 (0xFFFFFFF6) truncated to 6, 9 (0x00000009) truncated to -7
+      Int4x2(-8, 7),  // -8 (0xFFFFFFF8) truncated to -8, 7 (0x00000007) truncated to 7
       Int4x2(-1, 2)   // -0.6 rounds to -1, 1.7 rounds to 2
   };
 
@@ -1003,29 +1012,109 @@ TEST(CastOpTest, MLFloat16ToInt4x2BoundaryValuesClamping) {
       shape);
 }
 
-TEST(CastOpTest, MLFloat16ToUInt4x2BoundaryValuesClamping) {
+TEST(CastOpTest, MLFloat16ToUInt4x2BoundaryValues) {
   // GIVEN
-  // Test MLFloat16 values that need clamping to UInt4x2 range (0 to 15)
+  // Test MLFloat16 values that need truncation to UInt4x2 range
   const std::vector<int64_t> shape{3, 2};  // Shape that contains 6 elements
   const MLFloat16 mlfloat16_array[6] = {
-      MLFloat16(static_cast<float>(-5)),    // Negative, should clamp to 0
-      MLFloat16(static_cast<float>(20)),    // Above max, should clamp to 15
+      MLFloat16(static_cast<float>(-5)),    // Negative, truncated to lower 4 bits
+      MLFloat16(static_cast<float>(20)),    // Above max, truncated to lower 4 bits
       MLFloat16(static_cast<float>(0)),     // At min, should remain 0
       MLFloat16(static_cast<float>(15)),    // At max, should remain 15
       MLFloat16(static_cast<float>(3.4f)),  // Should round to 3
       MLFloat16(static_cast<float>(5.7f))   // Should round to 6
   };
 
-  // Values should be clamped to uint4 range (0-15)
+  // Values get truncated to lower 4 bits (no sign extension for unsigned)
   const std::vector<UInt4x2> expected_uint4x2 = {
-      UInt4x2(0, 15),  // -5 clamped to 0, 20 clamped to 15
-      UInt4x2(0, 15),  // 0 and 15 already at boundaries
+      UInt4x2(11, 4),  // -5 (0xFFFFFFFB) truncated to 11, 20 (0x00000014) truncated to 4
+      UInt4x2(0, 15),  // 0 and 15 already within range
       UInt4x2(3, 6)    // 3.4 rounds to 3, 5.7 rounds to 6
   };
 
   // WHEN, THEN
   TestCastOp(
       gsl::span<const MLFloat16>(mlfloat16_array, 6),
+      gsl::span<const UInt4x2>(expected_uint4x2),
+      shape);
+}
+
+TEST(CastOpTest, BFloat16ToInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const BFloat16 bfloat16_array[8] = {
+      BFloat16(static_cast<float>(-10.7f)),
+      BFloat16(static_cast<float>(15.3f)),
+      BFloat16(static_cast<float>(0.4f)),
+      BFloat16(static_cast<float>(-1.6f)),
+      BFloat16(static_cast<float>(3.8f)),
+      BFloat16(static_cast<float>(-5.2f)),
+      BFloat16(static_cast<float>(240.1f)),
+      BFloat16(static_cast<float>(31.9f))};
+
+  const std::vector<Int4x2> expected_int4x2 = {
+      Int4x2(5, -1),  // -10.7 rounded to -11 (0xF5), truncated to 5; 15.3 rounded to 15 (0x0F), sign-extended to -1
+      Int4x2(0, -2),  // 0.4 rounded to 0; -1.6 rounded to -2 (0xFE), truncated to 14 (0x0E), sign-extended to -2
+      Int4x2(4, -5),  // 3.8 rounded to 4; -5.2 rounded to -5 (0xFB), truncated to 11 (0x0B), sign-extended to -5
+      Int4x2(0, 0)    // 240.1 rounded to 240 (0xF0), truncated to 0; 31.9 rounded to 32 (0x20), truncated to 0
+  };
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const BFloat16>(bfloat16_array, 8),
+      gsl::span<const Int4x2>(expected_int4x2),
+      shape);
+}
+
+TEST(CastOpTest, BFloat16ToUInt4x2) {
+  // GIVEN
+  const std::vector<int64_t> shape{2, 2, 2};
+  const BFloat16 bfloat16_array[8] = {
+      BFloat16(static_cast<float>(20.7f)),
+      BFloat16(static_cast<float>(255.3f)),
+      BFloat16(static_cast<float>(0.4f)),
+      BFloat16(static_cast<float>(1.6f)),
+      BFloat16(static_cast<float>(7.8f)),
+      BFloat16(static_cast<float>(240.2f)),
+      BFloat16(static_cast<float>(15.1f)),
+      BFloat16(static_cast<float>(31.9f))};
+
+  const std::vector<UInt4x2> expected_uint4x2 = {
+      UInt4x2(5, 15),  // 20.7 rounded to 21, truncated to 5; 255.3 rounded to 255, truncated to 15
+      UInt4x2(0, 2),   // 0.4 rounded to 0; 1.6 rounded to 2
+      UInt4x2(8, 0),   // 7.8 rounded to 8; 240.2 rounded to 240, truncated to 0
+      UInt4x2(15, 0)   // 15.1 rounded to 15; 31.9 rounded to 32, truncated to 0
+  };
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const BFloat16>(bfloat16_array, 8),
+      gsl::span<const UInt4x2>(expected_uint4x2),
+      shape);
+}
+
+TEST(CastOpTest, BFloat16ToUInt4x2BoundaryValues) {
+  // GIVEN
+  const std::vector<int64_t> shape{3, 2};
+  const BFloat16 bfloat16_array[6] = {
+      BFloat16(static_cast<float>(-5)),    // Negative, truncated to lower 4 bits
+      BFloat16(static_cast<float>(20)),    // Above max, truncated to lower 4 bits
+      BFloat16(static_cast<float>(0)),     // At min, should remain 0
+      BFloat16(static_cast<float>(15)),    // At max, should remain 15
+      BFloat16(static_cast<float>(3.4f)),  // Should round to 3
+      BFloat16(static_cast<float>(5.7f))   // Should round to 6
+  };
+
+  // Values get truncated to lower 4 bits (no clamping for consistency)
+  const std::vector<UInt4x2> expected_uint4x2 = {
+      UInt4x2(11, 4),  // -5 (0xFFFFFFFB) truncated to 11, 20 (0x00000014) truncated to 4
+      UInt4x2(0, 15),  // 0 and 15 already within range
+      UInt4x2(3, 6)    // 3.4 rounds to 3, 5.7 rounds to 6
+  };
+
+  // WHEN, THEN
+  TestCastOp(
+      gsl::span<const BFloat16>(bfloat16_array, 6),
       gsl::span<const UInt4x2>(expected_uint4x2),
       shape);
 }
@@ -1102,22 +1191,22 @@ TEST(CastOpTest, StringToUInt4x2) {
   TestCastOp(gsl::span<const std::string>(string_input), gsl::span<const UInt4x2>(expected_output), shape);
 }
 
-TEST(CastOpTest, String2UInt4x2BoundaryValuesClamping) {
+TEST(CastOpTest, String2UInt4x2BoundaryValues) {
   // GIVEN
-  // Test string values that need clamping to UInt4x2 range (0-15)
+  // Test string values that need truncation to UInt4x2 range
   const std::vector<int64_t> shape{3, 2};
   const std::vector<std::string> string_input = {
-      "-5", "20",   // out of range values that should be clamped
-      "16", "100",  // out of range values that should be clamped
+      "-5", "20",   // out of range values that get truncated
+      "16", "100",  // out of range values that get truncated
       "0", "15"     // boundary values that are in range
   };
 
   // Each pair of strings becomes one UInt4x2
-  // Values should be clamped to uint4 range (0-15)
+  // Values get truncated to lower 4 bits (no sign extension for unsigned)
   const std::vector<UInt4x2> expected_output{
-      UInt4x2(0, 15),   // -5 clamped to 0, 20 clamped to 15
-      UInt4x2(15, 15),  // 16 clamped to 15, 100 clamped to 15
-      UInt4x2(0, 15)    // 0 and 15 already in range
+      UInt4x2(11, 4),  // -5 (0xFFFFFFFB) truncated to 11, 20 (0x00000014) truncated to 4
+      UInt4x2(0, 4),   // 16 (0x00000010) truncated to 0, 100 (0x00000064) truncated to 4
+      UInt4x2(0, 15)   // 0 and 15 already in range
   };
 
   // WHEN, THEN
