@@ -125,7 +125,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   }
 
   size_t non_empty_input_count = sizes_in_concat_axis.size();
-  uint32_t input_index_offset = 0;  // Track which input we're starting from
+  uint32_t input_index_offset = 0;    // Track which input we're starting from
   uint32_t output_buffer_offset = 0;  // Track where in output buffer to write
   if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
     LOGS_DEFAULT(WARNING) << "Storage buffer limit exceeded for Concat. "
@@ -141,7 +141,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     while (input_index_offset < current_inputs.size()) {
       uint32_t num_inputs_this_pass = std::min(static_cast<uint32_t>(max_inputs_per_pass),
                                                static_cast<uint32_t>(current_inputs.size()) - input_index_offset);
-      
+
       // Calculate output shape for this pass
       auto pass_shape = current_inputs[input_index_offset]->Shape();
       int64_t pass_concat_axis_size = 0;
