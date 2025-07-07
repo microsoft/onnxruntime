@@ -155,7 +155,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 
   Tensor* Y = context->Output(0, y_shape);
   Tensor* present_key = context->Output(1, present_key_shape);
-  Tensor* present_value = context->Output(2, present_key_shape);
+  Tensor* present_value = context->Output(2, present_value_shape);
   Tensor* output_qk = context->Output(3, output_qk_shape);
 
   return this->ApplyAttention(context,
