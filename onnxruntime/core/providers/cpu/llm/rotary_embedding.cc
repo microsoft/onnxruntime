@@ -78,7 +78,7 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
       if (position_ids_format != 0) {
         b_s_index = static_cast<int>(position_ids[b_s_index]);
       }
-      cache_offset = b_s_index * half_rotary_embedding_dim;
+      cache_offset = b_s_index * half_rotary_emb_dim;
       cos_data = cos_cache + cache_offset;
       sin_data = sin_cache + cache_offset;
 

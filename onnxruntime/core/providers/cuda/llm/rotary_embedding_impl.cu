@@ -96,10 +96,12 @@ Status LaunchRotaryEmbeddingKernel(cudaStream_t stream, T* output, const T* inpu
     in_strides = int4{num_heads * sequence_length * head_size, sequence_length * head_size, head_size, 1};
     out_strides = int4{num_heads * sequence_length * head_size, sequence_length * head_size, head_size, 1};
   } else {
-    int in_head_stride = head_size;
-    int out_head_stride = head_size;
-    in_strides = int4{sequence_length * num_heads * in_head_stride, in_head_stride, num_heads * in_head_stride, 1};
-    out_strides = int4{sequence_length * num_heads * out_head_stride, out_head_stride, num_heads * out_head_stride, 1};
+    // input is in bshn format
+    // int in_head_stride = head_size;
+    // int out_head_stride = head_size;
+    // Simplify to:
+    in_strides = int4{num_heads * sequence_length * head_size, head_size, num_heads * head_size, 1};
+    out_strides = int4{num_heads * sequence_length * head_size, head_size, num_heads * head_size, 1};
   }
   return LaunchRotaryEmbeddingKernel<T>(
       stream, output, input, position_ids,
