@@ -16,6 +16,7 @@
 namespace onnxruntime {
 
 class Tensor;
+class WebGpuExecutionProvider;
 
 namespace webgpu {
 
@@ -24,7 +25,7 @@ class BufferManager;
 
 class ComputeContext {
  public:
-  ComputeContext(OpKernelContext& kernel_context);
+  ComputeContext(OpKernelContext& kernel_context, const WebGpuExecutionProvider& ep);
 
   virtual ~ComputeContext() = default;
 
@@ -145,6 +146,7 @@ class ComputeContext {
  protected:
   WebGpuContext& webgpu_context_;
   OpKernelContext& kernel_context_;
+  const WebGpuExecutionProvider& ep_;
 };
 
 }  // namespace webgpu
