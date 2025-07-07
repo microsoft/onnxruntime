@@ -125,12 +125,13 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   }
 
   size_t non_empty_input_count = sizes_in_concat_axis.size();
-  uint32_t input_index_offset = 0;    // Track which input we're starting from
-  uint32_t output_buffer_offset = 0;  // Track where in output buffer to write
   if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
     LOGS_DEFAULT(WARNING) << "Storage buffer limit exceeded for Concat. "
                              "Running operation in multiple passes.";
+
     size_t max_inputs_per_pass = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;  // Reserve 1 for output
+    uint32_t input_index_offset = 0;                                                          // Track which input we're starting from
+    uint32_t output_buffer_offset = 0;                                                        // Track where in output buffer to write
 
     std::vector<const Tensor*> current_inputs;
     for (int i = 0; i < input_count; ++i) {
