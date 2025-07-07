@@ -15,7 +15,7 @@ namespace webgpu {
 class WebGpuContext;
 
 // For command capture and replay
-enum class SessionState {
+enum class GraphCaptureState {
   Default,
   Capturing,
   Replaying
@@ -59,7 +59,7 @@ class IBufferCacheManager {
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
   // when a stream refresh is requested
-  virtual void OnRefresh(const SessionState& session_status) = 0;
+  virtual void OnRefresh(GraphCaptureState graph_capture_state) = 0;
 };
 
 //
@@ -77,7 +77,7 @@ class BufferManager {
   bool SupportsUMA() const;
   void Release(WGPUBuffer buffer) const;
   void Download(WGPUBuffer src, void* dst, size_t size) const;
-  void RefreshPendingBuffers(const SessionState& session_status) const;
+  void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;

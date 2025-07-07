@@ -691,8 +691,8 @@ void WebGpuContext::Flush(const webgpu::BufferManager& buffer_mgr) {
   }
   auto command_buffer = current_command_encoder_.Finish();
   device_queue_.Submit(1, &command_buffer);
-  if (session_status_ != SessionState::Replaying) {
-    buffer_mgr.RefreshPendingBuffers(session_status_);
+  if (graph_capture_state_ != GraphCaptureState::Replaying) {
+    buffer_mgr.RefreshPendingBuffers(graph_capture_state_);
   }
   current_command_encoder_ = nullptr;
   num_pending_dispatches_ = 0;
@@ -724,7 +724,7 @@ void WebGpuContext::LaunchComputePipeline(const wgpu::ComputePassEncoder& comput
   bind_group_desc.label = {program_artifact.name.data(), program_artifact.name.length()};
 
   auto bind_group = wgpuDeviceCreateBindGroup(Device().Get(), &bind_group_desc);
-  if (session_status_ == SessionState::Capturing) {
+  if (graph_capture_state_ == GraphCaptureState::Capturing) {
     external_captured_commands_->push_back({program_artifact.compute_pipeline,
                                             bind_group,
                                             bind_group_layout,
@@ -754,12 +754,12 @@ void WebGpuContext::CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captu
   // TODO: support profiling with graph capture.
   ORT_ENFORCE(!is_profiling_, "profiling is not supported yet under graph capture mode");
 
-  session_status_ = SessionState::Capturing;
+  graph_capture_state_ = GraphCaptureState::Capturing;
 }
 
 void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager) {
   LOGS_DEFAULT(VERBOSE) << "Replay with external storage";
-  session_status_ = SessionState::Replaying;
+  graph_capture_state_ = GraphCaptureState::Replaying;
   // Replay all captured commands from the provided vector
   const size_t command_count = captured_commands.size();
   for (size_t i = 0; i < command_count; ++i) {
@@ -784,13 +784,13 @@ void WebGpuContext::Replay(const std::vector<webgpu::CapturedCommandInfo>& captu
   // Flush any remaining commands
   Flush(buffer_manager);
 
-  session_status_ = SessionState::Default;
+  graph_capture_state_ = GraphCaptureState::Default;
 }
 
 void WebGpuContext::CaptureEnd() {
   LOGS_DEFAULT(VERBOSE) << "CaptureEnd";
 
-  session_status_ = SessionState::Default;
+  graph_capture_state_ = GraphCaptureState::Default;
   external_captured_commands_ = nullptr;
 }
 

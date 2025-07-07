@@ -26,9 +26,6 @@ class GpuBufferAllocator : public IAllocator {
   void GetStats(AllocatorStats* stats) override;
   void OnSessionInitializationEnd();
 
-  // Return the associated BufferManager
-  const BufferManager& GetBufferManager() const { return buffer_manager_; }
-
  private:
   AllocatorStats stats_;
   const BufferManager& buffer_manager_;
