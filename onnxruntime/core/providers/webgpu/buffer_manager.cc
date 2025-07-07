@@ -37,7 +37,7 @@ class DisabledCacheManager : public IBufferCacheManager {
     wgpuBufferRelease(buffer);
   }
 
-  void OnRefresh(const SessionState& /*session_status*/) override {
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
     // no-op
   }
 };
@@ -59,7 +59,7 @@ class LazyReleaseCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(const SessionState& /*session_status*/) override {
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
     Release();
     pending_buffers_.clear();
   }
@@ -103,7 +103,7 @@ class SimpleCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(const SessionState& /*session_status*/) override {
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
     for (auto& buffer : pending_buffers_) {
       buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
     }
@@ -196,7 +196,7 @@ class BucketCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(const SessionState& /*session_status*/) override {
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
     for (auto& buffer : pending_buffers_) {
       auto buffer_size = static_cast<size_t>(wgpuBufferGetSize(buffer));
       auto it = buckets_.find(buffer_size);
@@ -283,7 +283,7 @@ class GraphCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(const SessionState& /*session_status*/) override {
+  void OnRefresh(GraphCaptureState /*graph_capture_state*/) override {
     // Initialize buckets if they don't exist yet
     if (buckets_.empty()) {
       for (const auto& pair : buckets_limit_) {
@@ -363,9 +363,9 @@ class GraphSimpleCacheManager : public IBufferCacheManager {
     pending_buffers_.emplace_back(buffer);
   }
 
-  void OnRefresh(const SessionState& session_status) override {
+  void OnRefresh(GraphCaptureState graph_capture_state) override {
     for (auto& buffer : pending_buffers_) {
-      if (session_status == SessionState::Default) {
+      if (graph_capture_state == GraphCaptureState::Default) {
         buffers_[static_cast<size_t>(wgpuBufferGetSize(buffer))].emplace_back(buffer);
       } else {
         captured_buffers_.emplace_back(buffer);
@@ -573,11 +573,11 @@ void BufferManager::Download(WGPUBuffer src, void* dst, size_t size) const {
   staging_buffer.Unmap();
 }
 
-void BufferManager::RefreshPendingBuffers(const SessionState& session_status) const {
-  storage_cache_->OnRefresh(session_status);
-  uniform_cache_->OnRefresh(session_status);
-  query_resolve_cache_->OnRefresh(session_status);
-  default_cache_->OnRefresh(session_status);
+void BufferManager::RefreshPendingBuffers(GraphCaptureState graph_capture_state) const {
+  storage_cache_->OnRefresh(graph_capture_state);
+  uniform_cache_->OnRefresh(graph_capture_state);
+  query_resolve_cache_->OnRefresh(graph_capture_state);
+  default_cache_->OnRefresh(graph_capture_state);
 }
 
 IBufferCacheManager& BufferManager::GetCacheManager(wgpu::BufferUsage usage) const {
