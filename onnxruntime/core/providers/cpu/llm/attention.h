@@ -43,6 +43,7 @@ class AttentionBase : public OpKernel {
                                int v_head_size,           // head size of V (H_v)
                                int v_hidden_size,         // hidden size of V (D_v)
                                int num_heads,             // number of attention heads
+                               int kv_num_heads,          // number of KV heads
                                const T* past,             // past state
                                const T* past_value,       // past value only (if not using past state)
                                T* present,                // present state
@@ -62,6 +63,7 @@ class AttentionBase : public OpKernel {
                              int past_sequence_length,                 // sequence length of past state
                              int head_size,                            // head size of self-attention
                              int num_heads,                            // number of attention heads
+                             int kv_num_heads,                         // number of KV heads
                              const T* past,                            // past state
                              const T* past_key,                        // past key only (if not using past state)
                              T* present,                               // present state
@@ -79,7 +81,7 @@ class AttentionBase : public OpKernel {
                      const Tensor* past,
                      int batch_size,
                      int head_size,
-                     int num_heads,
+                     int kv_num_heads,
                      int kv_sequence_length,
                      int past_sequence_length) const;
 

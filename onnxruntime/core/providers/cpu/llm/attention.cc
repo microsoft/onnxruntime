@@ -187,6 +187,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              int past_sequence_length,                 // sequence length of past state
                                              int head_size,                            // head size of self-attention
                                              int num_heads,                            // number of attention heads
+                                             int kv_num_heads,                         // number of KV heads
                                              const T* past,                            // past state
                                              const T* past_key,                        // past key only (if not using past state)
                                              T* present,                               // present state
@@ -199,12 +200,12 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                              gsl::span<const int64_t> attn_bias_dims,  // attention bias shape
                                              bool past_present_share_buffer,
                                              int max_sequence_length) const {
-  const int total_sequence_length = past_sequence_length + kv_sequence_length;               // T = P + L
-  const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;    // P x H
-  const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;      // S x H
-  const size_t kv_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
-  const size_t present_chunk_length = past_chunk_length + kv_input_chunk_length;             // T x H
-  const size_t cache_chunk_length = static_cast<size_t>(max_sequence_length) * head_size;    // M x H
+  const int total_sequence_length = past_sequence_length + kv_sequence_length;              // T = P + L
+  const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;   // P x H
+  const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;     // S x H
+  const size_t k_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
+  const size_t present_chunk_length = past_chunk_length + k_input_chunk_length;             // T x H
+  const size_t cache_chunk_length = static_cast<size_t>(max_sequence_length) * head_size;   // M x H
 
   {
     const int loop_len = batch_size * num_heads;
@@ -224,7 +225,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
     }
 
     if (present || present_key) {
-      double bytes_to_copy_key = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
+      double bytes_to_copy_key = (past_present_share_buffer ? k_input_chunk_length : present_chunk_length) *
                                  static_cast<double>(sizeof(T));
       unit_cost.bytes_loaded += bytes_to_copy_key;
       unit_cost.bytes_stored += bytes_to_copy_key;
@@ -270,7 +271,12 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
           memcpy(output, mask_data + mask_offset, probs_matrix_bytes);
         }
 
-        const T* k = K + kv_input_chunk_length * i;
+        // handling GQA
+        std::ptrdiff_t batch_i = i / num_heads;
+        std::ptrdiff_t head_i = i % num_heads;
+        std::ptrdiff_t ki = batch_i * kv_num_heads + head_i % kv_num_heads;
+        const T* k = K + k_input_chunk_length * ki;
+
         if (nullptr != present) {
           // Concatenate past_K and K : (BxNx)PxH, (BxNx)LxH -> (BxNx)TxH
           k = ConcatStateChunk(past, k, present, past_chunk_length, present_chunk_length, i);
@@ -342,6 +348,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
                                                int v_head_size,           // head size of V (H_v)
                                                int v_hidden_size,         // hidden size of V (D_v)
                                                int num_heads,             // number of attention heads
+                                               int kv_num_heads,          // number of KV heads
                                                const T* past,             // past state
                                                const T* past_value,       // past value only (if not using past state)
                                                T* present,                // present state
@@ -350,12 +357,12 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
                                                ThreadPool* tp,
                                                bool past_present_share_buffer,
                                                int max_sequence_length) const {
-  const int total_sequence_length = past_sequence_length + kv_sequence_length;                   // T = P + L
-  const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;    // P x H_v
-  const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;      // S x H_v
-  const ptrdiff_t kv_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
-  const ptrdiff_t present_chunk_length = past_chunk_length + kv_input_chunk_length;              // T x H_v
-  const ptrdiff_t cache_chunk_length = SafeInt<ptrdiff_t>(max_sequence_length) * v_head_size;    // M x H_v
+  const int total_sequence_length = past_sequence_length + kv_sequence_length;                  // T = P + L
+  const ptrdiff_t past_chunk_length = SafeInt<ptrdiff_t>(past_sequence_length) * v_head_size;   // P x H_v
+  const ptrdiff_t q_input_chunk_length = SafeInt<ptrdiff_t>(sequence_length) * v_head_size;     // S x H_v
+  const ptrdiff_t v_input_chunk_length = SafeInt<ptrdiff_t>(kv_sequence_length) * v_head_size;  // L x H_v
+  const ptrdiff_t present_chunk_length = past_chunk_length + v_input_chunk_length;              // T x H_v
+  const ptrdiff_t cache_chunk_length = SafeInt<ptrdiff_t>(max_sequence_length) * v_head_size;   // M x H_v
 
   // Move the pointer of past and present to start of v values.
   if (nullptr != past) {
@@ -374,7 +381,7 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
   unit_cost.bytes_stored = static_cast<double>(sequence_length * v_head_size * sizeof(T));
 
   if (present || present_value) {
-    double bytes_to_copy_value = (past_present_share_buffer ? kv_input_chunk_length : present_chunk_length) *
+    double bytes_to_copy_value = (past_present_share_buffer ? v_input_chunk_length : present_chunk_length) *
                                  static_cast<double>(sizeof(T));
     unit_cost.bytes_loaded += bytes_to_copy_value;
     unit_cost.bytes_stored += bytes_to_copy_value;
@@ -388,7 +395,12 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
   ThreadPool::TryParallelFor(
       tp, SafeInt<ptrdiff_t>(batch_size) * num_heads, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
-          const T* v = V + kv_input_chunk_length * i;
+          // handling GQA
+          std::ptrdiff_t batch_i = i / num_heads;
+          std::ptrdiff_t head_i = i % num_heads;
+          std::ptrdiff_t ki = batch_i * kv_num_heads + head_i % kv_num_heads;
+          const T* v = V + v_input_chunk_length * ki;
+
           if (nullptr != present) {
             // Concatenate past_V and V: (BxNx)PxH_v, (BxNx)LxH_v -> (BxNx)TxH_v
             v = ConcatStateChunk(past, v, present, past_chunk_length, present_chunk_length, i);
@@ -461,7 +473,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                                  past,
                                  parameters.batch_size,
                                  parameters.v_head_size,
-                                 parameters.q_num_heads,
+                                 parameters.kv_num_heads,
                                  parameters.kv_sequence_length,
                                  past_sequence_length);
     } else if (past_key != nullptr && past_value != nullptr) {
@@ -533,6 +545,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                               parameters.past_sequence_length,
                               parameters.head_size == 0 ? parameters.v_head_size : parameters.head_size,
                               parameters.q_num_heads,
+                              parameters.kv_num_heads,
                               past_data,
                               past_key_data, present_data,
                               present_key_data,
@@ -564,6 +577,7 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                                 parameters.v_head_size,
                                 v_hidden_size,
                                 parameters.q_num_heads,
+                                parameters.kv_num_heads,
                                 past_data,
                                 past_value_data,
                                 present_data,
@@ -581,14 +595,14 @@ Tensor* AttentionBase<T>::GetPresent(OpKernelContext* context,
                                      const Tensor* past,
                                      int batch_size,
                                      int head_size,
-                                     int num_heads,
+                                     int kv_num_heads,
                                      int kv_sequence_length,
                                      int past_sequence_length) const {
   // Input and output shapes:
-  //   past        : (2, batch_size, num_heads, past_sequence_length, head_size)
-  //   present     : (2, batch_size, num_heads, past_sequence_length + kv_sequence_length, head_size)
+  //   past        : (2, batch_size, kv_num_heads, past_sequence_length, head_size)
+  //   present     : (2, batch_size, kv_num_heads, past_sequence_length + kv_sequence_length, head_size)
 
-  std::array<int64_t, 5> present_dims{2, batch_size, num_heads, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size};
+  std::array<int64_t, 5> present_dims{2, batch_size, kv_num_heads, static_cast<int64_t>(kv_sequence_length) + past_sequence_length, head_size};
 
   TensorShape present_shape(present_dims);
   Tensor* present = context->Output(1, present_shape);
