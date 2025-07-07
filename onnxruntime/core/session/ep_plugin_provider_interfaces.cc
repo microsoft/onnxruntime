@@ -84,17 +84,11 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
-static OrtDevice GetOrtDeviceForPluginEp(const OrtEp& ort_ep, gsl::span<const OrtEpDevice* const> ep_devices,
-                                         const logging::Logger& logger) {
+static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
   // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
   // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
 
-  if (ep_devices.empty()) {
-    // Should never be the case that we have no OrtEpDevices, but just in case.
-    LOGS(logger, WARNING) << "Creating a PluginExecutionProvider named '" << ort_ep.GetName(&ort_ep)
-                          << "' without any OrtEpDevice instances.";
-    return OrtDevice();
-  }
+  ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
 
   const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
 
@@ -126,7 +120,7 @@ PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessio
                                                  OrtEpFactory& ep_factory,
                                                  gsl::span<const OrtEpDevice* const> ep_devices,
                                                  const logging::Logger& logger)
-    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(*ep, ep_devices, logger), &logger),
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), &logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()) {
