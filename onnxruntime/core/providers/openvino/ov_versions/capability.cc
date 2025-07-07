@@ -37,7 +37,10 @@ GetCapability::GetCapability(const EPCtxHandler& ep_ctx_handler,
   if (device_type_.find("NPU") != std::string::npos) {
     device_type_ = "CPU";
     if (enable_qdq_optimizer) npu_qdq_optimizer_enabled = true;
+  } else if (enable_qdq_optimizer && device_type_.find("GPU") != std::string::npos) {
+    npu_qdq_optimizer_enabled = true;  // see data_ops.cc ~615 where we check for int16 types for gpu, this may change to a better approach later
   }
+
 #if OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 5
   data_ops_ = new DataOps(graph_viewer_, V_2024_5, device_type_, npu_qdq_optimizer_enabled);
 #elif OPENVINO_VERSION_MAJOR == 2024 && OPENVINO_VERSION_MINOR == 6
@@ -125,9 +128,6 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
         return result;
       }
     }
-
-    // Initializers need to be part of meta_def->inputs
-    Iterable2String(inputs, ng_required_initializers);
 
     // Fill outputs with names
     Iterable2String(outputs, graph_viewer_.GetOutputs());

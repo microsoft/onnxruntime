@@ -70,6 +70,18 @@ class BaseOpBuilder : public IOpBuilder {
     return Status::OK();
   }
 
+  Status ProcessDataTypes(QnnModelWrapper& qnn_model_wrapper,
+                          const NodeUnit& node_unit) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckCpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckHtpDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
+  virtual Status CheckGpuDataTypes(const std::vector<Qnn_DataType_t>,
+                                   const std::vector<Qnn_DataType_t>) const ORT_MUST_USE_RESULT;
+
   virtual Status ProcessInputs(QnnModelWrapper& qnn_model_wrapper,
                                const NodeUnit& node_unit,
                                const logging::Logger& logger,
