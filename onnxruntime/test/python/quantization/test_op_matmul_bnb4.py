@@ -149,7 +149,7 @@ class TestOpMatMulBnb4(unittest.TestCase):
         )
 
         # Quantize fp32 model to bnb4 model
-        from onnxruntime.quantization import matmul_bnb4_quantizer
+        from onnxruntime.quantization import matmul_bnb4_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant = matmul_bnb4_quantizer.MatMulBnb4Quantizer(model, quant_type, block_size)

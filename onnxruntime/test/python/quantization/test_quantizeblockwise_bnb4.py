@@ -113,7 +113,7 @@ def quantize_blockwise_bnb4_target(matrix_float: npt.ArrayLike, block_size: int,
 
     packed = np.zeros(quantized_numel, dtype="uint8")
     absmax = np.zeros(num_blocks, dtype=matrix_float.dtype)
-    from onnxruntime.capi._pybind_state import quantize_matmul_bnb4
+    from onnxruntime.capi._pybind_state import quantize_matmul_bnb4  # noqa: PLC0415
 
     quantize_matmul_bnb4(packed, matrix_float, absmax, block_size, quant_type_enum, n, k)
     return (packed, absmax)
