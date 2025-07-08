@@ -70,7 +70,7 @@
      }
 
      ONNX_NAMESPACE::GraphProto graph_proto;
-     OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), graph_proto, handle_initializer_data);
+     OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto, handle_initializer_data);
 
      // graph_proto stores large initializers in an external file
    }
