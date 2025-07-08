@@ -5093,7 +5093,7 @@ Status Graph::AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& nod
   // In the constant node, we won't have symbolic dims.
   const auto tensor_shape = utils::GetTensorShapeFromTensorProto(tensor_proto);
   auto ml_data = DataTypeImpl::TensorTypeFromONNXEnum(tensor_proto.data_type())->GetElementType();
-  const size_t size_in_bytes = ml_data->Size() * tensor_shape.Size();
+  const size_t size_in_bytes = SafeInt<size_t>(ml_data->Size()) * tensor_shape.Size();
 
   if (size_in_bytes > utils::kSmallTensorExternalDataThreshold) {
     OrtValue ort_value;
