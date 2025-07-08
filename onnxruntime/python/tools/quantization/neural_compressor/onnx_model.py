@@ -51,13 +51,13 @@ class ONNXModel:
             logger.warning("Model size > 2GB. Please use model path instead of onnx model object to quantize")
 
         if self._is_large_model and isinstance(model, str) and kwargs.get("load_external_data", True):
-            from onnx.external_data_helper import load_external_data_for_model
+            from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
 
             load_external_data_for_model(self._model, os.path.dirname(self._model_path))
 
         self._config = None
         if isinstance(model, str) and os.path.exists(Path(model).parent.joinpath("config.json").as_posix()):
-            from transformers import AutoConfig
+            from transformers import AutoConfig  # noqa: PLC0415
 
             self._config = AutoConfig.from_pretrained(Path(model).parent.as_posix())
 
@@ -175,7 +175,7 @@ class ONNXModel:
         if os.path.split(root)[0] != "" and not os.path.exists(os.path.split(root)[0]):
             raise ValueError('"root" directory does not exists.')
         if self.is_large_model:  # pragma: no cover
-            from onnx.external_data_helper import load_external_data_for_model
+            from onnx.external_data_helper import load_external_data_for_model  # noqa: PLC0415
 
             load_external_data_for_model(self._model, os.path.split(self._model_path)[0])
             onnx.save_model(
@@ -451,7 +451,7 @@ class ONNXModel:
 
     def save_model_to_file(self, output_path, use_external_data_format=False):
         """Save model to external data, which is needed for model size > 2GB."""
-        from onnx.external_data_helper import convert_model_to_external_data
+        from onnx.external_data_helper import convert_model_to_external_data  # noqa: PLC0415
 
         if use_external_data_format:
             convert_model_to_external_data(
@@ -556,8 +556,8 @@ class ONNXModel:
 
     def topological_sort(self, enable_subgraph=False):
         """Topological sort the model."""
-        import copy
-        from collections import deque
+        import copy  # noqa: PLC0415
+        from collections import deque  # noqa: PLC0415
 
         if not enable_subgraph:
             input_name_to_nodes = {}
@@ -606,9 +606,9 @@ class ONNXModel:
 
     def get_nodes_chain(self, start, stop, result_chain=None):
         """Get nodes chain with given start node and stop node."""
-        from collections import deque
+        from collections import deque  # noqa: PLC0415
 
-        from onnx import NodeProto
+        from onnx import NodeProto  # noqa: PLC0415
 
         if result_chain is None:
             result_chain = []
@@ -835,8 +835,8 @@ class ONNXModel:
 
     def export(self, save_path, conf):
         """Export Qlinear to QDQ model."""
-        from neural_compressor.config import ONNXQlinear2QDQConfig
-        from neural_compressor.utils.export import onnx_qlinear_to_qdq
+        from neural_compressor.config import ONNXQlinear2QDQConfig  # noqa: PLC0415
+        from neural_compressor.utils.export import onnx_qlinear_to_qdq  # noqa: PLC0415
 
         if isinstance(conf, ONNXQlinear2QDQConfig):
             add_nodes, remove_nodes, inits = onnx_qlinear_to_qdq(self._model, self._input_name_to_nodes)
@@ -1055,7 +1055,7 @@ class ONNXModel:
         # infer shape of the model to be split
         if shape_infer:
             try:
-                from neural_compressor.adaptor.ox_utils.util import infer_shapes
+                from neural_compressor.adaptor.ox_utils.util import infer_shapes  # noqa: PLC0415
 
                 self._model = infer_shapes(self._model, auto_merge=True, base_dir=os.path.dirname(self._model_path))
             except Exception as e:  # pragma: no cover
@@ -1195,7 +1195,7 @@ class ONNXModel:
         Args:
             data_path (str, optional): the directory of saved initializer. Defaults to None.
         """
-        from onnx.external_data_helper import load_external_data_for_tensor
+        from onnx.external_data_helper import load_external_data_for_tensor  # noqa: PLC0415
 
         if data_path is None:
             data_path = os.path.dirname(self._model_path)
@@ -1211,7 +1211,7 @@ class ONNXModel:
                                                     Defaults to "external.data".
             overwrite (bool, optional): if True, remove existed externa data. Defaults to False.
         """
-        from onnx.external_data_helper import convert_model_to_external_data, write_external_data_tensors
+        from onnx.external_data_helper import convert_model_to_external_data, write_external_data_tensors  # noqa: PLC0415
 
         if overwrite and os.path.exists(os.path.join(os.path.dirname(self._model_path), external_data_location)):
             os.remove(os.path.join(os.path.dirname(self._model_path), external_data_location))

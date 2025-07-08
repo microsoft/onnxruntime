@@ -1091,7 +1091,7 @@ class SymbolicShapeInference:
             num_operands = num_operands + 1
 
         new_sympy_shape = []
-        from collections import OrderedDict
+        from collections import OrderedDict  # noqa: PLC0415
 
         num_letter_occurrences = OrderedDict()
         if mid_index != -1:
@@ -2609,7 +2609,7 @@ class SymbolicShapeInference:
         output_tensor_ranks = get_attribute(node, "output_tensor_ranks")
         assert output_tensor_ranks, f"PythonOp '{node.name}' has no output_tensor_ranks attribute."
 
-        from onnxruntime.capi._pybind_state import get_shape_inference_function
+        from onnxruntime.capi._pybind_state import get_shape_inference_function  # noqa: PLC0415
 
         func_name = get_attribute(node, "func_name").decode()
         shape_inferer = get_shape_inference_function(func_name)

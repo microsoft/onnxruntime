@@ -20,7 +20,7 @@ pt_to_np = {
 
 
 def cuda_memcpy(dst, src):
-    from cuda import cudart
+    from cuda import cudart  # noqa: PLC0415
 
     cudart.cudaMemcpy(
         dst.data_ptr(),
