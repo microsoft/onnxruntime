@@ -153,6 +153,10 @@ Status ScatterND::ComputeInternal(ComputeContext& context) const {
   const size_t components = 1;
   auto output_size = static_cast<uint32_t>((indices_shape.SizeToDimension(indices_rank - 1) + components - 1) / components);
   auto* output = context.Output(0, input_shape);
+  if (output_size == 0) {
+    // If the output tensor is empty, we can return early.
+    return Status::OK();
+  }
   MLDataType data_type = input->DataType();
   const void* source = input->DataRaw();
   void* target = output->MutableDataRaw();
