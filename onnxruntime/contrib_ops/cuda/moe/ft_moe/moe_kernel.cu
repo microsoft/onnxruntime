@@ -18,7 +18,7 @@
 
 #include <algorithm>
 #include <cfloat>
-#include <cuda.h>
+#include <cuda.h>  // for CUDA_VERSION
 #include <cuda_fp16.h>
 #include <math.h>
 #include <sstream>
@@ -38,19 +38,12 @@
 
 #include "moe_kernel.h"
 
-#if CUDA_VERSION >= 11000
 #include <cub/cub.cuh>
 #include <cub/device/device_radix_sort.cuh>
 #include <cub/util_type.cuh>
-#else
-#include "cub/cub.cuh"
-#include "cub/device/device_radix_sort.cuh"
-#include "cub/util_type.cuh"
-#endif
 
 namespace ort_fastertransformer {
 static constexpr int WARP_SIZE = 32;
-
 // ====================== Softmax things ===============================
 // We have our own implementation of softmax here so we can support transposing the output
 // in the softmax kernel when we extend this module to support expert-choice routing.
@@ -65,13 +58,6 @@ __launch_bounds__(TPB) __global__
 
   const int thread_row_offset = blockIdx.x * num_cols;
 
-#if CUDA_VERSION >= 12090
-  ::cuda::std::plus sum;
-#else
-  // Deprecated on CUDA 12.9
-  cub::Sum sum;
-#endif
-
   float threadData(-FLT_MAX);
 
   // Don't touch finished rows.
@@ -84,7 +70,7 @@ __launch_bounds__(TPB) __global__
     threadData = max(static_cast<float>(input[idx]), threadData);
   }
 
-#if CUDA_VERSION >= 12090
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12090
   const float maxElem = BlockReduce(tmpStorage).Reduce(threadData, ::cuda::maximum());
 #else
   const float maxElem = BlockReduce(tmpStorage).Reduce(threadData, cub::Max());
@@ -102,7 +88,12 @@ __launch_bounds__(TPB) __global__
     threadData += exp((static_cast<float>(input[idx]) - float_max));
   }
 
-  const auto Z = BlockReduce(tmpStorage).Reduce(threadData, sum);
+#if defined(CUDA_VERSION) && CUDA_VERSION >= 12090
+  const auto Z = BlockReduce(tmpStorage).Reduce(threadData, ::cuda::std::plus());
+#else
+  // Deprecated on CUDA 12.9
+  const auto Z = BlockReduce(tmpStorage).Reduce(threadData, cub::Sum());
+#endif
 
   if (threadIdx.x == 0) {
     normalizing_factor = 1.f / Z;
@@ -998,6 +989,7 @@ void CutlassMoeFCRunner<T, WeightType, Enable>::get_total_rows_info(int64_t expe
   if (experts_start_index > 0) {
     total_past_rows = total_rows_before_expert_host_[experts_start_index - 1];
   }
+
   total_covered_rows = total_rows_before_expert_host_[experts_end_index] - total_past_rows;
 }
 
