@@ -106,6 +106,7 @@ void
     const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
 
     const size_t BlockSize = MlasNchwcGetBlockSize();
+    const float32x4_t ZeroVector = vdupq_n_f32(0.0f);
 
     const size_t StrideWidthElements = StrideWidth / sizeof(float);
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
@@ -125,20 +126,17 @@ void
             const float* filter = Filter + filterSetBlock * FilterStrideElements;
             float* output = Output + filterSetBlock * OutputStrideElements;
 
-            float accumulator[BlockSize];
+            float32x4_t Accumulator;
 
-            for (size_t i = 0; i < BlockSize; i++) {
-                accumulator[i] = 0.0f;
-            }
             if (AccumulateOutput) {
-                for (size_t i = 0; i < BlockSize; i++) {
-                    accumulator[i] = output[output_idx * BlockSize + i];
-                }
+                Accumulator = MlasLoadFloat32x4(&output[output_idx * BlockSize]);
+            } else {
+                Accumulator = vdupq_n_f32(0.0f);
             }
+
             if (BiasAddition) {
-                for (size_t i = 0; i < BlockSize; i++) {
-                    accumulator[i] += Bias[filterSetBlock * BlockSize + i];
-                }
+                const float32x4_t BiasVector = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize]);
+                Accumulator = vaddq_f32(Accumulator, BiasVector);
             }
 
             for (size_t kh = 0; kh < KernelHeight; kh++) {
@@ -147,37 +145,35 @@ void
                                               kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
                     for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
-                        for (size_t ic = 0; ic < BlockSize; ic++) {
-                            size_t kernel_pos = kh * (KernelWidth * BlockSize * BlockSize) +
-                                                kw * (BlockSize * BlockSize) +
-                                                filterBlock * (BlockSize) +
-                                                ic;
+                        const float* input_element = input_base + filterBlock;
+                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                        const float* input_row_end = input_row_start + InputWidthElements;
 
-                            const float* input_element = input_base + filterBlock;
-                            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                            const float* input_row_end = input_row_start + InputWidthElements;
-
-                            float input_value;
-                            if (is_main_region || (input_element >= input_row_start && input_element < input_row_end)) {
-                                input_value = *input_element;
-                            } else {
-                                input_value = 0.0f;
-                            }
-
-                            float filter_value = filter[kernel_pos];
-                            accumulator[ic] += input_value * filter_value;
+                        float input_value;
+                        if (is_main_region || (input_element >= input_row_start && input_element < input_row_end)) {
+                            input_value = *input_element;
+                        } else {
+                            input_value = 0.0f;
                         }
+
+                        const float32x4_t InputVector = vdupq_n_f32(input_value);
+
+                        size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
+                                                 kw * (BlockSize * BlockSize) +
+                                                 filterBlock * BlockSize;
+
+                        const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos]);
+
+                        Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
                     }
-
                 }
             }
 
-            for (size_t i = 0; i < BlockSize; i++) {
-                if (ReluActivation && accumulator[i] < 0.0f) {
-                    accumulator[i] = 0.0f;
-                }
-                output[output_idx * BlockSize + i] = accumulator[i];
+            if (ReluActivation) {
+                Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
             }
+
+            MlasStoreFloat32x4(&output[output_idx * BlockSize], Accumulator);
         }
     }
 }
