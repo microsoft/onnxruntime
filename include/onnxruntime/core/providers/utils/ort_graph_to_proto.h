@@ -6,7 +6,7 @@
    Utilities to serialize an OrtGraph into an ONNX GraphProto or ModelProto. Can be used by execution provider
    implementations that need to convert an OrtGraph instance into an ONNX protobuf model.
 
-   These utilities are experimental. Users may copy this file and modify as needed.
+   Users may copy this file and modify as needed.
 
  USAGE:
    This is a header-only implementation that includes both the function declarations and definitions. Copy this file
