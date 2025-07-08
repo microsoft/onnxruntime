@@ -56,12 +56,16 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
+            Write-Host "Installing Appium globally..."
             npm install -g appium
-
+            
+            Write-Host "Starting Appium server..."
             Start-Process -FilePath "appium" -ArgumentList "server", "--address", "127.0.0.1", "--port", "4723", "--use-drivers", "uiautomator2", "--base-path", "/wd/hub" -WindowStyle Hidden
-
+            
+            Write-Host "Waiting for Appium server to start..."
             Start-Sleep -Seconds 10
-
+            
+            Write-Host "Verifying Appium server status..."
             try {
               $response = Invoke-WebRequest -Uri "http://127.0.0.1:4723/wd/hub/status" -Method GET -TimeoutSec 30
               Write-Host "Appium server is running successfully"
