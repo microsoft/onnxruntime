@@ -14,11 +14,20 @@ namespace webgpu {
 
 class WebGpuContext;
 
+// For command capture and replay
+enum class GraphCaptureState {
+  Default,
+  Capturing,
+  Replaying
+};
+
 enum class BufferCacheMode {
   Disabled,
   LazyRelease,
   Simple,
-  Bucket
+  Bucket,
+  Graph,
+  GraphSimple,
 };
 std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 
@@ -26,12 +35,13 @@ std::ostream& operator<<(std::ostream& os, BufferCacheMode mode);
 // IBufferCacheManager is an interface for buffer cache management.
 //
 // By implementing this interface, we can have different buffer cache management strategies.
-// Currently, we have 3 strategies:
+// Currently, we have 5 strategies:
 // - Disabled: no cache. always allocate a new buffer and release it immediately after use.
 // - LazyRelease: no cache. the difference from Disabled is that it delays the release of buffers until the next refresh.
 // - Simple: a simple cache that always keeps buffers. when a buffer is requested, it tries to find a buffer in the cache.
 // - Bucket: a cache that keeps buffers in different buckets based on the buffer size, with a maximum number of buffers in each bucket.
-//
+// - Graph: used for graph capturing storage buffer cache mode. All buffers will be cached. Buffers can be reused across runs and in one run.
+// - GraphSimple: used for graph capturing uniform buffer cache mode. All buffers will be cached. Buffers can be reused across runs but can't be reused in one run.
 class IBufferCacheManager {
  public:
   virtual ~IBufferCacheManager() = default;
@@ -49,7 +59,7 @@ class IBufferCacheManager {
   virtual void ReleaseBuffer(WGPUBuffer buffer) = 0;
 
   // when a stream refresh is requested
-  virtual void OnRefresh() = 0;
+  virtual void OnRefresh(GraphCaptureState graph_capture_state) = 0;
 };
 
 //
@@ -58,16 +68,16 @@ class IBufferCacheManager {
 class BufferManager {
  public:
   BufferManager(WebGpuContext& context, BufferCacheMode storage_buffer_cache_mode, BufferCacheMode uniform_buffer_cache_mode, BufferCacheMode query_resolve_buffer_cache_mode);
-
-  void Upload(void* src, WGPUBuffer dst, size_t size);
-  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size);
-  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst);
+  void Upload(void* src, WGPUBuffer dst, size_t size) const;
+  void MemCpy(WGPUBuffer src, WGPUBuffer dst, size_t size) const;
+  WGPUBuffer Create(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
   // Create a buffer mapped for writing.
-  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc |
-                                                              wgpu::BufferUsage::CopyDst);
-  void Release(WGPUBuffer buffer);
-  void Download(WGPUBuffer src, void* dst, size_t size);
-  void RefreshPendingBuffers();
+  WGPUBuffer CreateUMA(size_t size, wgpu::BufferUsage usage = wgpu::BufferUsage::Storage | wgpu::BufferUsage::CopySrc | wgpu::BufferUsage::CopyDst) const;
+  // Check if CreateUMA is supported (i.e., the device has BufferMapExtendedUsages feature)
+  bool SupportsUMA() const;
+  void Release(WGPUBuffer buffer) const;
+  void Download(WGPUBuffer src, void* dst, size_t size) const;
+  void RefreshPendingBuffers(GraphCaptureState graph_capture_state) const;
 
  private:
   IBufferCacheManager& GetCacheManager(wgpu::BufferUsage usage) const;
