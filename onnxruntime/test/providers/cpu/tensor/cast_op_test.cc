@@ -348,10 +348,10 @@ TEST(CastOpTest, Int4x2ToUInt64) {
   };
 
   // Negative values will be cast to their unsigned representation
-  const std::vector<uint64_t> expected_uint32_output = {18446744073709551608, 7, 0, UINT64_MAX, 3, 18446744073709551611, 6, 2};
+  const std::vector<uint64_t> expected_uint64_output = {18446744073709551608ULL, 7, 0, UINT64_MAX, 3, 18446744073709551611ULL, 6, 2};
 
   // WHEN, THEN
-  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint32_output), shape);
+  TestCastOp(gsl::make_span(int4x2_input), gsl::make_span(expected_uint64_output), shape);
 }
 
 TEST(CastOpTest, UInt4x2ToUInt8) {
