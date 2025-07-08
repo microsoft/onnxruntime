@@ -52,6 +52,30 @@ stages:
           workingDirectory: '$(Build.SourcesDirectory)\csharp\test\Microsoft.ML.OnnxRuntime.Tests.MAUI'
 
       - task: PowerShell@2
+        displayName: Install and Launch Appium Server
+        inputs:
+          targetType: 'inline'
+          script: |
+            # Install Appium globally if not already installed
+            npm install -g appium
+            
+            # Launch Appium server in background
+            Start-Process -FilePath "appium" -ArgumentList "server", "--address", "127.0.0.1", "--port", "4723", "--use-drivers", "uiautomator2", "--base-path", "/wd/hub" -WindowStyle Hidden
+            
+            # Wait a moment for server to start
+            Start-Sleep -Seconds 10
+            
+            # Verify Appium server is running
+            try {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:4723/wd/hub/status" -Method GET -TimeoutSec 30
+              Write-Host "Appium server is running successfully"
+              Write-Host "Response: $($response.Content)"
+            } catch {
+              Write-Error "Failed to connect to Appium server: $_"
+              exit 1
+            }
+
+      - task: PowerShell@2
         displayName: Run BrowserStack test
         inputs:
           targetType: 'inline'
