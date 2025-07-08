@@ -14,7 +14,9 @@
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
 
-#include "test/ep_graph/ort_graph_to_proto.h"
+#define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+#include "core/providers/utils/ort_graph_to_proto.h"
+
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
 #include "test/util/include/asserts.h"
@@ -142,7 +144,7 @@ TEST(EpGraphTest, SerializeToProto_Mnist) {
     };
 
     ONNX_NAMESPACE::ModelProto model_proto;
-    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
@@ -207,7 +209,7 @@ TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
 
     // Serialize OrtGraph to ModelProto (all initializers stored within TensorProtos).
     ONNX_NAMESPACE::ModelProto model_proto;
-    ort_ep_utils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto);
+    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto);
 
     std::ofstream ofs(serialized_model_path, std::ios::binary);
     model_proto.SerializeToOstream(&ofs);
