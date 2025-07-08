@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import time
+
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -231,7 +233,6 @@ class ORTGenerator:
         has_eos = torch.zeros(batch_size, device=self.device, dtype=torch.bool)
 
         if benchmark:
-            import time
 
             latency = []
 

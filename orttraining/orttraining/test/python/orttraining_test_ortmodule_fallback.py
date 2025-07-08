@@ -7,6 +7,7 @@ import itertools
 import math
 import os
 import warnings
+from dataclasses import dataclass
 
 import _test_helpers
 import numpy as np
@@ -42,8 +43,6 @@ def test_ortmodule_fallback_forward(is_training, fallback_enabled, matching_poli
         policy = "FALLBACK_DISABLE"
     os.environ["ORTMODULE_FALLBACK_POLICY"] = policy
     os.environ["ORTMODULE_FALLBACK_RETRY"] = str(not persist_fallback)
-
-    from dataclasses import dataclass
 
     @dataclass
     class Point:
