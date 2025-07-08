@@ -186,11 +186,6 @@ struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
 
-constexpr int INT4_MIN = -8;
-constexpr int INT4_MAX = 7;
-constexpr unsigned int UINT4_MIN = 0;
-constexpr unsigned int UINT4_MAX = 15;
-
 // Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
 template <typename SrcType>
 struct Int4ElementConverter {
