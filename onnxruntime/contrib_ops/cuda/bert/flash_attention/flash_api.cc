@@ -425,8 +425,28 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
   return Status::OK();
 }
 
+inline bool is_supported_head_size(size_t head_size) {
+  switch(head_size) {
+#ifndef FAST_BUILD
+    case 32:
+    case 64:
+    case 96:
+    case 128:
+    case 160:
+    case 192:
+    case 224:
+    case 256:
+#else // fast build
+    case 64:
+#endif
+      return true;
+  }
+
+  return false;
+}
+
 bool is_supported(const cudaDeviceProp& dprops, size_t head_size, size_t num_heads, size_t num_heads_k) {
-  return (dprops.major >= 8) && (head_size % 8 == 0) && (head_size <= 256) && (num_heads % num_heads_k == 0);
+  return (dprops.major >= 8) && is_supported_head_size(head_size) && (num_heads % num_heads_k == 0);
 }
 
 // This API is used when past key and value are present... since cached, these are assumed to have sequence length

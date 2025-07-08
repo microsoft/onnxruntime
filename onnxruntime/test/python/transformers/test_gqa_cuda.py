@@ -1757,7 +1757,7 @@ def gqa_past_flash_attention_test_cases():
         ]
     )
     num_h = [(32, 8)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-    h_sizes = [256] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    h_sizes = [128] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
     random.seed(69)
 
     for b in batches:
@@ -1803,7 +1803,7 @@ def gqa_interactive_one_batch_flash_attention_test_cases():
         ]
     )
     num_h = [(9, 3)] if pipeline_mode else [(6, 6), (6, 3), (9, 9), (9, 3)]
-    h_sizes = [64] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
+    h_sizes = [128] if pipeline_mode else [32, 40, 64, 80, 96, 128, 160, 192, 224, 256]
     random.seed(69)
 
     for b in batches:

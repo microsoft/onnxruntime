@@ -1,7 +1,7 @@
 // Copyright (c) 2023, Tri Dao.
 
 // Splitting the different head dimensions to different files to speed up compilation.
-#if USE_FLASH_ATTENTION
+#if USE_FLASH_ATTENTION && !defined(FAST_BUILD)
 
 #include "contrib_ops/cuda/bert/flash_attention/flash_fwd_launch_template.h"
 
