@@ -42,7 +42,7 @@
     "${ONNXRUNTIME_ROOT}/core/providers/shared_library/*.cc"
   )
   source_group(TREE ${ONNXRUNTIME_ROOT}/core FILES ${onnxruntime_providers_migraphx_cc_srcs})
-  onnxruntime_add_shared_library_module(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
+  onnxruntime_add_shared_library(onnxruntime_providers_migraphx ${onnxruntime_providers_migraphx_cc_srcs})
   onnxruntime_add_include_to_target(onnxruntime_providers_migraphx onnxruntime_common onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
   add_dependencies(onnxruntime_providers_migraphx onnxruntime_providers_shared ${onnxruntime_EXTERNAL_DEPENDENCIES})
   target_link_libraries(onnxruntime_providers_migraphx PRIVATE ${migraphx_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} onnx flatbuffers::flatbuffers Boost::mp11 safeint_interface)
@@ -79,16 +79,10 @@
     endif()
   endif()
 
-  if(CMAKE_SYSTEM_NAME STREQUAL "Windows")
-    install(TARGETS onnxruntime_providers_migraphx
-            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY  DESTINATION ${CMAKE_INSTALL_BINDIR}
-            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-  else()
-    install(TARGETS onnxruntime_providers_migraphx
-            ARCHIVE  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            LIBRARY  DESTINATION ${CMAKE_INSTALL_LIBDIR}
-            RUNTIME  DESTINATION ${CMAKE_INSTALL_BINDIR}
-    )
-  endif()
+  install(TARGETS onnxruntime_providers_migraphx
+	  EXPORT onnxruntime_providers_migraphxTargets
+          ARCHIVE   DESTINATION ${CMAKE_INSTALL_LIBDIR}
+	  LIBRARY   DESTINATION ${CMAKE_INSTALL_LIBDIR}	  
+          RUNTIME   DESTINATION ${CMAKE_INSTALL_BINDIR}
+	  FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR}
+  )
