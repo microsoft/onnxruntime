@@ -6072,6 +6072,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 
+  /** \brief Get Session configuration entries.
+   *
+   * \param[in] options The session options.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance.
+   *
+   *  An OrtKeyValuePairs instance containing all session configuration entries.
+   *  Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
+
   /// @}
   /// \name OrtMIGraphXProviderOptions
   /// @{
@@ -6152,7 +6164,7 @@ struct OrtApi {
    *
    * \since Version 1.xx.
    */
-  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);  
+  ORT_API2_STATUS(GetMIGraphXProviderOptionsByName, _In_ const OrtMIGraphXProviderOptions* migraphx_options, _In_ const char* key, _Outptr_ void** ptr);
 };
 
 /*
