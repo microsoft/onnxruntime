@@ -153,21 +153,22 @@ void
                                                 filterBlock * (BlockSize) +
                                                 ic;
 
-                            const float* input_element = input_base + ic;
+                            const float* input_element = input_base + filterBlock;
                             const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
                             const float* input_row_end = input_row_start + InputWidthElements;
 
                             float input_value;
-                            if (is_main_region && input_element >= input_row_start && input_element < input_row_end) {
+                            if (is_main_region || (input_element >= input_row_start && input_element < input_row_end)) {
                                 input_value = *input_element;
                             } else {
                                 input_value = 0.0f;
                             }
 
                             float filter_value = filter[kernel_pos];
-                            accumulator[filterBlock] += input_value * filter_value;
+                            accumulator[ic] += input_value * filter_value;
                         }
                     }
+
                 }
             }
 
