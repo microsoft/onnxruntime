@@ -126,8 +126,6 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
 
     ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.past_sequence_length + parameters.kv_sequence_length, "inconsistent total_sequence_length");
-    ORT_ENFORCE(past_key == nullptr || past_key->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
-    ORT_ENFORCE(past_value == nullptr || past_value->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
 
     y_shape = {static_cast<int64_t>(parameters.batch_size),
                static_cast<int64_t>(parameters.q_num_heads),
@@ -139,6 +137,9 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     parameters.q_num_heads = q_num_heads_;
 
     // From shapes
+    ORT_ENFORCE(Q->Shape()[2] % parameters.q_num_heads == 0, "inconsistent q_hidden_size");
+    ORT_ENFORCE(V->Shape()[2] % parameters.kv_num_heads == 0, "inconsistent v_hidden_size");
+
     parameters.transpose_output = true;  // whether to transpose the output from BxNxSxH to BxSxNxH
     parameters.q_sequence_length = onnxruntime::narrow<int>(Q->Shape()[1]);
     parameters.head_size = onnxruntime::narrow<int>(Q->Shape()[2]) / parameters.q_num_heads;
@@ -154,6 +155,14 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                static_cast<int64_t>(parameters.q_sequence_length),
                static_cast<int64_t>(parameters.q_num_heads * parameters.v_head_size)};
   }
+  ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.past_sequence_length + parameters.kv_sequence_length, "inconsistent total_sequence_length");
+  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[1] == parameters.kv_num_heads, "inconsistent kv_num_heads");
+  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[1] == parameters.kv_num_heads, "inconsistent kv_num_heads");
+  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[3] == parameters.head_size, "inconsistent head_size");
+  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[3] == parameters.v_head_size, "inconsistent v_head_size");
+  ORT_ENFORCE(past_key == nullptr || past_key->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
+  ORT_ENFORCE(past_value == nullptr || past_value->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
+
   parameters.scale = std::isnan(scale_) ? static_cast<float>(1.0 / sqrt(parameters.head_size)) : scale_;
   ORT_ENFORCE(parameters.getAttentionType() != AttentionType::kInvalid, "Invalid attention type. q_num_heads must be equal to kv_num_heads or a multiple of it.");
 
