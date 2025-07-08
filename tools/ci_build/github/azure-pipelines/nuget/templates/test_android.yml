@@ -56,16 +56,12 @@ stages:
         inputs:
           targetType: 'inline'
           script: |
-            # Install Appium globally if not already installed
             npm install -g appium
-            
-            # Launch Appium server in background
+
             Start-Process -FilePath "appium" -ArgumentList "server", "--address", "127.0.0.1", "--port", "4723", "--use-drivers", "uiautomator2", "--base-path", "/wd/hub" -WindowStyle Hidden
-            
-            # Wait a moment for server to start
+
             Start-Sleep -Seconds 10
-            
-            # Verify Appium server is running
+
             try {
               $response = Invoke-WebRequest -Uri "http://127.0.0.1:4723/wd/hub/status" -Method GET -TimeoutSec 30
               Write-Host "Appium server is running successfully"
