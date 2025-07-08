@@ -453,7 +453,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
         const auto& s = attr->s();
         if (len < s.size()) {
           ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
-                                      "Size of data not large enough to hold the string.");
+                                      "Size of data not large enough to hold the byte sequence.");
         } else {
           char* output_c = reinterpret_cast<char*>(data);
           memcpy(output_c, s.data(), s.size());
