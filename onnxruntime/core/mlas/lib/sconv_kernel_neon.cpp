@@ -48,14 +48,33 @@ void
         unsigned KernelFlags
     )
 {
-    
+    (void)Input;
+    (void)Filter;
+    (void)Output;
+    (void)StrideWidth;
+    (void)DilationWidth;
+    (void)FilterCount;
+    (void)InputStride;
+    (void)FilterStride;
+    (void)OutputStride;
+    (void)KernelHeight;
+    (void)KernelWidth;
+    (void)InputBase;
+    (void)InputWidth;
+    (void)DilatedInputWidth;
+    (void)OutputCountLeftPad;
+    (void)OutputCount;
+    (void)OutputCountRightPad;
+    (void)Bias;
+    (void)KernelFlags;
 }
 
 //
 // Implementation of MlasConvNchwcFloatKernelNeon
 //
 // This kernel performs 2D convolution optimized for NCHWc format.
-// It processes multiple filters in blocks to improve cache efficiency.
+// NCHWc format organizes data in blocks where both input and output channels
+// are blocked. The filter is organized as [OutputChannelBlocks][InputChannelBlocks][KH][KW][BlockSize][BlockSize].
 //
 
 void
@@ -82,7 +101,84 @@ void
         unsigned KernelFlags
     )
 {
-    
+    const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
+    const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+
+    const size_t StrideWidthElements = StrideWidth / sizeof(float);
+    const size_t DilationWidthElements = DilationWidth / sizeof(float);
+    const size_t FilterStrideElements = FilterStride / sizeof(float);
+    const size_t OutputStrideElements = OutputStride / sizeof(float);
+    const size_t InputWidthElements = InputWidth / sizeof(float);
+    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
+
+    (void)InputStride;
+
+    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
+
+    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
+
+        for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
+            const float* filter = Filter + filterSetBlock * FilterStrideElements;
+            float* output = Output + filterSetBlock * OutputStrideElements;
+
+            float accumulator[BlockSize];
+
+            for (size_t i = 0; i < BlockSize; i++) {
+                accumulator[i] = 0.0f;
+            }
+            if (AccumulateOutput) {
+                for (size_t i = 0; i < BlockSize; i++) {
+                    accumulator[i] = output[output_idx * BlockSize + i];
+                }
+            }
+            if (BiasAddition) {
+                for (size_t i = 0; i < BlockSize; i++) {
+                    accumulator[i] += Bias[filterSetBlock * BlockSize + i];
+                }
+            }
+
+            for (size_t kh = 0; kh < KernelHeight; kh++) {
+                for (size_t kw = 0; kw < KernelWidth; kw++) {
+                    const float* input_base = Input + output_idx * StrideWidthElements +
+                                              kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+                    for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
+                        for (size_t ic = 0; ic < BlockSize; ic++) {
+                            size_t kernel_pos = kh * (KernelWidth * BlockSize * BlockSize) +
+                                                kw * (BlockSize * BlockSize) +
+                                                filterBlock * (BlockSize) +
+                                                ic;
+
+                            const float* input_element = input_base + ic;
+                            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                            const float* input_row_end = input_row_start + InputWidthElements;
+
+                            float input_value;
+                            if (is_main_region && input_element >= input_row_start && input_element < input_row_end) {
+                                input_value = *input_element;
+                            } else {
+                                input_value = 0.0f;
+                            }
+
+                            float filter_value = filter[kernel_pos];
+                            accumulator[filterBlock] += input_value * filter_value;
+                        }
+                    }
+                }
+            }
+
+            for (size_t i = 0; i < BlockSize; i++) {
+                if (ReluActivation && accumulator[i] < 0.0f) {
+                    accumulator[i] = 0.0f;
+                }
+                output[output_idx * BlockSize + i] = accumulator[i];
+            }
+        }
+    }
 }
 
 //
