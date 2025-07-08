@@ -76,6 +76,11 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(q_dims == k_dims, "Q and K must have the same rank.");
   ORT_ENFORCE(q_dims == v_dims, "Q and V must have the same rank.");
 
+  ORT_ENFORCE(Q->Shape()[0] == K->Shape()[0], "inconsistent batch_size");
+  ORT_ENFORCE(Q->Shape()[0] == V->Shape()[0], "inconsistent batch_size");
+  ORT_ENFORCE(past_key == nullptr || Q->Shape()[0] == past_key->Shape()[0], "inconsistent batch_size");
+  ORT_ENFORCE(past_value == nullptr || Q->Shape()[0] == past_value->Shape()[0], "inconsistent batch_size");
+
   AttentionParameters parameters;
   parameters.is_causal = is_causal_;
   parameters.softcap = softcap_;                                              // softcap
@@ -100,6 +105,13 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(K->Shape()[1]), "kv_num_heads different from K.shape[1]");
     ORT_ENFORCE(parameters.kv_num_heads == onnxruntime::narrow<int>(V->Shape()[1]), "kv_num_heads different from V.shape[1]");
     ORT_ENFORCE(parameters.q_num_heads == onnxruntime::narrow<int>(Q->Shape()[1]), "q_num_heads different from Q.shape[1]");
+    ORT_ENFORCE(Q->Shape()[3] == K->Shape()[3], "inconsistent head_size");
+    ORT_ENFORCE(K->Shape()[2] == V->Shape()[2], "inconsistent kv_sequence_length");
+    ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 2] == Q->Shape()[2], "inconsistent q_sequence_length");
+    ORT_ENFORCE(past_key == nullptr || K->Shape()[1] == past_key->Shape()[1], "inconsistent kv_num_heads");
+    ORT_ENFORCE(past_value == nullptr || K->Shape()[1] == past_value->Shape()[1], "inconsistent kv_num_heads");
+    ORT_ENFORCE(past_key == nullptr || K->Shape()[3] == past_key->Shape()[3], "inconsistent head_size");
+    ORT_ENFORCE(past_value == nullptr || V->Shape()[3] == past_value->Shape()[3], "inconsistent head_size");
 
     // From shapes
     parameters.transpose_output = false;                                      // whether to transpose the output from BxNxSxH to BxSxNxH
@@ -112,6 +124,10 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
                                                  ? 0
                                                  : onnxruntime::narrow<int>(attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1]) - parameters.kv_sequence_length)
                                           : onnxruntime::narrow<int>(past_key->Shape()[2]);
+
+    ORT_ENFORCE(attn_mask == nullptr || attn_mask->Shape()[attn_mask->Shape().NumDimensions() - 1] == parameters.past_sequence_length + parameters.kv_sequence_length, "inconsistent total_sequence_length");
+    ORT_ENFORCE(past_key == nullptr || past_key->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
+    ORT_ENFORCE(past_value == nullptr || past_value->Shape()[2] == parameters.past_sequence_length, "inconsistent past_sequence_length");
 
     y_shape = {static_cast<int64_t>(parameters.batch_size),
                static_cast<int64_t>(parameters.q_num_heads),
