@@ -424,6 +424,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr ReleaseSharedAllocator;
 
         public IntPtr GetTensorData;
+        public IntPtr GetSessionOptionsConfigEntries;
 
         public IntPtr CreateMIGraphXProviderOptions;
         public IntPtr UpdateMIGraphXProviderOptions;
