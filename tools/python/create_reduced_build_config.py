@@ -80,8 +80,7 @@ def create_config_from_onnx_models(model_files: typing.Iterable[pathlib.Path], o
 
     with open(output_file, "w") as out:
         out.write("# Generated from ONNX model/s:\n")
-        for model_file in sorted(model_files):
-            out.write(f"# - {model_file}\n")
+        out.writelines(f"# - {model_file}\n" for model_file in sorted(model_files))
 
         for domain in sorted(required_ops.keys()):
             for opset in sorted(required_ops[domain].keys()):

@@ -579,8 +579,7 @@ def generate_build_tree(
                 f.write(f'set(EMSCRIPTEN_ROOT_PATH "{emscripten_root_path_cmake_path}")\n')
 
                 # Copy emscripten's toolchain cmake file to ours.
-                for line in old_toolchain_lines:
-                    f.write(line)
+                f.writelines(old_toolchain_lines)
                 vcpkg_toolchain_path_cmake_path = str(vcpkg_toolchain_path).replace("\\", "/")
                 # Add an extra line at the bottom of the file to include vcpkg's toolchain file.
                 f.write(f"include({vcpkg_toolchain_path_cmake_path})")
@@ -605,11 +604,9 @@ def generate_build_tree(
                     "LINKER_FLAGS_RELEASE",
                 ]
                 # Overriding the cmake flags
-                for flag in flags_to_pass:
-                    f.write("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n')
+                f.writelines("SET(CMAKE_" + flag + ' "${VCPKG_' + flag + '}")\n' for flag in flags_to_pass)
                 # Copy emscripten's toolchain cmake file to ours.
-                for line in old_toolchain_lines:
-                    f.write(line)
+                f.writelines(old_toolchain_lines)
                 f.write("endif()")
             # We must define the VCPKG_CHAINLOAD_TOOLCHAIN_FILE cmake variable, otherwise vcpkg won't let us go.
             add_default_definition(

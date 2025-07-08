@@ -159,16 +159,14 @@ try:
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
-                    for library in to_preload:
-                        f.write('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines('_{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library) for library in to_preload)
 
         def _rewrite_ld_preload_cuda(self, to_preload):
             with open("onnxruntime/capi/_ld_preload.py", "a") as f:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library) for library in to_preload)
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_CUDA_UNAVAILABLE"] = "1"\n')
@@ -178,8 +176,7 @@ try:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library) for library in to_preload)
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_TENSORRT_UNAVAILABLE"] = "1"\n')
@@ -189,8 +186,7 @@ try:
                 if len(to_preload) > 0:
                     f.write("from ctypes import CDLL, RTLD_GLOBAL\n")
                     f.write("try:\n")
-                    for library in to_preload:
-                        f.write('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library))
+                    f.writelines('    _{} = CDLL("{}", mode=RTLD_GLOBAL)\n'.format(library.split(".")[0], library) for library in to_preload)
                     f.write("except OSError:\n")
                     f.write("    import os\n")
                     f.write('    os.environ["ORT_NV_TENSORRT_RTX_UNAVAILABLE"] = "1"\n')
