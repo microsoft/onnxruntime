@@ -77,8 +77,8 @@
    ```
 */
 
-#ifndef ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_HEADER
-#define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_HEADER
+#ifndef INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
+#define INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
 
 #include <functional>
 #include "core/session/onnxruntime_cxx_api.h"
@@ -146,7 +146,7 @@ Ort::Status OrtGraphToProto(const OrtGraph& ort_graph,
 }  // namespace OrtEpUtils
 
 // End of header
-#endif  // ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_HEADER
+#endif  // INCLUDE_ONNXRUNTIME_CORE_PROVIDERS_UTILS_ORT_GRAPH_TO_PROTO_H_
 
 //
 // IMPLEMENTATION BELOW
