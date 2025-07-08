@@ -49,12 +49,12 @@ void printDebugInfo(const ov::CompiledModel& obj) {
             std::cout << "    " << item2.first << ": " << item2.second.as<std::string>() << std::endl;
           }
         }
-        else {
-          std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
-        }
+      } else {
+        std::cout << "  " << cfg << ": " << prop.as<std::string>() << std::endl;
       }
     }
   }
+}
 #endif
 
   // Function to check if a given OV property is enabled
