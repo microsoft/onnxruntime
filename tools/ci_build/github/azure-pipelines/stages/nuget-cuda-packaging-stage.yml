@@ -72,7 +72,7 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
-    - template: set-version-number-variables-step.yml
+    - template: ../templates/set-version-number-variables-step.yml
 
     # Reconstruct the build dir
     - task: PowerShell@2
