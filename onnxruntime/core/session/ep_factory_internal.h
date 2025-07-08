@@ -26,6 +26,7 @@ class EpFactoryInternalImpl {
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  const char* GetVersion() const noexcept;
 
   virtual OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
                                          _In_reads_(num_devices) const OrtHardwareDevice* const* devices,

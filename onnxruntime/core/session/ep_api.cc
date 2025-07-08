@@ -5,6 +5,8 @@
 
 #include <algorithm>
 #include <vector>
+
+#include "core/common/semver.h"
 #include "core/framework/error_code_helper.h"
 #include "core/framework/func_api.h"
 #include "core/framework/ort_value.h"
@@ -15,6 +17,7 @@
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"
 #include "core/session/abi_ep_types.h"
+#include "core/session/onnxruntime_ep_device_ep_metadata_keys.h"
 #include "core/session/ort_apis.h"
 
 using namespace onnxruntime;
@@ -33,6 +36,21 @@ ORT_API_STATUS_IMPL(CreateEpDevice, _In_ OrtEpFactory* ep_factory,
 
   if (ep_metadata) {
     ep_device->ep_metadata = *ep_metadata;
+  }
+
+  // Add EP version from OrtEpFactory to metadata. OrtEpFactory::GetVersion is supported since 1.23.
+  if (ep_factory->ort_version_supported >= uint32_t{23}) {
+    if (ep_device->ep_metadata.Entries().find(kOrtEpDevice_EpMetadataKey_Version) !=
+        ep_device->ep_metadata.Entries().end()) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "The provided EP metadata should not explicitly specify the EP version.");
+    }
+
+    {
+      std::string ep_version = ep_factory->GetVersion(ep_factory);
+      ORT_API_RETURN_IF_STATUS_NOT_OK(ParseSemVerVersion(ep_version, nullptr));
+      ep_device->ep_metadata.Add(kOrtEpDevice_EpMetadataKey_Version, std::move(ep_version));
+    }
   }
 
   if (ep_options) {

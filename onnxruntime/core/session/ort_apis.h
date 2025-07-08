@@ -695,6 +695,8 @@ ORT_API_STATUS_IMPL(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDe
 
 ORT_API_STATUS_IMPL(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 
+ORT_API_STATUS_IMPL(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
+
 ORT_API_STATUS_IMPL(SessionGetMemoryInfoForInputs, _In_ const OrtSession* session,
                     _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
                     _In_ size_t num_inputs);

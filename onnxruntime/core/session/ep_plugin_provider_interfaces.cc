@@ -54,11 +54,9 @@ PluginExecutionProviderFactory::CreateProvider(const OrtSessionOptions& session_
     ORT_THROW("Error creating execution provider: ", status.ToString());
   }
 
-  auto ep_wrapper = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
-                                                              session_options, ep_factory_, devices_);
-  ep_wrapper->SetLogger(session_logger.ToInternal());
-
-  return ep_wrapper;
+  return std::make_unique<PluginExecutionProvider>(UniqueOrtEp(ort_ep, OrtEpDeleter(ep_factory_)),
+                                                   session_options, ep_factory_, devices_,
+                                                   *session_logger.ToInternal());
 }
 
 /// <summary>
@@ -87,10 +85,43 @@ struct PluginEpMetaDefNameFunctor {
 // PluginExecutionProvider
 //
 
+static OrtDevice GetOrtDeviceForPluginEp(gsl::span<const OrtEpDevice* const> ep_devices) {
+  // Get the OrtDevice from OrtEpDevice.device_memory_info if it is set. Otherwise, we set it to CPU.
+  // If there are multiple OrtEpDevice instances, the device_memory_info must be consistent for all.
+
+  ORT_ENFORCE(!ep_devices.empty());  // Should not be possible to create an EP without OrtEpDevices.
+
+  const OrtMemoryInfo* device_memory_info = ep_devices[0]->device_memory_info;
+
+  // Check assertion that all OrtEpDevice instances must have equivalent device_memory_infos
+  bool all_match = std::all_of(ep_devices.begin() + 1, ep_devices.end(),
+                               [mem_a = device_memory_info](const OrtEpDevice* ep_device) {
+                                 const OrtMemoryInfo* mem_b = ep_device->device_memory_info;
+
+                                 if (mem_a == mem_b) {
+                                   return true;  // Point to the same OrtMemoryInfo instance.
+                                 }
+
+                                 if (mem_a == nullptr || mem_b == nullptr) {
+                                   return false;  // One is nullptr and the other is not.
+                                 }
+
+                                 // Both non-null but point to different instances. Use operator==.
+                                 return *mem_a == *mem_b;
+                               });
+  if (!all_match) {
+    ORT_THROW("Error creating execution provider '", ep_devices[0]->ep_name,
+              "': expected all OrtEpDevice instances to use the same device_memory_info.");
+  }
+
+  return device_memory_info != nullptr ? device_memory_info->device : OrtDevice();
+}
+
 PluginExecutionProvider::PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options,
                                                  OrtEpFactory& ep_factory,
-                                                 gsl::span<const OrtEpDevice* const> ep_devices)
-    : IExecutionProvider(ep->GetName(ep.get()), OrtDevice()),  // TODO: What to do about OrtDevice for plugins?
+                                                 gsl::span<const OrtEpDevice* const> ep_devices,
+                                                 const logging::Logger& logger)
+    : IExecutionProvider(ep->GetName(ep.get()), GetOrtDeviceForPluginEp(ep_devices), logger),
       ort_ep_(std::move(ep)),
       ep_factory_(ep_factory),
       ep_devices_(ep_devices.begin(), ep_devices.end()) {

@@ -20,7 +20,6 @@
 #include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
-#include "core/session/abi_devices.h"
 
 #ifdef ENABLE_NVTX_PROFILE
 #include "nvtx_profile.h"
@@ -313,6 +312,9 @@ CUDA_Provider* GetProvider() {
 //
 // Plug-in EP infrastructure
 //
+
+#include "core/session/abi_devices.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 static struct ErrorHelper {
   static const OrtApi* ort_api;
@@ -664,6 +666,7 @@ struct CudaEpFactory : OrtEpFactory {
                                             data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -685,6 +688,10 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto& factory = *static_cast<const CudaEpFactory*>(this_ptr);
     return factory.vendor.c_str();
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return ORT_VERSION;
   }
 
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,

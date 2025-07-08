@@ -16,6 +16,10 @@ struct ForwardToFactory {
     return static_cast<const TFactory*>(this_ptr)->GetVendor();
   }
 
+  static const char* ORT_API_CALL GetVersion(const OrtEpFactory* this_ptr) noexcept {
+    return static_cast<const TFactory*>(this_ptr)->GetVersion();
+  }
+
   static OrtStatus* ORT_API_CALL GetSupportedDevices(OrtEpFactory* this_ptr,
                                                      const OrtHardwareDevice* const* devices,
                                                      size_t num_devices,

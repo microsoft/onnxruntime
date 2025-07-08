@@ -53,7 +53,7 @@ class CUDAExternalAllocator : public CUDAAllocator {
 // TODO: add a default constructor
 class CUDAPinnedAllocator : public IAllocator {
  public:
-  CUDAPinnedAllocator(const char* name, OrtDevice::DeviceId device_id)
+  CUDAPinnedAllocator(OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,

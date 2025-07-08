@@ -99,7 +99,7 @@ class DmlEpFactory : public EpFactoryInternalImpl {
         //       associated with a specific device.
         //       How would we know what options should not allow user overrides if set in OrtEpDevice?
         int32_t device_id = 0;  // If no device_id was found default to 0
-        if (auto it = device.metadata.entries.find("DxgiAdapterNumber"); it != device.metadata.entries.end()) {
+        if (auto it = device.metadata.Entries().find("DxgiAdapterNumber"); it != device.metadata.Entries().end()) {
           ep_options = std::make_unique<OrtKeyValuePairs>();
           device_id = std::stoi(it->second);
         }

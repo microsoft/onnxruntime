@@ -32,27 +32,28 @@ Status OrtArenaCfg::FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg&
     return Status::OK();
   };
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::ArenaExtendStrategy); it != kvps.entries.end()) {
+  const auto& kvps_entries = kvps.Entries();
+  if (auto it = kvps_entries.find(ConfigKeyNames::ArenaExtendStrategy); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.arena_extend_strategy));
   }
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::InitialChunkSizeBytes); it != kvps.entries.end()) {
+  if (auto it = kvps_entries.find(ConfigKeyNames::InitialChunkSizeBytes); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_chunk_size_bytes));
   }
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::MaxDeadBytesPerChunk); it != kvps.entries.end()) {
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxDeadBytesPerChunk); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_dead_bytes_per_chunk));
   }
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::InitialGrowthChunkSizeBytes); it != kvps.entries.end()) {
+  if (auto it = kvps_entries.find(ConfigKeyNames::InitialGrowthChunkSizeBytes); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.initial_growth_chunk_size_bytes));
   }
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::MaxPowerOfTwoExtendBytes); it != kvps.entries.end()) {
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxPowerOfTwoExtendBytes); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_power_of_two_extend_bytes));
   }
 
-  if (auto it = kvps.entries.find(ConfigKeyNames::MaxMem); it != kvps.entries.end()) {
+  if (auto it = kvps_entries.find(ConfigKeyNames::MaxMem); it != kvps_entries.end()) {
     ORT_RETURN_IF_ERROR(from_string(it->first, it->second, cfg.max_mem));
   }
 
