@@ -274,16 +274,16 @@ Status Resize::ComputeInternal(OpKernelContext* ctx, const Tensor* input,
 
   if (op_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<float>(),
-                                                  output->MutableData<float>());
+                                              output->MutableData<float>());
   } else if (op_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<MLFloat16>(),
-                                                  output->MutableData<MLFloat16>());
+                                              output->MutableData<MLFloat16>());
   } else if (op_type_ == OpComputeType::op_compute_type_qu8) {
     status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<uint8_t>(),
-                                                 output->MutableData<uint8_t>());
+                                              output->MutableData<uint8_t>());
   } else {
     status = xnn_setup_resize_bilinear2d_nhwc(op0_.get(), workspace.get(), input->Data<int8_t>(),
-                                                 output->MutableData<int8_t>());
+                                              output->MutableData<int8_t>());
   }
 
   if (status != xnn_status_success) {

@@ -240,10 +240,10 @@ Status AveragePool::Compute(OpKernelContext* context) const {
 
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), X.Data<float>(),
-		                                  Y.MutableData<float>());
+                                                  Y.MutableData<float>());
   } else if (avgpool_type_ == OpComputeType::op_compute_type_fp16) {
     status = xnn_setup_average_pooling2d_nhwc_f16(op0_.get(), X.Data<MLFloat16>(),
-		                                  Y.MutableData<MLFloat16>());
+                                                  Y.MutableData<MLFloat16>());
   }
 
   if (status != xnn_status_success) {
