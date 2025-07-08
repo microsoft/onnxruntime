@@ -317,4 +317,42 @@ TEST(PluginExecutionProviderTest, InferOrtDeviceFromDeviceMemoryInfo) {
 #endif  // !defined(ORT_NO_EXCEPTIONS)
 }
 
+TEST(PluginExecutionProviderTest, TestGetCompiledModelCompatibility) {
+  auto [ep_wrapper, ort_ep_plugin] = test_plugin_ep::MakeTestOrtEp();
+
+  // Test default behavior (EP plugin does not provide an implementation of the function).
+  {
+    ort_ep_plugin->GetCompiledModelCompatibility = nullptr;  // EP plugin doesn't implement. Should get default value.
+    OrtCompiledModelCompatibility compatibility = OrtCompiledModelCompatibility_SUPPORT_UNKNOWN;
+
+    // TODO: Need to load a model into a GraphViewer and pass it to this call.
+    // See how it is done in onnxruntime/test/ep_graph/test_ep_graph_utils.h.
+    // We can use the onnxruntime::Model class to load it.
+
+    // ASSERT_STATUS_OK(ep_wrapper->GetCompiledModelCompatibility(graph_viewer, compatibility));
+
+    ASSERT_EQ(compatibility, OrtCompiledModelCompatibility_SUPPORT_UNKNOWN);
+  }
+
+  // Test an EP plugin that provides a basic implementation that returns SUPPORTED_OPTIMAL.
+  {
+    auto get_compiled_model_compat = [](OrtEp* /*this_ptr*/, const OrtGraph* graph,
+                                        OrtCompiledModelCompatibility* compatibility) -> ::OrtStatus* {
+      (void)graph;
+      *compatibility = OrtCompiledModelCompatibility_SUPPORTED_OPTIMAL;
+      return nullptr;
+    };
+
+    ort_ep_plugin->GetCompiledModelCompatibility = get_compiled_model_compat;
+    OrtCompiledModelCompatibility compatibility = OrtCompiledModelCompatibility_SUPPORT_UNKNOWN;
+
+    // TODO: Need to load a model into a GraphViewer and pass it to this call.
+    // See how it is done in onnxruntime/test/ep_graph/test_ep_graph_utils.h.
+    // We can use the onnxruntime::Model class to load it.
+
+    // ASSERT_STATUS_OK(ep_wrapper->GetCompiledModelCompatibility(graph_viewer, compatibility));
+    // ASSERT_EQ(compatibility, OrtCompiledModelCompatibility_SUPPORTED_OPTIMAL);
+    (void)compatibility;
+  }
+}
 }  // namespace onnxruntime::test

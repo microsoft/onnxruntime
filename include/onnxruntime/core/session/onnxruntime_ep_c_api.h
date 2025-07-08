@@ -336,6 +336,18 @@ typedef enum OrtEpDataLayout {
 } OrtEpDataLayout;
 
 /**
+ * \brief Enumeration describing the compatibility state of a compiled model.
+ *
+ * \since Version 1.23.
+ */
+typedef enum OrtCompiledModelCompatibility {
+  OrtCompiledModelCompatibility_SUPPORT_UNKNOWN = 0,
+  OrtCompiledModelCompatibility_SUPPORTED_OPTIMAL,
+  OrtCompiledModelCompatibility_SUPPORTED_PREFER_RECOMPILATION,
+  OrtCompiledModelCompatibility_UNSUPPORTED,
+} OrtCompiledModelCompatibility;
+
+/**
  * \brief The OrtEp struct provides functions to implement for an execution provider.
  * \since Version 1.22.
  */
@@ -527,6 +539,27 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* OnRunEnd)(_In_ OrtEp* this_ptr,
                                      _In_ const OrtRunOptions* run_options,
                                      _In_ bool sync_stream);
+
+  /** \brief Called by ORT to determine the compatibility of a compiled model with the EP.
+   *
+   * The application determines whether a given model compatibility (other than unsupported) should cause
+   * session-creation to fail.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph The top-level graph for the model.
+   * \param[out] model_compatibility Output parameter set to the OrtCompiledModelCompatibility enum value that
+   *                                 describes the compatibility of the model with the EP.
+   *
+   * \note Implementation of this function is optional. If not implemented, ORT assumes a result of
+   * OrtCompiledModelCompatibility_SUPPORT_UNKNOWN.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* GetCompiledModelCompatibility)(_In_ OrtEp* this_ptr,
+                                                          _In_ const OrtGraph* graph,
+                                                          _Out_ OrtCompiledModelCompatibility* model_compatibility);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
