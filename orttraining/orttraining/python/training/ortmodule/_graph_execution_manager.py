@@ -116,7 +116,9 @@ class GraphExecutionManager(GraphExecutionInterface):
         self._zero_stage3_param_map = {}
         if self._runtime_options.enable_zero_stage3_support:
             # Move import to here to avoid circular dependency error
-            from onnxruntime.training.utils.hooks import configure_ort_compatible_zero_stage3  # type: ignore[import]  # noqa: PLC0415
+            from onnxruntime.training.utils.hooks import (  # type: ignore[import]  # noqa: PLC0415
+                configure_ort_compatible_zero_stage3,
+            )
 
             # Cannot toggle feature enabling/disabling after the first time enabled.
 

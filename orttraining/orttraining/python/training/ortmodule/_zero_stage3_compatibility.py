@@ -406,16 +406,15 @@ def stage3_export_context(enable: bool, stage3_param_handle, flattened_module):
 
     else:
         original_func = torch.onnx.symbolic_helper._get_tensor_rank
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _get_all_zero_stage3_params  # noqa: PLC0415
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
+            _get_all_zero_stage3_params,
+        )
 
         # Delay collecting stage3 parameters here instead of in the graph execution manager,
         # to make sure DeepSpeed initialization is done, so that the parameters ds_status are correct.
         stage3_param_handle._zero_stage3_param_map = _get_all_zero_stage3_params(flattened_module)
 
         try:
-            from torch.onnx._internal import _beartype  # noqa: PLC0415
-
-            @_beartype.beartype
             def _get_tensor_rank(x) -> int | None:
                 ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
                 # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).

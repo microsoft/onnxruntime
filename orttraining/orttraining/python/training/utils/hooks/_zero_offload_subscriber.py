@@ -42,8 +42,14 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
     def _setup_zero_stage3_ort_compatible_hooks(self):
         self.hierarchy = 0
 
-        from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager, ZeROOffloadSubscriber  # noqa: PLC0415
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer  # noqa: PLC0415
+        from onnxruntime.training.utils.hooks import (  # noqa: PLC0415
+            StatisticsSubscriber,
+            SubscriberManager,
+            ZeROOffloadSubscriber,
+        )
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import (  # noqa: PLC0415
+            _zero_offload_one_time_initializer,
+        )
 
         subscribers = [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
         if debug is True:
