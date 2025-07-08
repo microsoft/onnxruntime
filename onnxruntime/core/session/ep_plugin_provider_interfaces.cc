@@ -551,18 +551,20 @@ void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistr
   }
 
   for (const auto* mem_info : allocator_mem_infos_) {
-    auto device_type = mem_info->device.Type();
-    if (device_type == OrtDevice::CPU) {
+    if (mem_info->device.UsesCpuMemory()) {
       // CPU memory does not need a stream
       continue;
     }
+
+    auto device_type = mem_info->device.Type();
 
     registry.RegisterCreateStreamFn(
         device_type,
         [mem_info, this](const OrtDevice& device) {
           OrtSyncStreamImpl* stream = nullptr;
           const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
-          auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, &stream);
+          auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, ort_ep_.get(),
+                                                               /*stream_options*/ nullptr, &stream);
           ORT_ENFORCE(status == nullptr && stream != nullptr,
                       "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
           return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());

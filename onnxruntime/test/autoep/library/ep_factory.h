@@ -53,6 +53,8 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
+                                                               const OrtEp* ep,
+                                                               const OrtKeyValuePairs* stream_options,
                                                                OrtSyncStreamImpl** stream) noexcept;
 
   const std::string ep_name_;            // EP name

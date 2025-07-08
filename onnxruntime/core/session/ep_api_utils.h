@@ -59,8 +59,11 @@ struct ForwardToFactory {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDevice(_In_ OrtEpFactory* this_ptr,
                                                            _In_ const OrtMemoryDevice* memory_device,
+                                                           _In_opt_ const OrtEp* /*ep*/,
+                                                           _In_opt_ const OrtKeyValuePairs* stream_options,
                                                            _Outptr_opt_ OrtSyncStreamImpl** stream) noexcept {
-    return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream);
+    // ignore the OrtEp input as we won't ever have one for internal EPs
+    return static_cast<TFactory*>(this_ptr)->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
   static void ORT_API_CALL ReleaseEp(OrtEpFactory* this_ptr, OrtEp* ep) noexcept {

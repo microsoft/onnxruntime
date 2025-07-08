@@ -36,23 +36,24 @@ void ORT_API_CALL StreamImpl::ReleaseImpl(_In_ void* this_ptr) noexcept {
 //
 
 /*static*/
-void ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
   // e.g.
   // CUDA: cudaEventRecord
   // CANN: aclrtRecordEvent
+  return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
-  StreamImpl& stream_impl = *static_cast<StreamImpl*>(impl.ep_api.SyncStream_GetStreamImpl(stream));
-  static_cast<void>(stream_impl);
+  void* handle = impl.ort_api.SyncStream_GetHandle(stream);  // cast to
+  static_cast<void>(handle);
 
-  // TODO: Setup the event or similar that will be activated on notification.
-  // See CudaNotification or CannNotification for examples
+  // Setup the event or similar that will be activated on notification.
+  // See CudaNotification or CannNotification for examples.
   //
   // e.g.
   // CUDA: cudaStreamWaitEvent(static_cast<cudaStream_t>(device_stream.GetHandle()), event_)
@@ -60,16 +61,18 @@ void ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, _In_ O
   //
   // `event_` should be a member that is created in the ctor.
   // The stream handle should come from the StreamImpl instance and can be the real type so no static_cast is needed.
+  return nullptr;
 }
 
 /*static*/
-void ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ void* this_ptr) noexcept {
+OrtStatus* ORT_API_CALL NotificationImpl::WaitOnHostImpl(_In_ void* this_ptr) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
   static_cast<void>(impl);
 
   // e.g.
   // CUDA: cudaEventSynchronize(event_)
   // CANN: aclrtSynchronizeEvent(event_)
+  return nullptr;
 }
 
 /*static*/

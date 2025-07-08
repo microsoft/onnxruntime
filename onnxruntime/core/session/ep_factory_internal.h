@@ -64,6 +64,7 @@ class EpFactoryInternalImpl {
   }
 
   virtual OrtStatus* CreateSyncStreamForDevice(_In_ const OrtMemoryDevice* /*memory_device*/,
+                                               _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
                                                _Outptr_result_maybenull_ OrtSyncStreamImpl** stream) {
     *stream = nullptr;
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
@@ -135,8 +136,9 @@ class EpFactoryInternal : public OrtEpFactory {
   }
 
   OrtStatus* CreateSyncStreamForDevice(_In_ const OrtMemoryDevice* memory_device,
+                                       _In_opt_ const OrtKeyValuePairs* stream_options,
                                        _Outptr_result_maybenull_ OrtSyncStreamImpl** stream) {
-    return impl_->CreateSyncStreamForDevice(memory_device, stream);
+    return impl_->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
   // Function ORT calls to release an EP instance.

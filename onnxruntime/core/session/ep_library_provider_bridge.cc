@@ -76,8 +76,11 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
     return ep_factory_.IsStreamAware(&ep_factory_);
   }
 
-  OrtStatus* CreateSyncStreamForDevice(const OrtMemoryDevice* device, OrtSyncStreamImpl** stream) noexcept override {
-    return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, stream);
+  OrtStatus* CreateSyncStreamForDevice(const OrtMemoryDevice* device,
+                                       const OrtKeyValuePairs* stream_options,
+                                       OrtSyncStreamImpl** stream) noexcept override {
+    return ep_factory_.CreateSyncStreamForDevice(&ep_factory_, device, /*OrtEp*/ nullptr, stream_options,
+                                                 stream);
   }
 
   OrtEpFactory& ep_factory_;           // OrtEpFactory from the provider bridge EP

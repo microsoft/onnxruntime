@@ -49,7 +49,7 @@ class Notification : public synchronize::Notification {
 class Stream : public onnxruntime::Stream {
  public:
   Stream(const OrtDevice& memory_device, OrtSyncStreamImpl& impl, const logging::Logger& logger)
-      : onnxruntime::Stream(&impl, memory_device), impl_{impl}, logger_{logger} {
+      : onnxruntime::Stream(impl.GetHandle(&impl), memory_device), impl_{impl}, logger_{logger} {
   }
 
   std::unique_ptr<synchronize::Notification> CreateNotification(size_t num_consumers) override {

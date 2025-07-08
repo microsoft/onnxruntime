@@ -3240,6 +3240,7 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
 }
 
 ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** ort_stream) {
   API_IMPL_BEGIN
   if (ep_device == nullptr || ort_stream == nullptr) {
@@ -3257,7 +3258,7 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   // get the stream implementation from the EP factory
   OrtSyncStreamImpl* stream_impl = nullptr;
   ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(), ort_mem_device,
-                                                             &stream_impl));
+                                                             /*ep*/ nullptr, stream_options, &stream_impl));
 
   if (stream_impl == nullptr) {
     // unexpected given we already checked the OrtEpDevice has device_memory_info
@@ -3276,18 +3277,15 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle) {
-  API_IMPL_BEGIN
-  *handle = stream->GetHandle();
-  return nullptr;
-  API_IMPL_END
+ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* stream) {
+  return stream->GetHandle();
 }
 
 ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_stream) {
   // convert from API alias to internal type
   auto* stream = static_cast<Stream*>(ort_stream);
 
-  // the only way for the user to get a non-const OrtSyncStream is from CreateSyncStreamForDevice,
+  // the only way for the user to get a non-const OrtSyncStream is from CreateSyncStreamForEpDevice,
   // so we can safely cast to the plugin_ep::Stream type.
   std::unique_ptr<plugin_ep::Stream> ep_stream(reinterpret_cast<plugin_ep::Stream*>(stream));
 }
@@ -3295,7 +3293,7 @@ ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* ort_str
 ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) const OrtValue** src_tensors,
                     _In_reads_(num_tensors) OrtValue** dst_tensors,
-                    _In_reads_opt_(num_tensors) OrtSyncStream** streams,
+                    _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors) {
   API_IMPL_BEGIN
   if (env == nullptr || src_tensors == nullptr || dst_tensors == nullptr || num_tensors == 0) {
@@ -3342,7 +3340,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
     pairs.push_back({
         src_tensors[i]->Get<Tensor>(),
         *dst_tensors[i]->GetMutable<Tensor>(),
-        streams ? static_cast<Stream*>(streams[i]) : nullptr,
+        stream,
     });
   }
 
@@ -3350,34 +3348,6 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
 
   return nullptr;
 
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::CreateInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
-  API_IMPL_BEGIN
-  // we only ever expose the plugin_ep::Stream
-  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
-
-  return stream->CreateInputNotification();
-
-  API_IMPL_END
-}
-ORT_API_STATUS_IMPL(OrtApis::ActivateInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
-  API_IMPL_BEGIN
-  // we only ever expose the plugin_ep::Stream
-  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
-  return stream->ActivateInputNotification();
-
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::ReleaseInputSyncNotification, _In_ OrtSyncStream* ort_stream) {
-  API_IMPL_BEGIN
-  // we only ever expose the plugin_ep::Stream
-  plugin_ep::Stream* stream = reinterpret_cast<plugin_ep::Stream*>(ort_stream);
-  stream->ReleaseInputNotification();
-
-  return nullptr;
   API_IMPL_END
 }
 
@@ -3877,10 +3847,6 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::ReleaseSyncStream,
 
     &OrtApis::CopyTensors,
-
-    &OrtApis::CreateInputSyncNotification,
-    &OrtApis::ActivateInputSyncNotification,
-    &OrtApis::ReleaseInputSyncNotification,
 };
 
 // OrtApiBase can never change as there is no way to know what version of OrtApiBase is returned by OrtGetApiBase.

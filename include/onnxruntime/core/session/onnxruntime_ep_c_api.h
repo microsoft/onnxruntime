@@ -94,7 +94,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, Activate, _In_ void* this_ptr);
+  ORT_API2_STATUS(Activate, _In_ void* this_ptr);
 
   /** \brief Wait for a device to device operation to complete.
    *
@@ -103,7 +103,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* stream);
+  ORT_API2_STATUS(WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* stream);
 
   /** \brief Wait for a device to host operation to complete.
    *
@@ -111,7 +111,7 @@ typedef struct OrtSyncNotificationImpl {
    *
    * \since Version 1.23.
    */
-  ORT_API_T(void, WaitOnHost, _In_ void* this_ptr);
+  ORT_API2_STATUS(WaitOnHost, _In_ void* this_ptr);
 } OrtSyncNotificationImpl;
 
 /** \brief Struct that an EP implements if it wishes to implement Stream support.
@@ -430,43 +430,6 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
-
-  //
-  // onnxruntime::Stream.
-  // We have a derived class on the ORT side and implement the virtual functions using OrtSyncStreamImpl.
-  //
-
-  /** \brief Get the OrtSyncStreamImpl instance from an OrtSyncStream.
-   *
-   * This is used to access the implementation of the stream for notification and other operations.
-   * The OrtSyncStream is created by ORT and contains the OrtSyncStreamImpl provided by the EP.
-   *
-   * \param[in] stream The OrtSyncStream instance to get the implementation from.
-   * \return The OrtSyncStreamImpl instance associated with the OrtSyncStream.
-   *
-   * \since Version 1.23.
-   */
-  ORT_API_T(OrtSyncStreamImpl*, SyncStream_GetStreamImpl, _In_ OrtSyncStream* stream);
-
-  //// TBD if we need this
-  //// onnxruntime::synchronize::Notification.
-  //// We have a derived class on the ORT side and implement the virtual functions via OrtSyncNotificationImpl.
-  ////
-
-  ///** \brief Create a new OrtSyncNotification instance for the given OrtSyncStream.
-  // *
-  // * ORT will release the OrtSyncNotification instance when it is no longer needed by calling the Release function.
-  // *
-  // * \param[in] stream The OrtSyncStream instance to create the OrtSyncNotification for.
-  // * \param[in] impl The OrtSyncNotificationImpl instance that implements the notification behavior.
-  // * \param[out] notification Pointer to the created OrtSyncNotification instance.
-  // *
-  // * \snippet{doc} snippets.dox OrtStatus Return Value
-  // *
-  // * \since Version 1.23.
-  // */
-  // ORT_API2_STATUS(CreateSyncNotification, _In_ OrtSyncStream* stream, _In_ OrtSyncNotificationImpl* impl,
-  //                _Outptr_ OrtSyncNotification** notification);
 };
 
 /**
@@ -866,6 +829,10 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
+   * \param[in[ ep The OrtEp if the stream is being created for a specific EP instance. The instance options may affect
+   *               stream behavior (e.g. whether graph capture is enabled).
+   *               Nullptr when called from outside of an inference session.
+   * \param[in] stream_options Options for stream creation. May be nullptr.
    * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -874,6 +841,8 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
+                  _In_opt_ const OrtEp* ep,
+                  _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };
 
