@@ -382,6 +382,8 @@ Status FlashAttentionProgram::GenerateShaderCode(ShaderHelper& shader) const {
   // sum is the second term of the same expression    : Σ_j=1:b e^(Xi[j]-Mi)
   // o_ratio is the part of the first term of o'_i expression above : d'_(i-1) * e^(M_(i-1)-M_i) / d'_i
   //
+
+  // TODO: support smooth softmax and head_sink
   shader.MainFunctionBody() << R"MAIN_FN(
     var local_max_temp = max(qk_1, qk_2);
     if (sg_size > 8)
