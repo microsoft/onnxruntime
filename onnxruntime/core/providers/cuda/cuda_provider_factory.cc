@@ -84,8 +84,8 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
     return std::make_unique<CUDAAllocator>(device_id, name);
   }
 
-  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) override {
-    return std::make_unique<CUDAPinnedAllocator>(name);
+  std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) override {
+    return std::make_unique<CUDAPinnedAllocator>(device_id, name);
   }
 
   std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() override {
@@ -112,7 +112,7 @@ struct ProviderInfo_CUDA_Impl final : ProviderInfo_CUDA {
   void CudaCall_true(int retCode, const char* exprString, const char* libName, int successCode, const char* msg, const char* file, const int line) override { CudaCall<cudaError, true>(cudaError(retCode), exprString, libName, cudaError(successCode), msg, file, line); }
 
   void CopyGpuToCpu(void* dst_ptr, const void* src_ptr, const size_t size, const OrtMemoryInfo& dst_location, const OrtMemoryInfo& src_location) override {
-    ORT_ENFORCE(dst_location.device.Type() == OrtDevice::CPU);
+    ORT_ENFORCE(dst_location.device.UsesCpuMemory(), "Copy destination is not CPU memory");
 
     // Current CUDA device.
     int device;
@@ -308,12 +308,14 @@ CUDA_Provider* GetProvider() {
 }  // namespace onnxruntime
 
 #include "core/framework/error_code_helper.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
   CudaEpFactory(const OrtApi& ort_api_in) : ort_api{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -327,6 +329,10 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
     return factory->vendor.c_str();
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return ORT_VERSION;
   }
 
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,

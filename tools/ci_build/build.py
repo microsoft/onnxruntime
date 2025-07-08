@@ -350,6 +350,7 @@ def generate_build_tree(
     rocm_home,
     nccl_home,
     tensorrt_home,
+    tensorrt_rtx_home,
     migraphx_home,
     acl_home,
     acl_libs,
@@ -722,8 +723,10 @@ def generate_build_tree(
         cmake_args.append("-Donnxruntime_ROCM_HOME=" + rocm_home)
         cmake_args.append("-Donnxruntime_ROCM_VERSION=" + args.rocm_version)
 
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         cmake_args.append("-Donnxruntime_TENSORRT_HOME=" + tensorrt_home)
+    if args.use_nv_tensorrt_rtx:
+        cmake_args.append("-Donnxruntime_TENSORRT_RTX_HOME=" + tensorrt_rtx_home)
 
     if args.use_cuda:
         nvcc_threads = number_of_nvcc_threads(args)
@@ -1100,11 +1103,11 @@ def generate_build_tree(
         cflags = []
         cxxflags = None
         ldflags = None
-        cudaflags = []
+        nvcc_flags = []
         if is_windows() and not args.android and not args.build_wasm:
             njobs = number_of_parallel_jobs(args)
             if args.use_cuda:
-                cudaflags.append("-allow-unsupported-compiler")
+                nvcc_flags.append("-allow-unsupported-compiler")
             if njobs > 1:
                 if args.parallel == 0:
                     cflags += ["/MP"]
@@ -1143,15 +1146,21 @@ def generate_build_tree(
                 if not args.disable_exceptions:
                     cxxflags.append("/EHsc")
                 if args.use_cuda:
-                    # On Windows, nvcc passes /EHsc to the host compiler by default.
-                    cuda_compile_flags_str = ""
+                    # nvcc flags is like --name=value or -name
+                    # MSVC flags are like /name=value or /name
+                    msvc_flags = ""
                     for compile_flag in cflags:
-                        if compile_flag.startswith("/D"):
-                            cudaflags.append(compile_flag)
+                        if compile_flag.startswith("-"):
+                            nvcc_flags.append(compile_flag)
                         else:
-                            cuda_compile_flags_str = cuda_compile_flags_str + " " + compile_flag
-                    if len(cuda_compile_flags_str) != 0:
-                        cudaflags.append(f'-Xcompiler="{cuda_compile_flags_str}"')
+                            if not compile_flag.startswith("/"):
+                                log.warning(
+                                    "Flag (%s) is not started with - or /. It will be passed to host (MSVC) compiler.",
+                                    compile_flag,
+                                )
+                            msvc_flags = msvc_flags + " " + compile_flag
+                    if len(msvc_flags) != 0:
+                        nvcc_flags.append(f'-Xcompiler="{msvc_flags}"')
             elif is_linux() or is_macOS() or args.build_wasm:
                 if is_linux() and not args.build_wasm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
@@ -1200,7 +1209,7 @@ def generate_build_tree(
                         cflags += ["-fcf-protection"]
                 cxxflags = cflags.copy()
                 if args.use_cuda:
-                    cudaflags = cflags.copy()
+                    nvcc_flags = cflags.copy()
         if cxxflags is None and cflags is not None and len(cflags) != 0:
             cxxflags = cflags.copy()
         config_build_dir = get_config_build_dir(build_dir, config)
@@ -1211,8 +1220,8 @@ def generate_build_tree(
                 "-DCMAKE_C_FLAGS={}".format(" ".join(cflags)),
                 "-DCMAKE_CXX_FLAGS={}".format(" ".join(cxxflags)),
             ]
-        if cudaflags is not None and len(cudaflags) != 0:
-            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(cudaflags))]
+        if nvcc_flags is not None and len(nvcc_flags) != 0:
+            temp_cmake_args += ["-DCMAKE_CUDA_FLAGS_INIT={}".format(" ".join(nvcc_flags))]
         if ldflags is not None and len(ldflags) != 0:
             temp_cmake_args += [
                 "-DCMAKE_EXE_LINKER_FLAGS_INIT={}".format(" ".join(ldflags)),
@@ -1383,7 +1392,7 @@ def setup_cann_vars(args):
 
 def setup_tensorrt_vars(args):
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    if args.use_tensorrt:
         tensorrt_home = args.tensorrt_home if args.tensorrt_home else os.getenv("TENSORRT_HOME")
         tensorrt_home_valid = tensorrt_home is not None and os.path.exists(tensorrt_home)
         if not tensorrt_home_valid:
@@ -2352,7 +2361,10 @@ def main():
 
     # if using tensorrt, setup tensorrt paths
     tensorrt_home = ""
-    if args.use_tensorrt or args.use_nv_tensorrt_rtx:
+    tensorrt_rtx_home = ""
+    if args.use_nv_tensorrt_rtx:
+        tensorrt_rtx_home = args.tensorrt_rtx_home
+    if args.use_tensorrt:
         tensorrt_home = setup_tensorrt_vars(args)
 
     # if using migraphx, setup migraphx paths
@@ -2495,6 +2507,7 @@ def main():
             rocm_home,
             nccl_home,
             tensorrt_home,
+            tensorrt_rtx_home,
             migraphx_home,
             acl_home,
             acl_libs,

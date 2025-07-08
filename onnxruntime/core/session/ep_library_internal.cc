@@ -83,7 +83,7 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
         // TODO: Should we ignore a user provided 'device_id' when they select an OrtEpDevice as that is associated with
         //       a specific device.
         //       How would we know what options should not allow user overrides if set in OrtEpDevice?
-        if (auto it = device.metadata.entries.find("DxgiAdapterNumber"); it != device.metadata.entries.end()) {
+        if (auto it = device.metadata.Entries().find("DxgiAdapterNumber"); it != device.metadata.Entries().end()) {
           ep_options = std::make_unique<OrtKeyValuePairs>();
           ep_options->Add("device_id", it->second.c_str());
         }

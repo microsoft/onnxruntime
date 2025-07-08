@@ -135,11 +135,11 @@ void* MIGraphXStream::GetResource(int version, int id) const {
 }
 
 // CPU Stream command handles
-void WaitMIGraphXNotificationOnDevice(Stream& stream, synchronize::Notification& notification) {
-  static_cast<MIGraphXNotification*>(&notification)->wait_on_device(stream);
+void WaitMIGraphXNotificationOnDevice(Stream* stream, synchronize::Notification& notification) {
+  static_cast<MIGraphXNotification*>(&notification)->wait_on_device(*stream);
 }
 
-void WaitMIGraphXNotificationOnHost(Stream& /*stream*/, synchronize::Notification& notification) {
+void WaitMIGraphXNotificationOnHost(Stream* /*stream*/, synchronize::Notification& notification) {
   static_cast<MIGraphXNotification*>(&notification)->wait_on_host();
 }
 
