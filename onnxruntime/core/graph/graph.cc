@@ -3484,7 +3484,8 @@ Status Graph::AddInitializedOrtValue(const ONNX_NAMESPACE::TensorProto& tensor_p
   name_to_initial_tensor_.emplace(tensor_proto.name(), tensor_added);
 
   if (ortvalue_initializer.IsAllocated()) {
-    ORT_RETURN_IF_NOT(utils::HasExternalDataInMemory(tensor_proto),
+    const bool has_data_in_memory = utils::HasExternalDataInMemory(tensor_proto);
+    ORT_RETURN_IF_NOT(has_data_in_memory,
                       "TensorProto is expected to refer to the ortvalue_initializer");
     const auto element_type = static_cast<int32_t>(utils::GetTensorElementType(tensor_proto));
     const auto& tensor = ortvalue_initializer.Get<Tensor>();

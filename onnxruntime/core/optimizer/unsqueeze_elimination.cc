@@ -71,6 +71,7 @@ Status UnsqueezeElimination::Apply(Graph& graph, Node& node, RewriteRuleEffect& 
   }
 
   if (utils::HasExternalDataInMemory(new_tensor_proto)) {
+    ORT_ENFORCE(ort_value.IsAllocated());
     TensorShape new_shape(new_tensor_proto.dims());
     ort_value.GetMutable<Tensor>()->Reshape(new_shape);
   }
