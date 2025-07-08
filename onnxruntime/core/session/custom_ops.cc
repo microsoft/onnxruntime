@@ -456,9 +456,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
                                       "Size of data not large enough to hold the string.");
         } else {
           char* output_c = reinterpret_cast<char*>(data);
-          for (char c : s) {
-            *output_c++ = c;
-          }
+          memcpy(output_c, s.data(), s.size());
         }
         *out = s.size();
         break;
