@@ -15,8 +15,9 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    size_t& packed_b_size,
                    TensorShape& b_shape
 #ifdef USE_KLEIDIAI
-                   , bool enableKleidiPacking = true
+                   ,
+                   bool enableKleidiPacking = true
 #endif
-                   );
+);
 
 };  // namespace onnxruntime

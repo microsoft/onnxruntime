@@ -108,10 +108,10 @@ bool GemmPackBFp32(AllocatorPtr& alloc,
                    size_t& packed_b_size,
                    TensorShape& b_shape
 #ifdef USE_KLEIDIAI
-                   , bool enableKleidiPacking
+                   ,
+                   bool enableKleidiPacking
 #endif
-                   )
-{
+) {
   // Only handle the common case of a 2D weight matrix. Additional matrices
   // could be handled by stacking the packed buffers.
   if (tensor_b.Shape().NumDimensions() != 2) {

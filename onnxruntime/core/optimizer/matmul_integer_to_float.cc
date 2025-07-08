@@ -179,8 +179,8 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
           const NodeArg& candidate = *(tmp_add_node->InputDefs()[idx]);
           if (graph_utils::IsConstantInitializer(graph, candidate.Name(), true) &&
               CheckBiasShape(candidate.Shape())) {
-              p_add_node = graph.GetNode(tmp_add_node->Index());
-              break;
+            p_add_node = graph.GetNode(tmp_add_node->Index());
+            break;
           }
         }
       }
@@ -208,7 +208,7 @@ Status MatMulIntegerToFloatFusion::ApplyImpl(Graph& graph, bool& modified, int g
     }
 
     if (p_add_node != nullptr) {
-    input_defs.push_back(p_add_node->MutableInputDefs()[idx]);
+      input_defs.push_back(p_add_node->MutableInputDefs()[idx]);
     }
 
     std::string op_type = "MatMulIntegerToFloat";
