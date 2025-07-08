@@ -581,7 +581,7 @@ Return Value:
     }
 
     this->QNBitGemmDispatch = &GetMlasQNBitGemmDispatchNeon(HasDotProductInstructions);
-
+#ifdef USE_KLEIDIAI
     if (MLAS_CPUIDINFO::GetCPUIDInfo().HasArm_SME()) {
         this->MlasGemmBatch = ArmKleidiAI::MlasGemmBatch;
         this->MlasGemmPackBSize = ArmKleidiAI::MlasGemmPackBSize;
@@ -589,6 +589,7 @@ Return Value:
         this->MlasConvPrepare = ArmKleidiAI::MlasConvPrepare;
         this->MlasConv = ArmKleidiAI::MlasConv;
     }
+#endif
 
 #if defined(__linux__)
     //

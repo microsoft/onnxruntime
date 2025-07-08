@@ -456,8 +456,13 @@ static std::unique_ptr<std::byte[]> LhsPackImageDataSme(const size_t ci, const s
                                                         const size_t sw, const size_t padding, const float* in,
                                                         MLAS_THREADPOOL* ThreadPool)
 {
-    static const std::array<float, 256> pad_ptr{0.f};
-    assert(pad_ptr.size() > ci);
+    size_t padsize = 256;
+    if(ci > padsize)
+    {
+        // figure out how many blocks needed to correctly fill padding
+        padsize = ((ci + padsize - 1) / padsize) * padsize;
+    }
+    static std::vector<float>pad_ptr(padsize, 0.f);
 
     LhsCacheKey key = {
         ci, ih, iw,
