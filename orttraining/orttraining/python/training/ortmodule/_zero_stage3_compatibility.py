@@ -415,6 +415,7 @@ def stage3_export_context(enable: bool, stage3_param_handle, flattened_module):
         stage3_param_handle._zero_stage3_param_map = _get_all_zero_stage3_params(flattened_module)
 
         try:
+
             def _get_tensor_rank(x) -> int | None:
                 ### Adapted from https://github.com/pytorch/pytorch/blob/185515368bcd7d94ac06ab1634f22b747b03c6d9/torch/onnx/symbolic_helper.py#L561
                 # Retrieve the real rank for the stage3 weights, because stage3 weights are all (0).

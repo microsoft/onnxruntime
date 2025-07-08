@@ -1327,7 +1327,11 @@ class SymbolicShapeInference:
         axis = get_attribute(node, "axis", -1)
         axis = handle_negative_axis(axis, len(sympy_shape) + 1)
         new_shape = get_shape_from_sympy_shape(
-            [*sympy_shape[:axis], self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth, *sympy_shape[axis:]]
+            [
+                *sympy_shape[:axis],
+                self._new_symbolic_dim_from_output(node) if not is_literal(depth) else depth,
+                *sympy_shape[axis:],
+            ]
         )
         vi = self.known_vi_[node.output[0]]
         vi.CopyFrom(
@@ -2036,7 +2040,7 @@ class SymbolicShapeInference:
                 make_value_info_func(
                     node.output[i_o],
                     self.known_vi_[node.input[0]].type.tensor_type.elem_type,
-                    get_shape_from_sympy_shape([*input_sympy_shape[:axis], split[i_o], *input_sympy_shape[axis + 1:]]),
+                    get_shape_from_sympy_shape([*input_sympy_shape[:axis], split[i_o], *input_sympy_shape[axis + 1 :]]),
                 )
             )
             self.known_vi_[vi.name] = vi

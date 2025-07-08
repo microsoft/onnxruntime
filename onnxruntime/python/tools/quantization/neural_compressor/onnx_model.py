@@ -554,7 +554,6 @@ class ONNXModel:
     def topological_sort(self, enable_subgraph=False):
         """Topological sort the model."""
 
-
         if not enable_subgraph:
             input_name_to_nodes = {}
             output_name_to_node = {}

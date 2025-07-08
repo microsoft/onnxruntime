@@ -233,7 +233,6 @@ class ORTGenerator:
         has_eos = torch.zeros(batch_size, device=self.device, dtype=torch.bool)
 
         if benchmark:
-
             latency = []
 
         prompt_run = True
