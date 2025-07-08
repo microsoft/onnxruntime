@@ -32,7 +32,7 @@
    OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
                                              OrtEpGraphSupportInfo* graph_support_info) {
      onnx::GraphProto graph_proto;
-     OrtEpUtils::OrtGraphToProto(*ort_graph, model_proto);
+     OrtEpUtils::OrtGraphToProto(*ort_graph, graph_proto);
 
      // graph_proto stores initializers internally
    }
@@ -69,8 +69,8 @@
        return Ort::Status{nullptr};
      }
 
-     ONNX_NAMESPACE::ModelProto model_proto;
-     OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+     ONNX_NAMESPACE::GraphProto graph_proto;
+     OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), graph_proto, handle_initializer_data);
 
      // graph_proto stores large initializers in an external file
    }
