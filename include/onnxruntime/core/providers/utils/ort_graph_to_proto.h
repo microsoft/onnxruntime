@@ -1,72 +1,81 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-// SUMMARY:
-//   Utilities to serialize an OrtGraph into an ONNX GraphProto or ModelProto. Can be used by execution provider
-//   implementations that need to convert an OrtGraph instance into an ONNX protobuf model.
-//
-//   These utilities are experimental. Users may copy this file and modify as needed.
-//
-// USAGE:
-//   This is a header-only implementation that includes both the function declarations and definitions. Copy this file
-//   into a project that links with both ONNX Runtime and ONNX.
-//
-//   Define the ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL preprocessor macro before the #include statement in exactly one C++
-//   file to define the implementation. Example:
-//
-//     #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
-//     #include "ort_graph_to_proto.h"
-//
-//   Other compilation units that depend on these utilities should only include the file.
-//
-//   Example program snippets are shown below. Refer to the function declarations for detailed usage information.
-//
-// EXAMPLE SNIPPET (initializers stored within TensorProto):
-//
-//   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
-//   #include "ort_graph_to_proto.h"
-//
-//   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph, /* ... */) {
-//     onnx::GraphProto graph_proto;
-//     OrtEpUtils::OrtGraphToProto(*ort_graph, model_proto);
-//
-//     /* graph_proto stores initializers internally */
-//   }
-//
-// EXAMPLE SNIPPET (large initializers stored in external file):
-//
-//   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
-//   #include "ort_graph_to_proto.h"
-//
-//   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph, /* ... */) {
-//     std::string external_file_path = "weights.bin";
-//     std::ofstream out_file(external_file_path, std::ios::binary);
-//
-//     auto handle_initializer_data = [&external_file_path, &out_file](const OrtValueInfo* value_info,
-//                                                                     const void* data, size_t bytes,
-//                                                                     bool& is_external, std::string& location,
-//                                                                     int64_t& offset) -> Ort::Status {
-//       /* OrtValueInfo* could be used to query initializer's name, type, shape, consumers, etc. */
-//       (void)value_info;
-//
-//       if (bytes <= 127) {
-//         is_external = false;  /* Keep small initializers stored inside the TensorProto. */
-//         return Ort::Status{nullptr};
-//       }
-//
-//       offset = out_file.tellp();
-//       location = external_file_path;
-//       out_file.write(static_cast<const char*>(data), bytes);
-//       out_file.flush();
-//       is_external = true;  /* True if is external initializer */
-//       return Ort::Status{nullptr};
-//     }
-//
-//     ONNX_NAMESPACE::ModelProto model_proto;
-//     OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
-//
-//     /* graph_proto stores large initializers in an external file */
-//   }
+/*
+ SUMMARY:
+   Utilities to serialize an OrtGraph into an ONNX GraphProto or ModelProto. Can be used by execution provider
+   implementations that need to convert an OrtGraph instance into an ONNX protobuf model.
+
+   These utilities are experimental. Users may copy this file and modify as needed.
+
+ USAGE:
+   This is a header-only implementation that includes both the function declarations and definitions. Copy this file
+   into a project that links with both ONNX Runtime and ONNX.
+
+   Define the ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL preprocessor macro before the #include statement in exactly one C++
+   file to define the implementation. Example:
+
+     #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+     #include "ort_graph_to_proto.h"
+
+   Other compilation units that depend on these utilities should include this file without defining the
+   preprocessor macro.
+
+   Example program snippets are shown below. Refer to the function declarations for detailed usage information.
+
+ EXAMPLE SNIPPET (initializers stored within TensorProto):
+
+   ```C++
+   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+   #include "ort_graph_to_proto.h"
+
+   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                             OrtEpGraphSupportInfo* graph_support_info) {
+     onnx::GraphProto graph_proto;
+     OrtEpUtils::OrtGraphToProto(*ort_graph, model_proto);
+
+     // graph_proto stores initializers internally
+   }
+   ```
+
+ EXAMPLE SNIPPET (large initializers stored in external file):
+
+   ```C++
+   #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+   #include "ort_graph_to_proto.h"
+
+   OrtStatus* ORT_API_CALL GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* ort_graph,
+                                             OrtEpGraphSupportInfo* graph_support_info) {
+     std::string external_file_path = "weights.bin";
+     std::ofstream out_file(external_file_path, std::ios::binary);
+
+     auto handle_initializer_data = [&external_file_path, &out_file](const OrtValueInfo* value_info,
+                                                                     const void* data, size_t bytes,
+                                                                     bool& is_external, std::string& location,
+                                                                     int64_t& offset) -> Ort::Status {
+       // OrtValueInfo* could be used to query initializer's name, type, shape, consumers, etc.
+       (void)value_info;
+
+       if (bytes <= 127) {
+         is_external = false;  // Keep small initializers stored inside the TensorProto.
+         return Ort::Status{nullptr};
+       }
+
+       offset = out_file.tellp();
+       location = external_file_path;
+       out_file.write(static_cast<const char*>(data), bytes);
+       out_file.flush();
+       is_external = true;  // True if is external initializer
+       return Ort::Status{nullptr};
+     }
+
+     ONNX_NAMESPACE::ModelProto model_proto;
+     OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+
+     // graph_proto stores large initializers in an external file
+   }
+   ```
+*/
 
 #ifndef ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_HEADER
 #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_HEADER
