@@ -42,8 +42,8 @@ def _get_ort_compatible_zero_stage3_hook_function(debug, stats_output_dir, stats
     def _setup_zero_stage3_ort_compatible_hooks(self):
         self.hierarchy = 0
 
-        from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager, ZeROOffloadSubscriber
-        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer
+        from onnxruntime.training.utils.hooks import StatisticsSubscriber, SubscriberManager, ZeROOffloadSubscriber  # noqa: PLC0415
+        from onnxruntime.training.utils.hooks._zero_offload_subscriber import _zero_offload_one_time_initializer  # noqa: PLC0415
 
         subscribers = [ZeROOffloadSubscriber(self, _zero_offload_one_time_initializer)]
         if debug is True:
@@ -89,7 +89,7 @@ class DummyWork(torch.distributed.distributed_c10d.Work):
 
 
 def _get_ort_compatible_allgather_fn():
-    from deepspeed.utils import get_caller_func
+    from deepspeed.utils import get_caller_func  # noqa: PLC0415
 
     original_allgather_fn = deepspeed.comm.allgather_fn
     output_get_caller_func = get_caller_func()
@@ -111,7 +111,7 @@ def _get_ort_compatible_allgather_fn():
 # In the original logic, if bias is None, after export to ONNX, None becomes a constant, so backward op complains
 # output count more than needed.
 def _zero3_linear_wrap_ort_compatible(input, weight, bias=None):
-    from deepspeed.runtime.zero.linear import LinearFunctionForZeroStage3
+    from deepspeed.runtime.zero.linear import LinearFunctionForZeroStage3  # noqa: PLC0415
 
     return LinearFunctionForZeroStage3.apply(input, weight, bias)
 
@@ -165,7 +165,7 @@ try:
         # Only need to define it once
         deepspeed.comm.allgather_fn = _get_ort_compatible_allgather_fn()
 
-        from deepspeed.runtime.zero.linear import zero3_linear_wrap
+        from deepspeed.runtime.zero.linear import zero3_linear_wrap  # noqa: PLC0415
 
         if torch.nn.functional.linear is zero3_linear_wrap:
             torch.nn.functional.linear = _zero3_linear_wrap_ort_compatible
@@ -184,7 +184,7 @@ def _get_params_for_current_module(module: torch.nn.Module) -> list[torch.nn.par
     Logic adapted from
     https://github.com/microsoft/DeepSpeed/blob/9d79cfd1e90cae9306dc1b5837d374b2c9489ac8/deepspeed/runtime/zero/partitioned_param_coordinator.py#L267
     """
-    from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params
+    from deepspeed.runtime.zero.partitioned_param_coordinator import iter_params  # noqa: PLC0415
 
     # Retrieve all parameters for this module.
     partitioned_params = list(iter_params(module))
@@ -195,7 +195,7 @@ def _get_params_for_current_module(module: torch.nn.Module) -> list[torch.nn.par
 @nvtx_function_decorator
 def _get_all_zero_stage3_params(module: torch.nn.Module) -> dict[str, torch.nn.parameter.Parameter]:
     """Retrieve all the parameters that are offloaded."""
-    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+    from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus  # noqa: PLC0415
 
     all_offloaed_params = OrderedDict()
     for name, param in module.named_parameters():
@@ -572,7 +572,7 @@ class ZeROOffloadSubscriber(SubscriberBase):
         @nvtx_function_decorator
         def _wrap_post_forward_module_hook(module, input, outputs):
             # STAGE3WARN#6: _post_forward_module_hook applied this for each tensor output, so we do a simple wrap here.
-            from deepspeed.runtime.zero.partition_parameters import is_zero_param
+            from deepspeed.runtime.zero.partition_parameters import is_zero_param  # noqa: PLC0415
 
             updated_outputs = _post_forward_module_hook(module, input, outputs)
             if updated_outputs:

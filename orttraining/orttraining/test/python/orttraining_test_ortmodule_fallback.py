@@ -384,9 +384,9 @@ def test_ortmodule_fallback_init__torch_version(is_training, fallback_enabled, m
     # matching_policy: True matches FALLBACK_UNSUPPORTED_TORCH_MODEL policy to ORTModuleDeviceException exception.
     #   Otherwise, an incorrect policy (FALLBACK_UNSUPPORTED_DEVICE) is used to verify that the fallback does not happen
 
-    from packaging import version
+    from packaging import version  # noqa: PLC0415
 
-    from onnxruntime.training.ortmodule import MINIMUM_RUNTIME_PYTORCH_VERSION_STR
+    from onnxruntime.training.ortmodule import MINIMUM_RUNTIME_PYTORCH_VERSION_STR  # noqa: PLC0415
 
     runtime_pytorch_version = version.parse(torch.__version__.split("+")[0])
     minimum_runtime_pytorch_version = version.parse(MINIMUM_RUNTIME_PYTORCH_VERSION_STR)
