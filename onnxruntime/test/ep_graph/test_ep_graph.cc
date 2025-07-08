@@ -331,31 +331,24 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   }
 
   OrtGraph* sub_graph;
-  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetGraphView(&api_graph, selected_nodes.data(), selected_nodes.size(), false, true, &sub_graph));
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetGraphView(&api_graph, selected_nodes.data(), selected_nodes.size(), &sub_graph));
 
-  /*
-  bool debug = true;
-  if (debug) {
-    // Convert OrtGraph to ModelProto and dump it to disk for debug purpose.
-    const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
-    std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
-    auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
-    GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
-    model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+  // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
+  // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
+  const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+  std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
+  auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
 
-    std::string string_buf;
-    model_proto->SerializeToString(&string_buf);
+  const char* graph_name = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetName(&api_graph, &graph_name));
+  std::string name = graph_name;
+  name += "_half.onnx";
 
-    const char* graph_name = nullptr;
-    ort_api.Graph_GetName(&api_graph, &graph_name);
-    std::string name = graph_name;
-    name += "_half.onnx";
-
-    // Dump subgraph for debugging
-    std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
-    model_proto->SerializeToOstream(&dump);
-  }
-  */
+  // Dump subgraph for debugging
+  std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+  model_proto->SerializeToOstream(&dump);
 
   ort_api.ReleaseGraph(sub_graph);
 }

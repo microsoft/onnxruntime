@@ -31,9 +31,6 @@
 #include "core/graph/graph.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/graph/ep_api_types.h"
-#include "core/graph/model.h"
-#include "core/graph/ep_graph_utils.h"
-#include "core/graph/graph_utils.h"
 #include "core/providers/get_execution_providers.h"
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/allocator_adapters.h"
@@ -2697,33 +2694,11 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
 ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
                     _In_ const OrtNode** nodes,
                     _In_ size_t num_nodes,
-                    _In_ bool create_standalone_ortgraph,
-                    _In_ bool copy_in_memory_initializer,
                     _Outptr_ OrtGraph** dst_graph) {
   API_IMPL_BEGIN
 
   if (num_nodes == 0) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_nodes' argument should be > 0");
-  }
-
-  if (create_standalone_ortgraph) {
-#if !defined(ORT_MINIMAL_BUILD)
-    std::unique_ptr<Model> model;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(ep_graph_utils::GetSubgraphAsModelFromGraph(src_graph, nodes, num_nodes, copy_in_memory_initializer, model));
-    Graph& new_graph = model->MainGraph();
-    auto new_graph_viewer = std::make_unique<GraphViewer>(new_graph);
-    std::unique_ptr<EpGraph> result;
-    ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(new_graph_viewer), std::move(model), result));
-
-    *dst_graph = result.release();
-    return nullptr;
-#else
-    ORT_UNUSED_PARAMETER(src_graph);
-    ORT_UNUSED_PARAMETER(nodes);
-    ORT_UNUSED_PARAMETER(copy_in_memory_initializer);
-    ORT_UNUSED_PARAMETER(dst_graph);
-    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "\'create_standalone_ortgraph\'= true is not supported in this API in a minimal build.");
-#endif
   }
 
   const EpGraph* ep_graph = EpGraph::ToInternal(src_graph);
