@@ -85,19 +85,43 @@ stages:
       inputs:
         targetType: 'inline'
         script: |
-          npm install -g appium
+          Write-Host "Installing Appium with administrator privileges..."
 
-          Start-Process -FilePath "appium" -ArgumentList "server", "--address", "127.0.0.1", "--port", "4723", "--use-drivers", "uiautomator2", "--base-path", "/wd/hub" -WindowStyle Hidden
+          $scriptBlock = {
+            Write-Host "Running npm install with admin privileges..."
+            npm install -g appium
 
-          Start-Sleep -Seconds 10
+            Write-Host "Starting Appium server with admin privileges..."
+            Start-Process -FilePath "appium" -ArgumentList "server", "--address", "127.0.0.1", "--port", "4723", "--use-drivers", "uiautomator2", "--base-path", "/wd/hub" -WindowStyle Hidden
+          }
 
-          try {
-            $response = Invoke-WebRequest -Uri "http://127.0.0.1:4723/wd/hub/status" -Method GET -TimeoutSec 30
-            Write-Host "Appium server is running successfully"
-            Write-Host "Response: $($response.Content)"
-          } catch {
-            Write-Error "Failed to connect to Appium server: $_"
-            exit 1
+          Start-Process -FilePath "powershell.exe" -ArgumentList "-Command", "& {$scriptBlock}" -Verb RunAs -WindowStyle Hidden -Wait
+
+          Write-Host "Waiting for Appium server to start..."
+          Start-Sleep -Seconds 15
+
+          Write-Host "Verifying Appium server status..."
+          $maxRetries = 5
+          $retryCount = 0
+          $serverRunning = $false
+
+          while ($retryCount -lt $maxRetries -and -not $serverRunning) {
+            try {
+              $response = Invoke-WebRequest -Uri "http://127.0.0.1:4723/wd/hub/status" -Method GET -TimeoutSec 30
+              Write-Host "Appium server is running successfully"
+              Write-Host "Response: $($response.Content)"
+              $serverRunning = $true
+            } catch {
+              $retryCount++
+              Write-Warning "Attempt $retryCount failed to connect to Appium server: $_"
+              if ($retryCount -lt $maxRetries) {
+                Write-Host "Retrying in 5 seconds..."
+                Start-Sleep -Seconds 5
+              } else {
+                Write-Error "Failed to connect to Appium server after $maxRetries attempts"
+                exit 1
+              }
+            }
           }
 
     - task: PowerShell@2
