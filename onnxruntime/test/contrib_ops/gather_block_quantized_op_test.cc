@@ -18,20 +18,12 @@ namespace onnxruntime {
 namespace test {
 
 // When uint8_t data type is used GatherBlockQuantize applies MatMulNBit's conventions for storing the data.
-// That is when no zero points are specified a default zero point of 8 is used. This convertor hence
-// compensates for that by adding 8 to the data values, so that the outputs match the results that
-// we be seen with non uint8_t data types.
-template <typename T1>
+// That is when no zero points are specified a default zero point of 8 (for 4 bits) or 128 (for 8 bits) is used.
+// This convertor hence compensates for that by adding it to the data values, so that the outputs match the results
+// that we seen with non uint8_t data types.
+// Since both weight and zero_point have same offset, the offset will not impact the value of dequantization:
+// `(weight - zero_point) * scale` has same value as `((weight + offset) - (zero_point + offset)) * scale`.
 void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t>& data_shape, int bits = 4) {
-  if (!std::is_same_v<T1, uint8_t>) {
-    return;
-  }
-
-  if (bits == 8) {
-    return;  // No packing needed for 8 bits
-  }
-  ORT_ENFORCE(bits == 4);
-
   int64_t total_elements = 1;
   for (const auto& dim : data_shape) {
     total_elements *= dim;
@@ -194,7 +186,9 @@ void RunUnpackedData(
   // Make a copy to avoid modifying the original unpacked data.
   std::vector<int> packed_data = unpacked_data;
   std::vector<int64_t> packed_data_shape = unpacked_data_shape;
-  PackDataForUint8TypeIfNecessary<T1>(packed_data, packed_data_shape, static_cast<int>(bits));
+  if (std::is_same_v<T1, uint8_t>) {
+    PackDataForUint8TypeIfNecessary(packed_data, packed_data_shape, static_cast<int>(bits));
+  }
 
   auto expect_result = expect_success ? OpTester::ExpectResult::kExpectSuccess : OpTester::ExpectResult::kExpectFailure;
   if (zero_points.empty()) {
@@ -220,7 +214,9 @@ void RunUnpackedData(
   // Make a copy to avoid modifying the original unpacked data.
   std::vector<int> packed_zero_point = zero_points;
   std::vector<int64_t> packed_zero_point_shape = scales_shape;
-  PackDataForUint8TypeIfNecessary<T1>(packed_zero_point, packed_zero_point_shape, static_cast<int>(bits));
+  if (std::is_same_v<T1, uint8_t>) {
+    PackDataForUint8TypeIfNecessary(packed_zero_point, packed_zero_point_shape, static_cast<int>(bits));
+  }
 
   RunGatherBlockQuantized(ToType<T1>(packed_data),
                           packed_data_shape,
