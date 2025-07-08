@@ -72,6 +72,8 @@ stages:
         SpecificArtifact: ${{ parameters.SpecificArtifact }}
         BuildId: ${{ parameters.BuildId }}
 
+    - template: set-version-number-variables-step.yml
+
     # Reconstruct the build dir
     - task: PowerShell@2
       displayName: 'PS: Extract nuget files gpu'
