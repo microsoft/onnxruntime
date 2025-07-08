@@ -336,6 +336,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     info.device_id = desc.DeviceId;
     info.description = std::wstring(desc.Description);
 
+    info.metadata[L"LUID"] = std::to_wstring(key);
     info.metadata[L"DxgiAdapterNumber"] = std::to_wstring(i);
     info.metadata[L"DxgiVideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
   }
@@ -436,8 +437,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         continue;
       }
 
-      DeviceInfo& info = device_info[key];
-
       // Get hardware identifying information
       DXCoreHardwareIDParts idParts = {};
       if (!adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts) ||
@@ -445,8 +444,10 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         continue;  // also need valid ids
       }
 
+      DeviceInfo& info = device_info[key];
       info.vendor_id = idParts.vendorID;
       info.device_id = idParts.deviceID;
+      info.metadata[L"LUID"] = std::to_wstring(key);
 
       // Is this a GPU or NPU
       if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
@@ -580,7 +581,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
         << ", vendor:" << ortdevice.vendor
         << ", type:" << std::dec << static_cast<int>(ortdevice.type)
         << ", metadata: [";
-    for (auto& [key, value] : ortdevice.metadata.entries) {
+    for (auto& [key, value] : ortdevice.metadata.Entries()) {
       oss << key << "=" << value << ", ";
     }
 

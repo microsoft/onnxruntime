@@ -70,11 +70,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
                                                                 seqlens_k,
                                                                 total_seqlen_tensor,
                                                                 scale_,
-                                                                softcap_,
-                                                                head_sink));
+                                                                softcap_));
 
   ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
                                                                                attention_bias,
+                                                                               head_sink,
                                                                                parameters));
 
   const int batch_size = parameters.batch_size;

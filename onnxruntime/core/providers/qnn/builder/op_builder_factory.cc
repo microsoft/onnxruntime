@@ -167,6 +167,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
   }
 
   {
+    CreateReciprocalOpBuilder("Reciprocal", *this);
+  }
+
+  {
     CreatePadOpBuilder("Pad", *this);
   }
 
@@ -180,6 +184,10 @@ OpBuilderRegistrations::OpBuilderRegistrations() {
 
   {
     CreateMatMulOpBuilder("MatMul", *this);
+  }
+
+  {
+    CreateMeanOpBuilder("Mean", *this);
   }
 
   {

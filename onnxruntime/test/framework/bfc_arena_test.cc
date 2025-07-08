@@ -406,7 +406,7 @@ TEST(StreamAwareArenaTest, TestSecureTheChunk) {
 
   bool waitFunctionInvoked = false;
   void* p2 = a.AllocOnStream(BFCArena::DEFAULT_INITIAL_CHUNK_SIZE_BYTES, &stream2,
-                             [&waitFunctionInvoked](Stream&, synchronize::Notification&) { waitFunctionInvoked = true; });
+                             [&waitFunctionInvoked](Stream*, synchronize::Notification&) { waitFunctionInvoked = true; });
 
   std::unordered_map<Stream*, uint64_t> syncTable;
   stream2.CloneCurrentStreamSyncTable(syncTable);

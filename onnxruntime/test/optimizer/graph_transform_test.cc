@@ -9,6 +9,9 @@
 
 #include "gtest/gtest.h"
 #include "gmock/gmock.h"
+
+#include "core/graph/onnx_protobuf.h"
+
 #include "onnx/defs/parser.h"
 #include "onnx/defs/printer.h"
 
@@ -18,7 +21,6 @@
 #include "core/graph/graph_utils.h"
 #include "core/graph/graph_viewer.h"
 #include "core/graph/model.h"
-#include "core/graph/onnx_protobuf.h"
 #include "core/mlas/inc/mlas_q4.h"
 #include "core/optimizer/attention_fusion.h"
 #include "core/optimizer/bias_dropout_fusion.h"
@@ -2694,6 +2696,43 @@ TEST_F(GraphTransformationTests, MatMulAddFusion_NeedReshape_3D) {
   std::unique_ptr<GraphTransformer> transformer = std::make_unique<MatMulAddFusion>();
   ASSERT_STATUS_OK(TestGraphTransformer(build_test_case, 18, *logger_, std::move(transformer), TransformerLevel::Level1,
                                         1, pre_graph_checker, post_graph_checker));
+}
+
+// With attention pattern, but targeting an execution provider that does not perform
+// AttentionFusion, fuse into GEMM should still be happen, rather than skipping them
+TEST_F(GraphTransformationTests, MatMulAddFusion_PreserveAttentionPattern) {
+  constexpr const ORTCHAR_T* model_uri = MODEL_FOLDER "matmul_add_fusion/matmul_add_from_attention.onnx";
+
+  std::shared_ptr<Model> p_model;
+  ASSERT_STATUS_OK(Model::Load(model_uri, p_model, nullptr, *logger_));
+
+  // This toy model contains 11 MatMul + Add pairs, 0 GEMMs.
+  // 7 of them are out of "Attention Pattern" (see MatMulAddFusion::IsAttentionPattern)
+  // 4 of them are in "Attention Pattern" conditionally skipped by MatMulAddFusion pass
+  OpCountMap op_count_before = CountOpsInGraph(p_model->MainGraph());
+  const InlinedHashSet<std::string_view> empty_list = {};
+
+  // In attention pattern, 4 MatMul + Add pairs should be preserved
+  Graph& graph = p_model->MainGraph();
+  onnxruntime::GraphTransformerManager graph_transformation_mgr{5};
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MatMulAddFusion>(empty_list, /*preserve_attention_pattern=*/true), TransformerLevel::Level1));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level1, *logger_));
+  OpCountMap op_count_cpu_ep = CountOpsInGraph(graph);
+  constexpr int expected_fusions1 = 11 - 4;
+  ASSERT_EQ(op_count_cpu_ep["MatMul"], op_count_before["MatMul"] - expected_fusions1);
+  ASSERT_EQ(op_count_cpu_ep["Add"], op_count_before["Add"] - expected_fusions1);
+  ASSERT_EQ(op_count_cpu_ep["Gemm"], op_count_before["Gemm"] + expected_fusions1);
+
+  // In attention pattern, 4 MatMul + Add pairs should be fused into Gemm
+  ASSERT_STATUS_OK(graph_transformation_mgr.Register(
+      std::make_unique<MatMulAddFusion>(empty_list, /*preserve_attention_pattern=*/false), TransformerLevel::Level2));
+  ASSERT_STATUS_OK(graph_transformation_mgr.ApplyTransformers(graph, TransformerLevel::Level2, *logger_));
+  OpCountMap op_count_qnn_ep = CountOpsInGraph(graph);
+  constexpr int expected_fusions2 = 11;
+  ASSERT_EQ(op_count_qnn_ep["MatMul"], op_count_before["MatMul"] - expected_fusions2);
+  ASSERT_EQ(op_count_qnn_ep["Add"], op_count_before["Add"] - expected_fusions2);
+  ASSERT_EQ(op_count_qnn_ep["Gemm"], op_count_before["Gemm"] + expected_fusions2);
 }
 
 #ifndef DISABLE_CONTRIB_OPS

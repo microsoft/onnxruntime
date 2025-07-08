@@ -196,7 +196,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
                                                                 total_seqlen,
                                                                 is_past_bsnh_,
                                                                 scale_,
-                                                                head_sink,
                                                                 max_thr_per_blk));
 
   const int batch_size = parameters.batch_size;
@@ -499,7 +498,7 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
       parameters.head_size,  // v head size
       GetCkFmhaDataTypeString<T>(),
       !parameters.is_first_prompt,  // true,  // is_group_mode
-      true,                   // is_v_rowmajor ? dim is fastest : seq is fastest
+      true,                         // is_v_rowmajor ? dim is fastest : seq is fastest
       mask.type,
       bias_type,
       false,  // has_lse

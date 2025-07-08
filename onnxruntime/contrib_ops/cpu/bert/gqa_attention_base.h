@@ -312,7 +312,6 @@ class GQAAttentionBase {
             }
           }
 
-
           if (use_smooth_softmax_ || head_sink != nullptr) {
             float sink = (head_sink != nullptr) ? static_cast<float>(head_sink[head_index]) : 0.0f;
             ComputeSmoothSoftmaxInplace(output_softmax + start_offset, static_cast<int>(window_size), sink, nullptr);

@@ -84,8 +84,11 @@ OrtDevice GetOrtDevice(const DLDevice& device) {
     case DLDeviceType::kDLCPU:
       return OrtDevice();
     case DLDeviceType::kDLCUDA:
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                       static_cast<OrtDevice::DeviceId>(device.device_id));
     case DLDeviceType::kDLROCM:
-      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, static_cast<OrtDevice::DeviceId>(device.device_id));
+      return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
+                       static_cast<OrtDevice::DeviceId>(device.device_id));
     default:
       ORT_THROW("Unsupported device type");
   }
@@ -188,11 +191,7 @@ DLDevice GetDlpackDevice(const OrtValue& ort_value, const int64_t& device_id) {
       device.device_type = DLDeviceType::kDLCPU;
       break;
     case OrtDevice::GPU:
-#ifdef USE_ROCM
-      device.device_type = DLDeviceType::kDLROCM;
-#else
       device.device_type = DLDeviceType::kDLCUDA;
-#endif
       break;
     default:
       ORT_THROW("Cannot pack tensors on this device.");
@@ -243,7 +242,7 @@ OrtValue DlpackToOrtValue(DLManagedTensor* dlpack, bool is_bool_tensor) {
   ORT_ENFORCE(IsContiguousTensor(dlpack->dl_tensor), "ORT only supports contiguous tensor for now.");
   OrtDevice device = GetOrtDevice(dlpack->dl_tensor.device);
   MLDataType data_type = GetOrtValueDataType(dlpack->dl_tensor.dtype, is_bool_tensor);
-  OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device, device.Id());
+  OrtMemoryInfo info(GetOrtDeviceName(device), OrtDeviceAllocator, device);
   std::unique_ptr<Tensor> p_tensor = std::make_unique<Tensor>(
       data_type, TensorShape(dlpack->dl_tensor.shape, static_cast<size_t>(dlpack->dl_tensor.ndim)),
       dlpack->dl_tensor.data, info);

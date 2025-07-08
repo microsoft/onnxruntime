@@ -43,6 +43,10 @@ class QNNExecutionProvider : public IExecutionProvider {
 
   DataLayout GetPreferredLayout() const override;
 
+  std::optional<bool> ShouldConvertDataLayoutForOp(std::string_view node_domain,
+                                                   std::string_view node_op_type,
+                                                   DataLayout target_data_layout) const override;
+
   const InlinedVector<const Node*> GetEpContextNodes() const override;
 
   Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
@@ -86,6 +90,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool disable_cpu_ep_fallback_ = false;  // True if CPU EP fallback has been disabled for this session.
   bool qnn_context_embed_mode_ = true;
   int32_t vtcm_size_in_mb_ = 0;
+  bool enable_vtcm_backup_buffer_sharing_ = false;
   std::unique_ptr<onnxruntime::Model> qnn_ep_context_model_;
   std::unique_ptr<ModelMetadefIdGenerator> metadef_id_generator_;
   uint32_t device_id_ = 0;
@@ -96,7 +101,7 @@ class QNNExecutionProvider : public IExecutionProvider {
   bool stop_share_ep_contexts_ = false;
   bool enable_spill_fill_buffer_ = false;
 #if defined(_WIN32)
-  std::string callback_ETWSink_key_;
+  onnxruntime::logging::EtwRegistrationManager::EtwInternalCallback callback_ETWSink_provider_ = nullptr;
 #endif
   qnn::ModelSettings model_settings_ = {};
   bool dump_json_qnn_graph_ = false;

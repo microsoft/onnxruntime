@@ -6,10 +6,13 @@
 #include "core/session/provider_policy_context.h"
 
 #include <algorithm>
+#include <memory>
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_logger.h"
 #include "core/session/ep_factory_internal.h"
+#include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/inference_session.h"
 #include "core/session/inference_session_utils.h"
 #include "core/session/onnxruntime_c_api.h"
@@ -28,7 +31,7 @@ bool IsDiscreteDevice(const OrtEpDevice* d) {
     return false;
   }
 
-  const auto& entries = d->device->metadata.entries;
+  const auto& entries = d->device->metadata.Entries();
   if (auto it = entries.find("Discrete"); it != entries.end()) {
     return it->second == "1";
   }
@@ -212,6 +215,64 @@ Status ProviderPolicyContext::SelectEpsForSession(const Environment& env, const 
                            "No execution providers selected. Please check the device policy and available devices.");
   }
 
+  // Log telemetry for auto EP selection
+  {
+    std::vector<std::string> requested_ep_ids;
+    requested_ep_ids.reserve(devices_selected.size());
+
+    for (const auto* device : devices_selected) {
+      if (device != nullptr) {
+        requested_ep_ids.push_back(device->ep_name);
+      }
+    }
+
+    // Extract available execution provider IDs
+    std::vector<std::string> available_ep_ids;
+    available_ep_ids.reserve(execution_devices.size());
+    for (const auto* device : execution_devices) {
+      available_ep_ids.push_back(device->ep_name);
+    }
+
+    std::string policy_type;
+    if (options.value.ep_selection_policy.delegate) {
+      policy_type = "custom_delegate";
+    } else {
+      switch (options.value.ep_selection_policy.policy) {
+        case OrtExecutionProviderDevicePolicy_DEFAULT:
+          policy_type = "DEFAULT";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_CPU:
+          policy_type = "PREFER_CPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_NPU:
+          policy_type = "PREFER_NPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_PREFER_GPU:
+          policy_type = "PREFER_GPU";
+          break;
+        case OrtExecutionProviderDevicePolicy_MAX_PERFORMANCE:
+          policy_type = "MAX_PERFORMANCE";
+          break;
+        case OrtExecutionProviderDevicePolicy_MAX_EFFICIENCY:
+          policy_type = "MAX_EFFICIENCY";
+          break;
+        case OrtExecutionProviderDevicePolicy_MIN_OVERALL_POWER:
+          policy_type = "MIN_OVERALL_POWER";
+          break;
+        default:
+          policy_type = "UNKNOWN";
+          break;
+      }
+    }
+
+    const Env& os_env = Env::Default();
+    os_env.GetTelemetryProvider().LogAutoEpSelection(
+        sess.GetCurrentSessionId(),
+        policy_type,
+        requested_ep_ids,
+        available_ep_ids);
+  }
+
   // Configure the session options for the devices. This updates the SessionOptions in the InferenceSession with any
   // EP options that have not been overridden by the user.
   ORT_RETURN_IF_ERROR(AddEpDefaultOptionsToSession(sess, devices_selected));
@@ -262,7 +323,11 @@ void ProviderPolicyContext::FoldSelectedDevices(std::vector<const OrtEpDevice*> 
       });
 
       if (iter != devices_selected.end()) {
-        info.devices.push_back((*iter)->device);
+        info.devices.push_back(*iter);
+        // hardware device and metadata come from the OrtEpDevice but we need a collection of just the pointers
+        // to pass through to the CreateEp call. other info in the OrtEpDevice is used on the ORT side like the
+        // allocator and data transfer setup.
+        info.hardware_devices.push_back((*iter)->device);
         info.ep_metadata.push_back(&(*iter)->ep_metadata);
         devices_selected.erase(iter);
       } else {
@@ -281,26 +346,17 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
 
   if (internal_factory) {
     // this is a factory we created and registered internally for internal and provider bridge EPs
-    OrtStatus* status = internal_factory->CreateIExecutionProvider(info.devices.data(), info.ep_metadata.data(),
-                                                                   info.devices.size(), &options, &logger,
-                                                                   &ep);
-    if (status != nullptr) {
-      return ToStatus(status);
-    }
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        internal_factory->CreateIExecutionProvider(info.hardware_devices.data(), info.ep_metadata.data(),
+                                                   info.hardware_devices.size(), &options, &logger,
+                                                   &ep)));
   } else {
-    // in the real setup we need an IExecutionProvider wrapper implementation that uses the OrtEp internally,
-    // and we would add that IExecutionProvider to the InferenceSession.
-    // but first we need OrtEp and the OrtEpApi to be implemented.
-    ORT_NOT_IMPLEMENTED("IExecutionProvider that wraps OrtEp has not been implemented.");
-
-    // OrtEp* api_ep = nullptr;
-    //// add the ep_options to session options but leave any existing entries (user provided overrides) untouched.
-    // auto status = info.ep_factory->CreateEp(info.ep_factory, info.devices.data(), info.ep_metadata.data(),
-    //                                         info.devices.size(), &options, &logger,
-    //                                         &api_ep);
-    // if (status != nullptr) {
-    //   return ToStatus(status);
-    // }
+    OrtEp* api_ep = nullptr;
+    ORT_RETURN_IF_ERROR(ToStatusAndRelease(
+        info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
+                                  info.hardware_devices.size(), &options, &logger, &api_ep)));
+    ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
+                                                   *info.ep_factory, info.devices, *logger.ToInternal());
   }
 
   return Status::OK();
@@ -311,7 +367,7 @@ Status ProviderPolicyContext::AddEpDefaultOptionsToSession(InferenceSession& ses
   auto& config_options = sess.GetMutableSessionOptions().config_options;
   for (auto device : devices) {
     const std::string ep_options_prefix = OrtSessionOptions::GetProviderOptionPrefix(device->ep_name.c_str());
-    for (const auto& [key, value] : device->ep_options.entries) {
+    for (const auto& [key, value] : device->ep_options.Entries()) {
       const std::string option_key = ep_options_prefix + key;
       // preserve user-provided options as they override any defaults the EP factory specified earlier
       if (config_options.configurations.find(option_key) == config_options.configurations.end()) {

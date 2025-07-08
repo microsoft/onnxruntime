@@ -10,7 +10,6 @@
 
 #include "core/common/common.h"
 #include "core/framework/library_handles.h"
-#include "core/providers/webgpu/webgpu_execution_provider.h"
 #include "core/providers/webgpu/buffer_manager.h"
 #include "core/providers/webgpu/program_manager.h"
 
@@ -25,6 +24,14 @@ namespace webgpu {
 class WebGpuContext;
 class ComputeContext;
 class ProgramBase;
+
+// Definition for CapturedCommandInfo in the webgpu namespace
+struct CapturedCommandInfo {
+  wgpu::ComputePipeline compute_pipeline;
+  WGPUBindGroup bind_group;
+  WGPUBindGroupLayout bind_group_layout;
+  std::array<uint32_t, 3> dispatch_group;
+};
 
 struct WebGpuContextConfig {
   int context_id;
@@ -81,6 +88,9 @@ class WebGpuContext final {
   const wgpu::AdapterInfo& AdapterInfo() const { return adapter_info_; }
   const wgpu::Limits& DeviceLimits() const { return device_limits_; }
   bool DeviceHasFeature(wgpu::FeatureName feature) const { return device_features_.find(feature) != device_features_.end(); }
+#if !defined(__wasm__)
+  const wgpu::AdapterPropertiesSubgroupMatrixConfigs& SubgroupMatrixConfigs() const { return subgroup_matrix_configs_; }
+#endif
 
   const wgpu::CommandEncoder& GetCommandEncoder() {
     if (!current_command_encoder_) {
@@ -115,8 +125,12 @@ class WebGpuContext final {
       current_compute_pass_encoder_ = nullptr;
     }
   }
+  void CaptureBegin(std::vector<webgpu::CapturedCommandInfo>* captured_commands, const webgpu::BufferManager& buffer_manager);
+  void CaptureEnd();
+  void Replay(const std::vector<webgpu::CapturedCommandInfo>& captured_commands, const webgpu::BufferManager& buffer_manager);
+  void ReleaseGraphResources(std::vector<webgpu::CapturedCommandInfo>& captured_commands);
 
-  void Flush();
+  void Flush(const webgpu::BufferManager& buffer_mgr);
 
   webgpu::BufferManager& BufferManager() const { return *buffer_mgr_; }
 
@@ -214,6 +228,9 @@ class WebGpuContext final {
   wgpu::AdapterInfo adapter_info_;
   wgpu::Limits device_limits_;
   std::unordered_set<wgpu::FeatureName> device_features_;
+#if !defined(__wasm__)
+  wgpu::AdapterPropertiesSubgroupMatrixConfigs subgroup_matrix_configs_;
+#endif
 
   wgpu::CommandEncoder current_command_encoder_;
   wgpu::ComputePassEncoder current_compute_pass_encoder_;
@@ -237,6 +254,10 @@ class WebGpuContext final {
   uint64_t gpu_timestamp_offset_ = 0;
   bool is_profiling_ = false;
   bool preserve_device_;
+  GraphCaptureState graph_capture_state_{GraphCaptureState::Default};
+
+  // External vector to store captured commands, owned by EP
+  std::vector<webgpu::CapturedCommandInfo>* external_captured_commands_ = nullptr;
 
 #if defined(ENABLE_PIX_FOR_WEBGPU_EP)
   std::unique_ptr<WebGpuPIXFrameGenerator> pix_frame_generator_ = nullptr;

@@ -187,7 +187,7 @@ struct ProviderHost {
   virtual std::string demangle(const std::string& name) = 0;
 
   virtual std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name) = 0;
   virtual std::unique_ptr<IDataTransfer> CreateGPUDataTransfer() = 0;
 
   virtual void cuda__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
@@ -205,7 +205,7 @@ struct ProviderHost {
 
 #ifdef USE_ROCM
   virtual std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name) = 0;
-  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name) = 0;
+  virtual std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name) = 0;
 
   virtual void rocm__Impl_Cast(void* stream, const int64_t* input_data, int32_t* output_data, size_t count) = 0;
   virtual void rocm__Impl_Cast(void* stream, const int32_t* input_data, int64_t* output_data, size_t count) = 0;
@@ -316,11 +316,10 @@ struct ProviderHost {
   virtual logging::Severity logging__EtwRegistrationManager__MapLevelToSeverity(logging::EtwRegistrationManager* p) = 0;
   virtual void logging__EtwRegistrationManager__RegisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const std::string& cb_key,
-      logging::EtwRegistrationManager_EtwInternalCallback callback) = 0;
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) = 0;
   virtual void logging__EtwRegistrationManager__UnregisterInternalCallback(
       logging::EtwRegistrationManager* p,
-      const std::string& cb_key) = 0;
+      const logging::EtwRegistrationManager_EtwInternalCallback& callback) = 0;
 #endif  // defined(_WIN32)
 
   // Env
@@ -1098,7 +1097,8 @@ struct ProviderHost {
                                     ONNX_NAMESPACE::GraphProto& graph_proto,
                                     bool include_initializers,
                                     bool include_outer_scope_args,
-                                    int execution_order) noexcept = 0;
+                                    int execution_order,
+                                    bool include_initializer_data) noexcept = 0;
   virtual const Node* GraphViewer__GetProducerNode(const GraphViewer* p, const std::string& node_arg_name) const = 0;
   virtual IOnnxRuntimeOpSchemaCollectionPtr GraphViewer__GetSchemaRegistry(const GraphViewer* p) const = 0;
 

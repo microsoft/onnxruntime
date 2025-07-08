@@ -225,29 +225,6 @@ jobs:
   # === Start of experimental WebGPU EP tests ===
 
   - ${{ if eq(parameters.RunWebGpuTests, true) }}:
-    - task: DownloadPipelineArtifact@2
-      inputs:
-        patterns: '${{ parameters.BuildConfig }}_wasm_webgpu/**/*'
-        path: $(Pipeline.Workspace)\artifacts_wasm_webgpu
-      displayName: 'Download WebAssembly artifacts'
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Pipeline.Workspace)\artifacts_wasm_webgpu
-        contents: |
-          **\ort-*.wasm
-        targetFolder: $(Build.SourcesDirectory)\js\web\dist
-        flattenFolders: true
-        overWrite: true
-      displayName: 'Binplace dist files (.wasm)'
-    - task: CopyFiles@2
-      inputs:
-        sourceFolder: $(Pipeline.Workspace)\artifacts_wasm_webgpu
-        contents: |
-          **\ort-*.mjs
-        targetFolder: $(Build.SourcesDirectory)\js\web\dist
-        flattenFolders: true
-        overWrite: true
-      displayName: 'Binplace dist files (.mjs)'
     - script: |
         powershell "Get-WmiObject Win32_Process -Filter \"name = 'chrome.exe'\" | Format-List CommandLine"
       displayName: 'Check active Chrome processes (before test)'

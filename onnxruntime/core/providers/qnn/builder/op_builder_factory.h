@@ -3,9 +3,10 @@
 
 #pragma once
 
+#include <memory>
 #include <string>
+#include <utility>
 #include "op_builder.h"
-
 namespace onnxruntime {
 namespace qnn {
 
@@ -47,6 +48,7 @@ class OpBuilderRegistrations {
   // <Op_builder_type, IOpBuilder*>
   std::unordered_map<std::string, const IOpBuilder*> builder_type_builder_map_;
 };
+
 const IOpBuilder* GetOpBuilder(const std::string& onnx_op_type);
 
 void CreateSimpleOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -93,6 +95,8 @@ void CreateLRNOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_r
 
 void CreateTransposeOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
+void CreateReciprocalOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
 void CreatePadOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateExpandOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
@@ -106,6 +110,8 @@ void CreateEinsumOpBuilder(const std::string& op_type, OpBuilderRegistrations& o
 void CreateLSTMOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 void CreateCumSumOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
+
+void CreateMeanOpBuilder(const std::string& op_type, OpBuilderRegistrations& op_registrations);
 
 }  // namespace qnn
 }  // namespace onnxruntime

@@ -58,11 +58,11 @@ struct EtwRegistrationManager final {
   static EtwRegistrationManager& Instance() { return g_host->logging__EtwRegistrationManager__Instance(); }
   static bool SupportsETW() { return g_host->logging__EtwRegistrationManager__SupportsETW(); }
   Severity MapLevelToSeverity() { return g_host->logging__EtwRegistrationManager__MapLevelToSeverity(this); }
-  void RegisterInternalCallback(const std::string& cb_key, EtwInternalCallback callback) {
-    g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, cb_key, std::move(callback));
+  void RegisterInternalCallback(const EtwInternalCallback& callback) {
+    g_host->logging__EtwRegistrationManager__RegisterInternalCallback(this, callback);
   }
-  void UnregisterInternalCallback(const std::string& cb_key) {
-    g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, cb_key);
+  void UnregisterInternalCallback(const EtwInternalCallback& callback) {
+    g_host->logging__EtwRegistrationManager__UnregisterInternalCallback(this, callback);
   }
 };
 #endif  // defined(_WIN32)
@@ -1150,8 +1150,9 @@ class GraphViewer final {
   void ToProto(ONNX_NAMESPACE::GraphProto& graph_proto,
                bool include_initializers,
                bool include_outer_scope_args,
-               int execution_order = 0) const {
-    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order);
+               int execution_order = 0,
+               bool include_initializer_data = true) const {
+    g_host->GraphViewer__ToProto(this, graph_proto, include_initializers, include_outer_scope_args, execution_order, include_initializer_data);
   }
   const Node* GetProducerNode(const std::string& node_arg_name) const { return g_host->GraphViewer__GetProducerNode(this, node_arg_name); }
   IOnnxRuntimeOpSchemaCollectionPtr GetSchemaRegistry() const { return g_host->GraphViewer__GetSchemaRegistry(this); }

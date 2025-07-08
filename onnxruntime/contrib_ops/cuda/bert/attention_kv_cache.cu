@@ -197,7 +197,6 @@ Status LaunchConcatTensorToTensor(cudaStream_t stream,
   return CUDA_CALL(cudaGetLastError());
 }
 
-
 #ifndef USE_ROCM  // exclude the following from hipify since they are not used in ROCM EP
 
 // ----------------------------------------------------------------------------------

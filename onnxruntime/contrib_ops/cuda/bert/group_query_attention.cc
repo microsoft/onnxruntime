@@ -99,7 +99,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 total_seqlen,
                                                                 scale_,
                                                                 softcap_,
-                                                                head_sink,
                                                                 device_prop.maxThreadsPerBlock));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
