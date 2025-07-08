@@ -15,6 +15,7 @@
     <PackageReference Include="NUnit.Analyzers" Version="3.3.0" />
     <PackageReference Include="NUnit3TestAdapter" Version="4.3.1" />
     <PackageReference Include="Appium.WebDriver" Version="4.4.0" />
+    <PackageReference Include="BrowserStack.TestAdapter" Version="0.*" />
   </ItemGroup>
 
 </Project>
