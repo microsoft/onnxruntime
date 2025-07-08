@@ -31,21 +31,28 @@ void PackDataForUint8TypeIfNecessary(std::vector<int>& data, std::vector<int64_t
   int64_t input_columns = data_shape.back();
   int64_t total_rows = total_elements / input_columns;
 
-  // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
   std::vector<int> packed_data;
-  int64_t output_columns = (input_columns + 1) / 2;
-  packed_data.reserve(total_rows * output_columns);
-  for (int64_t row = 0; row < total_rows; ++row) {
-    for (int64_t col = 0; col < input_columns; col += 2) {
-      int low_nibble = (data[row * input_columns + col] + 8) & 0xF;
-      int high_nibble = ((col + 1) < input_columns) ? ((data[row * input_columns + col + 1] + 8) & 0xF) : 0;
-      int packed = (high_nibble << 4) | low_nibble;
-      packed_data.push_back(packed);
+
+  if (bits == 4) {
+    // For uint8_t, we need to pack each pair of 4 bits (after adding 8) into a single uint8_t
+    int64_t output_columns = (input_columns + 1) / 2;
+    packed_data.reserve(total_rows * output_columns);
+    for (int64_t row = 0; row < total_rows; ++row) {
+      for (int64_t col = 0; col < input_columns; col += 2) {
+        int low_nibble = (data[row * input_columns + col] + 8) & 0xF;
+        int high_nibble = ((col + 1) < input_columns) ? ((data[row * input_columns + col + 1] + 8) & 0xF) : 0;
+        int packed = (high_nibble << 4) | low_nibble;
+        packed_data.push_back(packed);
+      }
+    }
+    data_shape.back() = output_columns;
+  } else {
+    for (auto v : data) {
+      packed_data.push_back(v + 128);
     }
   }
 
   data = packed_data;
-  data_shape.back() = output_columns;
 }
 
 template <typename T>
