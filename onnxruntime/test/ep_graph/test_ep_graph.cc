@@ -322,7 +322,7 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   std::vector<const OrtNode*> nodes(num_nodes);
   ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, nodes.data(), nodes.size()));
 
-  // Select a half of nodes to create a sub-graph
+  // Select a half of nodes to create a OrtGraph
   size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
   std::vector<const OrtNode*> selected_nodes(num_selected_nodes);
 
