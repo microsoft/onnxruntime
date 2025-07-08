@@ -769,6 +769,13 @@ if(onnxruntime_USE_AZURE)
   list(APPEND onnxruntime_test_providers_libs onnxruntime_providers_azure)
 endif()
 
+if (onnxruntime_USE_OPENVINO)
+  list(APPEND onnxruntime_test_framework_src_patterns ${TEST_SRC_DIR}/providers/openvino/*)
+  list(APPEND onnxruntime_test_framework_libs onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_openvino)
+  list(APPEND onnxruntime_test_providers_dependencies onnxruntime_providers_shared)
+endif()
+
 file(GLOB onnxruntime_test_framework_src CONFIGURE_DEPENDS
   ${onnxruntime_test_framework_src_patterns}
   )

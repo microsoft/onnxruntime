@@ -8,6 +8,7 @@
 #include "core/session/abi_session_options_impl.h"
 #include "core/session/ep_api_utils.h"
 #include "core/session/ort_apis.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
 
 namespace onnxruntime {
 
@@ -19,6 +20,7 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
 
   OrtEpFactory::GetName = Forward::GetFactoryName;
   OrtEpFactory::GetVendor = Forward::GetVendor;
+  OrtEpFactory::GetVersion = Forward::GetVersion;
   OrtEpFactory::GetSupportedDevices = Forward::GetSupportedDevices;
   OrtEpFactory::CreateEp = Forward::CreateEp;
   OrtEpFactory::ReleaseEp = Forward::ReleaseEp;
@@ -29,6 +31,10 @@ EpFactoryInternal::EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl
   OrtEpFactory::CreateSyncStreamForDevice = Forward::CreateSyncStreamForDevice;
 }
 
+const char* EpFactoryInternal::GetVersion() const noexcept {
+  return ORT_VERSION;
+}
+
 OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices*/,
                                        const OrtKeyValuePairs* const* /*ep_metadata_pairs*/,
                                        size_t /*num_devices*/,
@@ -37,22 +43,6 @@ OrtStatus* EpFactoryInternal::CreateEp(const OrtHardwareDevice* const* /*devices
                                        OrtEp** /*ep*/) {
   ORT_THROW("Internal error. CreateIExecutionProvider should be used for EpFactoryInternal.");
 }
-
-// OrtStatus* EpFactoryInternal::CreateIExecutionProvider(const OrtHardwareDevice* const* devices,
-//                                                        const OrtKeyValuePairs* const* ep_metadata_pairs,
-//                                                        size_t num_devices,
-//                                                        const OrtSessionOptions* session_options,
-//                                                        const OrtLogger* session_logger,
-//                                                        std::unique_ptr<IExecutionProvider>* ep) {
-//   *ep = nullptr;
-//
-//   if (num_devices != 1) {
-//     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-//                                  "EpFactoryInternal currently only supports one device at a time.");
-//   }
-//
-//   return create_func_(this, devices, ep_metadata_pairs, num_devices, session_options, session_logger, ep);
-// }
 
 // Prior to addition to SessionOptions the EP options do not have a prefix.
 // They are prefixed with 'ep.<ep_name>.' when added to SessionOptions.

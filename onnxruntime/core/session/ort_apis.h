@@ -695,6 +695,8 @@ ORT_API_STATUS_IMPL(ReleaseSharedAllocator, _In_ OrtEnv* env, _In_ const OrtEpDe
 
 ORT_API_STATUS_IMPL(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 
+ORT_API_STATUS_IMPL(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
+
 ORT_API_STATUS_IMPL(SessionGetMemoryInfoForInputs, _In_ const OrtSession* session,
                     _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
                     _In_ size_t num_inputs);
@@ -708,20 +710,16 @@ ORT_API_STATUS_IMPL(SessionGetEpDeviceForInputs, _In_ const OrtSession* session,
                     _In_ size_t num_inputs);
 
 ORT_API_STATUS_IMPL(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                    _In_opt_ const OrtKeyValuePairs* stream_options,
                     _Outptr_ OrtSyncStream** stream);
 
-ORT_API_STATUS_IMPL(SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle);
+ORT_API(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
 
 ORT_API(void, ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* stream);
 
 ORT_API_STATUS_IMPL(CopyTensors, _In_ const OrtEnv* env,
                     _In_reads_(num_tensors) const OrtValue** src_tensors,
                     _In_reads_(num_tensors) OrtValue** dst_tensors,
-                    _In_reads_opt_(num_tensors) OrtSyncStream** streams,
+                    _In_opt_ OrtSyncStream* stream,
                     _In_ size_t num_tensors);
-
-ORT_API_STATUS_IMPL(CreateInputSyncNotification, _In_ OrtSyncStream* stream);
-ORT_API_STATUS_IMPL(ActivateInputSyncNotification, _In_ OrtSyncStream* stream);
-ORT_API_STATUS_IMPL(ReleaseInputSyncNotification, _In_ OrtSyncStream* stream);
-
 }  // namespace OrtApis

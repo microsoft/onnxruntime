@@ -17,6 +17,7 @@
 #include "core/providers/cuda/cuda_execution_provider.h"
 #include "core/providers/cuda/cuda_execution_provider_info.h"
 #include "core/providers/cuda/cuda_allocator.h"
+#include "core/providers/cuda/cuda_stream_handle.h"
 #include "core/providers/cuda/gpu_data_transfer.h"
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 
@@ -312,6 +313,9 @@ CUDA_Provider* GetProvider() {
 // Plug-in EP infrastructure
 //
 
+#include "core/session/abi_devices.h"
+#include "onnxruntime_config.h"  // for ORT_VERSION
+
 static struct ErrorHelper {
   static const OrtApi* ort_api;
 
@@ -456,9 +460,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
 
       cudaStream_t cuda_stream = nullptr;
       if (stream) {
-        void* handle = nullptr;
-        RETURN_IF_ERROR(impl.ort_api.SyncStream_GetHandle(stream, &handle));
-        cuda_stream = static_cast<cudaStream_t>(handle);
+        cuda_stream = static_cast<cudaStream_t>(impl.ort_api.SyncStream_GetHandle(stream));
       }
 
       if (dst_is_gpu_default) {
@@ -531,6 +533,130 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
   GPUDataTransfer data_transfer;
 };
 
+struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
+  static OrtStatus* Create(cudaStream_t stream, const OrtApi& ort_api,
+                           std::unique_ptr<CudaSyncNotificationImpl>& notification) {
+    notification.reset(new CudaSyncNotificationImpl(stream, ort_api));  // can't use make_unique with private ctor
+    CUDA_RETURN_IF_ERROR(cudaEventCreateWithFlags(&notification->event_, cudaEventDisableTiming));
+
+    return nullptr;
+  }
+
+  static void ReleaseImpl(_In_ void* this_ptr) noexcept {
+    delete static_cast<CudaSyncNotificationImpl*>(this_ptr);
+  }
+
+  static OrtStatus* ActivateImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+    CUDA_RETURN_IF_ERROR(cudaEventRecord(impl.event_, impl.stream_));
+
+    return nullptr;
+  }
+
+  static OrtStatus* WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* consumer_stream) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+
+    // setup the consumer stream to wait on our event.
+    void* consumer_handle = impl.ort_api.SyncStream_GetHandle(consumer_stream);
+    CUDA_RETURN_IF_ERROR(cudaStreamWaitEvent(static_cast<cudaStream_t>(consumer_handle), impl.event_));
+
+    return nullptr;
+  }
+
+  static OrtStatus* WaitOnHostImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncNotificationImpl*>(this_ptr);
+    CUDA_RETURN_IF_ERROR(cudaEventSynchronize(impl.event_));
+
+    return nullptr;
+  }
+
+  ~CudaSyncNotificationImpl() {
+    cudaEventDestroy(event_);
+  }
+
+ private:
+  CudaSyncNotificationImpl(cudaStream_t stream, const OrtApi& ort_api_in)
+      : stream_{stream}, ort_api{ort_api_in}, ep_api{*ort_api_in.GetEpApi()} {
+    ort_version_supported = ORT_API_VERSION;
+    Activate = ActivateImpl;
+    WaitOnDevice = WaitOnDeviceImpl;
+    WaitOnHost = WaitOnHostImpl;
+    Release = ReleaseImpl;
+  }
+
+  cudaStream_t& stream_;
+  cudaEvent_t event_;
+
+  const OrtApi& ort_api;
+  const OrtEpApi& ep_api;
+};
+
+struct CudaSyncStreamImpl : OrtSyncStreamImpl {
+  CudaSyncStreamImpl(cudaStream_t&& stream,
+                     const OrtDevice& device,
+                     AllocatorPtr cpu_allocator,
+                     bool release_cpu_buffer_on_cuda_stream,
+                     const OrtApi& ort_api_in)
+      : stream_{
+            stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, /*own*/ true,
+            /*external_cudnn_handle*/ nullptr,
+            /*external_cublas_handle*/ nullptr,
+            // ep_info is used by GetResource which seems to be a somewhat fairly ugly way to make arbitrary info
+            // that is unrelated to the stream available to a custom op.
+            // avoiding adding GetResource to OrtSyncStreamImpl as we should have a cleaner setup for custom ops,
+            // so this argument value doesn't matter.
+            /*ep_info*/ CUDAExecutionProviderInfo{}},
+        ort_api{ort_api_in} {
+    ort_version_supported = ORT_API_VERSION;
+    GetHandle = GetHandleImpl;
+    CreateNotification = CreateNotificationImpl;
+    Flush = FlushImpl;
+    OnSessionRunEnd = OnSessionRunEndImpl;
+    Release = ReleaseImpl;
+  }
+
+  static void ReleaseImpl(_In_ void* this_ptr) noexcept {
+    delete static_cast<CudaSyncStreamImpl*>(this_ptr);
+  }
+
+  static void* GetHandleImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    return impl.stream_.GetHandle();
+  }
+
+  static OrtStatus* CreateNotificationImpl(_In_ void* this_ptr,
+                                           _Outptr_ OrtSyncNotificationImpl** notification_impl) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    *notification_impl = nullptr;
+
+    std::unique_ptr<CudaSyncNotificationImpl> notification;
+    cudaStream_t* cuda_stream = static_cast<cudaStream_t*>(impl.stream_.GetHandle());
+
+    RETURN_IF_ERROR(CudaSyncNotificationImpl::Create(*cuda_stream, impl.ort_api, notification));
+    *notification_impl = notification.release();
+
+    return nullptr;
+  }
+
+  static OrtStatus* FlushImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    impl.stream_.Flush();
+
+    return nullptr;
+  }
+
+  static OrtStatus* OnSessionRunEndImpl(_In_ void* this_ptr) noexcept {
+    auto& impl = *static_cast<CudaSyncStreamImpl*>(this_ptr);
+    RETURN_IF_STATUS_NOTOK(impl.stream_.CleanUpOnRunEnd());
+
+    return nullptr;
+  }
+
+ private:
+  CudaStream stream_;
+  const OrtApi& ort_api;
+};
+
 // OrtEpApi infrastructure to be able to use the CUDA EP as an OrtEpFactory for auto EP selection.
 struct CudaEpFactory : OrtEpFactory {
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
@@ -540,6 +666,7 @@ struct CudaEpFactory : OrtEpFactory {
                                             data_transfer_impl{ort_api_in} {
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
+    GetVersion = GetVersionImpl;
     GetSupportedDevices = GetSupportedDevicesImpl;
     CreateEp = CreateEpImpl;
     ReleaseEp = ReleaseEpImpl;
@@ -561,6 +688,10 @@ struct CudaEpFactory : OrtEpFactory {
   static const char* GetVendorImpl(const OrtEpFactory* this_ptr) noexcept {
     const auto& factory = *static_cast<const CudaEpFactory*>(this_ptr);
     return factory.vendor.c_str();
+  }
+
+  static const char* ORT_API_CALL GetVersionImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
+    return ORT_VERSION;
   }
 
   static OrtStatus* GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
@@ -637,6 +768,8 @@ struct CudaEpFactory : OrtEpFactory {
         RETURN_IF_ERROR(factory.ort_api.GetEpApi()->CreateEpDevice(&factory, &device, ep_metadata, ep_options,
                                                                    &ep_device));
 
+        factory.ort_api.ReleaseKeyValuePairs(ep_options);
+
         const OrtMemoryInfo* gpu_mem_info = factory.gpu_memory_infos[device_id].get();
         const OrtMemoryInfo* host_accessible_mem_info = factory.host_accessible_memory_infos[device_id].get();
 
@@ -700,7 +833,35 @@ struct CudaEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                const OrtMemoryDevice* memory_device,
-                                                               OrtSyncStreamImpl** stream) noexcept {
+                                                               const OrtEp* /*ep*/,
+                                                               const OrtKeyValuePairs* /*stream_options*/,
+                                                               OrtSyncStreamImpl** ort_stream) noexcept {
+    auto& factory = *static_cast<CudaEpFactory*>(this_ptr);
+    auto device_id = factory.ep_api.MemoryDevice_GetDeviceId(memory_device);
+
+    // the OrtEpFactory could have a cache of stream instances if it wants to avoid creating a new one on every
+    // call. the CudaStreamSyncImpl::Release could return the instance to the cache.
+    cudaStream_t stream = nullptr;
+    CUDA_RETURN_IF_ERROR(cudaSetDevice(device_id));
+    CUDA_RETURN_IF_ERROR(cudaStreamCreateWithFlags(&stream, cudaStreamNonBlocking));
+
+    // Currently this API is only used for creating a stream that is used outside of a session, as we're using the
+    // 'real' CUDA IExecutionProvider implementation for the EP. Due to that we need to connect it up to an internal
+    // stream that has the correct settings for the session. We do that externally via the "user_compute_stream"
+    // provider option.
+    //
+    // For use within an inference session in a completely plugin EP we'd need a CPU allocator to be available,
+    // as well as for relevant options such as whether graph capture is enabled to be provided in the create call.
+    //
+
+    const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
+    AllocatorPtr null_allocator;  // this is only used by
+
+    auto impl = std::make_unique<CudaSyncStreamImpl>(std::move(stream), *ort_device, nullptr,
+                                                     /*release_cpu_buffer_on_cuda_stream*/ true,
+                                                     factory.ort_api);
+    *ort_stream = impl.release();
+
     return nullptr;
   }
 

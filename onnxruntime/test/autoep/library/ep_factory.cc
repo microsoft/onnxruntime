@@ -15,6 +15,7 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
   ort_version_supported = ORT_API_VERSION;  // set to the ORT version we were compiled with.
   GetName = GetNameImpl;
   GetVendor = GetVendorImpl;
+  GetVersion = GetVersionImpl;
 
   GetSupportedDevices = GetSupportedDevicesImpl;
 
@@ -91,6 +92,12 @@ const char* ORT_API_CALL ExampleEpFactory::GetVendorImpl(const OrtEpFactory* thi
 }
 
 /*static*/
+const char* ORT_API_CALL ExampleEpFactory::GetVersionImpl(const OrtEpFactory* this_ptr) noexcept {
+  const auto* factory = static_cast<const ExampleEpFactory*>(this_ptr);
+  return factory->ep_version_.c_str();
+}
+
+/*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* this_ptr,
                                                                   const OrtHardwareDevice* const* devices,
                                                                   size_t num_devices,
@@ -111,7 +118,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       factory->ort_api.CreateKeyValuePairs(&ep_options);
 
       // random example using made up values
-      factory->ort_api.AddKeyValuePair(ep_metadata, "version", "0.1");
+      factory->ort_api.AddKeyValuePair(ep_metadata, "supported_devices", "CrackGriffin 7+");
       factory->ort_api.AddKeyValuePair(ep_options, "run_really_fast", "true");
 
       // OrtEpDevice copies ep_metadata and ep_options.
@@ -140,7 +147,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
     //  if (device.Type() == OrtHardwareDeviceType::OrtHardwareDeviceType_CPU) {
     //    Ort::KeyValuePairs ep_metadata;
     //    Ort::KeyValuePairs ep_options;
-    //    ep_metadata.Add("version", "0.1");
+    //    ep_metadata.Add("supported_devices", "CrackGriffin 7+");
     //    ep_options.Add("run_really_fast", "true");
     //    Ort::EpDevice ep_device{*this_ptr, device, ep_metadata.GetConst(), ep_options.GetConst()};
     //    ep_devices[num_ep_devices++] = ep_device.release();
@@ -259,13 +266,15 @@ bool ORT_API_CALL ExampleEpFactory::IsStreamAwareImpl(const OrtEpFactory* /*this
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFactory* this_ptr,
                                                                         const OrtMemoryDevice* memory_device,
+                                                                        const OrtEp* ep,
+                                                                        const OrtKeyValuePairs* stream_options,
                                                                         OrtSyncStreamImpl** stream) noexcept {
   auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);
   *stream = nullptr;
 
   // we only need stream synchronization on the device stream
   if (factory.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
-    auto sync_stream = std::make_unique<StreamImpl>(factory);
+    auto sync_stream = std::make_unique<StreamImpl>(factory, ep, stream_options);
     *stream = sync_stream.release();
   }
 

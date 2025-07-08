@@ -5082,6 +5082,8 @@ struct OrtApi {
 
   /** \brief Add a key-value pair to the OrtKeyValuePairs instance.
    *
+   * If a pair with the same key already exists, it is overwritten.
+   *
    * \param[in] kvps OrtKeyValuePairs instance.
    * \param[in] key Key to be added.
    * \param[in] value Value to be added.
@@ -6090,6 +6092,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(GetTensorData, _In_ const OrtValue* value, _Outptr_ const void** out);
 
+  /** \brief Get Session configuration entries.
+   *
+   * \param[in] options The session options.
+   * \param[out] out A pointer to a newly created OrtKeyValuePairs instance.
+   *
+   *  An OrtKeyValuePairs instance containing all session configuration entries.
+   *  Note: the user should call OrtApi::ReleaseKeyValuePairs.
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(GetSessionOptionsConfigEntries, _In_ const OrtSessionOptions* options, _Outptr_ OrtKeyValuePairs** out);
+
   /** \brief Get the OrtMemoryInfo for each input of the session.
    *
    * The memory info can be used to determine where the input tensors are required.
@@ -6166,6 +6180,7 @@ struct OrtApi {
    * e.g. async usage of CopyTensors to provide into to an OrtSession Run call.
    *
    * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
+   * \param[in] stream_options Options for stream creating. May be nullptr.
    * \param[out] stream Output parameter set to the created OrtSyncStream instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -6173,6 +6188,7 @@ struct OrtApi {
    * \since Version 1.23
    */
   ORT_API2_STATUS(CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* ep_device,
+                  _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
   /** \brief Get the handle of the sync stream.
@@ -6180,20 +6196,15 @@ struct OrtApi {
    * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
    *
    * \param[in] stream The OrtSyncStream instance to get the handle from.
-   * \param[out] handle The native handle of the stream.
    *
-   * \snippet{doc} snippets.dox OrtStatus Return Value
+   * \returns The native handle of the stream.
    *
    * \since Version 1.23
    */
-  ORT_API2_STATUS(SyncStream_GetHandle, _In_ OrtSyncStream* stream, _Outptr_ void** handle);
+  ORT_API_T(void*, SyncStream_GetHandle, _In_ OrtSyncStream* stream);
 
   ORT_CLASS_RELEASE(SyncStream);
 
-  // copy tensors. copy should be between two location overall.
-  // i.e. all src_tensors should have the same OrtMemoryInfo and all dst_tensors should have the same OrtMemoryInfo.
-  // the OrtSyncStream is optional. if provided the copy may be performed asynchronously. the same OrtSyncStream
-  // instance can be used for all applicable tensors in the copy operation.
   /** \brief Copy OrtValue instances containing Tensors between devices.
    *
    * The overall copy must be between two devices.
@@ -6210,9 +6221,8 @@ struct OrtApi {
    *                that is registered in this OrtEnv.
    * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
    * \param[in] dst_tensors Array of OrtValue instances that will be filled with the copied tensors.
-   * \param[in] streams Optional array of OrtSyncStream instances that can be used to perform the copy asynchronously.
-   * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors`, `dst_tensors`, and `streams`
-   *                        must match this value.
+   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously.
+   * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors` and `dst_tensors` must match.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -6221,7 +6231,7 @@ struct OrtApi {
   ORT_API2_STATUS(CopyTensors, _In_ const OrtEnv* env,
                   _In_reads_(num_tensors) const OrtValue** src_tensors,
                   _In_reads_(num_tensors) OrtValue** dst_tensors,
-                  _In_reads_opt_(num_tensors) OrtSyncStream** streams,
+                  _In_opt_ OrtSyncStream* stream,
                   _In_ size_t num_tensors);
 
   // create a Notification for input being available.

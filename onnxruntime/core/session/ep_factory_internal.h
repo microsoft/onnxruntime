@@ -26,6 +26,73 @@ class EpFactoryInternalImpl {
 
   const char* GetName() const noexcept { return ep_name_.c_str(); }
   const char* GetVendor() const noexcept { return vendor_.c_str(); }
+  const char* GetVersion() const noexcept;
+
+  virtual OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
+                                         _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                         _In_ size_t num_devices,
+                                         _Inout_ OrtEpDevice** ep_devices,
+                                         _In_ size_t max_ep_devices,
+                                         _Out_ size_t* num_ep_devices) noexcept = 0;
+
+  virtual OrtStatus* CreateIExecutionProvider(_In_reads_(num_devices) const OrtHardwareDevice* const* devices,
+                                              _In_reads_(num_devices) const OrtKeyValuePairs* const* ep_metadata_pairs,
+                                              _In_ size_t num_devices,
+                                              _In_ const OrtSessionOptions* session_options,
+                                              _In_ const OrtLogger* logger,
+                                              _Out_ std::unique_ptr<IExecutionProvider>* ep) = 0;
+
+  virtual OrtStatus* CreateAllocator(_In_ const OrtMemoryInfo* /*memory_info*/,
+                                     _In_ const OrtKeyValuePairs* /*allocator_options*/,
+                                     _Outptr_ OrtAllocator** allocator) noexcept {
+    // default implementation does not add OrtMemoryInfo to OrtEpDevice instances returned
+    // so this should never be called
+    *allocator = nullptr;
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "CreateAllocator is not implemented for this EP factory.");
+  }
+
+  virtual void ReleaseAllocator(_In_ OrtAllocator* /*allocator*/) noexcept {
+    // we don't create any allocators so we don't need to release any
+  }
+
+  virtual OrtStatus* CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) {
+    *data_transfer = nullptr;
+    return nullptr;  // Default implementation does nothing
+  }
+
+  virtual bool IsStreamAware() const {
+    return false;
+  }
+
+  virtual OrtStatus* CreateSyncStreamForDevice(_In_ const OrtMemoryDevice* /*memory_device*/,
+                                               _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
+                                               _Outptr_result_maybenull_ OrtSyncStreamImpl** stream) {
+    *stream = nullptr;
+    return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED,
+                                 "CreateSyncStreamForDevice is not implemented for this EP factory.");
+  }
+
+  // Function ORT calls to release an EP instance.
+  void ReleaseEp(OrtEp* ep);
+
+  virtual ~EpFactoryInternalImpl() = default;
+
+ protected:
+  ProviderOptions GetOptionsFromSessionOptions(const SessionOptions& session_options) const;
+
+ private:
+  const std::string ep_name_;  // EP name library was registered with
+  const std::string vendor_;   // EP vendor name
+};
+
+// this class can't have any virtual methods as we hook it up to the OrtEpDevice
+class EpFactoryInternal : public OrtEpFactory {
+ public:
+  EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl);
+
+  const char* GetName() const noexcept { return impl_->GetName(); }
+  const char* GetVendor() const noexcept { return impl_->GetVendor(); }
+  const char* GetVersion() const noexcept;
 
   virtual OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
                                          _In_reads_(num_devices) const OrtHardwareDevice* const* devices,
@@ -135,8 +202,9 @@ class EpFactoryInternal : public OrtEpFactory {
   }
 
   OrtStatus* CreateSyncStreamForDevice(_In_ const OrtMemoryDevice* memory_device,
+                                       _In_opt_ const OrtKeyValuePairs* stream_options,
                                        _Outptr_result_maybenull_ OrtSyncStreamImpl** stream) {
-    return impl_->CreateSyncStreamForDevice(memory_device, stream);
+    return impl_->CreateSyncStreamForDevice(memory_device, stream_options, stream);
   }
 
   // Function ORT calls to release an EP instance.
@@ -147,7 +215,6 @@ class EpFactoryInternal : public OrtEpFactory {
 
  private:
   std::unique_ptr<EpFactoryInternalImpl> impl_;
-  // std::vector<std::unique_ptr<EpFactoryInternal>> eps_;  // EP instances created by this factory
 };
 
 // IExecutionProviderFactory for EpFactoryInternal that is required for SessionOptionsAppendExecutionProvider_V2
