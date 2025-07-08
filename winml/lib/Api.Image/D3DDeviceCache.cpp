@@ -253,7 +253,8 @@ void D3DDeviceCache::EnsureSharedFences() {
   winrt::com_ptr<ID3D12DeviceChild> spD3D12DeviceChild;
   d3d12_fence_.as(spD3D12DeviceChild);
   HANDLE hSharedFence;
-  WINML_THROW_IF_FAILED(device_->CreateSharedHandle(spD3D12DeviceChild.get(), NULL, GENERIC_ALL, nullptr, &hSharedFence)
+  WINML_THROW_IF_FAILED(
+    device_->CreateSharedHandle(spD3D12DeviceChild.get(), NULL, GENERIC_ALL, nullptr, &hSharedFence)
   );
 
   winrt::com_ptr<ID3D11Device5> spD3D11Device5;
