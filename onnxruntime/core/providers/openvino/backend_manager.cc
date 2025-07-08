@@ -118,7 +118,9 @@ BackendManager::BackendManager(SessionContext& session_context,
     LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Model has symbolic input dims";
     if ((!session_context_.disable_dynamic_shapes &&
          (session_context_.device_type.find("CPU") != std::string::npos ||
-          session_context_.device_type.find("GPU") != std::string::npos)) ||
+          session_context_.device_type.find("GPU") != std::string::npos ||
+          (session_context_.device_type.find("NPU") != std::string::npos &&
+           session_context_.enable_causallm) )) ||
         (subgraph_context_.is_ep_ctx_graph)) {
       LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Starting backend initialization. "
                          << "Creating backend Dynamic Shapes";
