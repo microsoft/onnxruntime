@@ -48,33 +48,80 @@ void
         unsigned KernelFlags
     )
 {
-    (void)Input;
-    (void)Filter;
-    (void)Output;
-    (void)StrideWidth;
-    (void)DilationWidth;
-    (void)FilterCount;
+    const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
+    const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
+    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
+
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const float32x4_t ZeroVector = vdupq_n_f32(0.0f);
+
+    const size_t StrideWidthElements = StrideWidth / sizeof(float);
+    const size_t DilationWidthElements = DilationWidth / sizeof(float);
+    const size_t FilterStrideElements = FilterStride / sizeof(float);
+    const size_t OutputStrideElements = OutputStride / sizeof(float);
+    const size_t InputWidthElements = InputWidth / sizeof(float);
+    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
+
     (void)InputStride;
-    (void)FilterStride;
-    (void)OutputStride;
-    (void)KernelHeight;
-    (void)KernelWidth;
-    (void)InputBase;
-    (void)InputWidth;
-    (void)DilatedInputWidth;
-    (void)OutputCountLeftPad;
-    (void)OutputCount;
-    (void)OutputCountRightPad;
-    (void)Bias;
-    (void)KernelFlags;
+
+    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
+
+    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
+
+        for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
+            const float* filter = Filter + filterSetBlock * FilterStrideElements;
+            float* output = Output + filterSetBlock * OutputStrideElements;
+
+            float32x4_t Accumulator;
+
+            if (AccumulateOutput) {
+                Accumulator = MlasLoadFloat32x4(&output[output_idx * BlockSize]);
+            } else {
+                Accumulator = vdupq_n_f32(0.0f);
+            }
+
+            if (BiasAddition) {
+                const float32x4_t BiasVector = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize]);
+                Accumulator = vaddq_f32(Accumulator, BiasVector);
+            }
+
+            for (size_t kh = 0; kh < KernelHeight; kh++) {
+                for (size_t kw = 0; kw < KernelWidth; kw++) {
+                    const float* input_base = Input + output_idx * StrideWidthElements +
+                                              kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+                    const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                    const float* input_row_end = input_row_start + InputWidthElements;
+
+                    float input_value;
+                    if (is_main_region || (input_base >= input_row_start && input_base < input_row_end)) {
+                        input_value = *input_base;
+                    } else {
+                        input_value = 0.0f;
+                    }
+
+                    const float32x4_t InputVector = vdupq_n_f32(input_value);
+
+                    size_t kernel_base_pos = kh * KernelWidth + kw;
+
+                    const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize]);
+
+                    Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
+                }
+            }
+
+            if (ReluActivation) {
+                Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
+            }
+
+            MlasStoreFloat32x4(&output[output_idx * BlockSize], Accumulator);
+        }
+    }
 }
 
 //
 // Implementation of MlasConvNchwcFloatKernelNeon
-//
-// This kernel performs 2D convolution optimized for NCHWc format.
-// NCHWc format organizes data in blocks where both input and output channels
-// are blocked. The filter is organized as [OutputChannelBlocks][InputChannelBlocks][KH][KW][BlockSize][BlockSize].
 //
 
 void
