@@ -85,7 +85,7 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
- }
+}
 
 static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
   auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
@@ -501,7 +501,6 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
 
   // Select a half of nodes to create a OrtGraph
   size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
-  num_selected_nodes = num_nodes;
   std::vector<const OrtNode*> selected_nodes(num_selected_nodes);
 
   for (size_t i = 0; i < num_selected_nodes; i++) {
