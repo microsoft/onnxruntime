@@ -236,7 +236,7 @@ static std::unique_ptr<float[]> NChwToNhwc(const size_t n,
                                            const size_t c,
                                            const size_t h,
                                            const size_t w,
-                                           const float* __restrict__ in,
+                                           const float* RESTRICT in,
                                            const size_t dilationh=1,
                                            const size_t dilationw=1,
                                            const bool zero_fill=false,
@@ -276,7 +276,7 @@ static std::unique_ptr<float[]> NChwToNhwc(const size_t n,
             for (size_t s1 = c; s1 > 0; --s1) {
                 auto out2 = out1;
                 for (size_t s2 = h; s2 > 0; --s2) {
-                    float* __restrict__ out3 = out2;
+                    float* RESTRICT out3 = out2;
                     size_t s3 = w;
                     for (; s3 > 4; s3 -= 4) {
                         auto vf32 = MlasLoadFloat32x4(in);
