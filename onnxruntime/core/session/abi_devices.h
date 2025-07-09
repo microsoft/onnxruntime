@@ -69,6 +69,6 @@ struct OrtEpDevice {
   const OrtMemoryInfo* host_accessible_memory_info{nullptr};
 
   // the user provides const OrtEpDevice instances, but the OrtEpFactory API takes non-const instances for all
-  // get/create methods to be as flexible as possible. this helper converts to a mutable factory instance.
+  // get/create methods to be as flexible as possible. this helper converts to a non-const factory instance.
   OrtEpFactory* GetMutableFactory() const { return ep_factory; }
 };

@@ -525,12 +525,12 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
   }
 
   static void ReleaseImpl(void* this_ptr) noexcept {
-    // no-op as we have a single shared instance in OrtEpFactory which is owned by and freed by the factory
+    // no-op as we have a single shared instance in OrtEpFactory which is returned from CreateDataTransferImpl, and is
+    // owned by and freed by the factory.
   }
 
   const OrtApi& ort_api;
   const OrtEpApi& ep_api;
-  GPUDataTransfer data_transfer;
 };
 
 struct CudaSyncNotificationImpl : OrtSyncNotificationImpl {
@@ -601,10 +601,10 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
             stream, device, cpu_allocator, release_cpu_buffer_on_cuda_stream, /*own*/ true,
             /*external_cudnn_handle*/ nullptr,
             /*external_cublas_handle*/ nullptr,
-            // ep_info is used by GetResource which seems to be a somewhat fairly ugly way to make arbitrary info
-            // that is unrelated to the stream available to a custom op.
+            // ep_info is used by GetResource which seems to be a somewhat ugly way to make arbitrary info that is
+            // unrelated to the stream available to a custom op.
             // avoiding adding GetResource to OrtSyncStreamImpl as we should have a cleaner setup for custom ops,
-            // so this argument value doesn't matter.
+            // so this argument value isn't used and doesn't matter.
             /*ep_info*/ CUDAExecutionProviderInfo{}},
         ort_api{ort_api_in} {
     ort_version_supported = ORT_API_VERSION;
@@ -653,6 +653,9 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
   }
 
  private:
+  // this is a little onion-ish as CudaStream is a onnxruntime::Stream and this is an OrtSyncStreamImpl that will be
+  // used via plugin_ep::Stream, which is also an onnxruntime::Stream. in a 'real' plugin EP implementation 
+  // CudaStream would go away and the logic it has would be implemented directly here.
   CudaStream stream_;
   const OrtApi& ort_api;
 };
@@ -707,10 +710,10 @@ struct CudaEpFactory : OrtEpFactory {
     cudaGetDeviceCount(&num_cuda_devices);
     RETURN_IF_ERROR(factory.CreateMemoryInfoForDevices(num_cuda_devices));
 
+    /* in theory we can match on the LUID in the OrtHardwareDevice metadata, but that requires the CUDA Driver API
     std::vector<uint64_t> device_to_luid;
     device_to_luid.resize(num_cuda_devices);
 
-    /* in theory we can match on the LUID in the OrtHardwareDevice metadata, but that requires the CUDA Driver API
     for (int i = 0; i < num_cuda_devices; ++i) {
       CUdevice device;
       cuDeviceGet(&device, i);
@@ -728,6 +731,10 @@ struct CudaEpFactory : OrtEpFactory {
       const OrtHardwareDevice& device = *devices[i];
       if (factory.ort_api.HardwareDevice_Type(&device) == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU &&
           factory.ort_api.HardwareDevice_VendorId(&device) == 0x10de) {
+        /* ideally we'd match on LUID here
+           for now we use an incrementing device id. could be a mismatch if you have multiple different CUDA GPUs.
+           alternative is to limit to one device only.
+
         // find the device id. On Windows we have the LUID in the OrtHardwareDevice metadata.
         const OrtKeyValuePairs* metadata = factory.ort_api.HardwareDevice_Metadata(&device);
         const char* luid_str = factory.ort_api.GetKeyValue(metadata, "LUID");
@@ -736,10 +743,6 @@ struct CudaEpFactory : OrtEpFactory {
           // if there's no LUID we can't match device
           return factory.ort_api.CreateStatus(ORT_EP_FAIL, "OrtHardwareDevice does not have LUID");
         }
-
-        /* ideally we'd match on LUID.
-        for now we just use an incrementing device id. could be wrong if you have multiple different CUDA GPUs.
-        alternative is to limit to one device only.
 
         char* luid_end = nullptr;
         uint64_t luid = std::strtoull(luid_str, &luid_end, 10);
@@ -847,12 +850,12 @@ struct CudaEpFactory : OrtEpFactory {
 
     // Currently this API is only used for creating a stream that is used outside of a session, as we're using the
     // 'real' CUDA IExecutionProvider implementation for the EP. Due to that we need to connect it up to an internal
-    // stream that has the correct settings for the session. We do that externally via the "user_compute_stream"
-    // provider option.
+    // onnxruntime::Stream that has the correct settings for the session.
+    // We do that externally by passing the cudaStream_t in via the "user_compute_stream" provider option.
     //
-    // For use within an inference session in a completely plugin EP we'd need a CPU allocator to be available,
-    // as well as for relevant options such as whether graph capture is enabled to be provided in the create call.
-    //
+    // For use within an inference session in a completely plugin EP we'd need the session's CPU allocator to be
+    // available, as well as for relevant EP instance specific options such as whether graph capture is enabled
+    // to be applied.
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
     AllocatorPtr null_allocator;  // this is only used by

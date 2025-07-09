@@ -84,27 +84,4 @@ TEST(CApiTest, CustomAllocator) {
     ASSERT_TRUE(api.UnregisterAllocator(*ort_env, mocked_allocator.Info()) == nullptr);
   }
 }
-
-TEST(SharedAllocators, CreateSharedAllocator) {
-  // register EP
-
-  // call CreateSharedAllocator to replace with arena based allocator
-}
-
-TEST(SharedAllocators, GetSharedAllocator) {
-  // default CPU allocator should be available
-
-  // register EP and get allocator from that
-
-  // register custom allocator and make sure that is accessible by exact match
-
-  // GetSharedAllocator exact match on EP allocator
-
-  // GetSharedAllocator matches ignoring name
-
-  // unregister EP allocator
-
-  // custom allocator should now be returned (match ignoring name)
-}
-
 #endif

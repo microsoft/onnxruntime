@@ -445,15 +445,9 @@ Environment::~Environment() {
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};
 
-  // do exact match first
-  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ true);
-  if (it != shared_ort_allocators_.end()) {
-    allocator = *it;
-  } else {
-    // match any other allocator (custom or otherwise) for the OrtMemoryInfo
-    it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
-    allocator = it != shared_ort_allocators_.end() ? *it : nullptr;
-  }
+  // doesn't matter whether we match a custom allocator or an EP allocator so match_name is false
+  auto it = FindExistingAllocator(shared_ort_allocators_, mem_info, /*match_name*/ false);
+  allocator = it != shared_ort_allocators_.end() ? *it : nullptr;
 
   // use the default CPU allocator if there's no custom or EP provided CPU allocator
   if (!allocator && (mem_info.device.Type() == OrtDevice::CPU &&
@@ -510,7 +504,7 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*internal_factory, data_transfer));
 
       if (data_transfer) {
-        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister
+        ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
         ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
       }
     }

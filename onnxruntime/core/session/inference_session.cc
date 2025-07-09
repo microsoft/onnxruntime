@@ -3352,8 +3352,8 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
     }
 
     // all entries are for the same OrtDevice so use the first one.
-    // we need to get an OrtMemoryInfo* that will remain valid, so we have to get the allocator for the OrtDevice
-    // from the session state and use it's OrtMemoryInfo.
+    // we need to get an OrtMemoryInfo* that will remain valid, so we get the allocator for the OrtDevice
+    // from the session state and use its OrtMemoryInfo.
     auto allocator = session_state_->GetAllocator(*node_info_vec.front().device);
     memory_info.push_back(&allocator->Info());
   }

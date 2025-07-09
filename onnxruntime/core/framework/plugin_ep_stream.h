@@ -66,7 +66,6 @@ class Stream : public onnxruntime::Stream {
   }
 
   void Flush() override {
-    // Implement the flush logic here if needed
     auto* status = impl_.Flush(&impl_);
 
     if (status != nullptr) {
@@ -85,20 +84,9 @@ class Stream : public onnxruntime::Stream {
     return Notification::WaitNotificationOnDevice;
   }
 
-  OrtSyncStreamImpl& GetImplementation() {
-    return impl_;
-  }
-
-  // Create Notification for use with user provided input.
-  OrtStatus* CreateInputNotification();
-  OrtStatus* ActivateInputNotification();  // called by user to indicate that async input has been added to the stream
-  void ReleaseInputNotification();
-
-  // when being used for user provided input this will return a Notification pointer that we need to connect to the
-  // internal Stream so it can wait on it. otherwise returns nullptr.
-  Notification* GetInputNotification() {
-    return input_notification_.get();
-  }
+  // OrtSyncStreamImpl& GetImplementation() {
+  //   return impl_;
+  // }
 
   ~Stream() override {
     impl_.Release(&impl_);
@@ -113,8 +101,6 @@ class Stream : public onnxruntime::Stream {
 
   OrtSyncStreamImpl& impl_;
   const Logger& logger_;
-
-  std::unique_ptr<Notification> input_notification_;
 };
 
 }  // namespace plugin_ep

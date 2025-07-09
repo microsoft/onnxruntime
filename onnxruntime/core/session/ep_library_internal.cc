@@ -67,8 +67,7 @@ class CpuEpFactory : public EpFactoryInternalImpl {
   }
 };
 
-std::unique_ptr<EpLibraryInternal>
-EpLibraryInternal::CreateCpuEp() {
+std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateCpuEp() {
   auto cpu_factory_impl = std::make_unique<CpuEpFactory>();
   auto internal_factory = std::make_unique<EpFactoryInternal>(std::move(cpu_factory_impl));
   return std::make_unique<EpLibraryInternal>(std::move(internal_factory));

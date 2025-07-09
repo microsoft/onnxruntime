@@ -316,13 +316,8 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
 
   ComPtr<IDXGIAdapter1> adapter;
   for (UINT i = 0; factory->EnumAdapters1(i, adapter.ReleaseAndGetAddressOf()) != DXGI_ERROR_NOT_FOUND; ++i) {
-    ComPtr<IDXGIAdapter4> adapter4;
-    if (FAILED(adapter.As(&adapter4))) {
-      continue;
-    }
-
-    DXGI_ADAPTER_DESC3 desc;
-    if (FAILED(adapter4->GetDesc3(&desc))) {
+    DXGI_ADAPTER_DESC1 desc;
+    if (FAILED(adapter->GetDesc1(&desc))) {
       continue;
     }
 

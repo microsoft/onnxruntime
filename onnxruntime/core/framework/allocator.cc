@@ -314,6 +314,7 @@ ORT_API_STATUS_IMPL(OrtApis::CompareMemoryInfo, _In_ const OrtMemoryInfo* info1,
 ORT_API(void, OrtApis::MemoryInfoGetDeviceType, _In_ const OrtMemoryInfo* info, _Out_ OrtMemoryInfoDeviceType* out) {
   *out = static_cast<OrtMemoryInfoDeviceType>(info->device.Type());
 }
+
 ORT_API_STATUS_IMPL(OrtApis::MemoryInfoGetDeviceMemType, _In_ const OrtMemoryInfo* ptr, _Out_ OrtDeviceMemoryType* out) {
   *out = static_cast<OrtDeviceMemoryType>(ptr->device.MemType());
   return nullptr;

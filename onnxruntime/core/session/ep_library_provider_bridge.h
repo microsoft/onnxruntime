@@ -49,7 +49,7 @@ class EpLibraryProviderBridge : public EpLibrary {
   std::unique_ptr<ProviderLibrary> provider_library_;  // provider bridge EP library
 
   // EpLibraryPlugin that provides the CreateEpFactories and ReleaseEpFactory implementations.
-  // we wrap the OrtEpFactory instances it contains to pass through calls, and
+  // we wrap the OrtEpFactory instances it contains to pass through function calls, and
   // implement EpFactoryInternal::CreateIExecutionProvider by calling Provider::CreateIExecutionProvider.
   std::unique_ptr<EpLibrary> ep_library_plugin_;
 

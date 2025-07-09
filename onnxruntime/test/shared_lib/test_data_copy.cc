@@ -27,7 +27,9 @@ namespace test {
 using StreamUniquePtr = std::unique_ptr<OrtSyncStream, std::function<void(OrtSyncStream*)>>;
 
 #ifdef USE_CUDA
-TEST(DataCopyTest, CopyInputsToDevice) {
+// test copying input to CUDA using an OrtEpFactory based EP.
+// tests GetSharedAllocator, CreateSyncStreamForEpDevice and CopyTensors APIs
+TEST(DataCopyTest, CopyInputsToCudaDevice) {
   OrtEnv* env = *ort_env;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
@@ -136,11 +138,12 @@ TEST(DataCopyTest, CopyInputsToDevice) {
 
       // Stream support is still a work in progress.
       //
-      // CUDA EP can use a user provided stream, so we pass in the data copy stream via provider options.
+      // CUDA EP can use a user provided stream via provider options, so we can pass in the cudaStream_t from the
+      // OrtSyncStream used in CopyTensors call that way.
       //
       // Alternatively you can manually sync the device via IoBinding.
-      Ort::IoBinding iobinding(session);
-      iobinding.SynchronizeInputs();  // this doesn't actually require any bound inputs
+      // Ort::IoBinding iobinding(session);
+      // iobinding.SynchronizeInputs();  // this doesn't actually require any bound inputs
     }
 
     std::vector<const char*> input_names = {"Input3"};
@@ -153,6 +156,7 @@ TEST(DataCopyTest, CopyInputsToDevice) {
     const float* results = nullptr;
     ASSERT_ORTSTATUS_OK(api->GetTensorData(output, reinterpret_cast<const void**>(&results)));
 
+    // expected results from the CPU EP. can check/re-create by running with PREFER_CPU.
     std::vector<float> expected = {
         -0.701670527f,
         -0.583666623f,

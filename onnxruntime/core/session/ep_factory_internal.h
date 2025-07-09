@@ -85,7 +85,7 @@ class EpFactoryInternalImpl {
   const std::string vendor_;   // EP vendor name
 };
 
-// this class can't have any virtual methods as we hook it up to the OrtEpDevice
+// this class can't have any virtual methods as they break using it as an OrtEpFactory* in OrtEpDevice.
 class EpFactoryInternal : public OrtEpFactory {
  public:
   EpFactoryInternal(std::unique_ptr<EpFactoryInternalImpl> impl);

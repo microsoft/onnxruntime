@@ -3213,10 +3213,10 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSessi
 }
 
 ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* ort_session,
-                    _Out_writes_(num_inputs) const OrtEpDevice** inputs_ep_devices,
-                    _In_ size_t num_inputs) {
+                    _Out_writes_(num_values) const OrtEpDevice** inputs_ep_devices,
+                    _In_ size_t num_values) {
   API_IMPL_BEGIN
-  if (ort_session == nullptr || inputs_ep_devices == nullptr || num_inputs == 0) {
+  if (ort_session == nullptr || inputs_ep_devices == nullptr || num_values == 0) {
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "Invalid argument provided to SessionGetEpDeviceForInputs.");
   }
 
@@ -3226,14 +3226,14 @@ ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession*
 
   ORT_API_RETURN_IF_STATUS_NOT_OK(session->GetEpDeviceForInputs(ep_devices));
 
-  auto num_values = ep_devices.size();
-  if (num_values > num_inputs) {
-    auto msg = MakeString("Number of inputs ", ep_devices.size(), " exceeds the provided size of ", num_inputs);
+  auto num_found = ep_devices.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of inputs ", num_found, " exceeds the provided size of ", num_values);
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
   }
 
   for (size_t i = 0; i < num_values; ++i) {
-    inputs_ep_devices[i] = (i < num_values) ? ep_devices[i] : nullptr;
+    inputs_ep_devices[i] = (i < num_found) ? ep_devices[i] : nullptr;
   }
 
   return nullptr;
@@ -3248,21 +3248,24 @@ ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice
     return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device and stream must be provided.");
   }
 
+  const OrtDevice* device = ep_device->device_memory_info ? &ep_device->device_memory_info->device : nullptr;
+
+  if (device == nullptr || device->MemType() != OrtDevice::MemType::DEFAULT) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "ep_device does not use DEFAULT memory of a non-CPU device.");
+  }
+
   const auto* factory = ep_device->ep_factory;
   if (!factory->IsStreamAware(factory)) {
     return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "The execution provider does not support streams.");
   }
 
-  // convert to the alias type
-  const OrtMemoryDevice* ort_mem_device = static_cast<const OrtMemoryDevice*>(&ep_device->device_memory_info->device);
-
   // get the stream implementation from the EP factory
   OrtSyncStreamImpl* stream_impl = nullptr;
-  ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(), ort_mem_device,
+  ORT_API_RETURN_IF_ERROR(factory->CreateSyncStreamForDevice(ep_device->GetMutableFactory(),
+                                                             static_cast<const OrtMemoryDevice*>(device),  // alias
                                                              /*ep*/ nullptr, stream_options, &stream_impl));
 
   if (stream_impl == nullptr) {
-    // unexpected given we already checked the OrtEpDevice has device_memory_info
     return OrtApis::CreateStatus(ORT_FAIL, "Failed to get a stream implementation from the EP factory.");
   }
 
@@ -3322,8 +3325,7 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
     return nullptr;
   };
 
-  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(src_tensors, num_tensors,
-                                                    src_memory_info));
+  ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(src_tensors, num_tensors, src_memory_info));
   ORT_API_RETURN_IF_ERROR(validate_and_get_mem_info(const_cast<const OrtValue**>(dst_tensors), num_tensors,
                                                     dst_memory_info));
 

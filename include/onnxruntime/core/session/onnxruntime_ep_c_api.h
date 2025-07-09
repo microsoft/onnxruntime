@@ -16,10 +16,6 @@ ORT_RUNTIME_CLASS(NodeComputeContext);
 // Opaque class to wrap onnxruntime::synchronize::Notification
 ORT_RUNTIME_CLASS(SyncNotification);
 
-// Wait notification function to receive a notification on a stream
-typedef OrtStatus*(ORT_API_CALL* SyncWaitNotificationFn)(_In_ OrtSyncStream*,
-                                                         _In_ OrtSyncNotification*);
-
 // struct that an EP implements for IDataTransfer to copy between devices it uses and CPU
 typedef struct OrtDataTransferImpl {
   uint32_t ort_version_supported;  ///< Must be initialized to ORT_API_VERSION
@@ -88,7 +84,7 @@ typedef struct OrtSyncNotificationImpl {
    */
   ORT_API_T(void, Release, _In_ void* this_ptr);
 
-  /** \brief Called by ORT when the notification is being activated
+  /** \brief Called by ORT to activate the notification.
    *
    * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
    *
@@ -99,11 +95,11 @@ typedef struct OrtSyncNotificationImpl {
   /** \brief Wait for a device to device operation to complete.
    *
    * \param[in] this_ptr Pointer to the OrtSyncNotificationImpl instance.
-   * \param[in] stream The OrtSyncStream instance that the notification is associated with.
+   * \param[in] stream The OrtSyncStream instance that will wait on this notification to be activated.
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* stream);
+  ORT_API2_STATUS(WaitOnDevice, _In_ void* this_ptr, _In_ OrtSyncStream* consumer_stream);
 
   /** \brief Wait for a device to host operation to complete.
    *
@@ -833,8 +829,7 @@ struct OrtEpFactory {
   /** \brief Check if execution providers created by the factory are stream aware.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \return True if the factory creates execution providers that are stream aware and implement OrtSyncStreamImpl
-   *         and OrtSyncNotificationImpl. False otherwise.
+   * \return True if the factory creates execution providers that are stream aware and it implements CreateSyncStreamForDevice.
    *
    * \since Version 1.23.
    */
@@ -859,7 +854,7 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
-                  _In_opt_ const OrtEp* ep,
+                  _In_opt_ const OrtEp* ep,  // ??? Is it better to have this optional arg, or to add a CreateSyncStream to OrtEp that can be optionally implemented
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };

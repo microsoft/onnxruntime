@@ -6127,7 +6127,9 @@ struct OrtApi {
 
   /** \brief Get the OrtMemoryInfo for each output of the session.
    *
-   * The memory info can be used to determine where the output tensors are allocated.
+   * The memory info can be used to determine the device the output tensors are produced on.
+   * The user can pre-allocate an OrtValue using this information or use IOBinding to keep the data on the device.
+   * ORT will copy the output to CPU otherwise.
    *
    * The session must be fully initialized before calling this function as the input locations are not known until
    * this has occurred.
@@ -6150,7 +6152,7 @@ struct OrtApi {
    *
    * An OrtEpDevice will be available if auto EP selection is enabled by calling
    * SessionOptionsSetEpSelectionPolicy or SessionOptionsSetEpSelectionPolicyDelegate,
-   * or if the OrtEpDevice was manually added to the session via SessionOptionsAppendExecutionProvider_V2.
+   * or if the OrtEpDevice was manually added to the session using SessionOptionsAppendExecutionProvider_V2.
    *
    * If an OrtEpDevice is not available for the input a nullptr is returned.
    *
@@ -6177,10 +6179,12 @@ struct OrtApi {
   /** \brief Create an OrtSyncStream for the given OrtEpDevice.
    *
    * The OrtSyncStream can be used to enable asynchronous operations.
-   * e.g. async usage of CopyTensors to provide into to an OrtSession Run call.
+   * e.g. async usage of CopyTensors to provide input to an OrtSession Run call.
+   *
+   * An error code of ORT_NOT_IMPLEMENTED will be returned if the EP does not support OrtSyncStream.
    *
    * \param[in] ep_device The OrtEpDevice instance to create the sync stream for.
-   * \param[in] stream_options Options for stream creating. May be nullptr.
+   * \param[in] stream_options Options for OrtSyncStream creation. May be nullptr.
    * \param[out] stream Output parameter set to the created OrtSyncStream instance.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
@@ -6191,7 +6195,7 @@ struct OrtApi {
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStream** stream);
 
-  /** \brief Get the handle of the sync stream.
+  /** \brief Get the native handle of the sync stream.
    *
    * This returns the native handle for the stream. e.g. cudaStream_t for CUDA streams.
    *
@@ -6208,7 +6212,7 @@ struct OrtApi {
   /** \brief Copy OrtValue instances containing Tensors between devices.
    *
    * The overall copy must be between two devices.
-   * i.e. all src_tensors must have the same OrtMemoryInfo and all dst_tensors must have the same OrtMemoryInfo.
+   * i.e. all src_tensors and dst_tensors must have the same OrtMemoryInfo.
    *
    * OrtValue instances can be created by:
    *   - Use GetSharedAllocator to get the shared allocator for the OrtMemoryInfo if you need to allocate memory
@@ -6220,8 +6224,8 @@ struct OrtApi {
    * \param[in] env The OrtEnv instance to use. The data transfer implementation is provided by an execution provider
    *                that is registered in this OrtEnv.
    * \param[in] src_tensors Array of OrtValue instances containing the source tensors to copy.
-   * \param[in] dst_tensors Array of OrtValue instances that will be filled with the copied tensors.
-   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously.
+   * \param[in] dst_tensors Array of OrtValue instances to copy the source tensors to.
+   * \param[in] stream Optional OrtSyncStream that can be used to perform the copy asynchronously. May be nullptr.
    * \param[in] num_tensors The number of tensors to copy. The size of `src_tensors` and `dst_tensors` must match.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value

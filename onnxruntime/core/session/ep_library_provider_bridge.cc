@@ -48,7 +48,7 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
                                       const OrtSessionOptions* session_options,
                                       const OrtLogger* session_logger,
                                       std::unique_ptr<IExecutionProvider>* ep) noexcept override {
-    // get the provider options
+    // get the provider specific options
     auto ep_options = GetOptionsFromSessionOptions(session_options->value);
     auto& provider = provider_library_.Get();
 
