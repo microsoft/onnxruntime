@@ -183,7 +183,8 @@ struct EpNode : public OrtNode {
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs, gsl::span<const char*> attribute_names) const override;
+  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                      const char** opt_attribute_names) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetGraph(const OrtGraph*& parent_graph) const override;

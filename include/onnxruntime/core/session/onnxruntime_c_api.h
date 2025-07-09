@@ -66,6 +66,7 @@ extern "C" {
 #define _In_reads_(X)
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
+#define _Out_writes_opt_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
@@ -5982,8 +5983,8 @@ struct OrtApi {
    * \param[in] num_subgraphs The size of the `num_subgraphs` array.
    *                          Typical usage sets this to the result of Node_GetNumSubgraphs(). An error status is
    *                          returned if `num_subgraphs` is less than the number of node subgraphs.
-   * \param[out] attribute_names Pre-allocated array of `num_subgraphs` elements that is filled with the
-   *                             attribute names that correspond to the subgraphs.
+   * \param[out] attribute_names Optional pre-allocated array of `num_subgraphs` elements that is filled with the
+   *                             attribute names that correspond to the subgraphs. Ignored if set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
@@ -5991,7 +5992,7 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
                   _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
-                  _Out_writes_(num_subgraphs) const char** attribute_names);
+                  _Out_writes_opt_(num_subgraphs) const char** attribute_names);
 
   /** \brief Get the node's parent OrtGraph instance.
    *

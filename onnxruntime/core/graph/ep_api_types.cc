@@ -234,14 +234,17 @@ Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   return Status::OK();
 }
 
-Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> subgraphs, gsl::span<const char*> attribute_names) const {
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                            const char** opt_attribute_names) const {
   const size_t num_subgraphs = subgraphs_.size();
   ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node subgraphs", num_subgraphs, subgraphs)));
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const char*>("node subgraph attributes", num_subgraphs, attribute_names)));
 
   for (size_t i = 0; i < num_subgraphs; ++i) {
     subgraphs[i] = subgraphs_[i].ep_subgraph.get();
-    attribute_names[i] = subgraphs_[i].attribute_name.c_str();
+
+    if (opt_attribute_names) {
+      opt_attribute_names[i] = subgraphs_[i].attribute_name.c_str();
+    }
   }
 
   return Status::OK();
