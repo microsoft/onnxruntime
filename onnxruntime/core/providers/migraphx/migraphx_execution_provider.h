@@ -27,8 +27,7 @@ constexpr auto kCachePath = "ORT_MIGRAPHX_CACHE_PATH";
 constexpr auto kINT8UseNativeMIGraphXCalibrationTable = "ORT_MIGRAPHX_INT8_USE_NATIVE_CALIBRATION_TABLE";
 constexpr auto kModelCachePath = "ORT_MIGRAPHX_MODEL_CACHE_PATH";
 constexpr auto kExhaustiveTune = "ORT_MIGRAPHX_EXHAUSTIVE_TUNE";
-
-};  // namespace migraphx_env_vars
+}  // namespace migraphx_env_vars
 
 // Information to construct kernel function state.
 struct MIGraphXFuncState {
@@ -54,32 +53,32 @@ struct MIGraphXFuncState {
 };
 
 // Logical device representation.
-class MIGraphXExecutionProvider : public IExecutionProvider {
+class MIGraphXExecutionProvider final : public IExecutionProvider {
  public:
   explicit MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info);
-  ~MIGraphXExecutionProvider();
+  ~MIGraphXExecutionProvider() override = default;
 
   void get_flags_from_session_info(const MIGraphXExecutionProviderInfo& info);
   void get_flags_from_env();
-  void print_migraphx_ep_flags();
+  void print_migraphx_ep_flags() const;
 
   Status Sync() const override;
 
-  Status OnRunStart(const onnxruntime::RunOptions& run_options) override;
+  Status OnRunStart(const RunOptions& run_options) override;
 
-  Status OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) override;
+  Status OnRunEnd(bool sync_stream, const RunOptions& run_options) override;
 
   std::vector<std::unique_ptr<ComputeCapability>>
-  GetCapability(const onnxruntime::GraphViewer& graph_viewer,
+  GetCapability(const GraphViewer& graph_viewer,
                 const IKernelLookup& /*kernel_lookup*/,
                 const GraphOptimizerRegistry& /* graph_optimizer_registry */,
                 IResourceAccountant* /* resource_accountant */) const override;
 
-  common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
-                         std::vector<NodeComputeInfo>& node_compute_funcs) override;
+  Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes,
+                 std::vector<NodeComputeInfo>& node_compute_funcs) override;
 
-  virtual std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
-  std::unique_ptr<onnxruntime::IDataTransfer> GetDataTransfer() const override;
+  std::shared_ptr<KernelRegistry> GetKernelRegistry() const override;
+  std::unique_ptr<IDataTransfer> GetDataTransfer() const override;
 
   static AllocatorPtr CreateMIGraphXAllocator(OrtDevice::DeviceId device_id, size_t migx_mem_limit, ArenaExtendStrategy arena_extend_strategy,
                                               MIGraphXExecutionProviderExternalAllocatorInfo external_alloc_info, const OrtArenaCfg* arena_cfg);
@@ -111,7 +110,7 @@ class MIGraphXExecutionProvider : public IExecutionProvider {
   migraphx::target t_;
   std::mutex mgx_mu_;
   hipStream_t stream_ = nullptr;
-  hipDeviceProp_t device_prop_;
+  hipDeviceProp_t device_prop_{};
   bool exhaustive_tune_ = false;
   mutable std::filesystem::path model_path_;
 
