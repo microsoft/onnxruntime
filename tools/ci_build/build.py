@@ -1159,7 +1159,7 @@ def generate_build_tree(
                             msvc_flags = msvc_flags + " " + compile_flag
                     if len(msvc_flags) != 0:
                         nvcc_flags.append(f'-Xcompiler="{msvc_flags}"')
-            elif is_linux() or is_macOS() or args.build_wasm:
+            elif (is_linux() or is_macOS() or args.build_wasm) and args.use_binskim_compliant_compile_flags:
                 if is_linux() and not args.build_wasm:
                     ldflags = ["-Wl,-Bsymbolic-functions", "-Wl,-z,relro", "-Wl,-z,now", "-Wl,-z,noexecstack"]
                 else:
