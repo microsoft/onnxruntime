@@ -2280,6 +2280,8 @@ class TestGQA(unittest.TestCase):
                                             for use_smooth_softmax in [False, True]:
                                                 for has_pos, has_attn in pos_ids_attn_bias:
                                                     for head_sink in [False, True]:
+                                                        if use_smooth_softmax and head_sink:
+                                                            continue
                                                         if config_class == PromptConfig:
                                                             config = config_class(
                                                                 b,
