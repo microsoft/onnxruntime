@@ -172,7 +172,11 @@
     file(MAKE_DIRECTORY ${WGSL_GENERATED_DIR})
 
     # Find all WGSL template input files
-    file(GLOB_RECURSE WGSL_TEMPLATE_FILES "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template")
+    file(GLOB_RECURSE WGSL_TEMPLATE_FILES
+      "${ONNXRUNTIME_ROOT}/core/providers/webgpu/*.wgsl.template"
+      "${ONNXRUNTIME_ROOT}/contrib_ops/webgpu/*.wgsl.template")
+
+    message(WARNING "WGSL_TEMPLATE_FILES: ${WGSL_TEMPLATE_FILES}")
 
     # Set wgsl-gen command line options as a list
     set(WGSL_GEN_OPTIONS "-i" "../" "--output" "${WGSL_GENERATED_DIR}" "-I" "wgsl_template_gen/" "--preserve-code-ref" "--verbose")
@@ -190,6 +194,8 @@
     add_custom_command(
       OUTPUT ${WGSL_GENERATED_INDEX_H} ${WGSL_GENERATED_INDEX_IMPL_H} ${WGSL_GENERATED_TEMPLATES_JS}
       COMMAND ${NPM_EXECUTABLE} run gen -- ${WGSL_GEN_OPTIONS}
+      COMMAND ${CMAKE_COMMAND} -E echo "Running command: ${NPM_EXECUTABLE} run gen -- ${WGSL_GEN_OPTIONS}"
+      COMMAND ${CMAKE_COMMAND} -E echo "WGSL_TEMPLATES_DIR: ${WGSL_TEMPLATES_DIR}"
       DEPENDS "${WGSL_TEMPLATES_DIR}/node_modules/.install_complete" ${WGSL_TEMPLATE_FILES}
       WORKING_DIRECTORY ${WGSL_TEMPLATES_DIR}
       COMMENT "Generating WGSL templates from *.wgsl.template files"

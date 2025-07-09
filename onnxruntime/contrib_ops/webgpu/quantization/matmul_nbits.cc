@@ -45,6 +45,10 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   }
   const auto& y = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias | ShaderUsage::UseIndicesTypeAlias);
 
+  std::cout << "Use MatMul template\n";
+  return WGSL_TEMPLATE_APPLY(shader, "contrib_ops/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(nbits, nbits_));
+#if 0
   // Bock size 32, `a` component size 4, 8 `a` components per block.
   constexpr uint32_t kAComponentsForBlock32 = 8;
 
@@ -196,6 +200,7 @@ fn dequantize_packed8xU4(packed_value : u32, zero_point : output_element_t, scal
 )MAIN_FN";
 
   return Status::OK();
+#endif
 }
 
 // Apply similar idea with DP4AMatMulNBitsSmallMProgram algorithm.
