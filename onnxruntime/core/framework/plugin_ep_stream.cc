@@ -12,7 +12,7 @@ OrtStatus* Stream::CreateNotificationImpl(size_t /*num_consumers*/, std::unique_
   OrtSyncNotificationImpl* notification_impl = nullptr;
   ORT_API_RETURN_IF_ERROR(impl_.CreateNotification(&impl_, &notification_impl));
 
-  result = std::make_unique<Notification>(*this, *notification_impl);
+  result = std::make_unique<Notification>(*this, *notification_impl, logger_);
   return nullptr;
 }
 }  // namespace plugin_ep

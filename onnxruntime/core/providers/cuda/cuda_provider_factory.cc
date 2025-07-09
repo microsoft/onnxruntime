@@ -316,7 +316,7 @@ CUDA_Provider* GetProvider() {
 #include "core/session/abi_devices.h"
 #include "onnxruntime_config.h"  // for ORT_VERSION
 
-static struct ErrorHelper {
+struct ErrorHelper {
   static const OrtApi* ort_api;
 
   static OrtStatus* ToOrtStatus(const Status& status) {
@@ -505,15 +505,16 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
       } else {
         // copying between CPU accessible memory
 
-        if (cuda_stream) {
-          if (src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
-            // sync the stream first to make sure the data arrived
-            CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+        if (dst_data != src_data) {
+          if (cuda_stream) {
+            if (src_mem_type == OrtDeviceMemoryType_HOST_ACCESSIBLE) {
+              // sync the stream first to make sure the data arrived
+              CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(cuda_stream));
+            }
           }
-        }
 
-        ORT_ENFORCE(dst_data != src_data);
-        memcpy(dst_data, src_data, bytes);
+          memcpy(dst_data, src_data, bytes);
+        }
       }
     }
 
@@ -830,7 +831,7 @@ struct CudaEpFactory : OrtEpFactory {
     return nullptr;
   }
 
-  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* this_ptr) noexcept {
+  static bool ORT_API_CALL IsStreamAwareImpl(const OrtEpFactory* /*this_ptr*/) noexcept {
     return true;
   }
 
