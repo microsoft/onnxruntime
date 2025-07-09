@@ -8,6 +8,12 @@
 
 #include "mlasi.h"
 
+// Fix to ensure compatibility with MSVC build
+#if defined(_MSC_VER)
+  #define RESTRICT __restrict
+#else
+  #define RESTRICT __restrict__
+#endif
 namespace ArmKleidiAI {
 //
 // Buffer packing routines.
