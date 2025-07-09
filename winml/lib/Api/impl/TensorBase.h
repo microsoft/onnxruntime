@@ -598,10 +598,7 @@ struct TensorBase : TBase {
 
   static std::vector<int64_t> GetAdjustedShape(std::vector<int64_t> shape, uint64_t actualSize) {
     auto shapeSize = std::accumulate(
-      std::begin(shape),
-      std::end(shape),
-      static_cast<int64_t>(1),
-      [](const auto& accumulatedValue, const auto& next) {
+      std::begin(shape), std::end(shape), static_cast<int64_t>(1), [](const auto& accumulatedValue, const auto& next) {
         if (next == -1) {
           return accumulatedValue;
         } else {

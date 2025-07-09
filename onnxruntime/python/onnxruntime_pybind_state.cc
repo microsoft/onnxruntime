@@ -1181,63 +1181,13 @@ static std::shared_ptr<IExecutionProviderFactory> CreateExecutionProviderFactory
   } else if (type == kOpenVINOExecutionProvider) {
 #if defined(USE_OPENVINO) || defined(USE_OPENVINO_PROVIDER_INTERFACE)
     ProviderOptions OV_provider_options_map;
+    const std::unordered_set<std::string> valid_provider_keys = {"device_type", "device_id", "device_luid", "cache_dir", "precision",
+                                                                 "load_config", "context", "num_of_threads", "model_priority", "num_streams", "enable_opencl_throttling", "enable_qdq_optimizer",
+                                                                 "enable_causallm", "disable_dynamic_shapes", "reshape_input"};
     auto it = provider_options_map.find(type);
     if (it != provider_options_map.end()) {
       for (auto option : it->second) {
-        if (option.first == "device_type") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "precision") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "enable_opencl_throttling") {
-          if (!(option.second == "True" || option.second == "true" ||
-                option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_opencl_throttling: ", option.second);
-          }
-          OV_provider_options_map[option.first] = option.second;
-        } else if (option.first == "disable_dynamic_shapes") {
-          if (!(option.second == "True" || option.second == "true" ||
-                option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for disable_dynamic_shapes: ", option.second);
-          }
-          OV_provider_options_map[option.first] = option.second;
-        } else if (option.first == "enable_dynamic_shapes") {
-          LOGS_DEFAULT(WARNING) << " Deprecation notice - 'enable_dynamic_shapes' is Deprected. Upgrade the API to disable_dynamic_shapes parameter."
-                                   "Please refer https://onnxruntime.ai/docs/execution-providers/OpenVINO-ExecutionProvider.html#requirements to ensure all dependencies are met.";
-          std::string value;
-          if (!(option.second == "True" || option.second == "true" ||
-                option.second == "False" || option.second == "false")) {
-            ORT_THROW("Invalid value passed for enable_dynamic_shapes: ", option.second);
-          }
-          if (option.second == "True" || option.second == "true") {
-            value = "false";
-          } else {
-            value = "true";
-          }
-          OV_provider_options_map["disable_dynamic_shapes"] = value;
-        } else if (option.first == "num_of_threads") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "model_priority") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "num_streams") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "load_config") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "cache_dir") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "context") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "enable_qdq_optimizer") {
-          OV_provider_options_map[option.first] = option.second;
-          continue;
-        } else if (option.first == "enable_causallm") {
+        if (valid_provider_keys.count(option.first)) {
           OV_provider_options_map[option.first] = option.second;
           continue;
         } else {

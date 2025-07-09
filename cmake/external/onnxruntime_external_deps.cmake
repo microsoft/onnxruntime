@@ -775,6 +775,16 @@ if (onnxruntime_USE_WEBGPU)
   if (onnxruntime_ENABLE_PIX_FOR_WEBGPU_EP)
     list(APPEND onnxruntime_EXTERNAL_LIBRARIES webgpu_glfw glfw)
   endif()
+
+  if (NOT CMAKE_SYSTEM_NAME STREQUAL "Emscripten" AND onnxruntime_WGSL_TEMPLATE STREQUAL "dynamic")
+    onnxruntime_fetchcontent_declare(
+      duktape
+      URL ${DEP_URL_duktape}
+      URL_HASH SHA1=${DEP_SHA1_duktape}
+      EXCLUDE_FROM_ALL
+    )
+    onnxruntime_fetchcontent_makeavailable(duktape)
+  endif()
 endif()
 
 if(onnxruntime_USE_COREML)
