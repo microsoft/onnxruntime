@@ -44,6 +44,8 @@ inline void ComputeAttentionSoftcapInplace(T* scores, int sequence_length, T sof
 template <typename T>
 Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
   is_causal_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("is_causal", 0)) == 1;
+  // kv_num_heads, q_num_head are mandatory for 3D inputs but not used for 4D inputs.
+  // The dimension is not yet known. If not specified, the inputs is assumed to be 4D.
   kv_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("kv_num_heads", 0));
   q_num_heads_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("q_num_heads", 0));
   int mode = static_cast<int>(info.GetAttrOrDefault<int64_t>("qk_matmul_output_mode", 0));
