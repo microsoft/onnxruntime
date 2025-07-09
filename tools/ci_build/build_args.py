@@ -722,9 +722,9 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     migx_group.add_argument("--use_rocm", action="store_true", help="Enable ROCm EP.")
     migx_group.add_argument("--rocm_version", help="ROCm stack version.")
     migx_group.add_argument("--rocm_home", help="Path to ROCm installation directory.")
-    migx_group.add_argument("--rocm_gfx_arch", help='Provide gfx arch. Example --rocm_gfx_arch gfx942'
-        ' or --rocm_gfx_arch "gfx90a;gfx942" ')
-
+    migx_group.add_argument(
+        "--rocm_gfx_arch", help='Provide gfx arch. Example --rocm_gfx_arch gfx942 or --rocm_gfx_arch "gfx90a;gfx942" '
+    )
 
     # --- WebNN ---
     webnn_group = parser.add_argument_group("WebNN Execution Provider")

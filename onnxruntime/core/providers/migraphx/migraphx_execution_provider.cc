@@ -103,7 +103,8 @@ std::shared_ptr<KernelRegistry> MIGraphXExecutionProvider::GetKernelRegistry() c
 
 MIGraphXExecutionProvider::MIGraphXExecutionProvider(const MIGraphXExecutionProviderInfo& info)
     : IExecutionProvider{kMIGraphXExecutionProvider, OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
-                          OrtDevice::VendorIds::AMD, info.device_id)}, info_(info) {
+                                                               OrtDevice::VendorIds::AMD, info.device_id)},
+      info_(info) {
   InitProviderOrtApi();
   get_flags_from_session_info(info);
   metadef_id_generator_ = ModelMetadefIdGenerator::Create();
