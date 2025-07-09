@@ -11,27 +11,27 @@ namespace onnxruntime {
 
 class MIGraphXAllocator : public IAllocator {
  public:
-  MIGraphXAllocator(int device_id, const char* name)
+  MIGraphXAllocator(const OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtAllocatorType::OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::AMD,
-                                    static_cast<OrtDevice::DeviceId>(device_id)),
+                          device_id),
                           OrtMemTypeDefault)) {}
 
-  virtual void* Alloc(size_t size) override;
-  virtual void Free(void* p) override;
+  void* Alloc(size_t size) override;
+  void Free(void* p) override;
 
  private:
   void CheckDevice() const;
 };
 
-class MIGraphXExternalAllocator : public MIGraphXAllocator {
+class MIGraphXExternalAllocator final : public MIGraphXAllocator {
   typedef void* (*ExternalAlloc)(size_t size);
   typedef void (*ExternalFree)(void* p);
   typedef void (*ExternalEmptyCache)();
 
  public:
-  MIGraphXExternalAllocator(OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
+  MIGraphXExternalAllocator(const OrtDevice::DeviceId device_id, const char* name, void* alloc, void* free, void* empty_cache)
       : MIGraphXAllocator(device_id, name) {
     alloc_ = reinterpret_cast<ExternalAlloc>(alloc);
     free_ = reinterpret_cast<ExternalFree>(free);
@@ -52,12 +52,11 @@ class MIGraphXExternalAllocator : public MIGraphXAllocator {
 
 class MIGraphXPinnedAllocator final : public IAllocator {
  public:
-  MIGraphXPinnedAllocator(const int device_id, const char* name)
+  MIGraphXPinnedAllocator(const OrtDevice::DeviceId device_id, const char* name)
       : IAllocator(
             OrtMemoryInfo(name, OrtDeviceAllocator,
                           OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::AMD,
-                                    static_cast<OrtDevice::DeviceId>(device_id)),
-                          OrtMemTypeCPUOutput)) {}
+                          device_id), OrtMemTypeCPUOutput)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
