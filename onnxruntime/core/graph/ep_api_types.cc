@@ -129,11 +129,12 @@ Status EpNode::Create(const Node& node, const EpGraph* ep_graph,
 
     ConvertNodeArgsToValueInfos(ep_graph, value_infos_map, node_implicit_inputs, ep_node_implicit_inputs);
 
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node.GetSubgraphs();
-    ep_node_subgraphs.reserve(node_subgraphs.size());
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> subgraphs_map = node.GetAttributeNameToSubgraphMap();
+    ep_node_subgraphs.reserve(subgraphs_map.size());
 
-    for (gsl::not_null<const Graph*> subgraph : node_subgraphs) {
+    for (const auto& [attr_name, subgraph] : subgraphs_map) {
       SubgraphState subgraph_state;
+      subgraph_state.attribute_name = attr_name;
       subgraph_state.subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
       ORT_RETURN_IF_ERROR(EpGraph::Create(*subgraph_state.subgraph_viewer, subgraph_state.ep_subgraph));
       subgraph_state.ep_subgraph->SetParentNode(ep_node.get());
@@ -233,12 +234,17 @@ Status EpNode::GetNumSubgraphs(size_t& num_subgraphs) const {
   return Status::OK();
 }
 
-Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> dst) const {
+Status EpNode::GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                            const char** opt_attribute_names) const {
   const size_t num_subgraphs = subgraphs_.size();
-  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node attributes", num_subgraphs, dst)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const OrtGraph*>("node subgraphs", num_subgraphs, subgraphs)));
 
   for (size_t i = 0; i < num_subgraphs; ++i) {
-    dst[i] = subgraphs_[i].ep_subgraph.get();
+    subgraphs[i] = subgraphs_[i].ep_subgraph.get();
+
+    if (opt_attribute_names) {
+      opt_attribute_names[i] = subgraphs_[i].attribute_name.c_str();
+    }
   }
 
   return Status::OK();
@@ -659,6 +665,43 @@ Status EpGraph::Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<
 const std::string& EpGraph::GetName() const { return graph_viewer_.Name(); }
 
 int64_t EpGraph::GetOnnxIRVersion() const { return graph_viewer_.GetOnnxIRVersion(); }
+
+Status EpGraph::GetNumOperatorSets(size_t& num_operator_sets) const {
+  num_operator_sets = graph_viewer_.DomainToVersionMap().size();
+  return Status::OK();
+}
+
+Status EpGraph::GetOperatorSets(gsl::span<const char*> domains,
+                                gsl::span<int64_t> opset_versions) const {
+  const std::unordered_map<std::string, int>& domain_to_version = graph_viewer_.DomainToVersionMap();
+  size_t num_operator_sets = domain_to_version.size();
+
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<const char*>("operator set domains", num_operator_sets, domains)));
+  ORT_RETURN_IF_ERROR((CheckCopyDestination<int64_t>("operator set versions", num_operator_sets, opset_versions)));
+
+  // Collect (domain, version) pairs and sort them by domain to ensure user always gets a stable ordering.
+  std::vector<std::pair<const char*, int>> pairs;
+  pairs.reserve(num_operator_sets);
+
+  for (const auto& [domain, version] : domain_to_version) {
+    pairs.emplace_back(domain.c_str(), version);
+  }
+
+  std::sort(pairs.begin(), pairs.end(),
+            [](const std::pair<const char*, int>& a, const std::pair<const char*, int>& b) -> bool {
+              return std::strcmp(a.first, b.first) < 0;
+            });
+
+  // Copy sorted (domain, version) pairs into the destination buffers.
+  size_t index = 0;
+  for (const auto& [domain_c_str, version] : pairs) {
+    domains[index] = domain_c_str;
+    opset_versions[index] = version;
+    index++;
+  }
+
+  return Status::OK();
+}
 
 size_t EpGraph::GetNumInputs() const {
   return inputs_.size();

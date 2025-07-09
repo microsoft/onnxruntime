@@ -525,7 +525,7 @@ class T5Attention(nn.Module):
         query_length=None,
         cache_indirection=None,
     ):
-        import onnxruntime
+        import onnxruntime  # noqa: PLC0415
 
         sess_options = onnxruntime.SessionOptions()
         execution_providers = ["CUDAExecutionProvider"] if use_cuda else ["CPUExecutionProvider"]

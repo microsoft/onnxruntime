@@ -38,7 +38,6 @@ Usage:
 Options:
   -d  --debug       specify the debug build type of the artifacts to download.
   -l  --latest      if set, will always use the latest build, even if it is not completed yet.
-      --webgpu-ep   if set, will use the webgpu EP wasm build instead of the default(JSEP) one.
   -h  --help        print this message and exit
 `;
 
@@ -81,9 +80,8 @@ try {
 // The following code checks both the command line arguments and the npm_config_* environment variables to get the correct values.
 const debug = args.debug || process.env.npm_config_d || process.env.npm_config_debug;
 const latest = args.latest || process.env.npm_config_l || process.env.npm_config_latest;
-const webgpuEp = args['webgpu-ep'] || process.env.npm_config_webgpu_ep;
 
-const folderName = (debug ? 'Debug_wasm' : 'Release_wasm') + (webgpuEp ? '_webgpu' : '');
+const folderName = debug ? 'Debug_wasm' : 'Release_wasm';
 const allowImcomplete = latest;
 
 const run = args._[0]; // The first non-option argument
@@ -151,13 +149,17 @@ async function downloadArtifactsForRun(run: any): Promise<void> {
       if (!fs.existsSync(WASM_FOLDER)) {
         fs.mkdirSync(WASM_FOLDER);
       } else {
-        // TODO: revise artifacts download
-        const filesToDelete = ['ort-wasm-simd-threaded.jsep.mjs', 'ort-wasm-simd-threaded.jsep.wasm'];
-        if (!folderName.endsWith('_webgpu')) {
-          filesToDelete.push('ort-wasm-simd-threaded.mjs', 'ort-wasm-simd-threaded.wasm');
-        }
         fs.readdirSync(WASM_FOLDER).forEach((file) => {
-          if (filesToDelete.includes(file)) {
+          if (
+            [
+              'ort-wasm-simd-threaded.jsep.mjs',
+              'ort-wasm-simd-threaded.jsep.wasm',
+              'ort-wasm-simd-threaded.jsep.mjs',
+              'ort-wasm-simd-threaded.jsep.wasm',
+              'ort-wasm-simd-threaded.mjs',
+              'ort-wasm-simd-threaded.wasm',
+            ].includes(file)
+          ) {
             const filePath = path.join(WASM_FOLDER, file);
             console.log(`Deleting old file: ${filePath}`);
             fs.unlinkSync(filePath);
