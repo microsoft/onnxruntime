@@ -183,7 +183,7 @@ class DynamoOnnxHelper:
         """
         Constant fold Transpose initializers without changing the initializer names
         """
-        from onnxscript import ir
+        from onnxscript import ir  # noqa: PLC0415
 
         for name, initializer in model.graph.initializers.items():
             user_nodes = initializer.consumers()

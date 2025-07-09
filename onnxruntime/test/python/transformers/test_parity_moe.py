@@ -550,7 +550,7 @@ class SparseMoeBlockORTHelper(nn.Module):
         super().__init__()
 
     def create_ort_session(self, moe_onnx_graph):
-        from onnxruntime import InferenceSession, SessionOptions
+        from onnxruntime import InferenceSession, SessionOptions  # noqa: PLC0415
 
         sess_options = SessionOptions()
 
@@ -636,7 +636,7 @@ class SparseMoeBlockORTHelper(nn.Module):
             self.ort_sess.run_with_iobinding(iobinding)
             iobinding.synchronize_outputs()
 
-        import time
+        import time  # noqa: PLC0415
 
         s = time.time()
         for _ in range(repeat):
