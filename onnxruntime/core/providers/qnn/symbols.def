@@ -1,3 +1,2 @@
 EXPORTS
-   CreateEpFactories
-   ReleaseEpFactory
+   GetProvider
