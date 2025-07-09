@@ -565,9 +565,11 @@ class WinMLLearningModel {
       Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<char>> buffer;
       RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<char>>(&buffer, bytes, bytes + size));
 
-      RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::BufferBackedRandomAccessStreamReference>(
-        &random_access_stream_ref, buffer.Get()
-      ));
+      RETURN_HR_IF_FAILED(
+        Microsoft::WRL::MakeAndInitialize<WinMLTest::BufferBackedRandomAccessStreamReference>(
+          &random_access_stream_ref, buffer.Get()
+        )
+      );
     }
 
     // Create a learning model factory
@@ -580,7 +582,8 @@ class WinMLLearningModel {
 
     // Create a learning model from the factory with the random access stream reference that points
     // to the random access stream view on top of the in memory stream copy of the model
-    RETURN_HR_IF_FAILED(learning_model->LoadFromStream(random_access_stream_ref.Get(), m_learning_model.GetAddressOf())
+    RETURN_HR_IF_FAILED(
+      learning_model->LoadFromStream(random_access_stream_ref.Get(), m_learning_model.GetAddressOf())
     );
 
     return 0;
@@ -650,9 +653,11 @@ class WinMLLearningModelBinding {
     );
 
     Microsoft::WRL::ComPtr<weak_single_threaded_iterable<int64_t>> input_shape_iterable;
-    RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<int64_t>>(
-      &input_shape_iterable, p_shape, p_shape + shape_size
-    ));
+    RETURN_HR_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<weak_single_threaded_iterable<int64_t>>(
+        &input_shape_iterable, p_shape, p_shape + shape_size
+      )
+    );
 
     Microsoft::WRL::ComPtr<ITensor> tensor;
     RETURN_HR_IF_FAILED(tensor_factory->CreateFromArray(
@@ -694,7 +699,8 @@ class WinMLLearningModelBinding {
     );
 
     Microsoft::WRL::ComPtr<WinMLTest::WeakBuffer<T>> buffer;
-    RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(&buffer, p_data, p_data + data_size)
+    RETURN_HR_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(&buffer, p_data, p_data + data_size)
     );
 
     Microsoft::WRL::ComPtr<ITensor> tensor;
@@ -721,9 +727,11 @@ class WinMLLearningModelBinding {
 
     std::vector<Microsoft::WRL::ComPtr<ABI::Windows::Storage::Streams::IBuffer>> vec_buffers(num_buffers);
     for (size_t i = 0; i < num_buffers; i++) {
-      RETURN_HR_IF_FAILED(Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
-        &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]
-      ));
+      RETURN_HR_IF_FAILED(
+        Microsoft::WRL::MakeAndInitialize<WinMLTest::WeakBuffer<T>>(
+          &vec_buffers.at(i), p_data[i], p_data[i] + data_sizes[i]
+        )
+      );
     }
 
     std::vector<ABI::Windows::Storage::Streams::IBuffer*> raw_buffers(num_buffers);
@@ -789,7 +797,8 @@ class WinMLLearningModelDevice {
   }
 
   static WinMLLearningModelDevice create_directx_high_power_device() {
-    return WinMLLearningModelDevice(ABI::Microsoft::AI::MachineLearning::LearningModelDeviceKind_DirectXHighPerformance
+    return WinMLLearningModelDevice(
+      ABI::Microsoft::AI::MachineLearning::LearningModelDeviceKind_DirectXHighPerformance
     );
   }
 
