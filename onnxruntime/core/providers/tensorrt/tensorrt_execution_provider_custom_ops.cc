@@ -7,6 +7,18 @@
 #include "tensorrt_execution_provider_custom_ops.h"
 #include "tensorrt_execution_provider.h"
 
+// The filename extension for a shared library is different per platform
+#ifdef _WIN32
+#define LIBRARY_PREFIX
+#define LIBRARY_EXTENSION ORT_TSTR(".dll")
+#elif defined(__APPLE__)
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".dylib"
+#else
+#define LIBRARY_PREFIX "lib"
+#define LIBRARY_EXTENSION ".so"
+#endif
+
 namespace onnxruntime {
 extern TensorrtLogger& GetTensorrtLogger(bool verbose);
 
@@ -58,7 +70,28 @@ common::Status CreateTensorRTCustomOpDomainList(std::vector<OrtCustomOpDomain*>&
     // Get all registered TRT plugins from registry
     LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
     TensorrtLogger trt_logger = GetTensorrtLogger(false);
-    initLibNvInferPlugins(&trt_logger, "");
+    void* library_handle = nullptr;
+    const auto& env = onnxruntime::GetDefaultEnv();
+    auto full_path = env.GetRuntimePath() +
+                     PathString(LIBRARY_PREFIX ORT_TSTR("nvinfer_plugin") LIBRARY_EXTENSION);
+    ORT_THROW_IF_ERROR(env.LoadDynamicLibrary(full_path, false, &library_handle));
+
+    bool (*dyn_initLibNvInferPlugins)(void* logger, char const* libNamespace);
+    ORT_THROW_IF_ERROR(env.GetSymbolFromLibrary(library_handle, "initLibNvInferPlugins", (void**)&dyn_initLibNvInferPlugins));
+    dyn_initLibNvInferPlugins(&trt_logger, "");
+    LOGS_DEFAULT(INFO) << "[NvTensorRTRTX EP] Default plugins successfully loaded.";
+
+#if defined(_MSC_VER)
+#pragma warning(push)
+#pragma warning(disable : 4996)  // Ignore warning C4996: 'nvinfer1::*' was declared deprecated
+#endif
+  } catch (const std::exception&) {
+    LOGS_DEFAULT(INFO) << "[TensorRT EP] Default plugin library is not on the path and is therefore ignored";
+  }
+  try {
+    // Get all registered TRT plugins from registry
+    LOGS_DEFAULT(VERBOSE) << "[TensorRT EP] Getting all registered TRT plugins from TRT plugin registry ...";
+    TensorrtLogger trt_logger = GetTensorrtLogger(false);
 
     int num_plugin_creator = 0;
     auto plugin_creators = getPluginRegistry()->getAllCreators(&num_plugin_creator);
