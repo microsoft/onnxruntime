@@ -26,14 +26,18 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   Microsoft::WRL::ComPtr<IOrtSessionBuilder> onnxruntime_session_builder;
 
   if (device_ == nullptr) {
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(
-      &onnxruntime_session_builder, engine_factory_.Get()
-    ));
+    RETURN_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<OnnxruntimeCpuSessionBuilder>(
+        &onnxruntime_session_builder, engine_factory_.Get()
+      )
+    );
   } else {
 #ifdef USE_DML
-    RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(
-      &onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_
-    ));
+    RETURN_IF_FAILED(
+      Microsoft::WRL::MakeAndInitialize<OnnxruntimeDmlSessionBuilder>(
+        &onnxruntime_session_builder, engine_factory_.Get(), device_.Get(), queue_.Get(), metacommands_enabled_
+      )
+    );
 #endif
   }
 
@@ -83,9 +87,11 @@ STDMETHODIMP OnnxruntimeEngineBuilder::CreateEngine(_Outptr_ _winml::IEngine** o
   auto session = UniqueOrtSession(ort_session, ort_api->ReleaseSession);
 
   Microsoft::WRL::ComPtr<OnnxruntimeEngine> onnxruntime_engine;
-  RETURN_IF_FAILED(Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(
-    &onnxruntime_engine, engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()
-  ));
+  RETURN_IF_FAILED(
+    Microsoft::WRL::MakeAndInitialize<OnnxruntimeEngine>(
+      &onnxruntime_engine, engine_factory_.Get(), std::move(session), onnxruntime_session_builder.Get()
+    )
+  );
   RETURN_IF_FAILED(onnxruntime_engine->RegisterCustomOpLibraryHandles(handles));
   RETURN_IF_FAILED(onnxruntime_engine.CopyTo(out));
   return S_OK;
