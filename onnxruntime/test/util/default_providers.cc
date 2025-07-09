@@ -87,10 +87,7 @@ std::unique_ptr<IExecutionProvider> DefaultMIGraphXExecutionProvider() {
       0,
       0,
       nullptr,
-      1,
-      "./compiled_model.mxr",
-      1,
-      "./compiled_model.mxr",
+      nullptr,
       1,
       SIZE_MAX,
       0};

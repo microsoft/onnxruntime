@@ -715,10 +715,7 @@ typedef struct OrtMIGraphXProviderOptions {
   int migraphx_int8_enable;                          // MIGraphX INT8 precision. Default 0 = false, nonzero = true
   int migraphx_use_native_calibration_table;         // MIGraphx INT8 cal table. Default 0 = false, noznero = true
   const char* migraphx_int8_calibration_table_name;  // MIGraphx INT8 calibration table name
-  int migraphx_save_compiled_model;                  // migraphx save compiled model. Default 0 = false, noznero = true
-  const char* migraphx_save_model_path;              // migraphx model path name
-  int migraphx_load_compiled_model;                  // migraphx int8 cal table. Default 0 = false, noznero = true
-  const char* migraphx_load_model_path;              // migraphx model path name
+  const char* migraphx_cache_dir;                    // MIGraphX model cache directory
   bool migraphx_exhaustive_tune;                     // migraphx tuned compile  Default = false
 
   /** \brief MIGraphX memory limit (To use all possible memory pass in maximum size_t)

@@ -3,9 +3,11 @@
 
 #pragma once
 
+#include <charconv>
 #include <fstream>
 #include <unordered_map>
 #include <string>
+#include <vector>
 #include <iostream>
 #include <filesystem>
 #include <memory>
@@ -14,6 +16,7 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/framework/execution_provider.h"
 #include "core/common/path_string.h"
+#include "core/framework/murmurhash3.h"
 
 namespace fs = std::filesystem;
 
@@ -248,6 +251,73 @@ inline std::string GetCachePath(const std::string& root, const std::string& name
     path.append(name);
     return path.string();
   }
+}
+
+inline std::string GenerateGraphId(const GraphViewer& graph_viewer) {
+  HashValue model_hash;
+
+  // find the top level graph
+  const Graph* cur_graph = &graph_viewer.GetGraph();
+  while (cur_graph->IsSubgraph()) {
+    cur_graph = cur_graph->ParentGraph();
+  }
+
+  const Graph& main_graph = *cur_graph;
+  uint32_t hash[4] = {0, 0, 0, 0};
+
+  auto hash_str = [&hash](const std::string& str) {
+    MurmurHash3::x86_128(str.data(), gsl::narrow_cast<int32_t>(str.size()), hash[0], &hash);
+  };
+
+  // Use the model's file name instead of the entire path to avoid cache regeneration if a path changes
+  const fs::path path{main_graph.ModelPath()};
+
+  if (path.has_filename()) {
+    const auto model_name = path.filename().string();
+
+    LOGS_DEFAULT(INFO) << "Model name is '" << model_name << "'";
+    // Ensure enough characters are hashed in case model names are too short
+    const size_t model_name_length = model_name.length();
+    constexpr size_t hash_string_length = 500;
+    std::string repeat_model_name = model_name;
+    for (size_t i = model_name_length; i > 0 && i < hash_string_length; i += model_name_length) {
+      repeat_model_name += model_name;
+    }
+    hash_str(repeat_model_name);
+  } else {
+    LOGS_DEFAULT(INFO) << "Model path is empty";
+  }
+
+  // fingerprint current graph by hashing graph inputs
+  for (const auto* node_arg : graph_viewer.GetInputsIncludingInitializers()) {
+    hash_str(node_arg->Name());
+  }
+
+  // hashing output of each node
+  const int number_of_ort_nodes = graph_viewer.NumberOfNodes();
+  std::vector<size_t> nodes_vector(number_of_ort_nodes);
+  std::iota(std::begin(nodes_vector), std::end(nodes_vector), 0);
+  const std::vector<NodeIndex>& node_index = graph_viewer.GetNodesInTopologicalOrder();
+  for (const auto& index : nodes_vector) {
+    const auto& node = graph_viewer.GetNode(node_index[index]);
+    for (const auto* node_arg : node->OutputDefs()) {
+      if (node_arg->Exists()) {
+        hash_str(node_arg->Name());
+      }
+    }
+  }
+
+#ifdef __linux__
+  hash_str("LINUX");
+#elif defined(_WIN32)
+  hash_str("WINDOWS");
+#endif
+
+  model_hash = hash[0] | static_cast<uint64_t>(hash[1]) << 32;
+
+  std::array<char, sizeof(HashValue) << 1> s;
+  auto [ptr, ec] = std::to_chars(s.data(), s.data() + s.size(), model_hash, 16);
+  return std::string{s.data(), ptr};
 }
 
 }  // namespace onnxruntime

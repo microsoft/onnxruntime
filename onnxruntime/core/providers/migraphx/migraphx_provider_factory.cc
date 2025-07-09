@@ -1,6 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License
 #include <atomic>
+#include <string>
 
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
@@ -90,15 +91,9 @@ struct MIGraphX_Provider : Provider {
       info.int8_calibration_table_name = options.migraphx_int8_calibration_table_name;
     }
     info.int8_use_native_calibration_table = options.migraphx_use_native_calibration_table != 0;
-    info.save_compiled_model = options.migraphx_save_compiled_model;
-    info.save_model_file = "";
-    if (options.migraphx_save_model_path != nullptr) {
-      info.save_model_file = options.migraphx_save_model_path;
-    }
-    info.load_compiled_model = options.migraphx_load_compiled_model;
-    info.load_model_file = "";
-    if (options.migraphx_load_model_path != nullptr) {
-      info.load_model_file = options.migraphx_load_model_path;
+    info.model_cache_dir = "";
+    if (options.migraphx_cache_dir != nullptr) {
+      info.model_cache_dir = options.migraphx_cache_dir;
     }
     info.arena_extend_strategy = static_cast<onnxruntime::ArenaExtendStrategy>(options.migraphx_arena_extend_strategy);
     info.mem_limit = options.migraphx_mem_limit;
@@ -131,10 +126,7 @@ struct MIGraphX_Provider : Provider {
 
     migx_options.migraphx_use_native_calibration_table = internal_options.int8_use_native_calibration_table;
 
-    migx_options.migraphx_save_compiled_model = internal_options.save_compiled_model;
-    migx_options.migraphx_save_model_path = internal_options.save_model_file.c_str();
-    migx_options.migraphx_load_compiled_model = internal_options.load_compiled_model;
-    migx_options.migraphx_load_model_path = internal_options.load_model_file.c_str();
+    migx_options.migraphx_cache_dir = internal_options.model_cache_dir.string().c_str();
     migx_options.migraphx_arena_extend_strategy = static_cast<int>(internal_options.arena_extend_strategy);
     migx_options.migraphx_mem_limit = internal_options.mem_limit;
   }

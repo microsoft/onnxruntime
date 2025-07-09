@@ -21,10 +21,7 @@ constexpr auto kFp8Enable = "migraphx_fp8_enable";
 constexpr auto kInt8Enable = "migraphx_int8_enable";
 constexpr auto kInt8CalibTable = "migraphx_int8_calibration_table_name";
 constexpr auto kInt8UseNativeCalibTable = "migraphx_int8_use_native_calibration_table";
-constexpr auto kSaveCompiledModel = "migraphx_save_compiled_model";
-constexpr auto kSaveModelPath = "migraphx_save_model_name";
-constexpr auto kLoadCompiledModel = "migraphx_load_compiled_model";
-constexpr auto kLoadModelPath = "migraphx_load_model_name";
+constexpr auto kModelCacheDir = "migraphx_model_cache_dir";
 constexpr auto kExhaustiveTune = "migraphx_exhaustive_tune";
 constexpr auto kMemLimit = "migraphx_mem_limit";
 constexpr auto kArenaExtendStrategy = "migraphx_arena_extend_strategy";
@@ -65,10 +62,7 @@ struct MIGraphXExecutionProviderInfo {
   bool int8_enable{false};
   std::string int8_calibration_table_name{""};
   bool int8_use_native_calibration_table{false};
-  bool save_compiled_model{true};
-  std::string save_model_file{"./compiled_model.mxr"};
-  bool load_compiled_model{true};
-  std::string load_model_file{"./compiled_model.mxr"};
+  std::filesystem::path model_cache_dir{};
   bool exhaustive_tune{false};
 
   size_t mem_limit{std::numeric_limits<size_t>::max()};                             // Will be over-ridden by contents of `default_memory_arena_cfg` (if specified)
@@ -94,11 +88,13 @@ struct std::hash<::onnxruntime::MIGraphXExecutionProviderInfo> {
                   (static_cast<size_t>(info.fp16_enable) << 18) ^
                   (static_cast<size_t>(info.int8_enable) << 19) ^
                   (static_cast<size_t>(info.int8_use_native_calibration_table) << 20) ^
-                  (static_cast<size_t>(info.save_compiled_model) << 21) ^
-                  (static_cast<size_t>(info.load_compiled_model) << 22) ^
-                  (static_cast<size_t>(info.exhaustive_tune) << 23);
+                  (static_cast<size_t>(info.exhaustive_tune) << 21);
     onnxruntime::HashCombine(data, value);
 
+    onnxruntime::HashCombine(info.target_device, value);
+    onnxruntime::HashCombine(info.default_memory_arena_cfg, value);
+    onnxruntime::HashCombine(info.int8_calibration_table_name, value);
+    onnxruntime::HashCombine(info.model_cache_dir, value);
     onnxruntime::HashCombine(info.mem_limit, value);
 
     // Memory pointers
