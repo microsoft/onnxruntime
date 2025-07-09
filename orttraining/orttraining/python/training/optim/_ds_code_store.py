@@ -12,7 +12,7 @@
 
 # Wrap code in this to make sure the indentation is correct compared with raw DeepSpeed.
 
-class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:
+class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:  # noqa: N801
 
     def has_overflow_serial(self, params, is_grad_list=False):
         return any(p.grad is not None and self._has_inf_or_nan(p.grad.data) for p in params)
@@ -36,13 +36,13 @@ class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:
             Total norm of the parameters (viewed as a single vector).
         """
         norm_type = float(norm_type)
-        if norm_type == inf:
+        if norm_type == inf:  # noqa: F821
             total_norm = max(g.data.abs().max() for g in gradients)
-            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])
-            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=self.dp_process_group)
+            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])  # noqa: F821
+            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.MAX, group=self.dp_process_group)  # noqa: F821
 
             # Take max across all GPUs.
-            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.MAX)  # noqa: F821
             total_norm = total_norm_cuda[0].item()
         else:
             total_norm = 0.0
@@ -50,16 +50,16 @@ class Stage1And2_DeepSpeedZeroOptimizer_0_9_2:
             #    logger.info(f"Total Norm beginning {total_norm}")
             for g, p in zip(gradients, params, strict=False):
                 # Pipeline parallelism may replicate parameters. Avoid multi-counting.
-                if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:
+                if hasattr(p, PIPE_REPLICATED) and p.ds_pipe_replicated:  # noqa: F821
                     continue
-                if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):
+                if is_model_parallel_parameter(p) or (self.model_parallel_rank == 0):  # noqa: F821
                     param_norm = g.data.double().norm(2)
                     total_norm += param_norm.item()**2
             # Sum across all model parallel GPUs.
-            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])
-            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=self.dp_process_group)
+            total_norm_cuda = get_accelerator().FloatTensor([float(total_norm)])  # noqa: F821
+            dist.all_reduce(total_norm_cuda, op=dist.ReduceOp.SUM, group=self.dp_process_group)  # noqa: F821
 
-            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)
+            self._model_parallel_all_reduce(tensor=total_norm_cuda, op=dist.ReduceOp.SUM)  # noqa: F821
 
             total_norm = total_norm_cuda[0].item()**(1. / norm_type)
 

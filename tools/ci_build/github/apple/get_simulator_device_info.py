@@ -13,7 +13,7 @@ import subprocess
 
 
 @functools.total_ordering
-class Version:
+class Version:  # noqa: PLW1641
     """
     A simple Version class.
     We opt to use this instead of `packaging.version.Version` to avoid depending on the external `packaging` package.

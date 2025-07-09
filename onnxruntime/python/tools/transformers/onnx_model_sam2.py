@@ -44,8 +44,8 @@ class Sam2OnnxModel(BertOnnxModel):
 
     def optimize(self, options: FusionOptions | None = None, add_dynamic_axes: bool = False):
         if is_installed("tqdm"):
-            import tqdm
-            from tqdm.contrib.logging import logging_redirect_tqdm
+            import tqdm  # noqa: PLC0415
+            from tqdm.contrib.logging import logging_redirect_tqdm  # noqa: PLC0415
 
             with logging_redirect_tqdm():
                 steps = 12

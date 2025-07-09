@@ -1134,14 +1134,29 @@ static void TestBindHelper(const std::string& log_str,
 
   if (bind_provider_type == kCudaExecutionProvider || bind_provider_type == kRocmExecutionProvider || bind_provider_type == kWebGpuExecutionProvider) {
 #ifdef USE_CUDA
-    auto provider = DefaultCudaExecutionProvider();
-    gpu_provider = provider.get();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+    {
+      auto provider = DefaultCudaExecutionProvider();
+      gpu_provider = provider.get();
+      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+    }
 #endif
 #ifdef USE_ROCM
-    auto provider = DefaultRocmExecutionProvider();
-    gpu_provider = provider.get();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+    {
+      auto provider = DefaultRocmExecutionProvider();
+      gpu_provider = provider.get();
+      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+    }
+#endif
+#ifdef USE_WEBGPU
+    {
+      ConfigOptions config_options{};
+      ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
+                                                enable_graph_capture ? webgpu::options::kEnableGraphCapture_ON : webgpu::options::kEnableGraphCapture_OFF)
+                      .IsOK());
+      auto provider = WebGpuExecutionProviderWithOptions(config_options);
+      gpu_provider = provider.get();
+      ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
+    }
 #endif
 #ifdef USE_WEBGPU
     ConfigOptions config_options{};
