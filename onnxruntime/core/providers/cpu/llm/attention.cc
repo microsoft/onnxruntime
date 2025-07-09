@@ -77,7 +77,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   ORT_ENFORCE(q_dims == v_dims, "Q and V must have the same rank.");
 
   ORT_ENFORCE(Q->Shape()[0] == K->Shape()[0], "inconsistent batch_size of Q and K");
-  ORT_ENFORCE(Q->Shape()[0] == V->Shape()[0], "inconsistent batch_size");
+  ORT_ENFORCE(Q->Shape()[0] == V->Shape()[0], "inconsistent batch_size of Qand V");
   ORT_ENFORCE(past_key == nullptr || Q->Shape()[0] == past_key->Shape()[0], "inconsistent batch_size");
   ORT_ENFORCE(past_value == nullptr || Q->Shape()[0] == past_value->Shape()[0], "inconsistent batch_size");
 
