@@ -62,5 +62,25 @@ struct AttentionParameters {
   }
 };
 
+void CompauteOutputShapeForAttention(
+    const Tensor* Q,
+    const Tensor* K,
+    const Tensor* V,
+    const Tensor* attn_mask,
+    const Tensor* past_key,
+    const Tensor* past_value,
+    bool is_causal,
+    float softcap,
+    int softmax_precision,
+    attention_helper::QKMatMulOutputMode qk_matmul_output_mode,
+    int kv_num_heads,
+    int q_num_heads,
+    float scale,
+    AttentionParameters& parameters,
+    std::vector<int64_t>& y_shape,
+    std::vector<int64_t>& present_key_shape,
+    std::vector<int64_t>& present_value_shape,
+    std::vector<int64_t>& output_qk_shape);
+
 }  // namespace attention_helper
 }  // namespace onnxruntime
