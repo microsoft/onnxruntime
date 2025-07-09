@@ -43,6 +43,35 @@ namespace python {
 namespace py = nanobind;
 using namespace onnxruntime::logging;
 
+nb::ndarray<> PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value, const DataTransferAlternative& dtm) {
+  const Tensor& tensor = ort_value.Get<Tensor>();
+  const int numpy_type_enum = OnnxRuntimeTensorToNumpyType(tensor.DataType());
+
+  // 1. Get the shape as a vector of size_t for nanobind's constructor.
+  std::vector<size_t> shape;
+  for (const auto& dim : tensor.Shape().GetDims()) {
+    shape.push_back(static_cast<size_t>(dim));
+  }
+
+  // 2. Create a new NumPy array with the correct shape and dtype.
+  //    nanobind uses a dtype object created from the NumPy type enum.
+  nb::ndarray<> result(nb::dtype(numpy_type_enum), shape.size(), shape.data());
+
+  // 3. Get the mutable data pointer using the .data() method.
+  void* data_ptr = result.data();
+
+  // 4. The data transfer logic remains unchanged.
+  if (std::holds_alternative<const DataTransferManager*>(dtm)) {
+    const DataTransferManager* data_transfer = std::get<const DataTransferManager*>(dtm);
+    static const OrtMemoryInfo cpu_alloc_info{onnxruntime::CPU, OrtDeviceAllocator};
+    const auto span = gsl::make_span<char>(reinterpret_cast<char*>(data_ptr), tensor.SizeInBytes());
+    ORT_THROW_IF_ERROR(CopyTensorDataToByteSpan(*data_transfer, tensor, cpu_alloc_info, span));
+  } else {
+    std::get<MemCpyFunc>(dtm)(data_ptr, tensor.DataRaw(), tensor.SizeInBytes());
+  }
+
+  return result;
+}
 const char* PYTHON_ORTVALUE_OBJECT_NAME = "OrtValue";
 const char* PYTHON_ORTVALUE_NATIVE_OBJECT_ATTR = "_ortvalue";
 
@@ -441,29 +470,29 @@ AllocatorPtr GetRocmAllocator(OrtDevice::DeviceId id) {
 
 #endif
 
-int OnnxRuntimeTensorToNumpyType(const DataTypeImpl* tensor_type) {
-  static std::map<MLDataType, int> type_map{
-      {DataTypeImpl::GetType<bool>(), NPY_BOOL},
-      {DataTypeImpl::GetType<float>(), NPY_FLOAT},
-      {DataTypeImpl::GetType<MLFloat16>(), NPY_FLOAT16},
-      {DataTypeImpl::GetType<double>(), NPY_DOUBLE},
-      {DataTypeImpl::GetType<int8_t>(), NPY_INT8},
-      {DataTypeImpl::GetType<uint8_t>(), NPY_UINT8},
-      {DataTypeImpl::GetType<int16_t>(), NPY_INT16},
-      {DataTypeImpl::GetType<uint16_t>(), NPY_UINT16},
-      {DataTypeImpl::GetType<int32_t>(), NPY_INT},
-      {DataTypeImpl::GetType<uint32_t>(), NPY_UINT},
-      {DataTypeImpl::GetType<int64_t>(), NPY_LONGLONG},
-      {DataTypeImpl::GetType<uint64_t>(), NPY_ULONGLONG},
-      {DataTypeImpl::GetType<std::string>(), NPY_OBJECT},
-  };
+nb::dtype OnnxRuntimeTensorToNumpyType(const onnxruntime::DataTypeImpl* tensor_type) {
+  // Using an efficient hash map is better for performance than std::map.
+  static const absl::flat_hash_map<onnxruntime::MLDataType, nb::dtype> type_map = {
+      {onnxruntime::DataTypeImpl::GetType<bool>(), nb::dtype<bool>()},
+      {onnxruntime::DataTypeImpl::GetType<float>(), nb::dtype<float>()},
+      {onnxruntime::DataTypeImpl::GetType<onnxruntime::MLFloat16>(), nb::dtype<onnxruntime::MLFloat16>()},
+      {onnxruntime::DataTypeImpl::GetType<double>(), nb::dtype<double>()},
+      {onnxruntime::DataTypeImpl::GetType<int8_t>(), nb::dtype<int8_t>()},
+      {onnxruntime::DataTypeImpl::GetType<uint8_t>(), nb::dtype<uint8_t>()},
+      {onnxruntime::DataTypeImpl::GetType<int16_t>(), nb::dtype<int16_t>()},
+      {onnxruntime::DataTypeImpl::GetType<uint16_t>(), nb::dtype<uint16_t>()},
+      {onnxruntime::DataTypeImpl::GetType<int32_t>(), nb::dtype<int32_t>()},
+      {onnxruntime::DataTypeImpl::GetType<uint32_t>(), nb::dtype<uint32_t>()},
+      {onnxruntime::DataTypeImpl::GetType<int64_t>(), nb::dtype<int64_t>()},
+      {onnxruntime::DataTypeImpl::GetType<uint64_t>(), nb::dtype<uint64_t>()},
+      {onnxruntime::DataTypeImpl::GetType<std::string>(), nb::dtype<nb::object>()}};
 
-  const auto it = type_map.find(tensor_type);
+  auto it = type_map.find(tensor_type);
   if (it == type_map.end()) {
-    throw std::runtime_error("No corresponding Numpy type for Tensor Type.");
-  } else {
-    return it->second;
+    throw std::runtime_error("Unsupported ONNX Runtime tensor type.");
   }
+
+  return it->second;
 }
 
 MLDataType NumpyTypeToOnnxRuntimeTensorType(int numpy_type) {
@@ -970,7 +999,7 @@ static void CreateGenericIterableMLValue(nb::iterator iterator, AllocatorPtr all
 
   // 2. Get the first item from the iterator using the dereference operator.
   // nanobind's nb::object manages the reference count automatically.
-  nb::object item(*iterator);
+  nb::object item (*iterator);
 
   // 3. Use nb::isinstance for clean, type-safe checking.
   if (nb::isinstance<nb::ndarray>(item)) {

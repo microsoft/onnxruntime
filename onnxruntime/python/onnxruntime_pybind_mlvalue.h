@@ -150,7 +150,7 @@ nb::ndarray<void> StringTensorToNumpyArray(const Tensor& tensor);
 
 nb::ndarray<void> PrimitiveTensorToNumpyOverOrtValue(const OrtValue& ort_value);
 
-nb::ndarray<void> PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
+nb::ndarray<> PrimitiveTensorToNumpyFromDevice(const OrtValue& ort_value,
                                              const DataTransferAlternative& data_transfer);
 
 // This custom deleter for CPython objects is library-agnostic and does not need to change.
