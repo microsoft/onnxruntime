@@ -77,7 +77,6 @@ class AttentionBase : public OpKernel {
                    gsl::span<const int64_t> mask_index_dims,
                    T* mask_data,
                    bool causal,
-                   int batch_size,
                    int sequence_length,
                    int kv_sequence_length,
                    int past_sequence_length) const;

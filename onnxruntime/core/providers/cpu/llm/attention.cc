@@ -53,6 +53,7 @@ Attention<T>::Attention(const OpKernelInfo& info) : AttentionBase<T>(info) {
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftCap ||
                   qk_matmul_output_mode_ == QKMatMulOutputMode::kQKSoftMax,
               "qk_matmul_output_mode must be 0, 1, 2, or 3.");
+  // The default scale depends on the input dimensions. It is set to nan to indicate that it should be computed.
   scale_ = info.GetAttrOrDefault<float>("scale", std::numeric_limits<T>::quiet_NaN());
   softcap_ = info.GetAttrOrDefault<float>("softcap", 0.0f);
   softmax_precision_ = static_cast<int>(info.GetAttrOrDefault<int64_t>("softmax_precision", 0));
@@ -74,7 +75,7 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
   std::vector<int64_t> present_value_shape;
   std::vector<int64_t> output_qk_shape;
 
-  attention_helper::CompauteOutputShapeForAttention(
+  attention_helper::ComputeOutputShapeForAttention(
       Q,
       K,
       V,
@@ -163,17 +164,14 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,        // outpu
 
     ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
       for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const int batch_index = static_cast<int>(i) / num_heads;
-
         const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * probs_matrix_size;
-        const ptrdiff_t mask_offset = SafeInt<ptrdiff_t>(batch_index) * probs_matrix_size;
 
         T* output = attention_probs + output_offset;
         T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
 
         if (mask_data != nullptr) {
-          // Broadcast mask data: (Bx)SxT -> (BxNx)SxT
-          memcpy(output, mask_data + mask_offset, probs_matrix_bytes);
+          // Broadcast mask data: SxT -> SxT
+          memcpy(output, mask_data, probs_matrix_bytes);
         }
 
         // handling GQA
@@ -208,7 +206,7 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,        // outpu
             } else {
               // This can be optimized with vectorized add using MlasAddFloat32x4.
               for (ptrdiff_t j = 0; j < probs_matrix_size; j++) {
-                out_qk[j] = output[j] - mask_data[mask_offset + j];
+                out_qk[j] = output[j] - mask_data[j];
               }
             }
           }
@@ -363,32 +361,27 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   // Total sequence length including that of past state: T = P + L
   const int total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
 
-  // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0, then broadcast to 3D (BxSxT).
+  // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0.
   void* mask_data = nullptr;
   bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
   if (mask_index != nullptr || causal) {
-    size_t mask_data_bytes = SafeInt<size_t>(parameters.batch_size) * parameters.q_sequence_length * total_sequence_length * sizeof(T);
+    size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T);
     mask_data = allocator->Alloc(mask_data_bytes);
     memset(mask_data, 0, mask_data_bytes);
   }
 
   BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
   if (mask_data != nullptr) {
-    // Convert mask from boolean (0/1) to float (mask_filter_value/0.0f).
-    // Merge padding mask with causal mask, and broadcast to 3D (BxSxT).
     if (mask_index == nullptr) {
       this->PrepareMask(static_cast<T*>(nullptr), gsl::span<const int64_t>{}, static_cast<T*>(mask_data),
-                        causal, parameters.batch_size, parameters.q_sequence_length,
-                        parameters.kv_sequence_length, parameters.past_sequence_length);
+                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
     } else if (mask_index->IsDataType<bool>()) {
       this->PrepareMask(mask_index->Data<bool>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
-                        causal, parameters.batch_size, parameters.q_sequence_length,
-                        parameters.kv_sequence_length, parameters.past_sequence_length);
+                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
     } else {
       // Convert float mask to 0/1
       this->PrepareMask(mask_index->Data<T>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
-                        causal, parameters.batch_size, parameters.q_sequence_length,
-                        parameters.kv_sequence_length, parameters.past_sequence_length);
+                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
     }
   }
 
@@ -470,48 +463,30 @@ void AttentionBase<T>::PrepareMask(const U* mask_index,
                                    gsl::span<const int64_t> mask_index_dims,
                                    T* mask_data,
                                    bool causal,
-                                   int batch_size,
                                    int sequence_length,
                                    int kv_sequence_length,
                                    int past_sequence_length) const {
   const int all_sequence_length = past_sequence_length + kv_sequence_length;
 
-  // mask_data has been filled with 0, and its shape is BxSxT
+  // mask_data has been filled with 0
+  // size is batch_size, q_sequence_length, total_sequence_length
   T* p_mask = mask_data;
 
-  // 4D mask in Megatron GPT2 is currently not support in CPU kernel
-  if (nullptr != mask_index && mask_index_dims.size() == 4) {
-    ORT_NOT_IMPLEMENTED("4D mask in attention cpu kernel is not supported");
+  if (nullptr != mask_index && mask_index_dims.size() != 2) {
+    ORT_NOT_IMPLEMENTED("Only 2D mask in attention cpu kernel is currently supported.");
   }
 
-  // For 3D mask, convert values 0 to mask_filter_value, and 1 to 0.0, then apply unidirectional mask if any.
-  if (nullptr != mask_index && mask_index_dims.size() == 3) {
-    make_copy(p_mask, mask_index, batch_size * sequence_length * all_sequence_length);
-    if (causal) {
-      for (int b_i = 0; b_i < batch_size; b_i++) {
-        for (int s_i = 0; s_i < sequence_length; s_i++) {
-          for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-            p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
-          }
-        }
-        p_mask += static_cast<size_t>(sequence_length) * all_sequence_length;
-      }
-    }
+  // The first instructions define the 2D mask.
+  if (nullptr != mask_index) {
+    make_copy(p_mask, mask_index, sequence_length * all_sequence_length);
   } else {
-    if (nullptr != mask_index) {
-      make_copy(p_mask, mask_index, sequence_length * all_sequence_length);
-    } else {
-      memset(p_mask, 0, sequence_length * all_sequence_length * sizeof(T));
-    }
-    if (causal) {
-      for (int s_i = 0; s_i < sequence_length; s_i++) {
-        for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-          p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
-        }
+    memset(p_mask, 0, sequence_length * all_sequence_length * sizeof(T));
+  }
+  if (causal) {
+    for (int s_i = 0; s_i < sequence_length; s_i++) {
+      for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
+        p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
       }
-    }
-    for (int b_i = 1; b_i < batch_size; b_i++) {
-      memcpy(p_mask + b_i * sequence_length * all_sequence_length, mask_data, sequence_length * all_sequence_length * sizeof(T));
     }
   }
 }

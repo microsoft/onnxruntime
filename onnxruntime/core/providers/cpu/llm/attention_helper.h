@@ -62,7 +62,7 @@ struct AttentionParameters {
   }
 };
 
-void CompauteOutputShapeForAttention(
+void ComputeOutputShapeForAttention(
     const Tensor* Q,
     const Tensor* K,
     const Tensor* V,
