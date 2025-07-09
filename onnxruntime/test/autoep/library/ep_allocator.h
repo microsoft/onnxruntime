@@ -47,7 +47,7 @@ struct CustomAllocator : OrtAllocator {
     return impl.memory_info;
   }
 
-  static OrtStatus* GetStatsImpl(const struct OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
+  static OrtStatus* ORT_API_CALL GetStatsImpl(const struct OrtAllocator* this_, OrtKeyValuePairs** out) noexcept {
     const CustomAllocator& impl = *static_cast<const CustomAllocator*>(this_);
 
     OrtKeyValuePairs* kvps;
