@@ -306,8 +306,8 @@ struct DequantizeLinearApply<T, OutT, false> {
     for (size_t m = 0; m < M; m++) {
       for (size_t k = 0; k < K; k++) {
 #if defined(ORT_CLIENT_PACKAGE_BUILD)
-        // TODO: Only using multithreaded/SIMD DQ when ORT is build for client/on-device workloads.
-        // Make this the default after more testing.
+        // TODO: Only using multithreaded/SIMD DQ when ORT is built for client/on-device workloads.
+        // Make this the default behavior after more testing.
         if constexpr (std::is_same_v<T, uint8_t> || std::is_same_v<T, int8_t>) {
           ParDequantizeLinearStd<T>(input, output, N, scale[k], zero_point ? zero_point[k] : 0, thread_pool);
           input += N;
