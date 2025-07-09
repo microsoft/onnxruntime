@@ -1,6 +1,8 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <filesystem>
+#include <fstream>
 #include <gtest/gtest.h>
 #include <gsl/gsl>
 #include <memory>
@@ -14,6 +16,9 @@
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/graph_proto_serializer.h"
+
+#define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
+#include "core/providers/utils/ort_graph_to_proto.h"
 
 #include "test/ep_graph/test_ep_graph_utils.h"
 #include "test/util/include/api_asserts.h"
@@ -80,6 +85,168 @@ TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+ }
+
+static void RunMNISTModel(const ORTCHAR_T* model_path, std::vector<float>& output_data) {
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  Ort::SessionOptions sess_options;
+  Ort::Session session(*ort_env, model_path, sess_options);
+
+  std::vector<int64_t> input_shape = {1, 1, 28, 28};
+  std::vector<float> input_data(28 * 28, 0.5f);
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add 'Input3'
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<float>(
+      memory_info, input_data.data(), input_data.size(), input_shape.data(), input_shape.size()));
+  ort_input_names.push_back("Input3");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"Plus214_Output_0"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output type and number of elements.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto output_type_shape = ort_output.GetTensorTypeAndShapeInfo();
+  size_t num_output_elems = output_type_shape.GetElementCount();
+
+  ASSERT_EQ(output_type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(num_output_elems, 10);
+
+  // Return output data.
+  const float* output_values = ort_output.GetTensorData<float>();
+  output_data.assign(output_values, output_values + num_output_elems);
+}
+
+// Test serializing an OrtGraph (MNIST) to GraphProto. Saves initializers to external file.
+// Checks that the outputs of the serialized and original models are identical.
+TEST(EpGraphTest, SerializeToProto_Mnist) {
+  const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/mnist.onnx");
+  const ORTCHAR_T* serialized_model_path = ORT_TSTR("mnist_serialized.onnx");
+  std::filesystem::remove(serialized_model_path);
+
+  {
+    auto test_graph = TestGraph::Load(original_model_path);
+    ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+    // Serialize OrtGraph to GraphProto. Save initializers to external file.
+    std::string ext_ini_file_path = "mnist_serialized.bin";
+    std::filesystem::remove(ext_ini_file_path);
+    std::ofstream ext_ini_ofs(ext_ini_file_path, std::ios::binary);
+    auto handle_initializer_data = [&ext_ini_ofs, &ext_ini_file_path](const OrtValueInfo* value_info,
+                                                                      const void* data, size_t bytes,
+                                                                      bool& is_external, std::string& location,
+                                                                      int64_t& offset) -> Ort::Status {
+      // OrtValueInfo* could be used to query initializer's name, type, shape,
+      // node consumers, etc.
+      (void)value_info;
+
+      if (bytes <= 127) {
+        is_external = false;  // Keep small initializers stored inside the TensorProto.
+        return Ort::Status{nullptr};
+      }
+
+      offset = ext_ini_ofs.tellp();
+      location = ext_ini_file_path;
+      ext_ini_ofs.write(static_cast<const char*>(data), bytes);
+      ext_ini_ofs.flush();
+      is_external = true;  // True if is external initializer.
+
+      return Ort::Status{nullptr};
+    };
+
+    ONNX_NAMESPACE::ModelProto model_proto;
+    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto, handle_initializer_data);
+
+    std::ofstream ofs(serialized_model_path, std::ios::binary);
+    model_proto.SerializeToOstream(&ofs);
+    ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
+    ASSERT_TRUE(std::filesystem::exists(ext_ini_file_path));
+  }
+
+  // Compare output of the original and serialized models. Should be identical.
+  std::vector<float> output_original;
+  std::vector<float> output_serialized;
+
+  RunMNISTModel(original_model_path, output_original);
+  RunMNISTModel(serialized_model_path, output_serialized);
+
+  EXPECT_EQ(output_serialized, output_original);
+}
+
+static void Run3LayerModel(const ORTCHAR_T* model_path, bool input_cond, std::vector<float>& output_data) {
+  auto memory_info = Ort::MemoryInfo::CreateCpu(OrtDeviceAllocator, OrtMemTypeCPU);
+  Ort::SessionOptions sess_options;
+  Ort::Session session(*ort_env, model_path, sess_options);
+
+  std::vector<int64_t> input_shape = {1};
+  std::vector<Ort::Value> ort_inputs;
+  std::vector<const char*> ort_input_names;
+
+  // Add 'if_cond_input'
+  ort_inputs.emplace_back(Ort::Value::CreateTensor<bool>(
+      memory_info, &input_cond, 1, input_shape.data(), input_shape.size()));
+  ort_input_names.push_back("if_cond_input");
+
+  // Run session and get outputs
+  std::array<const char*, 1> output_names{"if_cond_output"};
+  std::vector<Ort::Value> ort_outputs = session.Run(Ort::RunOptions{nullptr}, ort_input_names.data(), ort_inputs.data(),
+                                                    ort_inputs.size(), output_names.data(), output_names.size());
+
+  // Check output type and number of elements.
+  Ort::Value& ort_output = ort_outputs[0];
+  auto output_type_shape = ort_output.GetTensorTypeAndShapeInfo();
+  size_t num_output_elems = output_type_shape.GetElementCount();
+
+  ASSERT_EQ(output_type_shape.GetElementType(), ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT);
+  ASSERT_EQ(num_output_elems, 1);
+
+  // Return output data.
+  const float* output_values = ort_output.GetTensorData<float>();
+  output_data.assign(output_values, output_values + num_output_elems);
+}
+
+// Test serializing an OrtGraph to GraphProto. The model has 3 layers of nested subgraphs.
+// Checks that the outputs of the serialized and original models are identical.
+TEST(EpGraphTest, SerializeToProto_3LayerSubgraphs) {
+  const ORTCHAR_T* original_model_path = ORT_TSTR("testdata/three_layer_nested_subgraph.onnx");
+  const ORTCHAR_T* serialized_model_path = ORT_TSTR("three_layer_nested_subgraph_serialized.onnx");
+  std::filesystem::remove(serialized_model_path);
+
+  {
+    auto test_graph = TestGraph::Load(original_model_path);
+    ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+    // Serialize OrtGraph to ModelProto (all initializers stored within TensorProtos).
+    ONNX_NAMESPACE::ModelProto model_proto;
+    OrtEpUtils::OrtGraphToProto(test_graph->GetOrtGraph(), model_proto);
+
+    std::ofstream ofs(serialized_model_path, std::ios::binary);
+    model_proto.SerializeToOstream(&ofs);
+    ofs.flush();
+
+    ASSERT_TRUE(std::filesystem::exists(serialized_model_path));
+  }
+
+  // Compare output of the original and serialized models. Should be identical.
+  std::vector<float> output_original;
+  std::vector<float> output_serialized;
+
+  {
+    Run3LayerModel(original_model_path, true, output_original);
+    Run3LayerModel(serialized_model_path, true, output_serialized);
+    EXPECT_EQ(output_serialized, output_original);
+  }
+
+  {
+    Run3LayerModel(original_model_path, false, output_original);
+    Run3LayerModel(serialized_model_path, false, output_serialized);
+    EXPECT_EQ(output_serialized, output_original);
+  }
 }
 
 //
@@ -527,9 +694,10 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
     }
 
     // Check node subgraphs
-    std::vector<gsl::not_null<const Graph*>> node_subgraphs = node->GetSubgraphs();
+    std::unordered_map<std::string, gsl::not_null<const Graph*>> node_subgraphs_map =
+        node->GetAttributeNameToSubgraphMap();
 
-    if (!node_subgraphs.empty()) {
+    if (!node_subgraphs_map.empty()) {
       // Check node's implicit inputs to its subgraph nodes.
       const auto implicit_input_node_args = node->ImplicitInputDefs();
 
@@ -546,14 +714,27 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       // Recursively check subgraphs.
       size_t api_num_node_subgraphs = 0;
       ASSERT_ORTSTATUS_OK(ort_api.Node_GetNumSubgraphs(api_node, &api_num_node_subgraphs));
+      ASSERT_EQ(api_num_node_subgraphs, node_subgraphs_map.size());
 
       std::vector<const OrtGraph*> api_node_subgraphs(api_num_node_subgraphs);
-      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size()));
+      std::vector<const char*> api_subgraph_attr_names(api_num_node_subgraphs);
+      ASSERT_ORTSTATUS_OK(ort_api.Node_GetSubgraphs(api_node, api_node_subgraphs.data(), api_node_subgraphs.size(),
+                                                    api_subgraph_attr_names.data()));
 
-      for (size_t subgraph_idx = 0; subgraph_idx < node_subgraphs.size(); subgraph_idx++) {
-        auto subgraph_viewer = std::make_unique<GraphViewer>(*node_subgraphs[subgraph_idx]);
-        const OrtGraph* api_subgraph = api_node_subgraphs[subgraph_idx];
+      for (const auto& [attr_name, subgraph] : node_subgraphs_map) {
+        // find index of this subgraph.
+        size_t api_subgraph_idx = api_num_node_subgraphs;
+        for (size_t subgraph_idx = 0; subgraph_idx < api_num_node_subgraphs; subgraph_idx++) {
+          if (api_subgraph_attr_names[subgraph_idx] == attr_name) {
+            api_subgraph_idx = subgraph_idx;
+            break;
+          }
+        }
+        ASSERT_NE(api_subgraph_idx, api_num_node_subgraphs);
 
+        // Recursively check the subgraph
+        auto subgraph_viewer = std::make_unique<GraphViewer>(*subgraph);
+        const OrtGraph* api_subgraph = api_node_subgraphs[api_subgraph_idx];
         CheckGraphCApi(*subgraph_viewer, *api_subgraph);
       }
     }

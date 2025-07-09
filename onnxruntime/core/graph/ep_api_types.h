@@ -111,6 +111,7 @@ struct EpNode : public OrtNode {
   struct SubgraphState {
     SubgraphState() = default;
     SubgraphState(SubgraphState&& other) = default;
+    std::string attribute_name;
     std::unique_ptr<GraphViewer> subgraph_viewer;  // The graph_viewer wrapped by EpGraph below.
     std::unique_ptr<EpGraph> ep_subgraph;
   };
@@ -182,7 +183,8 @@ struct EpNode : public OrtNode {
   Status GetNumSubgraphs(size_t& num_subgraphs) const override;
 
   // Gets the subgraphs contained by this node.
-  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs) const override;
+  Status GetSubgraphs(gsl::span<const OrtGraph*> subgraphs,
+                      const char** opt_attribute_names) const override;
 
   // Gets this node's parent graph, which is the graph that directly contains this node.
   Status GetGraph(const OrtGraph*& parent_graph) const override;
@@ -287,6 +289,14 @@ struct EpGraph : public OrtGraph {
 
   // Returns the model's ONNX IR version.
   int64_t GetOnnxIRVersion() const override;
+
+  // Gets the number of operator sets that the graph's model uses.
+  Status GetNumOperatorSets(size_t& num_operator_sets) const override;
+
+  // Gets the operator sets that the graph's model uses. An operator set is uniquely identified by a
+  // (domain, opset version) pair.
+  Status GetOperatorSets(gsl::span<const char*> domains,
+                         gsl::span<int64_t> opset_versions) const override;
 
   // Get the number of graph inputs, including initializers that are listed as graph inputs.
   size_t GetNumInputs() const override;

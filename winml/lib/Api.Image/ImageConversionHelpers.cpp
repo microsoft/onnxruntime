@@ -253,7 +253,8 @@ DXGI_FORMAT _winmli::GetDXGIFormatFromDirectXPixelFormat(_In_ wgdx::DirectXPixel
   WINML_THROW_HR(E_INVALIDARG);
 }
 
-wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(_In_ _winml::ImageTensorChannelType channelType
+wgdx::DirectXPixelFormat _winmli::GetDirectXPixelFormatFromChannelType(
+  _In_ _winml::ImageTensorChannelType channelType
 ) {
   switch (channelType) {
     case _winml::kImageTensorChannelTypeBGR8:

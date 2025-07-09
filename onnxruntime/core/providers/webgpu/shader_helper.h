@@ -13,6 +13,8 @@
 #include "core/providers/webgpu/shader_variable.h"
 #include "core/providers/webgpu/string_utils.h"
 
+#include "core/providers/webgpu/wgsl_templates/wgsl_gen.h"
+
 namespace onnxruntime {
 namespace webgpu {
 
