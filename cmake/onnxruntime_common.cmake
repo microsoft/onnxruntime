@@ -11,6 +11,8 @@ set(onnxruntime_common_src_patterns
     "${ONNXRUNTIME_ROOT}/core/common/logging/*.cc"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.h"
     "${ONNXRUNTIME_ROOT}/core/common/logging/sinks/*.cc"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.h"
+    "${ONNXRUNTIME_ROOT}/core/platform/check_intel.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.h"
     "${ONNXRUNTIME_ROOT}/core/platform/device_discovery.cc"
     "${ONNXRUNTIME_ROOT}/core/platform/env.h"
@@ -100,6 +102,14 @@ if(WIN32)
     target_compile_options(onnxruntime_common PRIVATE "/Zc:char8_t-")
   endif()
 endif()
+
+if(NOT WIN32 AND NOT APPLE AND NOT ANDROID AND CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64")
+    set_source_files_properties(
+      ${ONNXRUNTIME_ROOT}/core/common/spin_pause.cc
+      PROPERTIES COMPILE_FLAGS "-mwaitpkg"
+    )
+endif()
+
 if (onnxruntime_USE_TELEMETRY)
   set_target_properties(onnxruntime_common PROPERTIES COMPILE_FLAGS "/FI${ONNXRUNTIME_INCLUDE_DIR}/core/platform/windows/TraceLoggingConfigPrivate.h")
 endif()
@@ -110,15 +120,13 @@ if (onnxruntime_USE_MIMALLOC)
   target_link_libraries(onnxruntime_common PRIVATE onnxruntime_mimalloc_shim)
 endif()
 
-if(NOT onnxruntime_DISABLE_ABSEIL)
-  target_include_directories(onnxruntime_common PRIVATE ${ABSEIL_SOURCE_DIR})
-  if (MSVC)
-    set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
-    target_sources(
-        onnxruntime_common
-        INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
-  endif()
+if (MSVC)
+  set(ABSEIL_NATVIS_FILE "abseil-cpp.natvis")
+  target_sources(
+      onnxruntime_common
+      INTERFACE $<BUILD_INTERFACE:${PROJECT_SOURCE_DIR}/external/${ABSEIL_NATVIS_FILE}>)
 endif()
+
 
 if (MSVC)
     set(EIGEN_NATVIS_FILE ${eigen_SOURCE_DIR}/debug/msvc/eigen.natvis)
@@ -157,10 +165,6 @@ endif()
 
 if(APPLE)
   target_link_libraries(onnxruntime_common PRIVATE "-framework Foundation")
-endif()
-
-if(MSVC)
-  target_link_libraries(onnxruntime_common PRIVATE dxcore.lib)
 endif()
 
 if(MSVC)

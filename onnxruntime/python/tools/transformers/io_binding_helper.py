@@ -53,6 +53,7 @@ class TypeHelper:
             "tensor(int32)": torch.int32,
             "tensor(float)": torch.float32,
             "tensor(float16)": torch.float16,
+            "tensor(bfloat16)": torch.bfloat16,
             "tensor(bool)": torch.bool,
             "tensor(uint8)": torch.uint8,
         }

@@ -310,13 +310,13 @@ inline OrtStatus* CreateStatus(OrtErrorCode code, _In_ const char* msg) noexcept
 
 std::unique_ptr<IAllocator> CreateCPUAllocator(const OrtMemoryInfo& memory_info);
 std::unique_ptr<IAllocator> CreateCUDAAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateCUDAPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateMIGraphXAllocator(int16_t device_id, const char* name);
 std::unique_ptr<IAllocator> CreateMIGraphXPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IAllocator> CreateROCMAllocator(int16_t device_id, const char* name);
-std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(const char* name);
+std::unique_ptr<IAllocator> CreateROCMPinnedAllocator(int16_t device_id, const char* name);
 
 std::unique_ptr<IDataTransfer> CreateGPUDataTransfer();
 
@@ -418,7 +418,31 @@ inline std::unique_ptr<ComputeCapability> MakeComputeCapability(const GraphViewe
   return g_host->Utils__MakeComputeCapability(graph_viewer, group, generate_metadef_name,
                                               execution_provider_name, drop_constant_initializers);
 }
+
+inline Status GetTensorProtoWithDataIfInMemory(
+    const ONNX_NAMESPACE::TensorProto& tensor_proto, std::unique_ptr<ONNX_NAMESPACE::TensorProto>& result) {
+  return g_host->Utils__GetTensorProtoWithDataIfInMemory(tensor_proto, result);
+}
+
+inline bool HasExternalDataInMemory(const ONNX_NAMESPACE::TensorProto& ten_proto) {
+  return g_host->Utils__HasExternalDataInMemory(ten_proto);
+}
+
 }  // namespace utils
+
+namespace graph_utils {
+inline NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  return g_host->GraphUtils__AddInitializerWithExternalData(graph, new_initializer);
+}
+inline void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                          bool load_inline = false) {
+  g_host->GraphUtils__MakeInitializerCopyIfNotExist(src_graph, dst_graph, name, load_inline);
+}
+
+inline Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  return g_host->GraphUtils__ConvertInMemoryDataToInline(graph, name);
+}
+}  // namespace graph_utils
 
 namespace QDQ {
 inline std::pair<std::vector<std::unique_ptr<NodeUnit>>, std::unordered_map<const Node*, const NodeUnit*>>
@@ -434,6 +458,18 @@ void InitProviderOrtApi();
 // This is a replacement for Env::Default(). Returns a reference to the default ORT Environment.
 inline Env& GetDefaultEnv() {
   return g_host->Env__Default();
+}
+
+template <class T>
+inline const T* Initializer::data() const {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<const T*>(g_host->Initializer__data(*this_ptr_, data_type));
+}
+
+template <class T>
+inline T* Initializer::data() {
+  constexpr const int data_type = static_cast<int>(utils::GetONNXTensorElementDataType<T>());
+  return reinterpret_cast<T*>(g_host->Initializer__mutable_data(*this_ptr_, data_type));
 }
 
 }  // namespace onnxruntime

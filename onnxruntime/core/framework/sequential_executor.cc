@@ -601,7 +601,7 @@ onnxruntime::Status ExecuteThePlan(const SessionState& session_state, gsl::span<
 #ifdef ORT_ENABLE_STREAM
   StreamExecutionContext ctx(session_state,
                              valid_streams,
-                             execution_plan->notification_owners,
+                             execution_plan->notification_owner_stream,
                              execution_plan->num_barriers,
                              device_streams,
                              feed_mlvalue_idxs,

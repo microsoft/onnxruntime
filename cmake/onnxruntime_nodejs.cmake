@@ -74,7 +74,11 @@ endif()
 if (onnxruntime_USE_WEBGPU)
     set(NODEJS_BINDING_USE_WEBGPU "--use_webgpu")
     if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
-        if (onnxruntime_USE_VCPKG)
+        # TODO: the following code is used to disable building Dawn using vcpkg temporarily
+        # until we figure out how to resolve the packaging pipeline failures
+        #
+        # if (onnxruntime_USE_VCPKG)
+        if (FALSE)
             list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:Microsoft::DXIL>")
             list(APPEND NODEJS_DLL_DEPS "$<TARGET_FILE:Microsoft::DirectXShaderCompiler>")
         else()

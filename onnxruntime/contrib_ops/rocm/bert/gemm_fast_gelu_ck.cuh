@@ -30,8 +30,8 @@ namespace internal {
 
 #ifdef USE_COMPOSABLE_KERNEL
 
-using onnxruntime::rocm::CKDataTypeAdaptor;
 using onnxruntime::rocm::CKBlasOpAdaptor;
+using onnxruntime::rocm::CKDataTypeAdaptor;
 
 using Row = ck::tensor_layout::gemm::RowMajor;
 using Col = ck::tensor_layout::gemm::ColumnMajor;

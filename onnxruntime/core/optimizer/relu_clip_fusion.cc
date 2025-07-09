@@ -56,7 +56,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
 
       data_type = initializer->data_type();
       // construct an initializer to gracefully handle typed or raw data in the TensorProto
-      Initializer i(*initializer, graph.ModelPath());
+      Initializer i(graph, *initializer, graph.ModelPath());
       switch (data_type) {
         case ONNX_NAMESPACE::TensorProto_DataType_FLOAT:
           if (*i.data<float>() < 0.f) {
@@ -97,12 +97,7 @@ Status FuseReluClip::Apply(Graph& graph, Node& node, RewriteRuleEffect& rule_eff
         mutable_next_node->AddAttribute("min", 0.f);
       } else {
         // Add the initialized tensor to the graph
-        graph.AddInitializedTensor(replacement_min);
-
-        // Create a corresponding NodeArg for the initialized tensor
-        ONNX_NAMESPACE::TypeProto t;
-        t.mutable_tensor_type()->set_elem_type(replacement_min.data_type());
-        NodeArg* replacement_min_nodearg = &graph.GetOrCreateNodeArg(replacement_min.name(), &t);
+        auto* replacement_min_nodearg = &graph_utils::AddInitializerWithExternalData(graph, replacement_min);
 
         // Replace the input def at the appropriate index of the Clip node
         auto& mutable_input_defs = mutable_next_node->MutableInputDefs();

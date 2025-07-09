@@ -1992,6 +1992,27 @@ TEST(CApiTest, get_allocator_cpu) {
   auto mem_allocation = cpu_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cpu_allocator.GetStats();
+
+  // CPU allocator may not support arena usage.
+  // See func DoesCpuAllocatorSupportArenaUsage() in allocator_utils.cc.
+  if (allocator_info.GetAllocatorType() == OrtAllocatorType::OrtArenaAllocator) {
+    ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+    ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+    ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+    ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+    // We don't check values of the following stats
+    ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+    ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
+  } else {
+    // If the allocator is not an arena allocator, we expect the stats to be empty.
+    ASSERT_EQ(0, stats.GetKeyValuePairs().size());
+  }
 }
 
 #ifdef USE_CUDA
@@ -2014,6 +2035,20 @@ TEST(CApiTest, get_allocator_cuda) {
   auto mem_allocation = cuda_allocator.GetAllocation(1024);
   ASSERT_NE(nullptr, mem_allocation.get());
   ASSERT_EQ(1024U, mem_allocation.size());
+
+  Ort::KeyValuePairs stats = cuda_allocator.GetStats();
+
+  ASSERT_EQ("-1", std::string(stats.GetValue("Limit")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("InUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxInUse")));
+  ASSERT_EQ("1024", std::string(stats.GetValue("MaxAllocSize")));
+  ASSERT_EQ("2", std::string(stats.GetValue("NumAllocs")));
+  ASSERT_EQ("0", std::string(stats.GetValue("NumReserves")));
+
+  // We don't check values of the following stats
+  ASSERT_NE(nullptr, stats.GetValue("TotalAllocated"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaExtensions"));
+  ASSERT_NE(nullptr, stats.GetValue("NumArenaShrinkages"));
 }
 #endif
 
@@ -3349,11 +3384,11 @@ TEST(CApiTest, TestSharedAllocators) {
     // NOTE: On x86 builds arenas are not supported and will default to using non-arena based allocator
     ASSERT_TRUE(api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg) == nullptr);
 
-    // Test that duplicates are handled
+    // Registration is always a replace operation
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
         api.CreateAndRegisterAllocator(env_ptr, mem_info, arena_cfg),
         api.ReleaseStatus);
-    ASSERT_FALSE(status_releaser.get() == nullptr);
+    ASSERT_TRUE(status_releaser.get() == nullptr);
 
     {
       // create session 1
@@ -3392,12 +3427,12 @@ TEST(CApiTest, TestSharedAllocators) {
     MockedOrtAllocator custom_allocator;
     ASSERT_TRUE(api.RegisterAllocator(env_ptr, &custom_allocator) == nullptr);
 
-    // Test that duplicates are handled
+    // Registration is always a replace operation
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)>
         status_releaser(
             api.RegisterAllocator(env_ptr, &custom_allocator),
             api.ReleaseStatus);
-    ASSERT_FALSE(status_releaser.get() == nullptr);
+    ASSERT_TRUE(status_releaser.get() == nullptr);
 
     {
       // Keep this scoped to destroy the underlying sessions after use
@@ -3464,11 +3499,11 @@ TEST(CApiTest, TestSharedAllocators) {
     std::vector<const char*> keys, values;
     ASSERT_TRUE(api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0) == nullptr);
 
-    // Test that duplicates are handled
+    // Registration is always a replace operation
     std::unique_ptr<OrtStatus, decltype(api.ReleaseStatus)> status_releaser(
         api.CreateAndRegisterAllocatorV2(env_ptr, onnxruntime::kCudaExecutionProvider, cuda_meminfo, arena_cfg, keys.data(), values.data(), 0),
         api.ReleaseStatus);
-    ASSERT_FALSE(status_releaser.get() == nullptr);
+    ASSERT_TRUE(status_releaser.get() == nullptr);
 
     {
       // create session 1
@@ -3931,7 +3966,7 @@ TEST_P(CApiTensorRTTest, TestConfigureTensorRTProviderOptions) {
  * The TensorrtExecutionProviderOptionsTest can be used to test TRT options
  */
 INSTANTIATE_TEST_SUITE_P(CApiTensorRTTest, CApiTensorRTTest,
-                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2"));
+                         ::testing::Values("trt_build_heuristics_enable=1", "trt_sparsity_enable=1", "trt_builder_optimization_level=0", "trt_tactic_sources=-CUDNN,+CUBLAS", "trt_auxiliary_streams=2", "trt_bf16_enable=1"));
 #endif
 
 #ifdef USE_CUDA

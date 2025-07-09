@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 #include "core/graph/onnx_protobuf.h"
 #include "core/session/inference_session.h"
@@ -23,6 +24,35 @@ using namespace ::onnxruntime::logging;
 namespace onnxruntime {
 
 namespace test {
+
+template <typename T>
+class NvExecutionProviderTest : public ::testing::Test {
+ protected:
+  std::string getTypeAsName() {
+    std::string dtype_name = "";
+    if constexpr (std::is_same<T, double>::value) {
+      dtype_name = "fp64";
+    } else if constexpr (std::is_same<T, float>::value) {
+      dtype_name = "fp32";
+    } else if constexpr (std::is_same<T, BFloat16>::value) {
+      dtype_name = "bf16";
+    } else if constexpr (std::is_same<T, MLFloat16>::value) {
+      dtype_name = "fp16";
+    } else if constexpr (std::is_same<T, int8_t>::value) {
+      dtype_name = "int8";
+    } else if constexpr (std::is_same<T, uint8_t>::value) {
+      dtype_name = "uint8";
+    } else if constexpr (std::is_same<T, int32_t>::value) {
+      dtype_name = "int32";
+    } else if constexpr (std::is_same<T, int64_t>::value) {
+      dtype_name = "int64";
+    }
+    return dtype_name;
+  }
+};
+
+using NvExecutionProviderTestTypes = ::testing::Types<double, float, MLFloat16, BFloat16, uint8_t, int8_t, int32_t, int64_t>;  // double,
+TYPED_TEST_SUITE(NvExecutionProviderTest, NvExecutionProviderTestTypes);
 
 std::string PathToUTF8(const PathString& path) {
 #ifdef WIN32
@@ -89,7 +119,8 @@ void VerifyOutputs(const std::vector<OrtValue>& fetches, const std::vector<int64
 static void CreateBaseModel(const PathString& model_name,
                             std::string graph_name,
                             std::vector<int> dims,
-                            bool add_fast_gelu = false) {
+                            bool add_fast_gelu = false,
+                            ONNX_NAMESPACE::TensorProto_DataType dtype = ONNX_NAMESPACE::TensorProto_DataType_FLOAT) {
   onnxruntime::Model model(graph_name, false, DefaultLoggingManager().DefaultLogger());
   auto& graph = model.MainGraph();
   std::vector<onnxruntime::NodeArg*> inputs;
@@ -97,13 +128,13 @@ static void CreateBaseModel(const PathString& model_name,
 
   // FLOAT tensor
   ONNX_NAMESPACE::TypeProto float_tensor;
-  float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_tensor.mutable_tensor_type()->set_elem_type(dtype);
 
   for (auto dim : dims) {
     float_tensor.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(dim);
   }
   ONNX_NAMESPACE::TypeProto dyn_float_tensor;
-  dyn_float_tensor.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  dyn_float_tensor.mutable_tensor_type()->set_elem_type(dtype);
 
   auto& input_arg_1 = graph.GetOrCreateNodeArg("X", &float_tensor);
   auto& input_arg_2 = graph.GetOrCreateNodeArg("Y", &float_tensor);
@@ -139,7 +170,7 @@ static void CreateBaseModel(const PathString& model_name,
   }
 
   ONNX_NAMESPACE::TypeProto float_scalar;
-  float_scalar.mutable_tensor_type()->set_elem_type(ONNX_NAMESPACE::TensorProto_DataType_FLOAT);
+  float_scalar.mutable_tensor_type()->set_elem_type(dtype);
   float_scalar.mutable_tensor_type()->mutable_shape()->add_dim()->set_dim_value(1);
   auto& input_scalar = graph.GetOrCreateNodeArg("S", &float_scalar);
   inputs.push_back(&input_scalar);
@@ -153,6 +184,7 @@ static void CreateBaseModel(const PathString& model_name,
   auto status = graph.Resolve();
   ASSERT_TRUE(status.IsOK());
   status = onnxruntime::Model::Save(model, model_name);
+  ASSERT_TRUE(status.IsOK());
 }
 
 static Ort::IoBinding generate_io_binding(Ort::Session& session, std::map<std::string, std::vector<int64_t>> shape_overwrites = {}) {
@@ -327,6 +359,32 @@ TEST(NvExecutionProviderTest, ContextEmbedAndReloadDataDynamic) {
     shape_overwrites["X"] = {1, 5, 5};
     shape_overwrites["Y"] = {1, 5, 5};
     auto io_binding = generate_io_binding(session_object, shape_overwrites);
+    session_object.Run(run_options, io_binding);
+  }
+}
+
+TYPED_TEST(NvExecutionProviderTest, IOTypeTests) {
+  std::string dtype_name = this->getTypeAsName();
+  ASSERT_FALSE(dtype_name.empty());
+  const std::string model_name_str = "nv_execution_provider_" + dtype_name + ".onnx";
+  const PathString model_name = ToPathString(model_name_str);
+  std::string graph_name = "test" + dtype_name;
+  std::vector<int> dims = {1, -1, -1};
+
+  CreateBaseModel(model_name, graph_name, dims, true);
+
+  auto env = Ort::Env();
+  auto logging_level = OrtLoggingLevel::ORT_LOGGING_LEVEL_WARNING;
+  env.UpdateEnvWithCustomLogLevel(logging_level);
+
+  // AOT time
+  {
+    Ort::SessionOptions so;
+    Ort::RunOptions run_options;
+    so.AppendExecutionProvider(kNvTensorRTRTXExecutionProvider, {});
+    Ort::Session session_object(env, model_name.c_str(), so);
+
+    auto io_binding = generate_io_binding(session_object);
     session_object.Run(run_options, io_binding);
   }
 }

@@ -5,6 +5,7 @@
 #include <list>
 #include <unordered_set>
 #include "core/providers/shared_library/provider_api.h"
+#include "core/providers/nv_tensorrt_rtx/nv_provider_options.h"
 #define ORT_API_MANUAL_INIT
 #include "core/session/onnxruntime_cxx_api.h"
 #include "core/common/common.h"
@@ -20,6 +21,7 @@
 #include "core/providers/cuda/math/unary_elementwise_ops_impl.h"
 #include "core/session/allocator_adapters.h"
 #include "cuda_runtime_api.h"
+#include "core/common/parse_string.h"
 #include <gsl/gsl>
 #include <unordered_map>
 #include <utility>
@@ -115,7 +117,6 @@ void Impl_Cast(
 }
 }  // namespace cuda
 
-#if NV_TENSORRT_MAJOR >= 10
 void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
                                              uint64_t /*alignment*/, cudaStream_t /*stream*/) noexcept {
   // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
@@ -132,25 +133,6 @@ void* OutputAllocator::reallocateOutputAsync(char const* /*tensorName*/, void* /
   // if cudaMalloc fails, returns nullptr.
   return outputPtr;
 }
-#else
-// Only override this method when TensorRT <= 8.6
-void* OutputAllocator::reallocateOutput(char const* /*tensorName*/, void* /*currentMemory*/, uint64_t size,
-                                        uint64_t /*alignment*/) noexcept {
-  // Some memory allocators return nullptr when allocating zero bytes, but TensorRT requires a non-null ptr
-  // even for empty tensors, so allocate a dummy byte.
-  size = std::max(size, static_cast<uint64_t>(1));
-  if (size > allocated_size) {
-    cudaFree(outputPtr);
-    outputPtr = nullptr;
-    allocated_size = 0;
-    if (cudaMalloc(&outputPtr, size) == cudaSuccess) {
-      allocated_size = size;
-    }
-  }
-  // if cudaMalloc fails, returns nullptr.
-  return outputPtr;
-}
-#endif
 
 void OutputAllocator::notifyShape(char const* /*tensorName*/, nvinfer1::Dims const& dims) noexcept {
   output_shapes.clear();
@@ -743,6 +725,7 @@ Status BindContextInput(Ort::KernelContext& ctx,
     switch (tensor_type) {
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_INPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -829,6 +812,7 @@ Status BindContextOutput(Ort::KernelContext& ctx,
     switch (output_type) {
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+      CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
       CASE_GET_OUTPUT_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -892,6 +876,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
   switch (output_type) {
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT, float)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_FLOAT16, uint16_t)
+    CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BFLOAT16, uint16_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_BOOL, bool)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8, int8_t)
     CASE_COPY_TENSOR(ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8, uint8_t)
@@ -907,6 +892,7 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 }
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
+  // TODO: figure out if PerThreadContext is used at all. If not, just clean it up.
   if (has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
     (void)(stream);
@@ -1036,13 +1022,21 @@ NvExecutionProvider::PerThreadContext& NvExecutionProvider::GetPerThreadContext(
 
 NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
     : IExecutionProvider{onnxruntime::kNvTensorRTRTXExecutionProvider,
-                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT,
+                         OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
                                    narrow<OrtDevice::DeviceId>(info.device_id))},
       info_(info),
       device_id_(info.device_id) {
   InitProviderOrtApi();
+
   // TODO(maximlianm) remove this since we should be able to compile an AOT context file without GPU
-  CUDA_CALL_THROW(cudaSetDevice(device_id_));
+
+  if (!info.has_user_compute_stream) {
+    // If the app is passing in a compute stream, it already has initialized cuda and created a context.
+    // Calling cudaSetDevice() will set the default context in the current thread
+    // which may not be compatible with the stream created by the app.
+    CUDA_CALL_THROW(cudaSetDevice(device_id_));
+  }
+
   cudaDeviceProp prop;
   CUDA_CALL_THROW(cudaGetDeviceProperties(&prop, device_id_));
   compute_capability_ = GetComputeCapacity(prop);
@@ -1063,6 +1057,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   max_partition_iterations_ = info.max_partition_iterations;
   min_subgraph_size_ = info.min_subgraph_size;
   max_workspace_size_ = info.max_workspace_size;
+  max_shared_mem_size_ = info.max_shared_mem_size;
   dump_subgraphs_ = info.dump_subgraphs;
   weight_stripped_engine_enable_ = info.weight_stripped_engine_enable;
   onnx_model_folder_path_ = info.onnx_model_folder_path;
@@ -1140,6 +1135,7 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   }
 
   cuda_graph_enable_ = info.cuda_graph_enable;
+  multi_profile_enable_ = info.multi_profile_enable;
   op_types_to_exclude_ = info.op_types_to_exclude;
 
   // Validate setting
@@ -1308,11 +1304,9 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        ORT_UNUSED_PARAMETER(device_id);
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED);
-        ;
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
       },
-      0);
+      narrow<OrtDevice::DeviceId>(device_id_));
 
   return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
 }
@@ -1321,7 +1315,12 @@ std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
   return std::make_unique<GPUDataTransfer>();
 }
 
-Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& /*run_options*/) {
+Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
+  if (multi_profile_enable_ == true) {
+    auto graph_annotation_str =
+        run_options.GetConfigOptions().GetConfigEntry(nv::run_option_names::kProfileIndex);
+    TryParseStringWithClassicLocale<int>(*graph_annotation_str, nv_profile_index_);
+  }
   return Status::OK();
 }
 
@@ -1583,6 +1582,11 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
         // Add node and node args
         // If node output is also parent graph output, the output will be added to the
         // subgraph's output list
+        //
+        // Initializers that refer to a memory location in OrtValue
+        // can not be handled by TRT (unlike those that are on disk).
+        // This prevents us from sharing the data and we have to make a copy here.
+        constexpr const bool load_initializers_inline_true = true;
         std::vector<std::string> subgraph_output_names;
         for (const auto& index : group.first) {
           const auto& node = graph.GetNode(node_index[index]);
@@ -1590,24 +1594,15 @@ SubGraphCollection_t NvExecutionProvider::GetSupportedList(SubGraphCollection_t 
           for (auto input : node->InputDefs()) {
             auto& n_input = graph_build.GetOrCreateNodeArg(input->Name(), input->TypeAsProto());
             inputs.push_back(&n_input);
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
 
           for (auto input : node->ImplicitInputDefs()) {
-            const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
-            if (graph.GetInitializedTensor(input->Name(), initializer)) {
-              const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
-              if (!graph_build.GetInitializedTensor(input->Name(), subgraph_initializer)) {
-                graph_build.AddInitializedTensor(*(initializer));
-              }
-            }
+            graph_utils::MakeInitializerCopyIfNotExist(graph.GetGraph(), graph_build, input->Name(),
+                                                       load_initializers_inline_true);
           }
+
           for (auto output : node->OutputDefs()) {
             auto& n_output = graph_build.GetOrCreateNodeArg(output->Name(), output->TypeAsProto());
             outputs.push_back(&n_output);
@@ -1989,10 +1984,6 @@ NvExecutionProvider::GetCapability(const GraphViewer& graph,
     if (exclude_ops_set.find(node->OpType()) != exclude_ops_set.end()) {
       supported_node = false;
     }
-    // Exclude contrib ops
-    if (node->Domain() == kMSDomain) {
-      supported_node = false;
-    }
 
     if (supported_node) {
       if (new_subgraph) {
@@ -2287,6 +2278,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
   if (max_workspace_size_ > 0) {
     trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kWORKSPACE, max_workspace_size_);
   }
+  if (max_shared_mem_size_ > 0) {
+    trt_config->setMemoryPoolLimit(nvinfer1::MemoryPoolType::kTACTIC_SHARED_MEMORY, max_shared_mem_size_);
+  }
+  // Only set default compute capabilities if user hasn't explicitly configured them
+  constexpr int kDefaultNumComputeCapabilities = 1;  // Default number of compute capabilities for Turing support
+  if (trt_config->getNbComputeCapabilities() == 0) {
+    trt_config->setNbComputeCapabilities(kDefaultNumComputeCapabilities);
+    trt_config->setComputeCapability(nvinfer1::ComputeCapability::kCURRENT, 0);
+  }
 
   int num_inputs = trt_network->getNbInputs();
   int num_outputs = trt_network->getNbOutputs();
@@ -2559,7 +2559,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                               onnx,
                               onnx_size,
                               trt_engine.get(),
-                              true /* serialize refitted engine to disk */,
+                              false /* serialize refitted engine to disk */,
                               detailed_build_log_);
     if (status != Status::OK()) {
       return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2574,7 +2574,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-    size_t mem_size = trt_engine->getDeviceMemorySize();
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -2676,8 +2676,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     int num_outputs = static_cast<int>(output_indexes.size());
     std::unordered_set<std::string> input_names;
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -2686,6 +2687,11 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
+
+    if (multi_profile_enable_ == true) {
+      if (!trt_context->setOptimizationProfileAsync(nv_profile_index_, stream))
+        return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Nv EP select an optimization profile for the current context failed");
+    }
 
     // Name the engine cache based on GPU compute capacity and reduce the chance of loading an incompatible cache
     // Note: Engine cache generated on a GPU with large memory might not be loadable on a GPU with smaller memory, even if they share the same compute capacity
@@ -2737,7 +2743,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
                                 onnx_model_bytestream_,
                                 onnx_model_bytestream_size_,
                                 trt_engine,
-                                true /* serialize refitted engine to disk */,
+                                false /* serialize refitted engine to disk */,
                                 detailed_build_log_);
       if (status != Status::OK()) {
         return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL, status.ErrorMessage());
@@ -2823,7 +2829,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -2905,7 +2911,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd(0);
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
@@ -2955,7 +2961,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-    size_t mem_size = trt_engine->getDeviceMemorySize();
+    size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -3050,8 +3056,9 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     std::unordered_map<std::string, std::vector<int32_t>> shape_tensor_values;        // This map holds "shape tensor -> shape values" for the shape tensor input across this inference run
     std::unordered_map<std::string, std::vector<int64_t>> shape_tensor_values_int64;  // same as above but for int64 shape tensor input
 
-    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, narrow<OrtDevice::DeviceId>(device_id_));
-    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device, device_id_);
+    OrtDevice device(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NVIDIA,
+                     narrow<OrtDevice::DeviceId>(device_id_));
+    OrtMemoryInfo mem_info("", OrtAllocatorType::OrtDeviceAllocator, device);
     if (alloc_ == nullptr) {
       Ort::ThrowOnError(api->KernelContext_GetAllocator(context, &mem_info, &alloc_));
     }
@@ -3137,7 +3144,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
 #pragma warning(push)
 #pragma warning(disable : 4996)
 #endif
-      size_t mem_size = trt_engine->getDeviceMemorySize();
+      size_t mem_size = trt_engine->getDeviceMemorySizeV2();
 #if defined(_MSC_VER)
 #pragma warning(pop)
 #endif
@@ -3219,7 +3226,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
     if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
       if (IsGraphCaptureAllowed()) {
         CaptureEnd(0);
-        // CUDA work issued to a capturing stream doesn’t actually run on the GPU,
+        // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
         ORT_RETURN_IF_ERROR(ReplayGraph(0));
       } else {
@@ -3248,8 +3255,11 @@ void NvExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& s
 }
 
 OrtDevice NvExecutionProvider::GetOrtDeviceByMemType(OrtMemType mem_type) const {
-  if (mem_type == OrtMemTypeCPUInput) return OrtDevice();
-  if (mem_type == OrtMemTypeCPUOutput) return OrtDevice(OrtDevice::CPU, OrtDevice::MemType::CUDA_PINNED, 0 /*CPU device id always be 0*/);
+  if (mem_type == OrtMemTypeCPUInput)
+    return OrtDevice();
+  if (mem_type == OrtMemTypeCPUOutput)
+    return OrtDevice(OrtDevice::GPU, OrtDevice::MemType::HOST_ACCESSIBLE, OrtDevice::VendorIds::NVIDIA,
+                     default_device_.Id());
   return default_device_;
 }
 

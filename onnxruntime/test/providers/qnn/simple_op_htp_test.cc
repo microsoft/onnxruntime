@@ -991,6 +991,77 @@ TEST_F(QnnHTPBackendTests, BinaryOp_And4D) {
                   ExpectedEPNodeAssignment::All);
 }
 
+// Test Reciprocal on HTP
+TEST_F(QnnHTPBackendTests, Reciprocal_Basic_FLOAT) {
+  RunOpTest<float>("Reciprocal",
+                   {TestInputDef<float>({2, 2}, false, {1.0f, 2.0f, 0.5f, 4.0f})},
+                   {},  // No attributes
+                   13,
+                   ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Reciprocal_QU8) {
+  RunQDQOpTest<uint8_t>("Reciprocal",
+                        {TestInputDef<float>({2, 2}, false, GetFloatDataInRange(1.0f, 5.0f, 4))},
+                        {},  // No attributes
+                        13,
+                        ExpectedEPNodeAssignment::All);
+}
+
+// Test Mean Op on HTP
+TEST_F(QnnHTPBackendTests, Mean_TwoInputs) {
+  std::vector<float> input1 = {1.0f, 2.0f, 3.0f, 4.0f};
+  std::vector<float> input2 = {5.0f, 6.0f, 7.0f, 8.0f};
+
+  RunOpTest<float>("Mean",
+                   {
+                       TestInputDef<float>({4}, false, std::move(input1)),
+                       TestInputDef<float>({4}, false, std::move(input2)),
+                   },
+                   {},
+                   13,  // Opset version
+                   ExpectedEPNodeAssignment::All);
+}
+
+// Test Mean Op with multiple inputs on HTP
+TEST_F(QnnHTPBackendTests, Mean_FourInputs) {
+  std::vector<float> input1 = {1.0f, 1.0f, 1.0f, 1.0f};
+  std::vector<float> input2 = {2.0f, 2.0f, 2.0f, 2.0f};
+  std::vector<float> input3 = {3.0f, 3.0f, 3.0f, 3.0f};
+  std::vector<float> input4 = {4.0f, 4.0f, 4.0f, 4.0f};
+
+  RunOpTest<float>("Mean",
+                   {
+                       TestInputDef<float>({4}, false, std::move(input1)),
+                       TestInputDef<float>({4}, false, std::move(input2)),
+                       TestInputDef<float>({4}, false, std::move(input3)),
+                       TestInputDef<float>({4}, false, std::move(input4)),
+                   },
+                   {},
+                   13,
+                   ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Mean_TwoInputs_QU8) {
+  RunQDQOpTest<uint8_t>("Mean",
+                        {TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(0.0f, 10.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(10.0f, 20.0f, 4))},
+                        {},  // No attributes for Mean
+                        13,  // Opset version
+                        ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnHTPBackendTests, Mean_FourInputs_QU8) {
+  RunQDQOpTest<uint8_t>("Mean",
+                        {TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(0.0f, 10.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(10.0f, 20.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(20.0f, 30.0f, 4)),
+                         TestInputDef<float>({1, 2, 2}, false, GetFloatDataInRange(30.0f, 40.0f, 4))},
+                        {},  // No attributes for Mean
+                        13,  // Opset version
+                        ExpectedEPNodeAssignment::All);
+}
+
 // Test ScatterND op on HTP
 TEST_F(QnnHTPBackendTests, ScatterND_int64_int64) {
   std::vector<int64_t> data = {0, 1, 2, 3};
@@ -1015,6 +1086,78 @@ TEST_F(QnnHTPBackendTests, BinaryOp_HTP_Or_Unsupported) {
                   {},
                   17,
                   ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction ADD on HTP
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_add) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "add"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction Mul on HTP
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_mul) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "mul"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::All);
+}
+
+// Test ScatterND with reduction Max on CPU Fallback
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_max) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "max"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::None);
+}
+
+// Test ScatterND with reduction Min on CPU Fallback
+TEST_F(QnnHTPBackendTests, ScatterND_int64_int64_reduction_min) {
+  std::vector<int64_t> data = {0, 1, 2, 3};
+  std::vector<int64_t> indices = {1};
+  std::vector<int64_t> updates = {10};
+  RunOpTest<int64_t>("ScatterND",
+                     {
+                         TestInputDef<int64_t>({4}, false, std::move(data)),
+                         TestInputDef<int64_t>({1, 1}, false, std::move(indices)),
+                         TestInputDef<int64_t>({1}, false, std::move(updates)),
+                     },
+                     {
+                         utils::MakeAttribute("reduction", "min"),
+                     },
+                     17,
+                     ExpectedEPNodeAssignment::None);
 }
 
 // Test 8-bit QDQ GridSample with bilinear

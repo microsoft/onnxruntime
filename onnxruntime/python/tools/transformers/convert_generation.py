@@ -583,7 +583,7 @@ def shape_inference(onnx_path: str, use_external_data_format: bool = True):
         use_external_data_format(bool): output tensors to external data or not.
     """
     # Run symbolic shape inference to walk around ORT shape inference issue for subgraph.
-    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference
+    from onnxruntime.tools.symbolic_shape_infer import SymbolicShapeInference  # noqa: PLC0415
 
     model = onnx.load_model(onnx_path, load_external_data=True)
     out = SymbolicShapeInference.infer_shapes(model, auto_merge=True, guess_output_rank=False)
@@ -1447,7 +1447,7 @@ def add_output_qk_to_mha(model: OnnxModel, dtype: int = 0, skip_node_idxs: list[
     return model
 
 
-def fix_past_sequence_length(model: ModelProto):
+def fix_past_sequence_length(model: OnnxModel):
     # Modify total_sequence_length = past_sequence_length + curr_sequence_length subgraph to calculate
     # past_sequence_length from the new `past_sequence_length` input of size 1D and type int32 instead of
     # from `past_key_self_0` since DecoderMaskedMultiHeadAttention (DMMHA) uses buffer sharing and
@@ -1480,56 +1480,119 @@ def fix_past_sequence_length(model: ModelProto):
     #                |
     #               Add
 
+    # Constant names to be used
+    past_seq_len_name = "past_sequence_length"
+    past_seq_len_int32 = "past_seq_len_int32"
+    past_seq_len_int64 = "past_seq_len_int64"
+
     node = list(filter(lambda n: n.op_type == "LayerNormalization", model.model.graph.node))[0]  # noqa: RUF015
 
-    base_path = model.match_parent_path(
+    base_path_hf = model.match_parent_path(
+        node,
+        ["Add", "Gather", "Tile", "Expand", "Unsqueeze", "Range"],
+        [0, 1, 1, 0, 0, 0],
+    )
+    base_path_oai = model.match_parent_path(
         node,
         ["Add", "Slice"],
         [0, 1],
     )
-    if base_path is None:
+    if base_path_hf is not None:
+        base_path = base_path_hf
+    elif base_path_oai is not None:
+        base_path = base_path_oai
+    else:
+        logger.info("Cannot identify base path for fixing past_sequence_length subgraph")
         return
+    base_node = base_path[-1]
 
-    left_path = model.match_parent_path(
-        base_path[-1],
-        ["Unsqueeze", "Add", "Gather", "Shape"],
-        [2, 0, 0, 0],
-    )
-    right_path = model.match_parent_path(
-        base_path[-1],
-        ["Unsqueeze", "Gather", "Shape"],
-        [1, 0, 0],
-    )
-    long_right_path = model.match_parent_path(
-        base_path[-1],
-        ["Unsqueeze", "Gather", "Shape", "Reshape", "Transpose"],
-        [1, 0, 0, 0, 0],
-    )
-    if left_path is None or right_path is None or left_path[-2:] != right_path[-2:]:
-        return
+    if base_node.op_type == "Range":
+        # Hugging Face implementation
+        range_node = base_path[-1]
 
-    # Remove `past_key_self_0 --> [Transpose --> Reshape] --> Shape --> Gather` connection
-    # where `Transpose --> Reshape` part may or may not exist. The OpenAI implementation of
-    # Whisper has an extra `Transpose --> Reshape` connection to remove.
-    constant_node = list(filter(lambda n: n.output[0] == left_path[-2].input[1], model.model.graph.node))[0]  # noqa: RUF015
-    model.model.graph.node.remove(left_path[-2])
-    model.model.graph.node.remove(left_path[-1])
-    model.model.graph.node.remove(constant_node)
-    if long_right_path is not None:
-        # Remove `Transpose --> Reshape` part
-        model.model.graph.node.remove(long_right_path[-2])
-        model.model.graph.node.remove(long_right_path[-1])
+        gather_path = model.match_parent_path(
+            range_node,
+            ["Gather", "Shape"],
+            [0, 0],
+        )
+        if gather_path is None:
+            logger.info("Cannot identify gather path for fixing past_sequence_length subgraph")
+            return
+
+        add_path = model.match_parent_path(
+            range_node,
+            ["Add", "Gather", "Shape"],
+            [1, 0, 0],
+        )
+        if add_path is None:
+            logger.info("Cannot identify add path for fixing past_sequence_length subgraph")
+            return
+        add_node = add_path[0]
+
+        if gather_path != add_path[1:]:
+            logger.info("Gather path and add path do not share the same nodes for calculating the past_sequence_length")
+            return
+
+        # Remove `past_key_self_0 --> Shape --> Gather` connection
+        constant_in_gather = list(filter(lambda n: n.output[0] == gather_path[0].input[1], model.model.graph.node))[0]  # noqa: RUF015
+        model.model.graph.node.remove(constant_in_gather)
+        model.model.graph.node.remove(gather_path[0])
+        model.model.graph.node.remove(gather_path[1])
+
+        # Add `past_seq_len_int64` as an input name to existing nodes
+        range_node.input[0] = past_seq_len_int64
+        add_node.input[0] = past_seq_len_int64
+
+    else:
+        # OpenAI implementation
+        input_ids_path = model.match_parent_path(
+            base_node,
+            ["Unsqueeze", "Add", "Gather", "Shape", "Reshape", "Transpose"],
+            [2, 0, 0, 0, 0, 0],
+        )
+        if input_ids_path is None:
+            logger.info("Cannot identify input_ids path for fixing past_sequence_length subgraph")
+            return
+        add_node = input_ids_path[1]
+
+        past_key_path = model.match_parent_path(
+            base_node,
+            ["Unsqueeze", "Gather", "Shape", "Reshape", "Transpose"],
+            [1, 0, 0, 0, 0],
+        )
+        if past_key_path is None:
+            logger.info("Cannot identify past_key path for fixing past_sequence_length subgraph")
+            return
+        unsqueeze_node = past_key_path[0]
+
+        if input_ids_path[2:] != past_key_path[1:]:
+            logger.info(
+                "The input_ids path and past_key path do not share the same nodes for calculating the past_sequence_length"
+            )
+            return
+
+        # Remove `past_key_self_0 --> Transpose --> Reshape --> Shape --> Gather` connection
+        constant_in_gather = list(filter(lambda n: n.output[0] == past_key_path[1].input[1], model.model.graph.node))[0]  # noqa: RUF015
+        model.model.graph.node.remove(constant_in_gather)
+        constant_in_reshape = list(filter(lambda n: n.output[0] == past_key_path[-2].input[1], model.model.graph.node))[  # noqa: RUF015
+            0
+        ]
+        model.model.graph.node.remove(constant_in_reshape)
+        model.model.graph.node.remove(past_key_path[1])
+        model.model.graph.node.remove(past_key_path[2])
+        model.model.graph.node.remove(past_key_path[3])
+        model.model.graph.node.remove(past_key_path[4])
+
+        # Add `past_seq_len_int64` as an input name to existing nodes
+        unsqueeze_node.input[0] = past_seq_len_int64
+        add_node.input[0] = past_seq_len_int64
 
     # Add `past_sequence_length` as model input
-    past_seq_len_name = "past_sequence_length"
     model.model.graph.input.append(
         onnx.helper.make_tensor_value_info(past_seq_len_name, TensorProto.INT32, shape=[1]),
     )
 
     # Add `past_sequence_length --> Squeeze --> Cast` connection
-    past_seq_len_int32 = "past_seq_len_int32"
-    past_seq_len_int64 = "past_seq_len_int64"
-
     squeeze_node = onnx.helper.make_node(
         "Squeeze",
         inputs=[past_seq_len_name],
@@ -1546,14 +1609,9 @@ def fix_past_sequence_length(model: ModelProto):
     )
     cast_output = onnx.helper.make_tensor_value_info(past_seq_len_int64, TensorProto.INT64, shape=[])
 
-    model.model.graph.value_info.extend([squeeze_output, cast_output])
-
-    # Add `past_seq_len_int64` as an input name to existing nodes
-    left_path[1].input[0] = past_seq_len_int64
-    right_path[0].input[0] = past_seq_len_int64
-
     # Add new nodes to graph
     model.model.graph.node.extend([squeeze_node, cast_node])
+    model.model.graph.value_info.extend([squeeze_output, cast_output])
     model.topological_sort()
     return model, past_seq_len_name
 
@@ -2986,7 +3044,7 @@ def convert_generation_model(
 
     # TODO(tianleiwu): move shared initializers from T5 encoder and decoder subgraphs to parent graph to save memory.
     if args.use_external_data_format:
-        from packaging import version
+        from packaging import version  # noqa: PLC0415
 
         if version.parse(onnx.__version__) < version.parse("1.12.0"):
             logger.warning("Require onnx >= 1.12 to save large (>2GB) model!")
@@ -3063,7 +3121,7 @@ def test_torch_performance(
         )
         torch_latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     return get_latency_result(torch_latency, batch_size)
 
@@ -3205,7 +3263,7 @@ def test_gpt_model(
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
-        from bert_test_data import output_test_data
+        from bert_test_data import output_test_data  # noqa: PLC0415
 
         logger.info(f"Saving test_data to {test_data_dir}/test_data_set_* ...")
 
@@ -3232,7 +3290,7 @@ def test_gpt_model(
         _ = ort_session.run(None, inputs)
         latency.append(time.time() - start)
 
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     batch_size = input_ids.shape[0]
     output = get_latency_result(latency, batch_size)
@@ -3413,7 +3471,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
     if args.save_test_data:
         test_data_dir = Path(args.output).parent.as_posix()
         logger.debug("test_data_dir", test_data_dir)  # noqa: PLE1205
-        from bert_test_data import output_test_data
+        from bert_test_data import output_test_data  # noqa: PLC0415
 
         all_inputs = [inputs]
         for i, inputs in enumerate(all_inputs):
@@ -3431,7 +3489,7 @@ def test_t5_model(args: argparse.Namespace, sentences: list[str] | None = None):
         result = ort_session.run(None, inputs)
         latency.append(time.time() - start)
     batch_size = input_ids.shape[0]
-    from benchmark_helper import get_latency_result
+    from benchmark_helper import get_latency_result  # noqa: PLC0415
 
     output = get_latency_result(latency, batch_size)
 

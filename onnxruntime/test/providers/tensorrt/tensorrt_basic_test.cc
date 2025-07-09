@@ -662,13 +662,10 @@ TEST(TensorrtExecutionProviderTest, ExcludeOpsTest) {
   params.trt_engine_cache_enable = 1;
   params.trt_op_types_to_exclude = "MaxPool";
   std::unique_ptr<IExecutionProvider> execution_provider = TensorrtExecutionProviderWithOptions(&params);
-  EXPECT_TRUE(session_object.RegisterExecutionProvider(std::move(execution_provider)).IsOK());
-  auto status = session_object.Load(model_name);
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Initialize();
-  ASSERT_TRUE(status.IsOK());
-  status = session_object.Run(run_options, feeds, output_names, &fetches);
-  ASSERT_TRUE(status.IsOK());
+  ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(execution_provider)));
+  ASSERT_STATUS_OK(session_object.Load(model_name));
+  ASSERT_STATUS_OK(session_object.Initialize());
+  ASSERT_STATUS_OK(session_object.Run(run_options, feeds, output_names, &fetches));
 
   std::vector<fs::path> engine_files;
   engine_files = GetCachesByType("./", ".engine");

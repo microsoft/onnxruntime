@@ -282,6 +282,9 @@ function(setup_kleidiai)
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
+
+  list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
+  set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")

@@ -243,6 +243,12 @@ inline ConstMemoryInfo AllocatorImpl<T>::GetInfo() const {
   return ConstMemoryInfo{out};
 }
 
+template <typename T>
+inline KeyValuePairs AllocatorImpl<T>::GetStats() const {
+  OrtKeyValuePairs* out;
+  ThrowOnError(GetApi().AllocatorGetStats(this->p_, &out));
+  return KeyValuePairs(out);
+}
 }  // namespace detail
 
 inline AllocatorWithDefaultOptions::AllocatorWithDefaultOptions() {
@@ -759,6 +765,12 @@ inline const char* RunOptions::GetRunTag() const {
 inline RunOptions& RunOptions::AddConfigEntry(const char* config_key, const char* config_value) {
   ThrowOnError(GetApi().AddRunConfigEntry(p_, config_key, config_value));
   return *this;
+}
+
+inline const char* RunOptions::GetConfigEntry(const char* config_key) {
+  const char* out{};
+  ThrowOnError(GetApi().GetRunConfigEntry(p_, config_key, &out));
+  return out;
 }
 
 inline RunOptions& RunOptions::SetTerminate() {

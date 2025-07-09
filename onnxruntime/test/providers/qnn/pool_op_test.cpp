@@ -5,14 +5,15 @@
 
 #include <string>
 #include <unordered_map>
-
-#include "core/graph/node_attr_utils.h"
-#include "test/optimizer/qdq_test_utils.h"
-#include "test/providers/qnn/qnn_test_utils.h"
-
-#include "core/graph/onnx_protobuf.h"
+#include <utility>
+#include <vector>
 
 #include "gtest/gtest.h"
+
+#include "core/graph/node_attr_utils.h"
+#include "core/graph/onnx_protobuf.h"
+#include "test/optimizer/qdq_test_utils.h"
+#include "test/providers/qnn/qnn_test_utils.h"
 
 namespace onnxruntime {
 namespace test {
@@ -145,10 +146,29 @@ TEST_F(QnnCPUBackendTests, DISABLED_MaxPool_Large_Input2_Ceil) {
                 ExpectedEPNodeAssignment::All);
 }
 
+TEST_F(QnnCPUBackendTests, MaxPool_3D) {
+  RunPoolOpTest("MaxPool",
+                TestInputDef<float>({1, 2, 3, 3, 3}, false, -10.0f, 10.0f),
+                {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3, 3, 3}),
+                 utils::MakeAttribute("strides", std::vector<int64_t>{3, 3, 3}),
+                 utils::MakeAttribute("pads", std::vector<int64_t>{0, 0, 0, 0, 0, 0}),
+                 utils::MakeAttribute("dilations", std::vector<int64_t>{1, 1, 1}),
+                 utils::MakeAttribute("ceil_mode", static_cast<int64_t>(0)),
+                 utils::MakeAttribute("auto_pad", "NOTSET")},
+                ExpectedEPNodeAssignment::All);
+}
+
 // GlobalMaxPool test
 TEST_F(QnnCPUBackendTests, GlobalMaxPoolTest) {
   RunPoolOpTest("GlobalMaxPool",
                 TestInputDef<float>({1, 2, 3, 3}, false, -10.0f, 10.0f),  // Dynamic input with range [-10, 10]
+                {},
+                ExpectedEPNodeAssignment::All);
+}
+
+TEST_F(QnnCPUBackendTests, GlobalMaxPool_3D) {
+  RunPoolOpTest("GlobalMaxPool",
+                TestInputDef<float>({1, 2, 3, 3, 3}, false, -10.0f, 10.0f),
                 {},
                 ExpectedEPNodeAssignment::All);
 }
@@ -182,10 +202,8 @@ TEST_F(QnnHTPBackendTests, MaxPool_Large_Input_HTP_u8) {
                              utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
                              utils::MakeAttribute("auto_pad", "NOTSET")},
                             ExpectedEPNodeAssignment::All,
-                            18,     // opset
-                            false,  // use_contrib_qdq_ops
-                            // Need a tolerance of 0.417% of output range after QNN SDK 2.17
-                            QDQTolerance(0.00417f));
+                            18,      // opset
+                            false);  // use_contrib_qdq_ops
 }
 
 TEST_F(QnnHTPBackendTests, MaxPool1D_ReshapeNodesPresent) {
@@ -259,6 +277,51 @@ TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8) {
        utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
        utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
        utils::MakeAttribute("auto_pad", "NOTSET")},
+      ExpectedEPNodeAssignment::All);
+}
+
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='VALID'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_VALID) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "VALID")},
+      ExpectedEPNodeAssignment::All);
+}
+
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='SAME_UPPER'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_SAME_UPPER) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "SAME_UPPER")},
+      ExpectedEPNodeAssignment::All);
+}
+
+// 1-D MaxPool HTP test for rank-3 with ceil_mode=1 and auto_pad='SAME_LOWER'
+TEST_F(QnnHTPBackendTests, MaxPool_Rank3_Ceil_HTP_u8_auto_pad_SAME_LOWER) {
+  RunQDQPoolOpTest<uint8_t>(
+      "MaxPool",
+      TestInputDef<float>({1, 3, 3}, false, -10.0f, 10.0f),
+      {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{3}),
+       utils::MakeAttribute("strides", std::vector<int64_t>{3}),
+       utils::MakeAttribute("pads", std::vector<int64_t>{0, 0}),
+       utils::MakeAttribute("dilations", std::vector<int64_t>{1}),
+       utils::MakeAttribute("ceil_mode", static_cast<int64_t>(1)),
+       utils::MakeAttribute("storage_order", static_cast<int64_t>(0)),
+       utils::MakeAttribute("auto_pad", "SAME_LOWER")},
       ExpectedEPNodeAssignment::All);
 }
 
@@ -339,6 +402,30 @@ TEST_F(QnnHTPBackendTests, MaxPool_LargeInput_1Pads_u16) {
                              ExpectedEPNodeAssignment::All,
                              18,     // opset
                              true);  // use_contrib_qdq_ops
+}
+
+// Test uint8 QDQ MaxPool with auto_pad SAME_LOWER.
+TEST_F(QnnHTPBackendTests, MaxPool_AutoPad_SAME_LOWER_u8) {
+  RunQDQPoolOpTest<uint8_t>("MaxPool",
+                            TestInputDef<float>({1, 3, 16, 24}, false, -10.0f, 10.0f),
+                            {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
+                             utils::MakeAttribute("strides", std::vector<int64_t>{2, 2}),
+                             utils::MakeAttribute("auto_pad", "SAME_LOWER")},
+                            ExpectedEPNodeAssignment::All,
+                            18,
+                            true);
+}
+
+// Test uint8 QDQ MaxPool with auto_pad SAME_UPPER.
+TEST_F(QnnHTPBackendTests, MaxPool_AutoPad_SAME_UPPER_u8) {
+  RunQDQPoolOpTest<uint8_t>("MaxPool",
+                            TestInputDef<float>({1, 3, 16, 24}, false, -10.0f, 10.0f),
+                            {utils::MakeAttribute("kernel_shape", std::vector<int64_t>{2, 2}),
+                             utils::MakeAttribute("strides", std::vector<int64_t>{2, 2}),
+                             utils::MakeAttribute("auto_pad", "SAME_UPPER")},
+                            ExpectedEPNodeAssignment::All,
+                            18,
+                            true);
 }
 
 // QDQ GlobalMaxPool test

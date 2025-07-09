@@ -117,8 +117,6 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     luid_list = split(luid_str, ',');
   }
 
-  bool all_devices_found = true;
-
   for (auto device : devices_to_check) {
     bool device_found = false;
     // Check deprecated device format (CPU_FP32, GPU.0_FP16, etc.) and remove the suffix in place
@@ -137,8 +135,11 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         // Here we need to find the full device name (with .idx, but without _precision)
         if (std::find(std::begin(available_devices), std::end(available_devices), device) != std::end(available_devices))
           device_found = true;
+        if (!device_found) {
+          ORT_THROW("[ERROR] [OpenVINO] Device ", device, " is not available");
+        }
         if (device_prefix != "CPU" && luid_list.size() > 0) {
-          for (auto dev : available_devices) {
+          for (const auto& dev : available_devices) {
             ov::device::LUID ov_luid = OVCore::Get()->core.get_property(dev, ov::device::luid);
             std::stringstream ov_luid_str;
             ov_luid_str << ov_luid;
@@ -149,11 +150,10 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
         ORT_THROW(msg);
       }
     }
-    all_devices_found = all_devices_found && device_found;
   }
   if (luid_list.size() > 0) {
     std::string ov_luid_devices;
-    for (auto luid_str : luid_list) {
+    for (const auto& luid_str : luid_list) {
       if (ov_luid_map.contains(luid_str)) {
         std::string ov_dev = ov_luid_map.at(luid_str);
         std::string ov_dev_strip = split(ov_dev, '.')[0];
@@ -170,26 +170,19 @@ std::string ParseDeviceType(std::shared_ptr<OVCore> ov_core, const ProviderOptio
     }
     if (!device_mode.empty()) {
       selected_device = device_mode + ":" + ov_luid_devices;
-      for (auto dev_str : devices_to_check) {
-        auto default_dev = split(dev_str, '.')[0];
+      for (const auto& dev_str : devices_to_check) {
+        const auto default_dev = split(dev_str, '.')[0];
 
         if (ov_luid_devices.find(default_dev) == std::string::npos)
           selected_device = selected_device + "," + dev_str;
       }
     } else {
-      selected_device = ov_luid_devices;
+      selected_device = std::move(ov_luid_devices);
     }
   }
-  // If invalid device is chosen error is thrown
-  if (!all_devices_found) {
-    ORT_THROW(
-        "[ERROR] [OpenVINO] You have selected wrong configuration value for the key 'device_type'. "
-        "Select from 'CPU', 'GPU', 'NPU', 'GPU.x' where x = 0,1,2 and so on or from"
-        " HETERO/MULTI/AUTO/BATCH options available. \n");
-  } else {
-    LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
-    return selected_device;
-  }
+
+  LOGS_DEFAULT(INFO) << "[OpenVINO-EP] Choosing Device: " << selected_device;
+  return selected_device;
 }
 
 void ParseProviderOptions([[maybe_unused]] ProviderInfo& result, [[maybe_unused]] const ProviderOptions& config_options) {}
@@ -215,7 +208,7 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   // Minor optimization: we'll hold an OVCore reference to ensure we don't create a new core between ParseDeviceType and
   // (potential) SharedContext creation.
   auto ov_core = OVCore::Get();
-  pi.device_type = ParseDeviceType(ov_core, provider_options);
+  pi.device_type = ParseDeviceType(std::move(ov_core), provider_options);
 
   if (provider_options.contains("device_id")) {
     std::string dev_id = provider_options.at("device_id").data();
@@ -232,6 +225,10 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
   }
 
   pi.precision = OpenVINOParserUtils::ParsePrecision(provider_options, pi.device_type, "precision");
+
+  if (provider_options.contains("reshape_input")) {
+    pi.reshape = OpenVINOParserUtils::ParseInputShape(provider_options.at("reshape_input"));
+  }
 
   if (provider_options.contains("load_config")) {
     auto parse_config = [&](const std::string& config_str) -> std::map<std::string, ov::AnyMap> {
@@ -343,19 +340,26 @@ static void ParseProviderInfo(const ProviderOptions& provider_options,
 
     pi.enable_qdq_optimizer = ParseBooleanOption(provider_options, "enable_qdq_optimizer");
 
+    pi.enable_causallm = ParseBooleanOption(provider_options, "enable_causallm");
+
     pi.disable_dynamic_shapes = ParseBooleanOption(provider_options, "disable_dynamic_shapes");
   } catch (std::string msg) {
     ORT_THROW(msg);
   }
-  // Always true for NPU plugin or when passed .
-  if (pi.device_type.find("NPU") != std::string::npos) {
-    pi.disable_dynamic_shapes = true;
-  }
+
+  // Should likely account for meta devices as well, but for now keep the current behavior.
+  bool target_devices_support_dynamic_shapes =
+      pi.device_type.find("GPU") != std::string::npos ||
+      pi.device_type.find("CPU") != std::string::npos ||
+      (pi.device_type.find("NPU") != std::string::npos &&
+       pi.enable_causallm);
+
+  pi.disable_dynamic_shapes = !target_devices_support_dynamic_shapes;
 }
 
 struct OpenVINOProviderFactory : IExecutionProviderFactory {
   OpenVINOProviderFactory(ProviderInfo provider_info, std::shared_ptr<SharedContext> shared_context)
-      : provider_info_(std::move(provider_info)), shared_context_(shared_context) {}
+      : provider_info_(std::move(provider_info)), shared_context_(std::move(shared_context)) {}
 
   ~OpenVINOProviderFactory() override {}
 

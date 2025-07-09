@@ -7,6 +7,7 @@
 
 #include "core/common/common.h"
 #include "core/framework/allocator_stats.h"
+#include "core/session/abi_key_value_pairs.h"
 // some enums are defined in session/onnxruntime_c_api.h but used in ortdevice.h/ortmemory.h
 #include "core/session/onnxruntime_c_api.h"
 #include "core/framework/ortdevice.h"
@@ -37,6 +38,26 @@ struct OrtArenaCfg {
   int max_dead_bytes_per_chunk;           // use -1 to allow ORT to choose the default
   int initial_growth_chunk_size_bytes;    // use -1 to allow ORT to choose the default
   int64_t max_power_of_two_extend_bytes;  // use -1 to allow ORT to choose the default
+
+  bool IsValid() {
+    return arena_extend_strategy >= -1 && arena_extend_strategy <= 1 &&
+           initial_chunk_size_bytes >= -1 &&
+           max_dead_bytes_per_chunk >= -1 &&
+           initial_growth_chunk_size_bytes >= -1 &&
+           max_power_of_two_extend_bytes >= -1;
+  }
+
+  // config key names that we parse in FromKeyValuePairs
+  struct ConfigKeyNames {
+    static constexpr const char* ArenaExtendStrategy = "arena.extend_strategy";
+    static constexpr const char* InitialChunkSizeBytes = "arena.initial_chunk_size_bytes";
+    static constexpr const char* MaxDeadBytesPerChunk = "arena.max_dead_bytes_per_chunk";
+    static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
+    static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
+    static constexpr const char* MaxMem = "arena.max_mem";
+  };
+
+  static onnxruntime::common::Status FromKeyValuePairs(const OrtKeyValuePairs& kvps, OrtArenaCfg& cfg);
 };
 
 namespace onnxruntime {
@@ -65,7 +86,7 @@ class Stream;
 namespace synchronize {
 class Notification;
 }
-using WaitNotificationFn = std::function<void(Stream&, synchronize::Notification&)>;
+using WaitNotificationFn = std::function<void(Stream*, synchronize::Notification&)>;
 void* AllocateBufferWithOptions(IAllocator& allocator, size_t size, bool use_reserve, Stream* stream, WaitNotificationFn wait_fn);
 
 template <typename T>
@@ -101,7 +122,9 @@ class IAllocator {
   const OrtMemoryInfo& Info() const { return memory_info_; };
 
   // Each implementation of IAllocator can override and provide their own implementation
-  virtual void GetStats(AllocatorStats* /*stats*/) { return; }
+  virtual void GetStats(AllocatorStats* stats) {
+    *stats = {};
+  }
 
   static bool CalcMemSizeForArray(size_t nmemb, size_t size, size_t* out) noexcept {
     return CalcMemSizeForArrayWithAlignment(nmemb, size, 0, out);
@@ -203,7 +226,8 @@ class IAllocator {
      @returns std::unique_ptr with allocated memory and deleter. Throws if it cannot allocate memory.
   */
   template <typename T>
-  static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes) {
+  static IAllocatorUniquePtr<T> MakeUniquePtrFromOrtAllocator(OrtAllocator* ort_allocator, size_t count_or_bytes,
+                                                              bool use_reserve = false) {
     ValidateAllocator(ort_allocator);
 
     size_t alloc_size = count_or_bytes;
@@ -215,7 +239,12 @@ class IAllocator {
       alloc_size = ValidatedCalcMemSizeForArray(count_or_bytes, size);
     }
 
-    T* p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    T* p = nullptr;
+    if (use_reserve) {
+      p = static_cast<T*>(ort_allocator->Reserve(ort_allocator, alloc_size));
+    } else {
+      p = static_cast<T*>(ort_allocator->Alloc(ort_allocator, alloc_size));
+    }
     ValidateAllocation(p, alloc_size);
 
     return IAllocatorUniquePtr<T>{p,
@@ -257,18 +286,22 @@ bool IAllocator::CalcMemSizeForArrayWithAlignment(size_t nmemb, size_t size, siz
   return CalcMemSizeForArrayWithAlignment(nmemb, size, alignment, out);
 }
 
+using AllocatorPtr = std::shared_ptr<IAllocator>;
+using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
+
 class CPUAllocator : public IAllocator {
  public:
   explicit CPUAllocator(const OrtMemoryInfo& memory_info) : IAllocator(memory_info) {}
+
+  // Creates a function local static and returns a shared pointer to it.
+  // Re-use in all places where we need a standalone CPUAllocator instance
+  static AllocatorPtr DefaultInstance();
 
   CPUAllocator() : IAllocator(OrtMemoryInfo(CPU, OrtAllocatorType::OrtDeviceAllocator)) {}
 
   void* Alloc(size_t size) override;
   void Free(void* p) override;
 };
-
-using AllocatorPtr = std::shared_ptr<IAllocator>;
-using AllocatorMap = std::map<OrtDevice, AllocatorPtr>;
 
 void* AllocatorDefaultAlloc(size_t size);
 void AllocatorDefaultFree(void* p);

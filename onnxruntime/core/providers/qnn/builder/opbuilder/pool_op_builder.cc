@@ -1,10 +1,15 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include <memory>
+#include <string>
+#include <utility>
+#include <vector>
+
 #include "core/providers/qnn/builder/opbuilder/base_op_builder.h"
-#include "core/providers/qnn/builder/qnn_utils.h"
-#include "core/providers/qnn/builder/qnn_model_wrapper.h"
 #include "core/providers/qnn/builder/op_builder_factory.h"
+#include "core/providers/qnn/builder/qnn_model_wrapper.h"
+#include "core/providers/qnn/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -16,7 +21,7 @@ class PoolOpBuilder : public BaseOpBuilder {
 
   Status IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                        const NodeUnit& node_unit,
-                       const logging::Logger& logger) const override final ORT_MUST_USE_RESULT;
+                       const logging::Logger& logger) const override ORT_MUST_USE_RESULT;
 
  protected:
   Status ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
@@ -33,9 +38,11 @@ class PoolOpBuilder : public BaseOpBuilder {
                                   QnnQuantParamsWrapper& quant_param) const override ORT_MUST_USE_RESULT;
 
  private:
-  Status SetCommonPoolParams(const NodeAttrHelper& node_helper, std::vector<uint32_t>& filter_size,
-                             std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& stride,
-                             int32_t& ceil_mode,
+  Status SetCommonPoolParams(const NodeAttrHelper& node_helper,
+                             std::vector<uint32_t>& filter_size,
+                             std::vector<uint32_t>& stride,
+                             std::vector<uint32_t>& pad_amount,
+                             int32_t& rounding_mode,
                              std::vector<uint32_t>&& input_shape,
                              std::vector<uint32_t>&& output_shape) const;
 };
@@ -50,48 +57,27 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                                     const logging::Logger& logger) const {
   ORT_UNUSED_PARAMETER(logger);
 
-  if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
-    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
-  }
-
   const auto& inputs = node_unit.Inputs();
   ORT_RETURN_IF_ERROR(DataTypeCheckForCpuBackend(qnn_model_wrapper, inputs[0].node_arg.Type()));
 
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
 
-  bool is1d = (input_shape.size() == 3);
-  if (!is1d && input_shape.size() != 4) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN Pool only supports rank 3 or 4!");
-  }
+  size_t rank = input_shape.size();
+  ORT_RETURN_IF_NOT(rank == 3 || rank == 4 || rank == 5, "QNN Pool only supports rank 3, 4, or 5!");
+
+  // ONNX MaxPool may have two outputs.
+  ORT_RETURN_IF(node_unit.Outputs().size() > 1, "QNN Pool only supports 1 output!");
 
   NodeAttrHelper node_helper(node_unit);
-
-  if (is1d) {
-    auto kernel_shape = node_helper.Get("kernel_shape", std::vector<int32_t>{});
-    ORT_RETURN_IF_NOT(kernel_shape.size() == 1, "QNN Pool1D: kernel_shape must have length 1!");
-
-    auto pads = node_helper.Get("pads", std::vector<int32_t>{});
-    ORT_RETURN_IF_NOT(pads.size() == 2, "QNN Pool1D: pads must have length 2!");
-
-    auto strides = node_helper.Get("strides", std::vector<int32_t>{});
-    ORT_RETURN_IF_NOT(strides.empty() || strides.size() == 1, "QNN Pool1D: strides must have length 1 or omitted!");
-
-    auto dilations = node_helper.Get("dilations", std::vector<int32_t>{1});
-    ORT_RETURN_IF_NOT(dilations.size() == 1, "QNN Pool1D: dilations must have length 1 or omitted!");
-  } else {
-    auto dilations = node_helper.Get("dilations", std::vector<int32_t>{1, 1});
-    ORT_RETURN_IF_NOT(dilations.size() == 2, "QNN Pool2D: dilations must have length 2 or omitted!");
-  }
-
-  if (node_unit.Outputs().size() > 1) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "QNN only support 1 output!");
-  }
+  auto dilations = node_helper.Get("dilations", std::vector<uint32_t>(rank - 2, 1));
+  ORT_RETURN_IF_NOT(dilations == std::vector<uint32_t>(rank - 2, 1), "QNN Pool only supports dilations 1!");
 
   const std::string& op_type = node_unit.OpType();
-  // Onnx GlobalMaxPool doesn't have any attributes
-  if (op_type == "GlobalMaxPool") {
-    return Status::OK();
+  const bool is_npu_backend = IsNpuBackend(qnn_model_wrapper.GetQnnBackendType());
+
+  if (rank == 5 && is_npu_backend) {
+    ORT_RETURN_IF(op_type == "MaxPool" || op_type == "GlobalMaxPool", "QNN NPU does not support PoolMax3d!");
   }
 
   if (op_type == "MaxPool" || op_type == "AveragePool") {
@@ -100,100 +86,18 @@ Status PoolOpBuilder::IsOpSupported(QnnModelWrapper& qnn_model_wrapper,
                   "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
   }
 
+  if (node_unit.Domain() == kMSInternalNHWCDomain) {  // Use QNN validation API if layout is NHWC.
+    return AddToModelBuilder(qnn_model_wrapper, node_unit, logger, true);
+  }
+
   return Status::OK();
 }
 
-Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
-                                          std::vector<uint32_t>& filter_size,
-                                          std::vector<uint32_t>& pad_amount, std::vector<uint32_t>& strides,
-                                          int32_t& ceil_mode,
-                                          std::vector<uint32_t>&& input_shape,
-                                          std::vector<uint32_t>&& output_shape) const {
-  {
-    auto raw_filter_size = node_helper.Get("kernel_shape", std::vector<uint32_t>{1, 1});
-    if (raw_filter_size.size() == 1) {
-      filter_size = {1, raw_filter_size[0]};
-    } else {
-      filter_size = raw_filter_size;
-    }
-  }
-  ORT_RETURN_IF_NOT(filter_size.size() == 2,
-                    "QNN only support kernel_shape with shape[2].");
-
-  {
-    auto raw_strides = node_helper.Get("strides", std::vector<uint32_t>{1, 1});
-    if (raw_strides.size() == 1) {
-      strides = {1, raw_strides[0]};
-    } else {
-      strides = raw_strides;
-    }
-  }
-  ORT_RETURN_IF_NOT(strides.size() == 2,
-                    "QNN only support strides with shape[2].");
-
-  {
-    auto raw_pad_amount = node_helper.Get("pads", std::vector<uint32_t>{0, 0, 0, 0});
-    if (raw_pad_amount.size() == 2) {
-      pad_amount = {0, raw_pad_amount[0], 0, raw_pad_amount[1]};
-    } else {
-      pad_amount = raw_pad_amount;
-    }
-  }
-
-  auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
-  ORT_RETURN_IF(auto_pad != "NOTSET" && auto_pad != "SAME_LOWER" && auto_pad != "SAME_UPPER" && auto_pad != "VALID",
-                "QNN Pool operators do not support 'auto_pad' value: ", auto_pad.c_str());
-
-  if (auto_pad.compare("NOTSET") != 0) {
-    std::vector<uint32_t> dilations;
-    auto raw_dilations = node_helper.Get("dilations", std::vector<uint32_t>{1, 1});
-    if (raw_dilations.size() == 1) {
-      dilations = {1, raw_dilations[0]};
-    } else {
-      dilations = raw_dilations;
-    }
-
-    auto total_pads_0 = (output_shape[1] - 1) * strides[0] + (filter_size[0] - 1) * dilations[0] + 1 - input_shape[1];
-    auto total_pads_1 = (output_shape[2] - 1) * strides[1] + (filter_size[1] - 1) * dilations[1] + 1 - input_shape[2];
-    if (auto_pad.compare("SAME_LOWER") != 0) {
-      pad_amount[0] = total_pads_0 / 2;
-      pad_amount[1] = total_pads_1 / 2;
-      pad_amount[2] = total_pads_0 - pad_amount[0];
-      pad_amount[3] = total_pads_1 - pad_amount[1];
-    } else if (auto_pad.compare("SAME_UPPER") != 0) {
-      pad_amount[2] = total_pads_0 / 2;
-      pad_amount[3] = total_pads_1 / 2;
-      pad_amount[0] = total_pads_0 - pad_amount[2];
-      pad_amount[1] = total_pads_1 - pad_amount[3];
-    }
-  }
-  ORT_RETURN_IF_NOT(pad_amount.size() == 4, "QNN only support pads with shape[2, 2].");
-  ReArranagePads(pad_amount);
-
-  ceil_mode = node_helper.Get("ceil_mode", ceil_mode);
-  return Status::OK();
-}  // namespace qnn
-
-void SetPoolParam(const NodeUnit& node_unit,
-                  const std::string& param_name,
-                  std::vector<uint32_t>&& parm_shape,
-                  std::vector<uint32_t>&& parm_data,
-                  std::vector<std::string>& param_tensor_names,
-                  QnnModelWrapper& qnn_model_wrapper) {
-  QnnParamWrapper qnn_param(node_unit.Index(),
-                            node_unit.Name(),
-                            param_name,
-                            std::move(parm_shape),
-                            std::move(parm_data));
-  param_tensor_names.push_back(qnn_param.GetParamTensorName());
-  qnn_model_wrapper.AddParamWrapper(std::move(qnn_param));
-}
-
-std::vector<uint32_t> ComputePoolOutputShape(
-    const std::vector<uint32_t>& input_shape,   // {N, H, W, C}
-    const std::vector<uint32_t>& kernel_shape,  // {k_h, k_w}
-    const std::vector<uint32_t>& strides,       // {s_h, s_w}
-    const std::vector<uint32_t>& pads) {
+static std::vector<uint32_t> AmendOutputShapeForRank3Pool(
+    gsl::span<const uint32_t> input_shape,   // {N, H, W, C}
+    gsl::span<const uint32_t> kernel_shape,  // {k_h, k_w}
+    gsl::span<const uint32_t> strides,       // {s_h, s_w}
+    gsl::span<const uint32_t> pads) {
   assert(input_shape.size() == 4 &&
          kernel_shape.size() == 2 &&
          strides.size() == 2 &&
@@ -219,6 +123,101 @@ std::vector<uint32_t> ComputePoolOutputShape(
   return {N, out_H, out_W, C};
 }
 
+Status PoolOpBuilder::SetCommonPoolParams(const NodeAttrHelper& node_helper,
+                                          std::vector<uint32_t>& filter_size,
+                                          std::vector<uint32_t>& stride,
+                                          std::vector<uint32_t>& pad_amount,
+                                          int32_t& rounding_mode,
+                                          std::vector<uint32_t>&& input_shape,
+                                          std::vector<uint32_t>&& output_shape) const {
+  size_t rank = input_shape.size();
+
+  // Param: filter_size.
+  {
+    auto raw_filter_size = node_helper.Get("kernel_shape", std::vector<uint32_t>(rank - 2, 1));
+    if (raw_filter_size.size() == 1) {
+      filter_size = {1, raw_filter_size[0]};
+    } else {
+      filter_size = raw_filter_size;
+    }
+  }
+
+  // Param: stride.
+  {
+    auto raw_stride = node_helper.Get("strides", std::vector<uint32_t>(rank - 2, 1));
+    if (raw_stride.size() == 1) {
+      stride = {1, raw_stride[0]};
+    } else {
+      stride = raw_stride;
+    }
+  }
+
+  // Param: dilations (NOT SUPPORTED by QNN).
+  std::vector<uint32_t> dilations;
+  {
+    auto raw_dilations = node_helper.Get("dilations", std::vector<uint32_t>(rank - 2, 1));
+    if (raw_dilations.size() == 1) {
+      dilations = {1, raw_dilations[0]};
+    } else {
+      dilations = raw_dilations;
+    }
+  }
+
+  // Param: pad_amount.
+  {
+    auto raw_pad_amount = node_helper.Get("pads", std::vector<uint32_t>((rank - 2) * 2, 0));
+    if (raw_pad_amount.size() == 2) {
+      pad_amount = {0, raw_pad_amount[0], 0, raw_pad_amount[1]};
+    } else {
+      pad_amount = raw_pad_amount;
+    }
+  }
+
+  auto auto_pad = node_helper.Get("auto_pad", std::string("NOTSET"));
+  if (auto_pad.compare("NOTSET") != 0) {
+    if (output_shape.size() == 3) {
+      // Calculate rank-4 output shape for rank-3 input.
+      output_shape = AmendOutputShapeForRank3Pool(input_shape,
+                                                  filter_size,
+                                                  stride,
+                                                  pad_amount);
+    }
+
+    for (size_t axis = 0; axis < rank - 2; ++axis) {
+      uint32_t total_pads = (output_shape[axis + 1] - 1) * stride[axis] +
+                            (filter_size[axis] - 1) * dilations[axis] + 1 - input_shape[axis + 1];
+      if (auto_pad.compare("SAME_LOWER") == 0) {
+        pad_amount[axis + rank - 2] = total_pads / 2;
+        pad_amount[axis] = total_pads - pad_amount[axis + rank - 2];
+      } else if (auto_pad.compare("SAME_UPPER") == 0) {
+        pad_amount[axis] = total_pads / 2;
+        pad_amount[axis + rank - 2] = total_pads - pad_amount[axis];
+      }
+    }
+  }
+  ReArranagePads(pad_amount);
+
+  // Param: rounding_mode.
+  rounding_mode = node_helper.Get("ceil_mode", rounding_mode);
+
+  return Status::OK();
+}
+
+bool SetPoolParam(const NodeUnit& node_unit,
+                  const std::string& param_name,
+                  std::vector<uint32_t>&& parm_shape,
+                  std::vector<uint32_t>&& parm_data,
+                  std::vector<std::string>& param_tensor_names,
+                  QnnModelWrapper& qnn_model_wrapper) {
+  QnnParamWrapper qnn_param(node_unit.Index(),
+                            node_unit.Name(),
+                            param_name,
+                            std::move(parm_shape),
+                            std::move(parm_data));
+  param_tensor_names.push_back(qnn_param.GetParamTensorName());
+  return qnn_model_wrapper.AddParamWrapper(std::move(qnn_param));
+}
+
 Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wrapper,
                                                   const NodeUnit& node_unit,
                                                   std::vector<std::string>&& input_names,
@@ -230,6 +229,7 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
   std::vector<uint32_t> input_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, input_shape), "Cannot get shape");
 
+  // Reshape 3D input to 4D if necessary.
   const auto& reshape_input = node_unit.Inputs()[0];
   TensorInfo reshape_input_info = {};
   ORT_RETURN_IF_ERROR(qnn_model_wrapper.GetTensorInfo(reshape_input, reshape_input_info));
@@ -267,32 +267,88 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     input_shape = {input_shape[0], 1, input_shape[1], input_shape[2]};
   }
 
-  ORT_RETURN_IF_NOT(input_shape.size() == 4, "Input should have 4 dims NCHW or 3 dims for 1D pooling.");
-  // Default value for GlobalAveragePool
-  // Pool use filter & stride with shape [filter_height, filter_width]
-  // With layout transformer, the input has shape  [batch, height, width, channel],
-  std::vector<uint32_t> filter_size(input_shape.begin() + 1, input_shape.begin() + 3);
+  const std::string& op_type = node_unit.OpType();
+  const size_t rank = input_shape.size();
+
+  // QNN constants for construction.
+  std::string qnn_op_type;
+  std::string param_filter_size;
+  std::string param_stride;
+  std::string param_pad_amount;
+  std::string param_count_pad_for_edges;
+  std::string param_rounding_mode;
+  if (rank == 4) {
+    if (op_type == "MaxPool" || op_type == "GlobalMaxPool") {
+      qnn_op_type = QNN_OP_POOL_MAX_2D;
+      param_filter_size = QNN_OP_POOL_MAX_2D_PARAM_FILTER_SIZE;
+      param_stride = QNN_OP_POOL_MAX_2D_PARAM_STRIDE;
+      param_pad_amount = QNN_OP_POOL_MAX_2D_PARAM_PAD_AMOUNT;
+      param_rounding_mode = QNN_OP_POOL_MAX_2D_PARAM_ROUNDING_MODE;
+    } else {
+      qnn_op_type = QNN_OP_POOL_AVG_2D;
+      param_filter_size = QNN_OP_POOL_AVG_2D_PARAM_FILTER_SIZE;
+      param_stride = QNN_OP_POOL_AVG_2D_PARAM_STRIDE;
+      param_pad_amount = QNN_OP_POOL_AVG_2D_PARAM_PAD_AMOUNT;
+      param_count_pad_for_edges = QNN_OP_POOL_AVG_2D_PARAM_COUNT_PAD_FOR_EDGES;
+      param_rounding_mode = QNN_OP_POOL_AVG_2D_PARAM_ROUNDING_MODE;
+    }
+  } else {
+    if (op_type == "MaxPool" || op_type == "GlobalMaxPool") {
+      qnn_op_type = QNN_OP_POOL_MAX_3D;
+      param_filter_size = QNN_OP_POOL_MAX_3D_PARAM_FILTER_SIZE;
+      param_stride = QNN_OP_POOL_MAX_3D_PARAM_STRIDE;
+      param_pad_amount = QNN_OP_POOL_MAX_3D_PARAM_PAD_AMOUNT;
+      param_rounding_mode = QNN_OP_POOL_MAX_3D_PARAM_ROUNDING_MODE;
+    } else {
+      qnn_op_type = QNN_OP_POOL_AVG_3D;
+      param_filter_size = QNN_OP_POOL_AVG_3D_PARAM_FILTER_SIZE;
+      param_stride = QNN_OP_POOL_AVG_3D_PARAM_STRIDE;
+      param_pad_amount = QNN_OP_POOL_AVG_3D_PARAM_PAD_AMOUNT;
+      param_count_pad_for_edges = QNN_OP_POOL_AVG_3D_PARAM_COUNT_PAD_FOR_EDGES;
+      param_rounding_mode = QNN_OP_POOL_AVG_3D_PARAM_ROUNDING_MODE;
+    }
+  }
+
+  // Default parameters for GlobalMaxPool/GlobalAveragePool with filter and stride in spatial shapes.
+  // Note that input is already in spatial-first layout.
+  std::vector<uint32_t> filter_size(input_shape.begin() + 1, input_shape.begin() + rank - 1);
+  std::vector<uint32_t> filter_size_dim{static_cast<uint32_t>(rank - 2)};
   std::vector<uint32_t> stride(filter_size);
-  std::vector<uint32_t> filter_size_dim{2};
-  std::vector<uint32_t> stride_dim{2};
-  std::vector<uint32_t> pad_amount{0, 0, 0, 0};
-  std::vector<uint32_t> pad_amount_dim{2, 2};
-  int32_t ceil_mode = 0;
+  std::vector<uint32_t> stride_dim{static_cast<uint32_t>(rank - 2)};
+  std::vector<uint32_t> pad_amount((rank - 2) * 2, 0);
+  std::vector<uint32_t> pad_amount_dim{static_cast<uint32_t>(rank - 2), 2};
+  int32_t rounding_mode = 0;
 
   std::vector<std::string> param_tensor_names;
-  const std::string& op_type = node_unit.OpType();
   if (op_type == "GlobalMaxPool") {
-    // set default params for Qnn PoolMax2D
-    SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_FILTER_SIZE, std::move(filter_size_dim), std::move(filter_size), param_tensor_names, qnn_model_wrapper);
-    SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_PAD_AMOUNT, std::move(pad_amount_dim), std::move(pad_amount), param_tensor_names, qnn_model_wrapper);
-    SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_STRIDE, std::move(stride_dim), std::move(stride), param_tensor_names, qnn_model_wrapper);
+    ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                   param_filter_size,
+                                   std::move(filter_size_dim),
+                                   std::move(filter_size),
+                                   param_tensor_names,
+                                   qnn_model_wrapper),
+                      "Failed to add param filter_size.");
+    ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                   param_stride,
+                                   std::move(stride_dim),
+                                   std::move(stride),
+                                   param_tensor_names,
+                                   qnn_model_wrapper),
+                      "Failed to add param stride.");
+    ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                   param_pad_amount,
+                                   std::move(pad_amount_dim),
+                                   std::move(pad_amount),
+                                   param_tensor_names,
+                                   qnn_model_wrapper),
+                      "Failed to add param pad_amount.");
 
     ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
                                        std::move(input_names),
                                        std::move(param_tensor_names),
                                        logger,
                                        do_op_validation,
-                                       GetQnnOpType(op_type)));
+                                       qnn_op_type));
     return Status::OK();
   }
 
@@ -301,40 +357,57 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     std::vector<uint32_t> output_shape;
     ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(outputs[0].node_arg, output_shape), "Cannot get shape");
 
-    ORT_RETURN_IF_ERROR(SetCommonPoolParams(node_helper, filter_size, pad_amount, stride, ceil_mode,
-                                            std::move(input_shape), std::move(output_shape)));
+    ORT_RETURN_IF_ERROR(SetCommonPoolParams(node_helper,
+                                            filter_size,
+                                            stride,
+                                            pad_amount,
+                                            rounding_mode,
+                                            std::move(input_shape),
+                                            std::move(output_shape)));
   }
 
+  // Calculate rank-4 output shape for rank-3 input.
   std::vector<uint32_t> onnx_in_shape;
   ORT_RETURN_IF_NOT(qnn_model_wrapper.GetOnnxShape(inputs[0].node_arg, onnx_in_shape), "Cannot get shape");
-  // Reshaped input rank-4 for MaxPool
   if (onnx_in_shape.size() == 3) {
-    onnx_in_shape = {onnx_in_shape[0],
-                     1,
-                     onnx_in_shape[1],
-                     onnx_in_shape[2]};
+    onnx_in_shape = {onnx_in_shape[0], 1, onnx_in_shape[1], onnx_in_shape[2]};
   }
+  auto pooled_shape = AmendOutputShapeForRank3Pool(onnx_in_shape, filter_size, stride, pad_amount);
 
-  // Calculate MaxPool output for rank-4 when input is rank 3
-  auto pooled_shape = ComputePoolOutputShape(onnx_in_shape,
-                                             filter_size,
-                                             stride,
-                                             pad_amount);
+  // Construct param wrappers.
+  ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                 param_filter_size,
+                                 std::move(filter_size_dim),
+                                 std::move(filter_size),
+                                 param_tensor_names,
+                                 qnn_model_wrapper),
+                    "Failed to add param filter_size.");
+  ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                 param_stride,
+                                 std::move(stride_dim),
+                                 std::move(stride),
+                                 param_tensor_names,
+                                 qnn_model_wrapper),
+                    "Failed to add param stride.");
+  ORT_RETURN_IF_NOT(SetPoolParam(node_unit,
+                                 param_pad_amount,
+                                 std::move(pad_amount_dim),
+                                 std::move(pad_amount),
+                                 param_tensor_names,
+                                 qnn_model_wrapper),
+                    "Failed to add param pad_amount.");
 
-  SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_FILTER_SIZE, std::move(filter_size_dim), std::move(filter_size), param_tensor_names, qnn_model_wrapper);
-  SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_PAD_AMOUNT, std::move(pad_amount_dim), std::move(pad_amount), param_tensor_names, qnn_model_wrapper);
-  SetPoolParam(node_unit, QNN_OP_POOL_MAX_2D_PARAM_STRIDE, std::move(stride_dim), std::move(stride), param_tensor_names, qnn_model_wrapper);
-
-  if (0 != ceil_mode) {
-    Qnn_Scalar_t rounding_mode_param = QNN_SCALAR_INIT;
-    rounding_mode_param.dataType = QNN_DATATYPE_UINT_32;
-    rounding_mode_param.int32Value = ceil_mode;
+  if (0 != rounding_mode) {
+    Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
+    scalar_param.dataType = QNN_DATATYPE_UINT_32;
+    scalar_param.int32Value = rounding_mode;
     QnnParamWrapper rounding_mode_param_wrapper(node_unit.Index(),
                                                 node_unit.Name(),
-                                                QNN_OP_POOL_MAX_2D_PARAM_ROUNDING_MODE,
-                                                rounding_mode_param);
+                                                param_rounding_mode,
+                                                scalar_param);
     param_tensor_names.push_back(rounding_mode_param_wrapper.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(rounding_mode_param_wrapper));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(rounding_mode_param_wrapper)),
+                      "Failed to add param rounding_mode.");
   }
   if (op_type == "GlobalAveragePool") {
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
@@ -342,29 +415,32 @@ Status PoolOpBuilder::ProcessAttributesAndOutputs(QnnModelWrapper& qnn_model_wra
     scalar_param.bool8Value = 1;
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
                                               node_unit.Name(),
-                                              QNN_OP_POOL_AVG_2D_PARAM_COUNT_PAD_FOR_EDGES,
+                                              param_count_pad_for_edges,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param)),
+                      "Failed to add param count_pad_for_edges.");
   } else if (op_type == "AveragePool") {
     Qnn_Scalar_t scalar_param = QNN_SCALAR_INIT;
     scalar_param.dataType = QNN_DATATYPE_BOOL_8;
     scalar_param.bool8Value = static_cast<uint8_t>(node_helper.Get("count_include_pad", static_cast<int64_t>(0)) != 0);
     QnnParamWrapper count_pad_for_edges_param(node_unit.Index(),
                                               node_unit.Name(),
-                                              QNN_OP_POOL_AVG_2D_PARAM_COUNT_PAD_FOR_EDGES,
+                                              param_count_pad_for_edges,
                                               scalar_param);
     param_tensor_names.push_back(count_pad_for_edges_param.GetParamTensorName());
-    qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param));
+    ORT_RETURN_IF_NOT(qnn_model_wrapper.AddParamWrapper(std::move(count_pad_for_edges_param)),
+                      "Failed to add param count_include_pad.");
   }
 
   if (!needs_reshape) {
-    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper, node_unit,
+    ORT_RETURN_IF_ERROR(ProcessOutputs(qnn_model_wrapper,
+                                       node_unit,
                                        std::move(input_names),
                                        std::move(param_tensor_names),
                                        logger,
                                        do_op_validation,
-                                       GetQnnOpType(op_type)));
+                                       qnn_op_type));
 
     return Status::OK();
   }

@@ -14,6 +14,8 @@ const getGraphOptimzationLevel = (graphOptimizationLevel: string | unknown): num
       return 1;
     case 'extended':
       return 2;
+    case 'layout':
+      return 3;
     case 'all':
       return 99;
     default:
@@ -91,7 +93,7 @@ const setExecutionProviders = async (
         }
         break;
       case 'webgpu':
-        if (BUILD_DEFS.USE_WEBGPU_EP) {
+        if (!BUILD_DEFS.DISABLE_WEBGPU) {
           epName = 'WebGPU';
           let customDevice: GPUDevice | undefined;
 

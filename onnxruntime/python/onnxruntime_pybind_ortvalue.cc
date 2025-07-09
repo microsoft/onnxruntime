@@ -36,6 +36,19 @@ std::unique_ptr<OrtValue> OrtValueFromShapeAndType(const std::vector<int64_t>& s
         "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
         "Please use the CUDA package of OnnxRuntime to use this feature.");
 #endif
+  } else if (strcmp(GetDeviceName(device), HIP) == 0) {
+#if USE_ROCM
+    if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+      throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+    }
+    allocator = GetRocmAllocator(device.Id());
+#elif USE_MIGRAPHX
+    allocator = GetMIGraphXAllocator(device.Id());
+#else
+    throw std::runtime_error(
+        "Can't allocate memory on the AMD device using this package of OnnxRuntime. "
+        "Please use the ROCm package of OnnxRuntime to use this feature.");
+#endif
   } else if (strcmp(GetDeviceName(device), DML) == 0) {
 #if USE_DML
     allocator = GetDmlAllocator(device.Id());
@@ -73,44 +86,53 @@ void addOrtValueMethods(pybind11::module& m) {
 
           CreateGenericMLValue(nullptr, GetAllocator(), "", array_on_cpu, ml_value.get(), true);
         } else if (device.Type() == OrtDevice::GPU) {
-      // The tensor's memory is allocated on CUDA
-
-#ifdef USE_CUDA
-          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
-
-          // InputDeflist is null because OrtValue creation is not tied to a specific model
-          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
-          CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
-#elif USE_ROCM
-      if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-        throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-      }
-
-      // InputDeflist is null because OrtValue creation is not tied to a specific model
-      // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-      // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
-      CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
-#else
-          throw std::runtime_error(
-              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-              "Please use the CUDA package of OnnxRuntime to use this feature.");
-#endif
-        } else if (device.Type() == OrtDevice::DML) {
 #if USE_DML
-          // InputDeflist is null because OrtValue creation is not tied to a specific model
-          // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
-          // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
-          CreateGenericMLValue(
-              nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
-#else
-          throw std::runtime_error(
-              "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
-              "Please use the CUDA package of OnnxRuntime to use this feature.");
+          if (device.Vendor() == OrtDevice::VendorIds::MICROSOFT) {
+            // InputDeflist is null because OrtValue creation is not tied to a specific model
+            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in DML
+            CreateGenericMLValue(
+                nullptr, GetDmlAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToDmlMemCpy);
+          } else
 #endif
-        } else if (device.Type() == OrtDevice::NPU) {
+#ifdef USE_CUDA
+              if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+            if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
+
+            // InputDeflist is null because OrtValue creation is not tied to a specific model
+            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+            CreateGenericMLValue(nullptr, GetCudaAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToCudaMemCpy);
+          } else
+#endif
+#ifdef USE_ROCM
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
+
+            // InputDeflist is null because OrtValue creation is not tied to a specific model
+            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in CUDA
+            CreateGenericMLValue(nullptr, GetRocmAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToRocmMemCpy);
+          } else
+#endif
+#if USE_MIGRAPHX
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            // InputDeflist is null because OrtValue creation is not tied to a specific model
+            // Likewise, there is no need to specify the name (as the name was previously used to lookup the def list)
+            // TODO: Add check to ensure that string arrays are not passed - we currently don't support string tensors in MIGraphX
+            CreateGenericMLValue(nullptr, GetMIGraphXAllocator(device.Id()), "", array_on_cpu, ml_value.get(), true, false, CpuToMIGraphXMemCpy);
+          } else
+#endif
+          {
+            throw std::runtime_error(
+                "Can't allocate memory on the CUDA device using this package of OnnxRuntime. "
+                "Please use the CUDA package of OnnxRuntime to use this feature.");
+          }
+        } else if (device.Type() == OrtDevice::NPU && device.Vendor() == OrtDevice::VendorIds::HUAWEI) {
 #ifdef USE_CANN
           if (!IsCannDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
             throw std::runtime_error("The provided device id doesn't match any available NPUs on the machine.");
@@ -148,29 +170,53 @@ void addOrtValueMethods(pybind11::module& m) {
               CpuToCpuMemCpy);
         } else if (device.Type() == OrtDevice::GPU) {
 #ifdef USE_CUDA
-          if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
+          if (device.Vendor() == OrtDevice::VendorIds::NVIDIA) {
+            if (!IsCudaDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
 
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToCudaMemCpy);
-#elif USE_ROCM
-          if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
-            throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
-          }
-
-          onnxruntime::python::CopyDataToTensor(
-              py_values,
-              values_type,
-              *(ml_value->GetMutable<Tensor>()),
-              CpuToRocmMemCpy);
-#else
-          throw std::runtime_error(
-              "Unsupported GPU device: Cannot find the supported GPU device.");
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToCudaMemCpy);
+          } else
 #endif
+#if USE_ROCM
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            if (!IsRocmDeviceIdValid(logging::LoggingManager::DefaultLogger(), device.Id())) {
+              throw std::runtime_error("The provided device id doesn't match any available GPUs on the machine.");
+            }
+
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToRocmMemCpy);
+          } else
+#endif
+#if USE_MIGRAPHX
+              if (device.Vendor() == OrtDevice::VendorIds::AMD) {
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToMIGraphXMemCpy);
+          } else
+#endif
+#if USE_DML
+              if (device.Vendor() == OrtDevice::VendorIds::MICROSOFT) {
+            onnxruntime::python::CopyDataToTensor(
+                py_values,
+                values_type,
+                *(ml_value->GetMutable<Tensor>()),
+                CpuToDmlMemCpy);
+          } else
+#endif
+          {
+            throw std::runtime_error(
+                "Unsupported GPU device: Cannot find the supported GPU device.");
+          }
         } else if (device.Type() == OrtDevice::DML) {
 #if USE_DML
           onnxruntime::python::CopyDataToTensor(
@@ -346,6 +392,8 @@ void addOrtValueMethods(pybind11::module& m) {
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetCannToHostMemCpyFunction());
 #elif USE_DML
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetDmlToHostMemCpyFunction());
+#elif USE_MIGRAPHX
+        py::object obj = GetPyObjFromTensor(*ml_value, nullptr, GetMIGraphXToHostMemCpyFunction());
 #else
         py::object obj = GetPyObjFromTensor(*ml_value, nullptr, nullptr);
 #endif
@@ -392,7 +440,7 @@ void addOrtValueMethods(pybind11::module& m) {
 
               auto ml_type = NumpyTypeToOnnxRuntimeTensorType(type_num);
               auto device = devices.at(i);
-              OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device, device.Id());
+              OrtMemoryInfo info(GetDeviceName(device), OrtDeviceAllocator, device);
               OrtValue ml_value;
               Tensor::InitOrtValue(ml_type, gsl::make_span(shape), reinterpret_cast<void*>(data_ptr), info, ml_value);
               v->push_back(ml_value);

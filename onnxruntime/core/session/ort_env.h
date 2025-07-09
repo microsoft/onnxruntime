@@ -48,29 +48,20 @@ struct OrtEnv {
   onnxruntime::logging::LoggingManager* GetLoggingManager() const;
   void SetLoggingManager(std::unique_ptr<onnxruntime::logging::LoggingManager> logging_manager);
 
-  /**
-   * Registers an allocator for sharing between multiple sessions.
-   * Returns an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status RegisterAllocator(onnxruntime::AllocatorPtr allocator);
-
-  /**
-   * Creates and registers an allocator for sharing between multiple sessions.
-   * Return an error if an allocator with the same OrtMemoryInfo is already registered.
-   */
-  onnxruntime::common::Status CreateAndRegisterAllocator(const OrtMemoryInfo& mem_info,
-                                                         const OrtArenaCfg* arena_cfg = nullptr);
-
-  /**
-   * Removes registered allocator that was previously registered for sharing between multiple sessions.
-   */
-  onnxruntime::common::Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
   OrtEnv(std::unique_ptr<onnxruntime::Environment> value);
   ~OrtEnv();
-  onnxruntime::common::Status CreateAndRegisterAllocatorV2(const std::string& provider_type, const OrtMemoryInfo& mem_info, const std::unordered_map<std::string, std::string>& options, const OrtArenaCfg* arena_cfg = nullptr);
 
  private:
-  static std::unique_ptr<OrtEnv> p_instance_;
+  // p_instance_ holds the single, global instance of OrtEnv.
+  // This is a raw pointer to allow for intentional memory leaking when
+  // the process is shutting down (g_is_shutting_down is true).
+  // Using a smart pointer like std::unique_ptr would complicate this specific
+  // shutdown scenario, as it would attempt to deallocate the memory even if
+  // Release() hasn't been called or if a leak is desired.
+  // Management is handled by GetInstance() and Release(), with ref_count_
+  // tracking active users. It is set to nullptr when the last reference is released
+  // (and not shutting down).
+  static OrtEnv* p_instance_;
   static std::mutex m_;
   static int ref_count_;
 

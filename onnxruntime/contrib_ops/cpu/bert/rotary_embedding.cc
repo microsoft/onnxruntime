@@ -57,15 +57,20 @@ Status RunRotaryEmbedding(concurrency::ThreadPool* tp, RotaryParameters paramete
   const int position_ids_format = parameters.position_ids_format;
   const int rotary_emb_dim = parameters.rotary_embedding_dim;
   const int half_rotary_emb_dim = rotary_emb_dim / 2;
-
+  // Parallel to calculate based on head_size
   const int loop_len = batch_size * sequence_length * n_heads;
-  const double cost = static_cast<double>(rotary_emb_dim);
+  // The cost is calculated as:
+  //   - head_size * sizeof(T) for reading input
+  //   - head_size * sizeof(T) for writing output
+  //   - rotary_emb_dim * 32 for the rotary embedding operations (32 is an approximation of the number of CPU cycles)
+  const double cost = static_cast<double>(head_size * sizeof(T) * 2 + rotary_emb_dim * 32);
   ThreadPool::TryParallelFor(tp, loop_len, cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
     for (std::ptrdiff_t ptr = begin; ptr != end; ++ptr) {
       const int b = static_cast<int>((ptr / n_heads) / sequence_length);
       const int s = static_cast<int>((ptr / n_heads) % sequence_length);
       const int n = static_cast<int>(ptr % n_heads);
-
+      // Identify the index of batch, sequence, and head (specific range) in the input/output tensor
+      // for read/write
       const int block_offset = b * batch_stride + s * seq_stride + n * head_stride;
 
       const T* input_data = input + block_offset;

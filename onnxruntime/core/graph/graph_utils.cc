@@ -2,6 +2,8 @@
 // Licensed under the MIT License.
 
 #include "core/graph/graph_utils.h"
+
+#include "core/framework/tensorprotoutils.h"
 #include "core/graph/graph.h"
 #include "core/common/logging/logging.h"
 
@@ -249,14 +251,7 @@ const ONNX_NAMESPACE::AttributeProto* GetNodeAttribute(const Node& node, const s
   return iter == attrs.end() ? nullptr : &iter->second;
 }
 
-NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
-  // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
-  const ONNX_NAMESPACE::TensorProto* existing = nullptr;
-  ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
-              "Initializer with same name exists. Name:", new_initializer.name());
-
-  graph.AddInitializedTensor(new_initializer);
-
+static NodeArg& GetOrCreateNodeArg(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
   ONNX_NAMESPACE::TypeProto new_type;
   auto* typeproto_tensor = new_type.mutable_tensor_type();
   typeproto_tensor->set_elem_type(new_initializer.data_type());
@@ -267,6 +262,100 @@ NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_ini
   }
 
   return graph.GetOrCreateNodeArg(new_initializer.name(), &new_type);
+}
+
+NodeArg& AddInitializer(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  // sanity check as AddInitializedTensor silently ignores attempts to add a duplicate initializer
+  const ONNX_NAMESPACE::TensorProto* existing = nullptr;
+  ORT_ENFORCE(!graph.GetInitializedTensor(new_initializer.name(), existing),
+              "Initializer with same name exists. Name:", new_initializer.name());
+
+  graph.AddInitializedTensor(new_initializer);
+  return GetOrCreateNodeArg(graph, new_initializer);
+}
+
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer) {
+  ORT_ENFORCE(!utils::HasExternalData(new_initializer), "Expecting an initializer that contains data inline");
+
+  Tensor tensor;
+  ORT_THROW_IF_ERROR(utils::CreateTensorFromTensorProto(Env::Default(), graph.ModelPath(),
+                                                        new_initializer, tensor));
+  auto tensor_proto_with_ptr = utils::TensorToTensorProto(tensor, new_initializer.name(), true);
+  return AddInitializerWithExternalData(graph, tensor_proto_with_ptr, std::move(tensor));
+}
+
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                        Tensor&& tensor) {
+  OrtValue ort_value;
+  if (utils::HasExternalDataInMemory(new_initializer)) {
+    Tensor::InitOrtValue(std::move(tensor), ort_value);
+  }
+
+  ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(new_initializer, ort_value));
+  return GetOrCreateNodeArg(graph, new_initializer);
+}
+
+NodeArg& AddInitializerWithExternalData(Graph& graph, const ONNX_NAMESPACE::TensorProto& new_initializer,
+                                        OrtValue ort_value) {
+  ORT_THROW_IF_ERROR(graph.AddInitializedOrtValue(new_initializer, ort_value));
+  return GetOrCreateNodeArg(graph, new_initializer);
+}
+
+void MakeInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph, const std::string& name,
+                                   bool copy_in_memory_data) {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (src_graph.GetInitializedTensor(name, initializer)) {
+    // check if the initializer already exists in the destination graph
+    const ONNX_NAMESPACE::TensorProto* existing = nullptr;
+    if (!dst_graph.GetInitializedTensor(name, existing)) {
+      const bool data_in_memory = utils::HasExternalDataInMemory(*initializer);
+      if (data_in_memory) {
+        if (copy_in_memory_data) {
+          ONNX_NAMESPACE::TensorProto tensor_proto;
+          ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
+          dst_graph.AddInitializedTensor(tensor_proto);
+          GetOrCreateNodeArg(dst_graph, tensor_proto);
+        } else {
+          OrtValue ort_value;
+          if (src_graph.GetOrtValueInitializer(name, ort_value)) {
+            // add the initializer to the destination graph
+            ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
+          } else {
+            // Data may be in memory, but stored in flatbuffers etc.
+            dst_graph.AddInitializedTensor(*initializer);
+          }
+          GetOrCreateNodeArg(dst_graph, *initializer);
+        }
+      } else {
+        dst_graph.AddInitializedTensor(*initializer);
+        GetOrCreateNodeArg(dst_graph, *initializer);
+      }
+    }
+  }
+}
+
+void MakeConstantInitializerCopyIfNotExist(const Graph& src_graph, Graph& dst_graph,
+                                           const std::string& name, bool check_outer_scope) {
+  const auto* initializer = src_graph.GetConstantInitializer(name, check_outer_scope);
+  if (initializer != nullptr) {
+    const ONNX_NAMESPACE::TensorProto* subgraph_initializer = nullptr;
+    if (!dst_graph.GetInitializedTensor(name, subgraph_initializer)) {
+      OrtValue ort_value;
+      ORT_IGNORE_RETURN_VALUE(src_graph.GetOrtValueInitializer(name, ort_value, check_outer_scope));
+      ORT_THROW_IF_ERROR(dst_graph.AddInitializedOrtValue(*initializer, ort_value));
+    }
+  }
+}
+
+Status ConvertInMemoryDataToInline(Graph& graph, const std::string& name) {
+  const ONNX_NAMESPACE::TensorProto* initializer = nullptr;
+  if (graph.GetInitializedTensor(name, initializer) && utils::HasExternalDataInMemory(*initializer)) {
+    ONNX_NAMESPACE::TensorProto tensor_proto;
+    ORT_THROW_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*initializer, {}, tensor_proto));
+    graph.RemoveInitializedTensor(name);
+    graph.AddInitializedTensor(tensor_proto);
+  }
+  return Status::OK();
 }
 
 int GetNodeOutputIndexFromOutputName(const Node& node, const std::string& output_name) {
@@ -608,6 +697,11 @@ bool ReplaceNodeWithInitializer(Graph& graph, Node& node, NodeArg& replacement) 
 bool IsGraphInput(const Graph& graph, const NodeArg* input) {
   const std::vector<const NodeArg*>& graph_inputs = graph.GetInputsIncludingInitializers();
   return std::find(graph_inputs.begin(), graph_inputs.end(), input) != graph_inputs.end();
+}
+
+bool IsGraphOutput(const Graph& graph, const NodeArg* output) {
+  const auto& graph_outputs = graph.GetOutputs();
+  return std::find(graph_outputs.begin(), graph_outputs.end(), output) != graph_outputs.end();
 }
 
 bool IsInitializer(const Graph& graph, const std::string& name, bool check_outer_scope) {

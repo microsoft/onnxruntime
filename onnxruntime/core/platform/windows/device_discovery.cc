@@ -336,6 +336,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     info.device_id = desc.DeviceId;
     info.description = std::wstring(desc.Description);
 
+    info.metadata[L"LUID"] = std::to_wstring(key);
     info.metadata[L"DxgiAdapterNumber"] = std::to_wstring(i);
     info.metadata[L"DxgiVideoMemory"] = std::to_wstring(desc.DedicatedVideoMemory / (1024 * 1024)) + L" MB";
   }
@@ -362,13 +363,31 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
   return device_info;
 }
 
+typedef HRESULT(WINAPI* PFN_DXCoreCreateAdapterFactory)(REFIID riid, void** ppvFactory);
+
 // returns LUID to DeviceInfo
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
   std::unordered_map<uint64_t, DeviceInfo> device_info;
 
+  // Load dxcore.dll. We do this manually so there's not a hard dependency on dxcore which is newer.
+  wil::unique_hmodule dxcore_lib{LoadLibraryExW(L"dxcore.dll", nullptr, LOAD_LIBRARY_SEARCH_SYSTEM32)};
+  if (!dxcore_lib) {
+    LOGS_DEFAULT(INFO) << "Failed to load dxcore.dll. Expected on older Windows version that do not support dxcore.";
+    return device_info;
+  }
+
+  auto pfnDXCoreCreateAdapterFactory = reinterpret_cast<PFN_DXCoreCreateAdapterFactory>(
+      GetProcAddress(dxcore_lib.get(), "DXCoreCreateAdapterFactory"));
+
+  if (!pfnDXCoreCreateAdapterFactory) {
+    // this isn't expected to fail so ERROR not WARNING
+    LOGS_DEFAULT(ERROR) << "Failed to get DXCoreCreateAdapterFactory function address.";
+    return device_info;
+  }
+
   // Get all GPUs and NPUs by querying WDDM/MCDM.
   wil::com_ptr<IDXCoreAdapterFactory> adapterFactory;
-  if (FAILED(DXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
+  if (FAILED(pfnDXCoreCreateAdapterFactory(IID_PPV_ARGS(&adapterFactory)))) {
     return device_info;
   }
 
@@ -418,8 +437,6 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         continue;
       }
 
-      DeviceInfo& info = device_info[key];
-
       // Get hardware identifying information
       DXCoreHardwareIDParts idParts = {};
       if (!adapter->IsPropertySupported(DXCoreAdapterProperty::HardwareIDParts) ||
@@ -427,8 +444,10 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoDxcore() {
         continue;  // also need valid ids
       }
 
+      DeviceInfo& info = device_info[key];
       info.vendor_id = idParts.vendorID;
       info.device_id = idParts.deviceID;
+      info.metadata[L"LUID"] = std::to_wstring(key);
 
       // Is this a GPU or NPU
       if (adapter->IsAttributeSupported(DXCORE_ADAPTER_ATTRIBUTE_D3D12_GRAPHICS)) {
@@ -562,7 +581,7 @@ std::unordered_set<OrtHardwareDevice> DeviceDiscovery::DiscoverDevicesForPlatfor
         << ", vendor:" << ortdevice.vendor
         << ", type:" << std::dec << static_cast<int>(ortdevice.type)
         << ", metadata: [";
-    for (auto& [key, value] : ortdevice.metadata.entries) {
+    for (auto& [key, value] : ortdevice.metadata.Entries()) {
       oss << key << "=" << value << ", ";
     }
 

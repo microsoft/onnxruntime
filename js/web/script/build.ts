@@ -47,12 +47,9 @@ const DEBUG = process.env.npm_config_debug || args.debug; // boolean|'verbose'|'
 /**
  * --webgpu-ep
  * --no-webgpu-ep (default)
- * --webgpu-ep=runtime
  *
  * Enable or disable the use of WebGPU EP. If enabled, the WebGPU EP will be used. If disabled, the WebGPU backend will
  * be used with JSEP.
- *
- * If set to "runtime", it will be determined at runtime based on the value of `globalThis.WEBGPU_EP`.
  *
  * (temporary) This flag is used to test the WebGPU EP integration. It will be removed in the future.
  */
@@ -68,11 +65,12 @@ const SOURCE_ROOT_FOLDER = path.join(__dirname, '../..');
  */
 const DEFAULT_DEFINE = {
   'BUILD_DEFS.DISABLE_WEBGL': 'false',
-  'BUILD_DEFS.DISABLE_JSEP': 'false',
+  'BUILD_DEFS.DISABLE_JSEP': JSON.stringify(!!USE_WEBGPU_EP),
   'BUILD_DEFS.DISABLE_WASM': 'false',
   'BUILD_DEFS.DISABLE_WASM_PROXY': 'false',
   'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'false',
-  'BUILD_DEFS.USE_WEBGPU_EP': USE_WEBGPU_EP === 'runtime' ? 'globalThis.WEBGPU_EP' : JSON.stringify(!!USE_WEBGPU_EP),
+  'BUILD_DEFS.DISABLE_WEBGPU': JSON.stringify(!USE_WEBGPU_EP),
+  'BUILD_DEFS.DISABLE_WEBNN': 'false',
 
   'BUILD_DEFS.IS_ESM': 'false',
   'BUILD_DEFS.ESM_IMPORT_META_URL': 'undefined',
@@ -269,7 +267,7 @@ async function buildBundle(options: esbuild.BuildOptions) {
  *
  * The distribution code is split into multiple files:
  *  - [output-name][.min].[m]js
- *  - ort-wasm-simd-threaded[.jsep].mjs
+ *  - ort-wasm-simd-threaded[.jsep|.asyncify].mjs
  */
 async function buildOrt({
   isProduction = false,
@@ -564,6 +562,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
       },
@@ -577,6 +576,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WEBGL': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
       },
@@ -624,27 +624,49 @@ async function main() {
     // ort.webgpu[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.webgpu',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
     });
     // ort.webgpu.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.webgpu.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_WEBGL': 'true', 'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true' },
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_WEBGPU': 'false',
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
     });
 
     // ort.wasm[.min].[m]js
     await addAllWebBuildTasks({
       outputName: 'ort.wasm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+      },
     });
     // ort.wasm.bundle.min.mjs
     await buildOrt({
       isProduction: true,
       outputName: 'ort.wasm.bundle',
       format: 'esm',
-      define: { ...DEFAULT_DEFINE, 'BUILD_DEFS.DISABLE_JSEP': 'true', 'BUILD_DEFS.DISABLE_WEBGL': 'true' },
+      define: {
+        ...DEFAULT_DEFINE,
+        'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
+        'BUILD_DEFS.DISABLE_WEBGL': 'true',
+        'BUILD_DEFS.ENABLE_BUNDLE_WASM_JS': 'true',
+      },
     });
     // ort.webgl[.min].[m]js
     await addAllWebBuildTasks({
@@ -652,6 +674,7 @@ async function main() {
       define: {
         ...DEFAULT_DEFINE,
         'BUILD_DEFS.DISABLE_JSEP': 'true',
+        'BUILD_DEFS.DISABLE_WEBNN': 'true',
         'BUILD_DEFS.DISABLE_WASM': 'true',
         'BUILD_DEFS.DISABLE_WASM_PROXY': 'true',
       },

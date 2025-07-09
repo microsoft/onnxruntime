@@ -1,11 +1,17 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/common/inlined_containers.h"
+#include "core/framework/tensorprotoutils.h"
+#include "core/graph/graph_utils.h"
+#include "core/optimizer/graph_transformer_utils.h"
 #include "core/optimizer/initializer.h"
 #include "core/optimizer/matmul_add_fusion.h"
-#include "core/graph/graph_utils.h"
-#include "core/framework/tensorprotoutils.h"
-#include <deque>
+
+#include <string>
+#include <string_view>
+#include <unordered_set>
+#include <vector>
 
 using namespace ONNX_NAMESPACE;
 using namespace ::onnxruntime::common;
@@ -128,7 +134,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
     int64_t m = 0, k = 0, n = 0;
     if (need_reshape) {
       // Only check and skip Attention pattern here because normally input to Attention is 4D.
-      if (attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node)) {
+      if (preserve_attention_pattern_ && attn_pattern_cache.IsAttentionPattern(graph, matmul_node, add_node)) {
         continue;
       }
 
@@ -188,7 +194,7 @@ Status MatMulAddFusion::ApplyImpl(Graph& graph, bool& modified, int graph_level,
         shape_initializer_proto.add_dims(static_cast<int64_t>(shape.size()));
         shape_initializer_proto.set_data_type(ONNX_NAMESPACE::TensorProto_DataType_INT64);
         utils::SetRawDataInTensorProto(shape_initializer_proto, shape.data(), shape.size() * sizeof(int64_t));
-        NodeArg* shape_arg = &graph_utils::AddInitializer(graph, shape_initializer_proto);
+        NodeArg* shape_arg = &graph_utils::AddInitializerWithExternalData(graph, shape_initializer_proto);
         ONNX_NAMESPACE::TypeProto new_arg_type;
         const ONNX_NAMESPACE::TensorProto_DataType element_type = static_cast<ONNX_NAMESPACE::TensorProto_DataType>(
             gemm_input_defs[0]->TypeAsProto()->tensor_type().elem_type());

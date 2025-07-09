@@ -158,6 +158,14 @@ def parse_arguments(argv=None):
     )
     conversion_args.set_defaults(no_beam_search_op=False)
 
+    conversion_args.add_argument(
+        "--use_decoder_masked_mha",
+        required=False,
+        action="store_true",
+        help="Use DecoderMaskedMultiHeadAttention kernel for improved performance. This is currently an experimental feature.",
+    )
+    conversion_args.set_defaults(use_decoder_masked_mha=False)
+
     #############################################################
     # Optional inputs for Whisper
     # (listed below in the order that WhisperBeamSearch expects)
@@ -305,7 +313,12 @@ def parse_arguments(argv=None):
     quant_args.set_defaults(quantize_reduce_range=False)
 
     args = parser.parse_args(argv)
+
+    # Collect cross QKs if either flag is enabled
     args.collect_cross_qk = args.collect_cross_qk or args.output_cross_qk
+
+    # FP32 CPU can be supported here once the DMMHA CPU kernel bugs are fixed
+    args.use_decoder_masked_mha = args.use_decoder_masked_mha and args.provider == "cuda"
 
     return args
 
@@ -323,6 +336,7 @@ def export_onnx_models(
     use_forced_decoder_ids: bool = False,
     merge_encoder_and_decoder_init: bool = True,
     no_beam_search_op: bool = False,
+    use_decoder_masked_mha: bool = False,
     output_qk: bool = False,
     overwrite: bool = False,
     use_int32_inputs: bool = True,
@@ -402,6 +416,7 @@ def export_onnx_models(
                         provider=provider,
                         is_decoder=(name == "decoder"),
                         no_beam_search_op=no_beam_search_op,
+                        use_decoder_masked_mha=use_decoder_masked_mha,
                         output_qk=output_qk,
                     )
                     # Remove old ONNX model and old data file
@@ -474,6 +489,7 @@ def main(argv=None):
         args.use_forced_decoder_ids,
         not args.separate_encoder_and_decoder_init,
         args.no_beam_search_op,
+        args.use_decoder_masked_mha,
         args.output_cross_qk,
         args.overwrite,
         not args.use_int64_inputs,
@@ -534,6 +550,20 @@ def main(argv=None):
                 os.remove(path)
                 if path in output_paths:
                     output_paths.remove(path)
+
+    else:
+        # Create ancillary JSON files for ONNX Runtime GenAI and/or Hugging Face's Optimum
+        WhisperHelper.save_processing(
+            args.model_name_or_path,
+            args.provider,
+            args.separate_encoder_and_decoder_init,
+            args.use_decoder_masked_mha,
+            args.output_cross_qk,
+            next(iter(filter(lambda path: "encoder" in path, output_paths))),
+            next(iter(filter(lambda path: "decoder" in path, output_paths))),
+            output_dir,
+            cache_dir,
+        )
 
     logger.info(f"Done! Outputs: {output_paths}")
     return max_diff

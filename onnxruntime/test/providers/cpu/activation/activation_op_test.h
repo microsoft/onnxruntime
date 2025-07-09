@@ -20,7 +20,8 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
                              const std::unordered_map<std::string, float> float_attribs = {},
                              const std::unordered_map<std::string, std::string> string_attribs = {},
                              bool is_tensorrt_supported = true, int opset_version = 7,
-                             const char* domain = kOnnxDomain) {
+                             const char* domain = kOnnxDomain,
+                             BaseTester::CustomOutputVerifierFn custom_output_verifier = nullptr) {
   for (const std::vector<T>& input_vals : input_vals_vec) {
     OpTester test(szOp, opset_version, domain);
 
@@ -72,6 +73,10 @@ inline void TestActivationOp(const char* szOp, const std::vector<std::vector<T>>
 
     if (strcmp(szOp, "QuickGelu") == 0) {
       test.SetOutputTolerance(0.0001f);
+    }
+
+    if (custom_output_verifier) {
+      test.SetCustomOutputVerifier(custom_output_verifier);
     }
 
     test.Run(OpTester::ExpectResult::kExpectSuccess, "", excluded_providers);

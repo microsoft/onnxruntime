@@ -1,4 +1,5 @@
 # Copyright (c) Microsoft Corporation. All rights reserved.
+# SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # Licensed under the MIT License.
   find_package(CUDAToolkit REQUIRED 12.8)
   enable_language(CUDA)
@@ -9,11 +10,14 @@
   if (onnxruntime_NV_PLACEHOLDER_BUILDER)
     add_definitions(-DORT_NV_PLACEHOLDER_BUILDER)
   endif()
+if (NOT onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
+  message(FATAL_ERROR "TensorRT RTX can not be used with the open source parser.")
+endif ()
   set(BUILD_LIBRARY_ONLY 1)
   add_definitions("-DONNX_ML=1")
   add_definitions("-DONNX_NAMESPACE=onnx")
   set(CUDA_INCLUDE_DIRS ${CUDAToolkit_INCLUDE_DIRS})
-  set(TENSORRT_ROOT ${onnxruntime_TENSORRT_HOME})
+  set(TENSORRT_RTX_ROOT ${onnxruntime_TENSORRT_RTX_HOME})
   set(OLD_CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS})
   set(PROTOBUF_LIBRARY ${PROTOBUF_LIB})
   if (WIN32)
@@ -30,12 +34,12 @@
   endif()
   set(CXX_VERSION_DEFINED TRUE)
 
-  find_path(TENSORRT_INCLUDE_DIR NvInfer.h
-    HINTS ${TENSORRT_ROOT}
+  find_path(TENSORRT_RTX_INCLUDE_DIR NvInfer.h
+    HINTS ${TENSORRT_RTX_ROOT}
     PATH_SUFFIXES include)
 
 
-  file(READ ${TENSORRT_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
+  file(READ ${TENSORRT_RTX_INCLUDE_DIR}/NvInferVersion.h NVINFER_VER_CONTENT)
   string(REGEX MATCH "define TRT_MAJOR_RTX * +([0-9]+)" NV_TRT_MAJOR_RTX "${NVINFER_VER_CONTENT}")
   string(REGEX REPLACE "define TRT_MAJOR_RTX * +([0-9]+)" "\\1" NV_TRT_MAJOR_RTX "${NV_TRT_MAJOR_RTX}")
   string(REGEX MATCH "define TRT_MINOR_RTX * +([0-9]+)" NV_TRT_MINOR_RTX "${NVINFER_VER_CONTENT}")
@@ -50,37 +54,37 @@
   endif()
 
   if (WIN32)
-    set(NVINFER_LIB "tensorrt_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
-    set(PARSER_LIB "tensorrt_onnxparser_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
+    set(TRT_RTX_LIB "tensorrt_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
+    set(RTX_PARSER_LIB "tensorrt_onnxparser_rtx_${NV_TRT_MAJOR_RTX}_${NV_TRT_MINOR_RTX}")
   endif()
 
-  if (NOT NVINFER_LIB)
-     set(NVINFER_LIB "tensorrt_rtx")
+  if (NOT TRT_RTX_LIB)
+     set(TRT_RTX_LIB "tensorrt_rtx")
   endif()
 
-  if (NOT PARSER_LIB)
-     set(PARSER_LIB "tensorrt_onnxparser_rtx")
+  if (NOT RTX_PARSER_LIB)
+     set(RTX_PARSER_LIB "tensorrt_onnxparser_rtx")
   endif()
 
-  MESSAGE(STATUS "Looking for ${NVINFER_LIB}")
+  MESSAGE(STATUS "Looking for ${TRT_RTX_LIB}")
 
-  find_library(TENSORRT_LIBRARY_INFER ${NVINFER_LIB}
-    HINTS ${TENSORRT_ROOT}
+  find_library(TENSORRT_LIBRARY_INFER ${TRT_RTX_LIB}
+    HINTS ${TENSORRT_RTX_ROOT}
     PATH_SUFFIXES lib lib64 lib/x64)
 
   if (NOT TENSORRT_LIBRARY_INFER)
-    MESSAGE(STATUS "Can't find ${NVINFER_LIB}")
+    MESSAGE(STATUS "Can't find ${TRT_RTX_LIB}")
   endif()
 
   if (onnxruntime_USE_TENSORRT_BUILTIN_PARSER)
-    MESSAGE(STATUS "Looking for ${PARSER_LIB}")
+    MESSAGE(STATUS "Looking for ${RTX_PARSER_LIB}")
 
-    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${PARSER_LIB}
-      HINTS  ${TENSORRT_ROOT}
+    find_library(TENSORRT_LIBRARY_NVONNXPARSER ${RTX_PARSER_LIB}
+      HINTS  ${TENSORRT_RTX_ROOT}
       PATH_SUFFIXES lib lib64 lib/x64)
 
     if (NOT TENSORRT_LIBRARY_NVONNXPARSER)
-      MESSAGE(STATUS "Can't find ${PARSER_LIB}")
+      MESSAGE(STATUS "Can't find ${RTX_PARSER_LIB}")
     endif()
 
     set(TENSORRT_LIBRARY ${TENSORRT_LIBRARY_INFER} ${TENSORRT_LIBRARY_NVONNXPARSER})
@@ -100,7 +104,6 @@
     # The onnx_tensorrt repo contains a test program, getSupportedAPITest, which doesn't support Windows. It uses
     # unistd.h. So we must exclude it from our build. onnxruntime_fetchcontent_makeavailable is for the purpose.
     onnxruntime_fetchcontent_makeavailable(onnx_tensorrt)
-    include_directories(${onnx_tensorrt_SOURCE_DIR})
     set(CMAKE_CXX_FLAGS ${OLD_CMAKE_CXX_FLAGS})
     if ( CMAKE_COMPILER_IS_GNUCC )
       set(CMAKE_CXX_FLAGS  "${CMAKE_CXX_FLAGS} -Wno-unused-parameter")
@@ -110,9 +113,9 @@
       unset(PROTOBUF_LIBRARY)
       unset(OLD_CMAKE_CXX_FLAGS)
       unset(OLD_CMAKE_CUDA_FLAGS)
-      set_target_properties(${PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
+      set_target_properties(${RTX_PARSER_LIB} PROPERTIES LINK_FLAGS "/ignore:4199")
       target_compile_options(nvonnxparser_static PRIVATE /FIio.h /wd4100)
-      target_compile_options(${PARSER_LIB} PRIVATE /FIio.h /wd4100)
+      target_compile_options(${RTX_PARSER_LIB} PRIVATE /FIio.h /wd4100)
     endif()
     # Static libraries are just nvonnxparser_static on all platforms
     set(onnxparser_link_libs nvonnxparser_static)
@@ -120,7 +123,6 @@
     MESSAGE(STATUS "Find TensorRT libs at ${TENSORRT_LIBRARY}")
   endif()
 
-  include_directories(${TENSORRT_INCLUDE_DIR})
   # ${TENSORRT_LIBRARY} is empty if we link nvonnxparser_static.
   # nvonnxparser_static is linked against tensorrt libraries in onnx-tensorrt
   # See https://github.com/onnx/onnx-tensorrt/blob/8af13d1b106f58df1e98945a5e7c851ddb5f0791/CMakeLists.txt#L121
@@ -148,7 +150,7 @@
   else()
     target_link_libraries(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${onnxparser_link_libs} ${trt_link_libs} ${ONNXRUNTIME_PROVIDERS_SHARED} ${PROTOBUF_LIB} flatbuffers::flatbuffers ${ABSEIL_LIBS} PUBLIC CUDA::cudart)
   endif()
-  target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR}
+  target_include_directories(onnxruntime_providers_nv_tensorrt_rtx PRIVATE ${ONNXRUNTIME_ROOT} ${CMAKE_CURRENT_BINARY_DIR} ${TENSORRT_RTX_INCLUDE_DIR} ${onnx_tensorrt_SOURCE_DIR}
     PUBLIC ${CUDAToolkit_INCLUDE_DIRS})
 
   # ${CMAKE_CURRENT_BINARY_DIR} is so that #include "onnxruntime_config.h" inside tensor_shape.h is found

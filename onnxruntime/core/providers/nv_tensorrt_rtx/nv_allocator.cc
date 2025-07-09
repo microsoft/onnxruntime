@@ -1,4 +1,5 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
+// SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 // Licensed under the MIT License.
 
 #include "nv_allocator.h"
@@ -13,7 +14,7 @@ void CUDAAllocator::CheckDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    ORT_ENFORCE(current_device == Info().id);
+    ORT_ENFORCE(current_device == Info().device.Id());
   } else if (throw_when_fail) {
     CUDA_CALL_THROW(cuda_err);
   }
@@ -26,7 +27,7 @@ void CUDAAllocator::SetDevice(bool throw_when_fail) const {
   int current_device;
   auto cuda_err = cudaGetDevice(&current_device);
   if (cuda_err == cudaSuccess) {
-    int allocator_device_id = Info().id;
+    int allocator_device_id = Info().device.Id();
     if (current_device != allocator_device_id) {
       cuda_err = cudaSetDevice(allocator_device_id);
     }

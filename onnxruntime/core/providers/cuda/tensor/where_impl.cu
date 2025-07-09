@@ -115,19 +115,19 @@ __global__ void _TenaryElementWiseSimple(
   }
 }
 
-#define HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE) \
-  case Y_INDEX_TYPE: {                                                          \
-    _TenaryElementWiseSimple<T,                                                 \
-                             COND_INDEX_TYPE,                                   \
-                             X_INDEX_TYPE,                                      \
-                             Y_INDEX_TYPE,                                      \
-                             GridDim::maxThreadsPerBlock,                       \
-                             GridDim::maxElementsPerThread>                     \
-        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(cond_data,  \
-                                                            x_data,             \
-                                                            y_data,             \
-                                                            output_data,        \
-                                                            N);                 \
+#define HANDLE_Y_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)  \
+  case Y_INDEX_TYPE: {                                                           \
+    _TenaryElementWiseSimple<T,                                                  \
+                             COND_INDEX_TYPE,                                    \
+                             X_INDEX_TYPE,                                       \
+                             Y_INDEX_TYPE,                                       \
+                             GridDim::maxThreadsPerBlock,                        \
+                             GridDim::maxElementsPerThread>                      \
+        <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(cond_data,   \
+                                                                    x_data,      \
+                                                                    y_data,      \
+                                                                    output_data, \
+                                                                    N);          \
   } break
 
 #define HANDLE_X_INDEX_TYPE_SIMPLE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)               \
@@ -146,24 +146,24 @@ __global__ void _TenaryElementWiseSimple(
     }                                                                                                 \
   } break
 
-#define HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)                     \
-  case Y_INDEX_TYPE: {                                                                       \
-    _TenaryElementWise<T,                                                                    \
-                       COND_INDEX_TYPE,                                                      \
-                       X_INDEX_TYPE,                                                         \
-                       Y_INDEX_TYPE,                                                         \
-                       GridDim::maxThreadsPerBlock,                                          \
-                       GridDim::maxElementsPerThread>                                        \
+#define HANDLE_Y_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE)                             \
+  case Y_INDEX_TYPE: {                                                                               \
+    _TenaryElementWise<T,                                                                            \
+                       COND_INDEX_TYPE,                                                              \
+                       X_INDEX_TYPE,                                                                 \
+                       Y_INDEX_TYPE,                                                                 \
+                       GridDim::maxThreadsPerBlock,                                                  \
+                       GridDim::maxElementsPerThread>                                                \
         <<<blocksPerGrid, GridDim::maxThreadsPerBlock, 0, stream>>>(output_rank_or_simple_broadcast, \
-                                                            cond_padded_strides,             \
-                                                            cond_data,                       \
-                                                            x_padded_strides,                \
-                                                            x_data,                          \
-                                                            y_padded_strides,                \
-                                                            y_data,                          \
-                                                            fdm_output_strides,              \
-                                                            output_data,                     \
-                                                            N);                              \
+                                                                    cond_padded_strides,             \
+                                                                    cond_data,                       \
+                                                                    x_padded_strides,                \
+                                                                    x_data,                          \
+                                                                    y_padded_strides,                \
+                                                                    y_data,                          \
+                                                                    fdm_output_strides,              \
+                                                                    output_data,                     \
+                                                                    N);                              \
   } break
 
 #define HANDLE_X_INDEX_TYPE(COND_INDEX_TYPE, X_INDEX_TYPE, Y_INDEX_TYPE_VAL)               \
