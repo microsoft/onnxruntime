@@ -187,27 +187,27 @@ struct EigenCastType<BFloat16> {
 };
 
 // Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
-template <typename SrcType>
+template <typename OtherType>
 struct Int4ElementConverter {
-  static int8_t ConvertToInt4(const SrcType& val) {
+  static int8_t ConvertToInt4(const OtherType& val) {
     // Truncate to 4 bits and sign-extend properly
     uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
     // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement
     return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
   }
 
-  static uint8_t ConvertToUInt4(const SrcType& val) {
+  static uint8_t ConvertToUInt4(const OtherType& val) {
     // Truncate to 4 bits
     return static_cast<uint8_t>(val) & 0x0F;
   }
 
-  static SrcType Convert(int8_t val) {
-    if constexpr (IsOrtFloat16Type<SrcType>::value) {
-      return SrcType(static_cast<float>(val));
-    } else if constexpr (IsOrtFloat8Type<SrcType>::value) {
-      return SrcType(static_cast<float>(val), true);
+  static OtherType Convert(int8_t val) {
+    if constexpr (IsOrtFloat16Type<OtherType>::value) {
+      return OtherType(static_cast<float>(val));
+    } else if constexpr (IsOrtFloat8Type<OtherType>::value) {
+      return OtherType(static_cast<float>(val), true);
     } else {
-      return static_cast<SrcType>(val);
+      return static_cast<OtherType>(val);
     }
   }
 };
