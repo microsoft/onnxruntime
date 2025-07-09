@@ -648,6 +648,7 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     )
     trt_group.add_argument("--use_tensorrt_oss_parser", action="store_true", help="Use TensorRT OSS ONNX parser.")
     trt_group.add_argument("--tensorrt_home", help="Path to TensorRT installation directory.")
+    trt_group.add_argument("--tensorrt_rtx_home", help="Path to TensorRT RTX installation directory.")
 
     # --- Nv ---
     nv_group = parser.add_argument_group("Nv Execution Provider")
@@ -735,6 +736,12 @@ def add_execution_provider_args(parser: argparse.ArgumentParser) -> None:
     webgpu_group.add_argument("--use_webgpu", action="store_true", help="Enable WebGPU EP.")
     webgpu_group.add_argument(
         "--use_external_dawn", action="store_true", help="Use external Dawn dependency for WebGPU."
+    )
+    webgpu_group.add_argument(
+        "--wgsl_template",
+        choices=["static", "dynamic"],
+        default="static",  # By default, use static WGSL template generation
+        help="Specify the generator for WebGPU WGSL template generation.",
     )
 
     # --- XNNPACK ---

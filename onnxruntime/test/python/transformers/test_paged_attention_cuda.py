@@ -425,7 +425,7 @@ def attention_ref(
 
 def rotary_embedding(*args, **kwargs):
     # Use local import since triton is not available in Windows.
-    from rotary_flash import apply_rotary_emb
+    from rotary_flash import apply_rotary_emb  # noqa: PLC0415
 
     return apply_rotary_emb(*args, **kwargs)
 

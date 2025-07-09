@@ -879,8 +879,10 @@ void StreamAwareArena::SecureTheChunk(Stream* chunk_stream, Stream* target_strea
   if (chunk_stream && target_stream && chunk_stream != target_stream) {
     auto notification = chunk_stream->CreateNotification(1);
     notification->ActivateAndUpdate();
-    if (wait_fn)
-      wait_fn(*target_stream, *notification);
+    if (wait_fn) {
+      wait_fn(target_stream, *notification);
+    }
+
     target_stream->UpdateStreamClock(notification->GetStreamSyncTable());
     // it should be ok to release the notification now, as the wait is already launch to stream.
   }
