@@ -235,5 +235,16 @@ TEST(ScatterNDOpTest, ScatterND_18_max) {
   test1.Run(OpTester::ExpectResult::kExpectSuccess, "", {kTensorrtExecutionProvider, kOpenVINOExecutionProvider});
 }
 
+// Test for ScatterND with empty indices - output should be same as input
+TEST(ScatterNDOpTest, ScatterND_empty_indices) {
+  // Test with float data type and minimal empty case
+  OpTester test1("ScatterND", 11);
+  test1.AddInput<float>("data", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});
+  test1.AddInput<int64_t>("indices", {0, 1}, {});                                  // Empty indices tensor - no indices to process
+  test1.AddInput<float>("updates", {0, 3}, {});                                    // Empty updates tensor
+  test1.AddOutput<float>("output", {2, 3}, {1.0f, 2.0f, 3.0f, 4.0f, 5.0f, 6.0f});  // Same as input
+  test1.Run();
+}
+
 }  // namespace test
 }  // namespace onnxruntime
