@@ -113,7 +113,11 @@ ORT_API_STATUS_IMPL(EpDevice_AddAllocatorInfo, _In_ OrtEpDevice* ep_device,
   const OrtDevice& info = allocator_memory_info->device;
   switch (info.MemType()) {
     case OrtDevice::MemType::DEFAULT:
-      ep_device->device_memory_info = allocator_memory_info;
+      if (allocator_memory_info->alloc_type == OrtReadOnlyAllocator) {
+        ep_device->read_only_device_memory_info = allocator_memory_info;
+      } else {
+        ep_device->device_memory_info = allocator_memory_info;
+      }
       break;
     case OrtDevice::MemType::HOST_ACCESSIBLE:
       ep_device->host_accessible_memory_info = allocator_memory_info;
