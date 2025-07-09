@@ -27,12 +27,6 @@ TensorShape make_shape(Args... args) {
     }                                                                                                            \
   }
 
-#define ASSERT_TENSOR_1D(tensor, dim0) ASSERT_TENSOR_DIMS(tensor, dim0)
-#define ASSERT_TENSOR_2D(tensor, dim0, dim1) ASSERT_TENSOR_DIMS(tensor, dim0, dim1)
-#define ASSERT_TENSOR_3D(tensor, dim0, dim1, dim2) ASSERT_TENSOR_DIMS(tensor, dim0, dim1, dim2)
-#define ASSERT_TENSOR_4D(tensor, dim0, dim1, dim2, dim3) ASSERT_TENSOR_DIMS(tensor, dim0, dim1, dim2, dim3)
-#define ASSERT_TENSOR_5D(tensor, dim0, dim1, dim2, dim3, dim4) ASSERT_TENSOR_DIMS(tensor, dim0, dim1, dim2, dim3, dim4)
-
 // This assumes the tensor is optional, and check wether its shape is expected.
 #define ASSERT_TENSOR_SHAPE(tensor, shape)                                                                       \
   if (tensor != nullptr) {                                                                                       \

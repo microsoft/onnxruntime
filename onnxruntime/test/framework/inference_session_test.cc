@@ -1158,15 +1158,6 @@ static void TestBindHelper(const std::string& log_str,
       ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
     }
 #endif
-#ifdef USE_WEBGPU
-    ConfigOptions config_options{};
-    ORT_ENFORCE(config_options.AddConfigEntry(webgpu::options::kEnableGraphCapture,
-                                              enable_graph_capture ? webgpu::options::kEnableGraphCapture_ON : webgpu::options::kEnableGraphCapture_OFF)
-                    .IsOK());
-    auto provider = WebGpuExecutionProviderWithOptions(config_options);
-    gpu_provider = provider.get();
-    ASSERT_STATUS_OK(session_object.RegisterExecutionProvider(std::move(provider)));
-#endif
   }
 
   std::unique_ptr<Model> p_model;
