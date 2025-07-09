@@ -32,6 +32,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   // Binary elementwise ops
   CreateBinaryOpBuilder("Add", op_registrations);
   CreateBinaryOpBuilder("Div", op_registrations);
+  CreateBinaryOpBuilder("Equal", op_registrations);
   CreateBinaryOpBuilder("Mul", op_registrations);
   CreateBinaryOpBuilder("Max", op_registrations);
   CreateBinaryOpBuilder("Pow", op_registrations);
@@ -79,6 +80,7 @@ static OpBuilderRegistrations CreateOpBuilderRegistrations() {
   CreateSqueezeOpBuilder("Squeeze", op_registrations);
   CreateTransposeOpBuilder("Transpose", op_registrations);
   CreateSqueezeOpBuilder("Unsqueeze", op_registrations);
+  CreateWhereOpBuilder("Where", op_registrations);
 
   return op_registrations;
 }
