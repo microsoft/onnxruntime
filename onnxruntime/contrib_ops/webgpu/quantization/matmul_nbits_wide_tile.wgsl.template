@@ -1,0 +1,15 @@
+
+#use guardAgainstOutOfBoundsWorkgroupSizes
+#use getElementAt
+#use .offsetToIndices .setByOffset .rank
+
+#param nbits
+
+$MAIN {
+#if nbits == 4
+  let constant_value = 4;
+#else // nbits == 8
+  let constant_value = 8;
+#endif
+} // MAIN
+
