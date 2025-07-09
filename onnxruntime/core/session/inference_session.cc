@@ -470,8 +470,8 @@ void InferenceSession::ConstructorCommon(const SessionOptions& session_options,
 #if !defined(ORT_CLIENT_PACKAGE_BUILD)
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "1") == "1";
 #else
-	    // default kOrtSessionOptionsConfigAllowInterOpSpinning to "0" for ORT builds targeting client/on-device workloads,
-	    // to reduce CPU utilization and improve power efficiency.
+            // default kOrtSessionOptionsConfigAllowInterOpSpinning to "0" for ORT builds targeting client/on-device workloads,
+            // to reduce CPU utilization and improve power efficiency.
             session_options_.config_options.GetConfigOrDefault(kOrtSessionOptionsConfigAllowInterOpSpinning, "0") == "1";
 #endif
         OrtThreadPoolParams to = session_options_.inter_op_param;
