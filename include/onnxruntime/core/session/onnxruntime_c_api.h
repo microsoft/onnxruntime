@@ -66,6 +66,7 @@ extern "C" {
 #define _In_reads_(X)
 #define _Inout_updates_(X)
 #define _Out_writes_(X)
+#define _Out_writes_opt_(X)
 #define _Inout_updates_all_(X)
 #define _Out_writes_bytes_all_(X)
 #define _Out_writes_all_(X)
@@ -4788,6 +4789,8 @@ struct OrtApi {
    * \param[in] len Number of bytes allowed to store in data
    * \param[out] out Number of bytes required to save the data when the call failed, or the real number of bytes saved to data on success
    *
+   * \note Does not support reading graph attributes. Refer to Node_GetSubgraphs.
+   *
    * \since Version 1.17.
    */
   ORT_API2_STATUS(ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ OrtOpAttrType type, _Inout_ void* data, _In_ size_t len, _Out_ size_t* out);
@@ -5607,6 +5610,45 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetOnnxIRVersion, _In_ const OrtGraph* graph, _Out_ int64_t* onnx_ir_version);
 
+  /** \brief Returns the number of operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] num_operator_sets Output parameter set to the number of operator sets that the graph's model uses.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetNumOperatorSets, _In_ const OrtGraph* graph, _Out_ size_t* num_operator_sets);
+
+  /** \brief Returns the operator sets that the graph's model uses.
+   *
+   * \note An operator set is uniquely identified by the (domain, opset_version) pair. All models must have at
+   * least one entry that specifies which entry of the ONNX operator set is used. The ONNX domain is represented by
+   * an empty string.
+   *
+   * \param[in] graph The OrtGraph instance.
+   * \param[out] domains Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                     null-terminated domain names.
+   * \param[out] opset_versions Pre-allocated array of `num_operator_sets` elements that is filled with
+   *                            the opset version of the corresponding domain in the `domains` array.
+   * \param[in] num_operator_sets The size of the `domains` and `opset_versions` arrays.
+   *                              Typical usage sets this to the result of Graph_GetNumOperatorSets().
+   *                              An error status is returned if `num_operator_sets` is less than the actual number
+   *                              of operator sets.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetOperatorSets, _In_ const OrtGraph* graph,
+                  _Out_writes_(num_operator_sets) const char** domains,
+                  _Out_writes_(num_operator_sets) int64_t* opset_versions, _In_ size_t num_operator_sets);
+
   /** \brief Returns the number of graph inputs.
    *
    * \note The count includes initializers that are included in the list of graph inputs.
@@ -5972,20 +6014,24 @@ struct OrtApi {
 
   /** \brief Get the subgraphs, as OrtGraph instances, contained by the given node.
    *
-   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs.
+   * \note Only certain operator types (e.g., If and Loop) contain nested subgraphs. ONNX nodes store subgraphs in
+   * their attributes, however, this function must be used to obtain subgraphs from an OrtNode.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] subgraphs Pre-allocated array of `num_subgraphs` elements that is filled with the node's subgraphs.
    * \param[in] num_subgraphs The size of the `num_subgraphs` array.
    *                          Typical usage sets this to the result of Node_GetNumSubgraphs(). An error status is
    *                          returned if `num_subgraphs` is less than the number of node subgraphs.
+   * \param[out] attribute_names Optional pre-allocated array of `num_subgraphs` elements that is filled with the
+   *                             attribute names that correspond to the subgraphs. Ignored if set to NULL.
    *
    * \snippet{doc} snippets.dox OrtStatus Return Value
    *
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetSubgraphs, _In_ const OrtNode* node,
-                  _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs);
+                  _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
+                  _Out_writes_opt_(num_subgraphs) const char** attribute_names);
 
   /** \brief Get the node's parent OrtGraph instance.
    *
