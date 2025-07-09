@@ -509,7 +509,19 @@ if(onnxruntime_ENABLE_PYTHON)
   if(onnxruntime_USE_VCPKG)
     find_package(nanobind CONFIG REQUIRED)
   else()
-    message(FATAL_ERROR "not implemented")	
+    # By default nanobind gets its deps from submodules, which is ok if 
+	# your build environment does not have network isolation requirements. 
+	# Otherwise please consider using vcpkg.
+	set(NB_USE_SUBMODULE_DEPS OFF CACHE BOOL "" FORCE)
+
+	onnxruntime_fetchcontent_declare(
+		nanobind
+		URL ${DEP_URL_nanobind}
+		URL_HASH SHA1=${DEP_SHA1_nanobind}
+		EXCLUDE_FROM_ALL
+		FIND_PACKAGE_ARGS 2.7.0 NAMES nanobind
+	)
+	onnxruntime_fetchcontent_makeavailable(nanobind)
   endif()    
 endif()
 onnxruntime_fetchcontent_declare(
