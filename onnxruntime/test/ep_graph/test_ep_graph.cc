@@ -523,9 +523,9 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
   std::string name = graph_name;
   name += "_half.onnx";
 
-  // Dump subgraph for debugging
-  std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
-  model_proto->SerializeToOstream(&dump);
+  // Dump the graph for debugging
+  // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+  // model_proto->SerializeToOstream(&dump);
 
   ort_api.ReleaseGraph(sub_graph);
 }
