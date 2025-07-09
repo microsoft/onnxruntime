@@ -654,7 +654,7 @@ struct CudaSyncStreamImpl : OrtSyncStreamImpl {
 
  private:
   // this is a little onion-ish as CudaStream is a onnxruntime::Stream and this is an OrtSyncStreamImpl that will be
-  // used via plugin_ep::Stream, which is also an onnxruntime::Stream. in a 'real' plugin EP implementation 
+  // used via plugin_ep::Stream, which is also an onnxruntime::Stream. in a 'real' plugin EP implementation
   // CudaStream would go away and the logic it has would be implemented directly here.
   CudaStream stream_;
   const OrtApi& ort_api;
@@ -858,7 +858,9 @@ struct CudaEpFactory : OrtEpFactory {
     // to be applied.
 
     const OrtDevice* ort_device = static_cast<const OrtDevice*>(memory_device);
-    AllocatorPtr null_allocator;  // this is only used by
+    // This OrtSyncStream isn't used for running the inference, so we don't need a CPU allocator for
+    // CPU scratch buffers to be created by operator kernels.
+    AllocatorPtr null_allocator;
 
     auto impl = std::make_unique<CudaSyncStreamImpl>(std::move(stream), *ort_device, nullptr,
                                                      /*release_cpu_buffer_on_cuda_stream*/ true,

@@ -84,10 +84,6 @@ class Stream : public onnxruntime::Stream {
     return Notification::WaitNotificationOnDevice;
   }
 
-  // OrtSyncStreamImpl& GetImplementation() {
-  //   return impl_;
-  // }
-
   ~Stream() override {
     impl_.Release(&impl_);
   }

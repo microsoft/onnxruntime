@@ -134,7 +134,8 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
     }
 
     if (!src_tensor_ptrs.empty()) {
-      api->CopyTensors(env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), stream, cpu_tensors.size());
+      ASSERT_ORTSTATUS_OK(api->CopyTensors(env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), stream,
+                                           cpu_tensors.size()));
 
       // Stream support is still a work in progress.
       //
