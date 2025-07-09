@@ -68,14 +68,14 @@ void printDebugInfo(const ov::CompiledModel& obj) {
     }
   }
 
-std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string&& model, const std::string& model_path) {
-  return OvExceptionBoundary([&]() {
-    std::istringstream modelStringStream(std::move(model));
-    std::istream& modelStream = modelStringStream;
-    // Try to load with FrontEndManager
-    ov::frontend::FrontEndManager manager;
-    ov::frontend::FrontEnd::Ptr FE;
-    ov::frontend::InputModel::Ptr inputModel;
+  std::shared_ptr<OVNetwork> OVCore::ReadModel(std::string && model, const std::string& model_path) {
+    return OvExceptionBoundary([&]() {
+      std::istringstream modelStringStream(std::move(model));
+      std::istream& modelStream = modelStringStream;
+      // Try to load with FrontEndManager
+      ov::frontend::FrontEndManager manager;
+      ov::frontend::FrontEnd::Ptr FE;
+      ov::frontend::InputModel::Ptr inputModel;
 
       ov::AnyVector params{&modelStream, model_path};
 
@@ -237,7 +237,7 @@ OVExeNetwork OVCore::CompileModel(const std::string& onnx_model,
 
     obj = core.compile_model(onnx_model, ov::Tensor(), hw_target, device_config);
 #ifndef NDEBUG
-      printDebugInfo(exe.Get());
+    printDebugInfo(exe.Get());
 #endif
     OVExeNetwork exe(obj, hw_target);
     return exe;
