@@ -4262,25 +4262,45 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
   // This is used for constructing full path for external data
   // if it exists
 
-  auto add_initializer = [](TensorList& output_initializers, const TensorProto& initializer) -> void {
+  auto add_initializer = [this](TensorList& output_initializers, const TensorProto& initializer) -> void {
     TensorProto& output = *output_initializers.Add();
-    output = initializer;
 
     // copy any in-memory external data into raw data
     if (utils::HasExternalDataInMemory(initializer)) {
-      const std::filesystem::path ignored;
-      std::basic_string<ORTCHAR_T> location;
-      onnxruntime::FileOffsetType file_offset;
-      SafeInt<size_t> tensor_byte_size;
+      if (OrtValue ort_value; GetOrtValueInitializer(initializer.name(), ort_value,
+                                                     /*check_outer_scope=*/false)) {
+        output = utils::TensorToTensorProto(ort_value.Get<Tensor>(),
+                                            initializer.name(), /* use_tensor_buffer */ false);
+      } else {
+        output = initializer;
 
-      ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(initializer, ignored, location, file_offset, tensor_byte_size));
+        const std::filesystem::path ignored;
+        std::basic_string<ORTCHAR_T> location;
+        onnxruntime::FileOffsetType file_offset;
+        SafeInt<size_t> tensor_byte_size;
 
-      // file_offset is address
-      void* data = reinterpret_cast<void*>(file_offset);
+        ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(initializer, ignored, location, file_offset, tensor_byte_size));
 
-      // set in raw data
-      output.clear_data_location();
-      output.set_raw_data(data, tensor_byte_size);
+        output.clear_data_location();
+        output.mutable_external_data()->Clear();
+
+        // file_offset is address
+        if (utils::HasString(initializer)) {
+          auto tensor_shape = utils::GetTensorShapeFromTensorProto(initializer);
+          std::string* data = reinterpret_cast<std::string*>(file_offset);
+          for (size_t i = 0, lim = narrow<size_t>(tensor_shape.Size()); i < lim; ++i) {
+            // set in raw data
+            output.add_string_data(*data);
+            ++data;
+          }
+        } else {
+          void* data = reinterpret_cast<void*>(file_offset);
+          // set in raw data
+          output.set_raw_data(data, tensor_byte_size);
+        }
+      }
+    } else {
+      output = initializer;
     }
   };
 
