@@ -747,31 +747,6 @@ void
     float Scale,
     int8_t ZeroPoint);
 
-typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t M,
-    size_t N,
-    size_t K,
-    const MLAS_SGEMM_DATA_PARAMS* Data,
-    size_t BatchSize,
-    MLAS_THREADPOOL* ThreadPool);
-
-typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K);
-
-typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
-    CBLAS_TRANSPOSE TransA,
-    CBLAS_TRANSPOSE TransB,
-    size_t N,
-    size_t K,
-    const float* B,
-    size_t ldb,
-    void* PackedB);
-
 typedef
 void
 (MLASCALL MLAS_DEQUANTIZE_LINEAR_U8_KERNEL)(
@@ -837,6 +812,31 @@ void
     float Beta,
     MLAS_THREADPOOL* ThreadPool
     );
+
+typedef void (MLASCALL MLAS_GEMM_BATCH_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t M,
+    size_t N,
+    size_t K,
+    const MLAS_SGEMM_DATA_PARAMS* Data,
+    size_t BatchSize,
+    MLAS_THREADPOOL* ThreadPool);
+
+typedef size_t (MLASCALL MLAS_GEMM_PACK_B_SIZE_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K);
+
+typedef void (MLASCALL MLAS_GEMM_PACK_B_KERNEL)(
+    CBLAS_TRANSPOSE TransA,
+    CBLAS_TRANSPOSE TransB,
+    size_t N,
+    size_t K,
+    const float* B,
+    size_t ldb,
+    void* PackedB);
 
 extern "C" {
 
