@@ -3,8 +3,7 @@
 
 #pragma once
 
-#include <ostream>
-#include <sstream>
+#include <cstdio>
 #include <string>
 
 #include "core/common/logging/capture.h"
@@ -12,42 +11,23 @@
 
 namespace onnxruntime {
 namespace logging {
-#ifndef _WIN32
+
 /// <summary>
-/// A std::ostream based ISink
+/// A C FILE*-based ISink.
 /// </summary>
 /// <seealso cref="ISink" />
 class OStreamSink : public ISink {
- protected:
-  OStreamSink(std::ostream& stream, bool flush)
-      : stream_{&stream}, flush_{flush} {
+ public:
+  OStreamSink(FILE* stream = stdout, bool flush = false)
+      : stream_{stream}, flush_{flush} {
   }
 
- public:
   void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override;
 
  private:
-  std::ostream* stream_;
+  FILE* stream_;
   const bool flush_;
 };
-#else
-/// <summary>
-/// A std::wostream based ISink
-/// </summary>
-/// <seealso cref="ISink" />
-class WOStreamSink : public ISink {
- protected:
-  WOStreamSink(std::wostream& stream, bool flush)
-      : stream_{&stream}, flush_{flush} {
-  }
 
- public:
-  void SendImpl(const Timestamp& timestamp, const std::string& logger_id, const Capture& message) override;
-
- private:
-  std::wostream* stream_;
-  const bool flush_;
-};
-#endif
 }  // namespace logging
 }  // namespace onnxruntime
