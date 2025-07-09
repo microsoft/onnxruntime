@@ -746,6 +746,16 @@ if (onnxruntime_USE_WEBGPU)
           #   Some build warnings are not allowed to be disabled in project level.
           ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/dawn_binskim.patch)
 
+      if(Android)
+        # Android devices doesn't seem to allow fp16 in uniforms so the WebGPU EP has to manually handle passing an fp32
+        # in the uniform and converting to fp16 before using.
+        set(ONNXRUNTIME_Dawn_PATCH_COMMAND
+            "${ONNXRUNTIME_Dawn_PATCH_COMMAND} &&
+            ${Patch_EXECUTABLE} --binary --ignore-whitespace -p1 < ${PROJECT_SOURCE_DIR}/patches/dawn/uniform_and_storage_buffer_16_bit_access.patch"
+        )
+        add_compile_definitions(ORT_WEBGPU_NO_FP16_IN_UNIFORMS)
+      endif()
+
       onnxruntime_fetchcontent_declare(
         dawn
         URL ${DEP_URL_dawn}
