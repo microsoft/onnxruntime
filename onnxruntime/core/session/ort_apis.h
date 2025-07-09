@@ -678,6 +678,7 @@ ORT_API_STATUS_IMPL(Node_GetSubgraphs, _In_ const OrtNode* node,
                     _Out_writes_(num_subgraphs) const OrtGraph** subgraphs, _In_ size_t num_subgraphs,
                     _Out_writes_opt_(num_subgraphs) const char** attribute_names);
 ORT_API_STATUS_IMPL(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
+ORT_API_STATUS_IMPL(Node_GetEpType, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
 
 ORT_API_STATUS_IMPL(GetRunConfigEntry, _In_ const OrtRunOptions* options,
                     _In_z_ const char* config_key, _Outptr_result_maybenull_z_ const char** config_value);
