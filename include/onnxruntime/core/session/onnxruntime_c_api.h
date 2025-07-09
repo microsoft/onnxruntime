@@ -492,6 +492,45 @@ typedef OrtStatus*(ORT_API_CALL* EpSelectionDelegate)(_In_ const OrtEpDevice** e
                                                       _Out_ size_t* num_selected,
                                                       _In_ void* state);
 
+/** \brief Function called by ORT to write a buffer to a custom destination (e.g., file, stream, etc.).
+ *
+ * \param state Opaque pointer holding the user's state.
+ * \param buffer The buffer to write.
+ * \param buffer_num_bytes The size of the buffer in bytes.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
+                                                     _In_ const void* buffer,
+                                                     _In_ size_t buffer_num_bytes);
+
+/** \brief Function called by ORT to allow user to specify how an initializer should be saved, either
+ * written to an external file or stored within the model.
+ *
+ * If the function sets the `is_external` output parameter to false, ORT stores initializer data within the model.
+ *
+ * Otherwise, if `is_external` is set to false, ORT assumes that this function stores the initializer data to a file.
+ * In this case, ORT configures the model's initializer to point to the location and offset returned from this function
+ * via the `location` and `offset` output parameters.
+ *
+ * \param state Opaque pointer holding the user's state.
+ * \param buffer The buffer to write.
+ * \param buffer_num_bytes The size of the buffer in bytes.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(_In_ void* state,
+                                                               _In_ const char* initializer_name,
+                                                               _In_ const void* initializer_data,
+                                                               _In_ size_t initializer_num_bytes,
+                                                               _In_ const OrtTypeInfo* initializer_type,
+                                                               _Out_ bool* is_external,
+                                                               _Out_ const ORTCHAR_T** location, _Out_ int64_t* offset);
+
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
 typedef enum OrtCudnnConvAlgoSearch {
