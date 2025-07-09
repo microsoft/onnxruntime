@@ -3364,6 +3364,10 @@ common::Status InferenceSession::GetInputOutputMemoryInfo(SessionInputOutputType
 common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpDevice*>& ep_devices) const {
   ep_devices.clear();
 
+#if defined(ORT_MINIMAL_BUILD)
+  return common::Status(common::ONNXRUNTIME, common::FAIL,
+                        "GetEpDeviceForInputs is not available in a minimal build.");
+#else
   if (!is_inited_) {
     return common::Status(common::ONNXRUNTIME, common::INVALID_ARGUMENT, "Session has not been initialized.");
   }
@@ -3392,6 +3396,7 @@ common::Status InferenceSession::GetEpDeviceForInputs(InlinedVector<const OrtEpD
   }
 
   return Status::OK();
+#endif
 }
 
 common::Status InferenceSession::NewIOBinding(std::unique_ptr<IOBinding>* io_binding) {

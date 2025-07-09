@@ -112,22 +112,6 @@ std::unordered_set<OrtAllocator*>::const_iterator FindExistingAllocator(const st
                         return AreOrtMemoryInfosEquivalent(*alloc_mem_info, mem_info, match_name);
                       });
 }
-
-Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
-                                    std::unique_ptr<plugin_ep::DataTransfer>& data_transfer) {
-  OrtDataTransferImpl* data_transfer_impl = nullptr;
-  OrtStatus* status = ep_factory.CreateDataTransfer(&ep_factory, &data_transfer_impl);
-  if (status != nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
-                           "Error creating data transfer: ", ToStatusAndRelease(status).ToString());
-  }
-
-  if (data_transfer_impl != nullptr) {
-    data_transfer = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
-  }
-
-  return Status::OK();
-}
 }  // namespace
 
 Status Environment::Create(std::unique_ptr<logging::LoggingManager> logging_manager,
@@ -464,6 +448,29 @@ Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocat
 }
 
 #if !defined(ORT_MINIMAL_BUILD)
+
+//
+// Plugin EP support
+//
+
+namespace {
+Status CreateDataTransferForFactory(OrtEpFactory& ep_factory,
+                                    std::unique_ptr<plugin_ep::DataTransfer>& data_transfer) {
+  OrtDataTransferImpl* data_transfer_impl = nullptr;
+  OrtStatus* status = ep_factory.CreateDataTransfer(&ep_factory, &data_transfer_impl);
+  if (status != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, EP_FAIL,
+                           "Error creating data transfer: ", ToStatusAndRelease(status).ToString());
+  }
+
+  if (data_transfer_impl != nullptr) {
+    data_transfer = std::make_unique<plugin_ep::DataTransfer>(*data_transfer_impl);
+  }
+
+  return Status::OK();
+}
+}  // namespace
+
 Status Environment::RegisterExecutionProviderLibrary(const std::string& registration_name,
                                                      std::unique_ptr<EpLibrary> ep_library,
                                                      const std::vector<EpFactoryInternal*>& internal_factories) {

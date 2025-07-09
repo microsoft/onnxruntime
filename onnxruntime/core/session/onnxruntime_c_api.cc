@@ -3072,146 +3072,6 @@ ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
   return OrtExecutionProviderApi::GetEpApi();
 }
 
-#else  // defined(ORT_MINIMAL_BUILD)
-ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
-                    const ORTCHAR_T* /*path*/) {
-  API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
-                    const char* /*registration_name*/) {
-  API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
-                    _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
-  API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*session_options*/,
-                    _In_ OrtEnv* /*env*/,
-                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
-                    _In_ size_t /*num_ep_devices*/,
-                    _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
-                    _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
-                    size_t /*num_ep_options*/) {
-  API_IMPL_BEGIN
-  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
-
-  API_IMPL_END
-}
-
-ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
-  fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
-  return nullptr;
-}
-
-#endif  // !defined(ORT_MINIMAL_BUILD)
-
-// OrtEpDevice accessors
-ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardwareDevice* device) {
-  return OrtHardwareDeviceType(device->type);
-}
-
-ORT_API(uint32_t, OrtApis::HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device) {
-  return device->vendor_id;
-}
-
-ORT_API(const char*, OrtApis::HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device) {
-  return device->vendor.c_str();
-}
-
-ORT_API(uint32_t, OrtApis::HardwareDevice_DeviceId, _In_ const OrtHardwareDevice* device) {
-  return device->device_id;
-}
-
-ORT_API(const OrtKeyValuePairs*, OrtApis::HardwareDevice_Metadata, _In_ const OrtHardwareDevice* ep_device) {
-  return &ep_device->metadata;
-}
-
-ORT_API(const char*, OrtApis::EpDevice_EpName, _In_ const OrtEpDevice* ep_device) {
-  return ep_device->ep_name.c_str();
-}
-
-ORT_API(const char*, OrtApis::EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device) {
-  return ep_device->ep_vendor.c_str();
-}
-
-ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device) {
-  return &ep_device->ep_metadata;
-}
-
-ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device) {
-  return &ep_device->ep_options;
-}
-
-ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevice* ep_device) {
-  return ep_device->device;
-}
-
-ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
-        _In_ OrtDeviceMemoryType memory_type) {
-  switch (memory_type) {
-    case OrtDeviceMemoryType_DEFAULT:
-      return ep_device->device_memory_info;
-    case OrtDeviceMemoryType_HOST_ACCESSIBLE:
-      return ep_device->host_accessible_memory_info;
-    default:
-      return nullptr;
-  }
-}
-
-namespace {
-OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
-                                    InferenceSession::SessionInputOutputType type,
-                                    const OrtMemoryInfo** memory_info,
-                                    _In_ size_t num_values) {
-  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
-
-  InlinedVector<const OrtMemoryInfo*> mem_info;
-  ORT_API_RETURN_IF_STATUS_NOT_OK(
-      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
-
-  auto num_found = mem_info.size();
-  if (num_found > num_values) {
-    auto msg = MakeString("Number of ",
-                          type == InferenceSession::SessionInputOutputType::kOutput ? "outputs " : "inputs ",
-                          mem_info.size(), " exceeds the provided size of ", num_values);
-    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
-  }
-
-  for (size_t i = 0; i < num_values; ++i) {
-    memory_info[i] = (i < num_found) ? mem_info[i] : nullptr;
-  }
-
-  return nullptr;
-}
-}  // namespace
-
-ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForInputs, _In_ const OrtSession* ort_session,
-                    _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
-                    _In_ size_t num_inputs) {
-  API_IMPL_BEGIN
-  return GetInputOutputMemoryInfo(ort_session, InferenceSession::SessionInputOutputType::kInput,
-                                  inputs_memory_info, num_inputs);
-  API_IMPL_END
-}
-
-ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSession* session,
-                    _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
-                    _In_ size_t num_outputs) {
-  API_IMPL_BEGIN
-  return GetInputOutputMemoryInfo(session, InferenceSession::SessionInputOutputType::kOutput,
-                                  outputs_memory_info, num_outputs);
-  API_IMPL_END
-}
-
 ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* ort_session,
                     _Out_writes_(num_values) const OrtEpDevice** inputs_ep_devices,
                     _In_ size_t num_values) {
@@ -3351,6 +3211,180 @@ ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* env,
 
   return nullptr;
 
+  API_IMPL_END
+}
+
+#else   // defined(ORT_MINIMAL_BUILD)
+ORT_API_STATUS_IMPL(OrtApis::RegisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/, const char* /*registration_name*/,
+                    const ORTCHAR_T* /*path*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::UnregisterExecutionProviderLibrary, _In_ OrtEnv* /*env*/,
+                    const char* /*registration_name*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::GetEpDevices, _In_ const OrtEnv* /*env*/,
+                    _Outptr_ const OrtEpDevice* const** /*ep_devices*/, _Out_ size_t* /*num_ep_devices*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionOptionsAppendExecutionProvider_V2, _In_ OrtSessionOptions* /*session_options*/,
+                    _In_ OrtEnv* /*env*/,
+                    _In_reads_(num_ep_devices) const OrtEpDevice* const* /*ep_devices*/,
+                    _In_ size_t /*num_ep_devices*/,
+                    _In_reads_(num_op_options) const char* const* /*ep_option_keys*/,
+                    _In_reads_(num_op_options) const char* const* /*ep_option_vals*/,
+                    size_t /*num_ep_options*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(const OrtEpApi*, OrtApis::GetEpApi) {
+  fprintf(stderr, "The Execution Provider API is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetEpDeviceForInputs, _In_ const OrtSession* /*ort_session*/,
+                    _Out_writes_(num_values) const OrtEpDevice** /*inputs_ep_devices*/,
+                    _In_ size_t /*num_values*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CreateSyncStreamForEpDevice, _In_ const OrtEpDevice* /*ep_device*/,
+                    _In_opt_ const OrtKeyValuePairs* /*stream_options*/,
+                    _Outptr_ OrtSyncStream** /*ort_stream*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+ORT_API(void*, OrtApis::SyncStream_GetHandle, _In_ OrtSyncStream* /*stream*/) {
+  fprintf(stderr, "OrtSyncStream is not supported in a minimal build.\n");
+  return nullptr;
+}
+
+ORT_API(void, OrtApis::ReleaseSyncStream, _Frees_ptr_opt_ OrtSyncStream* /*ort_stream*/) {
+  fprintf(stderr, "OrtSyncStream is not supported in a minimal build.\n");
+}
+
+ORT_API_STATUS_IMPL(OrtApis::CopyTensors, _In_ const OrtEnv* /*env*/,
+                    _In_reads_(num_tensors) const OrtValue** /*src_tensors*/,
+                    _In_reads_(num_tensors) OrtValue** /*dst_tensors*/,
+                    _In_opt_ OrtSyncStream* /*stream*/,
+                    _In_ size_t /*num_tensors*/) {
+  API_IMPL_BEGIN
+  return OrtApis::CreateStatus(ORT_NOT_IMPLEMENTED, "This API in not supported in a minimal build.");
+  API_IMPL_END
+}
+
+#endif  // !defined(ORT_MINIMAL_BUILD)
+
+// OrtEpDevice accessors
+ORT_API(OrtHardwareDeviceType, OrtApis::HardwareDevice_Type, _In_ const OrtHardwareDevice* device) {
+  return OrtHardwareDeviceType(device->type);
+}
+
+ORT_API(uint32_t, OrtApis::HardwareDevice_VendorId, _In_ const OrtHardwareDevice* device) {
+  return device->vendor_id;
+}
+
+ORT_API(const char*, OrtApis::HardwareDevice_Vendor, _In_ const OrtHardwareDevice* device) {
+  return device->vendor.c_str();
+}
+
+ORT_API(uint32_t, OrtApis::HardwareDevice_DeviceId, _In_ const OrtHardwareDevice* device) {
+  return device->device_id;
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::HardwareDevice_Metadata, _In_ const OrtHardwareDevice* ep_device) {
+  return &ep_device->metadata;
+}
+
+ORT_API(const char*, OrtApis::EpDevice_EpName, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->ep_name.c_str();
+}
+
+ORT_API(const char*, OrtApis::EpDevice_EpVendor, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->ep_vendor.c_str();
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpMetadata, _In_ const OrtEpDevice* ep_device) {
+  return &ep_device->ep_metadata;
+}
+
+ORT_API(const OrtKeyValuePairs*, OrtApis::EpDevice_EpOptions, _In_ const OrtEpDevice* ep_device) {
+  return &ep_device->ep_options;
+}
+
+ORT_API(const OrtHardwareDevice*, OrtApis::EpDevice_Device, _In_ const OrtEpDevice* ep_device) {
+  return ep_device->device;
+}
+
+ORT_API(const OrtMemoryInfo*, OrtApis::EpDevice_MemoryInfo, _In_ const OrtEpDevice* ep_device,
+        _In_ OrtDeviceMemoryType memory_type) {
+  switch (memory_type) {
+    case OrtDeviceMemoryType_DEFAULT:
+      return ep_device->device_memory_info;
+    case OrtDeviceMemoryType_HOST_ACCESSIBLE:
+      return ep_device->host_accessible_memory_info;
+    default:
+      return nullptr;
+  }
+}
+
+namespace {
+OrtStatus* GetInputOutputMemoryInfo(const OrtSession* ort_session,
+                                    InferenceSession::SessionInputOutputType type,
+                                    const OrtMemoryInfo** memory_info,
+                                    _In_ size_t num_values) {
+  auto session = reinterpret_cast<const ::onnxruntime::InferenceSession*>(ort_session);
+
+  InlinedVector<const OrtMemoryInfo*> mem_info;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(
+      session->GetInputOutputMemoryInfo(InferenceSession::SessionInputOutputType::kInput, mem_info));
+
+  auto num_found = mem_info.size();
+  if (num_found > num_values) {
+    auto msg = MakeString("Number of ",
+                          type == InferenceSession::SessionInputOutputType::kOutput ? "outputs " : "inputs ",
+                          mem_info.size(), " exceeds the provided size of ", num_values);
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, msg.c_str());
+  }
+
+  for (size_t i = 0; i < num_values; ++i) {
+    memory_info[i] = (i < num_found) ? mem_info[i] : nullptr;
+  }
+
+  return nullptr;
+}
+}  // namespace
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForInputs, _In_ const OrtSession* ort_session,
+                    _Out_writes_(num_inputs) const OrtMemoryInfo** inputs_memory_info,
+                    _In_ size_t num_inputs) {
+  API_IMPL_BEGIN
+  return GetInputOutputMemoryInfo(ort_session, InferenceSession::SessionInputOutputType::kInput,
+                                  inputs_memory_info, num_inputs);
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::SessionGetMemoryInfoForOutputs, _In_ const OrtSession* session,
+                    _Out_writes_(num_outputs) const OrtMemoryInfo** outputs_memory_info,
+                    _In_ size_t num_outputs) {
+  API_IMPL_BEGIN
+  return GetInputOutputMemoryInfo(session, InferenceSession::SessionInputOutputType::kOutput,
+                                  outputs_memory_info, num_outputs);
   API_IMPL_END
 }
 
