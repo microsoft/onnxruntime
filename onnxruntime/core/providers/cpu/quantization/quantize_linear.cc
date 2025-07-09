@@ -326,7 +326,7 @@ struct DequantizeLinearApply<T, OutT, false> {
         for (size_t n = 0; n < N; n++) {
           *output++ = static_cast<OutT>(static_cast<float>(static_cast<int32_t>(*input++) - zp) * sc);
         }
-#endif  // defined(ORT_CLIENT_PACKAGE_BUILD
+#endif  // defined(ORT_CLIENT_PACKAGE_BUILD)
       }
     }
   }
