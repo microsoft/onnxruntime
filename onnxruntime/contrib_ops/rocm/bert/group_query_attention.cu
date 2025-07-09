@@ -159,7 +159,6 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* ctx) const {
   const Tensor* total_seqlen = ctx->Input<Tensor>(6);
   const Tensor* cos_cache = ctx->Input<Tensor>(7);
   const Tensor* sin_cache = ctx->Input<Tensor>(8);
-  const Tensor* head_sink = context->Input<Tensor>(11);
 
   auto& device_prop = GetDeviceProp();
   std::call_once(
