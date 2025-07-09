@@ -51,6 +51,7 @@ class GQAAttentionBase {
   Status ApplyAttention(const T* Q,                                 // Q data with shape BxNxSxH
                         const T* K,                                 // K data with shape BxN_kvxSxH
                         const T* V,                                 // V data with shape BxN_kvxSxH
+                        const T* head_sink,                         // Head sink for smooth softmax, nullptr if not used
                         const Tensor* attention_bias,               // Attention bias to add to QxK'
                         const Tensor* past_key,                     // past K input tensor (if not using past state)
                         const Tensor* past_value,                   // past V input tensor (if not using past state)
@@ -97,7 +98,7 @@ class GQAAttentionBase {
     const T* k = packed_qkv ? Q + num_heads_ * sequence_length * head_size : K;
 
     if (gqa_mlas_supported) {
-      ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_bias_data,
+      ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
                             head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
                             tp, allocator);
@@ -110,7 +111,7 @@ class GQAAttentionBase {
                               hidden_size, past_value_data, present_value_data, past_present_share_buffer, packed_qkv,
                               is_prompt, tp, allocator);
     } else {
-      ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, seqlens_k->Data<int32_t>(), attention_bias_data,
+      ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
                             head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
                             tp, allocator);
@@ -136,6 +137,7 @@ class GQAAttentionBase {
   void ComputeAttentionProbs(U* attention_probs,                                   // output buffer with size BxNxSxT
                              const T* Q,                                           // Q data. Its size is BxNxSxH
                              const T* K,                                           // k data. Its size is BxNxLxH
+                             const T* head_sink,                                   // for smooth softmax. Its size is N.
                              const int32_t* seqlens_k,                             // total - 1 sequence lengths tensor
                              const T* attention_bias,                              // optional attention bias
                              const size_t batch_size,                              // batch size of self-attention
@@ -310,8 +312,9 @@ class GQAAttentionBase {
             }
           }
 
-          if (use_smooth_softmax_) {
-            ComputeSmoothSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
+          if (use_smooth_softmax_ || head_sink != nullptr) {
+            float sink = (head_sink != nullptr) ? static_cast<float>(head_sink[head_index]) : 0.0f;
+            ComputeSmoothSoftmaxInplace(output_softmax + start_offset, static_cast<int>(window_size), sink, nullptr);
           } else {
             ComputeAttentionSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
           }
