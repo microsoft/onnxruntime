@@ -182,12 +182,14 @@ set(onnxruntime_pybind11_state_static_providers
     ${PROVIDERS_ACL}
     ${PROVIDERS_ARMNN}
     ${PROVIDERS_XNNPACK}
-    ${PROVIDERS_WEBGPU}
     ${PROVIDERS_AZURE}
 )
 
 if(onnxruntime_BUILD_QNN_EP_STATIC_LIB)
   list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_qnn)
+endif()
+if(onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+  list(APPEND onnxruntime_pybind11_state_static_providers PRIVATE onnxruntime_providers_webgpu)
 endif()
 if(WIN32)
   # onnxruntime_pybind11_state is a DLL
@@ -1079,6 +1081,16 @@ if (onnxruntime_USE_QNN)
 endif()
 
 if (onnxruntime_USE_WEBGPU)
+  if(NOT onnxruntime_BUILD_WEBGPU_EP_STATIC_LIB)
+    add_custom_command(
+      TARGET onnxruntime_pybind11_state POST_BUILD
+      COMMAND ${CMAKE_COMMAND} -E copy
+        $<TARGET_FILE:onnxruntime_providers_webgpu>
+        $<TARGET_FILE:onnxruntime_providers_shared>
+        $<TARGET_FILE_DIR:${build_output_target}>/onnxruntime/capi/
+    )
+  endif()
+
   if (WIN32 AND onnxruntime_ENABLE_DAWN_BACKEND_D3D12)
     # TODO: the following code is used to disable building Dawn using vcpkg temporarily
     # until we figure out how to resolve the packaging pipeline failures
