@@ -2,6 +2,7 @@
 // Licensed under the MIT License.
 
 #include <fstream>
+#include <optional>
 
 #include "core/common/safeint.h"
 #include "core/framework/tensorprotoutils.h"
@@ -776,15 +777,24 @@ void ModelBuilder::PreprocessInitializers() {
 }
 
 Status ModelBuilder::RegisterInitializers() {
-  for (const auto& pair : GetInitializerTensors()) {
-    const auto& tensor = *pair.second;
-    const auto& name = tensor.name();
-
-    // skip initializer if there is no remaining usage
-    auto usage_count = initializer_usage_[name];
+  for (const auto& [name, tensor_proto] : GetInitializerTensors()) {
+    f
+        // skip initializer if there is no remaining usage
+        auto usage_count = initializer_usage_[name];
     if (usage_count == 0) {
       continue;
     }
+
+    const bool has_external_data = utils::HasExternalData(*tensor_proto);
+    std::optional<ONNX_NAMESPACE::TensorProto> tensor_proto_inline;
+    if (has_external_data) {
+      tensor_proto_inline.emplace();
+      ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*tensor_proto, graph_viewer_.ModelPath(),
+                                               *tensor_proto_inline);
+    }
+
+    const ONNX_NAMESPACE::TensorProto& tensor =
+        has_external_data ? *tensor_proto_inline : *tensor_proto;
 
     if (create_ml_program_) {
       MILSpec::Value coreml_tensor = OnnxTensorToCoreMLTensor(tensor, *weights_file_writer_);
