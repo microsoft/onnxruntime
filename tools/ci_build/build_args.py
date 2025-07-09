@@ -526,10 +526,15 @@ def add_size_reduction_args(parser: argparse.ArgumentParser) -> None:
         help="Disable exceptions (requires --minimal_build).",
     )
 
+
 def add_client_package_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for client package build package."""
-    parser.add_argument("--client_package_build", action="store_true",
-        help="Create ORT package with default settings more appropriate for client/on-device workloads.")
+    parser.add_argument(
+        "--client_package_build",
+        action="store_true",
+        help="Create ORT package with default settings more appropriate for client/on-device workloads.",
+    )
+
 
 def add_python_binding_args(parser: argparse.ArgumentParser) -> None:
     """Adds arguments for Python bindings."""
