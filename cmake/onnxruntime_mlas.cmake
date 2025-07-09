@@ -266,11 +266,20 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
+  # Top level src directory doesn't always start from top level, so need to check
+  if(EXISTS "${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
+    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/kleidiai")
+  elseif(EXISTS "${MLAS_SRC_DIR}/../kleidiai/sgemm_kleidiai.cpp")
+    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/../kleidiai")
+  else()
+    message(FATAL_ERROR "Cannot find ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
+  endif()
+
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
-    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
-    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
+    ${KLEIDIAI_SRC_DIR}/sgemm_kleidiai.cpp
+    ${KLEIDIAI_SRC_DIR}/convolve_kleidiai.cpp
+    ${KLEIDIAI_SRC_DIR}/qgemm_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
 
