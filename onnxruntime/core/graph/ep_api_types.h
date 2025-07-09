@@ -209,7 +209,7 @@ struct EpNode : public OrtNode {
   const OrtOpAttr* GetAttribute(const std::string& name) const;
 
   // Helper that gets the execution provider that this node is assined to run on.
-  const std::string& EpNode::GetEpType() const;
+  const std::string& GetEpType() const;
 
  private:
   // Back pointer to containing graph. Useful when traversing through nested subgraphs.
