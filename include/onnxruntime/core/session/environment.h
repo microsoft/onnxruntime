@@ -106,6 +106,12 @@ class Environment {
   }
 
   /**
+   * Returns an AllocatorPtr for a shared IAllocator based allocator if it matches the memory info.
+   * OrtMemoryInfo.name and whether it's an arena or device allocator is ignored in the lookup.
+   */
+  AllocatorPtr GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const;
+
+  /**
    * Removes registered allocator that was previously registered for sharing between multiple sessions.
    */
   Status UnregisterAllocator(const OrtMemoryInfo& mem_info);
@@ -166,7 +172,7 @@ class Environment {
   std::unique_ptr<onnxruntime::concurrency::ThreadPool> inter_op_thread_pool_;
   bool create_global_thread_pools_{false};
 
-  std::mutex mutex_;
+  mutable std::mutex mutex_;
 
   // shared allocators from various sources.
   // CreateAndRegisterAllocator[V2]: IAllocator allocators created by ORT
