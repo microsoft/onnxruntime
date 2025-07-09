@@ -320,6 +320,7 @@ struct DequantizeLinearApply<T, OutT, false> {
           }
         }
 #else
+        ORT_UNUSED_PARAMETER(thread_pool);
         auto zp = zero_point ? static_cast<int32_t>(zero_point[k]) : 0;
         auto sc = static_cast<float>(scale[k]);
         for (size_t n = 0; n < N; n++) {
