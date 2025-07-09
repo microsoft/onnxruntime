@@ -1,7 +1,7 @@
 onnxscript>=0.2.3
 optimum>=1.14.1
 optree
-transformers==4.48.0
+transformers==4.52.1
 torch>=2.7.0
 onnx==1.17.0
 datasets>=2.8.0
