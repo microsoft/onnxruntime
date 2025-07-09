@@ -237,7 +237,6 @@ Status AveragePool::Compute(OpKernelContext* context) const {
                            " returned ", status);
   }
 
-
   if (avgpool_type_ == OpComputeType::op_compute_type_fp32) {
     status = xnn_setup_average_pooling2d_nhwc_f32(op0_.get(), X.Data<float>(),
                                                   Y.MutableData<float>());
