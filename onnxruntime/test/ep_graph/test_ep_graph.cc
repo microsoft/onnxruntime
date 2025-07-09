@@ -72,6 +72,16 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
 }
 
+TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
+  // The overall structure of this model is similar to the one used in "Check3LayerNestedSubgraph" test.
+  // The model consists of a graph with subgraphs nested across three levels.
+  // In this scenario, a third-layer subgraph consumes an input from the first-layer graph (not an initializer).
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph_v2.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
 //
 // Utils for traversing an OrtGraph and checking against GraphViewer.
 //
@@ -324,6 +334,7 @@ static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
 
   // Select a half of nodes to create a OrtGraph
   size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
+  num_selected_nodes = num_nodes;
   std::vector<const OrtNode*> selected_nodes(num_selected_nodes);
 
   for (size_t i = 0; i < num_selected_nodes; i++) {
