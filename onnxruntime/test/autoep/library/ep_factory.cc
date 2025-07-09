@@ -64,6 +64,17 @@ ExampleEpFactory::ExampleEpFactory(const char* ep_name, ApiPtrs apis)
                                        &mem_info);
   assert(status == nullptr);  // should never fail.
   host_accessible_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
+  status = ort_api.CreateMemoryInfo_V2("ExampleEP GPU readonly", OrtMemoryInfoDeviceType_GPU,
+                                       /*vendor*/ 0xBE57, /* device_id */ 0,
+                                       OrtDeviceMemoryType_DEFAULT,
+                                       /*alignment*/ 0,
+                                       OrtAllocatorType::OrtReadOnlyAllocator,
+                                       &mem_info);
+  assert(status == nullptr);  // should never fail.
+
+  mem_info = nullptr;
+
+  readonly_gpu_memory_info_ = MemoryInfoUniquePtr(mem_info, ort_api.ReleaseMemoryInfo);
 
   // if we were to use GPU we'd create it like this
   data_transfer_impl_ = std::make_unique<ExampleDataTransfer>(
@@ -130,8 +141,12 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::GetSupportedDevicesImpl(OrtEpFactory* 
       }
 
       // register the allocator info required by the EP.
-      // in this example we register CPU info which is unnecessary unless you need to override the default ORT allocator
-      // for a non-CPU EP this would be device info (GPU/NPU) and possible host accessible info.
+      // in this example we register CPU info as an example, but that is unnecessary unless you need to override the
+      // default ORT allocator.
+      //
+      // for a non-CPU based EP an OrtDeviceAllocator + OrtDeviceMemoryType_DEFAULT allocator is required.
+      // OrtDeviceAllocator + OrtDeviceMemoryType_HOST_ACCESSIBLE allocator for shared/pinned memory, and a
+      // OrtReadOnlyAllocator + OrtDeviceMemoryType_DEFAULT allocator for use with initializers are optional.
       RETURN_IF_ERROR(factory->ep_api.EpDevice_AddAllocatorInfo(ep_device, factory->cpu_memory_info_.get()));
 
       ep_devices[num_ep_devices++] = ep_device;

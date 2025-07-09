@@ -63,6 +63,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
   // OrtMemoryInfo instance required for that.
   MemoryInfoUniquePtr default_gpu_memory_info_;
   MemoryInfoUniquePtr host_accessible_gpu_memory_info_;
+  MemoryInfoUniquePtr readonly_gpu_memory_info_; // only used for initializers
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };

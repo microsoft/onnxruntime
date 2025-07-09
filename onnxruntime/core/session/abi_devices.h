@@ -67,4 +67,7 @@ struct OrtEpDevice {
   OrtEpFactory* ep_factory;
   const OrtMemoryInfo* device_memory_info{nullptr};
   const OrtMemoryInfo* host_accessible_memory_info{nullptr};
+
+  // used internally by ORT for initializers only. optional.
+  const OrtMemoryInfo* read_only_device_memory_info{nullptr};
 };
