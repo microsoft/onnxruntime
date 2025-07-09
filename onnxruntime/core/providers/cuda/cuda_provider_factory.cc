@@ -525,7 +525,7 @@ struct CudaDataTransferImpl : OrtDataTransferImpl {
     return nullptr;
   }
 
-  static void ReleaseImpl(void* this_ptr) noexcept {
+  static void ReleaseImpl(void* /*this_ptr*/) noexcept {
     // no-op as we have a single shared instance in OrtEpFactory which is returned from CreateDataTransferImpl, and is
     // owned by and freed by the factory.
   }

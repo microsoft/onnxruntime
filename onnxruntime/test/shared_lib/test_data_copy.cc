@@ -34,7 +34,7 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
   // register the provider bridge based CUDA EP so allocator and data transfer is available
-  api->RegisterExecutionProviderLibrary(env, "ORT CUDA", ORT_TSTR("onnxruntime_providers_cuda"));
+  ASSERT_ORTSTATUS_OK(api->RegisterExecutionProviderLibrary(env, "ORT CUDA", ORT_TSTR("onnxruntime_providers_cuda")));
 
   const OrtEpDevice* cuda_device = nullptr;
   for (const auto& ep_device : ort_env->GetEpDevices()) {
@@ -75,7 +75,7 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
     // find the input location so we know which inputs can be provided on device.
     std::vector<const OrtMemoryInfo*> input_locations;
     input_locations.resize(num_inputs, nullptr);
-    api->SessionGetMemoryInfoForInputs(session, input_locations.data(), num_inputs);
+    ASSERT_ORTSTATUS_OK(api->SessionGetMemoryInfoForInputs(session, input_locations.data(), num_inputs));
 
     std::vector<Ort::Value> cpu_tensors;
 
