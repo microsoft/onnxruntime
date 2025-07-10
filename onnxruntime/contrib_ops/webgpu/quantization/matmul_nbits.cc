@@ -41,7 +41,7 @@ ONNX_OPERATOR_KERNEL_EX(
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
-  shader.AddInput("input_b", ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
     shader.AddInput("zero_points", ShaderUsage::UseElementTypeAlias);
@@ -285,16 +285,20 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
-    TensorShape reshaped_a_shape{batch_count, M, CEIL_DIV(K, components_a)};
-    TensorShape reshaped_b_shape{N, n_blocks_per_col, CEIL_DIV(blob_size_in_words, components_b)};
-    TensorShape reshaped_y_shape{batch_count, M, CEIL_DIV(N, components)};
+    TensorShape reshaped_a_shape{batch_count, M, K / components_a};
+    TensorShape reshaped_b_shape{N, n_blocks_per_col, blob_size_in_words / components_b};
+    TensorShape reshaped_y_shape{batch_count, M, N / components};
+
+    constexpr uint32_t kU32Components = 4;
+    const uint32_t components_b_with_u32 = components_b * kU32Components;
+    const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
 
     program
         .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, onnxruntime::narrow<int>(components_a)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b * 4)},
+                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b_with_u32)},
                     {scales, ProgramTensorMetadataDependency::None}})
         .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariables({{batch_count}, {M}, {N}, {K}, {CEIL_DIV(K, 4)}, {CEIL_DIV(K, 16)}, {CEIL_DIV(K, 32)}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
+        .AddUniformVariables({{batch_count}, {M}, {N}, {K}, {CEIL_DIV(K, 4)}, {CEIL_DIV(K, 32)}, {K_of_b}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
         .CacheHint(nbits, has_zero_points);
     if (has_zero_points) {
       program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {CEIL_DIV(zero_points->Shape().Size(), 4)}, 4});

@@ -13,8 +13,12 @@ const kTileN : u32 = tile_n;
 // TODO: Move to matmulnbits_common template
 #if has_zero_points
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  // TODO: change to const number
-  const elements_in_uint32 : u32 = 32u / nbits;
+#if nbits == 4
+    const elements_in_uint32 = 8u;
+#else // nbits == 8
+    const elements_in_uint32 = 4u;
+#endif
+
   const bits : u32 = nbits;
 
   if (row < r_dim && col < c_dim) {
@@ -74,8 +78,8 @@ fn mm_write_y(batch : u32, row : u32, col : u32, value : output_element_t) {
 
 #if nbits == 4
 fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
-  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
-    let offset = row * uniforms.K_div_32 + block_idx;
+  if (row < uniforms.N && block_idx < uniforms.K_of_b) {
+    let offset = row * uniforms.K_of_b + block_idx;
     return input_b[offset];
   }
   return vec4<input_b_element_t>();
@@ -103,10 +107,10 @@ fn dequantize(packed_data : u32, zero_point : output_element_t, scale : output_e
 }
 #else // nbits == 8
 fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
-  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
-    let offset = row * uniforms.K_div_16 + 2 * block_idx;
-    let b_data_0 = input_b[offset];
-    let b_data_1 = input_b[offset + 1];
+  if (row < uniforms.N) {
+    let offset =  2 * block_idx;
+    let b_data_0 = select(input_b_value_t(), input_b[row * uniforms.K_of_b + offset], offset < uniforms.K_of_b);
+    let b_data_1 = select(input_b_value_t(), input_b[row * uniforms.K_of_b + offset + 1], offset + 1 < uniforms.K_of_b);
 
     let b_data = array<vec2<u32>, 4>(
       vec2<u32>(b_data_0[0], b_data_0[1]),

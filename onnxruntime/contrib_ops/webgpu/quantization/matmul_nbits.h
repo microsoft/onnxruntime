@@ -23,8 +23,8 @@ class MatMulNBitsWideTileProgram final : public Program<MatMulNBitsWideTileProgr
                                           {"N", ProgramUniformVariableDataType::Uint32},
                                           {"K", ProgramUniformVariableDataType::Uint32},
                                           {"K_div_4", ProgramUniformVariableDataType::Uint32},
-                                          {"K_div_16", ProgramUniformVariableDataType::Uint32},
                                           {"K_div_32", ProgramUniformVariableDataType::Uint32},
+                                          {"K_of_b", ProgramUniformVariableDataType::Uint32},
                                           {"zero_blocks_per_col", ProgramUniformVariableDataType::Uint32},
                                           {"num_N_tile", ProgramUniformVariableDataType::Uint32},
                                           {"num_M_tile", ProgramUniformVariableDataType::Uint32});
