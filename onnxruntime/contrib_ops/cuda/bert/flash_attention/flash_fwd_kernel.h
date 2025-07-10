@@ -783,8 +783,8 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q, params.window_size_left, params.window_size_right, alibi_slope);
 
   const float sink = (params.head_sink_ptr != nullptr)
-                        ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
-                        : (params.smooth_softmax ? 0.0f : -std::numeric_limits<float>::infinity());
+                         ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
+                         : (params.smooth_softmax ? 0.0f : -std::numeric_limits<float>::infinity());
 
   // For performance reason, we separate out two kinds of iterations:
   // those that need masking on S, and those that don't.
