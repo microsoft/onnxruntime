@@ -503,12 +503,10 @@ TEST(ConcatOpTest, Concat3D_exceed_maxStorageBuffersPerShaderStage) {
   test.AddInput<int32_t>("input7", {2, 1, 1}, {13, 14});
   test.AddInput<int32_t>("input8", {2, 1, 1}, {15, 16});
   test.AddInput<int32_t>("input9", {2, 1, 1}, {17, 18});
-  test.AddOutput<int32_t>("concat_result", {2, 9, 1}, {
-    // batch 0
-    1, 3, 5, 7, 9, 11, 13, 15, 17,
-    // batch 1
-    2, 4, 6, 8, 10, 12, 14, 16, 18
-  });
+  test.AddOutput<int32_t>("concat_result", {2, 9, 1}, {// batch 0
+                                                       1, 3, 5, 7, 9, 11, 13, 15, 17,
+                                                       // batch 1
+                                                       2, 4, 6, 8, 10, 12, 14, 16, 18});
   test.Run();
 }
 #endif  // USE_WEBGPU
