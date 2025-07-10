@@ -65,12 +65,7 @@ class ExampleEpFactory : public OrtEpFactory, public ApiPtrs {
 
   // CPU allocator so we can control the arena behavior. optional as ORT always provides a CPU allocator if needed.
   using MemoryInfoUniquePtr = std::unique_ptr<OrtMemoryInfo, std::function<void(OrtMemoryInfo*)>>;
-  MemoryInfoUniquePtr cpu_memory_info_;
-
-  // for example purposes. if the EP used GPU, and pinned/shared memory was required for data transfer, these are the
-  // OrtMemoryInfo instance required for that.
-  MemoryInfoUniquePtr default_gpu_memory_info_;
-  MemoryInfoUniquePtr host_accessible_gpu_memory_info_;
+  MemoryInfoUniquePtr default_memory_info_;
 
   std::unique_ptr<ExampleDataTransfer> data_transfer_impl_;  // data transfer implementation for this factory
 };

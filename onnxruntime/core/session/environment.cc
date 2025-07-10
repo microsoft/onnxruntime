@@ -175,9 +175,13 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
   // so when we remove that from shared_allocators_ we release the OrtAllocator instance.
 
   // shared_ort_allocators_ are internal only so never an error if there's no match
-  auto it2 = FindExistingAllocator(shared_ort_allocators_, mem_info);
-  if (it2 != shared_ort_allocators_.end()) {
+  if (auto it2 = FindExistingAllocator(shared_ort_allocators_, mem_info); it2 != shared_ort_allocators_.end()) {
     shared_ort_allocators_.erase(it2);
+  }
+
+  // also remove an arena wrapped allocator from an EP if the user called CreateSharedAllocator to create one
+  if (auto it3 = arena_ort_allocators_.find(&mem_info); it3 != arena_ort_allocators_.end()) {
+    arena_ort_allocators_.erase(it3);
   }
 
   shared_allocators_.erase(it);
@@ -504,16 +508,18 @@ Status Environment::RegisterExecutionProviderLibrary(const std::string& registra
       }
     }
 
-    for (const auto& internal_factory : internal_factories) {
-      internal_ep_factories_.insert(internal_factory);
-
+    for (auto* factory : ep_info->factories) {
       std::unique_ptr<plugin_ep::DataTransfer> data_transfer;
-      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*internal_factory, data_transfer));
+      ORT_RETURN_IF_ERROR(CreateDataTransferForFactory(*factory, data_transfer));
 
       if (data_transfer) {
         ep_info->data_transfers.push_back(data_transfer.get());  // store so we can unregister in the unload
         ORT_RETURN_IF_ERROR(data_transfer_mgr_.RegisterDataTransfer(std::move(data_transfer)));
       }
+    }
+
+    for (const auto& internal_factory : internal_factories) {
+      internal_ep_factories_.insert(internal_factory);
     }
 
     ep_libraries_[registration_name] = std::move(ep_info);
@@ -629,6 +635,20 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
                                               const OrtKeyValuePairs* allocator_options,
                                               OrtAllocator** allocator_out,
                                               bool replace_existing) {
+  // NOTE: memory_info is guaranteed to come from the OrtEpDevice when this is called
+
+  // we need to remove from shared_ort_allocators_ first in case the entry in shared_allocators_ owns the pointer in
+  // shared_ort_allocators_.
+  if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
+      it != shared_ort_allocators_.end()) {
+    shared_ort_allocators_.erase(it);
+  }
+
+  // if a previous call created an arena wrapped allocator for the EP's memory_info we also need to remove that
+  if (auto it = arena_ort_allocators_.find(&memory_info); it != arena_ort_allocators_.end()) {
+    arena_ort_allocators_.erase(it);
+  }
+
   // we only want one shared allocator for an OrtDevice in the shared_allocators_ so that it's deterministic which
   // one will be used for an inference session. ignore the name so that is the case.
   if (auto it = FindExistingAllocator(shared_allocators_, memory_info, /*match_name*/ false);
@@ -640,21 +660,11 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     shared_allocators_.erase(it);
   }
 
-  // clear out any exact match in the internal shared allocators
-  if (auto it = FindExistingAllocator(shared_ort_allocators_, memory_info, /*match_name*/ true);
-      it != shared_ort_allocators_.end()) {
-    shared_ort_allocators_.erase(it);
-  }
-
   OrtAllocator* allocator = nullptr;
   auto* ort_status = ep_device.ep_factory->CreateAllocator(ep_device.ep_factory, &memory_info, allocator_options,
                                                            &allocator);
   if (ort_status != nullptr) {
     return ToStatusAndRelease(ort_status);
-  }
-
-  if (allocator_out != nullptr) {
-    *allocator_out = allocator;
   }
 
   auto ort_allocator = OrtAllocatorUniquePtr(allocator,
@@ -684,12 +694,26 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
     };
 
     shared_allocator = CreateAllocator(alloc_creation_info);
+
+    // need an OrtAllocator to return to the user so we need yet another layer.
+    // we pass in a copy of the AllocatorPtr (which is a shared_ptr) in order to maintain the overall condition that
+    // shared_allocators_ is the main owner of the allocator and the last place we delete from when removing
+    // from shared_ort_allocators_, arena_ort_allocators_ and shared_allocators_.
+    auto arena_ort_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(AllocatorPtr(shared_allocator));
+    allocator = arena_ort_allocator.get();
+
+    // store the entry using the EPs memory info for easier lookup when removing
+    arena_ort_allocators_.insert({&memory_info, std::move(arena_ort_allocator)});
   } else {
+    shared_ort_allocators_.insert(allocator);
     shared_allocator = std::make_shared<IAllocatorImplWrappingOrtAllocator>(std::move(ort_allocator));
   }
 
-  shared_ort_allocators_.insert(allocator);
   shared_allocators_.push_back(std::move(shared_allocator));
+
+  if (allocator_out != nullptr) {
+    *allocator_out = allocator;
+  }
 
   return Status::OK();
 }
@@ -740,13 +764,13 @@ Status Environment::EpInfo::Create(std::unique_ptr<EpLibrary> library_in, std::u
   instance.internal_factories = internal_factories;
 
   ORT_RETURN_IF_ERROR(instance.library->Load());
-  const auto& factories = instance.library->GetFactories();
+  instance.factories = instance.library->GetFactories();
 
   // OrtHardwareDevice instances to pass to GetSupportedDevices. sorted by type to be slightly more structured.
   // the set of hardware devices is static so this can also be static.
   const static std::vector<const OrtHardwareDevice*> sorted_devices = SortDevicesByType();
 
-  for (auto* factory_ptr : factories) {
+  for (auto* factory_ptr : instance.factories) {
     ORT_ENFORCE(factory_ptr != nullptr, "Factory pointer was null. EpLibrary should prevent this. Library:",
                 instance.library->RegistrationName());
 

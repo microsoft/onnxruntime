@@ -3,6 +3,7 @@
 
 #if !defined(ORT_MINIMAL_BUILD)
 
+#include <filesystem>
 #include <vector>
 
 #include "gtest/gtest.h"
@@ -40,7 +41,7 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
 #endif
 
   if (!std::filesystem::exists(cuda_lib)) {
-    GTEST_SKIP("CUDA library was not found");
+    GTEST_SKIP() << "CUDA library was not found";
   }
 
   // register the provider bridge based CUDA EP so allocator and data transfer is available
@@ -101,11 +102,11 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
 
     // create cpu based input data.
     Ort::AllocatorWithDefaultOptions cpu_allocator;
-    int64_t shape[4] = {1, 1, 28, 28};
+    std::vector<int64_t> shape{1, 1, 28, 28};
     std::vector<float> input_data(28 * 28, 0.5f);
-    size_t data_len = 28 * 28 * sizeof(float);
-    Ort::Value input_value = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(), input_data.data(), data_len,
-                                                             shape, 4);
+    Ort::Value input_value = Ort::Value::CreateTensor<float>(cpu_allocator.GetInfo(),
+                                                             input_data.data(), input_data.size(),
+                                                             shape.data(), shape.size());
     cpu_tensors.push_back(std::move(input_value));
 
     for (size_t idx = 0; idx < num_inputs; ++idx) {

@@ -21,6 +21,7 @@ struct AllocatorStats {
 struct CustomAllocator : OrtAllocator {
   CustomAllocator(const OrtMemoryInfo* mem_info, const ApiPtrs& api_ptrs_in)
       : memory_info{mem_info}, api_ptrs{api_ptrs_in} {
+    version = ORT_API_VERSION;
     Alloc = AllocImpl;
     Free = FreeImpl;
     Info = InfoImpl;

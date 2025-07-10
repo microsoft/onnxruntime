@@ -7,9 +7,8 @@
 
 struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
   ExampleDataTransfer(ApiPtrs api_ptrs,
-                      const OrtMemoryDevice* device_mem_info_,
-                      const OrtMemoryDevice* shared_mem_info_ = nullptr)
-      : ApiPtrs(api_ptrs), device_mem_info{device_mem_info_}, shared_mem_info{shared_mem_info_} {
+                      const OrtMemoryDevice* device_mem_info_)
+      : ApiPtrs(api_ptrs), device_mem_info{device_mem_info_} {
     CanCopy = CanCopyImpl;
     CopyTensors = CopyTensorsImpl;
     Release = ReleaseImpl;
@@ -29,6 +28,5 @@ struct ExampleDataTransfer : OrtDataTransferImpl, ApiPtrs {
   static void ORT_API_CALL ReleaseImpl(void* this_ptr) noexcept;
 
  private:
-  const OrtMemoryDevice* device_mem_info;
-  const OrtMemoryDevice* shared_mem_info;
+  const OrtMemoryDevice* device_mem_info;  // device our EP runs on
 };
