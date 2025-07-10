@@ -48,6 +48,11 @@ Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) cons
   }
   shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
 
+#if 1
+  std::cout << "Using template\n";
+  return WGSL_TEMPLATE_APPLY(shader, "quantization/matmul_nbits_wide_tile.wgsl.template",
+                             WGSL_TEMPLATE_PARAMETER(nbits, nbits_));
+#else
   constexpr uint32_t KAVecSizeForBlock32 = 8;
 
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
@@ -206,6 +211,7 @@ fn dequantize(packed_data : vec2<u32>, zero_point : output_element_t, scale : ou
     mm_write_y(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
   }
 )MAIN_FN";
+#endif
 
   return Status::OK();
 }

@@ -1,15 +1,148 @@
 
-#use guardAgainstOutOfBoundsWorkgroupSizes
-#use getElementAt
-#use .offsetToIndices .setByOffset .rank
-
 #param nbits
 
-$MAIN {
+const KAVecSizeForBlock32 = 8u;
+
+// TODO: Fix the hardcode
+const kTileM = 16u;
+const kTileN = 128u;
+
+// TODO: 1. Supprt zero; 2. Move to matmul_common
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  const default_zero_point = 8;
+  return output_element_t(default_zero_point);
+}
+
+fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
+  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_div_4) {
+    let offset = batch * uniforms.M * uniforms.K_div_4 + row * uniforms.K_div_4 + col;
+    return input_a[offset];
+  }
+  return input_a_value_t();
+}
+
+fn load_scale(row : u32, block_idx : u32) -> output_element_t {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_32 + block_idx;
+    return scales[offset];
+  }
+  return output_element_t();
+}
+
+fn mm_write_y(batch : u32, row : u32, col : u32, value : output_element_t) {
+  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
+    let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
+    output[offset] = value;
+  }
+}
+
 #if nbits == 4
-  let constant_value = 4;
+fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_32 + block_idx;
+    return input_b[offset];
+  }
+  return vec4<input_b_element_t>();
+}
+
+// packed8xU4
+fn dequantize(packed_data : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower: vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
+  let upper: vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
+
+  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      zero_point, zero_point, zero_point, zero_point,
+      zero_point, zero_point, zero_point, zero_point
+  );
+
+  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      output_element_t(lower[0]), output_element_t(upper[0]),
+      output_element_t(lower[1]), output_element_t(upper[1]),
+      output_element_t(lower[2]), output_element_t(upper[2]),
+      output_element_t(lower[3]), output_element_t(upper[3])
+  );
+
+  dequantized_values = (dequantized_values - zero_matrix) * scale;
+  return dequantized_values;
+}
 #else // nbits == 8
-  let constant_value = 8;
+fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
+  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
+    let offset = row * uniforms.K_div_16 + 2 * block_idx;
+    let b_data_0 = input_b[offset];
+    let b_data_1 = input_b[offset + 1];
+
+    let b_data = array<vec2<u32>, 4>(
+      vec2<u32>(b_data_0[0], b_data_0[1]),
+      vec2<u32>(b_data_0[2], b_data_0[3]),
+      vec2<u32>(b_data_1[0], b_data_1[1]),
+      vec2<u32>(b_data_1[2], b_data_1[3])
+    );
+    return b_data;
+  }
+  return array<vec2<u32>, 4>();
+}
+
+// 2x packed4xU8
+fn dequantize(packed_data : vec2<u32>, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower: vec4<u32> = unpack4xU8(packed_data[0]);
+  let upper: vec4<u32> = unpack4xU8(packed_data[1]);
+
+  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      zero_point, zero_point, zero_point, zero_point,
+      zero_point, zero_point, zero_point, zero_point
+  );
+
+  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
+      output_element_t(lower[0]), output_element_t(lower[1]),
+      output_element_t(lower[2]), output_element_t(lower[3]),
+      output_element_t(upper[0]), output_element_t(upper[1]),
+      output_element_t(upper[2]), output_element_t(upper[3])
+  );
+
+  dequantized_values = (dequantized_values - zero_matrix) * scale;
+  return dequantized_values;
+}
 #endif
+
+var<workgroup> a_data_tile: array<array<input_a_value_t, KAVecSizeForBlock32>, kTileM>;
+
+$MAIN {
+  let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
+  let row = ((workgroup_idx / uniforms.num_N_tile) % uniforms.num_M_tile) * kTileM;
+  let col = (workgroup_idx % uniforms.num_N_tile) * kTileN;
+
+  // Utilizing an f32 accumulator mitigated precision loss with minimal
+  // performance impact compared to an f16 accumulator.
+  var results : array<f32, kTileM>;
+  for (var block_idx = 0u; block_idx < uniforms.K_div_32; block_idx++) {
+    // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
+    let a_row_idx = local_idx / KAVecSizeForBlock32;
+    let a_col_idx = local_idx % KAVecSizeForBlock32;
+    a_data_tile[a_row_idx][a_col_idx] = load_a(batch, row + a_row_idx, block_idx * KAVecSizeForBlock32 + a_col_idx);
+    workgroupBarrier();
+
+    let b_row = col + local_idx;
+    let scale = load_scale(b_row, block_idx);
+    let zero_point = mm_read_zero(b_row, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+    let b_data = load_b(b_row, block_idx);
+
+    for (var b_idx = 0u; b_idx < 4u; b_idx++) {
+      let b_dequantized = dequantize(b_data[b_idx], zero_point, scale);
+      for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
+        let a_data0 = a_data_tile[m_idx][b_idx * 2u];
+        let a_data1 = a_data_tile[m_idx][b_idx * 2u + 1u];
+
+        results[m_idx] += f32(dot(a_data0, b_dequantized[0])) +
+                          f32(dot(a_data1, b_dequantized[1]));
+      }
+    }
+    workgroupBarrier();
+  }
+
+  // Write the results.
+  for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
+    mm_write_y(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
+  }
 } // MAIN
 
