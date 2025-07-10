@@ -293,6 +293,20 @@ function(setup_kleidiai)
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
   endif()
+
+  if(MSVC)
+    set(KLEIDIAI_LIB "${CMAKE_BINARY_DIR}/_deps/kleidiai-build/${CMAKE_BUILD_TYPE}/kleidiai.lib")
+
+    if(EXISTS "${KLEIDIAI_LIB}")
+      message(STATUS "Linking KleidiAI static library for MSVC: ${KLEIDIAI_LIB}")
+      message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
+      message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
+      message(STATUS "Expected KleidiAI .lib path: ${KLEIDIAI_LIB}")
+      target_link_libraries(onnxruntime_mlas PRIVATE "${KLEIDIAI_LIB}")
+    else()
+      message(FATAL_ERROR "Expected KleidiAI .lib not found: ${KLEIDIAI_LIB}")
+    endif()
+  endif(
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
