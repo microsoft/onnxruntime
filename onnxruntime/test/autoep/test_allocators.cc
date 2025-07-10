@@ -60,10 +60,10 @@ struct DummyAllocator : OrtAllocator {
 // validate CreateSharedAllocator allows adding an arena to the shared allocator
 TEST(SharedAllocators, AddArenaToSharedAllocator) {
   const OrtApi& c_api = Ort::GetApi();
-  const OrtEpDevice* example_ep;
+  RegisteredEpDeviceUniquePtr example_ep;
   Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
 
-  const auto* ep_memory_info = c_api.EpDevice_MemoryInfo(example_ep, OrtDeviceMemoryType_DEFAULT);
+  const auto* ep_memory_info = c_api.EpDevice_MemoryInfo(example_ep.get(), OrtDeviceMemoryType_DEFAULT);
 
   // validate there is a shared allocator
   OrtAllocator* allocator = nullptr;
@@ -75,8 +75,8 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
   auto initial_chunk_size = "25600";  // arena allocates in 256 byte amounts
   allocator_options.Add(OrtArenaCfg::ConfigKeyNames::InitialChunkSizeBytes, initial_chunk_size);
 
-  ASSERT_ORTSTATUS_OK(c_api.CreateSharedAllocator(*ort_env, example_ep, OrtDeviceMemoryType_DEFAULT, OrtArenaAllocator,
-                                                  &allocator_options,
+  ASSERT_ORTSTATUS_OK(c_api.CreateSharedAllocator(*ort_env, example_ep.get(),
+                                                  OrtDeviceMemoryType_DEFAULT, OrtArenaAllocator, &allocator_options,
                                                   &allocator));
 
   // first allocation should init the arena to the initial chunk size
@@ -95,9 +95,7 @@ TEST(SharedAllocators, AddArenaToSharedAllocator) {
   EXPECT_THAT(stats, Contains(Pair("TotalAllocated", initial_chunk_size)));
 
   // optional. ORT owns the allocator but we want to test the release implementation
-  ASSERT_ORTSTATUS_OK(c_api.ReleaseSharedAllocator(*ort_env, example_ep, OrtDeviceMemoryType_DEFAULT));
-
-  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
+  ASSERT_ORTSTATUS_OK(c_api.ReleaseSharedAllocator(*ort_env, example_ep.get(), OrtDeviceMemoryType_DEFAULT));
 }
 
 TEST(SharedAllocators, GetSharedAllocator) {

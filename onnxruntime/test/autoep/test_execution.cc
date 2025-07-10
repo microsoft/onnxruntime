@@ -52,8 +52,9 @@ void RunModelWithPluginEp(Ort::SessionOptions& session_options) {
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
 // Uses AppendExecutionProvider_V2 to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
-  const OrtEpDevice* plugin_ep_device = nullptr;
-  Utils::RegisterAndGetExampleEp(*ort_env, plugin_ep_device);
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  const OrtEpDevice* plugin_ep_device = example_ep.get();
 
   // Create session with example plugin EP
   Ort::SessionOptions session_options;
@@ -61,15 +62,13 @@ TEST(OrtEpLibrary, PluginEp_AppendV2_MulInference) {
   session_options.AppendExecutionProvider_V2(*ort_env, {Ort::ConstEpDevice(plugin_ep_device)}, ep_options);
 
   RunModelWithPluginEp(session_options);
-
-  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
 }
 
 // Creates a session with the example plugin EP and runs a model with a single Mul node.
 // Uses the PREFER_CPU policy to append the example plugin EP to the session.
 TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
-  const OrtEpDevice* ep_device = nullptr;
-  Utils::RegisterAndGetExampleEp(*ort_env, ep_device);
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
 
   {
     // PREFER_CPU pick our example EP over ORT CPU EP. TODO: Actually assert this.
@@ -77,15 +76,14 @@ TEST(OrtEpLibrary, PluginEp_PreferCpu_MulInference) {
     session_options.SetEpSelectionPolicy(OrtExecutionProviderDevicePolicy_PREFER_CPU);
     RunModelWithPluginEp(session_options);
   }
-
-  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
 }
 
 // Generate an EPContext model with a plugin EP.
 // This test uses the OrtCompileApi but could also be done by setting the appropriate session option configs.
 TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
-  const OrtEpDevice* plugin_ep_device = nullptr;
-  Utils::RegisterAndGetExampleEp(*ort_env, plugin_ep_device);
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  const OrtEpDevice* plugin_ep_device = example_ep.get();
 
   {
     const ORTCHAR_T* input_model_file = ORT_TSTR("testdata/mul_1.onnx");
@@ -110,8 +108,6 @@ TEST(OrtEpLibrary, PluginEp_GenEpContextModel) {
     // Make sure the compiled model was generated.
     ASSERT_TRUE(std::filesystem::exists(output_model_file));
   }
-
-  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
 }
 }  // namespace test
 }  // namespace onnxruntime

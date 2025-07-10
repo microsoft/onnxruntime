@@ -24,16 +24,15 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   const std::filesystem::path& library_path = Utils::example_ep_info.library_path;
   const std::string& registration_name = Utils::example_ep_info.registration_name;
 
-  OrtEnv* c_api_env = *ort_env;
   const OrtApi* c_api = &Ort::GetApi();
   // this should load the library and create OrtEpDevice
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(c_api_env, registration_name.c_str(),
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().RegisterExecutionProviderLibrary(*ort_env, registration_name.c_str(),
                                                                      library_path.c_str()));
 
   const OrtEpDevice* const* ep_devices = nullptr;
   size_t num_devices = 0;
 
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(c_api_env, &ep_devices, &num_devices));
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().GetEpDevices(*ort_env, &ep_devices, &num_devices));
   // should be one device for the example EP
   auto num_test_ep_devices = std::count_if(ep_devices, ep_devices + num_devices,
                                            [&registration_name, &c_api](const OrtEpDevice* device) {
@@ -44,7 +43,7 @@ TEST(OrtEpLibrary, LoadUnloadPluginLibrary) {
   ASSERT_EQ(num_test_ep_devices, 1) << "Expected an OrtEpDevice to have been created by the test library.";
 
   // and this should unload it
-  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(c_api_env,
+  ASSERT_ORTSTATUS_OK(Ort::GetApi().UnregisterExecutionProviderLibrary(*ort_env,
                                                                        registration_name.c_str()));
 }
 

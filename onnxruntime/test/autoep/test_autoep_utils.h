@@ -11,6 +11,8 @@
 namespace onnxruntime {
 namespace test {
 
+using RegisteredEpDeviceUniquePtr = std::unique_ptr<const OrtEpDevice, std::function<void(const OrtEpDevice*)>>;
+
 struct Utils {
   struct ExamplePluginInfo {
     const std::filesystem::path library_path =
@@ -24,8 +26,12 @@ struct Utils {
 
   static ExamplePluginInfo example_ep_info;
 
+  // get the OrtEpDevice for an arbitrary EP from the environment
   static void GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*& ep_device);
-  static void RegisterAndGetExampleEp(Ort::Env& env, const OrtEpDevice*& example_ep);
+
+  // Register the example EP library, get the OrtEpDevice for it, and return a unique pointer that will
+  // automatically unregister the EP library.
+  static void RegisterAndGetExampleEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& example_ep);
 };
 }  // namespace test
 }  // namespace onnxruntime

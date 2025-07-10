@@ -30,7 +30,7 @@ using StreamUniquePtr = std::unique_ptr<OrtSyncStream, std::function<void(OrtSyn
 #ifdef USE_CUDA
 // test copying input to CUDA using an OrtEpFactory based EP.
 // tests GetSharedAllocator, CreateSyncStreamForEpDevice and CopyTensors APIs
-TEST(DataCopyTest, CopyInputsToCudaDevice) {
+TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
   OrtEnv* env = *ort_env;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
@@ -46,7 +46,9 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
 
   // register the provider bridge based CUDA EP so allocator and data transfer is available
   // not all the CIs have the provider library in the expected place so we allow for that
-  ASSERT_ORTSTATUS_OK(api->RegisterExecutionProviderLibrary(env, "ORT CUDA", ORT_TSTR("onnxruntime_providers_cuda")));
+  const char* ep_registration_name = "ORT CUDA";
+  ASSERT_ORTSTATUS_OK(api->RegisterExecutionProviderLibrary(env, ep_registration_name,
+                                                            ORT_TSTR("onnxruntime_providers_cuda")));
 
   const OrtEpDevice* cuda_device = nullptr;
   for (const auto& ep_device : ort_env->GetEpDevices()) {
@@ -191,7 +193,7 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
   run_test(/*use_streams*/ true);
   run_test(/*use_streams*/ false);
 
-  api->UnregisterExecutionProviderLibrary(env, "ORT CUDA");
+  ASSERT_ORTSTATUS_OK(api->UnregisterExecutionProviderLibrary(env, ep_registration_name));
 }
 #endif  // USE_CUDA
 

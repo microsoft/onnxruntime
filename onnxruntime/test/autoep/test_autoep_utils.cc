@@ -36,15 +36,19 @@ void Utils::GetEp(Ort::Env& env, const std::string& ep_name, const OrtEpDevice*&
   }
 }
 
-void Utils::RegisterAndGetExampleEp(Ort::Env& env, const OrtEpDevice*& example_ep) {
+void Utils::RegisterAndGetExampleEp(Ort::Env& env, RegisteredEpDeviceUniquePtr& registered_ep) {
   const OrtApi& c_api = Ort::GetApi();
   // this should load the library and create OrtEpDevice
   ASSERT_ORTSTATUS_OK(c_api.RegisterExecutionProviderLibrary(env,
                                                              example_ep_info.registration_name.c_str(),
                                                              example_ep_info.library_path.c_str()));
-  example_ep = nullptr;
+  const OrtEpDevice* example_ep = nullptr;
   GetEp(env, example_ep_info.registration_name, example_ep);
   ASSERT_NE(example_ep, nullptr);
+
+  registered_ep = RegisteredEpDeviceUniquePtr(example_ep, [&env, c_api](const OrtEpDevice* /*ep*/) {
+    c_api.UnregisterExecutionProviderLibrary(env, example_ep_info.registration_name.c_str());
+  });
 }
 
 }  // namespace test

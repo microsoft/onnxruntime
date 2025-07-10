@@ -24,8 +24,9 @@ namespace test {
 
 TEST(OrtEpLibrary, DataTransfer) {
   const OrtApi& c_api = Ort::GetApi();
-  const OrtEpDevice* ep_device;
-  Utils::RegisterAndGetExampleEp(*ort_env, ep_device);
+  RegisteredEpDeviceUniquePtr example_ep;
+  Utils::RegisterAndGetExampleEp(*ort_env, example_ep);
+  const OrtEpDevice* ep_device = example_ep.get();
 
   const OrtMemoryInfo* device_memory_info = c_api.EpDevice_MemoryInfo(ep_device, OrtDeviceMemoryType_DEFAULT);
 
@@ -72,8 +73,6 @@ TEST(OrtEpLibrary, DataTransfer) {
 
   // must release this before we unload the EP and the allocator is deleted
   device_tensor = Ort::Value();
-
-  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
 }
 
 }  // namespace test
