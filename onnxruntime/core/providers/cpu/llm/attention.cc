@@ -440,13 +440,6 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
 
   auto* tp = context->GetOperatorThreadPool();
 
-  int past_sequence_length = 0;
-  if (parameters.past_sequence_length > 0) {
-    past_sequence_length = parameters.past_sequence_length;
-  } else if (past_key != nullptr && past_value != nullptr) {
-    past_sequence_length = static_cast<int>(past_key->Shape().GetDims()[2]);
-  }
-
   // Total sequence length including that of past state: T = P + L
   const int total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
 
