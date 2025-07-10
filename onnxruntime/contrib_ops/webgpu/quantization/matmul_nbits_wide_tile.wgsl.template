@@ -1,17 +1,52 @@
 
+#param has_zero_points
 #param nbits
+#param tile_m
+#param tile_n
 
+// Only support Block32 at the moment.
 const KAVecSizeForBlock32 = 8u;
 
-// TODO: Fix the hardcode
-const kTileM = 16u;
-const kTileN = 128u;
+const kTileM : u32 = tile_m;
+const kTileN : u32 = tile_n;
 
-// TODO: 1. Supprt zero; 2. Move to matmul_common
+// TODO: Move to matmulnbits_common template
+#if has_zero_points
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
-  const default_zero_point = 8;
-  return output_element_t(default_zero_point);
+  const elements_in_uint32 : u32 = 32u / nbits;
+  const bits : u32 = nbits;
+
+  if (row < r_dim && col < c_dim) {
+    let offset = row * c_dim + col;
+
+    // u32 holds elements_in_uint32 packed nbits.
+    let array_index = offset / elements_in_uint32;
+    let component_index = offset % elements_in_uint32;
+    let packed_value = zero_points[array_index];
+
+    // Extract the nbits component
+    let shift_amount = component_index * bits;
+
+#if nbits == 4
+    let masked_value = (packed_value >> shift_amount) & 0xF;
+#else // nbits == 8
+    let masked_value = (packed_value >> shift_amount) & 0xFF;
+#endif
+
+    return output_element_t(masked_value);
+  }
+
+  return output_element_t();
 }
+#else
+fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+#if nbits == 4
+  return output_element_t(8);
+#else // nbits == 8
+  return output_element_t(128);
+#endif
+}
+#endif
 
 fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_div_4) {
