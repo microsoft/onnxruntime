@@ -72,8 +72,8 @@ Status ModelCompilationOptions::SetOutputModelPath(const std::string& output_mod
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
       const logging::Logger& logger = log_manager->DefaultLogger();
       LOGS(logger, WARNING) << "Output model path length (" << ep_context_gen_options.output_model_file_path.size()
-                            << ") exceeds limit of " << ConfigOptions::kMaxKeyLength << " characters."
-                            << "ORT will still generated the expected output file, but EPs will see an empty "
+                            << ") exceeds limit of " << ConfigOptions::kMaxValueLength << " characters."
+                            << "ORT will still generate the expected output file, but EPs will see an empty "
                             << "output model path in SessionOption's ConfigOptions.";
     }
   }
@@ -119,7 +119,7 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string&
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
       const logging::Logger& logger = log_manager->DefaultLogger();
       LOGS(logger, WARNING) << "output_directory length with model_name length together exceeds limit of "
-                            << ConfigOptions::kMaxKeyLength << " characters."
+                            << ConfigOptions::kMaxValueLength << " characters."
                             << "ORT will still generate the expected output file, but EPs will see an empty "
                             << "output path in SessionOption's ConfigOptions.";
     }
