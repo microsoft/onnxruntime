@@ -46,24 +46,16 @@ class AttentionBase : public OpKernel {
                                bool transpose_output,     // whether to transpose the output from BxNxSxH to BxSxNxH
                                concurrency::ThreadPool* tp) const;
 
-  void ComputeAttentionProbs(T* attention_probs,           // output buffer with size BxNxSxT
-                             const T* Q,                   // Q data. Its size is BxNxSxH
-                             const T* K,                   // k data. Its size is BxNxLxH
-                             T* mask_data,                 // buffer for mask data.
-                             int batch_size,               // batch size of self-attention
-                             int sequence_length,          // sequence length of self-attention (S)
-                             int kv_sequence_length,       // sequence length of cross-attention (L)
-                             int past_sequence_length,     // sequence length of past state
-                             int head_size,                // head size of self-attention
-                             int num_heads,                // number of attention heads
-                             int kv_num_heads,             // number of KV heads
-                             const T* past_key,            // past key only (if not using past state)
-                             T* present_key,               // present key only (if not using present state)
-                             T* output_qk,                 // Q*K output
-                             concurrency::ThreadPool* tp,  // thread pool
-                             float scale,                  // scale factor
-                             float softcap,                // softcap value
-                             attention_helper::QKMatMulOutputMode qk_matmul_output_mode = attention_helper::QKMatMulOutputMode::kQK) const;
+  void ComputeAttentionProbs(T* attention_probs,                                       // output buffer with size BxNxSxT
+                             const T* Q,                                               // Q data. Its size is BxNxSxH
+                             const T* K,                                               // k data. Its size is BxNxLxH
+                             const Tensor* mask_index,                                 // mask_index
+                             const attention_helper::AttentionParameters& parameters,  // attention parameters
+                             const T* past_key,                                        // past key only (if not using past state)
+                             T* present_key,                                           // present key only (if not using present state)
+                             T* output_qk,                                             // Q*K output
+                             concurrency::ThreadPool* tp,
+                             AllocatorPtr allocator) const;
 
   T* ConcatStateChunk(const T* past,
                       const T* chunk,
@@ -71,15 +63,6 @@ class AttentionBase : public OpKernel {
                       size_t past_chunk_length,
                       size_t present_chunk_length,
                       std::ptrdiff_t i) const;
-
-  template <typename U>
-  void PrepareMask(const U* mask_index,
-                   gsl::span<const int64_t> mask_index_dims,
-                   T* mask_data,
-                   bool causal,
-                   int sequence_length,
-                   int kv_sequence_length,
-                   int past_sequence_length) const;
 };
 
 template <typename T>

@@ -31,6 +31,21 @@ namespace onnxruntime {
 
 REGISTER_ONNX_KERNEL_TYPED(float)
 
+template <typename T, typename U>
+void make_copy(T* mask_data, const U* mask_index, size_t size);
+
+template <>
+void make_copy<float, float>(float* mask_data, const float* mask_index, size_t size) {
+  memcpy(mask_data, mask_index, size * sizeof(float));
+}
+
+template <>
+void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
+  for (size_t i = 0; i < size; ++i) {
+    mask_data[i] = mask_index[i] ? 0.0f : std::numeric_limits<float>::lowest();
+  }
+}
+
 template <typename T>
 inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
   MlasComputeSoftmax(score, score, N, D, false, false, tp);
@@ -117,118 +132,176 @@ Status Attention<T>::Compute(OpKernelContext* context) const {
 }
 
 template <typename T>
-void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,        // output buffer with size BxNxSxT
-                                             const T* Q,                // Q data. Its size is BxNxSxH
-                                             const T* K,                // k data. Its size is BxNxLxH
-                                             T* mask_data,              // buffer for mask data.
-                                             int batch_size,            // batch size of self-attention
-                                             int sequence_length,       // sequence length of self-attention (S)
-                                             int kv_sequence_length,    // sequence length of cross-attention (L)
-                                             int past_sequence_length,  // sequence length of past state
-                                             int head_size,             // head size of self-attention
-                                             int num_heads,             // number of attention heads
-                                             int kv_num_heads,          // number of KV heads
-                                             const T* past_key,         // past key only (if not using past state)
-                                             T* present_key,            // present key only (if not using present state)
-                                             T* output_qk,              // Q*K output
-                                             ThreadPool* tp,            // thread pool
-                                             float scale,               // scale factor
-                                             float softcap,             // softcap value
-                                             attention_helper::QKMatMulOutputMode qk_matmul_output_mode) const {
-  const int total_sequence_length = past_sequence_length + kv_sequence_length;              // T = P + L
-  const size_t past_chunk_length = static_cast<size_t>(past_sequence_length) * head_size;   // P x H
-  const size_t q_input_chunk_length = static_cast<size_t>(sequence_length) * head_size;     // S x H
-  const size_t k_input_chunk_length = static_cast<size_t>(kv_sequence_length) * head_size;  // L x H
-  const size_t present_chunk_length = past_chunk_length + k_input_chunk_length;             // T x H
+void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                     // output buffer with size BxNxSxT
+                                             const T* Q,                             // Q data. Its size is BxNxSxH
+                                             const T* K,                             // k data. Its size is BxNxLxH
+                                             const Tensor* mask_index,               // mask
+                                             const AttentionParameters& parameters,  // attention parameters
+                                             const T* past_key,                      // past key only (if not using past state)
+                                             T* present_key,                         // present key only (if not using present state)
+                                             T* output_qk,                           // Q*K output
+                                             ThreadPool* tp,
+                                             AllocatorPtr allocator) const {
+  const int total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;              // T = P + L
+  const size_t past_chunk_length = static_cast<size_t>(parameters.past_sequence_length) * parameters.head_size;   // P x H
+  const size_t q_input_chunk_length = static_cast<size_t>(parameters.q_sequence_length) * parameters.head_size;   // S x H
+  const size_t k_input_chunk_length = static_cast<size_t>(parameters.kv_sequence_length) * parameters.head_size;  // L x H
+  const size_t present_chunk_length = past_chunk_length + k_input_chunk_length;                                   // T x H
 
-  {
-    const int loop_len = batch_size * num_heads;
-    const float alpha = scale;
+  const int loop_len = parameters.batch_size * parameters.q_num_heads;
+  const float alpha = parameters.scale;
 
-    TensorOpCost unit_cost;
-    const ptrdiff_t probs_matrix_size = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length;
-    const ptrdiff_t probs_matrix_bytes = probs_matrix_size * sizeof(T);
-    unit_cost.compute_cycles =
-        static_cast<double>(SafeInt<ptrdiff_t>(2) * head_size * probs_matrix_size);
-    unit_cost.bytes_loaded = static_cast<double>((sequence_length + total_sequence_length) * head_size * sizeof(T));
-    unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
+  TensorOpCost unit_cost;
+  const ptrdiff_t probs_matrix_size = SafeInt<ptrdiff_t>(parameters.q_sequence_length) * total_sequence_length;
+  const ptrdiff_t probs_matrix_bytes = probs_matrix_size * sizeof(T);
+  unit_cost.compute_cycles =
+      static_cast<double>(SafeInt<ptrdiff_t>(2) * parameters.head_size * probs_matrix_size);
+  unit_cost.bytes_loaded = static_cast<double>((parameters.q_sequence_length + total_sequence_length) * parameters.head_size * sizeof(T));
+  unit_cost.bytes_stored = static_cast<double>(probs_matrix_bytes);
 
-    if (mask_data != nullptr) {
-      unit_cost.bytes_loaded += static_cast<double>(probs_matrix_bytes);
-      unit_cost.bytes_stored += static_cast<double>(probs_matrix_bytes);
-    }
-
-    if (present_key) {
-      double bytes_to_copy_key = present_chunk_length * static_cast<double>(sizeof(T));
-      unit_cost.bytes_loaded += bytes_to_copy_key;
-      unit_cost.bytes_stored += bytes_to_copy_key;
-    }
-
-    ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
-      for (std::ptrdiff_t i = begin; i != end; ++i) {
-        const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * probs_matrix_size;
-
-        T* output = attention_probs + output_offset;
-        T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
-
-        if (mask_data != nullptr) {
-          // Broadcast mask data: SxT -> SxT
-          memcpy(output, mask_data, probs_matrix_bytes);
-        }
-
-        // handling GQA
-        std::ptrdiff_t batch_i = i / num_heads;
-        std::ptrdiff_t head_i = i % num_heads;
-        std::ptrdiff_t ki = batch_i * kv_num_heads + head_i % kv_num_heads;
-        const T* k = K + k_input_chunk_length * ki;
-
-        if (nullptr != present_key) {
-          if (head_i < kv_num_heads) {
-            k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
-          } else {
-            k = present_key + ki * present_chunk_length;
-          }
-        }
-
-        // Compute Q*K' + AttentionMask
-        //                     original                 transposed             each iteration
-        // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
-        // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
-        // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
-        math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, sequence_length, total_sequence_length, head_size, alpha,
-                                  Q + q_input_chunk_length * i, k,
-                                  mask_data != nullptr ? 1.0f : 0.0f,
-                                  output, nullptr);
-        if (out_qk != nullptr) {
-          if (qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask) {
-            memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
-          } else if (qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
-            if (mask_data == nullptr) {
-              memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
-            } else {
-              // This can be optimized with vectorized add using MlasAddFloat32x4.
-              for (ptrdiff_t j = 0; j < probs_matrix_size; j++) {
-                out_qk[j] = output[j] - mask_data[j];
-              }
-            }
-          }
-        }
-        if (softcap > 0.0f) {
-          ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), softcap);
-        }
-        if (out_qk != nullptr && qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
-          memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
-        }
-      }
-    });
+  if (present_key) {
+    double bytes_to_copy_key = present_chunk_length * static_cast<double>(sizeof(T));
+    unit_cost.bytes_loaded += bytes_to_copy_key;
+    unit_cost.bytes_stored += bytes_to_copy_key;
   }
 
-  const int N = batch_size * num_heads * sequence_length;
+  // Prepare mask
+  // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0.
+  int mask_batch_size = static_cast<int>(mask_index == nullptr || mask_index->Shape().NumDimensions() < 4 ? 1 : mask_index->Shape().GetDims()[0]);
+  int mask_num_heads = static_cast<int>(mask_index == nullptr || mask_index->Shape().NumDimensions() < 3
+                                            ? 1
+                                            : (mask_index->Shape().NumDimensions() < 4 ? mask_index->Shape().GetDims()[0] : mask_index->Shape().GetDims()[1]));
+
+  T* mask_data = nullptr;
+  bool delete_mask_data = false;
+  bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
+  if (mask_index == nullptr) {
+    // No mask = null mask.
+    if (causal) {
+      size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T);
+      mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
+      memset(mask_data, 0, mask_data_bytes);
+      for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
+        for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
+          mask_data[s_i * total_sequence_length + m_i] = std::numeric_limits<T>::lowest();
+        }
+      }
+      delete_mask_data = true;
+    }
+  } else if (mask_index->IsDataType<bool>() || causal) {
+    // We need a copy.
+    size_t mask_data_bytes = SafeInt<size_t>(mask_index->Shape().Size()) * sizeof(T);
+    mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
+    delete_mask_data = true;
+
+    if (mask_index->IsDataType<bool>()) {
+      // Convert bool mask to 0/1
+      make_copy(mask_data, mask_index->Data<bool>(), mask_index->Shape().Size());
+    } else if (mask_index != nullptr) {
+      // We make a copy because causal is True.
+      make_copy(mask_data, mask_index->Data<T>(), mask_index->Shape().Size());
+    }
+    if (causal) {
+      // This loop could be parallelized.
+      int n_iter = mask_batch_size * mask_num_heads;
+      for (int i = 0; i < n_iter; ++i) {
+        for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
+          for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
+            mask_data[s_i * total_sequence_length + m_i + probs_matrix_size * i] = std::numeric_limits<T>::lowest();
+          }
+        }
+      }
+    }
+  } else {
+    // Nothing to do, no necessary copy.
+    mask_data = const_cast<T*>(mask_index->Data<T>());
+  }
+
+  if (nullptr != present_key && parameters.kv_num_heads != parameters.q_num_heads) {
+    // This is not part of the main loop because it is not needed at every iteration and
+    // we cannot ensure the inner body is executed first before getting used in another iteration.
+    // parameters.batch_size * parameters.q_num_heads
+    for (std::ptrdiff_t batch_i = 0; batch_i < parameters.batch_size; ++batch_i) {
+      for (std::ptrdiff_t head_i = 0; head_i < parameters.kv_num_heads; ++head_i) {
+        std::ptrdiff_t ki = batch_i * parameters.kv_num_heads + head_i;
+        const T* k = K + k_input_chunk_length * ki;
+        ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
+      }
+    }
+  }
+
+  // Main loop
+  ThreadPool::TryParallelFor(tp, loop_len, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
+    for (std::ptrdiff_t i = begin; i != end; ++i) {
+      const ptrdiff_t output_offset = SafeInt<ptrdiff_t>(i) * probs_matrix_size;
+      std::ptrdiff_t batch_i = i / parameters.q_num_heads;
+      std::ptrdiff_t head_i = i % parameters.q_num_heads;
+      const ptrdiff_t mask_data_offset = probs_matrix_size * (head_i % mask_num_heads + (batch_i % mask_batch_size) * mask_num_heads);
+
+      T* output = attention_probs + output_offset;
+      T* out_qk = output_qk == nullptr ? nullptr : output_qk + output_offset;
+      T beta;
+
+      if (mask_data != nullptr && (out_qk == nullptr || parameters.qk_matmul_output_mode != attention_helper::QKMatMulOutputMode::kQK)) {
+        // Broadcast mask data: SxT -> SxT
+        memcpy(output, mask_data + mask_data_offset, probs_matrix_bytes);
+        beta = 1;
+      } else {
+        beta = 0;
+      }
+
+      // handling GQA
+      std::ptrdiff_t ki = batch_i * parameters.kv_num_heads + head_i % parameters.kv_num_heads;
+      const T* k = K + k_input_chunk_length * ki;
+
+      if (nullptr != present_key) {
+        if (parameters.kv_num_heads != parameters.q_num_heads) {
+          // Already done in a loop before this one.
+          k = present_key + ki * present_chunk_length;
+        } else {
+          k = ConcatStateChunk(past_key, k, present_key, past_chunk_length, present_chunk_length, ki);
+        }
+      }
+
+      // Compute Q*K' + AttentionMask
+      //                     original                 transposed             each iteration
+      // A: Q                (B x N x) S x H          (B x N x) S x H        S x H
+      // B: K'               (B x N x) T x H          (B x N x) H x T        H x T
+      // C: attention_probs  (B x N x) S x T          (B x N x) S x T        S x T
+      math::Gemm<T, ThreadPool>(CblasNoTrans, CblasTrans, parameters.q_sequence_length, total_sequence_length, parameters.head_size, alpha,
+                                Q + q_input_chunk_length * i, k,
+                                beta,
+                                output, nullptr);
+      if (out_qk != nullptr &&
+          (parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKMask ||
+           parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK)) {
+        memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
+        if (mask_data != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQK) {
+          // We need to add the bias we could not add because out_qk was requested without the mask.
+          // This can be optimized with vectorized add using MlasAddFloat32x4.
+          for (ptrdiff_t j = 0; j < probs_matrix_size; j++) {
+            // this trick does not work with infinities.
+            output[j] += mask_data[mask_data_offset + j];
+          }
+        }
+      }
+      if (parameters.softcap > 0.0f) {
+        ComputeAttentionSoftcapInplace(output, static_cast<int>(probs_matrix_size), parameters.softcap);
+      }
+      if (out_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
+        memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
+      }
+    }
+  });
+  if (delete_mask_data) {
+    allocator->Free(mask_data);
+  }
+  const int N = parameters.batch_size * parameters.q_num_heads * parameters.q_sequence_length;
   const int D = total_sequence_length;
   ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
 
-  if (output_qk != nullptr && qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
-    memcpy(output_qk, attention_probs, SafeInt<size_t>(batch_size) * num_heads * sequence_length * total_sequence_length * sizeof(T));
+  if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
+    memcpy(output_qk, attention_probs, SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * total_sequence_length * sizeof(T));
   }
 }
 
@@ -288,20 +361,34 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
   unit_cost.bytes_loaded += bytes_to_copy_trans_all;
   unit_cost.bytes_stored += bytes_to_copy_trans_all;
 
+  if (nullptr != present_value && kv_num_heads != num_heads) {
+    // This is not part of the main loop because it is not needed at every iteration and
+    // we cannot ensure the inner body is executed first before getting used in another iteration.
+    // parameters.batch_size * parameters.q_num_heads
+    for (std::ptrdiff_t batch_i = 0; batch_i < batch_size; ++batch_i) {
+      for (std::ptrdiff_t head_i = 0; head_i < kv_num_heads; ++head_i) {
+        std::ptrdiff_t vi = batch_i * kv_num_heads + head_i;
+        const T* v = V + v_input_chunk_length * vi;
+        ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, vi);
+      }
+    }
+  }
+
   ThreadPool::TryParallelFor(
       tp, SafeInt<ptrdiff_t>(batch_size) * num_heads, unit_cost, [&](std::ptrdiff_t begin, std::ptrdiff_t end) {
         for (std::ptrdiff_t i = begin; i != end; ++i) {
           // handling GQA
           std::ptrdiff_t batch_i = i / num_heads;
           std::ptrdiff_t head_i = i % num_heads;
-          std::ptrdiff_t ki = batch_i * kv_num_heads + head_i % kv_num_heads;
-          const T* v = V + v_input_chunk_length * ki;
+          std::ptrdiff_t vi = batch_i * kv_num_heads + head_i % kv_num_heads;
+          const T* v = V + v_input_chunk_length * vi;
 
           if (nullptr != present_value) {
-            if (head_i < kv_num_heads) {
-              v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, ki);
+            if (kv_num_heads != num_heads) {
+              // Already done in a loop before this one.
+              v = present_value + vi * present_chunk_length;
             } else {
-              v = present_value + ki * present_chunk_length;
+              v = ConcatStateChunk(past_value, v, present_value, past_chunk_length, present_chunk_length, vi);
             }
           }
 
@@ -363,30 +450,6 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   // Total sequence length including that of past state: T = P + L
   const int total_sequence_length = parameters.past_sequence_length + parameters.kv_sequence_length;
 
-  // Merge causal mask with padding mask, and convert values from 0/1 to -inf/0.
-  void* mask_data = nullptr;
-  bool causal = parameters.is_causal && parameters.q_sequence_length > 1;
-  if (mask_index != nullptr || causal) {
-    size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T);
-    mask_data = allocator->Alloc(mask_data_bytes);
-    memset(mask_data, 0, mask_data_bytes);
-  }
-
-  BufferUniquePtr mask_data_buffer(mask_data, BufferDeleter(allocator));
-  if (mask_data != nullptr) {
-    if (mask_index == nullptr) {
-      this->PrepareMask(static_cast<T*>(nullptr), gsl::span<const int64_t>{}, static_cast<T*>(mask_data),
-                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
-    } else if (mask_index->IsDataType<bool>()) {
-      this->PrepareMask(mask_index->Data<bool>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
-                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
-    } else {
-      // Convert float mask to 0/1
-      this->PrepareMask(mask_index->Data<T>(), mask_index->Shape().GetDims(), static_cast<T*>(mask_data),
-                        causal, parameters.q_sequence_length, parameters.kv_sequence_length, parameters.past_sequence_length);
-    }
-  }
-
   const T* past_key_data = past_key != nullptr ? past_key->Data<T>() : nullptr;
   T* present_key_data = present_key != nullptr ? present_key->MutableData<T>() : nullptr;
   const T* past_value_data = past_value != nullptr ? past_value->Data<T>() : nullptr;
@@ -400,21 +463,13 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
   this->ComputeAttentionProbs(static_cast<T*>(attention_probs),
                               Q,
                               K,
-                              static_cast<T*>(mask_data),
-                              parameters.batch_size,
-                              parameters.q_sequence_length,
-                              parameters.kv_sequence_length,
-                              parameters.past_sequence_length,
-                              parameters.head_size == 0 ? parameters.v_head_size : parameters.head_size,
-                              parameters.q_num_heads,
-                              parameters.kv_num_heads,
+                              mask_index,
+                              parameters,
                               past_key_data,
                               present_key_data,
                               output_qk_data,
                               tp,
-                              parameters.scale,
-                              parameters.softcap,
-                              parameters.qk_matmul_output_mode);
+                              allocator);
 
   void* out_tmp_data = nullptr;
   if (parameters.transpose_output) {
@@ -442,55 +497,6 @@ Status AttentionBase<T>::ApplyAttention(OpKernelContext* context,
                                 tp);
 
   return Status::OK();
-}
-
-template <typename T, typename U>
-void make_copy(T* mask_data, const U* mask_index, size_t size);
-
-template <>
-void make_copy<float, float>(float* mask_data, const float* mask_index, size_t size) {
-  memcpy(mask_data, mask_index, size * sizeof(float));
-}
-
-template <>
-void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t size) {
-  for (size_t i = 0; i < size; ++i) {
-    mask_data[i] = mask_index[i] ? 0.0f : std::numeric_limits<float>::lowest();
-  }
-}
-
-template <typename T>
-template <typename U>
-void AttentionBase<T>::PrepareMask(const U* mask_index,
-                                   gsl::span<const int64_t> mask_index_dims,
-                                   T* mask_data,
-                                   bool causal,
-                                   int sequence_length,
-                                   int kv_sequence_length,
-                                   int past_sequence_length) const {
-  const int all_sequence_length = past_sequence_length + kv_sequence_length;
-
-  // mask_data has been filled with 0
-  // size is batch_size, q_sequence_length, total_sequence_length
-  T* p_mask = mask_data;
-
-  if (nullptr != mask_index && mask_index_dims.size() != 2) {
-    ORT_NOT_IMPLEMENTED("Only 2D mask in attention cpu kernel is currently supported.");
-  }
-
-  // The first instructions define the 2D mask.
-  if (nullptr != mask_index) {
-    make_copy(p_mask, mask_index, sequence_length * all_sequence_length);
-  } else {
-    memset(p_mask, 0, sequence_length * all_sequence_length * sizeof(T));
-  }
-  if (causal) {
-    for (int s_i = 0; s_i < sequence_length; s_i++) {
-      for (int m_i = past_sequence_length + s_i + 1; m_i < all_sequence_length; m_i++) {
-        p_mask[s_i * all_sequence_length + m_i] = std::numeric_limits<T>::lowest();
-      }
-    }
-  }
 }
 
 }  // namespace onnxruntime
