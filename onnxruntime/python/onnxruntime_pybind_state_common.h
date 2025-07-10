@@ -40,13 +40,13 @@ struct OrtStatus {
 #define BACKEND_PROC "CPU"
 #endif
 
-#if USE_DNNL
+#ifdef USE_DNNL
 #define BACKEND_DNNL "-DNNL"
 #else
 #define BACKEND_DNNL ""
 #endif
 
-#if USE_MIGRAPHX
+#ifdef USE_MIGRAPHX
 #define BACKEND_MIGRAPHX "-MIGRAPHX"
 #else
 #define BACKEND_MIGRAPHX ""
