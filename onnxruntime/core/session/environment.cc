@@ -164,8 +164,8 @@ Status Environment::UnregisterAllocator(const OrtMemoryInfo& mem_info) {
 
 Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool error_if_not_found) {
   auto it = FindExistingAllocator(shared_allocators_, mem_info);
-
-  if (error_if_not_found && it == shared_allocators_.end()) {
+  const bool found_shared_allocator = it != shared_allocators_.end();
+  if (!found_shared_allocator && error_if_not_found) {
     return Status(ONNXRUNTIME, INVALID_ARGUMENT, "No allocator for this device has been registered for sharing.");
   }
 
@@ -184,7 +184,9 @@ Status Environment::UnregisterAllocatorImpl(const OrtMemoryInfo& mem_info, bool 
     arena_ort_allocators_.erase(it3);
   }
 
-  shared_allocators_.erase(it);
+  if (found_shared_allocator) {
+    shared_allocators_.erase(it);
+  }
 
   return Status::OK();
 }

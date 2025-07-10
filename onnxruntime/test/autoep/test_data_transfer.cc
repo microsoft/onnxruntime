@@ -24,10 +24,8 @@ namespace test {
 
 TEST(OrtEpLibrary, DataTransfer) {
   const OrtApi& c_api = Ort::GetApi();
-  auto env = std::make_unique<Ort::Env>();
-
   const OrtEpDevice* ep_device;
-  Utils::RegisterAndGetExampleEp(*env, ep_device);
+  Utils::RegisterAndGetExampleEp(*ort_env, ep_device);
 
   const OrtMemoryInfo* device_memory_info = c_api.EpDevice_MemoryInfo(ep_device, OrtDeviceMemoryType_DEFAULT);
 
@@ -46,14 +44,14 @@ TEST(OrtEpLibrary, DataTransfer) {
   // it has a different vendor to the default ORT CPU allocator so we can copy between them even though both are
   // really CPU based.
   OrtAllocator* allocator = nullptr;
-  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*env, device_memory_info, &allocator));
+  ASSERT_ORTSTATUS_OK(c_api.GetSharedAllocator(*ort_env, device_memory_info, &allocator));
   ASSERT_NE(allocator, nullptr);
   Ort::Value device_tensor = Ort::Value::CreateTensor<float>(allocator, shape.data(), shape.size());
 
   std::vector<const OrtValue*> src_tensor_ptrs{cpu_tensor};
   std::vector<OrtValue*> dst_tensor_ptrs{device_tensor};
 
-  ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), nullptr,
+  ASSERT_ORTSTATUS_OK(c_api.CopyTensors(*ort_env, src_tensor_ptrs.data(), dst_tensor_ptrs.data(), nullptr,
                                         src_tensor_ptrs.size()));
 
   const float* src_data = nullptr;
@@ -71,6 +69,11 @@ TEST(OrtEpLibrary, DataTransfer) {
   auto dst_span = gsl::make_span(dst_data, num_elements);
 
   EXPECT_THAT(src_span, ::testing::ContainerEq(dst_span));
+
+  // must release this before we unload the EP and the allocator is deleted
+  device_tensor = Ort::Value();
+
+  ort_env->UnregisterExecutionProviderLibrary(Utils::example_ep_info.registration_name.c_str());
 }
 
 }  // namespace test

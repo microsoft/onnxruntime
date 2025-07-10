@@ -203,7 +203,7 @@ class Environment {
   // IAllocatorImplWrappingOrtAllocator which takes ownership of the OrtAllocator and is in shared_allocators_.
   //
   // Alternatively we can disable wrapping an EP's allocator with a BFCArena and say the EP should provide the arena
-  // implementation directly. They're free to copy BFCArena as it came from TF originally. Or we could provide a 
+  // implementation directly. They're free to copy BFCArena as it came from TF originally. Or we could provide a
   // cut-and-paste BFCArena implementation that works using the EP API that can be included in the EP source.
   std::unordered_map<const OrtMemoryInfo*, std::unique_ptr<OrtAllocatorImplWrappingIAllocator>> arena_ort_allocators_;
 

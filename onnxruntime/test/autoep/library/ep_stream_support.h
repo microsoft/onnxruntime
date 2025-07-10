@@ -15,18 +15,16 @@ class StreamImpl : public OrtSyncStreamImpl, public ApiPtrs {
       : ApiPtrs(apis), ep_{ep} {
     ort_version_supported = ORT_API_VERSION;
     CreateNotification = CreateNotificationImpl;
+    GetHandle = GetHandleImpl;
     Flush = FlushImpl;
     OnSessionRunEnd = OnSessionRunEndImpl;
     Release = ReleaseImpl;
   }
 
-  void* GetHandle() {
-    return handle_;
-  }
-
  private:
   static OrtStatus* ORT_API_CALL CreateNotificationImpl(_In_ void* this_ptr,
                                                         _Outptr_ OrtSyncNotificationImpl** sync_notification) noexcept;
+  static void* ORT_API_CALL GetHandleImpl(_In_ void* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL FlushImpl(_In_ void* this_ptr) noexcept;
   static OrtStatus* ORT_API_CALL OnSessionRunEndImpl(_In_ void* this_ptr) noexcept;
   static void ORT_API_CALL ReleaseImpl(_In_ void* this_ptr) noexcept;

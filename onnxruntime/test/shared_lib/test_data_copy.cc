@@ -190,6 +190,8 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
 
   run_test(/*use_streams*/ true);
   run_test(/*use_streams*/ false);
+
+  api->UnregisterExecutionProviderLibrary(env, "ORT CUDA");
 }
 #endif  // USE_CUDA
 

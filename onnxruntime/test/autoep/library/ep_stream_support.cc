@@ -16,6 +16,12 @@ OrtStatus* ORT_API_CALL StreamImpl::CreateNotificationImpl(_In_ void* this_ptr,
 }
 
 /*static*/
+void* ORT_API_CALL StreamImpl::GetHandleImpl(_In_ void* this_ptr) noexcept {
+  auto& impl = *static_cast<StreamImpl*>(this_ptr);
+  return impl.handle_;
+}
+
+/*static*/
 OrtStatus* ORT_API_CALL StreamImpl::FlushImpl(_In_ void* /*this_ptr*/) noexcept {
   return nullptr;
 }
@@ -49,7 +55,7 @@ OrtStatus* ORT_API_CALL NotificationImpl::ActivateImpl(_In_ void* this_ptr) noex
 /*static*/
 OrtStatus* ORT_API_CALL NotificationImpl::WaitOnDeviceImpl(_In_ void* this_ptr, _In_ OrtSyncStream* stream) noexcept {
   auto& impl = *static_cast<NotificationImpl*>(this_ptr);
-  void* handle = impl.ort_api.SyncStream_GetHandle(stream);  // cast to
+  void* handle = impl.ort_api.SyncStream_GetHandle(stream);
   static_cast<void>(handle);
 
   // Setup the event or similar that will be activated on notification.
