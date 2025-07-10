@@ -121,7 +121,7 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string&
       const logging::Logger& logger = log_manager->DefaultLogger();
       LOGS(logger, WARNING) << "output_directory length with model_name length together exceeds limit of "
                             << ConfigOptions::kMaxKeyLength << " characters."
-                            << "ORT will still generated the expected output file, but EPs will see an empty "
+                            << "ORT will still generate the expected output file, but EPs will see an empty "
                             << "output path in SessionOption's ConfigOptions.";
     }
   }
