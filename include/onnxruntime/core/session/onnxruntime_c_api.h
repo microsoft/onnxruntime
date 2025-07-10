@@ -6011,8 +6011,6 @@ struct OrtApi {
   /** \brief Returns the execution provider type (name) that this node is assigned to run on.
    *         Returns NULL if the node has not been assigned to any execution provider yet.
    *
-   * Can return NULL if the OrtNode was created without an owning graph.
-   *
    * \param[in] node The OrtNode instance.
    * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
    *
