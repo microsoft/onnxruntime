@@ -1,32 +1,30 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
-// #pragma once
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #include <algorithm>
-// #include <cctype>
-// #include <functional>
-// #include <numeric>
-// #include <string>
-// #include <string_view>
-// #include <type_traits>
-// #include <utility>
-// #include <vector>
-// #include <unordered_set>
+#pragma once
 
-// #include <gsl/gsl>
+#include <algorithm>
+#include <cctype>
+#include <functional>
+#include <gsl/gsl>
+#include <numeric>
+#include <string>
+#include <string_view>
+#include <type_traits>
+#include <unordered_set>
+#include <utility>
+#include <vector>
 
-// #include "nlohmann/json.hpp"
-// #include "QnnInterface.h"
-// #include "QnnTypes.h"
+#include "nlohmann/json.hpp"
+#include "QnnInterface.h"
+#include "QnnTypes.h"
 
-// #include "core/providers/qnn-abi/ort_api.h"
-
-// namespace onnxruntime {
-// namespace qnn {
+namespace onnxruntime {
+namespace qnn {
 // class QnnOpConfigWrapper;
 // class QnnModelWrapper;
 
-// namespace utils {
+namespace utils {
 // /**
 //  * Returns a lowercase version of the input string.
 //  * /param str The string to lowercase.
@@ -43,7 +41,7 @@
 //   return str;
 // }
 
-// size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
+size_t GetElementSizeByType(const Qnn_DataType_t& data_type);
 
 // size_t GetElementSizeByType(ONNXTensorElementDataType elem_type);
 
@@ -78,7 +76,7 @@
 
 // size_t GetElementSizeByType(ONNX_NAMESPACE::TensorProto_DataType onnx_type);
 
-// size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_data_type);
 
 // bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor);
 
@@ -292,8 +290,8 @@
 //                                Qnn_ErrorHandle_t qnn_error_handle);
 
 // // Gets verbose error message associated with QNN error handle value.
-// std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-//                                       Qnn_ErrorHandle_t qnn_error_handle);
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle);
 
 // // NCHW shape to channel last
 // template <typename T>
@@ -395,6 +393,6 @@
 //  */
 // Status GetPermToLastAxis(uint32_t axis, uint32_t rank, std::vector<uint32_t>& perm);
 
-// }  // namespace utils
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace utils
+}  // namespace qnn
+}  // namespace onnxruntime

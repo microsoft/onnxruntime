@@ -24,7 +24,7 @@
 #include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
 
-// #include "core/providers/qnn-abi/builder/qnn_context_mem_handle_manager.h"
+#include "core/providers/qnn-abi/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 
 namespace onnxruntime {
@@ -202,9 +202,9 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   // Gets an existing QNN mem handle or registers a new one.
   // `mem_handle` is set to the QNN mem handle.
-  // Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
-  //                                      const Qnn_Tensor_t& qnn_tensor,
-  //                                      Qnn_MemHandle_t& mem_handle);
+  Status GetOrRegisterContextMemHandle(Qnn_ContextHandle_t context, void* shared_memory_address,
+                                       const Qnn_Tensor_t& qnn_tensor,
+                                       Qnn_MemHandle_t& mem_handle);
 
   Status ParseLoraConfig(std::string lora_config);
 
@@ -332,7 +332,7 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
 
   struct QnnContextHandleRecord {
     UniqueQnnContextHandle context_handle;
-    // std::unique_ptr<QnnContextMemHandleManager> mem_handles;
+    std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
 
   Status LoadOpPackage() {

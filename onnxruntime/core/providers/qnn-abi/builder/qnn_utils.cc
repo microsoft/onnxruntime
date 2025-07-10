@@ -1,51 +1,53 @@
-// // Copyright (c) Microsoft Corporation. All rights reserved.
-// // Licensed under the MIT License.
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
 
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
-// #include <algorithm>
-// #include <functional>
-// #include <limits>
-// #include <map>
-// #include <numeric>
-// #include <string>
-// #include <utility>
-// #include <vector>
+#include <algorithm>
+#include <functional>
+#include <limits>
+#include <map>
+#include <numeric>
+#include <string>
+#include <utility>
+#include <vector>
 
-// #include "core/providers/qnn-abi/ort_api.h"
-// #include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "nlohmann/json.hpp"
+
+#include "core/common/common.h"
+#include "core/providers/qnn-abi/builder/qnn_def.h"
 // #include "core/providers/qnn-abi/builder/qnn_model_wrapper.h"
-// #include "nlohmann/json.hpp"
 
-// namespace onnxruntime {
-// namespace qnn {
-// namespace utils {
+namespace onnxruntime {
+namespace qnn {
+namespace utils {
 
-// size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
-//   const static std::unordered_map<Qnn_DataType_t, size_t> data_type_to_size = {
-//       {QNN_DATATYPE_INT_8, 1},
-//       {QNN_DATATYPE_INT_16, 2},
-//       {QNN_DATATYPE_INT_32, 4},
-//       {QNN_DATATYPE_INT_64, 8},
-//       {QNN_DATATYPE_UINT_8, 1},
-//       {QNN_DATATYPE_UINT_16, 2},
-//       {QNN_DATATYPE_UINT_32, 4},
-//       {QNN_DATATYPE_UINT_64, 8},
-//       {QNN_DATATYPE_FLOAT_16, 2},
-//       {QNN_DATATYPE_FLOAT_32, 4},
-//       {QNN_DATATYPE_BOOL_8, 1},
-//       {QNN_DATATYPE_SFIXED_POINT_8, 1},
-//       {QNN_DATATYPE_SFIXED_POINT_16, 2},
-//       {QNN_DATATYPE_SFIXED_POINT_32, 4},
-//       {QNN_DATATYPE_UFIXED_POINT_8, 1},
-//       {QNN_DATATYPE_UFIXED_POINT_16, 2},
-//       {QNN_DATATYPE_UFIXED_POINT_32, 4},
-//       {QNN_DATATYPE_UNDEFINED, 1}};
+size_t GetElementSizeByType(const Qnn_DataType_t& data_type) {
+  const static std::unordered_map<Qnn_DataType_t, size_t> data_type_to_size = {
+      {QNN_DATATYPE_INT_8, 1},
+      {QNN_DATATYPE_INT_16, 2},
+      {QNN_DATATYPE_INT_32, 4},
+      {QNN_DATATYPE_INT_64, 8},
+      {QNN_DATATYPE_UINT_8, 1},
+      {QNN_DATATYPE_UINT_16, 2},
+      {QNN_DATATYPE_UINT_32, 4},
+      {QNN_DATATYPE_UINT_64, 8},
+      {QNN_DATATYPE_FLOAT_16, 2},
+      {QNN_DATATYPE_FLOAT_32, 4},
+      {QNN_DATATYPE_BOOL_8, 1},
+      {QNN_DATATYPE_SFIXED_POINT_8, 1},
+      {QNN_DATATYPE_SFIXED_POINT_16, 2},
+      {QNN_DATATYPE_SFIXED_POINT_32, 4},
+      {QNN_DATATYPE_UFIXED_POINT_8, 1},
+      {QNN_DATATYPE_UFIXED_POINT_16, 2},
+      {QNN_DATATYPE_UFIXED_POINT_32, 4},
+      {QNN_DATATYPE_UNDEFINED, 1}};
 
-//   auto pos = data_type_to_size.find(data_type);
-//   ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
-//   return pos->second;
-// }
+  auto pos = data_type_to_size.find(data_type);
+  ORT_ENFORCE(pos != data_type_to_size.end(), "Unknown QNN data type", data_type);
+  return pos->second;
+}
+
 // size_t GetElementSizeByType(ONNXTensorElementDataType elem_type) {
 //   const static std::unordered_map<ONNXTensorElementDataType, size_t> elem_type_to_size = {
 //       {ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4, sizeof(Int4x2)},
@@ -104,11 +106,11 @@
 //   // Unreachable
 // }
 
-// size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
-//   ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
-//   SafeInt<size_t> data_length = GetElementSizeByType(element_type);
-//   return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
-// }
+size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType_t element_type) {
+  ORT_ENFORCE(!shape.empty(), "Empty shape not allowed.");  // TODO can we just treat empty shape as a scalar?
+  SafeInt<size_t> data_length = GetElementSizeByType(element_type);
+  return std::accumulate(shape.begin(), shape.end(), data_length, std::multiplies<>{});
+}
 
 // bool QnnTensorHasDynamicShape(const Qnn_Tensor_t& tensor) {
 //   const uint8_t* is_dynamic_dimensions = GetQnnTensorIsDynamicDimensions(tensor);
@@ -1045,17 +1047,17 @@
 //   return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
 // }
 
-// std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-//                                       Qnn_ErrorHandle_t qnn_error_handle) {
-//   const char* error_msg = nullptr;
-//   if (qnn_interface.errorGetVerboseMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
-//     auto free_error_msg = gsl::finally([&qnn_interface, error_msg] {
-//       qnn_interface.errorFreeVerboseMessage(error_msg);
-//     });
-//     return error_msg;
-//   }
-//   return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
-// }
+std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                      Qnn_ErrorHandle_t qnn_error_handle) {
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetVerboseMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    auto free_error_msg = gsl::finally([&qnn_interface, error_msg] {
+      qnn_interface.errorFreeVerboseMessage(error_msg);
+    });
+    return error_msg;
+  }
+  return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
+}
 
 // TensorShape GetTensorProtoShape(const ONNX_NAMESPACE::TensorShapeProto& tensor_shape_proto) {
 //   const auto& onnx_dims = tensor_shape_proto.dim();
@@ -1314,6 +1316,6 @@
 //   return Status::OK();
 // }
 
-// }  // namespace utils
-// }  // namespace qnn
-// }  // namespace onnxruntime
+}  // namespace utils
+}  // namespace qnn
+}  // namespace onnxruntime

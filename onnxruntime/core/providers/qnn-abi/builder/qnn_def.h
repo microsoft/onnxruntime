@@ -2,13 +2,17 @@
 // Licensed under the MIT License.
 
 #pragma once
-#include "QnnInterface.h"
-#include <mutex>
-#include <vector>
-#include <string>
-#include <memory>
+
 #include <climits>
+#include <memory>
+#include <mutex>
+#include <string>
 #include <type_traits>
+#include <vector>
+
+#include "QnnInterface.h"
+
+#include "core/common/common.h"
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
 

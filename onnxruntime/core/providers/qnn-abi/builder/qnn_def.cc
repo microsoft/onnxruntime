@@ -1,13 +1,12 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
+#include "core/providers/qnn-abi/builder/qnn_def.h"
+
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <ostream>
-
-#include "core/providers/qnn-abi/builder/qnn_def.h"
-#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
