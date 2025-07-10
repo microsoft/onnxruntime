@@ -98,6 +98,37 @@ Status ModelCompilationOptions::SetOutputModelBuffer(onnxruntime::AllocatorPtr a
   return Status::OK();
 }
 
+Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string& output_directory,
+                                                              const std::string& model_name) {
+  if (output_directory.empty() || model_name.empty()) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir or model_name is empty.");
+  }
+
+  if (!output_directory.empty()) {
+    std::filesystem::path output_dir_path(output_directory);
+    if (output_dir_path.has_filename() && output_dir_path.extension() == "") {
+      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
+    }
+  }
+  
+  std::string ctx_model_path(output_directory + "/" + model_name);
+  if (ctx_model_path.size() <= ConfigOptions::kMaxValueLength) {
+    ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
+                                                                             ctx_model_path.c_str()));
+  } else {
+    logging::LoggingManager* log_manager = env_.GetLoggingManager();
+    if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
+      const logging::Logger& logger = log_manager->DefaultLogger();
+      LOGS(logger, WARNING) << "output_directory length with model_name length together exceeds limit of "
+                            << ConfigOptions::kMaxKeyLength << " characters."
+                            << "ORT will still generated the expected output file, but EPs will see an empty "
+                            << "output path in SessionOption's ConfigOptions.";
+    }
+  }
+  
+  return Status::OK();
+}
+
 Status ModelCompilationOptions::SetEpContextEmbedMode(bool embed_ep_context_in_model) {
   ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(
       kOrtSessionOptionEpContextEmbedMode, embed_ep_context_in_model ? "1" : "0"));
@@ -146,7 +177,7 @@ Status ModelCompilationOptions::ResetOutputModelSettings() {
   ep_context_gen_options.output_model_buffer_ptr = nullptr;
   ep_context_gen_options.output_model_buffer_size_ptr = nullptr;
   ep_context_gen_options.output_model_buffer_allocator = nullptr;
-  return session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, "");
+  return Status::OK();
 }
 
 Status ModelCompilationOptions::CheckInputModelSettings() const {
