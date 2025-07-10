@@ -1159,7 +1159,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   if (backend_setup_completed_) {
     LOGS(logger, VERBOSE) << "Backend setup already!";
 
-#if QNN_API_VERSION_MAJOR == 2 && (QNN_API_VERSION_MINOR >= 26)
+
     if (vtcm_backup_buffer_sharing_enabled_) {
       LOGS(logger, VERBOSE) << "Mapping contexts to new EP main context nodes";
 
@@ -1173,7 +1173,6 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
         }
       }
     }
-#endif
     return Status::OK();
   }
 
