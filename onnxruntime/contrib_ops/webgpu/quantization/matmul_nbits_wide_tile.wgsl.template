@@ -12,11 +12,11 @@ const kTileN : u32 = tile_n;
 
 // TODO: Move to matmulnbits_common template
 #if has_zero_points
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t {
 #if nbits == 4
-    const elements_in_uint32 = 8u;
-#else // nbits == 8
-    const elements_in_uint32 = 4u;
+  const elements_in_uint32 = 8u;
+#else  // nbits == 8
+  const elements_in_uint32 = 4u;
 #endif
 
   const bits : u32 = nbits;
@@ -34,7 +34,7 @@ fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_
 
 #if nbits == 4
     let masked_value = (packed_value >> shift_amount) & 0xF;
-#else // nbits == 8
+#else  // nbits == 8
     let masked_value = (packed_value >> shift_amount) & 0xFF;
 #endif
 
@@ -44,10 +44,10 @@ fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_
   return output_element_t();
 }
 #else
-fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t {
 #if nbits == 4
   return output_element_t(8);
-#else // nbits == 8
+#else  // nbits == 8
   return output_element_t(128);
 #endif
 }
@@ -69,7 +69,7 @@ fn load_scale(row : u32, block_idx : u32) -> output_element_t {
   return output_element_t();
 }
 
-fn mm_write_y(batch : u32, row : u32, col : u32, value : output_element_t) {
+fn write_output(batch : u32, row : u32, col : u32, value : output_element_t) {
   if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.N) {
     let offset = batch * uniforms.M * uniforms.N + row * uniforms.N + col;
     output[offset] = value;
@@ -86,66 +86,69 @@ fn load_b(row : u32, block_idx : u32) -> vec4<input_b_element_t> {
 }
 
 // packed8xU4
-fn dequantize(packed_data : u32, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
-  let lower: vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
-  let upper: vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
+fn dequantize(packed_data : u32,
+              zero_point : output_element_t,
+              scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower : vec4<u32> = unpack4xU8(packed_data & 0x0F0F0F0Fu);
+  let upper : vec4<u32> = unpack4xU8((packed_data >> 4u) & 0x0F0F0F0Fu);
 
-  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
-      zero_point, zero_point, zero_point, zero_point,
-      zero_point, zero_point, zero_point, zero_point
-  );
+  let zero_matrix : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                        zero_point, zero_point, zero_point, zero_point,
+                        zero_point, zero_point, zero_point, zero_point);
 
-  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
-      output_element_t(lower[0]), output_element_t(upper[0]),
-      output_element_t(lower[1]), output_element_t(upper[1]),
-      output_element_t(lower[2]), output_element_t(upper[2]),
-      output_element_t(lower[3]), output_element_t(upper[3])
-  );
+  var dequantized_values : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                               output_element_t(lower[0]), output_element_t(upper[0]),
+                               output_element_t(lower[1]), output_element_t(upper[1]),
+                               output_element_t(lower[2]), output_element_t(upper[2]),
+                               output_element_t(lower[3]), output_element_t(upper[3]));
 
   dequantized_values = (dequantized_values - zero_matrix) * scale;
   return dequantized_values;
 }
-#else // nbits == 8
+#else  // nbits == 8
 fn load_b(row : u32, block_idx : u32) -> array<vec2<u32>, 4> {
   if (row < uniforms.N) {
-    let offset =  2 * block_idx;
-    let b_data_0 = select(input_b_value_t(), input_b[row * uniforms.K_of_b + offset], offset < uniforms.K_of_b);
-    let b_data_1 = select(input_b_value_t(), input_b[row * uniforms.K_of_b + offset + 1], offset + 1 < uniforms.K_of_b);
+    let offset = 2 * block_idx;
+    let b_data_0 = select(input_b_value_t(),
+                          input_b[row * uniforms.K_of_b + offset],
+                          offset < uniforms.K_of_b);
+    let b_data_1 = select(input_b_value_t(),
+                          input_b[row * uniforms.K_of_b + offset + 1],
+                          offset + 1 < uniforms.K_of_b);
 
     let b_data = array<vec2<u32>, 4>(
-      vec2<u32>(b_data_0[0], b_data_0[1]),
-      vec2<u32>(b_data_0[2], b_data_0[3]),
-      vec2<u32>(b_data_1[0], b_data_1[1]),
-      vec2<u32>(b_data_1[2], b_data_1[3])
-    );
+        vec2<u32>(b_data_0[0], b_data_0[1]),
+        vec2<u32>(b_data_0[2], b_data_0[3]),
+        vec2<u32>(b_data_1[0], b_data_1[1]),
+        vec2<u32>(b_data_1[2], b_data_1[3]));
     return b_data;
   }
   return array<vec2<u32>, 4>();
 }
 
 // 2x packed4xU8
-fn dequantize(packed_data : vec2<u32>, zero_point : output_element_t, scale : output_element_t) -> mat2x4<output_element_t> {
-  let lower: vec4<u32> = unpack4xU8(packed_data[0]);
-  let upper: vec4<u32> = unpack4xU8(packed_data[1]);
+fn dequantize(packed_data : vec2<u32>,
+              zero_point : output_element_t,
+              scale : output_element_t) -> mat2x4<output_element_t> {
+  let lower : vec4<u32> = unpack4xU8(packed_data[0]);
+  let upper : vec4<u32> = unpack4xU8(packed_data[1]);
 
-  let zero_matrix: mat2x4<output_element_t> = mat2x4<output_element_t>(
-      zero_point, zero_point, zero_point, zero_point,
-      zero_point, zero_point, zero_point, zero_point
-  );
+  let zero_matrix : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                        zero_point, zero_point, zero_point, zero_point,
+                        zero_point, zero_point, zero_point, zero_point);
 
-  var dequantized_values: mat2x4<output_element_t> = mat2x4<output_element_t>(
-      output_element_t(lower[0]), output_element_t(lower[1]),
-      output_element_t(lower[2]), output_element_t(lower[3]),
-      output_element_t(upper[0]), output_element_t(upper[1]),
-      output_element_t(upper[2]), output_element_t(upper[3])
-  );
+  var dequantized_values : mat2x4<output_element_t> = mat2x4<output_element_t>(
+                               output_element_t(lower[0]), output_element_t(lower[1]),
+                               output_element_t(lower[2]), output_element_t(lower[3]),
+                               output_element_t(upper[0]), output_element_t(upper[1]),
+                               output_element_t(upper[2]), output_element_t(upper[3]));
 
   dequantized_values = (dequantized_values - zero_matrix) * scale;
   return dequantized_values;
 }
 #endif
 
-var<workgroup> a_data_tile: array<array<input_a_value_t, KAVecSizeForBlock32>, kTileM>;
+var<workgroup> a_data_tile : array<array<input_a_value_t, KAVecSizeForBlock32>, kTileM>;
 
 $MAIN {
   let batch = workgroup_idx / (uniforms.num_M_tile * uniforms.num_N_tile);
@@ -159,12 +162,14 @@ $MAIN {
     // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
     let a_row_idx = local_idx / KAVecSizeForBlock32;
     let a_col_idx = local_idx % KAVecSizeForBlock32;
-    a_data_tile[a_row_idx][a_col_idx] = load_a(batch, row + a_row_idx, block_idx * KAVecSizeForBlock32 + a_col_idx);
+    a_data_tile[a_row_idx][a_col_idx] = load_a(batch,
+                                               row + a_row_idx,
+                                               block_idx * KAVecSizeForBlock32 + a_col_idx);
     workgroupBarrier();
 
     let b_row = col + local_idx;
     let scale = load_scale(b_row, block_idx);
-    let zero_point = mm_read_zero(b_row, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
+    let zero_point = load_zero(b_row, block_idx, uniforms.N, uniforms.zero_blocks_per_col);
     let b_data = load_b(b_row, block_idx);
 
     for (var b_idx = 0u; b_idx < 4u; b_idx++) {
@@ -182,7 +187,6 @@ $MAIN {
 
   // Write the results.
   for (var m_idx = 0u; m_idx < kTileM; m_idx++) {
-    mm_write_y(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
+    write_output(batch, row + m_idx, col + local_idx, output_element_t(results[m_idx]));
   }
-} // MAIN
-
+}  // MAIN
