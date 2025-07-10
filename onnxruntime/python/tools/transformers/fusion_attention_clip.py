@@ -320,7 +320,7 @@ class FusionAttentionClip(FusionAttention):
             output=attention_last_node.output[0],
             add_qk_str=add_qk,
             scale=None,
-            causal=(add_mask is not None),
+            causal=False,
         )
         if new_node is None:
             logger.debug("fuse_attention: failed to create fused node")
