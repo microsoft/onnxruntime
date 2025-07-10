@@ -1355,7 +1355,6 @@ TEST(CastOpTest, UInt4x2ToFloat8E5M2) {
   TestCastOp<UInt4x2, Float8E5M2>(gsl::make_span(uint4x2_input), gsl::make_span(expected_uint_float8e5m2_output), shape);
 }
 
-
 #endif
 
 }  // namespace test
