@@ -3,6 +3,12 @@
 #include <atomic>
 #include <string>
 
+#ifdef _WIN32
+#define WIN32_LEAN_AND_MEAN
+#include <Windows.h>
+#include <shlwapi.h>
+#endif
+
 #include "core/providers/shared_library/provider_api.h"
 #include "core/providers/migraphx/migraphx_provider_factory.h"
 #include "migraphx_execution_provider.h"
@@ -139,6 +145,19 @@ struct MIGraphX_Provider : Provider {
   }
 
   void Initialize() override {
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    if(GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                              GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                          static_cast<LPCSTR>(static_cast<void*>(InitializeRegistry)),
+                          &module) != 0) {
+      char buffer[MAX_PATH];
+      if(GetModuleFileName(module, buffer, sizeof(buffer)) != 0) {
+        PathRemoveFileSpec(buffer);
+        SetDllDirectory(buffer);
+      }
+    }
+#endif
     InitializeRegistry();
   }
 
