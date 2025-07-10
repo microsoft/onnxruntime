@@ -251,14 +251,31 @@ struct EpGraph : public OrtGraph {
 
  public:
   EpGraph(const GraphViewer& graph_viewer, PrivateTag);
+  EpGraph(std::unique_ptr<GraphViewer> graph_viewer,
+          std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+          PrivateTag);
 
   /// <summary>
   /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// This call is used when creating an EpGraph from a GraphViewer instance. The GraphViewer instance is not onwed by this EpGraph.
   /// </summary>
   /// <param name="graph_viewer"></param>
   /// <param name="result"></param>
   /// <returns></returns>
   static Status Create(const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
+  /// <summary>
+  /// Creates an instance of EpGraph, which wraps a GraphViewer.
+  /// This call is used when creating an EpGraph from a subset of nodes in another EpGraph.
+  /// In this case, due to the implementation of OrtApis::Graph_GetGraphView, the new EpGraph instance
+  /// must take ownership of both the GraphViewer and IndexedSubGraph.
+  /// </summary>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status Create(std::unique_ptr<GraphViewer> graph_viewer,
+                       std::unique_ptr<IndexedSubGraph> indexed_sub_graph,
+                       /*out*/ std::unique_ptr<EpGraph>& result);
 
   // Defines ToExternal() and ToInternal() functions to convert between OrtGraph and EpGraph.
   DEFINE_ORT_GRAPH_IR_TO_EXTERNAL_INTERNAL_FUNCS(OrtGraph, EpGraph, OrtGraphIrApi::kEpApi)
@@ -331,8 +348,21 @@ struct EpGraph : public OrtGraph {
   const OrtValue* GetInitializerValue(std::string_view name) const;
 
  private:
+  /// <summary>
+  /// The real implementation of creating an EpGraph instance.
+  /// Please use one of the above 'Create' functions that internally call this function, and avoid calling this function directly.
+  /// </summary>
+  /// <param name="ep_graph"></param>
+  /// <param name="graph_viewer"></param>
+  /// <param name="result"></param>
+  /// <returns></returns>
+  static Status CreateImpl(std::unique_ptr<EpGraph> ep_graph, const GraphViewer& graph_viewer, /*out*/ std::unique_ptr<EpGraph>& result);
+
   const GraphViewer& graph_viewer_;
   const EpNode* parent_node_ = nullptr;
+
+  std::unique_ptr<GraphViewer> owned_graph_viewer_ = nullptr;
+  std::unique_ptr<IndexedSubGraph> owned_indexed_sub_graph_ = nullptr;
 
   std::vector<std::unique_ptr<EpNode>> nodes_;
   IndexToEpNodeMap index_to_ep_node_;

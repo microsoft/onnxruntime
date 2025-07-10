@@ -5748,6 +5748,24 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
+  /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
+   *
+   * Note:
+   * The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
+   * the same underlying graph.
+   *
+   * \param[in] src_graph The source OrtGraph instance.
+   * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
+   * \param[in] num_nodes Number of nodes.
+   * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetGraphView, _In_ const OrtGraph* src_graph, _In_ const OrtNode** nodes,
+                  _In_ size_t num_nodes, _Outptr_ OrtGraph** dst_graph);
+
   /// @}
 
   /// \name OrtNode
