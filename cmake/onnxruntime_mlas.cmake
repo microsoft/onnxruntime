@@ -450,6 +450,7 @@ else()
             ${MLAS_SRC_DIR}/qgemm_kernel_ummla.cpp
             ${MLAS_SRC_DIR}/sbgemm_kernel_neon.cpp
             ${MLAS_SRC_DIR}/sconv_kernel_neon.cpp
+            ${MLAS_SRC_DIR}/spool_kernel_neon.cpp
             ${MLAS_SRC_DIR}/cast_kernel_neon.cpp
             ${MLAS_SRC_DIR}/hqnbitgemm_kernel_neon_fp16.cpp
             ${MLAS_SRC_DIR}/rotary_embedding_kernel_neon_fp16.cpp

@@ -1093,7 +1093,7 @@ struct MLAS_NCHWC_CONV_DEPTHWISE_ALGORITHM : MLAS_NCHWC_CONV_ALGORITHM
 
 struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
 {
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64)
+#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !defined(MLAS_TARGET_ARM64)
     static MLAS_POOL_FLOAT_KERNEL* const PoolKernels[];
 #endif
 
@@ -1131,7 +1131,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
         const size_t DilatedInputWidthBytes = BlockSize * DilationHeight * InputWidth * sizeof(float);
         const size_t InputStrideBytes = DilatedInputWidthBytes - KernelWidth * DilationWidthBytes;
 
-#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64)
+#if defined(MLAS_TARGET_AMD64) || defined(MLAS_TARGET_LARCH64) || defined(MLAS_TARGET_ARM64)
         MLAS_POOL_FLOAT_KERNEL* Kernel = GetMlasPlatform().PoolFloatKernel[WorkBlock->PoolingKind];
 #else
         MLAS_POOL_FLOAT_KERNEL* Kernel = PoolKernels[WorkBlock->PoolingKind];
@@ -1197,7 +1197,7 @@ struct MLAS_NCHWC_POOL_ALGORITHM : MLAS_NCHWC_NN_ALGORITHM
     }
 };
 
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64)
+#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64) && !defined(MLAS_TARGET_ARM64)
 
 MLAS_POOL_FLOAT_KERNEL* const MLAS_NCHWC_POOL_ALGORITHM::PoolKernels[] =
 {
@@ -1787,10 +1787,6 @@ MlasConvPointwiseFloatKernel(
     MLAS_UNREFERENCED_PARAMETER(Bias);
     MLAS_UNREFERENCED_PARAMETER(Flags);
 }
-
-#endif
-
-#if !defined(MLAS_TARGET_AMD64) && !defined(MLAS_TARGET_LARCH64)
 
 void
 MLASCALL
