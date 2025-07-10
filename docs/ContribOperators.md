@@ -2545,6 +2545,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>left_window_size for local attention (like Mistral). Default value is -1 meaning unused.</dd>
 <dt><tt>num_heads</tt> : int (required)</dt>
 <dd>Number of attention heads for q</dd>
+<dt><tt>qk_output</tt> : int</dt>
+<dd>Output values of QK matrix multiplication before (0) or after (1) softmax normalization. Default value is -1 (don't output).</dd>
 <dt><tt>rotary_interleaved</tt> : int</dt>
 <dd>Rotate using interleaved pattern. Default value is 0 (False).</dd>
 <dt><tt>scale</tt> : float</dt>
@@ -2584,7 +2586,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
 </dl>
 
-#### Outputs
+#### Outputs (3 - 4)
 
 <dl>
 <dt><tt>output</tt> : T</dt>
@@ -2593,6 +2595,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>present state key with support for format BNSH. When past_key uses same tensor as present_key(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
 <dt><tt>present_value</tt> : T</dt>
 <dd>present state value with support for format BNSH. When past_value uses same tensor as present_value(k-v buffer), it is of length max_sequence_length... otherwise of length past_sequence_length +kv_sequence_length.</dd>
+<dt><tt>output_qk</tt> (optional) : T</dt>
+<dd>Values of QK matrix multiplication, either before or after SoftMax noramlization</dd>
 </dl>
 
 #### Type Constraints
