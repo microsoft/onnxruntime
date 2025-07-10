@@ -3,6 +3,7 @@
 
 #include "mlas.h"
 #include "bench_util.h"
+#include "core/util/thread_utils.h"
 
 #include <stdexcept>
 #include <numeric>
@@ -138,6 +139,114 @@ void SCONV_NCHW(benchmark::State& state, const char* /*dummy*/) {
   }
 }
 
+MLAS_THREADPOOL* GetMlasThreadPool(void) {
+  static auto threadpool = std::make_unique<onnxruntime::concurrency::ThreadPool>(
+      &onnxruntime::Env::Default(), onnxruntime::ThreadOptions(), nullptr, 4, true);
+  return threadpool.get();
+}
+
+void SCONV_NCHW_THREADED(benchmark::State& state, const char* /*dummy*/) {
+
+  MLAS_THREADPOOL* tp = GetMlasThreadPool();
+
+  const int64_t rank = state.range(0);                       // Rank
+  const int64_t batch_size = state.range(1);                 // N
+  const int64_t groups = state.range(2);                     // G
+  const int64_t input_channels_per_group = state.range(3);   // Cpg
+  const int64_t output_channels_per_group = state.range(4);  // Fpg
+
+  if (rank <= 0) throw std::invalid_argument("Kernel rank must greater than 0!");
+  if (batch_size <= 0) throw std::invalid_argument("Batch size must greater than 0!");
+  if (groups <= 0) throw std::invalid_argument("Group count must greater than 0!");
+  if (input_channels_per_group <= 0) throw std::invalid_argument("input_channels_per_group must greater than 0!");
+  if (output_channels_per_group <= 0) throw std::invalid_argument("output_channels_per_group must greater than 0!");
+
+  size_t arg_position = 5;
+  const auto input_shape = BenchArgsVector(state, arg_position, rank);
+  const auto kernel_shape = BenchArgsVector(state, arg_position, rank);
+  const auto paddings = BenchArgsVector(state, arg_position, rank * 2);
+  const auto strides = BenchArgsVector(state, arg_position, rank);
+  const auto dilations = BenchArgsVector(state, arg_position, rank);
+
+  // do not check the size of each vector as they are forced from args.
+  if (std::any_of(input_shape.begin(), input_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all input image dim must > 0");
+  }
+
+  if (std::any_of(kernel_shape.begin(), kernel_shape.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all kernel dim must > 0");
+  }
+
+  if (std::any_of(strides.begin(), strides.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all strides dim must > 0");
+  }
+
+  if (std::any_of(dilations.begin(), dilations.end(), [](const int64_t& dim) { return dim <= 0; })) {
+    throw std::invalid_argument("all dilations dim must > 0");
+  }
+
+  const int64_t GC = groups * input_channels_per_group;
+  const int64_t GF = groups * output_channels_per_group;
+  std::vector<int64_t> x_shape = {batch_size, GC};
+  x_shape.insert(x_shape.end(), input_shape.begin(), input_shape.end());
+  std::vector<int64_t> f_shape = {GF, input_channels_per_group};
+  f_shape.insert(f_shape.end(), kernel_shape.begin(), kernel_shape.end());
+
+  std::vector<int64_t> output_shape((size_t)rank);
+  for (int64_t i = 0; i < rank; ++i) {
+    auto km = 1 + dilations[i] * (kernel_shape[i] - 1);
+    output_shape[i] = (paddings[i] + paddings[i + rank] + input_shape[i] - km) / strides[i] + 1;
+  }
+  std::vector<int64_t> y_shape = {batch_size, GF};
+  y_shape.insert(y_shape.end(), output_shape.begin(), output_shape.end());
+
+  MLAS_ACTIVATION activation;
+  activation.ActivationKind = MlasIdentityActivation;
+  MLAS_CONV_PARAMETERS Parameters;
+  size_t WorkingBufferSize = 0;
+  MlasConvPrepare(&Parameters,
+                  static_cast<size_t>(rank),
+                  static_cast<size_t>(batch_size),
+                  static_cast<size_t>(groups),
+                  static_cast<size_t>(input_channels_per_group),
+                  input_shape.data(),
+                  kernel_shape.data(),
+                  dilations.data(),
+                  paddings.data(),
+                  strides.data(),
+                  output_shape.data(),
+                  static_cast<size_t>(output_channels_per_group),
+                  &activation,
+                  &WorkingBufferSize,
+                  0.0f,
+                  tp);
+
+  auto X = RandomVectorUniform(x_shape, -2.0, 2.0);
+  auto F = RandomVectorUniform(f_shape, -1.0, 1.0);
+  int64_t y_size = std::accumulate(y_shape.begin(), y_shape.end(), 1LL, std::multiplies<int64_t>());
+  std::vector<float> Y(static_cast<size_t>(y_size));
+  std::vector<float> working_buffer(WorkingBufferSize);
+
+  // warm up first round.
+  MlasConv(&Parameters,
+           X.data(),
+           F.data(),
+           nullptr,
+           working_buffer.data(),
+           Y.data(),
+           tp);
+
+  for (auto _ : state) {
+    MlasConv(&Parameters,
+             X.data(),
+             F.data(),
+             nullptr,
+             working_buffer.data(),
+             Y.data(),
+             tp);
+  }
+}
+
 static void ResNet50(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
 
@@ -221,6 +330,7 @@ static void TeamsModel(benchmark::internal::Benchmark* b) {
 }
 
 BENCHMARK_CAPTURE(SCONV_NCHW, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
+BENCHMARK_CAPTURE(SCONV_NCHW_THREADED, TeamsModel, "")->Apply(TeamsModel)->UseRealTime();
 
 static void General_Conv2d(benchmark::internal::Benchmark* b) {
   b->ArgNames(ArgNamesForConv(2));
