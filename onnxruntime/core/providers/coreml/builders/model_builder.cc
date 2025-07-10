@@ -789,7 +789,7 @@ Status ModelBuilder::RegisterInitializers() {
     if (has_external_data) {
       tensor_proto_inline.emplace();
       ORT_RETURN_IF_ERROR(utils::TensorProtoWithExternalDataToTensorProto(*tensor_proto, graph_viewer_.ModelPath(),
-                                               *tensor_proto_inline);
+                                                                          *tensor_proto_inline));
     }
 
     const ONNX_NAMESPACE::TensorProto& tensor =
