@@ -109,7 +109,7 @@ class DmlEpFactory : public EpFactoryInternalImpl {
                                                                    &device, nullptr, ep_options.get(),
                                                                    &ep_devices[num_ep_devices]);
 
-        if (device_memory_infos.size() < device_id) {
+        if (device_memory_infos.size() < device_id + 1) {
           device_memory_infos.resize(device_id + 1);
           device_allocators.resize(device_id + 1);
         }

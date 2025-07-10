@@ -33,7 +33,18 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
   OrtEnv* env = *ort_env;
   const OrtApi* api = OrtGetApiBase()->GetApi(ORT_API_VERSION);
 
+#ifdef _WIN32
+  std::string cuda_lib = "onnxruntime_providers_cuda.dll";
+#else
+  std::string cuda_lib = "onnxruntime_providers_cuda.so";
+#endif
+
+  if (!std::filesystem::exists(cuda_lib)) {
+    GTEST_SKIP("CUDA library was not found");
+  }
+
   // register the provider bridge based CUDA EP so allocator and data transfer is available
+  // not all the CIs have the provider library in the expected place so we allow for that
   ASSERT_ORTSTATUS_OK(api->RegisterExecutionProviderLibrary(env, "ORT CUDA", ORT_TSTR("onnxruntime_providers_cuda")));
 
   const OrtEpDevice* cuda_device = nullptr;
@@ -68,7 +79,7 @@ TEST(DataCopyTest, CopyInputsToCudaDevice) {
       options.AddConfigEntry("ep.cudaexecutionprovider.has_user_compute_stream", "1");
     }
 
-    Ort::Session session(*ort_env, ORT_TSTR("testdata/mnist.opset12.onnx"), options);
+    Ort::Session session(*ort_env, ORT_TSTR("testdata/mnist.onnx"), options);
 
     size_t num_inputs = session.GetInputCount();
 
