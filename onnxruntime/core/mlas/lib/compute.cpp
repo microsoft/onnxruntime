@@ -74,6 +74,7 @@ struct MLAS_SOFTMAX_WORK_BLOCK {
     ptrdiff_t ThreadCountN;
     bool LogSoftmax;
     bool SmoothSoftmax;
+    float Sink;
     const T* Input;
     T* Output;
     size_t N;
@@ -850,6 +851,7 @@ Return Value:
     const size_t D = WorkBlock->D;
     const bool LogSoftmax = WorkBlock->LogSoftmax;
     const bool SmoothSoftmax = WorkBlock->SmoothSoftmax;
+    const float Sink = WorkBlock->Sink;
 
     const float* Input = WorkBlock->Input + n * D;
     float* Output = WorkBlock->Output + n * D;
@@ -880,10 +882,11 @@ Return Value:
 #else
         float Maximum = MlasReduceMaximumF32Kernel(Input, D);
 #endif
-        float NegativeMaximum = -Maximum;
-        if (SmoothSoftmax && NegativeMaximum > 0.0f) {
-            NegativeMaximum = 0.0f;
+        if (SmoothSoftmax && Sink > Maximum) {
+            Maximum = Sink;
         }
+
+        float NegativeMaximum = -Maximum;
 
         //
         // Compute the exponential function for each element of the row (save to Temp if provided) and
@@ -897,7 +900,7 @@ Return Value:
 #endif
 
         if (SmoothSoftmax) {
-            Accumulation += expf(NegativeMaximum);
+            Accumulation += expf(Sink + NegativeMaximum);
         }
 
         if (LogSoftmax) {
@@ -1014,6 +1017,7 @@ MlasComputeSoftmax(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
 )
 /*++
@@ -1039,6 +1043,8 @@ Arguments:
 
     SmoothSoftmax - Supplies true if a smooth factor is used in softmax operation.
 
+    Sink - Supplies the smooth factor to use in the softmax operation.
+
     ThreadPool - Supplies the thread pool object to use, else nullptr if the
         base library threading support should be used.
 
@@ -1060,6 +1066,7 @@ Return Value:
     WorkBlock.Output = Output;
     WorkBlock.N = N;
     WorkBlock.D = D;
+    WorkBlock.Sink = Sink;
 
     //
     // Compute the number of target threads given the complexity of the softmax
@@ -1097,6 +1104,7 @@ MlasComputeSoftmax<float>(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
 );
 
@@ -1110,6 +1118,7 @@ MlasComputeSoftmax<MLAS_FP16>(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
 );
 
