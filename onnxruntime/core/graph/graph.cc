@@ -4282,7 +4282,7 @@ ONNX_NAMESPACE::GraphProto Graph::ToGraphProto() const {
         ORT_THROW_IF_ERROR(utils::GetExternalDataInfo(initializer, ignored, location, file_offset, tensor_byte_size));
 
         output.clear_data_location();
-        output.mutable_external_data()->Clear();
+        output.clear_external_data();
 
         // file_offset is address
         if (utils::HasString(initializer)) {
@@ -4398,6 +4398,23 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
       // Dense tensors larger than the threshold are added to the external file.
       TensorProto* output_proto = output_graph_proto.add_initializer();
 
+      if (utils::HasString(initializer)) {
+        if (utils::HasExternalDataInMemory(initializer)) {
+          OrtValue ort_value;
+          const bool has_ortvalue = GetOrtValueInitializer(initializer.name(), ort_value, /*check_outer_scope */ false);
+          ORT_RETURN_IF_NOT(has_ortvalue,
+                            "Inconsistent graph: Expected to find OrtValue for initializer referring to memory: ",
+                            initializer.name());
+          *output_proto = utils::TensorToTensorProto(ort_value.Get<Tensor>(),
+                                                     initializer.name(), /* use_tensor_buffer */ false);
+        } else {
+          // If the initializer is not in memory, copy the original TensorProto.
+          *output_proto = initializer;
+        }
+        // We do not externalize string tensors.
+        continue;
+      }
+
       std::vector<uint8_t> raw_data;
       ORT_RETURN_IF_ERROR(utils::UnpackInitializerData(initializer, model_path, raw_data));
       size_t tensor_bytes_size = raw_data.size();
@@ -4407,10 +4424,10 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
         // Data with size above the threshold is written into the new external initializer file
         // Data with size below the threshold should be kept inside the new model file
         // instead of leaving it in the old external initializer file for the old Onnx file
-        if (initializer.data_location() == TensorProto_DataLocation_EXTERNAL) {
-          TensorShape shape(initializer.dims());
+        if (utils::HasExternalData(initializer)) {
           output_proto->set_raw_data(raw_data.data(), raw_data.size());
           output_proto->clear_data_location();
+          output_proto->clear_external_data();
         }
         if (process_prepacks) {
           // These pre-packs will reside in memory
@@ -4439,9 +4456,7 @@ Status Graph::AddExternalInitializersToGraphProtoImpl(
 
       output_proto->set_name(initializer.name());
       output_proto->set_data_type(initializer.data_type());
-      for (int i = 0; i != initializer.dims_size(); ++i) {
-        output_proto->add_dims(initializer.dims(i));
-      }
+      output_proto->mutable_dims()->CopyFrom(initializer.dims());
       output_proto->set_doc_string(initializer.doc_string());
 
       external_offset = SafeInt<int64_t>(external_offset) + tensor_bytes_size;
