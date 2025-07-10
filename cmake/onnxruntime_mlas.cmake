@@ -306,7 +306,7 @@ function(setup_kleidiai)
     else()
       message(FATAL_ERROR "Expected KleidiAI .lib not found: ${KLEIDIAI_LIB}")
     endif()
-  endif(
+  endif()
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
