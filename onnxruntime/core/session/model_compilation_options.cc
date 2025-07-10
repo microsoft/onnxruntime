@@ -104,11 +104,9 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string&
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir or model_name is empty.");
   }
 
-  if (!output_directory.empty()) {
-    std::filesystem::path output_dir_path(output_directory);
-    if (output_dir_path.has_filename() && output_dir_path.extension() == "") {
-      return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
-    }
+  std::filesystem::path output_dir_path(output_directory);
+  if (output_dir_path.has_filename() && output_dir_path.extension() == "") {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
   }
   
   std::string ctx_model_path(output_directory + "/" + model_name);
