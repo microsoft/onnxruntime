@@ -59,6 +59,11 @@ static const std::string kEpContextEmbedMode = "ORT_EP_CONTEXT_EMBED_MODE";
 static const std::string kEpContextComputeCapabilityEnable = "ORT_EP_CONTEXT_COMPUTE_CAPABILITY_ENABLE";
 static const std::string kEngineCachePrefix = "ORT_TENSORRT_CACHE_PREFIX";
 static const std::string kOpTypesToExclude = "ORT_TENSORRT_OP_TYPES_TO_EXCLUDE";
+static const std::string kDlaLocalDramSize = "ORT_TENSORRT_DLA_LOCAL_DRAM_SIZE";
+static const std::string kDlaGlobalDramSize = "ORT_TENSORRT_DLA_GLOBAL_DRAM_SIZE";
+static const std::string kDlaManagedSramSize = "ORT_TENSORRT_DLA_MANAGED_SRAM_SIZE";
+static const std::string kTacticDramSize = "ORT_TENSORRT_TACTIC_DRAM_SIZE";
+static const std::string kTacticSharedMemorySize = "ORT_TENSORRT_TACTIC_SHARED_MEMORY_SIZE";
 // Old env variable for backward compatibility
 static const std::string kEngineCachePath = "ORT_TENSORRT_ENGINE_CACHE_PATH";
 }  // namespace tensorrt_env_vars
@@ -205,6 +210,11 @@ struct TensorrtFuncState {
   std::string cache_suffix;
   bool engine_hw_compatible = false;
   std::vector<nvinfer1::PreviewFeature> preview_features;
+  size_t dla_local_dram_size{0};
+  size_t dla_global_dram_size{0};
+  size_t dla_managed_sram_size{0};
+  size_t tactic_dram_size{0};
+  size_t tactic_shared_memory_size{0};
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -340,6 +350,11 @@ class TensorrtExecutionProvider : public IExecutionProvider {
   bool engine_hw_compatible_ = false;
   std::string op_types_to_exclude_;
   std::vector<nvinfer1::PreviewFeature> preview_features_;
+  size_t dla_local_dram_size_{0};
+  size_t dla_global_dram_size_{0};
+  size_t dla_managed_sram_size_{0};
+  size_t tactic_dram_size_{0};
+  size_t tactic_shared_memory_size_{0};
 
   // The format is as for TENSORRT_VERSION: (MAJOR * 100 + MINOR) * 100 + PATCH
   int32_t trt_version_;
