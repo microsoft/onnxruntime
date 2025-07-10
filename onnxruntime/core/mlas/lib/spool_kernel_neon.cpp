@@ -95,6 +95,129 @@ void
     }
 }
 
+// Helper function for average pooling kernels
+static void
+MlasPoolAverageFloatKernelNeonImpl(
+    const float* Input,
+    float* Output,
+    size_t StrideWidth,
+    size_t DilationWidth,
+    size_t ActualKernelSize,
+    size_t KernelHeight,
+    size_t KernelWidth,
+    const float* InputBase,
+    size_t InputWidth,
+    size_t DilatedInputWidth,
+    size_t OutputCountLeftPad,
+    size_t OutputCount,
+    size_t OutputCountRightPad,
+    bool ExcludePad
+)
+{
+    const size_t BlockSize = MlasNchwcGetBlockSize();
+    const size_t StrideWidthElements = StrideWidth / sizeof(float);
+    const size_t DilationWidthElements = DilationWidth / sizeof(float);
+    const size_t InputWidthElements = InputWidth / sizeof(float);
+    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
+
+    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
+
+    // Initialize zero vector using MLAS intrinsics
+    const MLAS_FLOAT32X4 ZeroVector = MlasZeroFloat32x4();
+
+    // For include pad, prepare kernel size vector
+    MLAS_FLOAT32X4 KernelSizeVector;
+    if (!ExcludePad) {
+        const float KernelSize = static_cast<float>(ActualKernelSize);
+        KernelSizeVector = MlasBroadcastFloat32x4(KernelSize);
+    }
+
+    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
+        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
+
+        // Initialize sum vector using MLAS intrinsics
+        MLAS_FLOAT32X4 SumVector = ZeroVector;
+
+        // Track valid count for each element (only needed for exclude pad)
+        std::vector<uint32_t> valid_count;
+        if (ExcludePad) {
+            valid_count.resize(BlockSize, 0);
+        }
+
+        for (size_t kh = 0; kh < KernelHeight; kh++) {
+            for (size_t kw = 0; kw < KernelWidth; kw++) {
+                const float* input_ptr = Input + output_idx * StrideWidthElements +
+                                         kh * DilatedInputWidthElements + kw * DilationWidthElements;
+
+                const float* row_start = InputBase + kh * DilatedInputWidthElements;
+                const float* row_end = row_start + InputWidthElements;
+
+                MLAS_FLOAT32X4 InputVector;
+
+                // Determine if we can do a fast vector load
+                bool can_fast_load = ExcludePad ? (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) : (is_main_region || (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end));
+
+                if (can_fast_load) {
+                    // All elements are within bounds (or in main region for include pad)
+                    InputVector = MlasLoadFloat32x4(input_ptr);
+
+                    if (ExcludePad) {
+                        // All elements are valid for exclude pad
+                        for (size_t i = 0; i < BlockSize; i++) {
+                            valid_count[i]++;
+                        }
+                    }
+                } else {
+                    // Some elements might be out of bounds, handle individually
+                    std::vector<float> values(BlockSize);
+                    for (size_t i = 0; i < BlockSize; i++) {
+                        const float* element_ptr = input_ptr + i;
+
+                        bool is_valid = ExcludePad ? (element_ptr >= row_start && element_ptr < row_end) : (is_main_region || (element_ptr >= row_start && element_ptr < row_end));
+
+                        if (is_valid) {
+                            values[i] = *element_ptr;
+                            if (ExcludePad) {
+                                valid_count[i]++;
+                            }
+                        } else {
+                            values[i] = 0.0f;  // Padding values are treated as 0
+                        }
+                    }
+                    InputVector = MlasLoadFloat32x4(values.data());
+                }
+
+                // Add to sum using MLAS intrinsics
+                SumVector = MlasAddFloat32x4(SumVector, InputVector);
+            }
+        }
+
+        // Compute final result based on pooling type
+        MLAS_FLOAT32X4 ResultVector;
+        if (ExcludePad) {
+            // Exclude pad: divide by valid count for each element
+            std::vector<float> results(BlockSize);
+            MlasStoreFloat32x4(results.data(), SumVector);
+
+            for (size_t i = 0; i < BlockSize; i++) {
+                if (valid_count[i] > 0) {
+                    results[i] = results[i] / static_cast<float>(valid_count[i]);
+                } else {
+                    results[i] = 0.0f;
+                }
+            }
+
+            ResultVector = MlasLoadFloat32x4(results.data());
+        } else {
+            // Include pad: divide by total kernel size
+            ResultVector = MlasDivideFloat32x4(SumVector, KernelSizeVector);
+        }
+
+        // Store the results using MLAS intrinsics
+        MlasStoreFloat32x4(&Output[output_idx * BlockSize], ResultVector);
+    }
+}
+
 void
     MLASCALL
     MlasPoolAverageExcludePadFloatKernelNeon(
@@ -114,80 +237,14 @@ void
         size_t OutputCountRightPad
     )
 {
-    MLAS_UNREFERENCED_PARAMETER(ActualKernelSize);
     MLAS_UNREFERENCED_PARAMETER(InputStride);
 
-    const size_t BlockSize = MlasNchwcGetBlockSize();
-    const size_t StrideWidthElements = StrideWidth / sizeof(float);
-    const size_t DilationWidthElements = DilationWidth / sizeof(float);
-    const size_t InputWidthElements = InputWidth / sizeof(float);
-    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
-
-    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
-
-    // Initialize zero vector using MLAS intrinsics
-    const MLAS_FLOAT32X4 ZeroVector = MlasZeroFloat32x4();
-
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        // Initialize sum vector using MLAS intrinsics
-        MLAS_FLOAT32X4 SumVector = ZeroVector;
-
-        // Track valid count for each element (allocate dynamically for variable block size)
-        std::vector<uint32_t> valid_count(BlockSize, 0);
-
-        for (size_t kh = 0; kh < KernelHeight; kh++) {
-            for (size_t kw = 0; kw < KernelWidth; kw++) {
-                const float* input_ptr = Input + output_idx * StrideWidthElements +
-                                         kh * DilatedInputWidthElements + kw * DilationWidthElements;
-
-                const float* row_start = InputBase + kh * DilatedInputWidthElements;
-                const float* row_end = row_start + InputWidthElements;
-
-                MLAS_FLOAT32X4 InputVector;
-
-                if (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) {
-                    // All elements are within bounds, load directly using MLAS intrinsics
-                    InputVector = MlasLoadFloat32x4(input_ptr);
-                    // All elements are valid
-                    for (size_t i = 0; i < BlockSize; i++) {
-                        valid_count[i]++;
-                    }
-                } else {
-                    // Some elements might be out of bounds, handle individually
-                    std::vector<float> values(BlockSize);
-                    for (size_t i = 0; i < BlockSize; i++) {
-                        const float* element_ptr = input_ptr + i;
-                        if (element_ptr >= row_start && element_ptr < row_end) {
-                            values[i] = *element_ptr;
-                            valid_count[i]++;
-                        } else {
-                            values[i] = 0.0f;
-                        }
-                    }
-                    InputVector = MlasLoadFloat32x4(values.data());
-                }
-
-                // Add to sum using MLAS intrinsics
-                SumVector = MlasAddFloat32x4(SumVector, InputVector);
-            }
-        }
-
-        // Compute average by dividing by valid count for each element
-        std::vector<float> results(BlockSize);
-        MlasStoreFloat32x4(results.data(), SumVector);
-
-        for (size_t i = 0; i < BlockSize; i++) {
-            if (valid_count[i] > 0) {
-                results[i] = results[i] / static_cast<float>(valid_count[i]);
-            } else {
-                results[i] = 0.0f;
-            }
-        }
-
-        // Store the results using MLAS intrinsics
-        MLAS_FLOAT32X4 ResultVector = MlasLoadFloat32x4(results.data());
-        MlasStoreFloat32x4(&Output[output_idx * BlockSize], ResultVector);
-    }
+    MlasPoolAverageFloatKernelNeonImpl(
+        Input, Output, StrideWidth, DilationWidth, ActualKernelSize,
+        KernelHeight, KernelWidth, InputBase, InputWidth, DilatedInputWidth,
+        OutputCountLeftPad, OutputCount, OutputCountRightPad,
+        true  // ExcludePad = true
+    );
 }
 
 void
@@ -211,65 +268,12 @@ void
 {
     MLAS_UNREFERENCED_PARAMETER(InputStride);
 
-    const size_t BlockSize = MlasNchwcGetBlockSize();
-    const size_t StrideWidthElements = StrideWidth / sizeof(float);
-    const size_t DilationWidthElements = DilationWidth / sizeof(float);
-    const size_t InputWidthElements = InputWidth / sizeof(float);
-    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
-
-    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
-
-    // Use ActualKernelSize as provided by the caller
-    const float KernelSize = static_cast<float>(ActualKernelSize);
-
-    // Initialize vectors using MLAS intrinsics
-    const MLAS_FLOAT32X4 ZeroVector = MlasZeroFloat32x4();
-    const MLAS_FLOAT32X4 KernelSizeVector = MlasBroadcastFloat32x4(KernelSize);
-
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
-
-        // Initialize sum vector using MLAS intrinsics
-        MLAS_FLOAT32X4 SumVector = ZeroVector;
-
-        for (size_t kh = 0; kh < KernelHeight; kh++) {
-            for (size_t kw = 0; kw < KernelWidth; kw++) {
-                const float* input_ptr = Input + output_idx * StrideWidthElements +
-                                         kh * DilatedInputWidthElements + kw * DilationWidthElements;
-
-                const float* row_start = InputBase + kh * DilatedInputWidthElements;
-                const float* row_end = row_start + InputWidthElements;
-
-                MLAS_FLOAT32X4 InputVector;
-
-                if (is_main_region || (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end)) {
-                    // All elements are within bounds or in main region, load directly using MLAS intrinsics
-                    InputVector = MlasLoadFloat32x4(input_ptr);
-                } else {
-                    // Some elements might be out of bounds, handle individually
-                    std::vector<float> values(BlockSize);
-                    for (size_t i = 0; i < BlockSize; i++) {
-                        const float* element_ptr = input_ptr + i;
-                        if (is_main_region || (element_ptr >= row_start && element_ptr < row_end)) {
-                            values[i] = *element_ptr;
-                        } else {
-                            values[i] = 0.0f;  // Padding values are treated as 0
-                        }
-                    }
-                    InputVector = MlasLoadFloat32x4(values.data());
-                }
-
-                // Add to sum using MLAS intrinsics
-                SumVector = MlasAddFloat32x4(SumVector, InputVector);
-            }
-        }
-
-        // Compute average by dividing by kernel size using MLAS intrinsics
-        MLAS_FLOAT32X4 ResultVector = MlasDivideFloat32x4(SumVector, KernelSizeVector);
-
-        // Store the results using MLAS intrinsics
-        MlasStoreFloat32x4(&Output[output_idx * BlockSize], ResultVector);
-    }
+    MlasPoolAverageFloatKernelNeonImpl(
+        Input, Output, StrideWidth, DilationWidth, ActualKernelSize,
+        KernelHeight, KernelWidth, InputBase, InputWidth, DilatedInputWidth,
+        OutputCountLeftPad, OutputCount, OutputCountRightPad,
+        false  // ExcludePad = false
+    );
 }
 
 #endif  // __aarch64__ || _M_ARM64
