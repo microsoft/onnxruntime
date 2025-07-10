@@ -18,10 +18,6 @@ steps:
         echo $(QnnSDKRootDir)
     displayName: 'Print QnnSDKRootDir after downloading QNN SDK'
 
-  - powershell: |
-      azcopy.exe cp --recursive 'https://lotusscus.blob.core.windows.net/models/qnnsdk/Qualcomm AI Hub Proprietary License.pdf' $(QnnSDKRootDir)
-    displayName: 'Download Qualcomm AI Hub license'
-
   - task: CmdLine@2
     displayName: 'Print contents of QNN SDK'
     inputs:
