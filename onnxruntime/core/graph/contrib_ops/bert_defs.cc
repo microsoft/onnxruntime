@@ -1242,7 +1242,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
                 "T")
         .Output(3,
                 "output_qk",
-                "Values of QK matrix multiplication, either before or after SoftMax noramlization",
+                "Values of QK matrix multiplication, either before or after softmax noramlization",
                 "T",
                 OpSchema::Optional)
         .TypeConstraint("T", {"tensor(float16)", "tensor(bfloat16)", "tensor(float)"}, "Constrain input and output to float tensors.")
