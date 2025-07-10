@@ -778,9 +778,8 @@ void ModelBuilder::PreprocessInitializers() {
 
 Status ModelBuilder::RegisterInitializers() {
   for (const auto& [name, tensor_proto] : GetInitializerTensors()) {
-    f
-        // skip initializer if there is no remaining usage
-        auto usage_count = initializer_usage_[name];
+    // skip initializer if there is no remaining usage
+    auto usage_count = initializer_usage_[name];
     if (usage_count == 0) {
       continue;
     }
