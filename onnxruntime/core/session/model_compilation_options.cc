@@ -108,11 +108,12 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string&
   if (output_dir_path.has_filename() && output_dir_path.extension() == "") {
     return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT, "output_dir is not a valid directory.");
   }
-  
-  std::string ctx_model_path(output_directory + "/" + model_name);
-  if (ctx_model_path.size() <= ConfigOptions::kMaxValueLength) {
+
+  std::filesystem::path ctx_model_path = output_directory / std::filesystem::path(model_name);
+
+  if (ctx_model_path.string().size() <= ConfigOptions::kMaxValueLength) {
     ORT_RETURN_IF_ERROR(session_options_.value.config_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath,
-                                                                             ctx_model_path.c_str()));
+                                                                             ctx_model_path.string().c_str()));
   } else {
     logging::LoggingManager* log_manager = env_.GetLoggingManager();
     if (log_manager != nullptr && log_manager->HasDefaultLogger()) {
@@ -123,7 +124,7 @@ Status ModelCompilationOptions::SetEpContextBinaryInformation(const std::string&
                             << "output path in SessionOption's ConfigOptions.";
     }
   }
-  
+
   return Status::OK();
 }
 
