@@ -133,6 +133,22 @@ class OVInferRequest {
       auto tensor_ptr = std::make_shared<ov::Tensor>(type, shape, const_cast<void*>(ort_ptr));
       SetTensor(name, tensor_ptr);
       cached_binding = {tensor_ptr, ort_ptr};
+    } else if (ort_ptr==nullptr) {
+      // a null ort_ptr is expected for a tensor that has 0 elements.
+      // for example, a tensor of shape=[1, 8, 0, 64], which is valid.
+      // So, we check to see if at least one shape entry is 0.
+      auto contains_zero = [](const ov::Shape& shape) {
+        for (auto& s : shape)
+          if (s == 0) return true;
+        return false;
+      };
+      if (contains_zero(shape)) {
+        // if there are zero elements (i.e. at least one shape entry is 0),
+        // then create and set the tensor anyway.
+        auto tensor_ptr = std::make_shared<ov::Tensor>(type, shape);
+        SetTensor(name, tensor_ptr);
+        cached_binding = {tensor_ptr, ort_ptr};
+      }
     }
   }
 
