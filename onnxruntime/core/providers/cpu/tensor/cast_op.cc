@@ -31,7 +31,7 @@ namespace op_kernel_type_control {
 // we're using one set of types for all opsets of Cast
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Input, 0,
@@ -39,7 +39,7 @@ ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
 
 ORT_SPECIFY_OP_KERNEL_ARG_DEFAULT_TYPE_LIST_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
-    element_type_lists::AllIRv9);
+    element_type_lists::AllIRv10);
 
 ORT_SPECIFY_OP_KERNEL_ARG_REQUIRED_TYPES_ALL_OPSETS(
     kCpuExecutionProvider, kOnnxDomain, Cast, Output, 0,
@@ -58,7 +58,23 @@ using IsOrtFloat16Type = boost::mp11::mp_contains<TypeList<BFloat16, MLFloat16>,
 #if !defined(DISABLE_FLOAT8_TYPES)
 template <typename T>
 using IsOrtFloat8Type = boost::mp11::mp_contains<element_type_lists::AllFloat8, T>;
+#else
+template <typename T>
+struct IsOrtFloat8Type : std::false_type {};
 #endif
+
+template <typename T>
+struct IsStandardIntegerType {
+  static constexpr bool value =
+      std::is_same_v<T, int8_t> ||
+      std::is_same_v<T, uint8_t> ||
+      std::is_same_v<T, int16_t> ||
+      std::is_same_v<T, uint16_t> ||
+      std::is_same_v<T, int32_t> ||
+      std::is_same_v<T, uint32_t> ||
+      std::is_same_v<T, int64_t> ||
+      std::is_same_v<T, uint64_t>;
+};
 
 // string cast helpers
 // Note: when C++17 is available, use <charconv> functions
@@ -115,11 +131,7 @@ CastToString(const SrcType& input, std::string& output) {
 }
 
 template <typename SrcType>
-#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value, void>::type
-#else
-typename std::enable_if<IsOrtFloat16Type<SrcType>::value>::type
-#endif
 CastToString(const SrcType& input, std::string& output) {
   CastToString(static_cast<float>(input), output);
 }
@@ -149,11 +161,7 @@ CastFromString(const std::string& input, DstType& output) {
 }
 
 template <typename DstType>
-#if !defined(DISABLE_FLOAT8_TYPES)
 typename std::enable_if<IsOrtFloat16Type<DstType>::value || IsOrtFloat8Type<DstType>::value, void>::type
-#else
-typename std::enable_if<IsOrtFloat16Type<DstType>::value, void>::type
-#endif
 CastFromString(const std::string& input, DstType& output) {
   float intermediate;
   CastFromString(input, intermediate);
@@ -177,6 +185,109 @@ template <>
 struct EigenCastType<BFloat16> {
   using type = Eigen::bfloat16;
 };
+
+// Helper struct for converting from Int4x2/UInt4x2 elements to any destination type
+template <typename OtherType>
+struct Int4ElementConverter {
+  static int8_t ConvertToInt4(const OtherType& val) {
+    // Truncate to 4 bits and sign-extend properly
+    uint8_t truncated = static_cast<uint8_t>(val) & 0x0F;
+    // Sign-extend: if bit 3 is set, it's negative in 4-bit two's complement
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const OtherType& val) {
+    // Truncate to 4 bits
+    return static_cast<uint8_t>(val) & 0x0F;
+  }
+
+  static OtherType Convert(int8_t val) {
+    if constexpr (IsOrtFloat16Type<OtherType>::value) {
+      return OtherType(static_cast<float>(val));
+    } else if constexpr (IsOrtFloat8Type<OtherType>::value) {
+      return OtherType(static_cast<float>(val), true);
+    } else {
+      return static_cast<OtherType>(val);
+    }
+  }
+};
+
+template <>
+struct Int4ElementConverter<float> {
+  static int8_t ConvertToInt4(const float& val) {
+    int result = static_cast<int>(std::roundf(val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const float& val) {
+    int result = static_cast<int>(std::roundf(val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static float Convert(int8_t val) {
+    return static_cast<float>(val);
+  }
+};
+
+template <>
+struct Int4ElementConverter<double> {
+  static int8_t ConvertToInt4(const double& val) {
+    int result = static_cast<int>(std::round(val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const double& val) {
+    int result = static_cast<int>(std::round(val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static double Convert(int8_t val) {
+    return static_cast<double>(val);
+  }
+};
+
+template <>
+struct Int4ElementConverter<MLFloat16> {
+  static int8_t ConvertToInt4(const MLFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const MLFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static MLFloat16 Convert(int8_t val) {
+    return MLFloat16(static_cast<float>(val));
+  }
+};
+
+template <>
+struct Int4ElementConverter<BFloat16> {
+  static int8_t ConvertToInt4(const BFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    uint8_t truncated = static_cast<uint8_t>(result) & 0x0F;
+    return static_cast<int8_t>((truncated & 0x8) ? (truncated | 0xF0) : truncated);
+  }
+
+  static uint8_t ConvertToUInt4(const BFloat16& val) {
+    float f_val = static_cast<float>(val);
+    int result = static_cast<int>(std::roundf(f_val));
+    return static_cast<uint8_t>(result) & 0x0F;
+  }
+
+  static BFloat16 Convert(int8_t val) {
+    return BFloat16(static_cast<float>(val));
+  }
+};
+
 // generic tensor X -> Y
 template <typename SrcType, typename DstType, typename Enable = void>
 struct TensorCaster {
@@ -219,37 +330,97 @@ struct TensorCaster<std::string, DstType> {
   }
 };
 
-#if !defined(DISABLE_FLOAT8_TYPES)
-
-// tensor X -> float 8
-template <typename SrcType, typename DstType, typename Enable = void>
-struct TensorCasterNoSat {
+template <>
+struct TensorCaster<Int4x2, std::string> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
-    const auto* in_data = in.Data<SrcType>();
-    auto* out_data = out.MutableData<DstType>();
-    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      out_data[i] = DstType(static_cast<float>(in_data[i]), false);
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<std::string>();
+
+    // Unpack each Int4x2 into two separate string elements
+    size_t out_idx = 0;
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      out_data[out_idx++] = std::to_string(static_cast<int>(val));
     }
   }
 };
 
-// tensor string -> float 8
-template <typename DstType>
-struct TensorCasterNoSat<std::string, DstType> {
+template <>
+struct TensorCaster<UInt4x2, std::string> {
   void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<std::string>();
+
+    // Unpack each UInt4x2 into two separate string elements
+    size_t out_idx = 0;
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      out_data[out_idx++] = std::to_string(static_cast<unsigned>(val));
+    }
+  }
+};
+
+template <>
+struct TensorCaster<std::string, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
     const auto* in_data = in.Data<std::string>();
-    auto* out_data = out.MutableData<DstType>();
-    float float_value;
-    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
-      CastFromString(in_data[i], float_value);
-      out_data[i] = DstType(float_value, false);
+    auto* out_data = out.MutableData<Int4x2>();
+
+    // Every 2 strings combine into 1 Int4x2
+    const ptrdiff_t out_size = (shape_size + 1) >> 1;
+    for (ptrdiff_t i = 0; i < out_size; ++i) {
+      const ptrdiff_t in_idx = i << 1;
+
+      // Parse first value and truncate to lower 4 bits with sign extension
+      int v0 = std::stoi(in_data[in_idx]);
+      int8_t val0 = static_cast<int8_t>((v0 & 0xF) | (-(v0 & 0x8) & 0xF0));
+
+      // Parse second value (or use 0 if odd number of elements)
+      int8_t val1 = 0;
+      if (in_idx + 1 < shape_size) {
+        int v1 = std::stoi(in_data[in_idx + 1]);
+        val1 = static_cast<int8_t>((v1 & 0xF) | (-(v1 & 0x8) & 0xF0));
+      }
+
+      out_data[i] = Int4x2(val0, val1);
     }
   }
 };
 
-#endif
+template <>
+struct TensorCaster<std::string, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    // Every 2 strings combine into 1 UInt4x2
+    const ptrdiff_t out_size = (shape_size + 1) >> 1;
+    for (ptrdiff_t i = 0; i < out_size; ++i) {
+      const ptrdiff_t in_idx = i << 1;
+
+      // Parse first value and truncate to lower 4 bits
+      int v0 = std::stoi(in_data[in_idx]);
+      uint8_t val0 = static_cast<uint8_t>(v0 & 0xF);
+
+      // Parse second value (or use 0 if odd number of elements)
+      uint8_t val1 = 0;
+      if (in_idx + 1 < shape_size) {
+        int v1 = std::stoi(in_data[in_idx + 1]);
+        val1 = static_cast<uint8_t>(v1 & 0xF);
+      }
+
+      out_data[i] = UInt4x2(val0, val1);
+    }
+  }
+};
 
 // tensor MLFloat16 -> float
 template <>
@@ -259,6 +430,223 @@ struct TensorCaster<MLFloat16, float> {
     auto in_data = in.Data<MLFloat16>();
     const size_t shape_size = narrow<size_t>(shape.Size());
     MlasConvertHalfToFloatBufferInParallel(in_data, out_data, shape_size, ctx.GetOperatorThreadPool());
+  }
+};
+
+// tensor float -> MLFloat16
+template <>
+struct TensorCaster<float, MLFloat16> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    auto in_data = in.Data<float>();
+    auto out_data = out.MutableData<MLFloat16>();
+    const size_t shape_size = narrow<size_t>(shape.Size());
+    MlasConvertFloatToHalfBuffer(in_data, out_data, shape_size);
+  }
+};
+
+template <typename DstType>
+struct TensorCaster<Int4x2, DstType,
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType> || IsOrtFloat8Type<DstType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<DstType>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      if constexpr (std::is_floating_point_v<DstType>) {
+        out_data[i] = static_cast<DstType>(val);
+      } else {
+        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
+      }
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, bool> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<bool>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      out_data[i] = val != 0;
+    }
+  }
+};
+
+template <>
+struct TensorCaster<Int4x2, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size() + 1) >> 1;
+    const auto* in_data = in.Data<Int4x2>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      auto low_nibble = in_data[i].GetElem(0);
+      auto high_nibble = in_data[i].GetElem(1);
+
+      uint8_t low_unsigned = static_cast<uint8_t>(low_nibble) & 0x0F;
+      uint8_t high_unsigned = static_cast<uint8_t>(high_nibble) & 0x0F;
+
+      out_data[i] = UInt4x2(low_unsigned, high_unsigned);
+    }
+  }
+};
+
+template <typename DstType>
+struct TensorCaster<UInt4x2, DstType,
+                    std::enable_if_t<IsStandardIntegerType<DstType>::value || IsOrtFloat16Type<DstType>::value || std::is_floating_point_v<DstType> || IsOrtFloat8Type<DstType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<DstType>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      if constexpr (std::is_floating_point_v<DstType>) {
+        out_data[i] = static_cast<DstType>(val);
+      } else {
+        out_data[i] = Int4ElementConverter<DstType>::Convert(val);
+      }
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, bool> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<bool>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      // elem 0 is the low nibble, 1 the high nibble
+      auto val = in_data[i >> 1].GetElem(i & 0x1);
+
+      out_data[i] = val != 0;
+    }
+  }
+};
+
+template <>
+struct TensorCaster<UInt4x2, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size() + 1) >> 1;
+    const auto* in_data = in.Data<UInt4x2>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    for (ptrdiff_t i = 0; i < shape_size; ++i) {
+      auto low_nibble = in_data[i].GetElem(0);
+      auto high_nibble = in_data[i].GetElem(1);
+
+      int8_t low_signed = static_cast<int8_t>((low_nibble & 0x0F) << 4) >> 4;
+      int8_t high_signed = static_cast<int8_t>((high_nibble & 0x0F) << 4) >> 4;
+
+      out_data[i] = Int4x2(low_signed, high_signed);
+    }
+  }
+};
+
+template <typename SrcType>
+struct TensorCaster<SrcType, Int4x2,
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    ptrdiff_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+      int8_t high_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i + 1]);
+
+      out_data[i >> 1] = Int4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      int8_t low_val = Int4ElementConverter<SrcType>::ConvertToInt4(in_data[i]);
+
+      out_data[i >> 1] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<bool, Int4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<bool>();
+    auto* out_data = out.MutableData<Int4x2>();
+
+    ptrdiff_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      int8_t low_val = in_data[i] ? 1 : 0;
+      int8_t high_val = in_data[i + 1] ? 1 : 0;
+
+      out_data[i >> 1] = Int4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      int8_t low_val = in_data[i] ? 1 : 0;
+
+      out_data[i >> 1] = Int4x2(low_val, 0);
+    }
+  }
+};
+
+template <typename SrcType>
+struct TensorCaster<SrcType, UInt4x2,
+                    std::enable_if_t<IsStandardIntegerType<SrcType>::value || std::is_floating_point_v<SrcType> || IsOrtFloat16Type<SrcType>::value || IsOrtFloat8Type<SrcType>::value>> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    ptrdiff_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+      uint8_t high_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i + 1]);
+
+      out_data[i >> 1] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      uint8_t low_val = Int4ElementConverter<SrcType>::ConvertToUInt4(in_data[i]);
+
+      out_data[i >> 1] = UInt4x2(low_val, 0);
+    }
+  }
+};
+
+template <>
+struct TensorCaster<bool, UInt4x2> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const ptrdiff_t shape_size = narrow<ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<bool>();
+    auto* out_data = out.MutableData<UInt4x2>();
+
+    ptrdiff_t i = 0;
+    for (; i < shape_size - 1; i += 2) {
+      uint8_t low_val = in_data[i] ? 1 : 0;
+      uint8_t high_val = in_data[i + 1] ? 1 : 0;
+
+      out_data[i >> 1] = UInt4x2(low_val, high_val);
+    }
+
+    if (i < shape_size) {
+      uint8_t low_val = in_data[i] ? 1 : 0;
+
+      out_data[i >> 1] = UInt4x2(low_val, 0);
+    }
   }
 };
 
@@ -284,7 +672,8 @@ void CastMLFloat16ThroughFloatTensor(
 
 // tensor MLFloat16 -> X
 template <typename DstType>
-struct TensorCaster<MLFloat16, DstType> {
+struct TensorCaster<MLFloat16, DstType,
+                    std::enable_if_t<!std::is_same_v<DstType, Int4x2> && !std::is_same_v<DstType, UInt4x2>>> {
   void Cast(const OpKernelContext& context, const TensorShape& shape, const Tensor& in, Tensor& out) const {
     CastMLFloat16ThroughFloatTensor<DstType>(context, shape, in, out);
   }
@@ -297,6 +686,53 @@ struct TensorCaster<MLFloat16, std::string> {
     CastMLFloat16ThroughFloatTensor<std::string>(context, shape, in, out);
   }
 };
+#endif
+
+#if !defined(DISABLE_FLOAT8_TYPES)
+
+// tensor X -> float 8
+template <typename SrcType, typename DstType, typename Enable = void>
+struct TensorCasterNoSat {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<SrcType>();
+    auto* out_data = out.MutableData<DstType>();
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      out_data[i] = DstType(static_cast<float>(in_data[i]), false);
+    }
+  }
+};
+
+// TensorCasterNoSat should never be instantiated for Int4x2/UInt4x2
+template <typename DstType>
+struct TensorCasterNoSat<Int4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("Int4x2 should never use TensorCasterNoSat");
+  }
+};
+
+template <typename DstType>
+struct TensorCasterNoSat<UInt4x2, DstType, void> {
+  void Cast(const OpKernelContext&, const TensorShape&, const Tensor&, Tensor&) const {
+    ORT_THROW("UInt4x2 should never use TensorCasterNoSat");
+  }
+};
+
+// tensor string -> float 8
+template <typename DstType>
+struct TensorCasterNoSat<std::string, DstType> {
+  void Cast(const OpKernelContext&, const TensorShape& shape, const Tensor& in, Tensor& out) const {
+    const std::ptrdiff_t shape_size = narrow<std::ptrdiff_t>(shape.Size());
+    const auto* in_data = in.Data<std::string>();
+    auto* out_data = out.MutableData<DstType>();
+    float float_value;
+    for (std::ptrdiff_t i = 0; i < shape_size; ++i) {
+      CastFromString(in_data[i], float_value);
+      out_data[i] = DstType(float_value, false);
+    }
+  }
+};
+
 #endif
 
 class Cast final : public OpKernel {
