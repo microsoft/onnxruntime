@@ -10,6 +10,7 @@
 
 #include "core/framework/error_code_helper.h"
 #include "core/session/abi_devices.h"
+#include "core/session/abi_logger.h"
 #include "core/session/ep_factory_internal.h"
 #include "core/session/ep_plugin_provider_interfaces.h"
 #include "core/session/inference_session.h"
@@ -355,7 +356,7 @@ Status ProviderPolicyContext::CreateExecutionProvider(const Environment& env, Or
         info.ep_factory->CreateEp(info.ep_factory, info.hardware_devices.data(), info.ep_metadata.data(),
                                   info.hardware_devices.size(), &options, &logger, &api_ep)));
     ep = std::make_unique<PluginExecutionProvider>(UniqueOrtEp(api_ep, OrtEpDeleter(*info.ep_factory)), options,
-                                                   *info.ep_factory, info.devices);
+                                                   *info.ep_factory, info.devices, *logger.ToInternal());
   }
 
   return Status::OK();

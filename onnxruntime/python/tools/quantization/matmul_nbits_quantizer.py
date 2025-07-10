@@ -294,8 +294,8 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
         """
         # Import torch and DataLoader
         try:
-            import torch
-            from torch.utils.data import DataLoader
+            import torch  # noqa: PLC0415
+            from torch.utils.data import DataLoader  # noqa: PLC0415
 
             self.torch = torch
             self.DataLoader = DataLoader
@@ -307,7 +307,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import datasets
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
 
             self.load_dataset = load_dataset
         except ImportError:
@@ -318,7 +318,7 @@ class NVAWQWeightOnlyQuantConfig(WeightOnlyQuantConfig):
 
         # Import transformers
         try:
-            from transformers import AutoConfig, AutoTokenizer
+            from transformers import AutoConfig, AutoTokenizer  # noqa: PLC0415
 
             self.AutoConfig = AutoConfig
             self.AutoTokenizer = AutoTokenizer
@@ -543,7 +543,7 @@ class HQQWeightOnlyQuantizer:
         opt_params: dict | None = None,
         verbose=False,
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         opt_params = {"lp_norm": 0.7, "beta": 1e1, "kappa": 1.01, "iters": 20} if opt_params is None else opt_params
         lp_norm, beta, kappa, iters = (
@@ -602,7 +602,7 @@ class HQQWeightOnlyQuantizer:
     def quantize_internal(
         self, tensor, bits=4, channel_wise=True, group_size=64, optimize=True, round_zero=True, axis=1
     ):
-        import torch
+        import torch  # noqa: PLC0415
 
         weight = tensor.float()
         ori_shape = weight.shape
@@ -680,7 +680,7 @@ class HQQWeightOnlyQuantizer:
         if node.op_type == "Gather":
             raise NotImplementedError("Gather quantization is not supported yet in HQQ")
 
-        import torch
+        import torch  # noqa: PLC0415
 
         logger.info(f"start to quantize {node.name} ...")
         input_b = node.input[1]
@@ -1175,7 +1175,7 @@ class NVAWQWeightOnlyQuantizer:
             ModelProto: The quantized ONNX model.
         """
         try:
-            from modelopt.onnx.quantization.int4 import quantize as quantize_int4
+            from modelopt.onnx.quantization.int4 import quantize as quantize_int4  # noqa: PLC0415
         except ImportError:
             print(
                 "Please ensure that the 'modelopt' package is installed. Please install it using pip install nvidia_modelopt."
