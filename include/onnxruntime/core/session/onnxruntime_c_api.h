@@ -6857,7 +6857,7 @@ struct OrtCompileApi {
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t flags);
 
-  /** \Sets information relate to EP context binary file.
+  /** Sets information related to EP context binary file.
    *
    * EP uses this information to decide the location and context binary file name.
    * Used while compiling model with input and output in memory buffer
