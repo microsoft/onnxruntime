@@ -13,6 +13,7 @@ const kTileN : u32 = tile_n;
 // TODO: Move to matmulnbits_common template
 #if has_zero_points
 fn mm_read_zero(row : u32, col : u32, r_dim: u32, c_dim: u32) -> output_element_t {
+  // TODO: change to const number
   const elements_in_uint32 : u32 = 32u / nbits;
   const bits : u32 = nbits;
 
