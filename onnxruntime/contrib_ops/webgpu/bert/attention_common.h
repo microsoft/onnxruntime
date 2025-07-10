@@ -84,7 +84,7 @@ struct WebgpuAttentionParameters {
   int v_head_size_ = 0;            // hidden size per head of V
   int num_heads_ = 0;
   int rotary_embedding_ = 0;
-  bool is_unidirectional_ = false;
+  bool is_unidirectional_ = true;
   bool past_present_share_buffer_ = false;
   bool do_rotary_ = false;
   bool broadcast_attn_bias_dim_0_ = false;
