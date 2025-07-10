@@ -284,6 +284,8 @@ def generate_vcpkg_install_options(build_dir, args):
         vcpkg_install_options.append("--x-feature=vsinpu-ep")
     if args.use_webgpu:
         vcpkg_install_options.append("--x-feature=webgpu-ep")
+        if args.wgsl_template == "dynamic":
+            vcpkg_install_options.append("--x-feature=webgpu-ep-wgsl-template-dynamic")
     if args.use_webnn:
         vcpkg_install_options.append("--x-feature=webnn-ep")
     if args.use_xnnpack:
