@@ -226,7 +226,7 @@ OrtStatus* ExampleEp::SaveConstantInitializers(const OrtGraph* graph) {
 
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtGraph* graph,
-                                                     OrtEpGraphSupportInfo* graph_support_info) {
+                                                     OrtEpGraphSupportInfo* graph_support_info) noexcept {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
 
   size_t num_nodes = 0;
@@ -290,7 +290,7 @@ OrtStatus* ORT_API_CALL ExampleEp::GetCapabilityImpl(OrtEp* this_ptr, const OrtG
 OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const OrtGraph** graphs,
                                                _In_ const OrtNode** fused_nodes, _In_ size_t count,
                                                _Out_writes_all_(count) OrtNodeComputeInfo** node_compute_infos,
-                                               _Out_writes_(count) OrtNode** ep_context_nodes) {
+                                               _Out_writes_(count) OrtNode** ep_context_nodes) noexcept {
   ExampleEp* ep = static_cast<ExampleEp*>(this_ptr);
   const OrtApi& ort_api = ep->ort_api;
 
@@ -354,7 +354,7 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
 /*static*/
 void ORT_API_CALL ExampleEp::ReleaseNodeComputeInfosImpl(OrtEp* this_ptr,
                                                          OrtNodeComputeInfo** node_compute_infos,
-                                                         size_t num_node_compute_infos) {
+                                                         size_t num_node_compute_infos) noexcept {
   (void)this_ptr;
   for (size_t i = 0; i < num_node_compute_infos; i++) {
     delete node_compute_infos[i];
