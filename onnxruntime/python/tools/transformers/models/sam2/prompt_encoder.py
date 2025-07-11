@@ -144,7 +144,7 @@ def test_prompt_encoder_onnx(
         point_coords, point_labels, input_masks, has_input_masks
     )
 
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"])
 

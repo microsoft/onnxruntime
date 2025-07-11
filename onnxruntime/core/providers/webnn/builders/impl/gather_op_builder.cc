@@ -74,13 +74,13 @@ bool GatherOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& nod
   const auto& input = *node.InputDefs()[0];
   const auto& indices = *node.InputDefs()[1];
   const std::string_view op_type = node.OpType();
-  int32_t input_type;
-  int32_t indices_type;
+  int32_t input_type, indices_type;
+
   if (!GetType(input, input_type, logger) ||
       !GetType(indices, indices_type, logger))
     return false;
 
-  return IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
+  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_type, wnn_limits, "input", "data", logger) &&
          IsDataTypeSupportedByOp(op_type, indices_type, wnn_limits, "indices", "indices", logger);
 }
 

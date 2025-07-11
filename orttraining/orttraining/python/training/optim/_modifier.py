@@ -30,8 +30,8 @@ class FP16OptimizerModifier:
     def check_requirements(self, required_funcs, require_apex=False, require_torch_non_finite_check=False):
         try:
             if require_apex is True:
-                import amp_C  # noqa: F401
-                from apex import amp  # noqa: F401
+                import amp_C  # noqa: F401, PLC0415
+                from apex import amp  # noqa: F401, PLC0415
             if require_torch_non_finite_check is True:
                 _ = torch._amp_foreach_non_finite_check_and_unscale_
         except Exception:
@@ -68,7 +68,7 @@ def check_overflow_for_grads(grad_data):
 def clip_grad_norm_fp32(
     parameters, max_norm, norm_type, get_horizontal_model_parallel_rank=None, get_horizontal_model_parallel_group=None
 ):
-    from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops
+    from onnxruntime.training.ortmodule.torch_cpp_extensions import fused_ops  # noqa: PLC0415
 
     horizontal_model_parallel_grad_norm_aggregation = False
     if get_horizontal_model_parallel_rank and get_horizontal_model_parallel_group:
