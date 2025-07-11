@@ -156,7 +156,7 @@ else:
 ## Call the application
 
 ```bash
-python app.py -m <model folder> -a <.onnx_adapter files> -t <prompt template> -s <systemm prompt> -p <prompt>
+python app.py -m <model folder> -a <.onnx_adapter files> -t <prompt template> -s <system prompt> -p <prompt>
 ```
 
 ## References
