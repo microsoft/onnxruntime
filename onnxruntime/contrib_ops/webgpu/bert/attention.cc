@@ -98,6 +98,7 @@ Status AttentionProbsProgram::GenerateShaderCode(ShaderHelper& shader) const {
   shader.AdditionalImplementation() << "var<workgroup> tileQ: array<q_value_t, " << tile_size_ * tile_size_ << ">;\n"
                                     << "var<workgroup> tileK: array<key_value_t, " << tile_size_ * tile_size_ << ">;\n"
                                     << "alias f32_val_t = " << (components_ == 4 ? "vec4<f32>" : (components_ == 2 ? "vec2<f32>" : "f32")) << ";\n";
+
   shader.MainFunctionBody() << "// x holds the N and y holds the M\n"
                             << "let m = u32(workgroup_idx / uniforms.num_total_seq_length_tile) % uniforms.num_seq_length_tile  * TILE_SIZE;\n"
                             << "let n = (workgroup_idx % uniforms.num_total_seq_length_tile) * TILE_SIZE;\n"
@@ -224,6 +225,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 }
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+
   if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
   }
@@ -245,9 +247,16 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
                             << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n"
+                            // Calculate start_offset and effective sequence length considering sliding window
+                            << "let start_offset = select(0, seq_causal_length - u32(uniforms.local_window_size), should_apply_local_window);\n"
+                            << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n"
+
                             << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
-                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
-                            << "  thread_max_vector = max(f32_val_t(x[offset + i]), thread_max_vector);\n"
+                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
+                            << "  let actual_pos = local_offset + i + start_offset;\n"
+                            << "  if (actual_pos < seq_causal_length) {\n"
+                            << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
+                            << "  }\n"
                             << "}\n"
                             << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
                             << "workgroupBarrier();\n";
@@ -266,8 +275,11 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  max_value = max(thread_max[i], max_value);\n"
                             << "}\n"
                             << "var sum_vector = f32_val_t(0);\n"
-                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
-                            << "  sum_vector += exp(f32_val_t(x[offset + i]) - max_value);\n"
+                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
+                            << "  let actual_pos = local_offset + i + start_offset;\n"
+                            << "  if (actual_pos < seq_causal_length) {\n"
+                            << "     sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);\n"
+                            << "  }\n"
                             << "}\n"
                             << "thread_sum[local_idx] = " << (components_ == 4 ? "sum_vector.x + sum_vector.y + sum_vector.z + sum_vector.w" : (components_ == 2 ? "sum_vector.x + sum_vector.y" : "sum_vector")) << ";\n"
                             << "workgroupBarrier();\n"
@@ -283,15 +295,33 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
 
   shader.MainFunctionBody() << "if (sum == 0) {\n"
-                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
-                            << "    x[offset + i] = x_value_t(x_element_t(1.0)/x_element_t(seq_causal_length));\n"
+                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
+                           << "  let actual_pos = local_offset + i + start_offset;\n"
+                             << "    if (actual_pos < seq_causal_length) {\n"
+                            << "      x[offset + i + start_offset] = x_value_t(x_element_t(1.0)/x_element_t(effective_seq_length));\n"
+                            << "    }\n"
                             << "  }\n"
                             << "} else {\n"
-                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
-                            << "    var f32input = f32_val_t(x[offset + i]);\n"
-                            << "    x[offset + i] = x_value_t(exp(f32input - max_value) / sum);\n"
+                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
+                            << "    let actual_pos = local_offset + i + start_offset;\n"
+                            << "    let pos = offset + i + start_offset;\n"
+                            << "    if (actual_pos < seq_causal_length) {\n"
+                            << "       var f32input = f32_val_t(x[pos]);\n"
+                            << "       x[pos] = x_value_t(exp(f32input - max_value) / sum);\n"
+                            << "    }\n"
                             << "  }\n"
                             << "}\n";
+
+  // zero out elements outsize the sliding window
+  shader.MainFunctionBody() << "if (should_apply_local_window) {\n"
+                            << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < seq_causal_length; i++) {\n"
+                            << "    let global_pos = i + local_offset;\n"
+                            << "    if (global_pos < start_offset) {\n"
+                            << "      x[offset + i] = x_value_t(x_element_t(0));\n"
+                            << "    }\n"
+                            << "  }\n"
+                            << "}\n";
+
   if (has_seqlen_k_) {
     shader.MainFunctionBody() << "for (var total_seq_id: u32 = seq_causal_length; total_seq_id + local_offset < uniforms.total_sequence_length_comp; total_seq_id++) {\n"
                               << "   x[offset + total_seq_id] = x_value_t(x_element_t(0));\n"
