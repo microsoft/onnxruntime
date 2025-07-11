@@ -7,7 +7,7 @@
 #include <mutex>
 
 #include "core/common/common.h"
-#include "core/common/inlined_containers_fwd.h"
+#include "core/common/inlined_containers.h"
 #include "core/common/logging/logging.h"
 #include "core/providers/qnn-abi/rpcmem_library.h"
 #include "core/session/onnxruntime_c_api.h"

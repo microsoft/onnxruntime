@@ -13,6 +13,7 @@
 #include <vector>
 
 #include "nlohmann/json.hpp"
+#include "SafeInt.hpp"
 
 #include "core/common/common.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
@@ -1039,13 +1040,13 @@ size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType
 //   return Status::OK();
 // }
 
-// std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
-//   const char* error_msg = nullptr;
-//   if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
-//     return error_msg;
-//   }
-//   return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
-// }
+std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface, Qnn_ErrorHandle_t qnn_error_handle) {
+  const char* error_msg = nullptr;
+  if (qnn_interface.errorGetMessage(qnn_error_handle, &error_msg) == QNN_SUCCESS) {
+    return error_msg;
+  }
+  return MakeString("Unknown error. QNN error handle: ", qnn_error_handle);
+}
 
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
                                       Qnn_ErrorHandle_t qnn_error_handle) {

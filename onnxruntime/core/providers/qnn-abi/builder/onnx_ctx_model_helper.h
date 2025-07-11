@@ -1,32 +1,32 @@
 // // Copyright (c) Microsoft Corporation. All rights reserved.
 // // Licensed under the MIT License.
 
-#pragma once
+// #pragma once
 
-#include <string>
-#include <vector>
+// #include <string>
+// #include <vector>
 
 // #include "core/providers/qnn-abi/builder/qnn_def.h"
-#include "core/providers/qnn-abi/ort_api.h"
+// #include "core/providers/qnn-abi/ort_api.h"
 
-namespace onnxruntime {
+// namespace onnxruntime {
 
-namespace qnn {
+// namespace qnn {
 
 // class QnnModel;
 // class QnnBackendManager;
 // using QnnModelLookupTable = std::unordered_map<std::string, std::unique_ptr<qnn::QnnModel>>;
 
-static const std::string EPCONTEXT_OP = "EPContext";
-static const std::string MAIN_CONTEXT = "main_context";
-static const std::string EMBED_MODE = "embed_mode";
-static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
-static const std::string EP_SDK_VER = "ep_sdk_version";
-static const std::string PARTITION_NAME = "partition_name";
-static const std::string SOURCE = "source";
-static const std::string MAX_SIZE = "max_size";
+// static const std::string EPCONTEXT_OP = "EPContext";
+// static const std::string MAIN_CONTEXT = "main_context";
+// static const std::string EMBED_MODE = "embed_mode";
+// static const std::string EP_CACHE_CONTEXT = "ep_cache_context";
+// static const std::string EP_SDK_VER = "ep_sdk_version";
+// static const std::string PARTITION_NAME = "partition_name";
+// static const std::string SOURCE = "source";
+// static const std::string MAX_SIZE = "max_size";
 
-bool GraphHasEpContextNode(const OrtGraph* graph);
+// bool GraphHasEpContextNode(const OrtGraph* graph);
 
 // bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs);
 
@@ -68,5 +68,5 @@ bool GraphHasEpContextNode(const OrtGraph* graph);
 //                             const logging::Logger& logger,
 //                             bool share_ep_contexts,
 //                             bool stop_share_ep_contexts);
-}  // namespace qnn
-}  // namespace onnxruntime
+// }  // namespace qnn
+// }  // namespace onnxruntime

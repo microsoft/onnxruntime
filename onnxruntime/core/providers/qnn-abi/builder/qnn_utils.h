@@ -285,9 +285,9 @@ size_t GetQnnTensorDataSizeInBytes(gsl::span<const uint32_t> shape, Qnn_DataType
 //   return Status::OK();
 // }
 
-// // Gets error message associated with QNN error handle value.
-// std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-//                                Qnn_ErrorHandle_t qnn_error_handle);
+// Gets error message associated with QNN error handle value.
+std::string GetQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                               Qnn_ErrorHandle_t qnn_error_handle);
 
 // // Gets verbose error message associated with QNN error handle value.
 std::string GetVerboseQnnErrorMessage(const QNN_INTERFACE_VER_TYPE& qnn_interface,

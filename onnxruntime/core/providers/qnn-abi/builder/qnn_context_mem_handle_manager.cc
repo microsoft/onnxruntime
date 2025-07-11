@@ -5,6 +5,7 @@
 
 #include "HTP/QnnHtpMem.h"
 
+#include "core/common/logging/logging.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"

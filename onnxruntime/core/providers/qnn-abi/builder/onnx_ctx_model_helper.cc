@@ -7,55 +7,55 @@
 // #include <fstream>
 // #include <filesystem>
 
-#include "core/providers/qnn-abi/ort_api.h"
+// #include "core/providers/qnn-abi/ort_api.h"
 // #include "core/providers/qnn-abi/builder/qnn_utils.h"
 // #include "core/providers/qnn-abi/builder/qnn_model.h"
 // #include "core/providers/qnn-abi/shared_context.h"
 
-namespace onnxruntime {
-namespace qnn {
+// namespace onnxruntime {
+// namespace qnn {
 
-bool GraphHasEpContextNode(const OrtGraph* graph) {
-    OrtArrayOfConstObjects* graph_nodes = nullptr;
-    if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
-        return false;
-    }
+// bool GraphHasEpContextNode(const OrtGraph* graph) {
+//     OrtArrayOfConstObjects* graph_nodes = nullptr;
+//     if (ort_api.Graph_GetNodes(graph, &graph_nodes) != nullptr) {
+//         return false;
+//     }
 
-    size_t num_nodes = 0;
-    if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
-        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-        return false;
-    }
+//     size_t num_nodes = 0;
+//     if (ort_api.ArrayOfConstObjects_GetSize(graph_nodes, &num_nodes) != nullptr) {
+//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+//         return false;
+//     }
 
-    const void* const* node_data = nullptr;
-    if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
-        ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-        return false;
-    }
+//     const void* const* node_data = nullptr;
+//     if (ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data) != nullptr) {
+//         ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+//         return false;
+//     }
 
-    bool has_ep_context = false;
-    for (size_t i = 0; i < num_nodes; ++i) {
-        const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
-        const char* op_type = nullptr;
+//     bool has_ep_context = false;
+//     for (size_t i = 0; i < num_nodes; ++i) {
+//         const OrtNode* node = static_cast<const OrtNode*>(node_data[i]);
+//         const char* op_type = nullptr;
 
-        if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
-            if (std::string(op_type) == "EPContext") {
-                // Check if this EPContext node is from QNN
-                OrtArrayOfConstObjects* attributes = nullptr;
-                if (ort_api.Node_GetAttributes(node, &attributes) == nullptr) {
-                    // TODO: Check the 'source' attribute to see if it's "qnn" or "qnnexecutionprovider"
-                    // For now, assume any EPContext node is from QNN
-                    has_ep_context = true;
-                    ort_api.ReleaseArrayOfConstObjects(attributes);
-                    break;
-                }
-            }
-        }
-    }
+//         if (ort_api.Node_GetOperatorType(node, &op_type) == nullptr && op_type != nullptr) {
+//             if (std::string(op_type) == "EPContext") {
+//                 // Check if this EPContext node is from QNN
+//                 OrtArrayOfConstObjects* attributes = nullptr;
+//                 if (ort_api.Node_GetAttributes(node, &attributes) == nullptr) {
+//                     // TODO: Check the 'source' attribute to see if it's "qnn" or "qnnexecutionprovider"
+//                     // For now, assume any EPContext node is from QNN
+//                     has_ep_context = true;
+//                     ort_api.ReleaseArrayOfConstObjects(attributes);
+//                     break;
+//                 }
+//             }
+//         }
+//     }
 
-    ort_api.ReleaseArrayOfConstObjects(graph_nodes);
-    return has_ep_context;
-}
+//     ort_api.ReleaseArrayOfConstObjects(graph_nodes);
+//     return has_ep_context;
+// }
 
 // bool IsFusedGraphHasCtxNode(const std::vector<IExecutionProvider::FusedNodeAndGraph>& fused_nodes_and_graphs) {
 //   for (const auto& fused_node_graph : fused_nodes_and_graphs) {
@@ -327,5 +327,5 @@ bool GraphHasEpContextNode(const OrtGraph* graph) {
 //   return Status::OK();
 // }
 
-}  // namespace qnn
-}  // namespace onnxruntime
+// }  // namespace qnn
+// }  // namespace onnxruntime

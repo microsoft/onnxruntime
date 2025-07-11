@@ -335,69 +335,69 @@ class QnnBackendManager : public std::enable_shared_from_this<QnnBackendManager>
     std::unique_ptr<QnnContextMemHandleManager> mem_handles;
   };
 
-  Status LoadOpPackage() {
-    // assume op_packages passed in represented in
-    // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
-    for (const auto& op_package : op_packages_) {
-      ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
+  // Status LoadOpPackage() {
+  //   // assume op_packages passed in represented in
+  //   // op_packages|<OpTpye>:<PackagePath>:<InterfaceSymbolName>:<OptionalTarget>,<OpTpye2>:<PackagePath2>:<InterfaceSymbolName2>:<OptionalTarget2>
+  //   for (const auto& op_package : op_packages_) {
+  //     ORT_RETURN_IF(nullptr == qnn_interface_.backendRegisterOpPackage, "backendRegisterOpPackageFnHandle is nullptr.");
 
-      Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
-          backend_handle_,
-          op_package.path.c_str(),
-          op_package.interface.c_str(),
-          op_package.target.c_str());
+  //     Qnn_ErrorHandle_t result = qnn_interface_.backendRegisterOpPackage(
+  //         backend_handle_,
+  //         op_package.path.c_str(),
+  //         op_package.interface.c_str(),
+  //         op_package.target.c_str());
 
-      if (result != QNN_SUCCESS) {
-        switch (result) {
-          case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
-            LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
-            LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
-            LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
-            LOGS(*logger_, ERROR) << "Op package registration failed.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
-            LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
-            break;
-          case QNN_BACKEND_ERROR_NOT_SUPPORTED:
-            LOGS(*logger_, ERROR) << "Op package registration is not supported.";
-            break;
-          case QNN_BACKEND_ERROR_INVALID_HANDLE:
-            LOGS(*logger_, ERROR) << "backend is not a valid handle.";
-            break;
-          case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
-            LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
-  QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
-            break;
-          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
-            LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
-            break;
-          case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
-            LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
-            break;
-          default:
-            LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
-            break;
-        }
-      }
-      ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
-      LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
-      std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
-      // remove lib prefix in Linux
-      std::string prefix = "lib";
-      if (op_package_for_registration.compare(0, prefix.size(), prefix) == 0) {
-        op_package_for_registration = op_package_for_registration.substr(prefix.size());
-      }
-      qnn::RegisterUDOBuilder(op_package.op_type, op_package_for_registration);
-    }
+  //     if (result != QNN_SUCCESS) {
+  //       switch (result) {
+  //         case QNN_BACKEND_ERROR_INVALID_ARGUMENT:
+  //           LOGS(*logger_, ERROR) << "Invalid argument, please check if op package path or interface provider is NULL.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_OP_PACKAGE_NOT_FOUND:
+  //           LOGS(*logger_, ERROR) << "Could not open op package path. op_pack_path: " << op_package.path;
+  //           break;
+  //         case QNN_BACKEND_ERROR_OP_PACKAGE_IF_PROVIDER_NOT_FOUND:
+  //           LOGS(*logger_, ERROR) << "Could not find interfaceProvider symbol in op package library.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_OP_PACKAGE_REGISTRATION_FAILED:
+  //           LOGS(*logger_, ERROR) << "Op package registration failed.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_OP_PACKAGE_UNSUPPORTED_VERSION:
+  //           LOGS(*logger_, ERROR) << "Op package has interface version not supported by this backend.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_NOT_SUPPORTED:
+  //           LOGS(*logger_, ERROR) << "Op package registration is not supported.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_INVALID_HANDLE:
+  //           LOGS(*logger_, ERROR) << "backend is not a valid handle.";
+  //           break;
+  //         case QNN_BACKEND_ERROR_OP_PACKAGE_DUPLICATE:
+  //           LOGS(*logger_, ERROR) << "OpPackageName+OpName must be unique. Op package content information can be be obtained with \
+  // QnnOpPackage interface. Indicates that an Op with the same package name and op name was already registered.";
+  //           break;
+  //         case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION:
+  //           LOGS(*logger_, ERROR) << "SSR occurrence (successful recovery).";
+  //           break;
+  //         case QNN_COMMON_ERROR_SYSTEM_COMMUNICATION_FATAL:
+  //           LOGS(*logger_, ERROR) << "SSR occurrence (unsuccessful recovery).";
+  //           break;
+  //         default:
+  //           LOGS(*logger_, ERROR) << "Unknown error occurred while initializing logging in the QNN backend.";
+  //           break;
+  //       }
+  //     }
+  //     ORT_RETURN_IF(QNN_SUCCESS != result, "Failed to register op package to backend. Error: ", QnnErrorHandleToString(result));
+  //     LOGS(*logger_, VERBOSE) << "Successfully register the op package.";
+  //     std::string op_package_for_registration = std::filesystem::path(op_package.path).stem().string();
+  //     // remove lib prefix in Linux
+  //     std::string prefix = "lib";
+  //     if (op_package_for_registration.compare(0, prefix.size(), prefix) == 0) {
+  //       op_package_for_registration = op_package_for_registration.substr(prefix.size());
+  //     }
+  //     qnn::RegisterUDOBuilder(op_package.op_type, op_package_for_registration);
+  //   }
 
-    return Status::OK();
-  }
+  //   return Status::OK();
+  // }
 
  private:
   const std::string backend_path_;

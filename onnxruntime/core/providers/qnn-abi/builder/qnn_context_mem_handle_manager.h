@@ -9,6 +9,10 @@
 
 #include "QnnInterface.h"
 
+#include "core/common/common.h"
+#include "core/common/logging/logging.h"
+#include "core/common/inlined_containers.h"
+
 namespace onnxruntime::qnn {
 
 // This class manages QNN mem handles (Qnn_MemHandle_t) associated with a QNN context (Qnn_ContextHandle_t).

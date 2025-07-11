@@ -22,13 +22,15 @@
 #include "Saver/QnnSaver.h"
 #include "Saver/QnnSaverCommon.h"
 
+#include "core/common/logging/capture.h"
 #include "core/platform/env.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
 #include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/shared_context.h"
 // #include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
-// #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -1228,7 +1230,7 @@ Status QnnBackendManager::SetupBackend(const logging::Logger& logger,
   }
 
   if (status.IsOK()) {
-    ORT_RETURN_IF_ERROR(LoadOpPackage());
+    // ORT_RETURN_IF_ERROR(LoadOpPackage());
     LOGS(logger, VERBOSE) << "LoadOpPackage succeed.";
   }
 
@@ -2076,8 +2078,7 @@ Status QnnBackendManager::AddQnnContextHandle(Qnn_ContextHandle_t raw_context_ha
   auto free_context_handle = [this, &logger = *logger_](Qnn_ContextHandle_t raw_context_handle) {
     const auto free_result = qnn_interface_.contextFree(raw_context_handle, nullptr);
     if (free_result != QNN_CONTEXT_NO_ERROR) {
-      LOGS(logger, ERROR) << "qnn_interface.contextFree() failed: "
-                          << utils::GetVerboseQnnErrorMessage(qnn_interface_, free_result);
+      LOGS(logger, ERROR) << "qnn_interface.contextFree() failed: " << utils::GetVerboseQnnErrorMessage(qnn_interface_, free_result);
     }
   };
 

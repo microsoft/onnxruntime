@@ -1,7 +1,9 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License
+
 #include "qnn_ep.h"
 
 #include "qnn_ep_factory.h"
-
 
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/shared_context.h"
@@ -72,8 +74,6 @@ class NodeUnit {
   std::vector<const Node*> q_nodes_;
   Type type_;
 };
-
-namespace onnxruntime {
 
 QnnEp::QnnEp(const QnnEpFactory& factory, const std::string& name,
            const Config& config, const OrtLogger* logger)
@@ -405,7 +405,8 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
         return nullptr;
     }
 
-    bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph);
+    // bool is_qnn_ctx_model = qnn::GraphHasEpContextNode(graph);
+    bool is_qnn_ctx_model = false;
 
     auto gen_metadef_name = [ep, graph]() -> std::string {
         return ep->MakeMetadefName(graph);
@@ -526,7 +527,7 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   std::unordered_map<const OrtNode*, const onnxruntime::NodeUnit*> node_unit_map;
 
   // Use the GetQDQNodeUnits function from qnn_ep_utils.h
-  std::tie(node_unit_holder, node_unit_map) = onnxruntime::GetQDQNodeUnits(graph, ep->logger_, *ep);
+//   std::tie(node_unit_holder, node_unit_map) = onnxruntime::GetQDQNodeUnits(graph, ep->logger_, *ep);
 
     // Analyze nodes for QNN support
     std::vector<const OrtNode*> supported_nodes;
@@ -727,4 +728,4 @@ OrtStatus* QnnEp::OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_optio
     return nullptr;
 }
 
-}
+}  // namespace onnxruntime

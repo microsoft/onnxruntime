@@ -1,11 +1,18 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License
+
 #pragma once
 
-#include "test/autoep/library/example_plugin_ep_utils.h"
-#include "builder/onnx_ctx_model_helper.h"
-#include <unordered_map>
-#include <unordered_set>
 #include <functional>
 #include <memory>
+#include <mutex>
+#include <set>
+#include <unordered_map>
+#include <unordered_set>
+
+#include "core/providers/qnn-abi/builder/qnn_def.h"
+#include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
+#include "test/autoep/library/example_plugin_ep_utils.h"
 
 namespace onnxruntime {
 class QnnEpFactory;
