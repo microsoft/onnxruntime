@@ -52,11 +52,9 @@ void
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    // Initialize negative infinity vector for out-of-bounds values using MLAS intrinsics
     const MLAS_FLOAT32X4 NegInfVector = MlasBroadcastFloat32x4(-std::numeric_limits<float>::infinity());
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        // Initialize maximum values to negative infinity using MLAS intrinsics
         MLAS_FLOAT32X4 MaxVector = NegInfVector;
 
         for (size_t kh = 0; kh < KernelHeight; kh++) {
@@ -69,10 +67,8 @@ void
 
                 MLAS_FLOAT32X4 InputVector;
                 if (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) {
-                    // All elements are within bounds, load directly using MLAS intrinsics
                     InputVector = MlasLoadFloat32x4(input_ptr);
                 } else {
-                    // Some elements might be out of bounds, load individually
                     std::vector<float> values(BlockSize);
                     for (size_t i = 0; i < BlockSize; i++) {
                         const float* element_ptr = input_ptr + i;
@@ -85,17 +81,14 @@ void
                     InputVector = MlasLoadFloat32x4(values.data());
                 }
 
-                // Update maximum using MLAS intrinsics
                 MaxVector = MlasMaximumFloat32x4(MaxVector, InputVector);
             }
         }
 
-        // Store the results using MLAS intrinsics
         MlasStoreFloat32x4(&Output[output_idx * BlockSize], MaxVector);
     }
 }
 
-// Helper function for average pooling kernels
 static void
 MlasPoolAverageFloatKernelNeonImpl(
     const float* Input,
@@ -122,10 +115,8 @@ MlasPoolAverageFloatKernelNeonImpl(
 
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    // Initialize zero vector using MLAS intrinsics
     const MLAS_FLOAT32X4 ZeroVector = MlasZeroFloat32x4();
 
-    // For include pad, prepare kernel size vector
     MLAS_FLOAT32X4 KernelSizeVector;
     if (!ExcludePad) {
         const float KernelSize = static_cast<float>(ActualKernelSize);
@@ -135,10 +126,8 @@ MlasPoolAverageFloatKernelNeonImpl(
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
         bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
 
-        // Initialize sum vector using MLAS intrinsics
         MLAS_FLOAT32X4 SumVector = ZeroVector;
 
-        // Track valid count for each element (only needed for exclude pad)
         std::vector<uint32_t> valid_count;
         if (ExcludePad) {
             valid_count.resize(BlockSize, 0);
@@ -154,21 +143,17 @@ MlasPoolAverageFloatKernelNeonImpl(
 
                 MLAS_FLOAT32X4 InputVector;
 
-                // Determine if we can do a fast vector load
                 bool can_fast_load = ExcludePad ? (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) : (is_main_region || (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end));
 
                 if (can_fast_load) {
-                    // All elements are within bounds (or in main region for include pad)
                     InputVector = MlasLoadFloat32x4(input_ptr);
 
                     if (ExcludePad) {
-                        // All elements are valid for exclude pad
                         for (size_t i = 0; i < BlockSize; i++) {
                             valid_count[i]++;
                         }
                     }
                 } else {
-                    // Some elements might be out of bounds, handle individually
                     std::vector<float> values(BlockSize);
                     for (size_t i = 0; i < BlockSize; i++) {
                         const float* element_ptr = input_ptr + i;
@@ -181,21 +166,18 @@ MlasPoolAverageFloatKernelNeonImpl(
                                 valid_count[i]++;
                             }
                         } else {
-                            values[i] = 0.0f;  // Padding values are treated as 0
+                            values[i] = 0.0f;
                         }
                     }
                     InputVector = MlasLoadFloat32x4(values.data());
                 }
 
-                // Add to sum using MLAS intrinsics
                 SumVector = MlasAddFloat32x4(SumVector, InputVector);
             }
         }
 
-        // Compute final result based on pooling type
         MLAS_FLOAT32X4 ResultVector;
         if (ExcludePad) {
-            // Exclude pad: divide by valid count for each element
             std::vector<float> results(BlockSize);
             MlasStoreFloat32x4(results.data(), SumVector);
 
@@ -209,11 +191,9 @@ MlasPoolAverageFloatKernelNeonImpl(
 
             ResultVector = MlasLoadFloat32x4(results.data());
         } else {
-            // Include pad: divide by total kernel size
             ResultVector = MlasDivideFloat32x4(SumVector, KernelSizeVector);
         }
 
-        // Store the results using MLAS intrinsics
         MlasStoreFloat32x4(&Output[output_idx * BlockSize], ResultVector);
     }
 }
