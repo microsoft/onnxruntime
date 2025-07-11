@@ -4,14 +4,17 @@
 #include "core/providers/qnn-abi/rpcmem_library.h"
 
 #if defined(_WIN32)
+#include <filesystem>
+
+#include <Windows.h>
 #include <sysinfoapi.h>
 #include <winsvc.h>
-
-#include <filesystem>
 #endif  // defined(_WIN32)
 
 #include "core/common/common.h"
+#include "core/common/logging/logging.h"
 #include "core/common/logging/macros.h"
+#include "core/common/logging/severity.h"
 #include "core/platform/env.h"
 
 namespace onnxruntime::qnn {

@@ -30,7 +30,6 @@
 // #include "core/providers/qnn-abi/builder/qnn_model.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
-#include "core/providers/qnn-abi/ort_api.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -425,11 +424,11 @@ void QnnLogging(const char* format,
   const auto data_type = ::onnxruntime::logging::DataType::SYSTEM;
 
   if (logger.OutputIsEnabled(severity, data_type)) {
-    auto log_capture = Factory<logging::Capture>::Create(logger,
-                                                         severity,
-                                                         logging::Category::onnxruntime,
-                                                         data_type,
-                                                         ORT_WHERE);
+    auto log_capture = std::make_unique<logging::Capture>(logger,
+                                                          severity,
+                                                          logging::Category::onnxruntime,
+                                                          data_type,
+                                                          ORT_WHERE);
     log_capture->ProcessPrintf(format, argument_parameter);
   }
 }

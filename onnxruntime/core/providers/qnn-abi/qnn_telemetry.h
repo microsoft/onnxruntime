@@ -15,6 +15,8 @@
 #include <string>
 #include <vector>
 
+#include "core/common/common.h"
+
 #if !BUILD_QNN_EP_STATIC_LIB
 TRACELOGGING_DECLARE_PROVIDER(telemetry_provider_handle);
 #endif

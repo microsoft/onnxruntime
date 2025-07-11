@@ -22,24 +22,6 @@
 
 namespace onnxruntime {
 
-/// <summary>
-/// Creates an onnxruntime or onnx object. Works for both static and shared library builds of QNN EP.
-/// <!-- Example: auto model = Factory<Model>::Create(/* args ... */); -->
-/// Example: auto model = Factory&lt;Model&gt;::Create(/* args ... */);
-/// </summary>
-/// <typeparam name="T">Type of the object to create</typeparam>
-template <typename T>
-struct Factory {
-  template <typename... Params>
-  static inline std::unique_ptr<T> Create(Params&&... params) {
-#if BUILD_QNN_EP_STATIC_LIB
-    return std::make_unique<T>(std::forward<Params>(params)...);
-#else
-    return T::Create(std::forward<Params>(params)...);
-#endif
-  }
-};
-
 // inline void InitOrtCppApi() {
 //   // Call util function in provider bridge that initializes the global api_ object.
 //   InitProviderOrtApi();

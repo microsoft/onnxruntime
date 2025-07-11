@@ -18,6 +18,8 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 #include <winmeta.h>
+
+#include "core/common/logging/logging.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 
 // Seems this workaround can be dropped when we drop support for VS2017 toolchains
