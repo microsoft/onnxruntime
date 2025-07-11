@@ -270,7 +270,10 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
 
   // WideTileProgram
   // This program is optimized for Block32 prefill using Tile16x128.
-  const bool use_wide_tile_program = block_size == 32 && components_a == 4 && components_b == 4 && M >= kMinMForTileOptimization;
+  const bool use_wide_tile_program = block_size == 32 &&
+                                     components_a == 4 &&
+                                     components_b == 4 &&
+                                     M >= kMinMForTileOptimization;
   if (use_wide_tile_program) {
     // Enforce output components to 1.
     components = 1;
@@ -293,16 +296,36 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     const uint32_t components_b_with_u32 = components_b * kU32Components;
     const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
 
-    program
-        .AddInputs({{a, ProgramTensorMetadataDependency::TypeAndRank, reshaped_a_shape, onnxruntime::narrow<int>(components_a)},
-                    {b, ProgramTensorMetadataDependency::TypeAndRank, reshaped_b_shape, onnxruntime::narrow<int>(components_b_with_u32)},
-                    {scales, ProgramTensorMetadataDependency::None}})
-        .AddOutput({y, ProgramTensorMetadataDependency::TypeAndRank, reshaped_y_shape, onnxruntime::narrow<int>(components)})
-        .AddUniformVariables({{batch_count}, {M}, {N}, {K}, {CEIL_DIV(K, 4)}, {CEIL_DIV(K, 32)}, {K_of_b}, {zero_blocks_per_col}, {num_N_tile}, {num_M_tile}})
-        .CacheHint(nbits, has_zero_points);
+    program.AddInput({a,
+                      ProgramTensorMetadataDependency::TypeAndRank,
+                      reshaped_a_shape,
+                      onnxruntime::narrow<int>(components_a)});
+    program.AddInput({b,
+                      ProgramTensorMetadataDependency::TypeAndRank,
+                      reshaped_b_shape,
+                      onnxruntime::narrow<int>(components_b_with_u32)});
+    program.AddInput({scales, ProgramTensorMetadataDependency::None});
     if (has_zero_points) {
-      program.AddInput({zero_points, ProgramTensorMetadataDependency::None, {CEIL_DIV(zero_points->Shape().Size(), 4)}, 4});
+      program.AddInput({zero_points,
+                        ProgramTensorMetadataDependency::TypeAndRank,
+                        {CEIL_DIV(zero_points->Shape().Size(), 4)},
+                        4});
     }
+    program.AddOutput({y,
+                       ProgramTensorMetadataDependency::TypeAndRank,
+                       reshaped_y_shape,
+                       onnxruntime::narrow<int>(components)});
+    program.AddUniformVariables({{batch_count},
+                                 {M},
+                                 {N},
+                                 {K},
+                                 {CEIL_DIV(K, 4)},
+                                 {CEIL_DIV(K, 32)},
+                                 {K_of_b},
+                                 {zero_blocks_per_col},
+                                 {num_N_tile},
+                                 {num_M_tile}});
+    program.CacheHint(nbits, has_zero_points);
 
     return context.RunProgram(program);
   }
