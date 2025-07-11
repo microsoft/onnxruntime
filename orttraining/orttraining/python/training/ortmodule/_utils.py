@@ -421,7 +421,7 @@ def reinitialize_training_manager(training_manager):
 
 
 def get_runtime_pytorch_version():
-    from packaging import version
+    from packaging import version  # noqa: PLC0415
 
     return version.parse(torch.__version__.split("+")[0])
 

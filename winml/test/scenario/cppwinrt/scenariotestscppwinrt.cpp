@@ -771,7 +771,7 @@ static void Scenario21RunModel2ChainZ() {
 
   std::vector<int64_t> shape = {1, 3, 720, 720};
   auto outputValue = TensorFloat::Create(shape);  //   FeatureValueFromFeatureValueDescriptor(input, nullptr);
-    // now bind the(empty) output so we have a marker to chain with
+  // now bind the(empty) output so we have a marker to chain with
   PropertySet outputBindProperties;
   outputBindProperties.Insert(L"DisableTensorCpuSync", wf::PropertyValue::CreateBoolean(true));
   binding1.Bind(output.Name(), outputValue, outputBindProperties);
@@ -1084,10 +1084,11 @@ static void Scenario23NominalPixelRange() {
   std::wstring inputImagePath = modulePath + L"1080.jpg";
 
   // The following models have single op "add", with different metadata
-  std::vector<std::wstring> modelPaths = {// Normalized_0_1 and image output
-                                          modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
-                                          // Normalized_1_1 and image output
-                                          modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
+  std::vector<std::wstring> modelPaths = {
+    // Normalized_0_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_0_1.onnx",
+    // Normalized_1_1 and image output
+    modulePath + L"Add_ImageNet1920WithImageMetadataBgr8_SRGB_1_1.onnx"
   };
 
   for (uint32_t model_i = 0; model_i < modelPaths.size(); model_i++) {
@@ -1505,7 +1506,8 @@ static void D2DInterop() {
   winrt::com_ptr<ID2D1RenderTarget> renderTarget;
   D2D1_RENDER_TARGET_PROPERTIES props = D2D1::RenderTargetProperties();
   props.pixelFormat = D2D1::PixelFormat(DXGI_FORMAT_B8G8R8A8_UNORM, D2D1_ALPHA_MODE_IGNORE);
-  WINML_EXPECT_HRESULT_SUCCEEDED(d2dFactory->CreateDxgiSurfaceRenderTarget(dxgiSurface.get(), props, renderTarget.put())
+  WINML_EXPECT_HRESULT_SUCCEEDED(
+    d2dFactory->CreateDxgiSurfaceRenderTarget(dxgiSurface.get(), props, renderTarget.put())
   );
 }
 

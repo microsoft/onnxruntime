@@ -195,7 +195,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_nbits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
         quant_config = matmul_nbits_quantizer.DefaultWeightOnlyQuantConfig(
@@ -260,7 +260,7 @@ class TestOpMatMul4Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int4 model
-        from onnxruntime.quantization import matmul_nbits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         algo_config = None
         if algorithm == "RTN":

@@ -118,7 +118,7 @@ class TestOpMatMul8Bits(unittest.TestCase):
         )
 
         # Quantize fp32 model to int8 model
-        from onnxruntime.quantization import matmul_nbits_quantizer
+        from onnxruntime.quantization import matmul_nbits_quantizer  # noqa: PLC0415
 
         model = quant_utils.load_model_with_shape_infer(Path(model_fp32_path))
 

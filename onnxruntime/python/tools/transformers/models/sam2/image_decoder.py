@@ -70,7 +70,7 @@ class SAM2ImageDecoder(nn.Module):
         """
         nvtx_helper = None
         if enable_nvtx_profile:
-            from nvtx_helper import NvtxHelper
+            from nvtx_helper import NvtxHelper  # noqa: PLC0415
 
             nvtx_helper = NvtxHelper(["prompt_encoder", "mask_decoder", "post_process"])
 
@@ -244,7 +244,7 @@ def test_decoder_onnx(
 
     masks, iou_predictions, low_res_masks = sam2_image_decoder(*example_inputs)
 
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     ort_session = onnxruntime.InferenceSession(onnx_model_path, providers=["CPUExecutionProvider"])
 

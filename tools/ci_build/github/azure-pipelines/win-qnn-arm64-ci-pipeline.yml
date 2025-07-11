@@ -50,7 +50,7 @@ jobs:
     matrix:
       SHARED_LIB:
         QnnLibKind: 'shared_lib'
-        ExtraQnnBuildArgs: ''
+        ExtraQnnBuildArgs: '--client_package_build'
       STATIC_LIB:
         QnnLibKind: 'static_lib'
         ExtraQnnBuildArgs: ''

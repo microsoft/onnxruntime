@@ -3,6 +3,8 @@
 # Licensed under the MIT License.
 # --------------------------------------------------------------------------
 
+import time
+
 import numpy as np
 import torch
 from transformers import AutoTokenizer
@@ -18,7 +20,7 @@ pt_to_np = {
 
 
 def cuda_memcpy(dst, src):
-    from cuda import cudart
+    from cuda import cudart  # noqa: PLC0415
 
     cudart.cudaMemcpy(
         dst.data_ptr(),
@@ -231,8 +233,6 @@ class ORTGenerator:
         has_eos = torch.zeros(batch_size, device=self.device, dtype=torch.bool)
 
         if benchmark:
-            import time
-
             latency = []
 
         prompt_run = True

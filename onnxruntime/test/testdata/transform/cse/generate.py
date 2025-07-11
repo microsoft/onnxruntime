@@ -21,7 +21,7 @@ def _onnx_export(graph_def, relative_path, verbose=False):
     if verbose:
         print()
         print(inferred_model)
-        import onnxruntime as rt
+        import onnxruntime as rt  # noqa: PLC0415
 
         rt.InferenceSession(model_path)
 

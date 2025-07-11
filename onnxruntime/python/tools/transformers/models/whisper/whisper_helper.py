@@ -662,7 +662,7 @@ class WhisperHelper:
             )
         else:
             # Load from OpenAI
-            import whisper
+            import whisper  # noqa: PLC0415
 
             if not os.path.exists(model_name_or_path):
                 name_or_path = model_name_or_path.split("/")[-1][8:]
@@ -774,7 +774,7 @@ class WhisperHelper:
     ):
         """Optimize ONNX model with an option to convert it to use mixed precision."""
 
-        from fusion_options import FusionOptions
+        from fusion_options import FusionOptions  # noqa: PLC0415
 
         optimization_options = FusionOptions("bart")
         optimization_options.use_multi_head_attention = True
@@ -815,14 +815,14 @@ class WhisperHelper:
     ):
         # Try to import `datasets` pip package
         try:
-            from datasets import load_dataset
+            from datasets import load_dataset  # noqa: PLC0415
         except Exception as e:
             logger.error(f"An error occurred while importing `datasets`: {e}", exc_info=True)  # noqa: G201
             install_cmd = "pip install datasets"
             logger.warning(f"Could not import `datasets`. Attempting to install `datasets` via `{install_cmd}`.")
             os.system(install_cmd)
 
-        from datasets import load_dataset
+        from datasets import load_dataset  # noqa: PLC0415
 
         ds = load_dataset("hf-internal-testing/librispeech_asr_dummy", "clean", split="validation")
         input_features_ = []

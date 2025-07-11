@@ -324,8 +324,8 @@ def compute_scale_zp_float8(element_type, std):
     zp_dtype = None
     if element_type not in FLOAT8_DISTRIBUTIONS:
         if element_type == TensorProto.FLOAT8E4M3FN:
-            from onnx.numpy_helper import float8e4m3_to_float32
-            from onnx.reference.custom_element_types import float8e4m3fn
+            from onnx.numpy_helper import float8e4m3_to_float32  # noqa: PLC0415
+            from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
 
             zp_dtype = float8e4m3fn
             all_values = [float8e4m3_to_float32(i) for i in range(256)]
@@ -336,7 +336,7 @@ def compute_scale_zp_float8(element_type, std):
             raise ValueError(f"Quantization to element_type={element_type} not implemented.")
         FLOAT8_DISTRIBUTIONS[element_type] = values
     elif element_type == TensorProto.FLOAT8E4M3FN:
-        from onnx.reference.custom_element_types import float8e4m3fn
+        from onnx.reference.custom_element_types import float8e4m3fn  # noqa: PLC0415
 
         zp_dtype = float8e4m3fn
 
@@ -782,10 +782,10 @@ def generate_identified_filename(filename: Path, identifier: str) -> Path:
 
 
 def apply_plot(hist, hist_edges):
-    import sys
+    import sys  # noqa: PLC0415
 
-    import matplotlib.pyplot as plt
-    import numpy
+    import matplotlib.pyplot as plt  # noqa: PLC0415
+    import numpy  # noqa: PLC0415
 
     numpy.set_printoptions(threshold=sys.maxsize)
     print("Histogram:")
@@ -804,14 +804,14 @@ def write_calibration_table(calibration_cache, dir="."):
     Helper function to write calibration table to files.
     """
 
-    import json
+    import json  # noqa: PLC0415
 
-    import flatbuffers
-    import numpy as np
+    import flatbuffers  # noqa: PLC0415
+    import numpy as np  # noqa: PLC0415
 
-    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue
-    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable
-    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData
+    import onnxruntime.quantization.CalTableFlatBuffers.KeyValue as KeyValue  # noqa: PLC0415
+    import onnxruntime.quantization.CalTableFlatBuffers.TrtTable as TrtTable  # noqa: PLC0415
+    from onnxruntime.quantization.calibrate import CalibrationMethod, TensorData, TensorsData  # noqa: PLC0415
 
     logging.info(f"calibration cache: {calibration_cache}")
 

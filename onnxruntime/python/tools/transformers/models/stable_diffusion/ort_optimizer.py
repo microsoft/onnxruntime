@@ -118,7 +118,7 @@ class OrtStableDiffusionOptimizer:
         # The optimized model is not portable. It could only run in the same execution provider (CUDA EP in this case).
         # When the model has been optimized by onnxruntime, we can disable optimization in SessionOption
         # to save session creation time. Another benefit is to inspect the final graph for developing purpose.
-        from onnxruntime import __version__ as ort_version
+        from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
         if optimize_by_ort and (version.parse(ort_version) >= version.parse("1.16.0") or not use_external_data_format):
             m = self.optimize_by_ort(m, use_external_data_format=use_external_data_format, tmp_dir=tmp_dir)

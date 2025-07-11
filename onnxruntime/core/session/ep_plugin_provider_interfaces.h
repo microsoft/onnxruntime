@@ -65,7 +65,7 @@ class PluginExecutionProvider : public IExecutionProvider {
 
  public:
   explicit PluginExecutionProvider(UniqueOrtEp ep, const OrtSessionOptions& session_options, OrtEpFactory& ep_factory,
-                                   gsl::span<const OrtEpDevice* const> ep_devices);
+                                   gsl::span<const OrtEpDevice* const> ep_devices, const logging::Logger& logger);
   ~PluginExecutionProvider();
 
   std::vector<std::unique_ptr<ComputeCapability>>

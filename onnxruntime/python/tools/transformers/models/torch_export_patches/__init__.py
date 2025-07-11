@@ -15,7 +15,7 @@ from .onnx_export_errors import (
 
 def is_torchdynamo_exporting() -> bool:
     """Tells if torch is exporting a model."""
-    import torch
+    import torch  # noqa: PLC0415
 
     if not hasattr(torch.compiler, "is_exporting"):
         # torch.compiler.is_exporting requires torch>=2.7
@@ -25,7 +25,7 @@ def is_torchdynamo_exporting() -> bool:
         return torch.compiler.is_exporting()
     except Exception:
         try:
-            import torch._dynamo as dynamo
+            import torch._dynamo as dynamo  # noqa: PLC0415
 
             return dynamo.is_exporting()  # type: ignore
         except Exception:
@@ -142,7 +142,7 @@ def string_type(
         if len(obj) == 0:
             return "{}"
 
-        import torch
+        import torch  # noqa: PLC0415
 
         if all(isinstance(k, int) for k in obj) and all(
             isinstance(
@@ -178,7 +178,7 @@ def string_type(
         return f"dict({s})"
     # array
     if isinstance(obj, np.ndarray):
-        from .onnx_helper import np_dtype_to_tensor_dtype
+        from .onnx_helper import np_dtype_to_tensor_dtype  # noqa: PLC0415
 
         if with_min_max:
             s = string_type(obj, with_shape=with_shape)
@@ -199,7 +199,7 @@ def string_type(
             return f"A{i}r{len(obj.shape)}"
         return f"A{i}s{'x'.join(map(str, obj.shape))}"
 
-    import torch
+    import torch  # noqa: PLC0415
 
     # Dim, SymInt
     if isinstance(obj, torch.export.dynamic_shapes._DerivedDim):
@@ -257,7 +257,7 @@ def string_type(
 
     # Tensors
     if isinstance(obj, torch._subclasses.fake_tensor.FakeTensor):
-        from .onnx_helper import torch_dtype_to_onnx_dtype
+        from .onnx_helper import torch_dtype_to_onnx_dtype  # noqa: PLC0415
 
         i = torch_dtype_to_onnx_dtype(obj.dtype)
         prefix = ("G" if obj.get_device() >= 0 else "C") if with_device else ""
@@ -265,7 +265,7 @@ def string_type(
             return f"{prefix}F{i}r{len(obj.shape)}"
         return f"{prefix}F{i}s{'x'.join(map(str, obj.shape))}"
     if isinstance(obj, torch.Tensor):
-        from .onnx_helper import torch_dtype_to_onnx_dtype
+        from .onnx_helper import torch_dtype_to_onnx_dtype  # noqa: PLC0415
 
         if with_min_max:
             s = string_type(obj, with_shape=with_shape, with_device=with_device)
@@ -310,7 +310,7 @@ def string_type(
     # others classes
 
     if obj.__class__ in torch.utils._pytree.SUPPORTED_NODES:
-        from .cache_helper import flatten_unflatten_for_dynamic_shapes
+        from .cache_helper import flatten_unflatten_for_dynamic_shapes  # noqa: PLC0415
 
         args = flatten_unflatten_for_dynamic_shapes(obj)
         att = string_type(

@@ -88,9 +88,9 @@ class WhisperDecoder(torch.nn.Module):
             # Convert past KV caches (BxNxSxH --> BxSxNxH --> BxSxD) for OpenAI's forward pass
             self_attn_kv_caches, cross_attn_kv_caches = group_past_key_values(past_key_values)
             self_attn_kv_caches = [past_kv.transpose(1, 2) for past_kv in self_attn_kv_caches]
-            self_attn_kv_caches = [past_kv.reshape(past_kv.shape[:2] + (-1,)) for past_kv in self_attn_kv_caches]
+            self_attn_kv_caches = [past_kv.reshape((*past_kv.shape[:2], -1)) for past_kv in self_attn_kv_caches]
             cross_attn_kv_caches = [past_kv.transpose(1, 2) for past_kv in cross_attn_kv_caches]
-            cross_attn_kv_caches = [past_kv.reshape(past_kv.shape[:2] + (-1,)) for past_kv in cross_attn_kv_caches]
+            cross_attn_kv_caches = [past_kv.reshape((*past_kv.shape[:2], -1)) for past_kv in cross_attn_kv_caches]
 
             for idx, block in enumerate(self.model.decoder.blocks):
                 past_kv_cache[block.attn.key] = self_attn_kv_caches[2 * idx]
@@ -145,11 +145,11 @@ class WhisperDecoder(torch.nn.Module):
 
         # Convert present KV caches (BxSxD --> BxSxNxH --> BxNxSxH) after OpenAI's forward pass
         present_self = [
-            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2)
+            present_kv.reshape((*present_kv.shape[:2], -1, self.head_size)).transpose(1, 2)
             for present_kv in present_self
         ]
         present_cross = [
-            present_kv.reshape(present_kv.shape[:2] + (-1, self.head_size)).transpose(1, 2)
+            present_kv.reshape((*present_kv.shape[:2], -1, self.head_size)).transpose(1, 2)
             for present_kv in present_cross
         ]
 

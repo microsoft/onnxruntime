@@ -1304,7 +1304,7 @@ std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
 
   AllocatorCreationInfo pinned_allocator_info(
       [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED, device_id);
       },
       narrow<OrtDevice::DeviceId>(device_id_));
 

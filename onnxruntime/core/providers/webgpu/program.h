@@ -401,18 +401,18 @@ class ProgramWrapper : public ProgramBase {
 #define ORT_WEBGPU_REGISTER_DERIVED_PROGRAM_CLASS_TYPE_CHECK(identifier, element_type)                                                   \
  private:                                                                                                                                \
   template <typename U>                                                                                                                  \
-  static auto test_has_##identifier(int)->decltype(U::identifier, std::true_type{}); /* checks if member exists */                       \
+  static auto test_has_##identifier(int) -> decltype(U::identifier, std::true_type{}); /* checks if member exists */                     \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier(...)->std::false_type;                                                                               \
+  static auto test_has_##identifier(...) -> std::false_type;                                                                             \
                                                                                                                                          \
   template <typename U,                                                                       /* The following type check uses SFINAE */ \
             typename = std::enable_if_t<                                                      /* to ensure the specific member:       */ \
                                         is_const_std_array<decltype(U::identifier)>::value && /*  - is a const std::array             */ \
                                         std::is_const_v<decltype(U::identifier)> &&           /*  - has "const" modifier              */ \
                                         !std::is_member_pointer_v<decltype(&U::identifier)>>> /*  - is static                         */ \
-  static auto test_has_##identifier##_with_correct_type(int)->std::true_type;                                                            \
+  static auto test_has_##identifier##_with_correct_type(int) -> std::true_type;                                                          \
   template <typename...>                                                                                                                 \
-  static auto test_has_##identifier##_with_correct_type(...)->std::false_type;                                                           \
+  static auto test_has_##identifier##_with_correct_type(...) -> std::false_type;                                                         \
                                                                                                                                          \
  public:                                                                                                                                 \
   static constexpr bool has_##identifier = decltype(test_has_##identifier<T>(0))::value;                                                 \

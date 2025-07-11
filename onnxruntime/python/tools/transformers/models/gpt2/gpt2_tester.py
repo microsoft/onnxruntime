@@ -160,7 +160,7 @@ class Gpt2Tester:
         return Gpt2Inputs(self.input_ids, self.position_ids, self.attention_mask, self.past)
 
     def save_test_data(self, session, output, save_test_data_dir, test_case_id):
-        from onnx import numpy_helper
+        from onnx import numpy_helper  # noqa: PLC0415
 
         path = os.path.join(save_test_data_dir, "test_data_set_" + str(test_case_id))
         if os.path.exists(path):
@@ -322,10 +322,10 @@ class Gpt2Tester:
         """
         Returns True if the ONNX model is quantized.
         """
-        from onnx import load
+        from onnx import load  # noqa: PLC0415
 
         model = load(onnx_model_path)
-        from onnxruntime.quantization.quantize import __producer__ as quantize_producer
+        from onnxruntime.quantization.quantize import __producer__ as quantize_producer  # noqa: PLC0415
 
         return model.producer_name == quantize_producer
 

@@ -62,8 +62,7 @@ def upload_whl(python_wheel_path, final_storage=False):
         lines.sort()
 
         with open(download_path_to_html, "w") as f:
-            for item in lines:
-                f.write(f"{item}\n")
+            f.writelines(f"{item}\n" for item in lines)
     else:
         warnings.warn(f"'{new_line}' exists in {download_path_to_html}. The html file is not updated.")
     run_subprocess(

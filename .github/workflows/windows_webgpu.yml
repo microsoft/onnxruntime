@@ -22,6 +22,7 @@ jobs:
     strategy:
       matrix:
         vcpkg_option: [novcpkg, vcpkg]
+        wgsl_template: [static, dynamic]
     env:
       OrtPackageId: Microsoft.ML.OnnxRuntime
       OnnxRuntimeBuildDirectory: ${{ github.workspace }}
@@ -123,6 +124,7 @@ jobs:
             --build_nodejs `
             --build_java `
             --use_webgpu `
+            --wgsl_template ${{ matrix.wgsl_template }} `
             ${{ matrix.vcpkg_option == 'vcpkg' && '--use_vcpkg' || '' }} `
             --cmake_extra_defines `
             onnxruntime_BUILD_UNIT_TESTS=ON `

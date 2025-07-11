@@ -27,7 +27,7 @@
 
 namespace onnxruntime {
 namespace openvino_ep {
-constexpr std::string log_tag = "[OpenVINO-EP] ";
+inline const std::string log_tag = "[OpenVINO-EP] ";
 
 struct ParameterShape {
   using ort_shape_t = std::vector<int64_t>;

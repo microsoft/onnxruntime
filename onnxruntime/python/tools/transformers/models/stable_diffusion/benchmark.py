@@ -65,9 +65,9 @@ def measure_gpu_memory(monitor_type, func, start_memory=None):
 
 
 def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_checker: bool):
-    from diffusers import DDIMScheduler, OnnxStableDiffusionPipeline
+    from diffusers import DDIMScheduler, OnnxStableDiffusionPipeline  # noqa: PLC0415
 
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     if directory is not None:
         assert os.path.exists(directory)
@@ -96,7 +96,7 @@ def get_ort_pipeline(model_name: str, directory: str, provider, disable_safety_c
 
 def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_torch_compile: bool, use_xformers: bool):
     if "FLUX" in model_name:
-        from diffusers import FluxPipeline
+        from diffusers import FluxPipeline  # noqa: PLC0415
 
         pipe = FluxPipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
         if enable_torch_compile:
@@ -105,7 +105,7 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
         return pipe
 
     if "stable-diffusion-3" in model_name:
-        from diffusers import StableDiffusion3Pipeline
+        from diffusers import StableDiffusion3Pipeline  # noqa: PLC0415
 
         pipe = StableDiffusion3Pipeline.from_pretrained(model_name, torch_dtype=torch.bfloat16).to("cuda")
         if enable_torch_compile:
@@ -113,8 +113,8 @@ def get_torch_pipeline(model_name: str, disable_safety_checker: bool, enable_tor
             pipe.transformer = torch.compile(pipe.transformer, mode="max-autotune", fullgraph=True)
         return pipe
 
-    from diffusers import DDIMScheduler, StableDiffusionPipeline
-    from torch import channels_last, float16
+    from diffusers import DDIMScheduler, StableDiffusionPipeline  # noqa: PLC0415
+    from torch import channels_last, float16  # noqa: PLC0415
 
     pipe = StableDiffusionPipeline.from_pretrained(model_name, torch_dtype=float16).to("cuda")
 
@@ -157,7 +157,7 @@ def run_ort_pipeline(
     memory_monitor_type,
     skip_warmup: bool = False,
 ):
-    from diffusers import OnnxStableDiffusionPipeline
+    from diffusers import OnnxStableDiffusionPipeline  # noqa: PLC0415
 
     assert isinstance(pipe, OnnxStableDiffusionPipeline)
 
@@ -201,7 +201,7 @@ def run_ort_pipeline(
         for k, image in enumerate(images):
             image.save(f"{image_filename_prefix}_{i}_{k}.jpg")
 
-    from onnxruntime import __version__ as ort_version
+    from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
     return {
         "engine": "onnxruntime",
@@ -253,7 +253,7 @@ def run_torch_pipeline(
 ):
     prompts, negative_prompt = example_prompts()
 
-    import diffusers
+    import diffusers  # noqa: PLC0415
 
     is_flux = isinstance(pipe, diffusers.FluxPipeline)
 
@@ -370,7 +370,7 @@ def get_optimum_ort_pipeline(
     disable_safety_checker: bool = True,
     use_io_binding: bool = False,
 ):
-    from optimum.onnxruntime import ORTPipelineForText2Image
+    from optimum.onnxruntime import ORTPipelineForText2Image  # noqa: PLC0415
 
     if directory is not None and os.path.exists(directory):
         pipeline = ORTPipelineForText2Image.from_pretrained(directory, provider=provider, use_io_binding=use_io_binding)
@@ -405,7 +405,7 @@ def run_optimum_ort_pipeline(
     skip_warmup=False,
 ):
     print("Pipeline type", type(pipe))
-    from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline
+    from optimum.onnxruntime.modeling_diffusion import ORTFluxPipeline  # noqa: PLC0415
 
     is_flux = isinstance(pipe, ORTFluxPipeline)
 
@@ -462,7 +462,7 @@ def run_optimum_ort_pipeline(
         for k, image in enumerate(images):
             image.save(f"{image_filename_prefix}_{i}_{k}.jpg")
 
-    from onnxruntime import __version__ as ort_version
+    from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
     return {
         "engine": "optimum_ort",
@@ -552,19 +552,19 @@ def run_ort_trt_static(
     print("[I] Initializing ORT TensorRT EP accelerated StableDiffusionXL txt2img pipeline (static input shape)")
 
     # Register TensorRT plugins
-    from trt_utilities import init_trt_plugins
+    from trt_utilities import init_trt_plugins  # noqa: PLC0415
 
     init_trt_plugins()
 
     assert batch_size <= max_batch_size
 
-    from diffusion_models import PipelineInfo
+    from diffusion_models import PipelineInfo  # noqa: PLC0415
 
     pipeline_info = PipelineInfo(version)
     short_name = pipeline_info.short_name()
 
-    from engine_builder import EngineType, get_engine_paths
-    from pipeline_stable_diffusion import StableDiffusionPipeline
+    from engine_builder import EngineType, get_engine_paths  # noqa: PLC0415
+    from pipeline_stable_diffusion import StableDiffusionPipeline  # noqa: PLC0415
 
     engine_type = EngineType.ORT_TRT
     onnx_dir, engine_dir, output_dir, framework_model_dir, _ = get_engine_paths(work_dir, pipeline_info, engine_type)
@@ -639,9 +639,9 @@ def run_ort_trt_static(
 
     pipeline.teardown()
 
-    from tensorrt import __version__ as trt_version
+    from tensorrt import __version__ as trt_version  # noqa: PLC0415
 
-    from onnxruntime import __version__ as ort_version
+    from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
     return {
         "model_name": pipeline_info.name(),
@@ -684,21 +684,21 @@ def run_tensorrt_static(
 ):
     print("[I] Initializing TensorRT accelerated StableDiffusionXL txt2img pipeline (static input shape)")
 
-    from cuda import cudart
+    from cuda import cudart  # noqa: PLC0415
 
     # Register TensorRT plugins
-    from trt_utilities import init_trt_plugins
+    from trt_utilities import init_trt_plugins  # noqa: PLC0415
 
     init_trt_plugins()
 
     assert batch_size <= max_batch_size
 
-    from diffusion_models import PipelineInfo
+    from diffusion_models import PipelineInfo  # noqa: PLC0415
 
     pipeline_info = PipelineInfo(version)
 
-    from engine_builder import EngineType, get_engine_paths
-    from pipeline_stable_diffusion import StableDiffusionPipeline
+    from engine_builder import EngineType, get_engine_paths  # noqa: PLC0415
+    from pipeline_stable_diffusion import StableDiffusionPipeline  # noqa: PLC0415
 
     engine_type = EngineType.TRT
     onnx_dir, engine_dir, output_dir, framework_model_dir, timing_cache = get_engine_paths(
@@ -780,7 +780,7 @@ def run_tensorrt_static(
 
     pipeline.teardown()
 
-    import tensorrt as trt
+    import tensorrt as trt  # noqa: PLC0415
 
     return {
         "engine": "tensorrt",
@@ -819,9 +819,9 @@ def run_tensorrt_static_xl(
 ):
     print("[I] Initializing TensorRT accelerated StableDiffusionXL txt2img pipeline (static input shape)")
 
-    import tensorrt as trt
-    from cuda import cudart
-    from trt_utilities import init_trt_plugins
+    import tensorrt as trt  # noqa: PLC0415
+    from cuda import cudart  # noqa: PLC0415
+    from trt_utilities import init_trt_plugins  # noqa: PLC0415
 
     # Validate image dimensions
     image_height = height
@@ -836,8 +836,8 @@ def run_tensorrt_static_xl(
 
     assert batch_size <= max_batch_size
 
-    from diffusion_models import PipelineInfo
-    from engine_builder import EngineType, get_engine_paths
+    from diffusion_models import PipelineInfo  # noqa: PLC0415
+    from engine_builder import EngineType, get_engine_paths  # noqa: PLC0415
 
     def init_pipeline(pipeline_class, pipeline_info):
         engine_type = EngineType.TRT
@@ -874,7 +874,7 @@ def run_tensorrt_static_xl(
         )
         return pipeline
 
-    from pipeline_stable_diffusion import StableDiffusionPipeline
+    from pipeline_stable_diffusion import StableDiffusionPipeline  # noqa: PLC0415
 
     pipeline_info = PipelineInfo(version)
     pipeline = init_pipeline(StableDiffusionPipeline, pipeline_info)
@@ -967,8 +967,8 @@ def run_ort_trt_xl(
     use_cuda_graph=True,
     skip_warmup: bool = False,
 ):
-    from demo_utils import initialize_pipeline
-    from engine_builder import EngineType
+    from demo_utils import initialize_pipeline  # noqa: PLC0415
+    from engine_builder import EngineType  # noqa: PLC0415
 
     pipeline = initialize_pipeline(
         version=version,
@@ -1031,9 +1031,9 @@ def run_ort_trt_xl(
 
     pipeline.teardown()
 
-    from tensorrt import __version__ as trt_version
+    from tensorrt import __version__ as trt_version  # noqa: PLC0415
 
-    from onnxruntime import __version__ as ort_version
+    from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
     return {
         "model_name": model_name,
@@ -1300,7 +1300,7 @@ def parse_arguments():
 
 
 def print_loaded_libraries(cuda_related_only=True):
-    import psutil
+    import psutil  # noqa: PLC0415
 
     p = psutil.Process(os.getpid())
     for lib in p.memory_maps():
@@ -1318,9 +1318,9 @@ def main():
             # The environment variables shall be set before the first run of Attention or MultiHeadAttention operator.
             os.environ["ORT_DISABLE_TRT_FLASH_ATTENTION"] = "1"
 
-        from packaging import version
+        from packaging import version  # noqa: PLC0415
 
-        from onnxruntime import __version__ as ort_version
+        from onnxruntime import __version__ as ort_version  # noqa: PLC0415
 
         if version.parse(ort_version) == version.parse("1.16.0"):
             # ORT 1.16 has a bug that might trigger Attention RuntimeError when latest fusion script is applied on clip model.

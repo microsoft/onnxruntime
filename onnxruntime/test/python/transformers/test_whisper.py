@@ -335,24 +335,24 @@ class WhisperOAIAttention(torch.nn.Module):
                 # Self-attention with KV cache inputs and outputs
                 past_k = kv_cache[0]
                 past_k = past_k.transpose(1, 2)
-                past_k = past_k.reshape(past_k.shape[:2] + (-1,))
+                past_k = past_k.reshape(past_k.shape[:2] + (-1,))  # noqa: RUF005
                 past_v = kv_cache[1]
                 past_v = past_v.transpose(1, 2)
-                past_v = past_v.reshape(past_v.shape[:2] + (-1,))
+                past_v = past_v.reshape(past_v.shape[:2] + (-1,))  # noqa: RUF005
 
                 present_k = torch.cat([past_k, k], dim=1)
                 present_v = torch.cat([past_v, v], dim=1)
 
-                present_k = present_k.reshape(present_k.shape[:2] + (-1, self.n_head)).transpose(1, 2)
-                present_v = present_v.reshape(v.shape[:2] + (-1, self.n_head)).transpose(1, 2)
+                present_k = present_k.reshape(present_k.shape[:2] + (-1, self.n_head)).transpose(1, 2)  # noqa: RUF005
+                present_v = present_v.reshape(v.shape[:2] + (-1, self.n_head)).transpose(1, 2)  # noqa: RUF005
         else:
             # Cross-attention with KV cache inputs
             past_k = kv_cache[0]
             past_k = past_k.transpose(1, 2)
-            past_k = past_k.reshape(past_k.shape[:2] + (-1,))
+            past_k = past_k.reshape(past_k.shape[:2] + (-1,))  # noqa: RUF005
             past_v = kv_cache[1]
             past_v = past_v.transpose(1, 2)
-            past_v = past_v.reshape(past_v.shape[:2] + (-1,))
+            past_v = past_v.reshape(past_v.shape[:2] + (-1,))  # noqa: RUF005
             k = past_k
             v = past_v
 

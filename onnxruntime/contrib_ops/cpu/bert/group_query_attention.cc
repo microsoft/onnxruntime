@@ -206,9 +206,11 @@ Status GroupQueryAttention<T>::Compute(OpKernelContext* context) const {
 
   ORT_RETURN_IF_ERROR(context->GetTempSpaceAllocator(&allocator));
 
+  const T* head_sink_data = (head_sink != nullptr) ? head_sink->Data<T>() : nullptr;
+
   // Compute the attention score and apply the score to V
   return ApplyAttention(q_rotary, packed_qkv ? nullptr : k_rotary, packed_qkv ? nullptr : V.Get<Tensor>().Data<T>(),
-                        attention_bias, past_key, past_value, output, present_k, present_v,
+                        head_sink_data, attention_bias, past_key, past_value, output, present_k, present_v,
                         seqlens_k, parameters, allocator, context);
 }
 }  // namespace contrib

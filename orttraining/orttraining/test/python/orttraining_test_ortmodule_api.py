@@ -5776,7 +5776,7 @@ def test_runtime_inspector_label_and_embed_sparsity_detection(embed_is_sparse, l
     device = "cuda"
     num_embeddings, embedding_dim = 16, 128
     pt_model = NeuralNetCrossEntropyLoss(num_embeddings, embedding_dim).to(device)
-    from onnxruntime.training.ortmodule import DebugOptions, LogLevel
+    from onnxruntime.training.ortmodule import DebugOptions, LogLevel  # noqa: PLC0415
 
     ort_model = ORTModule(pt_model, DebugOptions(log_level=LogLevel.INFO))
 
@@ -6064,7 +6064,7 @@ def test_e2e_padding_elimination():
             self.dropout2 = nn.Dropout(0.0)
 
         def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
-            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)  # noqa: RUF005
             x = x.view(new_x_shape)
             return x.permute(0, 2, 1, 3)
 
@@ -6079,7 +6079,7 @@ def test_e2e_padding_elimination():
             attention_probs = self.dropout1(attention_probs)
             context_layer = torch.matmul(attention_probs, value_layer)
             context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)  # noqa: RUF005
             context_layer = context_layer.view(new_context_layer_shape)
 
             output = self.dense(context_layer)
@@ -6525,7 +6525,7 @@ def test_bert_result_with_layerwise_recompute():
         _test_helpers.assert_gradients_match_and_reset_gradient(ort_model, ort_model_with_reompute)
 
     execution_mgr = ort_model_with_reompute._torch_module._execution_manager._training_manager
-    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name  # noqa: PLC0415
 
     # Keep the logic aligned with _graph_execution_manager.py
     path = os.path.join(
@@ -6624,7 +6624,7 @@ def test_overridden_softmax_export(softmax_compute_type):
 
     # Check the ONNX Softmax is running in float32.
     execution_mgr = ort_model._torch_module._execution_manager._training_manager
-    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name  # noqa: PLC0415
 
     # Keep the logic aligned with _graph_execution_manager.py
     path = os.path.join(
@@ -6696,7 +6696,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
     """
     if fx == "deepspeed":
         try:
-            import deepspeed
+            import deepspeed  # noqa: PLC0415
 
             checkpoint = deepspeed.checkpointing.checkpoint
         except ImportError:
@@ -6704,7 +6704,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
             return
 
     elif fx == "torch":
-        from torch.utils.checkpoint import checkpoint
+        from torch.utils.checkpoint import checkpoint  # noqa: PLC0415
     else:
         raise ValueError(f"unsupported fx value: {fx}. only torch and deepspeed are supported.")
 
@@ -6744,7 +6744,7 @@ def test_enable_layerwise_recompute(memory_optimization_level, allow_gradient_ch
     # Forward pass
 
     # Tolerant export failure.
-    import contextlib
+    import contextlib  # noqa: PLC0415
 
     with contextlib.suppress(Exception):
         _ = model(input)
@@ -6801,7 +6801,7 @@ def test_layerwise_recompute_pythonop_deterministic():
             self.LayerNorm = nn.LayerNorm(hidden_size, eps=1e-05)
 
         def transpose_for_scores(self, x: torch.Tensor) -> torch.Tensor:
-            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)
+            new_x_shape = x.size()[:-1] + (self.num_attention_heads, self.attention_head_size)  # noqa: RUF005
             x = x.view(new_x_shape)
             return x.permute(0, 2, 1, 3)
 
@@ -6816,7 +6816,7 @@ def test_layerwise_recompute_pythonop_deterministic():
             attention_probs = DropoutFunction.apply(attention_probs)
             context_layer = torch.matmul(attention_probs, value_layer)
             context_layer = context_layer.permute(0, 2, 1, 3).contiguous()
-            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)
+            new_context_layer_shape = context_layer.size()[:-2] + (self.all_head_size,)  # noqa: RUF005
             context_layer = context_layer.view(new_context_layer_shape)
 
             output = self.dense(context_layer)
@@ -6927,7 +6927,7 @@ def test_layerwise_recompute_pythonop_deterministic():
         _test_helpers.assert_values_are_close(ort_prediction1, ort_prediction2, atol=1e-3, rtol=1e-4)
 
     execution_mgr = ort_model2._torch_module._execution_manager._training_manager
-    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name  # noqa: PLC0415
 
     # Keep the logic aligned with _graph_execution_manager.py
     path = os.path.join(
@@ -6963,7 +6963,7 @@ def test_layerwise_recompute_pythonop_deterministic():
 def test_aten_attention():
     pytest.skip("Temporarily disabled pending investigation.")
 
-    from torch.nn.attention import SDPBackend, sdpa_kernel
+    from torch.nn.attention import SDPBackend, sdpa_kernel  # noqa: PLC0415
 
     class _NeuralNetAttention(torch.nn.Module):
         def __init__(self):
@@ -7005,7 +7005,7 @@ def test_aten_attention():
     _test_helpers.assert_values_are_close(ort_input[2].grad, pt_input[2].grad)
 
     execution_mgr = ort_model._torch_module._execution_manager._training_manager
-    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name
+    from onnxruntime.training.ortmodule._onnx_models import _get_onnx_file_name  # noqa: PLC0415
 
     path = os.path.join(
         execution_mgr._debug_options.save_onnx_models.path,

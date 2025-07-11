@@ -68,7 +68,7 @@ def create_session(
     log_severity=2,
     tuning_results_path=None,
 ):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     onnxruntime.set_default_logger_severity(log_severity)
 

@@ -96,7 +96,7 @@ def train(model, optimizer, scaler, scheduler, train_dataloader, epoch, device, 
             start_time = curr_time
 
         if args.view_graphs:
-            import torchviz
+            import torchviz  # noqa: PLC0415
 
             pytorch_backward_graph = torchviz.make_dot(outputs[0], params=dict(list(model.named_parameters())))
             pytorch_backward_graph.view()

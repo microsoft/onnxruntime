@@ -366,7 +366,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
         onnx_path = os.path.join(".", "onnx_models", f"{model_name}_encoder_fp16.onnx")
 
         model = onnx.load_model(onnx_path, format=None, load_external_data=True)
-        from onnxruntime.transformers.onnx_model import OnnxModel
+        from onnxruntime.transformers.onnx_model import OnnxModel  # noqa: PLC0415
 
         onnx_model = OnnxModel(model)
         op_counters = onnx_model.get_operator_statistics()
@@ -386,7 +386,7 @@ class TestBeamSearchT5Fp16(unittest.TestCase):
         onnx_path = os.path.join(".", "onnx_models", f"{model_name}_decoder_fp16.onnx")
 
         model = onnx.load_model(onnx_path, format=None, load_external_data=True)
-        from onnxruntime.transformers.onnx_model import OnnxModel
+        from onnxruntime.transformers.onnx_model import OnnxModel  # noqa: PLC0415
 
         onnx_model = OnnxModel(model)
         op_counters = onnx_model.get_operator_statistics()

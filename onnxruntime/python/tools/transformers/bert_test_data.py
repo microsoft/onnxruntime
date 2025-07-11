@@ -579,7 +579,7 @@ def create_and_save_test_data(
     if only_input_tensors:
         return
 
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     providers = (
         ["CUDAExecutionProvider", "CPUExecutionProvider"]

@@ -1818,6 +1818,10 @@ NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name
   return node_arg;
 }
 
+const NodeArg* Graph::GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const {
+  return const_cast<Graph*>(this)->GetNodeArgIncludingParentGraphs(node_arg_name);
+}
+
 void Graph::ReverseDFSFrom(gsl::span<NodeIndex const> from,
                            const std::function<void(const Node*)>& enter,
                            const std::function<void(const Node*)>& leave,

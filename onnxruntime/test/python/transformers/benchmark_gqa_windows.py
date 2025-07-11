@@ -7,7 +7,7 @@ from test_sparse_attention import GroupQueryAttentionConfig, OrtGroupQueryAttent
 
 
 def save_results(results, filename):
-    import pandas as pd
+    import pandas as pd  # noqa: PLC0415
 
     df = pd.DataFrame(
         results,

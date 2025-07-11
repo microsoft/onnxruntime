@@ -2053,6 +2053,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 #### Attributes
 
 <dl>
+<dt><tt>bits</tt> : int</dt>
+<dd>Number of bits used for weight quantization. Must be either 4 or 8. </dd>
 <dt><tt>block_size</tt> : int</dt>
 <dd>(Optional) block size used for weight quantization. It needs to be a power of 2 and not smaller than 16.</dd>
 <dt><tt>gather_axis</tt> : int</dt>
@@ -2553,7 +2555,7 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>Softcap value for attention weights. Default value is 0.</dd>
 </dl>
 
-#### Inputs (7 - 11)
+#### Inputs (7 - 12)
 
 <dl>
 <dt><tt>query</tt> : T</dt>
@@ -2578,6 +2580,8 @@ This version of the operator has been available since version 1 of the 'com.micr
 <dd>2D tensor with shape (batch_size, sequence_length). When processing the first prompt the kernel uses only the first element</dd>
 <dt><tt>attention_bias</tt> (optional) : T</dt>
 <dd>additional add to QxK' with shape (batch_size or 1, num_heads or 1, sequence_length, total_sequence_length)</dd>
+<dt><tt>head_sink</tt> (optional) : T</dt>
+<dd>1D tensor with shape (num_heads). Each head has a smooth factor adding to the denominator of softmax.</dd>
 </dl>
 
 #### Outputs

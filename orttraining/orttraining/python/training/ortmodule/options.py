@@ -260,7 +260,7 @@ class _RuntimeOptions:
         self.run_symbolic_shape_infer = True
 
         # PyTorch custom Autograd function support
-        from ._custom_autograd_function import custom_autograd_function_enabler
+        from ._custom_autograd_function import custom_autograd_function_enabler  # noqa: PLC0415
 
         self.enable_custom_autograd_function = custom_autograd_function_enabler.state
 
@@ -391,7 +391,7 @@ class _RuntimeOptions:
             and C.is_triton_enabled()
         ):
             try:
-                import triton  # noqa: F401
+                import triton  # noqa: F401, PLC0415
             except ImportError:
                 self._logger.warning(
                     "triton library missing. Please install triton with `pip install triton`. Triton feature will be off."

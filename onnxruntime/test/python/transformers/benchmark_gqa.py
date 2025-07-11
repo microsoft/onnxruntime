@@ -38,7 +38,7 @@ def plot_prompt_performance(
     local_window_size: int | None = None,
     use_smooth_softmax: bool = False,
 ):
-    import triton
+    import triton  # noqa: PLC0415
 
     algos = get_plot_algos(sm, local_window_size)
     configs = [
@@ -108,7 +108,7 @@ def plot_token_performance(
     local_window_size: int | None = None,
     use_smooth_softmax: bool = False,
 ):
-    import triton
+    import triton  # noqa: PLC0415
 
     algos = get_plot_algos(sm, local_window_size)
     configs = [
