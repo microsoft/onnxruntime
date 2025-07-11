@@ -6886,6 +6886,24 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t flags);
+
+  /** Sets information related to EP context binary file.
+   *
+   * EP uses this information to decide the location and context binary file name.
+   * Used while compiling model with input and output in memory buffer
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] output_directory Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] model_name Null terminated string of the model name (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextBinaryInformation,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_directory,
+                  _In_ const ORTCHAR_T* model_name);
 };
 
 /*
