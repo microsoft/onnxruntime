@@ -892,10 +892,10 @@ Status BindKernelOutput(Ort::KernelContext& ctx,
 }
 
 NvExecutionProvider::PerThreadContext::PerThreadContext(OrtDevice::DeviceId device_id, bool has_user_compute_stream, cudaStream_t stream) {
-  // TODO: figure out if PerThreadContext is used at all. If not, just clean it up.
-  if (has_user_compute_stream) {
+  // Only set device if user hasn't provided a compute stream
+  if (!has_user_compute_stream) {
     CUDA_CALL_THROW(cudaSetDevice(device_id));
-    (void)(stream);
+    (void)stream;
   }
 }
 
@@ -945,6 +945,66 @@ bool NvExecutionProvider::PerThreadContext::UpdateTensorRTContext(std::string fu
     return true;
   }
   return false;
+}
+bool NvExecutionProvider::PerThreadContext::IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  if (!IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id)) {
+    LOGS_DEFAULT(ERROR) << "[NV EP DEBUG] IsGraphCaptureAllowed - IsGraphCaptureAllowedOnRun returned false";
+    return false;
+  }
+
+  // Safe access to map - return false if key doesn't exist yet
+  auto it = graph_id_to_run_count_.find(cuda_graph_annotation_id);
+  if (it == graph_id_to_run_count_.end()) {
+    return false; // Entry doesn't exist yet, not ready for capture
+  }
+
+  bool allowed = it->second >= min_num_runs_before_cuda_graph_capture_;
+  return allowed;
+}
+
+bool NvExecutionProvider::PerThreadContext::IsGraphCaptureAllowedOnRun(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  bool result = cuda_graph_.IsGraphCaptureAllowedOnRun(cuda_graph_annotation_id);
+  return result;
+}
+
+CudaGraphAnnotation_t NvExecutionProvider::PerThreadContext::GetCudaGraphAnnotationId(const onnxruntime::RunOptions& run_options) const {
+  auto graph_annotation_str = run_options.GetConfigOptions().GetConfigEntry(kOrtRunOptionsConfigCudaGraphAnnotation);
+  CudaGraphAnnotation_t cuda_graph_annotation_id = kCudaGraphAnnotationDefault;
+
+  if (graph_annotation_str.has_value() && !graph_annotation_str->empty()) {
+    if (!TryParseStringWithClassicLocale<int>(*graph_annotation_str, cuda_graph_annotation_id)) {
+      LOGS_DEFAULT(WARNING) << "[NvTensorRTRTX EP] Failed to parse cuda graph annotation id: "
+                           << *graph_annotation_str << ", using default: " << kCudaGraphAnnotationDefault;
+      cuda_graph_annotation_id = kCudaGraphAnnotationDefault;
+    }
+  }
+  return cuda_graph_annotation_id;
+}
+
+void NvExecutionProvider::PerThreadContext::CaptureBegin(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  cuda_graph_.Reset();
+  cuda_graph_.CaptureBegin(cuda_graph_annotation_id);
+}
+
+void NvExecutionProvider::PerThreadContext::CaptureEnd(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  cuda_graph_.CaptureEnd(cuda_graph_annotation_id);
+}
+
+bool NvExecutionProvider::PerThreadContext::IsGraphCaptured(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+  bool captured = cuda_graph_.IsGraphCaptured(cuda_graph_annotation_id);
+  return captured;
+}
+
+Status NvExecutionProvider::PerThreadContext::ReplayGraph(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  return cuda_graph_.Replay(cuda_graph_annotation_id);
+}
+
+void NvExecutionProvider::PerThreadContext::IncrementRegularRunCountBeforeGraphCapture(CudaGraphAnnotation_t cuda_graph_annotation_id) {
+  if (graph_id_to_run_count_.find(cuda_graph_annotation_id) == graph_id_to_run_count_.end()) {
+    graph_id_to_run_count_[cuda_graph_annotation_id] = 1;
+    return;
+  }
+  graph_id_to_run_count_[cuda_graph_annotation_id]++;
 }
 
 bool NvExecutionProvider::PerThreadContext::IsTensorRTContextInMap(std::string fused_node) {
@@ -1043,6 +1103,12 @@ NvExecutionProvider::NvExecutionProvider(const NvExecutionProviderInfo& info)
   if (info.has_user_compute_stream) {
     external_stream_ = true;
     stream_ = static_cast<cudaStream_t>(info.user_compute_stream);
+  }
+  else if(cuda_graph_enable_) {
+    // Create our own stream for NV TensorRT operations if CUDA graph is enabled
+    // This ensures we have a dedicated stream for CUDA graph capture
+    external_stream_ = true;
+    CUDA_CALL_THROW(cudaStreamCreate(&stream_));
   }
 
   std::string profile_min_shapes, profile_max_shapes, profile_opt_shapes;
@@ -1248,7 +1314,7 @@ NvExecutionProvider::~NvExecutionProvider() {
     }
   }
 
-  if (!external_stream_ && stream_) {
+  if (!external_stream_ && sync_stream_after_enqueue_) {
     ORT_IGNORE_RETURN_VALUE(CUDA_CALL(cudaStreamDestroy(stream_)));
   }
   ReleaseTensorRTCustomOpDomainList(info_.custom_op_domain_list);
@@ -1260,61 +1326,46 @@ NvExecutionProvider::~NvExecutionProvider() {
   }
 }
 
+// Umang as we have these in poer thread context we dont need these
 bool NvExecutionProvider::IsGraphCaptureEnabled() const {
   return cuda_graph_enable_;
 }
 
-bool NvExecutionProvider::IsGraphCaptureAllowed() const {
-  return regular_run_count_before_graph_capture_ >= min_num_runs_before_cuda_graph_capture_;
-}
+// bool NvExecutionProvider::IsGraphCaptureAllowed(CudaGraphAnnotation_t cuda_graph_annotation_id) const {
+//   // Delegate to PerThreadContext - this method should be removed in future refactoring
+//   return GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id);
+// }
 
-void NvExecutionProvider::CaptureBegin(int) {
-  cuda_graph_.Reset();
-  cuda_graph_.CaptureBegin(0);
-}
+// void NvExecutionProvider::CaptureBegin(int) {
+//   cuda_graph_.Reset();
+//   cuda_graph_.CaptureBegin(0);
+// }
 
-void NvExecutionProvider::CaptureEnd(int) {
-  cuda_graph_.CaptureEnd(0);
-  is_graph_captured_ = true;
-}
+// void NvExecutionProvider::CaptureEnd(int) {
+//   cuda_graph_.CaptureEnd(0);
+//   is_graph_captured_ = true;
+// }
 
-bool NvExecutionProvider::IsGraphCaptured(int) const {
-  return is_graph_captured_;
-}
+// bool NvExecutionProvider::IsGraphCaptured(int) const {
+//   return is_graph_captured_;
+// }
 
-Status NvExecutionProvider::ReplayGraph(int) {
-  ORT_ENFORCE(IsGraphCaptured(0));
-  // Please note that CUDAGraph::Replay() is not thread safe.
-  // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
-  // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
-  return cuda_graph_.Replay(0);
-}
+// Status NvExecutionProvider::ReplayGraph(int) {
+//   ORT_ENFORCE(IsGraphCaptured(0));
+//   // Please note that CUDAGraph::Replay() is not thread safe.
+//   // ORT TRT calls ReplayGraph() in compute_func() where synchronization is enforced due to lock_guard(),
+//   // therefore calling CUDAGraph::Replay() here is guaranteed to be thread safe.
+//   return cuda_graph_.Replay(0);
+// }
 
-void NvExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
-  // Please note that this function is not thread safe.
-  // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
-  // therefore following increment is guaranteed to be thread safe.
-  ++regular_run_count_before_graph_capture_;
-}
+// void NvExecutionProvider::IncrementRegularRunCountBeforeGraphCapture() {
+//   // Please note that this function is not thread safe.
+//   // ORT TRT calls this function in compute_func() where synchronization is enforced due to lock_guard(),
+//   // therefore following increment is guaranteed to be thread safe.
+//   ++regular_run_count_before_graph_capture_;
+// }
 
-std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
-  AllocatorCreationInfo default_memory_info(
-      [](OrtDevice::DeviceId device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); },
-      narrow<OrtDevice::DeviceId>(device_id_));
-
-  AllocatorCreationInfo pinned_allocator_info(
-      [](OrtDevice::DeviceId device_id) {
-        return std::make_unique<CUDAPinnedAllocator>(CUDA_PINNED, device_id);
-      },
-      narrow<OrtDevice::DeviceId>(device_id_));
-
-  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
-}
-
-std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
-  return std::make_unique<GPUDataTransfer>();
-}
-
+// Umang changes
 Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_options) {
   if (multi_profile_enable_ == true) {
     auto graph_annotation_str =
@@ -1324,11 +1375,49 @@ Status NvExecutionProvider::OnRunStart(const onnxruntime::RunOptions& run_option
   return Status::OK();
 }
 
-Status NvExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& /*run_options*/) {
-  if (sync_stream && external_stream_) {
+Status NvExecutionProvider::OnRunEnd(bool sync_stream, const onnxruntime::RunOptions& run_options) {
+  (void)run_options;
+
+
+  // check this logic with ankan
+  // I  think this is not even required here as we sync check after enqueue capture
+  if (sync_stream && sync_stream_after_enqueue_) {
     CUDA_RETURN_IF_ERROR(cudaStreamSynchronize(stream_));
   }
+
+  // The reason of !IsGraphCaptureEnabled():
+  //  If cuda graph is enabled, the per thread context will not be released
+  //  because the per thread cuda graph needs to be maintained and replayed for
+  //  the next run.
+  // The reason of PerThreadContextCache()->find(this) != PerThreadContextCache()->end():
+  //  In extreme cases (e.g., 1-op graph and that op fallbacks to CPU),
+  //  PerThreadContext won't be created and there isbe nothing to
+  //  release. This didn't happen before because we always call
+  //  GetPerThreadContext in OnRunStart.
+  if (!IsGraphCaptureEnabled() &&
+      PerThreadContextCache()->find(this) != PerThreadContextCache()->end()) {
+      ReleasePerThreadContext();
+  }
+
   return Status::OK();
+}
+
+std::vector<AllocatorPtr> NvExecutionProvider::CreatePreferredAllocators() {
+  AllocatorCreationInfo default_memory_info(
+      [](OrtDevice::DeviceId device_id) { return std::make_unique<CUDAAllocator>(device_id, CUDA); },
+      narrow<OrtDevice::DeviceId>(device_id_));
+
+  AllocatorCreationInfo pinned_allocator_info(
+      [](OrtDevice::DeviceId device_id) {
+        return std::make_unique<CUDAPinnedAllocator>(device_id, CUDA_PINNED);
+      },
+      narrow<OrtDevice::DeviceId>(device_id_));
+
+  return std::vector<AllocatorPtr>{CreateAllocator(default_memory_info), CreateAllocator(pinned_allocator_info)};
+}
+
+std::unique_ptr<IDataTransfer> NvExecutionProvider::GetDataTransfer() const {
+  return std::make_unique<GPUDataTransfer>();
 }
 
 // Get the pointer to the IBuilder instance.
@@ -2684,6 +2773,7 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
     }
     OrtAllocator* alloc = alloc_;
 
+    //__debugbreak();
     void* cuda_stream;
     Ort::ThrowOnError(api->KernelContext_GetGPUComputeStream(context, &cuda_stream));
     cudaStream_t stream = static_cast<cudaStream_t>(cuda_stream);
@@ -2839,13 +2929,17 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
     }
 
-    // Start CUDA graph capture.
-    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
-    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-      LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-      cuda_graph_.SetStream(stream);
-      CaptureBegin(0);
+    // Start CUDA graph capture with the correct stream
+    // Note: We need to set the stream and start capture here because this is where we have access to the actual compute stream
+    // Create a default run options since we don't have access to the actual run options in compute function
+    CudaGraphAnnotation_t cuda_graph_annotation_id = kCudaGraphAnnotationDefault;
+    bool should_start_capture = cuda_graph_enable_ &&
+                               !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
+                               GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id);
+
+    if (should_start_capture) {
+      GetPerThreadContext().SetCudaGraphStream(stream);
+      GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
     }
 
     // Run TRT inference
@@ -2904,18 +2998,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromGraph(const GraphViewer& gr
       }
     }
 
-    // End CUDA graph capture.
-    // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
-    // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
-    // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-    if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
-      if (IsGraphCaptureAllowed()) {
-        CaptureEnd(0);
+    // Handle CUDA graph capture end and replay
+    if (cuda_graph_enable_) {
+      if (should_start_capture) {
+        // We just started capture, so end it and replay
+        GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
         // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(ReplayGraph(0));
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
+      } else if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        // Graph is already captured, just replay it
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
       } else {
-        IncrementRegularRunCountBeforeGraphCapture();
+        // Not ready for capture yet, increment run count
+        GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
       }
     }
 
@@ -3154,13 +3250,15 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       trt_context->setDeviceMemory(IAllocator::MakeUniquePtrFromOrtAllocator<void>(alloc, *max_context_mem_size_ptr).get());
     }
 
-    // Start CUDA graph capture.
-    // Note: The reason we don't put graph capture in OnRunStart() like CUDA EP does is because
-    // current ORT TRT doesn't get cuda stream until compute time and graph capture requires cuda stream.
-    if (cuda_graph_enable_ && IsGraphCaptureAllowed() && !IsGraphCaptured(0)) {
-      LOGS_DEFAULT(INFO) << "Capturing the cuda graph for this model";
-      cuda_graph_.SetStream(stream);
-      CaptureBegin(0);
+    // Handle CUDA graph capture - only start capture if not already captured
+    CudaGraphAnnotation_t cuda_graph_annotation_id = kCudaGraphAnnotationDefault;
+    bool should_start_capture = cuda_graph_enable_ &&
+                               !GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id) &&
+                               GetPerThreadContext().IsGraphCaptureAllowed(cuda_graph_annotation_id);
+
+    if (should_start_capture) {
+      GetPerThreadContext().SetCudaGraphStream(stream);
+      GetPerThreadContext().CaptureBegin(cuda_graph_annotation_id);
     }
 
     // Run TRT inference
@@ -3219,18 +3317,20 @@ Status NvExecutionProvider::CreateNodeComputeInfoFromPrecompiledEngine(const Gra
       }
     }
 
-    // End CUDA graph capture.
-    // Note: One reason we don't put end of graph capture in OnRunEnd() like CUDA EP does is because of cuda stream mentioned in graph capture
-    // above, another reason is because OnRunEnd() is not synchronized with OnRunStart() and ExecuteGraph() per inference_session.cc.
-    // It's safe to start/end CUDA graph capture in compute_func() here since cuda graph object is maintained by a per thread basis.
-    if (cuda_graph_enable_ && !IsGraphCaptured(0)) {
-      if (IsGraphCaptureAllowed()) {
-        CaptureEnd(0);
+    // Handle CUDA graph capture end and replay
+    if (cuda_graph_enable_) {
+      if (should_start_capture) {
+        // We just started capture, so end it and replay
+        GetPerThreadContext().CaptureEnd(cuda_graph_annotation_id);
         // CUDA work issued to a capturing stream doesn't actually run on the GPU,
         // so run the captured graph here to actually execute the work.
-        ORT_RETURN_IF_ERROR(ReplayGraph(0));
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
+      } else if (GetPerThreadContext().IsGraphCaptured(cuda_graph_annotation_id)) {
+        // Graph is already captured, just replay it
+        ORT_RETURN_IF_ERROR(GetPerThreadContext().ReplayGraph(cuda_graph_annotation_id));
       } else {
-        IncrementRegularRunCountBeforeGraphCapture();
+        // Not ready for capture yet, increment run count
+        GetPerThreadContext().IncrementRegularRunCountBeforeGraphCapture(cuda_graph_annotation_id);
       }
     }
 
