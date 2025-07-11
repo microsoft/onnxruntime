@@ -3,16 +3,19 @@
 
 #pragma once
 
+#include <filesystem>
+#include <map>
+#include <memory>
+#include <mutex>
 #include <set>
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 #include "core/framework/arena_extend_strategy.h"
 #include "core/framework/execution_provider.h"
-#include <mutex>
 #include "core/providers/migraphx/migraphx_execution_provider_info.h"
 #include "core/providers/migraphx/migraphx_call.h"
-
-#include <map>
-#include <unordered_map>
-#include <filesystem>
 
 namespace onnxruntime {
 

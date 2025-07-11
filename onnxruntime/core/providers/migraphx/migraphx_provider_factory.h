@@ -4,6 +4,7 @@
 #pragma once
 
 #include <memory>
+
 #include "core/framework/ortdevice.h"
 #include "core/session/onnxruntime_c_api.h"
 
