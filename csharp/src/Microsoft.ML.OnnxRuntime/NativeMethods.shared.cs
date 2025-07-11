@@ -396,6 +396,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Graph_GetNumNodes;
         public IntPtr Graph_GetNodes;
         public IntPtr Graph_GetParentNode;
+        public IntPtr Graph_GetGraphView;
         public IntPtr Node_GetId;
         public IntPtr Node_GetName;
         public IntPtr Node_GetOperatorType;
@@ -415,6 +416,7 @@ namespace Microsoft.ML.OnnxRuntime
         public IntPtr Node_GetNumSubgraphs;
         public IntPtr Node_GetSubgraphs;
         public IntPtr Node_GetGraph;
+        public IntPtr Node_GetEpType;
 
         public IntPtr GetRunConfigEntry;
 
