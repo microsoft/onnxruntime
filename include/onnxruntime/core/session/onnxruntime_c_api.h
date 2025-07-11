@@ -6028,7 +6028,7 @@ struct OrtApi {
 
   /** \brief Returns the execution provider name that this node is assigned to run on.
    *         Returns NULL if the node has not been assigned to any execution provider yet.
-   *         For plugin execution providers, the name is the one registered via RegisterExecutionProviderLibrary.
+   *         For plugin execution providers, the name is the one returned by OrtEp::GetName.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
