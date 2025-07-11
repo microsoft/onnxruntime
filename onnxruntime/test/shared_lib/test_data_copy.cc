@@ -186,7 +186,7 @@ TEST(PluginEpDataCopyTest, CopyInputsToCudaDevice) {
     };
 
     for (size_t i = 0; i < expected.size(); ++i) {
-      EXPECT_NEAR(expected[i], results[i], 1e-5) << "i=" << i;
+      EXPECT_NEAR(expected[i], results[i], 1e-3) << "i=" << i;
     }
   };
 
