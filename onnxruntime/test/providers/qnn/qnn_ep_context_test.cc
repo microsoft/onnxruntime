@@ -509,6 +509,11 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     Ort::ModelCompilationOptions compile_options(*ort_env, session_options);
     compile_options.SetInputModelFromBuffer(reinterpret_cast<const void*>(model_data.data()), model_data.size());
     compile_options.SetOutputModelBuffer(allocator, &output_model_buffer, &output_model_buffer_size);
+    std::string target_dir = "./testdata/";
+    std::string model_name = "test_model_in_mem.onnx";
+    auto pos = model_name.rfind(".onnx");
+    std::string bin_file_name = model_name.substr(0, pos) + "_qnn.bin";
+    compile_options.SetEpContextBinaryInformation(ToWideString(target_dir).c_str(), ToWideString(model_name).c_str());
     compile_options.SetEpContextEmbedMode(false);
 
     // Compile the model.
@@ -519,12 +524,18 @@ TEST_F(QnnHTPBackendTests, CompileApi_FromSessionOptions_InputAndOutputModelsInB
     ASSERT_TRUE(output_model_buffer != nullptr);
     ASSERT_TRUE(output_model_buffer_size > 0);
 
+    ASSERT_TRUE(std::filesystem::exists(target_dir + bin_file_name)) << "expected context binary file should exist";
+
     // Check that the compiled model has the expected number of EPContext nodes.
     CheckEpContextNodeCounts(output_model_buffer, output_model_buffer_size, 2, 2);
 
+    // Add session option "ep.context_file_path" so that the session can use it to locate the [model_name]_qnn.bin file
+    std::string ctx_model = target_dir + model_name;
+    session_options.AddConfigEntry(kOrtSessionOptionEpContextFilePath, ctx_model.c_str());
     // Should be able to create a session with the compiled model and the original session options.
     EXPECT_NO_THROW((Ort::Session(*ort_env, output_model_buffer, output_model_buffer_size, session_options)));
 
+    std::filesystem::remove(target_dir + bin_file_name);
     allocator.Free(output_model_buffer);
   }
 }
