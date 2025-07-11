@@ -225,6 +225,7 @@ Status ComputeAttentionProbs(onnxruntime::webgpu::ComputeContext& context, int o
 }
 
 Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
+  bool has_sliding_window = local_window_size_ != -1;
 
   if (has_seqlen_k_) {
     shader.AddInput("seqlen_k", ShaderUsage::UseUniform);
@@ -244,17 +245,27 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   InitVarStub(oss, has_seqlen_k_);
   shader.MainFunctionBody() << oss.str()
                             << "let seq_causal_length = " << (has_seqlen_k_ ? "past_sequence_length + workgroup_idx % sequence_length + 1" : "uniforms.total_sequence_length_comp") << ";\n"
-                            << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
                             << "let local_offset = local_idx * uniforms.elements_per_thread;\n"
-                            << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n"
-                            // Calculate start_offset and effective sequence length considering sliding window
+                            << "let offset = workgroup_idx * uniforms.total_sequence_length_comp + local_offset;\n";
+  if (has_sliding_window) {
+    // Sliding window
+    shader.MainFunctionBody()
+                            << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
                             << "let start_offset = select(0, seq_causal_length - u32(uniforms.local_window_size), should_apply_local_window);\n"
-                            << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n"
-
+                            << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n";
+  } else {
+    // No sliding window: we keep the code for sliding window in the shader but
+    // using const for start_offset and should_apply_local_window will make the compiler optimize it out.
+    shader.MainFunctionBody()
+                            << "const start_offset = 0;\n"
+                            << "const should_apply_local_window = false;\n"
+                            << "let effective_seq_length = seq_causal_length;\n";
+  }
+  shader.MainFunctionBody()
                             << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
                             << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
                             << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (actual_pos < seq_causal_length) {\n"
+                            << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
                             << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
                             << "  }\n"
                             << "}\n"
@@ -277,7 +288,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "var sum_vector = f32_val_t(0);\n"
                             << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
                             << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (actual_pos < seq_causal_length) {\n"
+                            << "  if (!should_apply_local_window ||actual_pos < seq_causal_length) {\n"
                             << "     sum_vector += exp(f32_val_t(x[offset + i + start_offset]) - max_value);\n"
                             << "  }\n"
                             << "}\n"
@@ -305,7 +316,7 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
                             << "    let actual_pos = local_offset + i + start_offset;\n"
                             << "    let pos = offset + i + start_offset;\n"
-                            << "    if (actual_pos < seq_causal_length) {\n"
+                            << "    if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
                             << "       var f32input = f32_val_t(x[pos]);\n"
                             << "       x[pos] = x_value_t(exp(f32input - max_value) / sum);\n"
                             << "    }\n"
@@ -349,7 +360,7 @@ Status ComputeInPlaceSoftmax(onnxruntime::webgpu::ComputeContext& context, Tenso
     program.AddInput({head_sink, ProgramTensorMetadataDependency::Type});
   }
   program.AddOutputs({{probs, ProgramTensorMetadataDependency::TypeAndRank, components}})
-      .CacheHint(work_group_size, use_smooth_softmax)
+      .CacheHint(work_group_size, use_smooth_softmax, local_window_size != -1)
       .SetDispatchGroupSize(batch_size * num_heads * sequence_length)
       .SetWorkgroupSize(work_group_size)
       .AddUniformVariables({{static_cast<uint32_t>(batch_size)},
