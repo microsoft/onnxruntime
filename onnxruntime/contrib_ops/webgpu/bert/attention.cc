@@ -250,27 +250,27 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
   if (has_sliding_window) {
     // Sliding window
     shader.MainFunctionBody()
-                            << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
-                            << "let start_offset = select(0, seq_causal_length - u32(uniforms.local_window_size), should_apply_local_window);\n"
-                            << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n";
+        << "let should_apply_local_window = uniforms.local_window_size >= 0 && seq_causal_length > u32(uniforms.local_window_size) + 1;\n"
+        << "let start_offset = select(0, seq_causal_length - u32(uniforms.local_window_size), should_apply_local_window);\n"
+        << "let effective_seq_length = select(seq_causal_length, u32(uniforms.local_window_size), should_apply_local_window);\n";
   } else {
     // No sliding window: we keep the code for sliding window in the shader but
     // using const for start_offset and should_apply_local_window will make the compiler optimize it out.
     shader.MainFunctionBody()
-                            << "const start_offset = 0;\n"
-                            << "const should_apply_local_window = false;\n"
-                            << "let effective_seq_length = seq_causal_length;\n";
+        << "const start_offset = 0;\n"
+        << "const should_apply_local_window = false;\n"
+        << "let effective_seq_length = seq_causal_length;\n";
   }
   shader.MainFunctionBody()
-                            << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
-                            << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
-                            << "  let actual_pos = local_offset + i + start_offset;\n"
-                            << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
-                            << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
-                            << "  }\n"
-                            << "}\n"
-                            << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
-                            << "workgroupBarrier();\n";
+      << "var thread_max_vector = f32_val_t(-3.402823e+38f);\n"
+      << "for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
+      << "  let actual_pos = local_offset + i + start_offset;\n"
+      << "  if (!should_apply_local_window || actual_pos < seq_causal_length) {\n"
+      << "      thread_max_vector = max(f32_val_t(x[offset + i + start_offset]), thread_max_vector);\n"
+      << "  }\n"
+      << "}\n"
+      << "thread_max[local_idx] = " << (components_ == 4 ? "max(max(thread_max_vector.x, thread_max_vector.y), max(thread_max_vector.z, thread_max_vector.w))" : (components_ == 2 ? "max(thread_max_vector.x, thread_max_vector.y)" : "thread_max_vector")) << ";\n"
+      << "workgroupBarrier();\n";
 
   if (has_head_sink_) {
     // Handle head sink
@@ -307,8 +307,8 @@ Status InPlaceSoftmaxProgram::GenerateShaderCode(ShaderHelper& shader) const {
 
   shader.MainFunctionBody() << "if (sum == 0) {\n"
                             << "  for (var i: u32 = 0; i < uniforms.elements_per_thread && i + local_offset < effective_seq_length; i++) {\n"
-                           << "  let actual_pos = local_offset + i + start_offset;\n"
-                             << "    if (actual_pos < seq_causal_length) {\n"
+                            << "  let actual_pos = local_offset + i + start_offset;\n"
+                            << "    if (actual_pos < seq_causal_length) {\n"
                             << "      x[offset + i + start_offset] = x_value_t(x_element_t(1.0)/x_element_t(effective_seq_length));\n"
                             << "    }\n"
                             << "  }\n"
