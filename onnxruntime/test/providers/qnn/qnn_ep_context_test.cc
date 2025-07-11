@@ -2034,7 +2034,7 @@ TEST_F(QnnHTPBackendTests, QnnEpDynamicOptions) {
   const char* const efficient_type[] = {"Efficient"};
   const char* const default_type[] = {"Default"};
 
-  // Test Efficent & Default options
+  // Test Efficient & Default options
   session.SetEpDynamicOptions(workload_type, efficient_type, 1);
   ort_output = session.Run(Ort::RunOptions{}, input_names_c.data(), ort_inputs.data(), ort_inputs.size(),
                            output_names_c.data(), 1);
