@@ -161,6 +161,7 @@ class DmlEpFactory : public EpFactoryInternalImpl {
   }
 
   OrtStatus* CreateAllocator(const OrtMemoryInfo* /*memory_info*/,
+                             const OrtEp* /*ep*/,
                              const OrtKeyValuePairs* /*allocator_options*/,
                              OrtAllocator** allocator) noexcept override {
     // TODO: This needs to create an allocator for the specific device so it's available as a shared allocator. That

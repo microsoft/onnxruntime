@@ -59,9 +59,10 @@ class ProviderBridgeEpFactory : public EpFactoryInternalImpl {
   }
 
   OrtStatus* CreateAllocator(const OrtMemoryInfo* memory_info,
+                             const OrtEp* ep,
                              const OrtKeyValuePairs* allocator_options,
                              OrtAllocator** allocator) noexcept override {
-    return ep_factory_.CreateAllocator(&ep_factory_, memory_info, allocator_options, allocator);
+    return ep_factory_.CreateAllocator(&ep_factory_, memory_info, ep, allocator_options, allocator);
   }
 
   void ReleaseAllocator(OrtAllocator* allocator) noexcept override {

@@ -805,6 +805,7 @@ struct CudaEpFactory : OrtEpFactory {
 
   static OrtStatus* ORT_API_CALL CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                      const OrtMemoryInfo* memory_info,
+                                                     const OrtEp* /*ep*/,
                                                      const OrtKeyValuePairs* /*allocator_options*/,
                                                      OrtAllocator** allocator) noexcept {
     // this function is free to return the same allocator instance for all calls and make ReleaseAllocator a no-op

@@ -188,23 +188,23 @@ void ORT_API_CALL ExampleEpFactory::ReleaseEpImpl(OrtEpFactory* /*this_ptr*/, Or
 /*static*/
 OrtStatus* ORT_API_CALL ExampleEpFactory::CreateAllocatorImpl(OrtEpFactory* this_ptr,
                                                               const OrtMemoryInfo* memory_info,
+                                                              const OrtEp* /*ep*/,
                                                               const OrtKeyValuePairs* /*allocator_options*/,
                                                               OrtAllocator** allocator) noexcept {
   auto& factory = *static_cast<ExampleEpFactory*>(this_ptr);
   *allocator = nullptr;
 
-  // NOTE: The factory implementation is free to return a shared OrtAllocator* instance instead of creating a new
-  //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
-  //       ReleaseAllocatorImpl a no-op.
-  if (memory_info == factory.default_memory_info_.get()) {
-    auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
-    *allocator = cpu_allocator.release();
-  } else {
+  if (memory_info != factory.default_memory_info_.get()) {
     return factory.ort_api.CreateStatus(ORT_INVALID_ARGUMENT,
                                         "INTERNAL ERROR! Unknown memory info provided to CreateAllocator. "
                                         "Value did not come directly from an OrtEpDevice returned by this factory.");
   }
 
+  // NOTE: The factory implementation is free to return a shared OrtAllocator* instance instead of creating a new
+  //       allocator on each call. To do this have an allocator instance as an OrtEpFactory class member and make
+  //       ReleaseAllocatorImpl a no-op.
+  auto cpu_allocator = std::make_unique<CustomAllocator>(memory_info, factory);
+  *allocator = cpu_allocator.release();
   return nullptr;
 }
 

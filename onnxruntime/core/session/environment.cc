@@ -663,7 +663,8 @@ Status Environment::CreateSharedAllocatorImpl(const OrtEpDevice& ep_device,
   }
 
   OrtAllocator* allocator = nullptr;
-  auto* ort_status = ep_device.ep_factory->CreateAllocator(ep_device.ep_factory, &memory_info, allocator_options,
+  auto* ort_status = ep_device.ep_factory->CreateAllocator(ep_device.ep_factory, &memory_info,
+                                                           /*OrtEp**/ nullptr, allocator_options,
                                                            &allocator);
   if (ort_status != nullptr) {
     return ToStatusAndRelease(ort_status);

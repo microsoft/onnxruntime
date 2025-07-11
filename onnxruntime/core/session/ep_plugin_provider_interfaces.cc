@@ -557,7 +557,8 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
-    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
+    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, ort_ep_.get(), /*options*/ nullptr,
+                                                        &ort_allocator_ptr);
 
     // throw or log? start with throw
     if (ort_status != nullptr) {

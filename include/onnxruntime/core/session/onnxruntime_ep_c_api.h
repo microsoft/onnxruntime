@@ -792,7 +792,8 @@ struct OrtEpFactory {
    * The OrtMemoryInfo instance will match one of the values set in the OrtEpDevice using EpDevice_AddAllocatorInfo.
    *
    * \param[in] this_ptr The OrtEpFactory instance.
-   * \param[in] memory_info The OrtMemoryInfo to create the allocator for.
+   * \param[in] ep The OrtEp if the allocator is being created for a specific EP instance. nullptr otherwise.
+   * \param[in] memory_info The OrtMemoryInfo to create the allocator for. May be nullptr.
    * \param[in] allocator_options Optional key-value pairs for allocator options, can be nullptr.
    * \param[out] allocator The created OrtAllocator instance. Set to nullptr if the default CPU allocator is used.
    *
@@ -802,7 +803,8 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateAllocator, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryInfo* memory_info,
-                  _In_ const OrtKeyValuePairs* allocator_options,
+                  _In_opt_ const OrtEp* ep,
+                  _In_opt_ const OrtKeyValuePairs* allocator_options,
                   _Outptr_result_maybenull_ OrtAllocator** allocator);
 
   /** \brief Release an OrtAllocator created by the factory.
@@ -842,8 +844,8 @@ struct OrtEpFactory {
    *
    * \param[in] this_ptr The OrtEpFactory instance.
    * \param[in] memory_device The OrtMemoryDevice to create the synchronization stream for.
-   * \param[in[ ep The OrtEp if the stream is being created for a specific EP instance. The instance options may affect
-   *               stream behavior (e.g. whether graph capture is enabled).
+   * \param[in] ep The OrtEp if the stream is being created for a specific EP instance. nullptr otherwise.
+   *               The EP instance options may affect stream behavior (e.g. whether graph capture is enabled).
    *               Nullptr when called from outside of an inference session.
    * \param[in] stream_options Options for stream creation. May be nullptr.
    * \param[out] stream The created OrtSyncStreamImpl instance. nullptr if the execution provider is not stream aware.
@@ -854,7 +856,7 @@ struct OrtEpFactory {
    */
   ORT_API2_STATUS(CreateSyncStreamForDevice, _In_ OrtEpFactory* this_ptr,
                   _In_ const OrtMemoryDevice* memory_device,
-                  _In_opt_ const OrtEp* ep,  // ??? Is it better to have this optional arg, or to add a CreateSyncStream to OrtEp that can be optionally implemented
+                  _In_opt_ const OrtEp* ep,
                   _In_opt_ const OrtKeyValuePairs* stream_options,
                   _Outptr_ OrtSyncStreamImpl** stream);
 };
