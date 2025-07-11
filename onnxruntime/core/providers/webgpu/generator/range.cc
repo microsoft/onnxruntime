@@ -25,11 +25,6 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
 
   uint32_t output_size = onnxruntime::narrow<uint32_t>(n);
   RangeProgram program{};
-#if defined(__GNUC__)
-#pragma GCC diagnostic push
-#pragma GCC diagnostic ignored "-Wstrict-aliasing"
-#endif
-
   program.AddOutput({output_tensor, ProgramTensorMetadataDependency::Type})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
       .AddUniformVariables({
@@ -37,11 +32,6 @@ Status Range<T>::ComputeInternal(ComputeContext& context) const {
           *reinterpret_cast<uint32_t*>(&start),
           *reinterpret_cast<uint32_t*>(&delta),
       });
-
-#if defined(__GNUC__)
-#pragma GCC diagnostic pop
-#endif
-
   return context.RunProgram(program);
 }
 
