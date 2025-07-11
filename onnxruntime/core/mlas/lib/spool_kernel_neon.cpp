@@ -49,24 +49,25 @@ void
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t InputWidthElements = InputWidth / sizeof(float);
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
-
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
-    const MLAS_FLOAT32X4 NegInfVector = MlasBroadcastFloat32x4(-std::numeric_limits<float>::infinity());
+    const float MaxPaddingValue = std::numeric_limits<float>::lowest();
+    const MLAS_FLOAT32X4 MaxPaddingVector = MlasBroadcastFloat32x4(MaxPaddingValue);
 
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        MLAS_FLOAT32X4 MaxVector = NegInfVector;
+        MLAS_FLOAT32X4 MaxVector = MaxPaddingVector;
 
         for (size_t kh = 0; kh < KernelHeight; kh++) {
+            const float* row_start = InputBase + kh * DilatedInputWidthElements;
+            const float* row_end = row_start + InputWidthElements;
+
             for (size_t kw = 0; kw < KernelWidth; kw++) {
                 const float* input_ptr = Input + output_idx * StrideWidthElements +
                                          kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                const float* row_start = InputBase + kh * DilatedInputWidthElements;
-                const float* row_end = row_start + InputWidthElements;
-
                 MLAS_FLOAT32X4 InputVector;
-                if (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) {
+
+                if (input_ptr >= row_start && (input_ptr + BlockSize) <= row_end) {
                     InputVector = MlasLoadFloat32x4(input_ptr);
                 } else {
                     std::vector<float> values(BlockSize);
@@ -75,7 +76,7 @@ void
                         if (element_ptr >= row_start && element_ptr < row_end) {
                             values[i] = *element_ptr;
                         } else {
-                            values[i] = -std::numeric_limits<float>::infinity();
+                            values[i] = MaxPaddingValue;
                         }
                     }
                     InputVector = MlasLoadFloat32x4(values.data());
@@ -112,20 +113,11 @@ MlasPoolAverageFloatKernelNeonImpl(
     const size_t DilationWidthElements = DilationWidth / sizeof(float);
     const size_t InputWidthElements = InputWidth / sizeof(float);
     const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
-
     const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
 
     const MLAS_FLOAT32X4 ZeroVector = MlasZeroFloat32x4();
 
-    MLAS_FLOAT32X4 KernelSizeVector;
-    if (!ExcludePad) {
-        const float KernelSize = static_cast<float>(ActualKernelSize);
-        KernelSizeVector = MlasBroadcastFloat32x4(KernelSize);
-    }
-
     for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
-
         MLAS_FLOAT32X4 SumVector = ZeroVector;
 
         std::vector<uint32_t> valid_count;
@@ -134,18 +126,16 @@ MlasPoolAverageFloatKernelNeonImpl(
         }
 
         for (size_t kh = 0; kh < KernelHeight; kh++) {
+            const float* row_start = InputBase + kh * DilatedInputWidthElements;
+            const float* row_end = row_start + InputWidthElements;
+
             for (size_t kw = 0; kw < KernelWidth; kw++) {
                 const float* input_ptr = Input + output_idx * StrideWidthElements +
                                          kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                const float* row_start = InputBase + kh * DilatedInputWidthElements;
-                const float* row_end = row_start + InputWidthElements;
-
                 MLAS_FLOAT32X4 InputVector;
 
-                bool can_fast_load = ExcludePad ? (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end) : (is_main_region || (input_ptr >= row_start && (input_ptr + BlockSize - 1) < row_end));
-
-                if (can_fast_load) {
+                if (input_ptr >= row_start && (input_ptr + BlockSize) <= row_end) {
                     InputVector = MlasLoadFloat32x4(input_ptr);
 
                     if (ExcludePad) {
@@ -157,10 +147,7 @@ MlasPoolAverageFloatKernelNeonImpl(
                     std::vector<float> values(BlockSize);
                     for (size_t i = 0; i < BlockSize; i++) {
                         const float* element_ptr = input_ptr + i;
-
-                        bool is_valid = ExcludePad ? (element_ptr >= row_start && element_ptr < row_end) : (is_main_region || (element_ptr >= row_start && element_ptr < row_end));
-
-                        if (is_valid) {
+                        if (element_ptr >= row_start && element_ptr < row_end) {
                             values[i] = *element_ptr;
                             if (ExcludePad) {
                                 valid_count[i]++;
@@ -182,15 +169,13 @@ MlasPoolAverageFloatKernelNeonImpl(
             MlasStoreFloat32x4(results.data(), SumVector);
 
             for (size_t i = 0; i < BlockSize; i++) {
-                if (valid_count[i] > 0) {
-                    results[i] = results[i] / static_cast<float>(valid_count[i]);
-                } else {
-                    results[i] = 0.0f;
-                }
+                results[i] = results[i] / static_cast<float>(valid_count[i]);
             }
 
             ResultVector = MlasLoadFloat32x4(results.data());
         } else {
+            const float KernelSize = static_cast<float>(ActualKernelSize);
+            const MLAS_FLOAT32X4 KernelSizeVector = MlasBroadcastFloat32x4(KernelSize);
             ResultVector = MlasDivideFloat32x4(SumVector, KernelSizeVector);
         }
 
