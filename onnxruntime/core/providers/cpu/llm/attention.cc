@@ -48,7 +48,7 @@ void make_copy<float, bool>(float* mask_data, const bool* mask_index, size_t siz
 
 template <typename T>
 inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
-  MlasComputeSoftmax(score, score, N, D, false, false, tp);
+  MlasComputeSoftmax(score, score, N, D, false, false, 0.0f, tp);
 }
 
 template <typename T>
