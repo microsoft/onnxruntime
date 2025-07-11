@@ -38,7 +38,7 @@
 #include "core/providers/dnnl/dnnl_provider_factory_creator.h"
 #endif
 
-#if defined(USE_MIGRAPHX)
+#if defined(USE_MIGRAPHX) || defined(USE_MIGRAPHX_PROVIDER_INTERFACE)
 #include "core/providers/migraphx/migraphx_provider_factory_creator.h"
 #endif
 
