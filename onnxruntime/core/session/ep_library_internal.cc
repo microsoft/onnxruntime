@@ -18,7 +18,10 @@
 #endif
 
 #if defined(USE_WEBGPU)
+#include "core/providers/webgpu/allocator.h"
 #include "core/providers/webgpu/webgpu_provider_factory_creator.h"
+#include "core/providers/webgpu/webgpu_context.h"
+#include "core/session/allocator_adapters.h"
 #endif
 
 namespace onnxruntime {
@@ -192,10 +195,53 @@ std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateDmlEp() {
 #if defined(USE_WEBGPU)
 class WebGpuEpFactory : public EpFactoryInternalImpl {
  public:
-  WebGpuEpFactory() : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft") {
+  WebGpuEpFactory() : EpFactoryInternalImpl(kWebGpuExecutionProvider, "Microsoft"),
+                      device_contexts_{nullptr, nullptr} {
   }
 
  private:
+  // we create WebGpuContext instances that are only used for shared allocators but map to a specific device.
+  // use device_id + this offset for the virtual device id in the WebGpuContext.
+  static const int16_t kSharedAllocatorContextIdOffset = 16;
+
+  static webgpu::WebGpuContext& CreateWebGpuContext(int16_t context_id) {
+    webgpu::WebGpuContextConfig context_config{context_id,
+                                               /*WGPUInstance*/ nullptr, /*WGPUDevice*/ nullptr,
+                                               /*dawn_proc_table*/ nullptr,
+                                               webgpu::ValidationMode::Disabled,
+                                               /*preserve_device*/ false};
+
+    webgpu::WebGpuBufferCacheConfig buffer_cache_config;
+    buffer_cache_config.storage.mode = webgpu::BufferCacheMode::Disabled;
+    buffer_cache_config.uniform.mode = webgpu::BufferCacheMode::Disabled;
+    buffer_cache_config.query_resolve.mode = webgpu::BufferCacheMode::Disabled;
+    buffer_cache_config.default_entry.mode = webgpu::BufferCacheMode::Disabled;
+
+    int backend_type = 0;
+#ifdef _WIN32
+    // Setup Windows default backend type based on the build configuration
+#if defined(DAWN_ENABLE_D3D12)
+    backend_type = 4;  // WGPUBackendType_D3D12
+#elif defined(DAWN_ENABLE_VULKAN)
+    backend_type = 6;  // WGPUBackendType_Vulkan
+#endif
+#endif
+
+    // ISSUE: CreateContext only creates one wgpu::Instance and that is behind a call_once.
+    //        Any context id other than 0 is required to pass in the WGPUDevice and WGPUInstance
+    //
+    // We want to be able to create one high perf, and possibly one low power device.
+    // We want to use offset context ids to keep the context for shared allocators separate from the context for
+    // session allocators.
+
+    auto& context = webgpu::WebGpuContextFactory::CreateContext(context_config);
+    context.Initialize(buffer_cache_config, backend_type, /*enable_pix_capture*/ false);
+
+    std::cout << "Initialized WebGPU context with backend type: " << backend_type << std::endl;
+
+    return context;
+  }
+
   OrtStatus* GetSupportedDevices(EpFactoryInternal& ep_factory,
                                  const OrtHardwareDevice* const* devices,
                                  size_t num_devices,
@@ -205,14 +251,68 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
     size_t& num_ep_devices = *p_num_ep_devices;
     num_ep_devices = 0;
 
+    // max we can have is 2 devices. one set to high perf, one set to low power
+    // slot 0: discrete, slot 1:integrated, slot 2: first unknown seen
+    std::vector<const OrtHardwareDevice*> gpu_devices{4, nullptr};
+
     for (size_t i = 0; i < num_devices && num_ep_devices < max_ep_devices; ++i) {
       const OrtHardwareDevice& device = *devices[i];
       if (device.type == OrtHardwareDeviceType::OrtHardwareDeviceType_GPU) {
-        // TODO: any metadata or options to add?
-        ORT_API_RETURN_IF_ERROR(OrtExecutionProviderApi::CreateEpDevice(&ep_factory,
-                                                                        &device, nullptr, nullptr,
-                                                                        &ep_devices[num_ep_devices++]));
+        const auto& metadata = device.metadata.Entries();
+        if (auto it = metadata.find("Discrete"); it != metadata.end()) {
+          if (it->second == "1") {
+            if (gpu_devices[0] == nullptr) {
+              gpu_devices[0] = &device;
+            }
+          } else {
+            if (gpu_devices[1] == nullptr) {
+              gpu_devices[1] = &device;
+            }
+          }
+        } else {
+          // on linux we could maybe check if it's an nvidia card here and set to discrete if it is
+          if (gpu_devices[2] == nullptr) {
+            gpu_devices[2] = &device;
+          }
+        }
       }
+    }
+
+    // ignore the unknown if we have discrete and/or integrated.
+    if (gpu_devices[2] && (gpu_devices[0] || gpu_devices[1])) {
+      gpu_devices[2] = nullptr;  // we don't need the unknown one
+    }
+
+    // now the rules are simple. first device seen is HighPerformance, second is LowPower. max is 2 devices.
+    int16_t device_id = 0;
+
+    for (const OrtHardwareDevice* device : gpu_devices) {
+      if (device == nullptr) {
+        continue;
+      }
+
+      int16_t context_id = device_id + kSharedAllocatorContextIdOffset;
+      auto& context = CreateWebGpuContext(context_id);
+      device_contexts_[device_id] = &context;
+
+      OrtKeyValuePairs ep_options;
+      ep_options.Add("deviceId", std::to_string(device_id));
+      ep_options.Add("powerPreference", device_id == 0 ? "HighPerformance" : "LowPower");
+
+      OrtEpDevice* ep_device = ep_devices[num_ep_devices];
+      ORT_API_RETURN_IF_ERROR(OrtExecutionProviderApi::CreateEpDevice(&ep_factory,
+                                                                      device, nullptr, nullptr,
+                                                                      &ep_device));
+
+      // add memory info
+      device_memory_info_[device_id] = OrtMemoryInfo(
+          "WebGPU", OrtAllocatorType::OrtDeviceAllocator,
+          OrtDevice(OrtDevice::GPU, OrtDevice::MemType::DEFAULT, /*vendor id*/ 0, device_id));
+
+      ep_device->device_memory_info = &device_memory_info_[device_id];
+
+      ++num_ep_devices;
+      ++device_id;
     }
 
     return nullptr;
@@ -227,9 +327,12 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
     *ep = nullptr;
 
     if (num_devices != 1) {
-      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
-                                   "WebGPU EP factory currently only supports one device at a time.");
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "WebGPU EP factory can only be called with one device.");
     }
+
+    // need to read 'ep.webgpuexecutionprovider.deviceId' from session_options and only create a new factory
+    // if device_factories_[device_id] is empty.
+    // ISSUE: what if the session options are different? how is this handled currently?
 
     auto webgpu_ep_factory = WebGpuProviderFactoryCreator::Create(session_options->value.config_options);
     *ep = webgpu_ep_factory->CreateProvider();
@@ -238,20 +341,44 @@ class WebGpuEpFactory : public EpFactoryInternalImpl {
     return nullptr;
   }
 
-  /* TODO: Implement CreateAllocator and CreateDataTransfer to support shared allocators and data transfer outside of
-           an InferenceSession.
   OrtStatus* CreateAllocator(const OrtMemoryInfo* memory_info,
-                             const OrtKeyValuePairs* allocator_options,
+                             const OrtEp* /*ep*/,
+                             const OrtKeyValuePairs* /*allocator_options*/,
                              OrtAllocator** allocator) noexcept override {
-    *allocator = device_allocators[memory_info->device.Id()].get();
+    const int16_t device_id = memory_info->device.Id();
+
+    // we expect an address match
+    if (memory_info != &device_memory_info_[device_id]) {
+      return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT,
+                                   "Unexpected OrtMemoryInfo value. "
+                                   "Does not match a value added to an OrtEpDevice returned by this factory");
+    }
+
+    std::unique_ptr<OrtAllocator>& device_allocator = device_allocators_[device_id];
+
+    if (device_allocator == nullptr) {
+      const auto& buffer_manager = device_contexts_[device_id]->BufferManager();
+      auto webgpu_allocator = std::make_unique<webgpu::GpuBufferAllocator>(buffer_manager);
+      device_allocator = std::make_unique<OrtAllocatorImplWrappingIAllocator>(std::move(webgpu_allocator));
+    }
+
+    *allocator = device_allocator.get();
+    return nullptr;
   }
 
+  /*
   OrtStatus* CreateDataTransfer(_Outptr_result_maybenull_ OrtDataTransferImpl** data_transfer) override {
     // TODO: Wrap the IDataTransfer implementation so we can copy to device using OrtApi CopyTensors.
     *data_transfer = nullptr;
     return nullptr;
   }
   */
+ private:
+  // WebGpuContext that we use for shared allocators
+  std::array<webgpu::WebGpuContext*, 2> device_contexts_;
+  std::array<OrtMemoryInfo, 2> device_memory_info_;
+  std::array<std::unique_ptr<OrtAllocator>, 2> device_allocators_;
+  std::array<std::shared_ptr<IExecutionProviderFactory>, 2> device_factories_;
 };
 
 std::unique_ptr<EpLibraryInternal> EpLibraryInternal::CreateWebGpuEp() {

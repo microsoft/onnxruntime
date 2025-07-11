@@ -62,6 +62,11 @@ if (onnxruntime_ENABLE_TRAINING_TORCH_INTEROP)
   onnxruntime_add_include_to_target(onnxruntime_session Python::Module)
 endif()
 
+if (onnxruntime_USE_WEBGPU)
+    # dawn::dawncpp_headers
+    onnxruntime_add_include_to_target(onnxruntime_session dawn::dawn_headers)
+endif()
+
 if (NOT onnxruntime_BUILD_SHARED_LIB)
     install(DIRECTORY ${PROJECT_SOURCE_DIR}/../include/onnxruntime/core/session  DESTINATION ${CMAKE_INSTALL_INCLUDEDIR}/onnxruntime/core)
     install(TARGETS onnxruntime_session EXPORT ${PROJECT_NAME}Targets
