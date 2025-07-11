@@ -39,7 +39,7 @@ RESET = "\033[0m"
 
 
 # #################################################################################################
-#  BERT Padding Utilities (from https://github.com/Dao-AILab/flash-attention/blob/2286d7cea7ca8264165c16b2442b6436c43140de/flash_attn/bert_padding.py)
+#  BERT Padding Utilities
 # #################################################################################################
 
 
@@ -83,33 +83,24 @@ def pad_input(hidden_states, indices, batch, seqlen):
 # #################################################################################################
 
 
-class Formats:
-    BSNH = 0
-    BNSH = 1
-
-
 @dataclass
-class Config:
-    batch_size: int = 0
-    sequence_length: int = 0
-    kv_sequence_length: int = 0
-    num_heads: int = 0
-    kv_num_heads: int = 0
-    head_size: int = 0
-    has_position_ids: bool = False
-    has_attention_bias: bool = False
-    has_head_sink: bool = False
-
-
-@dataclass
-class PromptConfig:
-    batch_size: int = 0
-    q_sequence_length: int = 0
-    kv_sequence_length: int = 0
+class GQAConfig:
+    batch_size: int
+    q_sequence_length: int
+    kv_sequence_length: int
+    num_heads: int
+    kv_num_heads: int
+    head_size: int
+    past_kv_sequence_length: int = 0
     buffer_sequence_length: int = 0
-    num_heads: int = 0
-    kv_num_heads: int = 0
-    head_size: int = 0
+    # Test-specific parameters
+    local_window_size: int = -1
+    rotary: bool = False
+    rotary_interleaved: bool = False
+    packed: bool = False
+    softcap: float = 0.0
+    use_smooth_softmax: bool = False
+    # CPU-only parameters
     has_position_ids: bool = False
     has_attention_bias: bool = False
     has_head_sink: bool = False
@@ -177,7 +168,7 @@ class LlamaMSRotaryEmbedding(torch.nn.Module):
 
 # Triton-based implementation for CUDA
 def rotary_embedding_cuda(*args, **kwargs):
-    from rotary_flash import apply_rotary_emb
+    from rotary_flash import apply_rotary_emb  # noqa: PLC0415
 
     return apply_rotary_emb(*args, **kwargs)
 
@@ -207,52 +198,47 @@ def apply_rotary_embedding(x, cos, sin, pos, interleaved, device="cpu"):
 
 
 def create_group_query_attention_graph_prompt(
-    config,
+    config: GQAConfig,
     ort_type,
-    past_kv_format=Formats.BSNH,
     share_buffer=True,
-    local_window_size=-1,
-    rotary=False,
-    rotary_interleaved=False,
-    packed=False,
-    softcap=0.0,
-    use_smooth_softmax=False,
 ):
+    assert not (config.has_head_sink and config.use_smooth_softmax)
     past_kv_seqlen = config.buffer_sequence_length if share_buffer else 0
     present_kv_seqlen = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
+
     nodes = [
         helper.make_node(
-            "GroupQueryAttention",
-            [
+            op_type="GroupQueryAttention",
+            inputs=[
                 "query",
-                "key" if not packed else "",
-                "value" if not packed else "",
+                "key" if not config.packed else "",
+                "value" if not config.packed else "",
                 "past_key" if share_buffer else "",
                 "past_value" if share_buffer else "",
                 "seqlens_k",
                 "total_sequence_length",
-                "cos_cache" if rotary else "",
-                "sin_cache" if rotary else "",
+                "cos_cache" if config.rotary else "",
+                "sin_cache" if config.rotary else "",
                 "position_ids" if config.has_position_ids else "",
                 "attention_bias" if config.has_attention_bias else "",
                 "head_sink" if config.has_head_sink else "",
             ],
-            ["output", "present_key", "present_value"],
-            "GroupQueryAttention_0",
+            outputs=["output", "present_key", "present_value"],
+            name="GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
-            local_window_size=local_window_size,
-            do_rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            softcap=softcap,
-            smooth_softmax=1 if use_smooth_softmax else 0,
+            local_window_size=config.local_window_size,
+            do_rotary=config.rotary,
+            rotary_interleaved=config.rotary_interleaved,
+            softcap=config.softcap,
+            smooth_softmax=1 if config.use_smooth_softmax else 0,
             domain="com.microsoft",
         ),
     ]
 
     q_hidden_size = (
         (config.num_heads * config.head_size)
-        if not packed
+        if not config.packed
         else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
     )
     graph_input = [
@@ -261,7 +247,7 @@ def create_group_query_attention_graph_prompt(
         helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
     ]
 
-    if not packed:
+    if not config.packed:
         graph_input.extend(
             [
                 helper.make_tensor_value_info(
@@ -277,12 +263,8 @@ def create_group_query_attention_graph_prompt(
             ]
         )
     if share_buffer:
-        k_shape = [
-            config.batch_size,
-            past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
-            config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
-            config.head_size,
-        ]
+        # Shape is (batch_size, kv_num_heads, sequence_length, head_size)
+        k_shape = [config.batch_size, config.kv_num_heads, past_kv_seqlen, config.head_size]
         v_shape = k_shape
         graph_input.extend(
             [
@@ -290,7 +272,7 @@ def create_group_query_attention_graph_prompt(
                 helper.make_tensor_value_info("past_value", ort_type, v_shape),
             ]
         )
-    if rotary:
+    if config.rotary:
         rotary_dim = (math.floor(config.head_size / 16) * 16) // 2
         cache_seq_len = config.buffer_sequence_length if share_buffer else config.kv_sequence_length
         graph_input.extend(
@@ -314,12 +296,8 @@ def create_group_query_attention_graph_prompt(
     if config.has_head_sink:
         graph_input.append(helper.make_tensor_value_info("head_sink", ort_type, [config.num_heads]))
 
-    output_k_shape = [
-        config.batch_size,
-        present_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
-        config.kv_num_heads if past_kv_format == Formats.BSNH else present_kv_seqlen,
-        config.head_size,
-    ]
+    # Shape is (batch_size, kv_num_heads, sequence_length, head_size)
+    output_k_shape = [config.batch_size, config.kv_num_heads, present_kv_seqlen, config.head_size]
     output_v_shape = output_k_shape
 
     graph_output = [
@@ -336,34 +314,32 @@ def create_group_query_attention_graph_prompt(
 
 
 def create_group_query_attention_graph_past(
-    config,
+    config: GQAConfig,
     ort_type,
-    past_kv_format=Formats.BSNH,
     share_buffer=True,
-    local_window_size=-1,
-    rotary=False,
-    rotary_interleaved=False,
-    packed=False,
-    softcap=0.0,
-    use_smooth_softmax=False,
 ):
-    past_kv_seqlen = config.kv_sequence_length
-    present_kv_seqlen = (
-        config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
-    )
+    assert not (config.has_head_sink and config.use_smooth_softmax)
+
+    if share_buffer:
+        past_kv_seqlen = config.buffer_sequence_length
+        present_kv_seqlen = config.buffer_sequence_length
+    else:
+        past_kv_seqlen = config.past_kv_sequence_length
+        present_kv_seqlen = config.past_kv_sequence_length + config.kv_sequence_length
+
     nodes = [
         helper.make_node(
             "GroupQueryAttention",
             [
                 "query",
-                "key" if not packed else "",
-                "value" if not packed else "",
+                "key" if not config.packed else "",
+                "value" if not config.packed else "",
                 "past_key",
                 "past_value",
                 "seqlens_k",
                 "total_sequence_length",
-                "cos_cache" if rotary else "",
-                "sin_cache" if rotary else "",
+                "cos_cache" if config.rotary else "",
+                "sin_cache" if config.rotary else "",
                 "position_ids" if config.has_position_ids else "",
                 "attention_bias" if config.has_attention_bias else "",
                 "head_sink" if config.has_head_sink else "",
@@ -372,51 +348,49 @@ def create_group_query_attention_graph_past(
             "GroupQueryAttention_0",
             num_heads=config.num_heads,
             kv_num_heads=config.kv_num_heads,
-            local_window_size=local_window_size,
-            do_rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            softcap=softcap,
-            smooth_softmax=1 if use_smooth_softmax else 0,
+            local_window_size=config.local_window_size,
+            do_rotary=config.rotary,
+            rotary_interleaved=config.rotary_interleaved,
+            softcap=config.softcap,
+            smooth_softmax=1 if config.use_smooth_softmax else 0,
             domain="com.microsoft",
         ),
     ]
 
     q_hidden_size = (
         (config.num_heads * config.head_size)
-        if not packed
+        if not config.packed
         else (config.num_heads * config.head_size + 2 * config.kv_num_heads * config.head_size)
     )
-    past_k_shape = [
-        config.batch_size,
-        past_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
-        config.kv_num_heads if past_kv_format == Formats.BSNH else past_kv_seqlen,
-        config.head_size,
-    ]
+    # Shape is (batch_size, kv_num_heads, sequence_length, head_size)
+    past_k_shape = [config.batch_size, config.kv_num_heads, past_kv_seqlen, config.head_size]
     graph_input = [
-        helper.make_tensor_value_info("query", ort_type, [config.batch_size, config.sequence_length, q_hidden_size]),
+        helper.make_tensor_value_info("query", ort_type, [config.batch_size, config.q_sequence_length, q_hidden_size]),
         helper.make_tensor_value_info("past_key", ort_type, past_k_shape),
         helper.make_tensor_value_info("past_value", ort_type, past_k_shape),
         helper.make_tensor_value_info("seqlens_k", TensorProto.INT32, [config.batch_size]),
         helper.make_tensor_value_info("total_sequence_length", TensorProto.INT32, [1]),
     ]
 
-    if not packed:
+    if not config.packed:
         graph_input.extend(
             [
                 helper.make_tensor_value_info(
-                    "key", ort_type, [config.batch_size, config.sequence_length, config.kv_num_heads * config.head_size]
+                    "key",
+                    ort_type,
+                    [config.batch_size, config.q_sequence_length, config.kv_num_heads * config.head_size],
                 ),
                 helper.make_tensor_value_info(
                     "value",
                     ort_type,
-                    [config.batch_size, config.sequence_length, config.kv_num_heads * config.head_size],
+                    [config.batch_size, config.q_sequence_length, config.kv_num_heads * config.head_size],
                 ),
             ]
         )
 
-    if rotary:
+    if config.rotary:
         rotary_dim = (math.floor(config.head_size / 16) * 16) // 2
-        cache_len = config.kv_sequence_length + (0 if share_buffer else config.sequence_length)
+        cache_len = config.buffer_sequence_length
         graph_input.extend(
             [
                 helper.make_tensor_value_info("cos_cache", ort_type, [cache_len, rotary_dim]),
@@ -427,13 +401,13 @@ def create_group_query_attention_graph_past(
     if config.has_position_ids:
         graph_input.append(
             helper.make_tensor_value_info(
-                "position_ids", TensorProto.INT64, [config.batch_size, config.sequence_length]
+                "position_ids", TensorProto.INT64, [config.batch_size, config.q_sequence_length]
             )
         )
     if config.has_attention_bias:
         graph_input.append(
             helper.make_tensor_value_info(
-                "attention_bias", ort_type, [config.batch_size, 1, config.sequence_length, present_kv_seqlen]
+                "attention_bias", ort_type, [config.batch_size, 1, config.q_sequence_length, present_kv_seqlen]
             )
         )
     if config.has_head_sink:
@@ -441,14 +415,14 @@ def create_group_query_attention_graph_past(
 
     output_k_shape = [
         config.batch_size,
-        present_kv_seqlen if past_kv_format == Formats.BSNH else config.kv_num_heads,
-        config.kv_num_heads if past_kv_format == Formats.BSNH else present_kv_seqlen,
+        config.kv_num_heads,
+        present_kv_seqlen,
         config.head_size,
     ]
 
     graph_output = [
         helper.make_tensor_value_info(
-            "output", ort_type, [config.batch_size, config.sequence_length, config.num_heads * config.head_size]
+            "output", ort_type, [config.batch_size, config.q_sequence_length, config.num_heads * config.head_size]
         ),
         helper.make_tensor_value_info("present_key", ort_type, output_k_shape),
         helper.make_tensor_value_info("present_value", ort_type, output_k_shape),
@@ -468,7 +442,7 @@ def gqa_prompt_func(
     q,
     k,
     v,
-    config,
+    config: GQAConfig,
     new_k,
     new_v,
     cos,
@@ -479,26 +453,14 @@ def gqa_prompt_func(
     head_sink,
     ep,
     device,
-    window_size=-1,
-    past_kv_format=Formats.BSNH,
     share_buffer=True,
-    rotary_interleaved=False,
-    softcap=0.0,
-    use_smooth_softmax=False,
     ort_type=TensorProto.FLOAT16,
     numpy_type=numpy.float16,
 ):
     onnx_model_str = create_group_query_attention_graph_prompt(
-        config,
-        ort_type,
-        past_kv_format,
-        share_buffer,
-        local_window_size=window_size,
-        rotary=cos is not None,
-        rotary_interleaved=rotary_interleaved,
-        packed=new_k is None,
-        softcap=softcap,
-        use_smooth_softmax=use_smooth_softmax,
+        config=config,
+        ort_type=ort_type,
+        share_buffer=share_buffer,
     )
 
     q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
@@ -564,7 +526,7 @@ def gqa_past_func(
     q,
     k,
     v,
-    config,
+    config: GQAConfig,
     new_k,
     new_v,
     cos,
@@ -575,39 +537,29 @@ def gqa_past_func(
     head_sink,
     ep,
     device,
-    past_kv_format=Formats.BSNH,
     share_buffer=True,
-    window_size=-1,
-    rotary_interleaved=False,
-    softcap=0.0,
-    use_smooth_softmax=False,
     ort_type=TensorProto.FLOAT16,
     numpy_type=numpy.float16,
 ):
     onnx_model_str = create_group_query_attention_graph_past(
-        config,
-        ort_type,
-        past_kv_format,
-        share_buffer,
-        local_window_size=window_size,
-        rotary=cos is not None,
-        rotary_interleaved=rotary_interleaved,
-        packed=new_k is None,
-        softcap=softcap,
-        use_smooth_softmax=use_smooth_softmax,
+        config=config,
+        ort_type=ort_type,
+        share_buffer=share_buffer,
     )
 
-    q = torch.reshape(q, (config.batch_size, config.sequence_length, -1))
+    q = torch.reshape(q, (config.batch_size, config.q_sequence_length, -1))
     if new_k is not None:
-        new_k = torch.reshape(new_k, (config.batch_size, config.sequence_length, -1))
-        new_v = torch.reshape(new_v, (config.batch_size, config.sequence_length, -1))
+        new_k = torch.reshape(new_k, (config.batch_size, config.q_sequence_length, -1))
+        new_v = torch.reshape(new_v, (config.batch_size, config.q_sequence_length, -1))
 
     sess_options = SessionOptions()
     ort_session = InferenceSession(onnx_model_str, sess_options, providers=[ep])
     io_binding = ort_session.io_binding()
 
     # Common inputs
-    total_seq_len = config.kv_sequence_length if share_buffer else config.kv_sequence_length + config.sequence_length
+    total_seq_len = (
+        config.past_kv_sequence_length if share_buffer else config.past_kv_sequence_length + config.q_sequence_length
+    )
     ort_inputs = {
         "query": q.detach().cpu().numpy(),
         "seqlens_k": seqlens_k.detach().cpu().numpy().astype(numpy.int32),
@@ -736,7 +688,9 @@ def attention_ref(
 
     # Add custom attention bias if provided (for CPU tests)
     if attention_bias is not None:
-        scores += attention_bias
+        # The bias should only be applied to the relevant part of the scores matrix,
+        # matching the sequence length of the bias tensor.
+        scores[..., : attention_bias.shape[-1]] += attention_bias
 
     if use_smooth_softmax or (head_sink is not None):
         attention = smooth_softmax_ref(scores, head_sink)
@@ -758,25 +712,18 @@ def attention_ref(
 
 
 # #################################################################################################
-#  Parity Check (Core Test Logic)
+# Parity Check (Core Test Logic)
 # #################################################################################################
 
 
 def parity_check_gqa_prompt(
-    config,
+    config: GQAConfig,
     ep,
     device,
     torch_type,
     numpy_type,
     ort_type,
     causal,
-    local,
-    past_format,
-    rotary,
-    rotary_interleaved,
-    packed,
-    softcap,
-    use_smooth_softmax,
     rtol,
     atol,
 ):
@@ -784,10 +731,11 @@ def parity_check_gqa_prompt(
     q = torch.randn(
         config.batch_size, config.q_sequence_length, config.num_heads, config.head_size, device=device, dtype=torch_type
     )
+    # k and v are the cache buffers, created in BNSH format
     k = torch.randn(
         config.batch_size,
-        config.buffer_sequence_length if past_format == Formats.BSNH else config.kv_num_heads,
-        config.kv_num_heads if past_format == Formats.BSNH else config.buffer_sequence_length,
+        config.kv_num_heads,
+        config.buffer_sequence_length,
         config.head_size,
         device=device,
         dtype=torch_type,
@@ -806,31 +754,27 @@ def parity_check_gqa_prompt(
     head_sink = torch.rand(config.num_heads, dtype=torch_type, device=device) if config.has_head_sink else None
 
     window_size = (-1, -1)
-    left_window_size = -1
-    if local:
-        left_window_size = random.randint(1, config.kv_sequence_length)
-        window_size = (left_window_size, 0)
+    if config.local_window_size > 0:
+        window_size = (config.local_window_size, 0)
     elif causal:
         window_size = (-1, 0)
 
     # --- PyTorch Reference Path ---
-    k_cache_ref = k.clone()
-    v_cache_ref = v.clone()
-    if past_format == Formats.BNSH:
-        k_cache_ref = k_cache_ref.transpose(1, 2)
-        v_cache_ref = v_cache_ref.transpose(1, 2)
+    # Transpose BNSH cache to BSNH format for reference implementation
+    k_cache_ref = k.clone().transpose(1, 2)
+    v_cache_ref = v.clone().transpose(1, 2)
 
     cache_seqlens = torch.full((config.batch_size,), config.kv_sequence_length, device=device, dtype=torch.int32)
     rotary_seqlens = torch.zeros(config.batch_size, device=device, dtype=torch.long)
 
     cos, sin, q_ro, k_ro = None, None, q, new_k
-    if rotary:
+    if config.rotary:
         rotary_dim = math.floor(config.head_size / 16) * 16
         angle = torch.rand(config.buffer_sequence_length, rotary_dim // 2, device=device) * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch_type)
         sin = torch.sin(angle).to(dtype=torch_type)
-        q_ro = apply_rotary_embedding(q.clone(), cos, sin, rotary_seqlens, rotary_interleaved, device)
-        k_ro = apply_rotary_embedding(new_k.clone(), cos, sin, rotary_seqlens, rotary_interleaved, device)
+        q_ro = apply_rotary_embedding(q.clone(), cos, sin, rotary_seqlens, config.rotary_interleaved, device)
+        k_ro = apply_rotary_embedding(new_k.clone(), cos, sin, rotary_seqlens, config.rotary_interleaved, device)
 
     position_ids = None
     attention_bias = None
@@ -858,57 +802,50 @@ def parity_check_gqa_prompt(
     key_padding_mask = arange < kv_seqlens_expanded
 
     out_ref, _ = attention_ref(
-        q_ro,
-        k_cache_ref,
-        v_cache_ref,
-        None,
-        key_padding_mask,
-        attention_bias,
+        q=q_ro,
+        k=k_cache_ref,
+        v=v_cache_ref,
+        query_padding_mask=None,
+        key_padding_mask=key_padding_mask,
+        attention_bias=attention_bias,
         causal=True,
         window_size=window_size,
-        softcap=softcap,
-        use_smooth_softmax=use_smooth_softmax,
+        softcap=config.softcap,
+        use_smooth_softmax=config.use_smooth_softmax,
         head_sink=head_sink,
     )
     out_ref_np = out_ref.detach().cpu().numpy()
 
-    if past_format == Formats.BNSH:
-        k_cache_ref = k_cache_ref.transpose(1, 2)
-        v_cache_ref = v_cache_ref.transpose(1, 2)
-    k_cache_ref_np = k_cache_ref.detach().cpu().numpy()
-    v_cache_ref_np = v_cache_ref.detach().cpu().numpy()
+    # Transpose reference cache back to BNSH for comparison
+    k_cache_ref_np = k_cache_ref.transpose(1, 2).detach().cpu().numpy()
+    v_cache_ref_np = v_cache_ref.transpose(1, 2).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
     q_ort, k_ort, v_ort, new_k_ort, new_v_ort = q, k, v, new_k, new_v
-    if packed:
+    if config.packed:
         q_ort = torch.cat([q, new_k, new_v], dim=2)
         new_k_ort, new_v_ort = None, None
 
     # seqlens_k for GQA op is past_seq_len + seq_len - 1
     ort_seqlens = cache_seqlens - 1
     out, present_k, present_v = gqa_prompt_func(
-        q_ort,
-        k_ort,
-        v_ort,
-        config,
-        new_k_ort,
-        new_v_ort,
-        cos,
-        sin,
-        ort_seqlens,
-        position_ids,
-        attention_bias,
-        head_sink,
-        ep,
-        device,
-        left_window_size,
-        past_format,
-        True,
-        rotary_interleaved,
-        softcap,
-        use_smooth_softmax,
-        ort_type,
-        numpy_type,
+        q=q_ort,
+        k=k_ort,
+        v=v_ort,
+        config=config,
+        new_k=new_k_ort,
+        new_v=new_v_ort,
+        cos=cos,
+        sin=sin,
+        seqlens_k=ort_seqlens,
+        position_ids=position_ids,
+        attention_bias=attention_bias,
+        head_sink=head_sink,
+        ep=ep,
+        device=device,
+        share_buffer=True,
+        ort_type=ort_type,
+        numpy_type=numpy_type,
     )
     out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.detach().cpu().numpy()
@@ -920,31 +857,30 @@ def parity_check_gqa_prompt(
 
 
 def parity_check_gqa_past(
-    config,
+    config: GQAConfig,
     ep,
     device,
     torch_type,
     numpy_type,
     ort_type,
     causal,
-    local,
-    past_format,
-    rotary,
-    rotary_interleaved,
-    packed,
-    softcap,
-    use_smooth_softmax,
     rtol,
     atol,
 ):
     # --- Test Data Generation ---
     q = torch.randn(
-        config.batch_size, config.sequence_length, config.num_heads, config.head_size, device=device, dtype=torch_type
+        config.batch_size,
+        config.q_sequence_length,
+        config.num_heads,
+        config.head_size,
+        device=device,
+        dtype=torch_type,
     )
+    # k and v are the cache buffers, created in BNSH format
     k = torch.randn(
         config.batch_size,
-        config.kv_sequence_length if past_format == Formats.BSNH else config.kv_num_heads,
-        config.kv_num_heads if past_format == Formats.BSNH else config.kv_sequence_length,
+        config.kv_num_heads,
+        config.buffer_sequence_length,
         config.head_size,
         device=device,
         dtype=torch_type,
@@ -952,7 +888,7 @@ def parity_check_gqa_past(
     v = torch.randn_like(k)
     new_k = torch.randn(
         config.batch_size,
-        config.sequence_length,
+        config.q_sequence_length,
         config.kv_num_heads,
         config.head_size,
         device=device,
@@ -962,111 +898,104 @@ def parity_check_gqa_past(
 
     head_sink = torch.rand(config.num_heads, dtype=torch_type, device=device) if config.has_head_sink else None
     window_size = (-1, -1)
-    left_window_size = -1
-    if local:
-        left_window_size = random.randint(1, config.kv_sequence_length)
-        window_size = (left_window_size, 0)
+    if config.local_window_size > 0:
+        window_size = (config.local_window_size, 0)
     elif causal:
         window_size = (-1, 0)
 
     # --- PyTorch Reference Path ---
-    k_cache_ref = k.clone()
-    v_cache_ref = v.clone()
-    if past_format == Formats.BNSH:
-        k_cache_ref = k_cache_ref.transpose(1, 2)
-        v_cache_ref = v_cache_ref.transpose(1, 2)
+    # Transpose BNSH cache to BSNH format for reference implementation
+    k_cache_ref = k.clone().transpose(1, 2)
+    v_cache_ref = v.clone().transpose(1, 2)
 
     cache_seqlens = torch.randint(
-        0, config.kv_sequence_length - config.sequence_length + 1, (config.batch_size,), device=device, dtype=torch.long
+        0,
+        config.past_kv_sequence_length - config.q_sequence_length + 1,
+        (config.batch_size,),
+        device=device,
+        dtype=torch.long,
     )
 
     cos, sin, q_ro, k_ro = None, None, q, new_k
-    if rotary:
+    if config.rotary:
         rotary_dim = math.floor(config.head_size / 16) * 16
-        angle = torch.rand(config.kv_sequence_length, rotary_dim // 2, device=device) * 2 * math.pi
+        angle = torch.rand(config.buffer_sequence_length, rotary_dim // 2, device=device) * 2 * math.pi
         cos = torch.cos(angle).to(dtype=torch_type)
         sin = torch.sin(angle).to(dtype=torch_type)
-        q_ro = apply_rotary_embedding(q.clone(), cos, sin, cache_seqlens, rotary_interleaved, device)
-        k_ro = apply_rotary_embedding(new_k.clone(), cos, sin, cache_seqlens, rotary_interleaved, device)
+        q_ro = apply_rotary_embedding(q.clone(), cos, sin, cache_seqlens, config.rotary_interleaved, device)
+        k_ro = apply_rotary_embedding(new_k.clone(), cos, sin, cache_seqlens, config.rotary_interleaved, device)
 
     position_ids = None
     attention_bias = None
-    total_seq_len = config.kv_sequence_length
+    total_seq_len = config.past_kv_sequence_length
     if ep == "CPUExecutionProvider":
         if config.has_position_ids:
-            position_ids = (cache_seqlens.unsqueeze(1) + torch.arange(config.sequence_length, device=device)).long()
+            position_ids = (cache_seqlens.unsqueeze(1) + torch.arange(config.q_sequence_length, device=device)).long()
         if config.has_attention_bias:
             attention_bias = torch.zeros(
-                config.batch_size, 1, config.sequence_length, total_seq_len, device=device, dtype=torch_type
+                config.batch_size, 1, config.q_sequence_length, total_seq_len, device=device, dtype=torch_type
             )
             for b in range(config.batch_size):
-                end_pos = cache_seqlens[b] + config.sequence_length
+                end_pos = cache_seqlens[b] + config.q_sequence_length
                 attention_bias[b, :, :, end_pos:] = float("-inf")
 
-    arange = rearrange(torch.arange(config.kv_sequence_length, device=device), "s -> 1 s")
+    arange = rearrange(torch.arange(config.buffer_sequence_length, device=device), "s -> 1 s")
     cache_seqlens_expanded = rearrange(cache_seqlens, "b -> b 1")
     update_mask = torch.logical_and(
-        cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.sequence_length
+        cache_seqlens_expanded <= arange, arange < cache_seqlens_expanded + config.q_sequence_length
     )
     k_cache_ref[update_mask] = rearrange(k_ro, "b s ... -> (b s) ...").to(dtype=torch_type)
     v_cache_ref[update_mask] = rearrange(new_v, "b s ... -> (b s) ...").to(dtype=torch_type)
-    key_padding_mask = arange < cache_seqlens_expanded + config.sequence_length
+    key_padding_mask = arange < cache_seqlens_expanded + config.q_sequence_length
 
     out_ref, _ = attention_ref(
-        q_ro,
-        k_cache_ref,
-        v_cache_ref,
-        None,
-        key_padding_mask,
-        attention_bias,
+        q=q_ro,
+        k=k_cache_ref,
+        v=v_cache_ref,
+        query_padding_mask=None,
+        key_padding_mask=key_padding_mask,
+        attention_bias=attention_bias,
         causal=True,
         window_size=window_size,
-        softcap=softcap,
-        use_smooth_softmax=use_smooth_softmax,
+        softcap=config.softcap,
+        use_smooth_softmax=config.use_smooth_softmax,
         head_sink=head_sink,
     )
     out_ref_np = out_ref.detach().cpu().numpy()
-    if past_format == Formats.BNSH:
-        k_cache_ref = k_cache_ref.transpose(1, 2)
-        v_cache_ref = v_cache_ref.transpose(1, 2)
-    k_cache_ref_np = k_cache_ref.detach().cpu().numpy()
-    v_cache_ref_np = v_cache_ref.detach().cpu().numpy()
+
+    # Transpose reference cache back to BNSH for comparison
+    k_cache_ref_np = k_cache_ref.transpose(1, 2).detach().cpu().numpy()
+    v_cache_ref_np = v_cache_ref.transpose(1, 2).detach().cpu().numpy()
 
     # --- ONNX Runtime Path ---
     q_ort, k_ort, v_ort, new_k_ort, new_v_ort = q, k, v, new_k, new_v
-    if packed:
+    if config.packed:
         q_ort = torch.cat([q, new_k, new_v], dim=2)
         new_k_ort, new_v_ort = None, None
 
-    ort_seqlens = cache_seqlens + config.sequence_length - 1
+    ort_seqlens = cache_seqlens + config.q_sequence_length - 1
     out, present_k, present_v = gqa_past_func(
-        q_ort,
-        k_ort,
-        v_ort,
-        config,
-        new_k_ort,
-        new_v_ort,
-        cos,
-        sin,
-        ort_seqlens.int(),
-        position_ids,
-        attention_bias,
-        head_sink,
-        ep,
-        device,
-        past_format,
-        True,
-        left_window_size,
-        rotary_interleaved,
-        softcap,
-        use_smooth_softmax,
-        ort_type,
-        numpy_type,
+        q=q_ort,
+        k=k_ort,
+        v=v_ort,
+        config=config,
+        new_k=new_k_ort,
+        new_v=new_v_ort,
+        cos=cos,
+        sin=sin,
+        seqlens_k=ort_seqlens.int(),
+        position_ids=position_ids,
+        attention_bias=attention_bias,
+        head_sink=head_sink,
+        ep=ep,
+        device=device,
+        share_buffer=True,
+        ort_type=ort_type,
+        numpy_type=numpy_type,
     )
-    out = torch.reshape(out, (config.batch_size, config.sequence_length, config.num_heads, config.head_size))
+    out = torch.reshape(out, (config.batch_size, config.q_sequence_length, config.num_heads, config.head_size))
     out_np = out.detach().cpu().numpy()
 
-    # --- Comparison ---
     numpy.testing.assert_allclose(present_k, k_cache_ref_np, rtol=rtol, atol=atol)
     numpy.testing.assert_allclose(present_v, v_cache_ref_np, rtol=rtol, atol=atol)
     numpy.testing.assert_allclose(out_np, out_ref_np, rtol=rtol, atol=atol)
@@ -1085,70 +1014,87 @@ def get_cpu_rotary_options():
     return [(False, False), (True, False), (True, True)]
 
 
+def get_softmax_options():
+    return [(False, False)] if pipeline_mode else [(False, False), (False, True), (True, False)]
+
+
 def gqa_cuda_prompt_test_cases():
     batches = [3] if pipeline_mode else [1, 3, 5]
     seqs = [(127, 127), (240, 240)] if pipeline_mode else [(35, 35), (127, 127), (240, 240), (2000, 2000)]
     num_h = [(32, 8)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
     h_sizes = [128] if pipeline_mode else [64, 128, 256]
-    smmoth_softmax__head_sink = (
-        [(False, False), (False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
-    )
+    smmoth_softmax__head_sink = get_softmax_options()
 
     for b in batches:
         for sq, skv in seqs:
             for n, n2 in num_h:
                 for h in h_sizes:
-                    for local in [False, True]:
+                    for lws in [-1, random.randint(1, skv)]:
                         for rotary, rotary_interleaved in get_cuda_rotary_options():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
                                     if rotary and h % 16 > 0:
                                         continue
-                                    for use_smooth_softmax, has_sink in smmoth_softmax__head_sink:
-                                        config = PromptConfig(b, sq, skv, sq + skv + 8, n, n2, h)
-                                        options = (
-                                            f"{softcap=}_{rotary=}_{rotary_interleaved=}_"
-                                            f"{local=}_{packed=}_{use_smooth_softmax=}_{has_sink=}"
+                                    for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
+                                        config = GQAConfig(
+                                            batch_size=b,
+                                            q_sequence_length=sq,
+                                            kv_sequence_length=skv,
+                                            past_kv_sequence_length=0,
+                                            buffer_sequence_length=sq + skv + 8,
+                                            num_heads=n,
+                                            kv_num_heads=n2,
+                                            head_size=h,
+                                            local_window_size=lws,
+                                            rotary=rotary,
+                                            rotary_interleaved=rotary_interleaved,
+                                            packed=packed,
+                                            softcap=softcap,
+                                            use_smooth_softmax=use_smooth_softmax,
+                                            has_head_sink=has_head_sink,
                                         )
-                                        name = f"b{b}_sq{sq}_skv{skv}_nh{n}k{n2}_h{h}_{options}"
-                                        yield (
-                                            name,
-                                            config,
-                                            local,
-                                            rotary,
-                                            rotary_interleaved,
-                                            packed,
-                                            softcap,
-                                        )
+                                        name = f"b{b}_sq{sq}_skv{skv}_nh{n}_{n2}_h{h}_w{lws}_rot{rotary}{rotary_interleaved}_pkd{packed}_sc{softcap}_sm{use_smooth_softmax}_{has_head_sink}"
+                                        yield name, config
 
 
 def gqa_cuda_past_test_cases():
     batches = [5] if pipeline_mode else [1, 3, 5]
+    # s: new sequence length, s2: past sequence length
     seqs = [(1, 1024)] if pipeline_mode else [(1, 128), (1, 1024), (1, 2048), (1, 5000)]
     num_h = [(32, 8)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
     h_sizes = [256] if pipeline_mode else [64, 128, 256]
-    smmoth_softmax__head_sink = (
-        [(False, False), (False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
-    )
+    smmoth_softmax__head_sink = get_softmax_options()
 
     for b in batches:
         for s, s2 in seqs:
             for n, n2 in num_h:
                 for h in h_sizes:
-                    for local in [False, True]:
+                    for lws in [-1, random.randint(1, s2)]:
                         for rotary, rotary_interleaved in get_cuda_rotary_options():
                             for packed in [False, True]:
                                 for softcap in [0.0, 50.0]:
                                     if rotary and h % 16 > 0:
                                         continue
-                                    for use_smooth_softmax, has_sink in smmoth_softmax__head_sink:
-                                        config = Config(b, s, s2, n, n2, h)
-                                        options = (
-                                            f"{softcap=}_{rotary=}_{rotary_interleaved=}_"
-                                            f"{local=}_{packed=}_{use_smooth_softmax=}_{has_sink=}"
+                                    for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
+                                        config = GQAConfig(
+                                            batch_size=b,
+                                            q_sequence_length=s,
+                                            kv_sequence_length=s,
+                                            past_kv_sequence_length=s2,
+                                            buffer_sequence_length=s + s2 + 8,
+                                            num_heads=n,
+                                            kv_num_heads=n2,
+                                            head_size=h,
+                                            local_window_size=lws,
+                                            rotary=rotary,
+                                            rotary_interleaved=rotary_interleaved,
+                                            packed=packed,
+                                            softcap=softcap,
+                                            use_smooth_softmax=use_smooth_softmax,
+                                            has_head_sink=has_head_sink,
                                         )
-                                        name = f"b{b}_s{s}_s2{s2}_nh{n}k{n2}_h{h}_{options}"
-                                        yield name, config, local, rotary, rotary_interleaved, packed, softcap
+                                        name = f"b{b}_s{s}_{s2}_nh{n}_{n2}_h{h}_w{lws}_rot{rotary}{rotary_interleaved}_pkd{packed}_sc{softcap}_sm{use_smooth_softmax}_{has_head_sink}"
+                                        yield name, config
 
 
 def gqa_cpu_prompt_test_cases():
@@ -1161,50 +1107,47 @@ def gqa_cpu_prompt_test_cases():
     num_h = [(6, 3)] if pipeline_mode else [(6, 6), (6, 3)]
     h_sizes = [64] if pipeline_mode else [32, 64]
     has_pos_ids__attn_bias = (
-        [(False, False), (True, True)]
-        if pipeline_mode
-        else [(False, False), (True, True), (False, True), (True, False)]
+        [(True, True)] if pipeline_mode else [(False, False), (True, True), (False, True), (True, False)]
     )
-    smmoth_softmax__head_sink = (
-        [(False, False), (False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
-    )
+    smmoth_softmax__head_sink = get_softmax_options()
 
     for p in precisions:
         for b in batches:
             for sq, skv in seqs:
                 for n, n2 in num_h:
                     for h in h_sizes:
-                        for local in [False, True]:
+                        for lws in [-1, random.randint(1, skv)]:
                             for rotary, rotary_interleaved in get_cpu_rotary_options():
                                 for packed in [False, True]:
                                     for softcap in [0.0, 50.0]:
-                                        for use_smooth_softmax, has_sink in smmoth_softmax__head_sink:
+                                        for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
                                             for has_pos, has_attn_bias in has_pos_ids__attn_bias:
-                                                config = PromptConfig(
-                                                    b, sq, skv, sq + skv + 8, n, n2, h, has_pos, has_attn_bias, has_sink
+                                                config = GQAConfig(
+                                                    batch_size=b,
+                                                    q_sequence_length=sq,
+                                                    kv_sequence_length=skv,
+                                                    past_kv_sequence_length=0,
+                                                    buffer_sequence_length=sq + skv + 8,
+                                                    num_heads=n,
+                                                    kv_num_heads=n2,
+                                                    head_size=h,
+                                                    local_window_size=lws,
+                                                    rotary=rotary,
+                                                    rotary_interleaved=rotary_interleaved,
+                                                    packed=packed,
+                                                    softcap=softcap,
+                                                    use_smooth_softmax=use_smooth_softmax,
+                                                    has_position_ids=has_pos,
+                                                    has_attention_bias=has_attn_bias,
+                                                    has_head_sink=has_head_sink,
                                                 )
                                                 p_str = "fp32" if p["ort"] == TensorProto.FLOAT else "fp16"
-                                                options = (
-                                                    f"{softcap=}_{rotary=}_{rotary_interleaved=}_"
-                                                    f"{local=}_{packed=}_{use_smooth_softmax=}_"
-                                                    f"{has_sink=}_{has_pos=}_{has_attn_bias=}"
-                                                )
-                                                name = f"{p_str}_b{b}_sq{sq}_{skv}_n{n}_{n2}_h{h}_{options}"
-                                                yield (
-                                                    name,
-                                                    config,
-                                                    p,
-                                                    local,
-                                                    rotary,
-                                                    rotary_interleaved,
-                                                    packed,
-                                                    softcap,
-                                                    use_smooth_softmax,
-                                                )
+                                                name = f"p{p_str}_b{b}_s{sq}_{skv}_nh{n}_{n2}_h{h}_w{lws}_rot{rotary}{rotary_interleaved}_pkd{packed}_sc{softcap}_sm{use_smooth_softmax}_{has_head_sink}_ex{has_pos}_{has_attn_bias}"
+                                                yield name, config, p
 
 
 # #################################################################################################
-#  unittest Test Classes
+#  Unit Test Classes
 # #################################################################################################
 
 
@@ -1228,7 +1171,7 @@ def has_memory_efficient():
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQA(unittest.TestCase):
-    def run_test(self, config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=False):
+    def run_test(self, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_prompt(
             config=config,
@@ -1238,24 +1181,16 @@ class TestFlashGQA(unittest.TestCase):
             numpy_type=numpy.float16,
             ort_type=TensorProto.FLOAT16,
             causal=True,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-            softcap=softcap,
-            use_smooth_softmax=use_smooth_softmax,
             rtol=5e-3,
             atol=5e-3,
         )
 
     @parameterized.expand(gqa_cuda_prompt_test_cases())
-    def test_gqa_prompt_flash_attention(self, name, config, local, rotary, rotary_interleaved, packed, softcap):
-        self.run_test(config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=False)
-        self.run_test(config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=True)
+    def test_gqa_prompt_flash_attention(self, name, config):
+        self.run_test(config)
 
     @parameterized.expand(gqa_cuda_past_test_cases())
-    def test_gqa_past_flash_attention(self, name, config, local, rotary, rotary_interleaved, packed, softcap):
+    def test_gqa_past_flash_attention(self, name, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
         parity_check_gqa_past(
             config=config,
@@ -1265,13 +1200,6 @@ class TestFlashGQA(unittest.TestCase):
             numpy_type=numpy.float16,
             ort_type=TensorProto.FLOAT16,
             causal=True,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-            softcap=softcap,
-            use_smooth_softmax=False,
             rtol=5e-3,
             atol=5e-3,
         )
@@ -1279,7 +1207,7 @@ class TestFlashGQA(unittest.TestCase):
 
 @unittest.skipIf(not has_memory_efficient(), "Memory Efficient Attention is not available, skipping tests.")
 class TestMemoryEfficientGQA(unittest.TestCase):
-    def run_test(self, config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=False):
+    def run_test(self, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_prompt(
             config=config,
@@ -1289,51 +1217,33 @@ class TestMemoryEfficientGQA(unittest.TestCase):
             numpy_type=numpy.float16,
             ort_type=TensorProto.FLOAT16,
             causal=True,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-            softcap=softcap,
-            use_smooth_softmax=use_smooth_softmax,
             rtol=5e-3,
             atol=5e-3,
         )
 
     @parameterized.expand(gqa_cuda_prompt_test_cases())
-    def test_gqa_prompt_memory_efficient(self, name, config, local, rotary, rotary_interleaved, packed, softcap):
-        self.run_test(config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=False)
-        self.run_test(config, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax=True)
+    def test_gqa_prompt_memory_efficient(self, name, config):
+        self.run_test(config)
 
     @parameterized.expand(gqa_cuda_past_test_cases())
-    def test_gqa_past_memory_efficient(self, name, config, local, rotary, rotary_interleaved, packed, softcap):
+    def test_gqa_past_memory_efficient(self, name, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        for use_smooth_softmax in [True, False]:
-            parity_check_gqa_past(
-                config=config,
-                ep="CUDAExecutionProvider",
-                device="cuda",
-                torch_type=torch.float16,
-                numpy_type=numpy.float16,
-                ort_type=TensorProto.FLOAT16,
-                causal=True,
-                local=local,
-                past_format=Formats.BNSH,
-                rotary=rotary,
-                rotary_interleaved=rotary_interleaved,
-                packed=packed,
-                softcap=softcap,
-                use_smooth_softmax=use_smooth_softmax,
-                rtol=5e-3,
-                atol=5e-3,
-            )
+        parity_check_gqa_past(
+            config=config,
+            ep="CUDAExecutionProvider",
+            device="cuda",
+            torch_type=torch.float16,
+            numpy_type=numpy.float16,
+            ort_type=TensorProto.FLOAT16,
+            causal=True,
+            rtol=5e-3,
+            atol=5e-3,
+        )
 
 
 class TestGQACPU(unittest.TestCase):
     @parameterized.expand(gqa_cpu_prompt_test_cases())
-    def test_gqa_prompt_cpu(
-        self, name, config, precision, local, rotary, rotary_interleaved, packed, softcap, use_smooth_softmax
-    ):
+    def test_gqa_prompt_cpu(self, name, config, precision):
         parity_check_gqa_prompt(
             config=config,
             ep="CPUExecutionProvider",
@@ -1342,13 +1252,6 @@ class TestGQACPU(unittest.TestCase):
             numpy_type=precision["numpy"],
             ort_type=precision["ort"],
             causal=True,
-            local=local,
-            past_format=Formats.BNSH,
-            rotary=rotary,
-            rotary_interleaved=rotary_interleaved,
-            packed=packed,
-            softcap=softcap,
-            use_smooth_softmax=use_smooth_softmax,
             rtol=precision["rtol"],
             atol=precision["atol"],
         )
