@@ -6026,6 +6026,18 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
 
+  /** \brief Returns the execution provider type (name) that this node is assigned to run on.
+   *         Returns NULL if the node has not been assigned to any execution provider yet.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetEpType, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
+
   /// @}
 
   /// \name OrtRunOptions
