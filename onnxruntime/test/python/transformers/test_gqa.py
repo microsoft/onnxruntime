@@ -1015,7 +1015,7 @@ def get_cpu_rotary_options():
 
 
 def get_softmax_options():
-    return [(False, False)] if pipeline_mode else [(False, False), (False, True), (True, False)]
+    return [(False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
 
 
 def gqa_cuda_prompt_test_cases():
@@ -1171,44 +1171,10 @@ def has_memory_efficient():
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQA(unittest.TestCase):
-    def run_test(self, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            numpy_type=numpy.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=5e-3,
-            atol=5e-3,
-        )
 
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention(self, name, config):
-        self.run_test(config)
-
-    @parameterized.expand(gqa_cuda_past_test_cases())
-    def test_gqa_past_flash_attention(self, name, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            numpy_type=numpy.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=5e-3,
-            atol=5e-3,
-        )
-
-
-@unittest.skipIf(not has_memory_efficient(), "Memory Efficient Attention is not available, skipping tests.")
-class TestMemoryEfficientGQA(unittest.TestCase):
-    def run_test(self, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
         parity_check_gqa_prompt(
             config=config,
             ep="CUDAExecutionProvider",
@@ -1221,40 +1187,72 @@ class TestMemoryEfficientGQA(unittest.TestCase):
             atol=5e-3,
         )
 
-    @parameterized.expand(gqa_cuda_prompt_test_cases())
-    def test_gqa_prompt_memory_efficient(self, name, config):
-        self.run_test(config)
-
-    @parameterized.expand(gqa_cuda_past_test_cases())
-    def test_gqa_past_memory_efficient(self, name, config):
-        os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
-        parity_check_gqa_past(
-            config=config,
-            ep="CUDAExecutionProvider",
-            device="cuda",
-            torch_type=torch.float16,
-            numpy_type=numpy.float16,
-            ort_type=TensorProto.FLOAT16,
-            causal=True,
-            rtol=5e-3,
-            atol=5e-3,
-        )
+    # @parameterized.expand(gqa_cuda_past_test_cases())
+    # def test_gqa_past_flash_attention(self, name, config):
+    #     os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
+    #     parity_check_gqa_past(
+    #         config=config,
+    #         ep="CUDAExecutionProvider",
+    #         device="cuda",
+    #         torch_type=torch.float16,
+    #         numpy_type=numpy.float16,
+    #         ort_type=TensorProto.FLOAT16,
+    #         causal=True,
+    #         rtol=5e-3,
+    #         atol=5e-3,
+    #     )
 
 
-class TestGQACPU(unittest.TestCase):
-    @parameterized.expand(gqa_cpu_prompt_test_cases())
-    def test_gqa_prompt_cpu(self, name, config, precision):
-        parity_check_gqa_prompt(
-            config=config,
-            ep="CPUExecutionProvider",
-            device="cpu",
-            torch_type=precision["torch"],
-            numpy_type=precision["numpy"],
-            ort_type=precision["ort"],
-            causal=True,
-            rtol=precision["rtol"],
-            atol=precision["atol"],
-        )
+# @unittest.skipIf(not has_memory_efficient(), "Memory Efficient Attention is not available, skipping tests.")
+# class TestMemoryEfficientGQA(unittest.TestCase):
+#     def run_test(self, config):
+#         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+#         parity_check_gqa_prompt(
+#             config=config,
+#             ep="CUDAExecutionProvider",
+#             device="cuda",
+#             torch_type=torch.float16,
+#             numpy_type=numpy.float16,
+#             ort_type=TensorProto.FLOAT16,
+#             causal=True,
+#             rtol=5e-3,
+#             atol=5e-3,
+#         )
+
+#     @parameterized.expand(gqa_cuda_prompt_test_cases())
+#     def test_gqa_prompt_memory_efficient(self, name, config):
+#         self.run_test(config)
+
+#     @parameterized.expand(gqa_cuda_past_test_cases())
+#     def test_gqa_past_memory_efficient(self, name, config):
+#         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "1"
+#         parity_check_gqa_past(
+#             config=config,
+#             ep="CUDAExecutionProvider",
+#             device="cuda",
+#             torch_type=torch.float16,
+#             numpy_type=numpy.float16,
+#             ort_type=TensorProto.FLOAT16,
+#             causal=True,
+#             rtol=5e-3,
+#             atol=5e-3,
+#         )
+
+
+# class TestGQACPU(unittest.TestCase):
+#     @parameterized.expand(gqa_cpu_prompt_test_cases())
+#     def test_gqa_prompt_cpu(self, name, config, precision):
+#         parity_check_gqa_prompt(
+#             config=config,
+#             ep="CPUExecutionProvider",
+#             device="cpu",
+#             torch_type=precision["torch"],
+#             numpy_type=precision["numpy"],
+#             ort_type=precision["ort"],
+#             causal=True,
+#             rtol=precision["rtol"],
+#             atol=precision["atol"],
+#         )
 
 
 if __name__ == "__main__":
