@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #ifdef _WIN32
 #include <Windows.h>
 
@@ -15,7 +14,7 @@
 #include <string>
 #include <vector>
 
-#include "core/common/common.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 #if !BUILD_QNN_EP_STATIC_LIB
 TRACELOGGING_DECLARE_PROVIDER(telemetry_provider_handle);

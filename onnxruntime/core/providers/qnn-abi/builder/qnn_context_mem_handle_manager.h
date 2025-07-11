@@ -9,9 +9,7 @@
 
 #include "QnnInterface.h"
 
-#include "core/common/common.h"
-#include "core/common/logging/logging.h"
-#include "core/common/inlined_containers.h"
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime::qnn {
 

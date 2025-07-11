@@ -10,6 +10,7 @@
 #include <unordered_map>
 #include <unordered_set>
 
+#include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"
@@ -31,8 +32,8 @@ class QnnEp : public OrtEp, public ApiPtrs {
     bool disable_cpu_ep_fallback{false};
   };
 
-  QnnEp(const QnnEpFactory& factory, const std::string& name,
-        const Config& config, const OrtLogger* logger);
+  QnnEp(QnnEpFactory& factory, const std::string& name,
+        const Config& config, const OrtLogger& logger);
   ~QnnEp();
 
  private:
@@ -41,78 +42,78 @@ class QnnEp : public OrtEp, public ApiPtrs {
                                                   const OrtGraph* graph,
                                                   OrtEpGraphSupportInfo* graph_support_info);
 
-  // Helper functions
-  int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
-  std::string MakeMetadefName(const OrtGraph* graph);
-  bool EpSharedContextsHasAllGraphs(const OrtGraph* graph);
-  void PartitionCtxModel(const OrtGraph* graph, size_t num_nodes_in_graph,
-                        OrtEpGraphSupportInfo* graph_support_info);
-  static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
-  void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
-                                   const std::string& model_path_string,
-                                   std::string& context_model_path);
+  // // Helper functions
+  // int GenerateMetadefId(const OrtGraph* graph, uint64_t& model_hash);
+  // std::string MakeMetadefName(const OrtGraph* graph);
+  // bool EpSharedContextsHasAllGraphs(const OrtGraph* graph);
+  // void PartitionCtxModel(const OrtGraph* graph, size_t num_nodes_in_graph,
+  //                       OrtEpGraphSupportInfo* graph_support_info);
+  // static void GetMainEPCtxNodes(QnnEp* ep, const OrtGraph* graph, std::unordered_set<const OrtNode*>& ep_context_nodes);
+  // void GetContextOnnxModelFilePath(const std::string& user_context_cache_path,
+  //                                  const std::string& model_path_string,
+  //                                  std::string& context_model_path);
 
-  // Run start/end methods
-  OrtStatus* OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options);
-  OrtStatus* OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_options, bool sync_stream);
+  // // Run start/end methods
+  // OrtStatus* OnRunStart(const OrtGraph* graph, const OrtRunOptions* run_options);
+  // OrtStatus* OnRunEnd(const OrtGraph* graph, const OrtRunOptions* run_options, bool sync_stream);
 
-  // Per-thread context management
-  class PerThreadContext final {
-   public:
-    PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
-                     uint32_t device_id, uint32_t core_id,
-                     qnn::HtpPerformanceMode default_htp_performance_mode,
-                     uint32_t default_rpc_control_latency);
-    ~PerThreadContext();
-    ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
+  // // Per-thread context management
+  // class PerThreadContext final {
+  //  public:
+  //   PerThreadContext(qnn::QnnBackendManager* qnn_backend_manager,
+  //                    uint32_t device_id, uint32_t core_id,
+  //                    qnn::HtpPerformanceMode default_htp_performance_mode,
+  //                    uint32_t default_rpc_control_latency);
+  //   ~PerThreadContext();
+  //   ORT_DISALLOW_COPY_ASSIGNMENT_AND_MOVE(PerThreadContext);
 
-    bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
-    uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; }
+  //   bool IsHtpPowerConfigIdValid() { return is_htp_power_config_id_valid_; }
+  //   uint32_t GetHtpPowerConfigId() { return htp_power_config_id_; }
 
-   private:
-    bool is_htp_power_config_id_valid_ = false;
-    uint32_t htp_power_config_id_ = 0;
-    qnn::QnnBackendManager* qnn_backend_manager_;
-  };
+  //  private:
+  //   bool is_htp_power_config_id_valid_ = false;
+  //   uint32_t htp_power_config_id_ = 0;
+  //   qnn::QnnBackendManager* qnn_backend_manager_;
+  // };
 
-  using PerThreadContextMap = std::unordered_map<const QnnEp*, std::weak_ptr<PerThreadContext>>;
+  // using PerThreadContextMap = std::unordered_map<const QnnEp*, std::weak_ptr<PerThreadContext>>;
 
-  struct ContextCacheHolder {
-    ContextCacheHolder() {
-      // Note: This would typically use RunOnUnload in the full implementation
-    }
+  // struct ContextCacheHolder {
+  //   ContextCacheHolder() {
+  //     // Note: This would typically use RunOnUnload in the full implementation
+  //   }
 
-    std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
-  };
+  //   std::shared_ptr<PerThreadContextMap> p = std::make_shared<PerThreadContextMap>();
+  // };
 
-  static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
-    thread_local const ContextCacheHolder per_thread_context_cache;
-    return per_thread_context_cache.p;
-  }
+  // static const std::shared_ptr<PerThreadContextMap>& PerThreadContextCache() {
+  //   thread_local const ContextCacheHolder per_thread_context_cache;
+  //   return per_thread_context_cache.p;
+  // }
 
-  struct PerThreadContextState {
-    // contexts that are currently active
-    std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
-    // contexts available for reuse
-    std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
-    // weak references to thread local caches from which this QnnEp instance's entry should be removed
-    // upon destruction
-    std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
-        caches_to_update_on_destruction;
-    // synchronizes access to PerThreadContextState members
-    std::mutex mutex;
-  };
+  // struct PerThreadContextState {
+  //   // contexts that are currently active
+  //   std::set<std::shared_ptr<PerThreadContext>, std::owner_less<std::shared_ptr<PerThreadContext>>> active_contexts;
+  //   // contexts available for reuse
+  //   std::vector<std::shared_ptr<PerThreadContext>> retired_context_pool;
+  //   // weak references to thread local caches from which this QnnEp instance's entry should be removed
+  //   // upon destruction
+  //   std::set<std::weak_ptr<PerThreadContextMap>, std::owner_less<std::weak_ptr<PerThreadContextMap>>>
+  //       caches_to_update_on_destruction;
+  //   // synchronizes access to PerThreadContextState members
+  //   std::mutex mutex;
+  // };
 
-  // The execution provider maintains the PerThreadContexts in this structure.
-  mutable PerThreadContextState context_state_;
+  // // The execution provider maintains the PerThreadContexts in this structure.
+  // mutable PerThreadContextState context_state_;
 
-  PerThreadContext& GetPerThreadContext();
-  void ReleasePerThreadContext();
+  // PerThreadContext& GetPerThreadContext();
+  // void ReleasePerThreadContext();
 
   const QnnEpFactory& factory_;
   std::string name_;
   Config config_;
-  const OrtLogger* logger_;
+  const OrtLogger& logger_;
   bool context_cache_enabled_;
   bool share_ep_contexts_;
   bool enable_vtcm_backup_buffer_sharing_;
@@ -128,7 +129,7 @@ class QnnEp : public OrtEp, public ApiPtrs {
 
   // Configuration for HTP backend
   uint32_t device_id_{0};
-  qnn::HtpPerformanceMode default_htp_performance_mode_{qnn::HtpPerformanceMode::kHtpDefault};
+  // qnn::HtpPerformanceMode default_htp_performance_mode_{qnn::HtpPerformanceMode::kHtpDefault};
   uint32_t default_rpc_control_latency_{0};
 };
 

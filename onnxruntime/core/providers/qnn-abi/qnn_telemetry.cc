@@ -18,8 +18,6 @@
 #include <TraceLoggingProvider.h>
 #include <evntrace.h>
 #include <winmeta.h>
-
-#include "core/common/logging/logging.h"
 #include "core/platform/windows/TraceLoggingConfig.h"
 
 // Seems this workaround can be dropped when we drop support for VS2017 toolchains
@@ -46,15 +44,12 @@
 #define _tlgPragmaUtf8End
 #endif
 
-TRACELOGGING_DEFINE_PROVIDER(telemetry_provider_handle, "Microsoft.ML.ONNXRuntime",
-                             // {3a26b1ff-7484-7484-7484-15261f42614d}
-                             (0x3a26b1ff, 0x7484, 0x7484, 0x74, 0x84, 0x15, 0x26, 0x1f, 0x42, 0x61, 0x4d),
-                             TraceLoggingOptionMicrosoftTelemetry());
-
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 #endif  // !BUILD_QNN_EP_STATIC_LIB
+
+#include "core/providers/qnn-abi/ort_api.h"
 
 namespace onnxruntime {
 namespace qnn {

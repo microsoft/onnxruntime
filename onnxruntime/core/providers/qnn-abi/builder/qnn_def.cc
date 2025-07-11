@@ -2,13 +2,11 @@
 // Licensed under the MIT License.
 
 #include "core/providers/qnn-abi/builder/qnn_def.h"
-
+#include "core/providers/qnn-abi/builder/qnn_utils.h"
 #include <cstring>
 #include <functional>
 #include <memory>
 #include <ostream>
-
-#include "core/providers/qnn-abi/builder/qnn_utils.h"
 
 namespace onnxruntime {
 namespace qnn {
@@ -483,32 +481,32 @@ bool CreateTensorInQnnGraph(const QNN_INTERFACE_VER_TYPE& qnn_interface,
   return true;
 }
 
-// bool QnnParamWrapper::CreateQnnGraphParam(const QNN_INTERFACE_VER_TYPE& qnn_interface,
-//                                           const Qnn_GraphHandle_t& graph,
-//                                           const std::string& node_name,
-//                                           std::unordered_map<std::string, bool>& tensors_created_table,
-//                                           std::string& error_msg) {
-//   std::stringstream ss;
-//   switch (qnn_param_.paramType) {
-//     case QNN_PARAMTYPE_TENSOR: {
-//       return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
-//                                     qnn_param_.tensorParam, tensors_created_table, error_msg);
-//     }
-//     case QNN_PARAMTYPE_SCALAR: {
-//       ss << "Add scalar parameter: " << name_;
-//       error_msg = ss.str();
-//       return true;
-//     }
-//     default: {
-//       ss << "Unknown param type passed for param: "
-//          << name_ << " on node: " << node_name;
-//       error_msg = ss.str();
-//       return true;
-//     }
-//   }
+bool QnnParamWrapper::CreateQnnGraphParam(const QNN_INTERFACE_VER_TYPE& qnn_interface,
+                                          const Qnn_GraphHandle_t& graph,
+                                          const std::string& node_name,
+                                          std::unordered_map<std::string, bool>& tensors_created_table,
+                                          std::string& error_msg) {
+  std::stringstream ss;
+  switch (qnn_param_.paramType) {
+    case QNN_PARAMTYPE_TENSOR: {
+      return CreateTensorInQnnGraph(qnn_interface, graph, node_name, tensor_name_,
+                                    qnn_param_.tensorParam, tensors_created_table, error_msg);
+    }
+    case QNN_PARAMTYPE_SCALAR: {
+      ss << "Add scalar parameter: " << name_;
+      error_msg = ss.str();
+      return true;
+    }
+    default: {
+      ss << "Unknown param type passed for param: "
+         << name_ << " on node: " << node_name;
+      error_msg = ss.str();
+      return true;
+    }
+  }
 
-//   return true;
-// }
+  return true;
+}
 
 void QnnOpConfigWrapper::SetNames(const char* op_name,
                                   const char* package_name,

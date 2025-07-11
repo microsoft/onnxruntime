@@ -5,7 +5,7 @@
 
 #include "HTP/QnnHtpMem.h"
 
-#include "core/common/logging/logging.h"
+#include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
@@ -53,36 +53,36 @@ Status QnnContextMemHandleManager::GetOrRegister(void* shared_memory_address, co
     }
 
     // register a new mem handle
-    HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
-    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address,
-                                                                                shared_memory_info));
+    // HtpSharedMemoryAllocator::SharedMemoryInfo shared_memory_info{};
+    // ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::GetAllocationSharedMemoryInfo(shared_memory_address,
+    //                                                                             shared_memory_info));
 
-    Qnn_MemDescriptor_t mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
-    mem_descriptor.memShape.dimSize = qnn_tensor_dims;
-    mem_descriptor.memShape.numDim = qnn_tensor_rank;
-    mem_descriptor.memShape.shapeConfig = nullptr;
-    mem_descriptor.dataType = qnn_tensor_data_type;
-    mem_descriptor.memType = QNN_MEM_TYPE_CUSTOM;
+    // Qnn_MemDescriptor_t mem_descriptor = QNN_MEM_DESCRIPTOR_INIT;
+    // mem_descriptor.memShape.dimSize = qnn_tensor_dims;
+    // mem_descriptor.memShape.numDim = qnn_tensor_rank;
+    // mem_descriptor.memShape.shapeConfig = nullptr;
+    // mem_descriptor.dataType = qnn_tensor_data_type;
+    // mem_descriptor.memType = QNN_MEM_TYPE_CUSTOM;
 
-    QnnMemHtp_Descriptor_t htp_mem_descriptor{};
-    htp_mem_descriptor.type = QNN_HTP_MEM_SHARED_BUFFER;
-    htp_mem_descriptor.size = shared_memory_info.total_size;
-    htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
-    htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
+    // QnnMemHtp_Descriptor_t htp_mem_descriptor{};
+    // htp_mem_descriptor.type = QNN_HTP_MEM_SHARED_BUFFER;
+    // htp_mem_descriptor.size = shared_memory_info.total_size;
+    // htp_mem_descriptor.sharedBufferConfig.fd = shared_memory_info.fd;
+    // htp_mem_descriptor.sharedBufferConfig.offset = shared_memory_info.offset;
 
-    mem_descriptor.customInfo = &htp_mem_descriptor;
+    // mem_descriptor.customInfo = &htp_mem_descriptor;
 
-    LOGS(logger_, VERBOSE) << "Registering QNN mem handle for context: " << context_
-                           << ", shared memory (address: " << shared_memory_address
-                           << ", offset: " << shared_memory_info.offset
-                           << ", fd: " << shared_memory_info.fd
-                           << ")";
+    // LOGS(logger_, VERBOSE) << "Registering QNN mem handle for context: " << context_
+    //                        << ", shared memory (address: " << shared_memory_address
+    //                        << ", offset: " << shared_memory_info.offset
+    //                        << ", fd: " << shared_memory_info.fd
+    //                        << ")";
 
     Qnn_MemHandle_t raw_mem_handle{};
-    const auto register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
-    ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
-                      "qnn_interface.memRegister() failed: ",
-                      utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
+    // const auto register_result = qnn_interface_.memRegister(context_, &mem_descriptor, 1, &raw_mem_handle);
+    // ORT_RETURN_IF_NOT(register_result == QNN_SUCCESS,
+    //                   "qnn_interface.memRegister() failed: ",
+    //                   utils::GetVerboseQnnErrorMessage(qnn_interface_, register_result));
 
     LOGS(logger_, VERBOSE) << "Registered QNN mem handle. mem_handle: " << raw_mem_handle;
 

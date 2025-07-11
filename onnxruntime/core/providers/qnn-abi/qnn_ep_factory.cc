@@ -159,7 +159,7 @@ OrtStatus* ORT_API_CALL QnnEpFactory::CreateEpImpl(OrtEpFactory* this_ptr,
   QnnEp::Config config = {};
   config.enable_ep_context = ep_context_enable == "1";
 
-  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, config, logger);
+  auto dummy_ep = std::make_unique<QnnEp>(*factory, factory->ep_name_, config, *logger);
 
   *ep = dummy_ep.release();
   return nullptr;

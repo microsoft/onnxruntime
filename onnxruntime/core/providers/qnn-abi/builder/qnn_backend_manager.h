@@ -2,7 +2,6 @@
 // Licensed under the MIT License.
 
 #pragma once
-
 #ifdef _WIN32
 #include <windows.h>
 #include <psapi.h>
@@ -24,13 +23,17 @@
 #include "QnnTypes.h"
 #include "System/QnnSystemInterface.h"
 
+#include "core/providers/qnn-abi/ort_api.h"
+// #include "core/providers/qnn-abi/builder/op_builder_factory.h"
 #include "core/providers/qnn-abi/builder/qnn_context_mem_handle_manager.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
+// #include "core/providers/qnn-abi/builder/qnn_node_group/qnn_node_group.h"
+
 
 namespace onnxruntime {
 namespace qnn {
 
-class QnnModel;
+// class QnnModel;
 
 class QnnSerializerConfig {
  public:

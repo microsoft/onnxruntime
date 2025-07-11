@@ -3,7 +3,7 @@
 
 #pragma once
 
-#include "core/session/onnxruntime_c_api.h"
+#include "core/providers/qnn-abi/ort_api.h"
 // #include "qnn_ep.h"
 #include "test/autoep/library/ep_data_transfer.h"
 #include "test/autoep/library/example_plugin_ep_utils.h"

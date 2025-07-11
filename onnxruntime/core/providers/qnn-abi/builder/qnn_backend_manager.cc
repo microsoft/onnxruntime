@@ -2,34 +2,34 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
-
+#include "qnn_backend_manager.h"
+// #include "qnn_model.h"
 #include <filesystem>
 #include <fstream>
-#include <gsl/gsl>
 #include <string>
-
+#include "QnnOpDef.h"
 #include "CPU/QnnCpuCommon.h"
-#include "DSP/QnnDspCommon.h"
 #include "GPU/QnnGpuCommon.h"
+#include "DSP/QnnDspCommon.h"
 #include "HTP/QnnHtpCommon.h"
 #include "HTP/QnnHtpContext.h"
 #include "HTP/QnnHtpPerfInfrastructure.h"
 #include "HTP/QnnHtpSystemContext.h"
 #include "IR/QnnIrCommon.h"
 #include "IR/QnnIrGraph.h"
-#include "QnnOpDef.h"
 #include "Saver/QnnSaver.h"
 #include "Saver/QnnSaverCommon.h"
+#include <gsl/gsl>
 
-#include "core/common/logging/capture.h"
-#include "core/platform/env.h"
+#include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/qnn_allocator.h"
 #include "core/providers/qnn-abi/qnn_telemetry.h"
 #include "core/providers/qnn-abi/shared_context.h"
-// #include "core/providers/qnn-abi/builder/qnn_model.h"
+// #include "core/providers/qnn-abi/builder/onnx_ctx_model_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_configs_helper.h"
 #include "core/providers/qnn-abi/builder/qnn_utils.h"
+// #include "core/common/logging/capture.h"
+// #include "core/platform/env.h"
 
 // Flag to determine if Backend should do node validation for each opNode added
 #define DO_GRAPH_NODE_VALIDATIONS 1
@@ -2122,35 +2122,35 @@ Status QnnBackendManager::GetOrRegisterContextMemHandle(Qnn_ContextHandle_t cont
                                                                 mem_handle, did_register));
 
   if (did_register) {
-    HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
-        [&logger = *logger_,
-         shared_memory_address,
-         weak_backend_manager = weak_from_this(),
-         weak_context_handle_record = std::weak_ptr{context_handle_record}](
-            void* /* allocation_base_address */) {
-          // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
-          auto backend_manager = weak_backend_manager.lock();
-          if (!backend_manager) {
-            return;
-          }
+    // HtpSharedMemoryAllocator::AllocationCleanUpFn unregister_mem_handle =
+    //     [&logger = *logger_,
+    //      shared_memory_address,
+    //      weak_backend_manager = weak_from_this(),
+    //      weak_context_handle_record = std::weak_ptr{context_handle_record}](
+    //         void* /* allocation_base_address */) {
+    //       // Lock QnnBackendManager shared_ptr to ensure that QNN interface is still valid.
+    //       auto backend_manager = weak_backend_manager.lock();
+    //       if (!backend_manager) {
+    //         return;
+    //       }
 
-          // Lock QnnContextHandleRecord shared_ptr to ensure that QNN context handle is still valid.
-          auto context_handle_record = weak_context_handle_record.lock();
-          if (!context_handle_record) {
-            return;
-          }
+    //       // Lock QnnContextHandleRecord shared_ptr to ensure that QNN context handle is still valid.
+    //       auto context_handle_record = weak_context_handle_record.lock();
+    //       if (!context_handle_record) {
+    //         return;
+    //       }
 
-          auto& context_mem_handle_manager = context_handle_record->mem_handles;
+    //       auto& context_mem_handle_manager = context_handle_record->mem_handles;
 
-          auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
-          if (!unregister_status.IsOK()) {
-            LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
-                                << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
-          }
-        };
+    //       auto unregister_status = context_mem_handle_manager->Unregister(shared_memory_address);
+    //       if (!unregister_status.IsOK()) {
+    //         LOGS(logger, ERROR) << "Failed to unregister shared memory mem handle for address: "
+    //                             << shared_memory_address << ", error: " << unregister_status.ErrorMessage();
+    //       }
+    //     };
 
-    ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
-                                                                       std::move(unregister_mem_handle)));
+    // ORT_RETURN_IF_ERROR(HtpSharedMemoryAllocator::AddAllocationCleanUp(shared_memory_address,
+    //                                                                    std::move(unregister_mem_handle)));
   }
 
   return Status::OK();
