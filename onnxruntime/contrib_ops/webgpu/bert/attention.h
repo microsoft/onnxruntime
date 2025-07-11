@@ -69,8 +69,8 @@ class AttentionProbsProgram final : public Program<AttentionProbsProgram> {
 
 class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
  public:
-  InPlaceSoftmaxProgram(int work_group_size, int components, bool use_smooth_softmax, bool has_seqlen_k, bool has_head_sink)
-      : Program{"InPlaceSoftmax"}, work_group_size_(work_group_size), components_(components), use_smooth_softmax_(use_smooth_softmax), has_seqlen_k_(has_seqlen_k), has_head_sink_(has_head_sink) {
+  InPlaceSoftmaxProgram(int work_group_size, int components, bool use_smooth_softmax, bool has_seqlen_k, bool has_head_sink, int local_window_size)
+      : Program{"InPlaceSoftmax"}, work_group_size_(work_group_size), components_(components), use_smooth_softmax_(use_smooth_softmax), has_seqlen_k_(has_seqlen_k), has_head_sink_(has_head_sink), local_window_size_(local_window_size) {
   }
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
@@ -81,7 +81,8 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
                                           {"sequence_length", ProgramUniformVariableDataType::Uint32},
                                           {"total_sequence_length_comp", ProgramUniformVariableDataType::Uint32},
                                           {"elements_per_thread", ProgramUniformVariableDataType::Uint32},
-                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32});
+                                          {"is_first_prompt", ProgramUniformVariableDataType::Uint32},
+                                          {"local_window_size", ProgramUniformVariableDataType::Int32});
 
  private:
   int work_group_size_;
@@ -89,6 +90,7 @@ class InPlaceSoftmaxProgram final : public Program<InPlaceSoftmaxProgram> {
   bool use_smooth_softmax_;
   bool has_seqlen_k_;
   bool has_head_sink_;
+  int local_window_size_;
 };
 
 class VxAttentionScoreProgram final : public Program<VxAttentionScoreProgram> {
