@@ -345,7 +345,7 @@ void TestMatMulNBitsTyped(std::optional<float> abs_error = std::nullopt,
 
 #if !defined(USE_OPENVINO)
 
-TEST(MatMulNBits, Float32_Accuracy0) {
+TEST(MatMulNBits, Float32_4b_Accuracy0) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 0>();
   TestMatMulNBitsTyped<float, 1, 32, 16, 16, 0>();
@@ -372,7 +372,7 @@ TEST(MatMulNBits, Float32_Accuracy0) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 0>();
 }
 
-TEST(MatMulNBits, Float32_Accuracy1) {
+TEST(MatMulNBits, Float32_4b_Accuracy1) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 1>();
   TestMatMulNBitsTyped<float, 1, 288, 1024, 128, 1>();
   TestMatMulNBitsTyped<float, 1, 288, 93, 32, 1>();
@@ -383,7 +383,7 @@ TEST(MatMulNBits, Float32_Accuracy1) {
   TestMatMulNBitsTyped<float, 100, 288, 1234, 16, 1>();
 }
 
-TEST(MatMulNBits, Float32_Accuracy4) {
+TEST(MatMulNBits, Float32_4b_Accuracy4) {
   TestMatMulNBitsTyped<float, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 1, 2, 16, 16, 4>();
   TestMatMulNBitsTyped<float, 1, 32, 16, 16, 4>();
@@ -415,7 +415,7 @@ TEST(MatMulNBits, Float32_Accuracy4) {
 #if !defined(USE_DML)
 // Actual and expected difference is over 0.01 with DmlExecutionProvider.
 // Skip the tests instead of raising the tolerance to make is pass.
-TEST(MatMulNBits, Float16_Accuracy2) {
+TEST(MatMulNBits, Float16_4b_Accuracy2) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 2>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 2>();
   TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 2>();
@@ -442,7 +442,7 @@ TEST(MatMulNBits, Float16_Accuracy2) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 2>();
 }
 
-TEST(MatMulNBits, Float16_Accuracy0) {
+TEST(MatMulNBits, Float16_4b_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 0>();
   TestMatMulNBitsTyped<MLFloat16, 1, 288, 93, 32, 0>();
   TestMatMulNBitsTyped<MLFloat16, 1, 288, 1234, 16, 0>();
@@ -453,7 +453,7 @@ TEST(MatMulNBits, Float16_Accuracy0) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 0>();
 }
 
-TEST(MatMulNBits, Float16_Accuracy4) {
+TEST(MatMulNBits, Float16_4b_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 1, 1, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4>();
   TestMatMulNBitsTyped<MLFloat16, 1, 32, 16, 16, 4>();
@@ -483,7 +483,7 @@ TEST(MatMulNBits, Float16_Accuracy4) {
   TestMatMulNBitsTyped<MLFloat16, 100, 288, 1234, 16, 4>();
 }
 
-TEST(MatMulNBits, LegacyShape) {
+TEST(MatMulNBits, LegacyShape_4b) {
   constexpr bool legacy_shape = true;
   TestMatMulNBitsTyped<float, 4, 2, 16, 16, 4, legacy_shape>();
   TestMatMulNBitsTyped<MLFloat16, 1, 2, 16, 16, 4, legacy_shape>();
