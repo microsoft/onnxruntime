@@ -2714,6 +2714,91 @@ ORT_API_STATUS_IMPL(OrtApis::Graph_GetParentNode, _In_ const OrtGraph* graph, _O
   API_IMPL_END
 }
 
+ORT_API_STATUS_IMPL(OrtApis::Graph_GetGraphView, _In_ const OrtGraph* src_graph,
+                    _In_ const OrtNode** nodes,
+                    _In_ size_t num_nodes,
+                    _Outptr_ OrtGraph** dst_graph) {
+  API_IMPL_BEGIN
+
+  if (num_nodes == 0) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'num_nodes' argument should be > 0");
+  }
+
+  const EpGraph* ep_graph = EpGraph::ToInternal(src_graph);
+  if (ep_graph == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "src_graph is a ModelEditorGraph which doesn't support Graph_GetSubGraph.");
+  }
+  const Graph& graph = ep_graph->GetGraphViewer().GetGraph();
+
+  // Create a GraphViewer with filtered info
+  std::unique_ptr<IndexedSubGraph> indexed_sub_graph = std::make_unique<IndexedSubGraph>();
+  std::unique_ptr<IndexedSubGraph::MetaDef> metadef = std::make_unique<IndexedSubGraph::MetaDef>();
+  metadef->name = "sub_graph";
+  metadef->since_version = 1;
+  std::unordered_set<std::string> outputs;
+  std::unordered_set<const NodeArg*> initializers;
+
+  auto add_inputs = [&](ConstPointerContainer<std::vector<NodeArg*>> defs) {
+    for (const auto* def : defs) {
+      if (def->Exists()) {
+        // not the output of a previous node
+        if (outputs.count(def->Name()) == 0) {
+          metadef->inputs.push_back(def->Name());
+        } else {
+          // consumed by node so no longer subgraph output
+          // NOTE: Ignoring edge case where a node output is an overall graph output AND a node input
+          outputs.erase(def->Name());
+        }
+
+        if (graph.IsInitializedTensor(def->Name())) {
+          initializers.insert(def);
+        }
+      }
+    }
+  };
+
+  auto add_node = [&](const Node& node) {
+    indexed_sub_graph->nodes.push_back(node.Index());
+    add_inputs(node.InputDefs());
+    add_inputs(node.ImplicitInputDefs());
+
+    for (const auto* def : node.OutputDefs()) {
+      outputs.insert(def->Name());
+    }
+  };
+
+  // Add nodes
+  for (size_t node_idx = 0; node_idx < num_nodes; node_idx++) {
+    const OrtNode* ort_node = nodes[node_idx];
+    const EpNode* ep_node = EpNode::ToInternal(ort_node);
+    if (ep_node == nullptr) {
+      return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Graph_GetSubGraph.");
+    }
+    add_node(ep_node->GetInternalNode());
+  }
+
+  // Add initializers
+  for (auto& initializer : initializers) {
+    metadef->constant_initializers.push_back(initializer->Name());
+  }
+
+  // Add outputs
+  for (auto& output : outputs) {
+    metadef->outputs.push_back(output);
+  }
+
+  indexed_sub_graph->SetMetaDef(std::move(metadef));
+  auto graph_viewer = std::make_unique<GraphViewer>(graph, *indexed_sub_graph.get());
+
+  std::unique_ptr<EpGraph> result;
+  ORT_API_RETURN_IF_STATUS_NOT_OK(EpGraph::Create(std::move(graph_viewer), std::move(indexed_sub_graph), result));
+
+  *dst_graph = result.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+
 //
 // OrtNode
 //
@@ -2963,6 +3048,23 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetGraph, _In_ const OrtNode* node,
 
   *graph = nullptr;
   ORT_API_RETURN_IF_STATUS_NOT_OK(node->GetGraph(*graph));
+  return nullptr;
+  API_IMPL_END
+}
+
+ORT_API_STATUS_IMPL(OrtApis::Node_GetEpType, _In_ const OrtNode* node,
+                    _Outptr_result_maybenull_ const char** out) {
+  API_IMPL_BEGIN
+  if (out == nullptr) {
+    return OrtApis::CreateStatus(ORT_INVALID_ARGUMENT, "'out' argument is NULL");
+  }
+
+  const EpNode* ep_node = EpNode::ToInternal(node);
+  if (ep_node == nullptr) {
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetEpType.");
+  }
+
+  *out = ep_node->GetEpType().c_str();
   return nullptr;
   API_IMPL_END
 }
@@ -3629,6 +3731,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Graph_GetNumNodes,
     &OrtApis::Graph_GetNodes,
     &OrtApis::Graph_GetParentNode,
+    &OrtApis::Graph_GetGraphView,
     &OrtApis::Node_GetId,
     &OrtApis::Node_GetName,
     &OrtApis::Node_GetOperatorType,
@@ -3648,6 +3751,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
+    &OrtApis::Node_GetEpType,
 
     &OrtApis::GetRunConfigEntry,
 
