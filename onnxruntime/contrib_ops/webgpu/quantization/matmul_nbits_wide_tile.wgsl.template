@@ -54,16 +54,16 @@ fn load_zero(row : u32, col : u32, r_dim : u32, c_dim : u32) -> output_element_t
 #endif
 
 fn load_a(batch : u32, row : u32, col : u32) -> input_a_value_t {
-  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_div_4) {
-    let offset = batch * uniforms.M * uniforms.K_div_4 + row * uniforms.K_div_4 + col;
+  if (batch < uniforms.Batch && row < uniforms.M && col < uniforms.K_of_a) {
+    let offset = batch * uniforms.M * uniforms.K_of_a + row * uniforms.K_of_a + col;
     return input_a[offset];
   }
   return input_a_value_t();
 }
 
 fn load_scale(row : u32, block_idx : u32) -> output_element_t {
-  if (row < uniforms.N && block_idx < uniforms.K_div_32) {
-    let offset = row * uniforms.K_div_32 + block_idx;
+  if (row < uniforms.N && block_idx < uniforms.n_blocks_per_col) {
+    let offset = row * uniforms.n_blocks_per_col + block_idx;
     return scales[offset];
   }
   return output_element_t();
@@ -158,7 +158,7 @@ $MAIN {
   // Utilizing an f32 accumulator mitigated precision loss with minimal
   // performance impact compared to an f16 accumulator.
   var results : array<f32, kTileM>;
-  for (var block_idx = 0u; block_idx < uniforms.K_div_32; block_idx++) {
+  for (var block_idx = 0u; block_idx < uniforms.n_blocks_per_col; block_idx++) {
     // Load `a` elements into workgroup memory, TileM x KAVecSizeForBlock32 (block32)
     let a_row_idx = local_idx / KAVecSizeForBlock32;
     let a_col_idx = local_idx % KAVecSizeForBlock32;

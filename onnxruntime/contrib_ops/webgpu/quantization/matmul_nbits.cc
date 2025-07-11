@@ -288,21 +288,16 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.SetWorkgroupSize(workgroup_size);
     program.SetDispatchGroupSize(num_N_tile, num_M_tile, batch_count);
 
-    TensorShape reshaped_a_shape{batch_count, M, K / components_a};
-    TensorShape reshaped_b_shape{N, n_blocks_per_col, blob_size_in_words / components_b};
-    TensorShape reshaped_y_shape{batch_count, M, N / components};
-
     constexpr uint32_t kU32Components = 4;
     const uint32_t components_b_with_u32 = components_b * kU32Components;
     const uint32_t K_of_b = n_blocks_per_col * blob_size / components_b_with_u32;
+    const uint32_t K_of_a = K / components_a;
 
     program.AddInput({a,
                       ProgramTensorMetadataDependency::TypeAndRank,
-                      reshaped_a_shape,
                       onnxruntime::narrow<int>(components_a)});
     program.AddInput({b,
                       ProgramTensorMetadataDependency::TypeAndRank,
-                      reshaped_b_shape,
                       onnxruntime::narrow<int>(components_b_with_u32)});
     program.AddInput({scales, ProgramTensorMetadataDependency::None});
     if (has_zero_points) {
@@ -313,15 +308,13 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     }
     program.AddOutput({y,
                        ProgramTensorMetadataDependency::TypeAndRank,
-                       reshaped_y_shape,
                        onnxruntime::narrow<int>(components)});
     program.AddUniformVariables({{batch_count},
                                  {M},
                                  {N},
-                                 {K},
-                                 {CEIL_DIV(K, 4)},
-                                 {CEIL_DIV(K, 32)},
+                                 {K_of_a},
                                  {K_of_b},
+                                 {n_blocks_per_col},
                                  {zero_blocks_per_col},
                                  {num_N_tile},
                                  {num_M_tile}});
