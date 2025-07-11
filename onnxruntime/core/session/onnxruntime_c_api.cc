@@ -3751,7 +3751,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
-    &OrtApis::Node_GetEpType,
+    &OrtApis::Node_GetEpName,
 
     &OrtApis::GetRunConfigEntry,
 
