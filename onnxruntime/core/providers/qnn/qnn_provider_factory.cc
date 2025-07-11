@@ -125,7 +125,7 @@ struct QnnEpFactory : OrtEpFactory {
                OrtHardwareDeviceType hw_type,
                const char* qnn_backend_type)
       : ort_api{ort_api_in}, ep_name{ep_name}, ort_hw_device_type{hw_type}, qnn_backend_type{qnn_backend_type} {
-        ort_version_supported = ORT_API_VERSION;
+    ort_version_supported = ORT_API_VERSION;
     GetName = GetNameImpl;
     GetVendor = GetVendorImpl;
     GetVendorId = GetVendorIdImpl;
