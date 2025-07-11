@@ -16,7 +16,7 @@ from bert_test_data import generate_test_data, get_bert_inputs, output_test_data
 
 
 def run_model(model_path, all_inputs, use_gpu, disable_optimization):
-    import onnxruntime
+    import onnxruntime  # noqa: PLC0415
 
     graph_optimization_level = None
     if disable_optimization:

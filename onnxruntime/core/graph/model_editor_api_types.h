@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include <gsl/gsl>
 #include <memory>
 #include <string>
 #include <unordered_map>
@@ -99,32 +100,49 @@ struct ModelEditorNode : public OrtNode {
                            "OrtModelEditorApi does not support getting an OrtNode's opset version");
   }
 
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*inputs*/) const override {
+  size_t GetNumInputs() const override { return input_names.size(); }
+
+  Status GetInputs(gsl::span<const OrtValueInfo*> /*inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting input OrtValueInfos for OrtNode");
   }
 
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& /*outputs*/) const override {
+  size_t GetNumOutputs() const override { return output_names.size(); }
+
+  Status GetOutputs(gsl::span<const OrtValueInfo*> /*outputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting output OrtValueInfos for OrtNode");
   }
 
-  Status GetImplicitInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*implicit_inputs*/) const override {
+  Status GetNumImplicitInputs(size_t& /*num_implicit_inputs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
   }
 
-  Status GetAttributes(std::unique_ptr<OrtArrayOfConstObjects>& /*attrs*/) const override {
+  Status GetImplicitInputs(gsl::span<const OrtValueInfo*> /*implicit_inputs*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the implicit inputs for OrtNode");
+  }
+
+  size_t GetNumAttributes() const override { return attributes.size(); }
+
+  Status GetAttributes(gsl::span<const OrtOpAttr*> /*attrs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting attribute OrtOpAttr for OrtNode");
   }
 
-  Status GetSubgraphs(std::unique_ptr<OrtArrayOfConstObjects>& /*subgraphs*/) const override {
+  Status GetNumSubgraphs(size_t& /*num_subgraphs*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
   }
 
-  Status GetParentGraph(const OrtGraph*& /*parent_graph*/) const override {
+  Status GetSubgraphs(gsl::span<const OrtGraph*> /*subgraphs*/,
+                      const char** /*opt_attribute_names*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the subgraphs for OrtNode");
+  }
+
+  Status GetGraph(const OrtGraph*& /*parent_graph*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the parent graph for OrtNode");
   }
@@ -159,22 +177,41 @@ struct ModelEditorGraph : public OrtGraph {
     return ONNX_NAMESPACE::Version::IR_VERSION;
   }
 
-  Status GetInputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  Status GetNumOperatorSets(size_t& /*num_operator_sets*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph's operator sets.");
+  }
+
+  Status GetOperatorSets(gsl::span<const char*> /*domains*/,
+                         gsl::span<int64_t> /*opset_versions*/) const override {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
+                           "OrtModelEditorApi does not support getting the graph's operator sets.");
+  }
+
+  size_t GetNumInputs() const override { return inputs.size(); }
+
+  Status GetInputs(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph inputs.");
   }
 
-  Status GetOutputs(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumOutputs() const override { return outputs.size(); }
+
+  Status GetOutputs(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph outputs.");
   }
 
-  Status GetInitializers(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumInitializers() const override { return initializers.size() + external_initializers.size(); }
+
+  Status GetInitializers(gsl::span<const OrtValueInfo*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph initializers.");
   }
 
-  Status GetNodes(std::unique_ptr<OrtArrayOfConstObjects>& /*result*/) const override {
+  size_t GetNumNodes() const override { return nodes.size(); }
+
+  Status GetNodes(gsl::span<const OrtNode*> /*result*/) const override {
     return ORT_MAKE_STATUS(ONNXRUNTIME, NOT_IMPLEMENTED,
                            "OrtModelEditorApi does not support getting the graph nodes.");
   }

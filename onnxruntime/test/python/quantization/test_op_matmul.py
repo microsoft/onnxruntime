@@ -34,7 +34,7 @@ def skip_if_new_opset_exception_raised(func):
 class TestOpMatMul(unittest.TestCase):
     def test_entropy(self):
         try:
-            from scipy.stats import entropy as scipy_entropy
+            from scipy.stats import entropy as scipy_entropy  # noqa: PLC0415
         except ImportError:
             raise unittest.SkipTest("scipy not installed.")  # noqa: B904
         pk = (np.arange(10) - 5).astype(np.float32) / 10
