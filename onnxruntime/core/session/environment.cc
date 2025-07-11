@@ -422,6 +422,13 @@ Status Environment::CreateAndRegisterAllocatorV2(const std::string& provider_typ
 
 Environment::~Environment() = default;
 
+AllocatorPtr Environment::GetRegisteredSharedAllocator(const OrtMemoryInfo& mem_info) const {
+  std::lock_guard<std::mutex> lock{mutex_};
+
+  auto it = FindExistingAllocator(shared_allocators_, mem_info, /*match_name*/ false);
+  return it != shared_allocators_.end() ? *it : nullptr;
+}
+
 Status Environment::GetSharedAllocator(const OrtMemoryInfo& mem_info, OrtAllocator*& allocator) {
   std::lock_guard<std::mutex> lock{mutex_};
 

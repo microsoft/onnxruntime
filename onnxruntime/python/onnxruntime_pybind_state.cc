@@ -269,24 +269,33 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
   ORT_ENFORCE(ort_value.IsTensor(), "This function only supports tensors");
 
   const auto& tensor = ort_value.Get<Tensor>();
+  const auto& device = tensor.Location().device;
+  
   if (tensor.IsDataTypeString()) {
-    ORT_ENFORCE(tensor.Location().device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
+    ORT_ENFORCE(device.Type() == OrtDevice::CPU, "Strings can only be on CPU");
     // Create a numpy array of strings (python objects) by copy/converting them
     py::array result = StringTensorToNumpyArray(tensor);
     return py::cast<py::object>(result);
   }
 
-  const auto device_type = tensor.Location().device.Type();
+  const auto device_type = device.Type();
   // Create an numpy array on top of the OrtValue memory, no copy
   if (device_type == OrtDevice::CPU) {
     py::array result = PrimitiveTensorToNumpyOverOrtValue(ort_value);
     return py::cast<py::object>(result);
   }
 
+  std::unordered_map<OrtDevice::DeviceType, MemCpyFunc> shared_copy_to_host_functions;
   if (!data_transfer_manager && !mem_cpy_to_host_functions) {
-    throw std::runtime_error(
-        "GetPyObjFromTensor: Either data transfer manager or a "
-        "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+    auto device_to_cpu_copy_func = CreateDataTransferMemCpy(device, OrtDevice{});
+    if (device_to_cpu_copy_func) {
+      shared_copy_to_host_functions.insert({device.Type(), device_to_cpu_copy_func});
+      mem_cpy_to_host_functions = &shared_copy_to_host_functions;
+    } else {
+      throw std::runtime_error(
+          "GetPyObjFromTensor: Either data transfer manager or a "
+          "function to copy data to the host is needed to convert non-CPU tensor to numpy array");
+    }
   }
 
   py::array result;
@@ -298,6 +307,7 @@ py::object GetPyObjFromTensor(const OrtValue& ort_value,
                 "Unable to locate a function that can copy data to the host from the device");
     result = PrimitiveTensorToNumpyFromDevice(ort_value, mem_cpy_to_host->second);
   }
+
   return py::cast<py::object>(result);
 }
 
