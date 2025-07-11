@@ -204,7 +204,7 @@ std::vector<std::unique_ptr<ComputeCapability>> GetCapability::Execute() {
                                 cluster_inputs,
                                 cluster_outputs);
 
-      bool omit_subgraph = false;
+
       // Omitting zero dim subgraphs
       for (auto index : this_cluster) {
         const Node* node = graph_viewer_.GetNode(index);
