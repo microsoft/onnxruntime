@@ -148,7 +148,7 @@ struct QnnEpFactory : OrtEpFactory {
   }
 
   static uint32_t GetVendorIdImpl(const OrtEpFactory* this_ptr) noexcept {
-    const auto* factory = static_cast<const CudaEpFactory*>(this_ptr);
+    const auto* factory = static_cast<const QnnEpFactory*>(this_ptr);
     return factory->ep_vendor_id;
   }
 
