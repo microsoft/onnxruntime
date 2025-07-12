@@ -286,6 +286,8 @@ class FusionAttentionClip(FusionAttention):
                 ],
                 [1, 2, 1, 0, 0, 0, 0, 0, 0],
             )
+            causal_mask_nodes_1 = None
+            causal_mask_nodes_2 = None
             if add_qk_nodes is not None:
                 add_qk = add_mask.input[1]
             else:
@@ -302,6 +304,7 @@ class FusionAttentionClip(FusionAttention):
                     ["Expand", "Unsqueeze", "Unsqueeze", "Where", "Less"],
                     [causal_mask_input_index, 0, 0, 0, 0],
                 )
+
                 if causal_mask_nodes_1 is None and causal_mask_nodes_2 is None:
                     logger.debug("fuse_attention: failed to match causal mask subgraph")
                     return
@@ -320,7 +323,7 @@ class FusionAttentionClip(FusionAttention):
             output=attention_last_node.output[0],
             add_qk_str=add_qk,
             scale=None,
-            causal=(add_mask is not None),
+            causal=(causal_mask_nodes_1 is not None) or (causal_mask_nodes_2 is not None),
         )
         if new_node is None:
             logger.debug("fuse_attention: failed to create fused node")
