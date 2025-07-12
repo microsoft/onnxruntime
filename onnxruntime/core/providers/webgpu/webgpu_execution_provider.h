@@ -99,6 +99,7 @@ class WebGpuExecutionProvider : public IExecutionProvider {
   bool is_graph_captured_ = false;
   int regular_run_count_before_graph_capture_ = 0;
   const int min_num_runs_before_cuda_graph_capture_ = 1;  // required min regular runs before graph capture for the necessary memory allocations.
+  int m_current_graph_annotation_id = 0;
   webgpu::GpuBufferAllocator* allocator_ = nullptr;
 
   // Buffer manager specifically for graph capture mode
