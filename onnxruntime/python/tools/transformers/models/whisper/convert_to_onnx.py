@@ -410,7 +410,7 @@ def export_onnx_models(
                         precision == Precision.FLOAT16,
                         model.config.encoder_attention_heads,
                         model.config.d_model,
-                        model.config.num_hidden_layers,
+                        model.config.decoder_layers,
                         use_external_data_format,
                         use_gpu=use_gpu,
                         provider=provider,
