@@ -36,7 +36,7 @@ struct TestOrtEp : ::OrtEp, ApiPtrs {
     // Individual tests should fill out the other function pointers as needed.
   }
 
-  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) {
+  static const char* ORT_API_CALL GetNameImpl(const OrtEp* /*this_ptr*/) noexcept {
     constexpr const char* ep_name = "TestOrtEp";
     return ep_name;
   }
@@ -50,7 +50,7 @@ struct TestOrtEpFactory : ::OrtEpFactory {
     ReleaseEp = ReleaseEpImpl;
   }
 
-  static void ORT_API_CALL ReleaseEpImpl(::OrtEpFactory* /*this_ptr*/, OrtEp* ep) {
+  static void ORT_API_CALL ReleaseEpImpl(::OrtEpFactory* /*this_ptr*/, OrtEp* ep) noexcept {
     delete static_cast<TestOrtEp*>(ep);
   }
 };
@@ -125,7 +125,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
   }
 
   {
-    auto prefer_nhwc_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) -> ::OrtStatus* {
+    auto prefer_nhwc_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) noexcept -> ::OrtStatus* {
       *preferred_data_layout = OrtEpDataLayout::OrtEpDataLayout_NCHW;
       return nullptr;
     };
@@ -135,7 +135,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
 
 #if !defined(ORT_NO_EXCEPTIONS)
   {
-    auto invalid_layout_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) -> ::OrtStatus* {
+    auto invalid_layout_fn = [](OrtEp* /*this_ptr*/, OrtEpDataLayout* preferred_data_layout) noexcept -> ::OrtStatus* {
       *preferred_data_layout = static_cast<OrtEpDataLayout>(-1);
       return nullptr;
     };
@@ -144,7 +144,7 @@ TEST(PluginExecutionProviderTest, GetPreferredLayout) {
   }
 
   {
-    auto failing_fn = [](OrtEp* this_ptr, OrtEpDataLayout* /*preferred_data_layout*/) -> ::OrtStatus* {
+    auto failing_fn = [](OrtEp* this_ptr, OrtEpDataLayout* /*preferred_data_layout*/) noexcept -> ::OrtStatus* {
       auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
       return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL, "I can't decide what data layout I prefer.");
     };
@@ -167,7 +167,7 @@ TEST(PluginExecutionProviderTest, ShouldConvertDataLayoutForOp) {
                                               const char* /*node_domain*/,
                                               const char* node_op_type,
                                               OrtEpDataLayout target_data_layout,
-                                              int* should_convert) -> ::OrtStatus* {
+                                              int* should_convert) noexcept -> ::OrtStatus* {
       EXPECT_EQ(target_data_layout, OrtEpDataLayout::OrtEpDataLayout_NHWC);
 
       if (node_op_type == std::string_view{"Conv"}) {
@@ -201,7 +201,7 @@ TEST(PluginExecutionProviderTest, ShouldConvertDataLayoutForOp) {
                          const char* /*node_domain*/,
                          const char* /*node_op_type*/,
                          OrtEpDataLayout /*target_data_layout*/,
-                         int* /*should_convert*/) -> ::OrtStatus* {
+                         int* /*should_convert*/) noexcept -> ::OrtStatus* {
       auto* test_ort_ep = static_cast<test_plugin_ep::TestOrtEp*>(this_ptr);
       return test_ort_ep->ort_api->CreateStatus(OrtErrorCode::ORT_FAIL,
                                                 "To convert to NHWC or not to convert to NHWC...");
