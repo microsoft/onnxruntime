@@ -85,6 +85,16 @@ option(onnxruntime_USE_RKNPU "Build with RKNPU support" OFF)
 option(onnxruntime_USE_DNNL "Build with DNNL support" OFF)
 option(onnxruntime_USE_JSEP "Build with JavaScript implemented kernels support" OFF)
 option(onnxruntime_USE_KLEIDIAI "Build with KleidiAI integration in MLAS" OFF)
+# iOS simulator build explicitly builds targets with USE_KLEIDIAI=ON so attempting to force override if so
+if(APPLE AND CMAKE_OSX_ARCHITECTURES MATCHES "x86_64")
+  message(STATUS "Disabling KleidiAI: iOS simulator (x86_64) is not supported")
+  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
+endif()
+# Windows on Arm (MSVC ARM64) not yet supported for KleidiAI
+if(WIN32 AND CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+  message(STATUS "Disabling KleidiAI: Windows on ARM64 (MSVC) is not currently supported")
+  set(onnxruntime_USE_KLEIDIAI OFF CACHE BOOL "" FORCE)
+endif()
 option(onnxruntime_BUILD_UNIT_TESTS "Build ONNXRuntime unit tests" ON)
 option(onnxruntime_BUILD_CSHARP "Build C# library" OFF)
 option(onnxruntime_BUILD_OBJC "Build Objective-C library" OFF)
@@ -275,8 +285,6 @@ if (onnxruntime_ENABLE_TRAINING_APIS)
     "Please use the --enable_training flag instead of the --enable_training_apis flag.")
   endif()
 endif()
-
-
 
 
 # Single output director for all binaries
@@ -1005,6 +1013,11 @@ function(onnxruntime_set_compile_flags target_name)
     if (onnxruntime_ENABLE_ATEN)
       target_compile_definitions(${target_name} PRIVATE ENABLE_ATEN)
     endif()
+
+    if (onnxruntime_USE_KLEIDIAI)
+      target_compile_definitions(${target_name} PRIVATE USE_KLEIDIAI)
+    endif()
+
 
     set_target_properties(${target_name} PROPERTIES COMPILE_WARNING_AS_ERROR ON)
     if (onnxruntime_USE_CUDA)

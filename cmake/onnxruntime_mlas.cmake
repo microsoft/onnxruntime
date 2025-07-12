@@ -267,24 +267,40 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  target_compile_definitions(onnxruntime_mlas PRIVATE USE_KLEIDIAI)
-
-  # Disable the KleidiAI tests
-  set(KLEIDIAI_BUILD_TESTS  OFF)
-
-  # Fetch KleidiAI sources:
-  if (NOT TARGET kleidiai)
-    onnxruntime_fetchcontent_declare(kleidiai URL ${DEP_URL_kleidiai} URL_HASH SHA1=${DEP_SHA1_kleidiai} EXCLUDE_FROM_ALL)
+  # Top level src directory doesn't always start from top level, so need to check
+  if(EXISTS "${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
+    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/kleidiai")
+  elseif(EXISTS "${MLAS_SRC_DIR}/../kleidiai/sgemm_kleidiai.cpp")
+    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/../kleidiai")
+  else()
+    message(FATAL_ERROR "Cannot find ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
   endif()
-  onnxruntime_fetchcontent_makeavailable(kleidiai)
 
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
+    ${KLEIDIAI_SRC_DIR}/sgemm_kleidiai.cpp
+    ${KLEIDIAI_SRC_DIR}/convolve_kleidiai.cpp
+    ${KLEIDIAI_SRC_DIR}/qgemm_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
 
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
+
+  if (NOT onnxruntime_BUILD_SHARED_LIB)
+    install(TARGETS kleidiai EXPORT ${PROJECT_NAME}Targets
+    ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+    FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
+  endif()
+
+  if(MSVC)
+    set(KLEIDIAI_LIB "${CMAKE_BINARY_DIR}/_deps/kleidiai-build/${CMAKE_BUILD_TYPE}/kleidiai.lib")
+    target_link_libraries(onnxruntime_mlas PRIVATE "${KLEIDIAI_LIB}")
+    message(STATUS "Linking KleidiAI .lib for MSVC: ${KLEIDIAI_LIB}")
+    message(STATUS "WARNING: Not checking for existence of KleidiAI .lib at configure time")
+  endif()
 endfunction()
 
 if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
@@ -311,7 +327,6 @@ if (CMAKE_SYSTEM_NAME STREQUAL "Emscripten")
 elseif(MSVC)
   setup_mlas_source_for_windows()
 else()
-
     if(APPLE)
         get_target_property(ONNXRUNTIME_MLAS_OSX_ARCH onnxruntime_mlas OSX_ARCHITECTURES)
 
