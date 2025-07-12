@@ -117,6 +117,7 @@ class PerformanceRunner {
   std::unique_ptr<ITestCase> test_case_;
 
   std::mutex results_mutex_;
+  bool unregister_ep_lib = false;
 };
 }  // namespace perftest
 }  // namespace onnxruntime

@@ -6,6 +6,7 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
+#include "strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -41,23 +42,36 @@ int real_main(int argc, char* argv[]) {
     if (failed)
       return -1;
   }
-  std::random_device rd;
-  perftest::PerformanceRunner perf_runner(env, test_config, rd);
+  {
+    std::random_device rd;
+    perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
-  // Exit if user enabled -n option so that user can measure session creation time
-  if (test_config.run_config.exit_after_session_creation) {
-    perf_runner.LogSessionCreationTime();
-    return 0;
+    // Exit if user enabled -n option so that user can measure session creation time
+    if (test_config.run_config.exit_after_session_creation) {
+      perf_runner.LogSessionCreationTime();
+      return 0;
+    }
+
+    auto status = perf_runner.Run();
+    if (!status.IsOK()) {
+      printf("Run failed:%s\n", status.ErrorMessage().c_str());
+      return -1;
+    }
+
+    perf_runner.SerializeResult();
   }
 
-  auto status = perf_runner.Run();
-  if (!status.IsOK()) {
-    printf("Run failed:%s\n", status.ErrorMessage().c_str());
-    return -1;
+  // unregister any plugin ep lib if it's registered
+  std::unordered_map<std::string, std::string> ep_names_to_libs;
+#ifdef _MSC_VER
+  std::string ep_names_and_libs_string = ToUTF8String(test_config.plugin_ep_names_and_libs);
+#else
+  std::string ep_names_and_libs_string = performance_test_config.plugin_ep_names_and_libs;
+#endif
+  onnxruntime::perftest::ParseSessionConfigs(ep_names_and_libs_string, ep_names_to_libs);
+  for (auto& pair : ep_names_to_libs) {
+    env.UnregisterExecutionProviderLibrary(pair.first.c_str());
   }
-
-  perf_runner.SerializeResult();
-
   return 0;
 }
 
