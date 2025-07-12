@@ -328,9 +328,9 @@ OrtStatus* ORT_API_CALL ExampleEp::CompileImpl(_In_ OrtEp* this_ptr, _In_ const 
   RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[0], &node_input_names[0]));
   RETURN_IF_ERROR(ort_api.GetValueInfoName(node_inputs[1], &node_input_names[1]));
 
-  const char* ep_type = nullptr;
-  RETURN_IF_ERROR(ort_api.Node_GetEpType(fused_nodes[0], &ep_type));
-  if (std::strncmp(ep_type, "example_ep", 11) != 0) {
+  const char* ep_name = nullptr;
+  RETURN_IF_ERROR(ort_api.Node_GetEpName(fused_nodes[0], &ep_name));
+  if (std::strncmp(ep_name, "example_ep", 11) != 0) {
     return ort_api.CreateStatus(ORT_EP_FAIL, "The fused node is expected to assigned to this EP to run on");
   }
 
