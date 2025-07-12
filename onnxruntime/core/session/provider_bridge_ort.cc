@@ -2002,7 +2002,7 @@ std::shared_ptr<IExecutionProviderFactory> DnnlProviderFactoryCreator::Create(in
   return s_library_dnnl.Get().CreateExecutionProviderFactory(use_arena);
 }
 
-std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(int device_id) {
+std::shared_ptr<IExecutionProviderFactory> MIGraphXProviderFactoryCreator::Create(const int device_id) {
   return s_library_migraphx.Get().CreateExecutionProviderFactory(device_id);
 }
 
