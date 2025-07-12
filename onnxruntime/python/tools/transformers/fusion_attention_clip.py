@@ -269,6 +269,8 @@ class FusionAttentionClip(FusionAttention):
         attention_last_node = reshape_qkv
 
         add_qk = ""
+        causal_mask_nodes_1 = None
+        causal_mask_nodes_2 = None
         if add_mask is not None:
             # 4D Add after Q x K'
             add_qk_nodes = self.model.match_parent_path(
@@ -286,8 +288,6 @@ class FusionAttentionClip(FusionAttention):
                 ],
                 [1, 2, 1, 0, 0, 0, 0, 0, 0],
             )
-            causal_mask_nodes_1 = None
-            causal_mask_nodes_2 = None
             if add_qk_nodes is not None:
                 add_qk = add_mask.input[1]
             else:
