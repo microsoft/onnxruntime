@@ -22,8 +22,10 @@ namespace {
 
 constexpr unsigned int kMinMForTileOptimization = 4;
 
-#define CEIL_DIV(numerator, denominator) \
-  (((numerator) + (denominator) - 1) / (denominator))
+template <typename T>
+inline T ceil_div(T numerator, T denominator) {
+  return (numerator + denominator - 1) / denominator;
+}
 
 }  // namespace
 
@@ -40,13 +42,13 @@ ONNX_OPERATOR_KERNEL_EX(
     MatMulNBits);
 
 Status MatMulNBitsWideTileProgram::GenerateShaderCode(ShaderHelper& shader) const {
-  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias);
+  shader.AddInput("input_a", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   shader.AddInput("input_b", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
-  shader.AddInput("scales", ShaderUsage::UseElementTypeAlias);
+  shader.AddInput("scales", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   if (has_zero_points_) {
-    shader.AddInput("zero_points", ShaderUsage::UseElementTypeAlias);
+    shader.AddInput("zero_points", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
   }
-  shader.AddOutput("output", ShaderUsage::UseElementTypeAlias);
+  shader.AddOutput("output", ShaderUsage::UseValueTypeAlias | ShaderUsage::UseElementTypeAlias);
 
   const uint32_t workgroup_size = WorkgroupSizeX() * WorkgroupSizeY();
   ORT_ENFORCE(tile_m_ == workgroup_size / 8, "tile_m must be workgroup_size / 8.");
@@ -281,8 +283,8 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     constexpr uint32_t workgroup_size = 128;
     constexpr uint32_t tile_m = workgroup_size / 8;
     constexpr uint32_t tile_n = workgroup_size;
-    const uint32_t num_N_tile = CEIL_DIV(N, tile_n);
-    const uint32_t num_M_tile = CEIL_DIV(M, tile_m);
+    const uint32_t num_N_tile = ceil_div(N, tile_n);
+    const uint32_t num_M_tile = ceil_div(M, tile_m);
 
     MatMulNBitsWideTileProgram program{has_zero_points, tile_m, tile_n, nbits};
     program.SetWorkgroupSize(workgroup_size);
@@ -299,11 +301,11 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     program.AddInput({b,
                       ProgramTensorMetadataDependency::TypeAndRank,
                       onnxruntime::narrow<int>(components_b_with_u32)});
-    program.AddInput({scales, ProgramTensorMetadataDependency::None});
+    program.AddInput({scales, ProgramTensorMetadataDependency::TypeAndRank});
     if (has_zero_points) {
       program.AddInput({zero_points,
                         ProgramTensorMetadataDependency::TypeAndRank,
-                        {CEIL_DIV(zero_points->Shape().Size(), 4)},
+                        {ceil_div(zero_points->Shape().Size(), 4LL)},
                         4});
     }
     program.AddOutput({y,
