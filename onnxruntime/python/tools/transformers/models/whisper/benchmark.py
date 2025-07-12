@@ -4,7 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import argparse
+import argparse  # noqa: I001
 import ast
 import datetime
 import gc
@@ -13,7 +13,6 @@ import os
 import sys
 import time
 
-import onnxruntime as ort
 import numpy as np
 import psutil
 import torch
@@ -24,6 +23,8 @@ from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
 from torch.profiler import ProfilerActivity, profile, record_function
 from tqdm import trange
 from transformers import AutoModelForSpeechSeq2Seq, WhisperConfig, WhisperProcessor
+
+import onnxruntime as ort
 
 logger = logging.getLogger(__name__)
 
