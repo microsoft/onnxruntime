@@ -74,6 +74,7 @@ struct PerformanceTestConfig {
   ModelInfo model_info;
   MachineConfig machine_config;
   RunConfig run_config;
+  std::basic_string<ORTCHAR_T> plugin_ep_names_and_libs;
 };
 
 }  // namespace perftest

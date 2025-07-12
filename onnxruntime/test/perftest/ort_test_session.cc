@@ -62,6 +62,56 @@ OnnxRuntimeTestSession::OnnxRuntimeTestSession(Ort::Env& env, std::random_device
     : rand_engine_(rd()), input_names_(m.GetInputCount()), input_names_str_(m.GetInputCount()), input_length_(m.GetInputCount()) {
   Ort::SessionOptions session_options;
 
+#ifdef _MSC_VER
+  std::string ep_names_and_libs_string = ToUTF8String(performance_test_config.plugin_ep_names_and_libs);
+#else
+  std::string ep_names_and_libs_string = performance_test_config.plugin_ep_names_and_libs;
+#endif
+  std::unordered_map<std::string, std::string> ep_names_to_libs;
+  ParseSessionConfigs(ep_names_and_libs_string, ep_names_to_libs);
+  bool is_plugin_ep_avaiable = false;
+
+  if (ep_names_to_libs.size() > 0) {
+    // Register plugin EP libraries if provided via "-L" argument.
+    for (auto& pair : ep_names_to_libs) {
+      const std::filesystem::path library_path = pair.second;
+      const std::string registration_name = pair.first;
+      env.RegisterExecutionProviderLibrary(registration_name.c_str(), library_path.c_str());
+      registered_plugin_ep_names_.push_back(registration_name);
+    }
+
+    std::vector<Ort::ConstEpDevice> ep_devices = env.GetEpDevices();
+    std::vector<Ort::ConstEpDevice> added_ep_devices;
+
+    // All OrtEpDevice instances must be from the same execution provider.
+    // Find the OrtEpDevice associated with the execution provider provided via "-e" argument.
+    Ort::ConstEpDevice plugin_ep_device;
+    for (Ort::ConstEpDevice& device : ep_devices) {
+      if (std::string(device.EpName()) == performance_test_config.machine_config.provider_type_name) {
+        plugin_ep_device = device;
+        added_ep_devices.push_back(plugin_ep_device);
+      }
+    }
+
+    if (added_ep_devices.empty()) {
+      for (auto ep_name : registered_plugin_ep_names_) {
+        env.UnregisterExecutionProviderLibrary(ep_name.c_str());
+      }
+      ORT_THROW(
+          "[ERROR] [plugin EP] No matching execution provider name found in EP library's factory.");
+    }
+
+#if defined(_MSC_VER)
+    std::string provider_option_string = ToUTF8String(performance_test_config.run_config.ep_runtime_config_string);
+#else
+    std::string provider_option_string = performance_test_config.run_config.ep_runtime_config_string;
+#endif
+    std::unordered_map<std::string, std::string> provider_options;
+    ParseSessionConfigs(provider_option_string, provider_options);
+    session_options.AppendExecutionProvider_V2(env, added_ep_devices, provider_options);
+    is_plugin_ep_avaiable = true;
+  }
+
   provider_name_ = performance_test_config.machine_config.provider_type_name;
   std::unordered_map<std::string, std::string> provider_options;
   if (provider_name_ == onnxruntime::kDnnlExecutionProvider) {
@@ -574,7 +624,8 @@ select from 'TF8', 'TF16', 'UINT8', 'FLOAT', 'ITENSOR'. \n)");
 #endif
   } else if (!provider_name_.empty() &&
              provider_name_ != onnxruntime::kCpuExecutionProvider &&
-             provider_name_ != onnxruntime::kOpenVINOExecutionProvider) {
+             provider_name_ != onnxruntime::kOpenVINOExecutionProvider &&
+             !is_plugin_ep_avaiable) {
     ORT_THROW("This backend is not included in perf test runner.\n");
   }
 

@@ -6,6 +6,7 @@
 #include <random>
 #include "command_args_parser.h"
 #include "performance_runner.h"
+#include "strings_helper.h"
 #include <google/protobuf/stubs/common.h>
 
 using namespace onnxruntime;
@@ -41,22 +42,49 @@ int real_main(int argc, char* argv[]) {
     if (failed)
       return -1;
   }
-  std::random_device rd;
-  perftest::PerformanceRunner perf_runner(env, test_config, rd);
 
-  // Exit if user enabled -n option so that user can measure session creation time
-  if (test_config.run_config.exit_after_session_creation) {
-    perf_runner.LogSessionCreationTime();
-    return 0;
+  auto status = Status::OK();
+
+  {
+    std::random_device rd;
+    perftest::PerformanceRunner perf_runner(env, test_config, rd);
+
+    // Exit if user enabled -n option so that user can measure session creation time
+    if (test_config.run_config.exit_after_session_creation) {
+      perf_runner.LogSessionCreationTime();
+      return 0;
+    }
+
+    status = perf_runner.Run();
+
+    if (!status.IsOK()) {
+      printf("Run failed:%s\n", status.ErrorMessage().c_str());
+    } else {
+      perf_runner.SerializeResult();
+    }
   }
 
-  auto status = perf_runner.Run();
+  // Unregister all registered plugin EP libraries before program exits.
+  //
+  // This is necessary because unregistering the plugin EP also unregisters any associated shared allocators.
+  // If we don't do this first and program returns, the factories stored inside the environment will be destroyed when the environment goes out of scope.
+  // Later, when the shared allocator's deleter runs, it may cause a segmentation fault because it attempts to use the already-destroyed factory to call ReleaseAllocator.
+  //
+  // See "ep_device.ep_factory->ReleaseAllocator" in Environment::CreateSharedAllocatorImpl.
+  std::unordered_map<std::string, std::string> ep_names_to_libs;
+#ifdef _MSC_VER
+  std::string ep_names_and_libs_string = ToUTF8String(test_config.plugin_ep_names_and_libs);
+#else
+  std::string ep_names_and_libs_string = performance_test_config.plugin_ep_names_and_libs;
+#endif
+  onnxruntime::perftest::ParseSessionConfigs(ep_names_and_libs_string, ep_names_to_libs);
+  for (auto& pair : ep_names_to_libs) {
+    env.UnregisterExecutionProviderLibrary(pair.first.c_str());
+  }
+
   if (!status.IsOK()) {
-    printf("Run failed:%s\n", status.ErrorMessage().c_str());
     return -1;
   }
-
-  perf_runner.SerializeResult();
 
   return 0;
 }
