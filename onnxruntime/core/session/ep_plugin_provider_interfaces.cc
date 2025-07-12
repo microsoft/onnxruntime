@@ -12,6 +12,7 @@
 #include "core/framework/error_code_helper.h"
 #include "core/framework/model_metadef_id_generator.h"
 #include "core/framework/plugin_data_transfer.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/graph/ep_api_types.h"
 #include "core/graph/model_editor_api_types.h"
 #include "core/session/abi_devices.h"
@@ -556,7 +557,8 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
 
   for (const auto* memory_info : allocator_mem_infos_) {
     OrtAllocator* ort_allocator_ptr = nullptr;
-    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, nullptr, &ort_allocator_ptr);
+    OrtStatus* ort_status = ep_factory_.CreateAllocator(&ep_factory_, memory_info, ort_ep_.get(), /*options*/ nullptr,
+                                                        &ort_allocator_ptr);
 
     // throw or log? start with throw
     if (ort_status != nullptr) {
@@ -574,4 +576,34 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   return allocators;
 }
 
+void PluginExecutionProvider::RegisterStreamHandlers(IStreamCommandHandleRegistry& registry,
+                                                     AllocatorMap& /*allocators*/) const {
+  if (!ep_factory_.IsStreamAware(&ep_factory_)) {
+    return;
+  }
+
+  for (const auto* mem_info : allocator_mem_infos_) {
+    if (mem_info->device.UsesCpuMemory()) {
+      // CPU memory does not need a stream
+      continue;
+    }
+
+    auto device_type = mem_info->device.Type();
+
+    registry.RegisterCreateStreamFn(
+        device_type,
+        [mem_info, this](const OrtDevice& device) {
+          OrtSyncStreamImpl* stream = nullptr;
+          const OrtMemoryDevice* memory_device = static_cast<const OrtMemoryDevice*>(&mem_info->device);
+          auto* status = ep_factory_.CreateSyncStreamForDevice(&ep_factory_, memory_device, ort_ep_.get(),
+                                                               /*stream_options*/ nullptr, &stream);
+          ORT_ENFORCE(status == nullptr && stream != nullptr,
+                      "Error creating sync stream for device: ", ToStatusAndRelease(status).ToString());
+          return std::make_unique<plugin_ep::Stream>(device, *stream, *GetLogger());
+        });
+
+    registry.RegisterWaitFn(device_type, device_type, plugin_ep::Notification::WaitNotificationOnDevice);
+    registry.RegisterWaitFn(device_type, OrtDevice::CPU, plugin_ep::Notification::WaitNotificationOnHost);
+  }
+}
 }  // namespace onnxruntime

@@ -12,6 +12,7 @@
 #include "core/common/common.h"
 #include "core/common/optional.h"
 #include "core/common/type_utils.h"
+#include "core/framework/float16.h"
 #include "core/framework/int4.h"
 #include "test/util/include/test_random_seed.h"
 

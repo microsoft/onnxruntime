@@ -12,6 +12,7 @@
 #include "core/framework/ort_value.h"
 #include "core/framework/ortdevice.h"
 #include "core/framework/ortmemoryinfo.h"
+#include "core/framework/plugin_ep_stream.h"
 #include "core/framework/tensor.h"
 #include "core/graph/ep_api_types.h"
 #include "core/session/abi_devices.h"

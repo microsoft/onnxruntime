@@ -26,9 +26,5 @@ class EpLibrary {
   virtual ~EpLibrary() = default;
 
   ORT_DISALLOW_COPY_AND_ASSIGNMENT(EpLibrary);
-
- protected:
-  static ProviderOptions GetOptionsFromSessionOptions(const std::string& ep_name,
-                                                      const SessionOptions& session_options);
 };
 }  // namespace onnxruntime
