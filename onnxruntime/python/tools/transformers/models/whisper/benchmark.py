@@ -4,7 +4,7 @@
 # license information.
 # --------------------------------------------------------------------------
 
-import argparse  # noqa: I001
+import argparse
 import ast
 import datetime
 import gc
