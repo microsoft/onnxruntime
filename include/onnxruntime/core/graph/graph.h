@@ -1195,8 +1195,16 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
 #endif
 
 #if !defined(ORT_MINIMAL_BUILD)
-  /** Gets the GraphProto representation of this Graph. */
+  /** Gets the GraphProto representation of this Graph only. */
   const ONNX_NAMESPACE::GraphProto& ToGraphProto();
+
+  /// <summary>
+  // This function recurses subgraphs and examines each initializer
+  // If initializer data points to in-memory location, it is inlined
+  // otherwise, the initializer is copied as is including any
+  // external data references.
+  /// </summary>
+  /// <returns>GraphProto</returns>
   ONNX_NAMESPACE::GraphProto ToGraphProto() const;
 
   /** Gets the GraphProto representation of this Graph
@@ -1557,6 +1565,15 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
   */
   Status AddConstantProtoAsInitializer(const ONNX_NAMESPACE::NodeProto& constant_node_proto,
                                        std::optional<std::string_view> new_name);
+
+  /// <summary>
+  /// This is a helper function to ::ToGraphProto()
+  /// It examines the subgraph initializers and converts data in memory references to inline.
+  /// Subgraph initializers are already copied using Node::ToPtoro()
+  /// </summary>
+  /// <param name="output_graph_proto"></param>
+  /// <returns></returns>
+  Status ToGraphProtoImpl(ONNX_NAMESPACE::GraphProto& output_graph_proto) const;
 
   /// <summary>
   /// This function traverses the graph bottom up and externalizes
