@@ -317,6 +317,13 @@ class IExecutionProvider {
   virtual common::Status Compile(const std::vector<FusedNodeAndGraph>& fused_nodes_and_graphs,
                                  std::vector<NodeComputeInfo>& node_compute_funcs);
 
+  // TODO: add documentation comment.
+  virtual common::Status GetCompiledModelCompatibility(const onnxruntime::GraphViewer& /*graph_viewer*/,
+                                                       OrtCompiledModelCompatibility& compatibility) {
+    compatibility = OrtCompiledModelCompatibility_SUPPORT_UNKNOWN;
+    return common::Status::OK();
+  }
+
 #endif
 
   void SetLogger(const logging::Logger* logger) {

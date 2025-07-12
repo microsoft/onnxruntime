@@ -574,4 +574,24 @@ std::vector<AllocatorPtr> PluginExecutionProvider::CreatePreferredAllocators() {
   return allocators;
 }
 
+Status PluginExecutionProvider::GetCompiledModelCompatibility(const onnxruntime::GraphViewer& graph_viewer,
+                                                              OrtCompiledModelCompatibility& compatibility) {
+  if (ort_ep_->GetCompiledModelCompatibility == nullptr) {
+    // Plugin EP did not provide an implementation of this function, so we call a default implementation.
+    return Base::GetCompiledModelCompatibility(graph_viewer, compatibility);
+  }
+
+  // Create EpGraph (extends OrtGraph) for the actual plugin EP to consume.
+  std::unique_ptr<EpGraph> ep_graph = nullptr;
+  ORT_RETURN_IF_ERROR(EpGraph::Create(graph_viewer, ep_graph));
+
+  // Call EP plugin's OrtEp::GetCompiledModelCompatibility() function.
+  OrtCompiledModelCompatibility ep_compatibility = OrtCompiledModelCompatibility_SUPPORT_UNKNOWN;
+  ORT_RETURN_IF_ERROR(ToStatusAndRelease(ort_ep_->GetCompiledModelCompatibility(ort_ep_.get(), ep_graph.get(),
+                                                                                &ep_compatibility)));
+
+  compatibility = ep_compatibility;
+  return Status::OK();
+}
+
 }  // namespace onnxruntime
