@@ -156,19 +156,11 @@ struct Softmax {
 
       flash::template reduce_max</*zero_init=*/false>(scores, row_max);
 
-      const bool use_sink = (sink != -kInfinity);
-      if (use_sink) {
-#pragma unroll
-        for (int mi = 0; mi < size<0>(row_max); ++mi) {
-          row_max(mi) = max(row_max(mi), sink);
-        }
-      }
-
       Tensor acc_o_rowcol = make_tensor(acc_o.data(), flash::convert_layout_acc_rowcol(acc_o.layout()));
       static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);
 
 #pragma unroll
-      for (int mi = 0; mi < size(row_max); ++mi) {
+      for (int mi = 0; mi < size<0>(row_max); ++mi) {
         float scores_max_cur = !Check_inf
                                    ? row_max(mi)
                                    : (row_max(mi) == -kInfinity ? 0.0f : row_max(mi));
@@ -185,13 +177,6 @@ struct Softmax {
       // We don't do the reduce across threads here since we don't need to use the row_sum.
       // We do that reduce at the end when we need to normalize the softmax.
       flash::reduce_sum</*zero_init=*/false>(scores, row_sum);
-
-      if (use_sink) {
-#pragma unroll
-        for (int mi = 0; mi < size<0>(row_sum); ++mi) {
-          row_sum(mi) += exp2f((sink - row_max(mi)) * softmax_scale_log2);
-        }
-      }
     }
   }
 

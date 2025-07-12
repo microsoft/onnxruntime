@@ -32,52 +32,6 @@ random.seed(69)
 # Reduces number of tests to run for faster pipeline checks
 pipeline_mode = os.getenv("PIPELINE_MODE", "1") == "1"
 
-# Terminal colors for printing results
-RED = "\033[31m"
-GREEN = "\033[32m"
-RESET = "\033[0m"
-
-
-# #################################################################################################
-#  BERT Padding Utilities
-# #################################################################################################
-
-
-def index_first_axis(input, indices):
-    assert input.ndim >= 2
-    _first_axis_dim, other_shape = input.shape[0], input.shape[1:]
-    second_dim = other_shape.numel()
-    return torch.gather(rearrange(input, "b ... -> b (...)"), 0, repeat(indices, "z -> z d", d=second_dim)).reshape(
-        -1, *other_shape
-    )
-
-
-def index_put_first_axis(values, indices, first_axis_dim):
-    assert indices.ndim == 1
-    assert values.ndim >= 2
-    output = torch.zeros(first_axis_dim, *values.shape[1:], device=values.device, dtype=values.dtype)
-    output[indices] = values
-    return output
-
-
-def unpad_input(hidden_states, attention_mask):
-    seqlens_in_batch = attention_mask.sum(dim=-1, dtype=torch.int32)
-    indices = torch.nonzero(attention_mask.flatten(), as_tuple=False).flatten()
-    max_seqlen_in_batch = seqlens_in_batch.max().item()
-    cu_seqlens = F.pad(torch.cumsum(seqlens_in_batch, dim=0, dtype=torch.torch.int32), (1, 0))
-    return (
-        index_first_axis(rearrange(hidden_states, "b s ... -> (b s) ..."), indices),
-        indices,
-        cu_seqlens,
-        max_seqlen_in_batch,
-    )
-
-
-def pad_input(hidden_states, indices, batch, seqlen):
-    output = index_put_first_axis(hidden_states, indices, batch * seqlen)
-    return rearrange(output, "(b s) ... -> b s ...", b=batch)
-
-
 # #################################################################################################
 #  Configuration and Helper Classes
 # #################################################################################################
@@ -752,6 +706,7 @@ def parity_check_gqa_prompt(
     new_v = torch.randn_like(new_k)
 
     head_sink = torch.rand(config.num_heads, dtype=torch_type, device=device) if config.has_head_sink else None
+    print("head_sink:", head_sink)
 
     window_size = (-1, -1)
     if config.local_window_size > 0:
