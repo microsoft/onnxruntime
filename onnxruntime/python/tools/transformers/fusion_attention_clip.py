@@ -286,10 +286,10 @@ class FusionAttentionClip(FusionAttention):
                 ],
                 [1, 2, 1, 0, 0, 0, 0, 0, 0],
             )
+            causal_mask_nodes_1 = None
+            causal_mask_nodes_2 = None
             if add_qk_nodes is not None:
                 add_qk = add_mask.input[1]
-                causal_mask_nodes_1 = None
-                causal_mask_nodes_2 = None
             else:
                 # Here we do not match the whole subgraph since it is very complex. Instead, we just check whether a key path
                 # of computing causal mask.
