@@ -16,7 +16,6 @@ import time
 import numpy as np
 import psutil
 import torch
-import whisper
 from benchmark_helper import measure_memory, setup_logger
 from onnxruntime_extensions import get_library_path
 from optimum.onnxruntime import ORTModelForSpeechSeq2Seq
@@ -25,6 +24,7 @@ from tqdm import trange
 from transformers import AutoModelForSpeechSeq2Seq, WhisperConfig, WhisperProcessor
 
 import onnxruntime as ort
+import whisper
 
 logger = logging.getLogger(__name__)
 

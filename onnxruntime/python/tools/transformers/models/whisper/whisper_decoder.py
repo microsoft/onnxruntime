@@ -214,8 +214,7 @@ class WhisperDecoder(torch.nn.Module):
                 "logits",
                 *list(
                     chain.from_iterable(
-                        (f"present_key_self_{i}", f"present_value_self_{i}")
-                        for i in range(self.config.decoder_layers)
+                        (f"present_key_self_{i}", f"present_value_self_{i}") for i in range(self.config.decoder_layers)
                     )
                 ),
             ]
