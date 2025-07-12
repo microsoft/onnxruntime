@@ -318,6 +318,11 @@ struct OrtEpApi {
    * \since Version 1.23.
    */
   ORT_API_T(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_device);
+
+  // create arena or read-only memory info from the base OrtMemoryInfo
+  ORT_API2_STATUS(CreateMemoryInfoWithNewAllocatorType, _In_ const OrtMemoryInfo* memory_info,
+                  _In_ OrtAllocatorType allocator_type,
+                  _Out_ OrtMemoryInfo** arena_memory_info);
 };
 
 /**

@@ -178,6 +178,17 @@ ORT_API(uint32_t, MemoryDevice_GetDeviceId, _In_ const OrtMemoryDevice* memory_d
   return memory_device->Id();
 }
 
+ORT_API_STATUS_IMPL(CreateMemoryInfoWithNewAllocatorType, _In_ const OrtMemoryInfo* memory_info,
+                    _In_ OrtAllocatorType allocator_type,
+                    _Out_ OrtMemoryInfo** arena_memory_info) {
+  API_IMPL_BEGIN
+  auto new_info = std::make_unique<OrtMemoryInfo>(memory_info->name, allocator_type, memory_info->device);
+  *arena_memory_info = new_info.release();
+
+  return nullptr;
+  API_IMPL_END
+}
+
 static constexpr OrtEpApi ort_ep_api = {
     // NOTE: ABI compatibility depends on the order within this struct so all additions must be at the end,
     // and no functions can be removed (the implementation needs to change to return an error).
@@ -199,6 +210,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
+    OrtExecutionProviderApi::CreateArenaMemoryInfo,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned
