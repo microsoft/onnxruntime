@@ -78,6 +78,14 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   const Tensor* total_seqlen = context->Input<Tensor>(6);
   const Tensor* cos_cache = context->Input<Tensor>(7);
   const Tensor* sin_cache = context->Input<Tensor>(8);
+  const Tensor* position_ids = context->Input<Tensor>(9);
+  const Tensor* attention_bias = context->Input<Tensor>(10);
+  const Tensor* head_sink = context->Input<Tensor>(11);
+
+  if (position_ids != nullptr || attention_bias != nullptr) {
+    return ORT_MAKE_STATUS(ONNXRUNTIME, INVALID_ARGUMENT,
+                           "position_ids and attention_bias are not supported in GroupQueryAttention cuda kernel.");
+  }
 
   auto& device_prop = GetDeviceProp();
   GroupQueryAttentionParameters parameters;
@@ -99,12 +107,17 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
                                                                 scale_,
                                                                 softcap_,
                                                                 device_prop.maxThreadsPerBlock));
+
+  ORT_RETURN_IF_ERROR(group_query_attention_helper::CheckCustomAttentionInputs(position_ids,
+                                                                               attention_bias,
+                                                                               head_sink,
+                                                                               parameters));
   parameters.local_window_size = local_window_size_;
   parameters.is_unidirectional = is_unidirectional_;
-  parameters.use_smooth_softmax = use_smooth_softmax_;
+  parameters.use_smooth_softmax = use_smooth_softmax_ || head_sink != nullptr;
   parameters.zeros_count = kZerosCount;
   parameters.zero_ptr = zeros_.get();
-  // parameters.left_padding = left_padding_;
+
   int sequence_length = parameters.sequence_length;
   parameters.do_rotary = do_rotary_;
   parameters.rotary_interleaved = rotary_interleaved_;
@@ -268,6 +281,10 @@ Status GroupQueryAttention<T>::ComputeInternal(OpKernelContext* context) const {
   if (parameters.do_rotary) {
     data.cos_cache = reinterpret_cast<const CudaT*>(cos_cache->Data<T>());
     data.sin_cache = reinterpret_cast<const CudaT*>(sin_cache->Data<T>());
+  }
+
+  if (head_sink != nullptr) {
+    data.head_sink = reinterpret_cast<const CudaT*>(head_sink->Data<T>());
   }
 
   cublasHandle_t cublas = GetCublasHandle(context);
