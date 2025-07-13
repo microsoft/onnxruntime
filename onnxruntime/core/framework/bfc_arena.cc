@@ -443,7 +443,7 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
   }
   // if trying to use an unsafe chunk from other streams, secure it.
   if (other_stream_candidate) {
-    SecureTheChunk(other_stream_candidate->stream, stream, wait_fn);
+    WaitOnChunk(other_stream_candidate->stream, stream, wait_fn);
     // if find some available chunk, make sure mark it as "being used" before return
     other_stream_candidate->allocation_id = next_allocation_id_++;
     other_stream_candidate->bin_num = kInvalidBinNum;
@@ -855,14 +855,15 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
                                    int initial_chunk_size_bytes,
                                    int max_dead_bytes_per_chunk,
                                    int initial_growth_chunk_size_bytes,
-                                   int64_t max_power_of_two_extend_bytes) : BFCArena(std::move(resource_allocator),
-                                                                                     total_memory,
-                                                                                     arena_extend_strategy,
-                                                                                     initial_chunk_size_bytes,
-                                                                                     max_dead_bytes_per_chunk,
-                                                                                     initial_growth_chunk_size_bytes,
-                                                                                     max_power_of_two_extend_bytes),
-                                                                            enable_cross_stream_reusing_(enable_cross_stream_sharing) {
+                                   int64_t max_power_of_two_extend_bytes)
+    : BFCArena(std::move(resource_allocator),
+               total_memory,
+               arena_extend_strategy,
+               initial_chunk_size_bytes,
+               max_dead_bytes_per_chunk,
+               initial_growth_chunk_size_bytes,
+               max_power_of_two_extend_bytes),
+      enable_cross_stream_reusing_(enable_cross_stream_sharing) {
   arena_type_ = ArenaType::StreamAwareArena;
 }
 
@@ -875,16 +876,17 @@ void StreamAwareArena::ReleaseStreamBuffers(Stream* stream) {
   ResetChunkOnTargetStream(stream, true);
 }
 
-void StreamAwareArena::SecureTheChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const {
-  if (chunk_stream && target_stream && chunk_stream != target_stream) {
+void StreamAwareArena::WaitOnChunk(Stream* chunk_stream, Stream* consumer_stream, WaitNotificationFn wait_fn) const {
+  if (chunk_stream && consumer_stream && chunk_stream != consumer_stream) {
     auto notification = chunk_stream->CreateNotification(1);
+    // add event to the stream allocating the chunk
     notification->ActivateAndUpdate();
     if (wait_fn) {
-      wait_fn(target_stream, *notification);
+      // add a wait event to the consumer stream
+      wait_fn(consumer_stream, *notification);
     }
 
-    target_stream->UpdateStreamClock(notification->GetStreamSyncTable());
-    // it should be ok to release the notification now, as the wait is already launch to stream.
+    consumer_stream->UpdateStreamClock(notification->GetStreamSyncTable());
   }
 }
 #endif

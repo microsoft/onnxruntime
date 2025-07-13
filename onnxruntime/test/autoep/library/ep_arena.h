@@ -82,6 +82,32 @@ struct ArenaConfig {
     static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
     static constexpr const char* MaxMem = "arena.max_mem";
   };
+
+  static ArenaConfig FromKeyValuePairs(const OrtApi& api, const OrtKeyValuePairs* kvps) {
+    ArenaConfig config{};
+    const char* value = nullptr;
+
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::ArenaExtendStrategy); value) {
+      config.arena_extend_strategy = std::string(value) == "1" ? kSameAsRequested : kNextPowerOfTwo;
+    }
+
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::InitialChunkSizeBytes); value) {
+      config.initial_chunk_size_bytes = std::stoi(std::string(value));
+    }
+
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
+      config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
+    }
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
+      config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
+    }
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
+      config.max_power_of_two_extend_bytes = std::stoll(value);
+    }
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxMem); value) {
+      config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
+    }
+  }
 };
 
 // copied from onnxruntime::AllocatorStats
@@ -95,24 +121,36 @@ struct AllocatorStats {
   int64_t max_bytes_in_use;       // The maximum bytes in use.
   int64_t max_alloc_size;         // The max single allocation seen.
                                   // The upper limit what the allocator can allocate, if such a limit
-                                  // is known. Certain allocator may return 0 to indicate the limit is
-                                  // unknown.
+                                  // is known. Certain allocator may return 0 to indicate the limit is unknown.
   int64_t bytes_limit;
 
-  void ToKeyValuePairs(OrtKeyValuePairs* kvps) const;
-  /*
-  if (stats.num_allocs > 0 || stats.bytes_limit != 0) {
-    kvps->Add("Limit", std::to_string(stats.bytes_limit));
-    kvps->Add("InUse", std::to_string(stats.bytes_in_use));
-    kvps->Add("TotalAllocated", std::to_string(stats.total_allocated_bytes));
-    kvps->Add("MaxInUse", std::to_string(stats.max_bytes_in_use));
-    kvps->Add("NumAllocs", std::to_string(stats.num_allocs));
-    kvps->Add("NumReserves", std::to_string(stats.num_reserves));
-    kvps->Add("NumArenaExtensions", std::to_string(stats.num_arena_extensions));
-    kvps->Add("NumArenaShrinkages", std::to_string(stats.num_arena_shrinkages));
-    kvps->Add("MaxAllocSize", std::to_string(stats.max_alloc_size));
+  void ToKeyValuePairs(const OrtApi& api, OrtKeyValuePairs* kvps) const {
+    if (num_allocs > 0 || bytes_limit != 0) {
+      api.AddKeyValuePair(kvps, "Limit", std::to_string(bytes_limit).c_str());
+      api.AddKeyValuePair(kvps, "InUse", std::to_string(bytes_in_use).c_str());
+      api.AddKeyValuePair(kvps, "TotalAllocated", std::to_string(total_allocated_bytes).c_str());
+      api.AddKeyValuePair(kvps, "MaxInUse", std::to_string(max_bytes_in_use).c_str());
+      api.AddKeyValuePair(kvps, "NumAllocs", std::to_string(num_allocs).c_str());
+      api.AddKeyValuePair(kvps, "NumReserves", std::to_string(num_reserves).c_str());
+      api.AddKeyValuePair(kvps, "NumArenaExtensions", std::to_string(num_arena_extensions).c_str());
+      api.AddKeyValuePair(kvps, "NumArenaShrinkages", std::to_string(num_arena_shrinkages).c_str());
+      api.AddKeyValuePair(kvps, "MaxAllocSize", std::to_string(max_alloc_size).c_str());
+    }
   }
-  */
+
+  std::string DebugString() const {
+    std::ostringstream ss;
+    ss << "Limit:                    " << this->bytes_limit << "\n"
+       << "InUse:                    " << this->bytes_in_use << "\n"
+       << "TotalAllocated:           " << this->total_allocated_bytes << "\n"
+       << "MaxInUse:                 " << this->max_bytes_in_use << "\n"
+       << "NumAllocs:                " << this->num_allocs << "\n"
+       << "NumReserves:              " << this->num_reserves << "\n"
+       << "NumArenaExtensions:       " << this->num_arena_extensions << "\n"
+       << "NumArenaShrinkages:       " << this->num_arena_shrinkages << "\n"
+       << "MaxAllocSize:             " << this->max_alloc_size << "\n";
+    return ss.str();
+  }
 };
 
 // see ORT_ENFORCE for implementations that also capture a stack trace and work in builds with exceptions disabled
@@ -151,7 +189,7 @@ class ArenaImpl {
     StreamAwareArena,
   };
 
-  ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, size_t total_memory, const ArenaConfig& config,
+  ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
             const OrtApi& api, const OrtLogger& logger);
   ~ArenaImpl();
 
@@ -184,8 +222,10 @@ class ArenaImpl {
   }
 
  protected:
-  virtual void SecureTheChunk(OrtSyncStream* chunk_stream, OrtSyncStream* target_stream,
-                              WaitNotificationFn wait_fn) const {}
+  virtual void WaitOnChunk(OrtSyncStream* /*chunk_stream*/,
+                           OrtSyncStream* /*target_stream*/,
+                           WaitNotificationFn /*wait_fn*/) const {
+  }
 
   void* AllocateRawInternal(size_t num_bytes,
                             bool dump_log_on_failure,
@@ -195,6 +235,12 @@ class ArenaImpl {
   // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
   // perform coalesce if coalesce_flag is true
   void ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coalesce_flag);
+
+  ArenaImpl(ArenaType type, std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
+            const OrtApi& api, const OrtLogger& logger)
+      : ArenaImpl(std::move(base_allocator), config, api, logger) {
+    arena_type_ = type;
+  }
 
  private:
   void DeallocateRawInternal(void* ptr);
@@ -565,8 +611,8 @@ class ArenaImpl {
   mutable std::mutex lock_;
 
   std::unique_ptr<OrtAllocator> device_allocator_;
+  const std::string allocator_name_;
   const ArenaConfig config_;
-  const size_t memory_limit_;
 
   RegionManager region_manager_;
   size_t curr_region_allocation_bytes_;
@@ -595,18 +641,14 @@ class ArenaImpl {
 
 class StreamAwareArena : public ArenaImpl {
  public:
-  /* size_t total_memory,
-     bool enable_dynamic_cross_stream_sharing,
-     ArenaExtendStrategy arena_extend_strategy = DEFAULT_ARENA_EXTEND_STRATEGY,
-     int initial_chunk_size_bytes = DEFAULT_INITIAL_CHUNK_SIZE_BYTES,
-     int max_dead_bytes_per_chunk = DEFAULT_MAX_DEAD_BYTES_PER_CHUNK,
-     int initial_growth_chunk_size_bytes = DEFAULT_INITIAL_GROWTH_CHUNK_SIZE_BYTES,
-     int64_t max_power_of_two_extend_bytes = DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES*/
-
-  StreamAwareArena(std::unique_ptr<OrtAllocator> allocator,
-                   const OrtKeyValuePairs* arena_config = nullptr);
+  StreamAwareArena(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config,
+                   bool enable_cross_stream_sharing,
+                   const OrtApi& api, const OrtLogger& logger);
 
   void* AllocOnStream(size_t size, OrtSyncStream* current_stream_id, WaitNotificationFn wait_fn);
+
+  // this iterates every single chunk and removes the Stream from Chunk
+  // can't we instead do this in Free?
   void ReleaseStreamBuffers(OrtSyncStream* stream);
 
   static StreamAwareArena* FromArenaImpl(ArenaImpl& arena) {
@@ -614,11 +656,11 @@ class StreamAwareArena : public ArenaImpl {
                                                                : nullptr;
   }
 
-  virtual void SecureTheChunk(OrtSyncStream* chunk_stream, OrtSyncStream* target_stream,
-                              WaitNotificationFn wait_fn) const override;
+  virtual void WaitOnChunk(OrtSyncStream* chunk_stream, OrtSyncStream* consumer_stream,
+                           WaitNotificationFn wait_fn) const override;
 
  private:
-  bool enable_cross_stream_reuse_;
+  bool enable_cross_stream_usage_;
 };
 
 struct ArenaAllocator : OrtAllocator {
@@ -662,8 +704,6 @@ struct ArenaAllocator : OrtAllocator {
     Free = FreeImpl;
     Info = InfoImpl;
     GetStats = GetStatsImpl;
-
-    const OrtEpApi& ep_api = *api.GetEpApi();
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {

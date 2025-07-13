@@ -210,7 +210,7 @@ static constexpr OrtEpApi ort_ep_api = {
     &OrtExecutionProviderApi::MemoryDevice_GetMemoryType,
     &OrtExecutionProviderApi::MemoryDevice_GetVendorId,
     &OrtExecutionProviderApi::MemoryDevice_GetDeviceId,
-    OrtExecutionProviderApi::CreateArenaMemoryInfo,
+    &OrtExecutionProviderApi::CreateMemoryInfoWithNewAllocatorType,
 };
 
 // checks that we don't violate the rule that the functions must remain in the slots they were originally assigned

@@ -2,6 +2,9 @@
 // Licensed under the MIT License.
 
 #include "ep_arena.h"
+#include "example_plugin_ep_utils.h"
+
+#include <map>
 
 namespace onnxruntime {
 namespace ep_utils {
@@ -14,38 +17,56 @@ namespace ep_utils {
 #define EP_FILE __FILE__
 #endif
 
-#define LOG(level, ...)  \
+#define LOG(level, ...)                                                                                             \
+  do {                                                                                                              \
+    std::ostringstream ss;                                                                                          \
+    ss << __VA_ARGS__;                                                                                              \
+    api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__); \
+  } while (false)
+
+#define RETURN_ERROR(code, ...)                       \
+  do {                                                \
+    std::ostringstream ss;                            \
+    ss << __VA_ARGS__;                                \
+    return api_.CreateStatus(code, ss.str().c_str()); \
+  } while (false)
+
+#define THROW(...)       \
   std::ostringstream ss; \
   ss << __VA_ARGS__;     \
-  api_.Logger_LogMessage(&logger_, ORT_LOGGING_LEVEL_##level, ss.str().c_str(), EP_FILE, __LINE__, __FUNCTION__)
+  throw new std::runtime_error(ss.str().c_str())
 
-ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, size_t total_memory, const ArenaConfig& config,
-                     const OrtApi& api, const OrtLogger& logger)
-    : device_allocator_{std::move(base_allocator)},
-      config_{config},
-      memory_limit_{total_memory},
-      api_{api},
-      logger_{logger} {
-  std::ostringstream ss;
-
-  const OrtMemoryInfo* mem_info = base_allocator->Info(base_allocator.get());
+namespace {
+std::string GetAllocatorName(const OrtApi& api, OrtAllocator& allocator) {
+  const OrtMemoryInfo* mem_info = allocator.Info(&allocator);
   const char* allocator_name;
   auto* status = api.MemoryInfoGetName(mem_info, &allocator_name);  // never fails
+  static_cast<void>(status);
+  return allocator_name;
+}
+}  // namespace
 
+ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
+                     const OrtApi& api, const OrtLogger& logger)
+    : device_allocator_{std::move(base_allocator)},
+      allocator_name_{GetAllocatorName(api, *device_allocator_)},
+      config_{config},
+      api_{api},
+      logger_{logger} {
   LOG(INFO, "Creating ArenaImpl for "
-                << allocator_name
+                << allocator_name_
                 << " with following configs: initial_chunk_size_bytes: " << config_.initial_chunk_size_bytes
                 << " max_dead_bytes_per_chunk: " << config_.max_dead_bytes_per_chunk
                 << " initial_growth_chunk_size_bytes: " << config_.initial_growth_chunk_size_bytes
                 << " max_power_of_two_extend_bytes: " << config_.max_power_of_two_extend_bytes
-                << " memory limit: " << memory_limit_
+                << " memory limit: " << config_.max_mem
                 << " arena_extend_strategy: " << config_.arena_extend_strategy);
 
-  curr_region_allocation_bytes_ = RoundedBytes(std::min(memory_limit_,
+  curr_region_allocation_bytes_ = RoundedBytes(std::min(config_.max_mem,
                                                         static_cast<size_t>(config_.initial_chunk_size_bytes)));
   // Allocate the requested amount of memory.
   ;
-  stats_.bytes_limit = static_cast<int64_t>(total_memory);
+  stats_.bytes_limit = static_cast<int64_t>(config.max_mem);
 
   // We never want to shrink the initial allocation if the arena extend strategy is kNextPowerOfTwo.
   // This could seem confusingly arbitrary but the rationale is as follows:
@@ -58,14 +79,14 @@ ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, size_t total_
   if (config_.arena_extend_strategy == ArenaExtendStrategy::kSameAsRequested) {
     // Consider all allocation regions (including first allocation region) for shrinkage
     consider_first_allocation_region_for_shrinkage_ = true;
-  } else {  // arena_extend_strategy_ == kNextPowerOfTwo
+  } else {  // config_.arena_extend_strategy == kNextPowerOfTwo
     // Do not consider the first allocation region for shrinkage
     consider_first_allocation_region_for_shrinkage_ = false;
   }
   // Create a bunch of bins of various good sizes.
 
   // We create bins to fit all possible ranges that cover the
-  // memory_limit_ starting from allocations up to 256 bytes to
+  // config_.max_mem starting from allocations up to 256 bytes to
   // allocations up to (and including) the memory limit.
   LOG(VERBOSE, "Creating " << kNumBins << " bins of max chunk size "
                            << BinNumToSize(0) << " to " << BinNumToSize(kNumBins - 1));
@@ -86,11 +107,11 @@ ArenaImpl::ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, size_t total_
 
 ArenaImpl::~ArenaImpl() {
   for (const auto& region : region_manager_.regions()) {
-    device_allocator_->Free(region.ptr());
+    device_allocator_->Free(device_allocator_.get(), region.ptr());
   }
 
   for (const auto& reserve_chunk : reserved_chunks_) {
-    device_allocator_->Free(reserve_chunk.first);
+    device_allocator_->Free(device_allocator_.get(), reserve_chunk.first);
   }
 
   for (BinNum b = 0; b < kNumBins; b++) {
@@ -99,47 +120,46 @@ ArenaImpl::~ArenaImpl() {
 }
 
 ArenaImpl::Chunk* ArenaImpl::ChunkFromHandle(ChunkHandle h) {
-  EP_ENFORCE(h < chunks_.size());
+  EP_ENFORCE(h < chunks_.size(), "ChunkFromHandle");
   return &(chunks_[h]);
 }
 
-Status ArenaImpl::Extend(size_t rounded_bytes) {
-  size_t available_bytes = memory_limit_ - static_cast<size_t>(stats_.total_allocated_bytes);
+OrtStatus* ArenaImpl::Extend(size_t rounded_bytes) {
+  size_t available_bytes = config_.max_mem - static_cast<size_t>(stats_.total_allocated_bytes);
   // Rounds available_bytes down to the nearest multiple of kMinAllocationSize.
   available_bytes = (available_bytes / kMinAllocationSize) * kMinAllocationSize;
 
   // Do we have enough space to handle the client's request?
   // If not, fail immediately.
   if (rounded_bytes > available_bytes) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL, "Available memory of ", available_bytes,
-                           " is smaller than requested bytes of ", rounded_bytes);
+    RETURN_ERROR(ORT_EP_FAIL, "Available memory of " << available_bytes << " is smaller than requested bytes of "
+                                                     << rounded_bytes);
   }
 
   auto safe_alloc = [this](size_t alloc_bytes) {
     void* new_mem = nullptr;
-    ORT_TRY {
-      new_mem = device_allocator_->Alloc(alloc_bytes);
-    }
-    ORT_CATCH(const std::bad_alloc&) {
+    try {
+      new_mem = device_allocator_->Alloc(device_allocator_.get(), alloc_bytes);
+    } catch (const std::bad_alloc&) {
       // attempted allocation can throw std::bad_alloc. we want to treat this the same as if it returned nullptr
       // so swallow the exception
     }
-    ORT_CATCH(const OnnxRuntimeException& ort_exception) {
-      // swallow if exception is our throw from a failed cudaMalloc call.
-      // re-throw otherwise.
-      ORT_HANDLE_EXCEPTION([&ort_exception]() {
-        if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
-            std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
-          ORT_RETHROW;
-        }
-      });
-    }
+    //} catch (const OnnxRuntimeException& ort_exception) {
+    //  // swallow if exception is our throw from a failed cudaMalloc call.
+    //  // re-throw otherwise.
+    //  ORT_HANDLE_EXCEPTION([&ort_exception]() {
+    //    if (std::string(ort_exception.what()).find("cudaMalloc") == std::string::npos &&
+    //        std::string(ort_exception.what()).find("hipMalloc") == std::string::npos) {
+    //      ORT_RETHROW;
+    //    }
+    //  });
+    //}
     return new_mem;
   };
 
-  auto get_extend_bytes = [this, available_bytes](const size_t bytes) -> size_t {
-    size_t extend_bytes = 0;
-    if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo) {
+  auto get_extend_bytes = [this, available_bytes](const size_t bytes, size_t& extend_bytes) -> OrtStatus* {
+    extend_bytes = 0;
+    if (config_.arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo) {
       // If curr_region_allocation_bytes_ is not enough to satisfy the
       // allocation, keep multiplying by a power of two until that is
       // sufficient.
@@ -154,26 +174,28 @@ Status ArenaImpl::Extend(size_t rounded_bytes) {
       // we allocated the same number of bytes as the current region
       // the 2x is to double the minimum size of the next amount we'll allocate
       if (!increased_allocation) {
-        if (arena_extend_strategy_ == ArenaExtendStrategy::kNextPowerOfTwo &&
-            curr_region_allocation_bytes_ * 2 < max_power_of_two_extend_bytes_) {
+        if (config_.arena_extend_strategy == ArenaExtendStrategy::kNextPowerOfTwo &&
+            static_cast<int64_t>(curr_region_allocation_bytes_) * 2 < config_.max_power_of_two_extend_bytes) {
           curr_region_allocation_bytes_ *= 2;
         } else {
-          curr_region_allocation_bytes_ = max_power_of_two_extend_bytes_;
+          curr_region_allocation_bytes_ = config_.max_power_of_two_extend_bytes;
         }
       }
-    } else if (arena_extend_strategy_ == ArenaExtendStrategy::kSameAsRequested) {
+    } else if (config_.arena_extend_strategy == ArenaExtendStrategy::kSameAsRequested) {
       // BFC Arena could cause internal and external fragmentation. But, running training with
       // big batch size will be very sensitive to fragmentation. So, to avoid fragmentation,
       // just extend arena with actual requested size.
       extend_bytes = bytes;
     } else {
-      ORT_THROW("Incorrect arena extend strategy.", static_cast<int32_t>(arena_extend_strategy_));
+      RETURN_ERROR(ORT_INVALID_ARGUMENT, "Invalid arena extend strategy." << config_.arena_extend_strategy);
     }
 
-    return extend_bytes;
+    return nullptr;
   };
 
-  size_t bytes = get_extend_bytes(rounded_bytes);
+  size_t bytes;
+  RETURN_IF_ERROR(get_extend_bytes(rounded_bytes, bytes));
+
   // Try allocating.
   void* mem_addr = safe_alloc(bytes);
 
@@ -206,18 +228,16 @@ Status ArenaImpl::Extend(size_t rounded_bytes) {
   }
 
   if (mem_addr == nullptr) {
-    return ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                           "Failed to allocate memory for requested buffer of size ", rounded_bytes);
+    RETURN_ERROR(ORT_EP_FAIL, "Failed to allocate memory for requested buffer of size " << rounded_bytes);
   }
 
-  LOGS_DEFAULT(INFO) << "Extended allocation by " << bytes << " bytes.";
+  LOG(INFO, "Extended allocation by " << bytes << " bytes.");
 
   stats_.total_allocated_bytes += bytes;
-  LOGS_DEFAULT(INFO) << "Total allocated bytes: "
-                     << stats_.total_allocated_bytes;
+  LOG(INFO, "Total allocated bytes: " << stats_.total_allocated_bytes);
 
-  LOGS_DEFAULT(INFO) << "Allocated memory at " << mem_addr << " to "
-                     << static_cast<void*>(static_cast<char*>(mem_addr) + bytes);
+  LOG(INFO, "Allocated memory at " << mem_addr << " to " << static_cast<void*>(static_cast<char*>(mem_addr) + bytes));
+
   region_manager_.AddAllocationRegion(mem_addr, bytes, stats_.num_arena_extensions);
   stats_.num_arena_extensions += 1;
 
@@ -242,10 +262,11 @@ Status ArenaImpl::Extend(size_t rounded_bytes) {
   // Insert the chunk into the right bin.
   InsertFreeChunkIntoBin(h);
 
-  return Status::OK();
+  return nullptr;
 }
 
-ArenaImpl::ChunkHandle ArenaImpl::AllocateChunk() {
+ArenaImpl::ChunkHandle
+ArenaImpl::AllocateChunk() {
   if (free_chunks_list_ != kInvalidChunkHandle) {
     ChunkHandle h = free_chunks_list_;
     Chunk* c = ChunkFromHandle(h);
@@ -268,11 +289,7 @@ void ArenaImpl::DeallocateChunk(ChunkHandle h) {
 
 // static
 size_t ArenaImpl::RoundedBytes(size_t bytes) {
-  size_t rounded_bytes =
-      (kMinAllocationSize *
-       ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
-  EP_ENFORCE(size_t{0} == rounded_bytes % kMinAllocationSize);
-  return rounded_bytes;
+  return (kMinAllocationSize * ((bytes + kMinAllocationSize - 1) / kMinAllocationSize));
 }
 
 void* ArenaImpl::Alloc(size_t size) {
@@ -285,10 +302,10 @@ void* ArenaImpl::Reserve(size_t size) {
 
   std::lock_guard<std::mutex> lock(lock_);
 
-  LOGS_DEFAULT(INFO) << "Reserving memory in ArenaImpl for " << device_allocator_->Info().name << " size: " << size;
+  LOG(INFO, "Reserving memory in ArenaImpl for " << allocator_name_ << " size: " << size);
 
-  void* ptr = device_allocator_->Alloc(size);
-  EP_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end());
+  void* ptr = device_allocator_->Alloc(device_allocator_.get(), size);
+  EP_ENFORCE(reserved_chunks_.find(ptr) == reserved_chunks_.end(), __FUNCTION__);
   reserved_chunks_.insert(std::pair<void*, size_t>(ptr, size));
   stats_.bytes_in_use += size;
   stats_.num_reserves += 1;
@@ -302,7 +319,7 @@ void* ArenaImpl::Reserve(size_t size) {
 size_t ArenaImpl::RequestedSize(const void* ptr) {
   std::lock_guard<std::mutex> lock(lock_);
   ArenaImpl::ChunkHandle h = region_manager_.get_handle(ptr);
-  EP_ENFORCE(h != kInvalidChunkHandle);
+  EP_ENFORCE(h != kInvalidChunkHandle, __FUNCTION__);
   ArenaImpl::Chunk* c = ChunkFromHandle(h);
   return c->requested_size;
 }
@@ -310,18 +327,17 @@ size_t ArenaImpl::RequestedSize(const void* ptr) {
 size_t ArenaImpl::AllocatedSize(const void* ptr) {
   std::lock_guard<std::mutex> lock(lock_);
   ArenaImpl::ChunkHandle h = region_manager_.get_handle(ptr);
-  EP_ENFORCE(h != kInvalidChunkHandle);
+  EP_ENFORCE(h != kInvalidChunkHandle, __FUNCTION__);
   ArenaImpl::Chunk* c = ChunkFromHandle(h);
   return c->size;
 }
 
 void* ArenaImpl::AllocateRawInternal(size_t num_bytes,
                                      bool dump_log_on_failure,
-                                     Stream* stream,
+                                     OrtSyncStream* stream,
                                      bool enable_cross_stream_reusing,
                                      WaitNotificationFn wait_fn) {
   if (num_bytes == 0) {
-    LOGS_DEFAULT(VERBOSE) << "tried to allocate 0 bytes";
     return nullptr;
   }
   // First, always allocate memory of at least kMinAllocationSize
@@ -345,18 +361,21 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes,
     // if it is on default stream (the new allocate chunk), assign to current stream
     if (chunk->stream == nullptr) {
       chunk->stream = stream;
-      if (stream)
-        chunk->stream_timestamp = stream->GetCurrentTimestamp();
+      if (stream) {
+        // FIXME: This isn't currently supported by OrtSyncStream. Does it need to be?
+        // chunk->stream_timestamp = stream->GetCurrentTimestamp();
+      }
     }
     return chunk->ptr;
   }
 
-  LOGS_DEFAULT(INFO) << "Extending ArenaImpl for " << device_allocator_->Info().name
-                     << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes << " (actual) rounded_bytes:" << rounded_bytes;
+  LOG(INFO, "Extending ArenaImpl for " << allocator_name_
+                                       << ". bin_num:" << bin_num << " (requested) num_bytes: " << num_bytes
+                                       << " (actual) rounded_bytes:" << rounded_bytes);
 
   // Try to extend
   auto status = Extend(rounded_bytes);
-  if (status.IsOK()) {
+  if (status == nullptr) {
     chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
     if (chunk != nullptr) {
       // if it is on default stream (the new allocate chunk), assign to current stream
@@ -365,9 +384,10 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes,
       }
       return chunk->ptr;
     } else {
-      status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
-                               "Failed to find a free memory block despite calling Extend. rounded_bytes=",
-                               rounded_bytes);
+      status = api_.CreateStatus(ORT_EP_FAIL,
+                                 ("Failed to find a free memory block despite calling Extend. rounded_bytes=" +
+                                  std::to_string(rounded_bytes))
+                                     .c_str());
     }
   }
 
@@ -375,17 +395,21 @@ void* ArenaImpl::AllocateRawInternal(size_t num_bytes,
   // couldn't find one.  This means we must have run out of memory,
   // Dump the memory log for analysis.
   if (dump_log_on_failure) {
-    LOGS_DEFAULT(ERROR) << "BFC Arena ran out of memory trying to allocate " << num_bytes
-                        << ".  Current allocation summary follows.";
+    LOG(ERROR, "BFC Arena ran out of memory trying to allocate " << num_bytes
+                                                                 << ".  Current allocation summary follows.");
     DumpMemoryLog(rounded_bytes);
   }
 
-  ORT_THROW(status.ErrorMessage());
+  throw new std::runtime_error(api_.GetErrorMessage(status));
 }
 
-void ArenaImpl::GetStats(AllocatorStats* stats) {
+OrtStatus* ArenaImpl::GetStats(OrtKeyValuePairs** stats) {
   std::lock_guard<std::mutex> lock(lock_);
-  *stats = stats_;
+
+  api_.CreateKeyValuePairs(stats);
+  stats_.ToKeyValuePairs(api_, *stats);
+
+  return nullptr;
 }
 
 ArenaImpl::Chunk* ArenaImpl::SplitFreeChunkFromBin(ArenaImpl::Bin::FreeChunkSet* free_chunks,
@@ -399,7 +423,7 @@ ArenaImpl::Chunk* ArenaImpl::SplitFreeChunkFromBin(ArenaImpl::Bin::FreeChunkSet*
   // pieces, do so.  In any case don't waste more than
   // max_dead_bytes_per_chunk bytes on padding this alloc.
   if (chunk->size >= rounded_bytes * 2 ||
-      static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= max_dead_bytes_per_chunk_) {
+      static_cast<int64_t>(chunk->size) - static_cast<int64_t>(rounded_bytes) >= config_.max_dead_bytes_per_chunk) {
     SplitChunk(h, rounded_bytes);
     chunk = ChunkFromHandle(h);  // Update chunk pointer in case it moved
   }
@@ -421,7 +445,7 @@ ArenaImpl::Chunk* ArenaImpl::SplitFreeChunkFromBin(ArenaImpl::Bin::FreeChunkSet*
 }
 
 ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
-                                          size_t num_bytes, Stream* stream,
+                                          size_t num_bytes, OrtSyncStream* stream,
                                           bool allow_chunk_from_different_stream,
                                           WaitNotificationFn wait_fn) {
   ArenaImpl::Chunk* other_stream_candidate = nullptr;
@@ -433,13 +457,15 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
     for (auto citer = b->free_chunks.begin(); citer != b->free_chunks.end(); ++citer) {
       const ArenaImpl::ChunkHandle h = (*citer);
       ArenaImpl::Chunk* chunk = ChunkFromHandle(h);
-      EP_ENFORCE(!chunk->in_use());
+      EP_ENFORCE(!chunk->in_use(), __FUNCTION__);
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, now check the stream
+        // FIXME: OrtSyncStream doesn't support GetLastSyncTimestampWithTargetStream currently
         bool safe_to_use = chunk->stream == stream ||
-                           !chunk->stream ||
+                           !chunk->stream /* ||
                            (stream && chunk->stream &&
-                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream));
+                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream)) */
+            ;
         if (safe_to_use) {
           // the chunk with same stream has higher priority.
           return SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
@@ -451,7 +477,7 @@ ArenaImpl::Chunk* ArenaImpl::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
   }
   // if trying to use an unsafe chunk from other streams, secure it.
   if (other_stream_candidate) {
-    SecureTheChunk(other_stream_candidate->stream, stream, wait_fn);
+    WaitOnChunk(other_stream_candidate->stream, stream, wait_fn);
     // if find some available chunk, make sure mark it as "being used" before return
     other_stream_candidate->allocation_id = next_allocation_id_++;
     other_stream_candidate->bin_num = kInvalidBinNum;
@@ -465,7 +491,7 @@ void ArenaImpl::SplitChunk(ArenaImpl::ChunkHandle h, size_t num_bytes) {
   ChunkHandle h_new_chunk = AllocateChunk();
 
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(!c->in_use() && (c->bin_num == kInvalidBinNum));
+  EP_ENFORCE(!c->in_use() && (c->bin_num == kInvalidBinNum), __FUNCTION__);
 
   // Create a new chunk starting num_bytes after c
   ArenaImpl::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
@@ -506,7 +532,7 @@ void ArenaImpl::Free(void* p) {
   std::lock_guard<std::mutex> lock(lock_);
   auto it = reserved_chunks_.find(p);
   if (it != reserved_chunks_.end()) {
-    device_allocator_->Free(it->first);
+    device_allocator_->Free(device_allocator_.get(), it->first);
     stats_.bytes_in_use -= it->second;
     stats_.total_allocated_bytes -= it->second;
     reserved_chunks_.erase(it);
@@ -515,7 +541,7 @@ void ArenaImpl::Free(void* p) {
   }
 }
 
-Status ArenaImpl::Shrink() {
+OrtStatus* ArenaImpl::Shrink() {
   std::lock_guard<std::mutex> lock(lock_);
   auto num_regions = region_manager_.regions().size();
   std::vector<void*> region_ptrs;
@@ -551,9 +577,9 @@ Status ArenaImpl::Shrink() {
       stats_.num_arena_shrinkages += 1;
       stats_.total_allocated_bytes -= shrink_size;
 
-      LOGS_DEFAULT(VERBOSE) << device_allocator_->Info().name << " BFC Arena shrunk by "
-                            << shrink_size << " bytes. "
-                            << " The total allocated bytes is now " << stats_.total_allocated_bytes;
+      LOG(VERBOSE, allocator_name_ << " BFC Arena shrunk by "
+                                   << shrink_size << " bytes. "
+                                   << " The total allocated bytes is now " << stats_.total_allocated_bytes);
 
       h = region_begin_chunk;
       ChunkHandle temp = region_begin_chunk;
@@ -565,7 +591,7 @@ Status ArenaImpl::Shrink() {
         h = temp;
       }
 
-      device_allocator_->Free(region_ptr);
+      device_allocator_->Free(device_allocator_.get(), region_ptr);
       region_manager_.RemoveAllocationRegion(region_ptr);
       stats_.num_arena_extensions--;
     }
@@ -575,15 +601,15 @@ Status ArenaImpl::Shrink() {
 
   // Will affect how the arena grows if the arena extend strategy is kNextPowerOfTwo
   // In case the extend strategy is kSameAsRequested, the arena growth is exactly the size of the memory request itself
-  curr_region_allocation_bytes_ = initial_growth_chunk_size_bytes_;
+  curr_region_allocation_bytes_ = config_.initial_growth_chunk_size_bytes;
 
-  return Status::OK();
+  return nullptr;
 }
 
 void ArenaImpl::DeallocateRawInternal(void* ptr) {
   // Find the chunk from the ptr.
   ArenaImpl::ChunkHandle h = region_manager_.get_handle(ptr);
-  EP_ENFORCE(h != kInvalidChunkHandle);
+  EP_ENFORCE(h != kInvalidChunkHandle, __FUNCTION__);
 
   // Consider coalescing it.
   FreeAndMaybeCoalesce(h);
@@ -596,7 +622,7 @@ void ArenaImpl::Merge(ArenaImpl::ChunkHandle h1,
   Chunk* c1 = ChunkFromHandle(h1);
   Chunk* c2 = ChunkFromHandle(h2);
   // We can only merge chunks that are not in use.
-  EP_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream == c2->stream);
+  EP_ENFORCE(!c1->in_use() && !c2->in_use() && c1->stream == c2->stream, __FUNCTION__);
 
   // c1's prev doesn't change, still points to the same ptr, and is
   // still not in use.
@@ -608,7 +634,7 @@ void ArenaImpl::Merge(ArenaImpl::ChunkHandle h1,
 
   ArenaImpl::ChunkHandle h3 = c2->next;
   c1->next = h3;
-  EP_ENFORCE(c2->prev == h1);
+  EP_ENFORCE(c2->prev == h1, __FUNCTION__);
   if (h3 != kInvalidChunkHandle) {
     ArenaImpl::Chunk* c3 = ChunkFromHandle(h3);
     c3->prev = h1;
@@ -631,7 +657,7 @@ void ArenaImpl::DeleteChunk(ChunkHandle h) {
 
 void ArenaImpl::InsertFreeChunkIntoBin(ArenaImpl::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(!c->in_use() && (c->bin_num == kInvalidBinNum));
+  EP_ENFORCE(!c->in_use() && (c->bin_num == kInvalidBinNum), __FUNCTION__);
   BinNum bin_num = BinNumForSize(c->size);
   Bin* new_bin = BinFromIndex(bin_num);
   c->bin_num = bin_num;
@@ -643,14 +669,14 @@ void ArenaImpl::RemoveFreeChunkIterFromBin(
     const ArenaImpl::Bin::FreeChunkSet::iterator& citer) {
   ChunkHandle h = *citer;
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(!c->in_use() && (c->bin_num != kInvalidBinNum));
+  EP_ENFORCE(!c->in_use() && (c->bin_num != kInvalidBinNum), __FUNCTION__);
   free_chunks->erase(citer);
   c->bin_num = kInvalidBinNum;
 }
 
 void ArenaImpl::RemoveFreeChunkFromBin(ArenaImpl::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(!c->in_use() && (c->bin_num != kInvalidBinNum));
+  EP_ENFORCE(!c->in_use() && (c->bin_num != kInvalidBinNum), __FUNCTION__);
   EP_ENFORCE(BinFromIndex(c->bin_num)->free_chunks.erase(h) > 0,
              "Could not find chunk in bin");
   c->bin_num = kInvalidBinNum;
@@ -658,7 +684,7 @@ void ArenaImpl::RemoveFreeChunkFromBin(ArenaImpl::ChunkHandle h) {
 
 void ArenaImpl::FreeAndMaybeCoalesce(ArenaImpl::ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(c->in_use() && (c->bin_num == kInvalidBinNum));
+  EP_ENFORCE(c->in_use() && (c->bin_num == kInvalidBinNum), __FUNCTION__);
 
   // Mark the chunk as no longer in use
   c->allocation_id = -1;
@@ -674,7 +700,7 @@ void ArenaImpl::FreeAndMaybeCoalesce(ArenaImpl::ChunkHandle h) {
 
 ArenaImpl::ChunkHandle ArenaImpl::Coalesce(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
-  EP_ENFORCE(!c->in_use());
+  EP_ENFORCE(!c->in_use(), __FUNCTION__);
   // This chunk is no longer in-use, consider coalescing the chunk
   // with adjacent chunks.
   ChunkHandle chunk_to_reassign = h;
@@ -734,8 +760,7 @@ ArenaImpl::get_bin_debug_info() {
         bin_info.total_chunks_in_use++;
       } else {
         Bin* bin = BinFromIndex(bin_num);
-        EP_ENFORCE(bin->free_chunks.count(h) == 1);
-        EP_ENFORCE(c->bin_num == bin_num);
+        EP_ENFORCE(bin->free_chunks.count(h) == 1 && c->bin_num == bin_num, __FUNCTION__);
       }
       h = c->next;
     }
@@ -745,47 +770,46 @@ ArenaImpl::get_bin_debug_info() {
 
 void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
   const std::array<BinDebugInfo, kNumBins> bin_infos = get_bin_debug_info();
-  LOGS_DEFAULT(INFO) << "Allocator:" << device_allocator_->Info().name;
-  LOGS_DEFAULT(INFO) << "Bin size: Chunks in_use/total (if not zero). Allocated bytes in_use/total. Requested bytes.";
+  LOG(INFO, "Allocator:" << allocator_name_);
+  LOG(INFO, "Bin size: Chunks in_use/total (if not zero). Allocated bytes in_use/total. Requested bytes.");
 
   size_t waste = 0;
   for (BinNum bin_num = 0; bin_num < kNumBins; bin_num++) {
     Bin* b = BinFromIndex(bin_num);
     const BinDebugInfo& bin_info = bin_infos[bin_num];
-    EP_ENFORCE(b->free_chunks.size() ==
-               bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use);
+    EP_ENFORCE(b->free_chunks.size() == bin_info.total_chunks_in_bin - bin_info.total_chunks_in_use, __FUNCTION__);
 
     if (bin_info.total_chunks_in_bin > 0) {
-      LOGS_DEFAULT(INFO) << b->bin_size
-                         << ": Chunks " << bin_info.total_chunks_in_use << "/" << bin_info.total_chunks_in_bin
-                         << ". Bytes "
-                         << bin_info.total_bytes_in_use << "/" << bin_info.total_bytes_in_bin << ". "
-                         << "Requested " << bin_info.total_requested_bytes_in_use << ".";
+      LOG(INFO, b->bin_size
+                    << ": Chunks " << bin_info.total_chunks_in_use << "/" << bin_info.total_chunks_in_bin
+                    << ". Bytes "
+                    << bin_info.total_bytes_in_use << "/" << bin_info.total_bytes_in_bin << ". "
+                    << "Requested " << bin_info.total_requested_bytes_in_use << ".");
 
       waste += bin_info.total_bytes_in_use - bin_info.total_requested_bytes_in_use;
     }
   }
 
   if (waste > 0) {
-    LOGS_DEFAULT(INFO) << "Diff between in-use and requested bytes is " << waste;
+    LOG(INFO, "Diff between in-use and requested bytes is " << waste);
   }
 
   // Find the bin that we would have liked to allocate in, so we
   // can get some further analysis about fragmentation.
   Bin* b = BinForSize(num_bytes);
 
-  LOGS_DEFAULT(INFO) << "Bin for " << num_bytes
-                     << " bytes has max bytes of " << b->bin_size
-                     << ", Chunk State: ";
+  LOG(INFO, "Bin for " << num_bytes
+                       << " bytes has max bytes of " << b->bin_size
+                       << ", Chunk State: ");
 
   for (ChunkHandle h : b->free_chunks) {
     Chunk* c = ChunkFromHandle(h);
-    LOGS_DEFAULT(INFO) << "  " << c->DebugString(this, true);
+    LOG(INFO, "  " << c->DebugString(this, true));
   }
 
   // Next show the chunks that are in use, and also summarize their
   // number by size.
-  LOGS_DEFAULT(INFO) << "Overall chunks summary:";
+  LOG(INFO, "Overall chunks summary:");
   std::map<size_t, int> in_use_by_size;
   for (const auto& region : region_manager_.regions()) {
     ChunkHandle h = region_manager_.get_handle(region.ptr());
@@ -794,23 +818,23 @@ void ArenaImpl::DumpMemoryLog(size_t num_bytes) {
       if (c->in_use()) {
         in_use_by_size[c->size]++;
       }
-      LOGS_DEFAULT(INFO) << (c->in_use() ? "  Chunk" : "  Free ") << " at " << c->ptr
-                         << " of size " << c->size;
+      LOG(INFO, (c->in_use() ? "  Chunk" : "  Free ") << " at " << c->ptr
+                                                      << " of size " << c->size);
       h = c->next;
     }
   }
 
-  LOGS_DEFAULT(INFO) << "Summary of in-use chunks by size: ";
+  LOG(INFO, "Summary of in-use chunks by size: ");
   size_t total_bytes = 0;
   for (auto& it : in_use_by_size) {
-    LOGS_DEFAULT(INFO) << "  " << it.second << " chunks of size " << it.first
-                       << ". Total " << it.first * it.second;
+    LOG(INFO, "  " << it.second << " chunks of size " << it.first
+                   << ". Total " << it.first * it.second);
     total_bytes += (it.first * it.second);
   }
 
-  LOGS_DEFAULT(INFO) << "Sum Total of in-use chunks: " << total_bytes;
-  LOGS_DEFAULT(INFO) << "Stats: \n"
-                     << stats_.DebugString();
+  LOG(INFO, "Sum Total of in-use chunks: " << total_bytes);
+  LOG(INFO, "Stats: \n"
+                << stats_.DebugString());
 }
 
 void ArenaImpl::ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coalesce_flag) {
@@ -856,26 +880,15 @@ void ArenaImpl::ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coal
   }
 }
 
-StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocator,
-                                   size_t total_memory,
+StreamAwareArena::StreamAwareArena(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config,
                                    bool enable_cross_stream_sharing,
-                                   ArenaExtendStrategy arena_extend_strategy,
-                                   int initial_chunk_size_bytes,
-                                   int max_dead_bytes_per_chunk,
-                                   int initial_growth_chunk_size_bytes,
-                                   int64_t max_power_of_two_extend_bytes) : ArenaImpl(std::move(resource_allocator),
-                                                                                      total_memory,
-                                                                                      arena_extend_strategy,
-                                                                                      initial_chunk_size_bytes,
-                                                                                      max_dead_bytes_per_chunk,
-                                                                                      initial_growth_chunk_size_bytes,
-                                                                                      max_power_of_two_extend_bytes),
-                                                                            enable_cross_stream_reusing_(enable_cross_stream_sharing) {
-  arena_type_ = ArenaType::StreamAwareArena;
+                                   const OrtApi& api, const OrtLogger& logger)
+    : ArenaImpl{ArenaType::StreamAwareArena, std::move(allocator), config, api, logger},
+      enable_cross_stream_usage_{enable_cross_stream_sharing} {
 }
 
 void* StreamAwareArena::AllocOnStream(size_t size, OrtSyncStream* current_stream, WaitNotificationFn wait_fn) {
-  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_, wait_fn);
+  return AllocateRawInternal(size, false, current_stream, enable_cross_stream_usage_, wait_fn);
 }
 
 void StreamAwareArena::ReleaseStreamBuffers(OrtSyncStream* stream) {
@@ -883,17 +896,18 @@ void StreamAwareArena::ReleaseStreamBuffers(OrtSyncStream* stream) {
   ResetChunkOnTargetStream(stream, true);
 }
 
-void StreamAwareArena::SecureTheChunk(OrtSyncStream* chunk_stream, OrtSyncStream* target_stream,
-                                      WaitNotificationFn wait_fn) const {
+void StreamAwareArena::WaitOnChunk(OrtSyncStream* chunk_stream, OrtSyncStream* target_stream,
+                                   WaitNotificationFn /*wait_fn*/) const {
   if (chunk_stream && target_stream && chunk_stream != target_stream) {
-    auto notification = chunk_stream->CreateNotification(1);
-    notification->ActivateAndUpdate();
-    if (wait_fn) {
-      wait_fn(target_stream, *notification);
-    }
+    // FIXME: Requires #24245
+    // auto notification = chunk_stream->CreateNotification(1);
+    // notification->ActivateAndUpdate();
+    // if (wait_fn) {
+    //   wait_fn(target_stream, *notification);
+    // }
 
-    target_stream->UpdateStreamClock(notification->GetStreamSyncTable());
-    // it should be ok to release the notification now, as the wait is already launch to stream.
+    // target_stream->UpdateStreamClock(notification->GetStreamSyncTable());
+    //  it should be ok to release the notification now, as the wait is already launch to stream.
   }
 }
 

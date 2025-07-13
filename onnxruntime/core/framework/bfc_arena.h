@@ -103,7 +103,7 @@ class BFCArena : public IAllocator {
 
   ArenaType GetArenaType() const { return arena_type_; }
 
-  virtual void SecureTheChunk(Stream* /*chunk_stream*/,
+  virtual void WaitOnChunk(Stream* /*chunk_stream*/,
                               Stream* /*target_stream*/,
                               WaitNotificationFn /*wait_fn*/) const {}
 
@@ -539,7 +539,7 @@ class StreamAwareArena : public BFCArena {
     return arena.GetArenaType() == ArenaType::StreamAwareArena ? reinterpret_cast<StreamAwareArena*>(&arena) : nullptr;
   }
 
-  virtual void SecureTheChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const override;
+  virtual void WaitOnChunk(Stream* chunk_stream, Stream* target_stream, WaitNotificationFn wait_fn) const override;
 
  private:
   bool enable_cross_stream_reusing_;
