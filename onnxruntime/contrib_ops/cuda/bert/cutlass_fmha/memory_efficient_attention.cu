@@ -12,12 +12,14 @@ void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params
   const int32_t& sm = params.sm;
   if (sm >= 80) {
     run_memory_efficient_attention_sm80(params);
+#ifndef FAST_BUILD
   } else if (sm >= 75) {
     run_memory_efficient_attention_sm75(params);
   } else if (sm >= 70) {
     run_memory_efficient_attention_sm70(params);
   } else if (sm >= 50) {
     run_memory_efficient_attention_sm50(params);
+#endif
   } else {
     assert(false);  // shall not reach here.
   }

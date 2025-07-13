@@ -1,7 +1,7 @@
 // Copyright (c) Microsoft Corporation. All rights reserved.
 // Licensed under the MIT License.
 
-#if USE_MEMORY_EFFICIENT_ATTENTION
+#if USE_MEMORY_EFFICIENT_ATTENTION && !defined(FAST_BUILD)
 
 #include "contrib_ops/cuda/bert/cutlass_fmha/fmha_launch_template.h"
 

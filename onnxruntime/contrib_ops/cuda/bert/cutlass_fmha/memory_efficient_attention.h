@@ -52,7 +52,12 @@ struct MemoryEfficientAttentionParams {
 void run_memory_efficient_attention(const MemoryEfficientAttentionParams& params);
 
 inline bool has_memory_efficient_attention(int32_t sm, bool is_half, int qk_head_size, int v_head_size) {
-  return sm >= (is_half ? 53 : 50) &&
+#ifdef FAST_BUILD
+  const int sm_min = is_half ? 80 : 80;  // fast build only supports sm80 or above
+#else
+  const int sm_min = is_half ? 53 : 50;
+#endif
+  return sm >= sm_min &&
          (qk_head_size & 7) == 0 &&
          (v_head_size & 7) == 0 &&
          qk_head_size <= kEfficientAttentionMaxHeadSize && v_head_size <= kEfficientAttentionMaxHeadSize;
