@@ -75,7 +75,7 @@ int real_main(int argc, char* argv[]) {
 #ifdef _MSC_VER
   std::string ep_names_and_libs_string = ToUTF8String(test_config.plugin_ep_names_and_libs);
 #else
-  std::string ep_names_and_libs_string = performance_test_config.plugin_ep_names_and_libs;
+  std::string ep_names_and_libs_string = test_config.plugin_ep_names_and_libs;
 #endif
   onnxruntime::perftest::ParseSessionConfigs(ep_names_and_libs_string, ep_names_to_libs);
   for (auto& pair : ep_names_to_libs) {
