@@ -52,6 +52,12 @@ public Sequences Encode(string str)
 public Sequences EncodeBatch(string[] strings)
 ```
 
+### ApplyChatTemplate method
+
+```csharp
+public string ApplyChatTemplate(string template_str, string messages, bool add_generation_prompt)
+```
+
 ### Decode method
 
 ```csharp

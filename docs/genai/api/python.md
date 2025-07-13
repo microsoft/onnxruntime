@@ -117,6 +117,23 @@ onnxruntime_genai.Tokenizer.decode(tokens: numpy.ndarry[int]) -> str
 
 `str`: the decoded generated tokens
 
+### ApplyChatTemplate
+
+```python
+onnxruntime_genai.Tokenizer.apply_chat_template(template_str: str, messages: str, add_generation_prompt: bool) -> str 
+```
+
+#### Parameters
+
+- `template_str`: (Optional) string representing the chat template, falls back to the default chat template from the tokenizer config.
+- `messages`: (Required) string containing the input messages to be processed
+- `add_generation_prompt`: (Required) boolean indicating whether to add a generation prompt to the output.
+
+
+#### Returns
+
+`str`: the messages with chat template tokens applied
+
 
 ### Encode batch
 
