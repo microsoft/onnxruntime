@@ -28,38 +28,38 @@
 #include "contrib_ops/cuda/bert/flash_attention/mask.h"
 #include "contrib_ops/cuda/bert/flash_attention/rotary.h"
 
+#define ENABLE_FLASH_DEBUG 1
+
 namespace onnxruntime {
 namespace flash {
 using namespace cute;
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
+#ifdef ENABLE_FLASH_DEBUG
 template <typename T>
 __device__ __forceinline__ void print_1d_tensor_values(const T& tensor) {
-  // Use thread0() to ensure only one thread prints the values
-  if (cute::thread0()) {
-    printf("Tensor values (size: %d):\n", (int)tensor.size());
-    // This loop flattens the tensor for printing.
-    // T is the type, decltype(tensor.size()) is the size type.
-    for (int i = 0; i < tensor.size(); ++i) {
-      // The `(T)tensor(i)` cast is important to ensure the correct type is printed.
-      // Use `printf` instead of `std::cout` in CUDA device code.
-      printf("%f ", (float)tensor(i));
-    }
-    printf("\n");
+  printf("Tensor size: %d:\n", (int)tensor.size());
+  // This loop flattens the tensor for printing.
+  // T is the type, decltype(tensor.size()) is the size type.
+  for (int i = 0; i < tensor.size(); ++i) {
+    // The `(T)tensor(i)` cast is important to ensure the correct type is printed.
+    // Use `printf` instead of `std::cout` in CUDA device code.
+    printf("%f ", (float)tensor(i));
   }
+  printf("\n");
 }
 
 template <typename T>
 __device__ __forceinline__ void print_2d_tensor_values(const T& tensor) {
       printf("Tensor size: %d x %d):\n", (int)size<0>(tensor), (int)size<1>(tensor));
-      Tensor tensor2d = make_tensor(tensor.data(), flash::convert_layout_acc_rowcol(tensor.layout()));
-      for (int mi = 0; mi < size<0>(tensor2d); ++mi) {
-        for (int ni = 0; ni < size<1>(tensor2d); ++ni) {
-          printf("%f ", (float)tensor2d(mi, ni));
+      for (int mi = 0; mi < size<0>(tensor); ++mi) {
+        for (int ni = 0; ni < size<1>(tensor); ++ni) {
+          printf("%f ", (float)tensor(mi, ni));
         }
         printf("\n");
       }
 }
+#endif
 
 template <typename ElementAccum, typename Params, int kBlockM, bool Is_even_MN>
 __forceinline__ __device__ auto get_lse_tile(const Params& params, const int bidb, const int bidh, const int m_block, const BlockInfo</*Varlen=*/!Is_even_MN>& binfo) {
@@ -257,14 +257,15 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     cute::cp_async_fence();
   }
 
-  // TENSOR DUMP: Wait for sQ to be loaded, then print it
+#ifdef ENABLE_FLASH_DEBUG
   flash::cp_async_wait<0>();
   __syncthreads();
-  if (cute::thread0()) {
+  if (threadIdx.x == 0) {
     printf("\n--- Query Tile (sQ) | m_block=%d, bidh=%d, bidb=%d ---\n", m_block, bidh, bidb);
     print_1d_tensor_values(sQ);
   }
   __syncthreads(); // Sync after print
+#endif
 
   if (Kernel_traits::Share_Q_K_smem) {
     flash::cp_async_wait<0>();
@@ -330,12 +331,13 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     flash::cp_async_wait<0>();
     __syncthreads();
 
-    // TENSOR DUMP: Print the Key tile (sK)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Key Tile (sK) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
       print_1d_tensor_values(sK);
     }
     __syncthreads(); // Sync after print
+#endif
 
     // Advance gV
     if (masking_step > 0) {
@@ -372,12 +374,13 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
         ? softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/Is_causal || Is_local>(acc_s, acc_o, params.scale_softmax_log2, sink)
         : softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_causal || Is_local>(acc_s, acc_o, params.scale_softmax_log2, sink);
 
-    // TENSOR DUMP: Print the softmax result tile (acc_s)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_s) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
       print_1d_tensor_values(acc_s);
     }
     __syncthreads(); // Sync after print
+#endif
 
     // Convert acc_s from fp32 to fp16/bf16
     Tensor rP = flash::convert_type<Element>(acc_s);
@@ -400,12 +403,13 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
     flash::cp_async_wait<0>();
     __syncthreads();
 
-    // TENSOR DUMP: Print the Key tile (sK)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Key Tile (sK) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
       print_1d_tensor_values(sK);
     }
     __syncthreads(); // Sync after print
+#endif
 
     flash::copy</*Is_even_MN=*/true, Is_even_K>(gmem_tiled_copy_QKV, tVgV(_, _, _, n_block), tVsV, tKVcKV, tKVpKV);
     cute::cp_async_fence();
@@ -431,12 +435,13 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
 
     softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(acc_s, acc_o, params.scale_softmax_log2, sink);
 
-    // TENSOR DUMP: Print the softmax result tile (acc_s)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_s) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
       print_1d_tensor_values(acc_s);
     }
     __syncthreads(); // Sync after print
+#endif
 
     Tensor rP = flash::convert_type<Element>(acc_s);
     // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
@@ -847,14 +852,15 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // if (tidx == 0 && blockIdx.y == 0 && blockIdx.z == 0) { print(tKsK); }
   // __syncthreads();
 
-  // TENSOR DUMP: Wait for tKsK to be loaded, then print it
+#ifdef ENABLE_FLASH_DEBUG
   flash::cp_async_wait<0>();
   __syncthreads();
-  if (cute::thread0()) {
+  if (threadIdx.x == 0) {
     printf("\n--- Key Tile (tKsK) | m_block=%d, bidh=%d, bidb=%d ---\n", m_block, bidh, bidb);
     print_1d_tensor_values(tKsK);
   }
   __syncthreads(); // Sync after print
+#endif
 
   clear(acc_o);
 
@@ -917,12 +923,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         acc_s, tSrQ, tSrK, tSsQ, tSsK, tiled_mma, smem_tiled_copy_Q, smem_tiled_copy_K,
         smem_thr_copy_Q, smem_thr_copy_K);
 
-    // TENSOR DUMP: Print the softmax result tile (acc_s)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- QK Result (acc_s) | mask_step=%d, n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", masking_step, n_block, m_block, bidh, bidb);
       print_1d_tensor_values(acc_s);
     }
     __syncthreads(); // Sync after print
+#endif
 
     if constexpr (Is_softcap) {
       flash::apply_softcap(acc_s, params.softcap);
@@ -958,12 +965,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         ? softmax.template softmax_rescale_o</*Is_first=*/true, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(acc_s, acc_o, params.scale_softmax_log2, sink)
         : softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_causal || Is_local || !Is_even_MN>(acc_s, acc_o, params.scale_softmax_log2, sink);
 
-    // TENSOR DUMP: Print the softmax result tile (acc_o)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_o) | mask_step=%d, n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", masking_step, n_block, m_block, bidh, bidb);
       print_1d_tensor_values(acc_o);
     }
     __syncthreads(); // Sync after print
+#endif
 
     // Convert acc_s from fp32 to fp16/bf16
     Tensor rP = flash::convert_type<Element>(acc_s);
@@ -1029,12 +1037,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
         acc_s, n_block * kBlockN, m_block * kBlockM + (tidx / 32) * 16 + (tidx % 32) / 4, kNWarps * 16);
     softmax.template softmax_rescale_o</*Is_first=*/false, /*Check_inf=*/Is_local>(acc_s, acc_o, params.scale_softmax_log2, sink);
 
-    // TENSOR DUMP: Print the softmax result tile (acc_o)
-    if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+    if (threadIdx.x == 0) {
       printf("\n--- Softmax Result (acc_o) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
       print_1d_tensor_values(acc_o);
     }
     __syncthreads(); // Sync after print
+#endif
 
     Tensor rP = flash::convert_type<Element>(acc_s);
     // Reshape rP from (MMA=4, MMA_M, MMA_N) to ((4, 2), MMA_M, MMA_N / 2)
@@ -1047,12 +1056,13 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   // Epilogue
   Tensor lse = softmax.template normalize_softmax_lse<Split>(acc_o, params.scale_softmax, sink);
 
-  // TENSOR DUMP: Print the softmax result tile (acc_s)
-  if (cute::thread0()) {
+#ifdef ENABLE_FLASH_DEBUG
+  if (threadIdx.x == 0) {
     printf("\n--- LSE Result (acc_o) | n_block=%d, m_block=%d, bidh=%d, bidb=%d ---\n", n_block, m_block, bidh, bidb);
     print_1d_tensor_values(acc_o);
   }
   __syncthreads(); // Sync after print
+#endif
 
   Tensor sOaccum = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(smem_)), typename Kernel_traits::SmemLayoutO{});  // (SMEM_M,SMEM_N)
   // Partition sO to match the accumulator partitioning
