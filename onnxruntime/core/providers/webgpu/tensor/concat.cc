@@ -142,7 +142,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
     LOGS_DEFAULT(WARNING) << "Storage buffer limit exceeded for Concat. Running operation one input at a time.";
     uint32_t concat_axis_offset = 0;
-    for (uint32_t input_index = 0; input_index < input_count; input_index++) {
+    for (uint32_t input_index = 0; input_index < static_cast<uint32_t>(input_count); input_index++) {
       const auto& input = prepare.inputs[input_index];
       auto axis_size = input.tensor->Shape()[axis];
 
