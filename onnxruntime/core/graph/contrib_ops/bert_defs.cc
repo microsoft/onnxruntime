@@ -6,6 +6,7 @@
 #include "core/graph/contrib_ops/quantization_defs.h"
 #include "core/graph/contrib_ops/onnx_function_util.h"
 #include "core/graph/contrib_ops/shape_inference_functions.h"
+#include "contrib_ops/cpu/bert/attention_common.h"
 // Suppress a warning: global initializer calls a non-constexpr function 'symbol' which is from
 // ONNX_OPERATOR_SET_SCHEMA_EX macro and only happens in debug build
 #if defined(_WIN32) && !defined(NDEBUG)
@@ -307,7 +308,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
         ONNX_NAMESPACE::propagateShapeFromInputToOutput(ctx, static_cast<size_t>(past_key_index) + 1, 2);
       } else if (use_max_past_present_buffer == 0) {
         if (kv_sequence_length > 0 && past_dims[2].has_dim_value()) {
-          const size_t present_sequence_length = kv_sequence_length + past_dims[2].dim_value();
+          const int64_t present_sequence_length = kv_sequence_length + past_dims[2].dim_value();
 
           ONNX_NAMESPACE::TensorShapeProto present_shape;
           for (auto& dim : past_dims) {
@@ -342,28 +343,31 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
       if (output_qk_index >= 0) {
         const bool did_supply_qk_buffer = ctx.hasOutput(output_qk_index);
-        const int64_t qk_output_type = getAttribute(ctx, "qk_output", 0);
+        const int64_t qk_output_type = getAttribute(ctx, "qk_output", static_cast<int64_t>(QKOutputType::NO_OUTPUT));
 
-        if (qk_output_type == 0 && did_supply_qk_buffer) {
+        if (qk_output_type == static_cast<int64_t>(QKOutputType::NO_OUTPUT) && did_supply_qk_buffer) {
           fail_shape_inference("Output QK buffer was provided but qk_output attribute was not configured");
         }
 
-        if (qk_output_type != 0 && !did_supply_qk_buffer) {
+        if (qk_output_type != static_cast<int64_t>(QKOutputType::NO_OUTPUT) && !did_supply_qk_buffer) {
           fail_shape_inference("Output QK buffer was not provided but qk_output attribute was configured");
         }
 
-        if (did_supply_qk_buffer && hasInputShape(ctx, 0) && total_sequence_length_value > 0) {
+        int64_t num_heads = getAttribute(ctx, "num_heads", 0);
+        if (did_supply_qk_buffer && hasInputShape(ctx, 0) && total_sequence_length_value > 0 && num_heads > 0) {
           ONNX_NAMESPACE::propagateElemTypeFromInputToOutput(ctx, 0, output_qk_index);
 
           auto& query_shape = getInputShape(ctx, 0);
           auto& query_dims = query_shape.dim();
 
-          ONNX_NAMESPACE::TensorShapeProto output_qk_shape;
-          *output_qk_shape.add_dim() = query_dims[0];                                   // batch_size
-          output_qk_shape.add_dim()->set_dim_value(getAttribute(ctx, "num_heads", 0));  // num_heads
-          *output_qk_shape.add_dim() = query_dims[1];                                   // current_sequence_length
-          output_qk_shape.add_dim()->set_dim_value(total_sequence_length_value);        // total_sequence_length
-          updateOutputShape(ctx, output_qk_index, output_qk_shape);
+          if (query_dims[0].has_dim_value() && query_dims[1].has_dim_value()) {
+            ONNX_NAMESPACE::TensorShapeProto output_qk_shape;
+            *output_qk_shape.add_dim() = query_dims[0];                             // batch_size
+            output_qk_shape.add_dim()->set_dim_value(num_heads);                    // num_heads
+            *output_qk_shape.add_dim() = query_dims[1];                             // sequence_length
+            output_qk_shape.add_dim()->set_dim_value(total_sequence_length_value);  // total_sequence_length
+            updateOutputShape(ctx, output_qk_index, output_qk_shape);
+          }
         }
       }
     }
