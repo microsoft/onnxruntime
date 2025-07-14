@@ -105,8 +105,8 @@ class GQAAttentionBase {
     if (gqa_mlas_supported) {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
-                            head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
-                            output_qk_buffer, tp, allocator);
+                            head_size, past_key_data, present_key_data, output_qk_buffer, past_present_share_buffer,
+                            packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -118,8 +118,8 @@ class GQAAttentionBase {
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
                             batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
-                            head_size, past_key_data, present_key_data, past_present_share_buffer, packed_qkv, is_prompt,
-                            output_qk_buffer, tp, allocator);
+                            head_size, past_key_data, present_key_data, output_qk_buffer, past_present_share_buffer,
+                            packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -153,12 +153,12 @@ class GQAAttentionBase {
                              const size_t head_size,                               // head size of self-attention
                              const T* past_key,                                    // past key only
                              T* present_key,                                       // present key only
+                             T* output_qk,                                         // output QK buffer
                              const bool past_present_share_buffer,                 // whether present key and value share the same buffer
                              const bool packed_qkv,                                // whether Q, K, V are packed
                              const bool is_prompt,                                 // whether it is prompt
-                             T* output_qk,
-                             ThreadPool* tp,                  // thread pool
-                             AllocatorPtr allocator) const {  // allocator for temporary buffer
+                             ThreadPool* tp,                                       // thread pool
+                             AllocatorPtr allocator) const {                       // allocator for temporary buffer
     const ptrdiff_t packed_batch_stride =
         packed_qkv ? SafeInt<ptrdiff_t>(num_heads_ + 2 * kv_num_heads_) * sequence_length * head_size
                    : SafeInt<ptrdiff_t>(0);
