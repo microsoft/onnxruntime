@@ -17,26 +17,42 @@ template <typename TIdx,
           typename TRank,
           typename = std::enable_if_t<std::is_same_v<TRank, int> || std::is_same_v<TRank, size_t>>>
 std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool is_f16 = false) {
-  // "std::string::rfind(str, 0) == 0" is equivalent to "std::string::starts_with(str)" before C++20.
-  if (var.rfind("uniforms.", 0) == 0) {
-    if (rank > 4) {
-      if constexpr (std::is_integral_v<TIdx>) {
-        if (is_f16) {
-          return MakeStringWithClassicLocale(var, "[", idx / 8, "][", (idx % 8) / 4, "][", (idx % 8) % 4, "]");
+  if (var.starts_with("uniforms.")) {
+    if (is_f16) {
+      if (rank > 8) {
+        // array<vec4<u32>, N>
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[", idx / 8, "][", (idx % 8) / 2, "])[", (idx % 8) % 2, "]");
         } else {
-          return MakeStringWithClassicLocale(var, "[", idx / 4, "][", idx % 4, "]");
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[(", idx, ") / 8][((", idx, ") % 8) / 2])[((", idx, ") % 8) % 2]");
+        }
+      } else if (rank > 2) {
+        // vecN<u32>
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[", idx / 2, "])[", idx % 2, "]");
+        } else {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, "[(", idx, ") / 2])[(", idx, ") % 2]");
         }
       } else {
-        if (is_f16) {
-          return MakeStringWithClassicLocale(var, "[(", idx, ") / 8][(", idx, ") % 8 / 4][(", idx, ") % 8 % 4]");
+        // u32
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, ")[", idx % 2, "]");
+        } else {
+          return MakeStringWithClassicLocale("bitcast<vec2<f16>>(", var, ")[(", idx, ") % 2]");
+        }
+      }
+    } else {
+      if (rank > 4) {
+        if constexpr (std::is_integral_v<TIdx>) {
+          return MakeStringWithClassicLocale(var, "[", idx / 4, "][", idx % 4, "]");
         } else {
           return MakeStringWithClassicLocale(var, "[(", idx, ") / 4][(", idx, ") % 4]");
         }
+      } else {
+        return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
       }
     }
   }
-
-  return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
 }
 
 struct ShaderUsage {
