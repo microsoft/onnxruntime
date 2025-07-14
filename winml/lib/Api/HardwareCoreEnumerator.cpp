@@ -51,8 +51,8 @@ static CoreCounter GetCoreInfo() {
   size_t read = 0;
   PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX currentProcessorInfo = NULL;
 
-  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) < logicalProcessorInformation.Length
-  ) {
+  while ((read + FIELD_OFFSET(SYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX, Processor)) <
+         logicalProcessorInformation.Length) {
     currentProcessorInfo =
       reinterpret_cast<PSYSTEM_LOGICAL_PROCESSOR_INFORMATION_EX>(logicalProcessorInformation.Buffer.get() + read);
     if ((read + currentProcessorInfo->Size) > logicalProcessorInformation.Length) {
