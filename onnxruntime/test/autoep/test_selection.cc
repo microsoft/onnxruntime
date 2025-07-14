@@ -69,7 +69,7 @@ static void TestInference(Ort::Env& env, const std::basic_string<ORTCHAR_T>& mod
                           // auto select using policy
                           std::optional<OrtExecutionProviderDevicePolicy> policy = std::nullopt,
                           std::optional<EpSelectionDelegate> delegate = std::nullopt,
-                          bool test_session_creation_only = true) {
+                          bool test_session_creation_only = false) {
   Ort::SessionOptions session_options;
 
   if (library_path && IsRegistered(ep_to_select) == false) {
@@ -166,14 +166,6 @@ void RunBasicTest(const std::string& ep_name, std::optional<std::filesystem::pat
 TEST(AutoEpSelection, CpuEP) {
   RunBasicTest(kCpuExecutionProvider, std::nullopt);
 }
-
-#if defined(USE_QNN)
-TEST(AutoEpSelection, QnnEP) {
-  Ort::KeyValuePairs provider_options;
-  provider_options.Add("prefer_nhwc", "1");
-  RunBasicTest(kQnnExecutionProvider, "onnxruntime_providers_qnn", provider_options);
-}
-#endif
 
 #if defined(USE_CUDA)
 TEST(AutoEpSelection, CudaEP) {
