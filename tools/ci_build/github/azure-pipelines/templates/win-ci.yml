@@ -101,7 +101,7 @@ stages:
     ${{ else }}:
       pool: ${{ parameters.ort_build_pool_name }}
     ${{ if eq(parameters['UseIncreasedTimeoutForTests'], 'true') }}:
-      timeoutInMinutes: 1200
+      timeoutInMinutes: 1260
     ${{ else }}:
       timeoutInMinutes: 360
 
