@@ -6,11 +6,7 @@
 #include "contrib_ops/cuda/bert/flash_attention/static_switch.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash.h"
 #include "contrib_ops/cuda/bert/flash_attention/flash_fwd_kernel.h"
-
-#ifdef ENABLE_FLASH_DEBUG
-#include <cuda_runtime.h>
-#include <cstdio>
-#endif
+#include "contrib_ops/cuda/bert/flash_attention/flash_debug.h"
 
 namespace onnxruntime {
 namespace flash {
@@ -31,55 +27,12 @@ namespace flash {
   template <typename Kernel_traits, __VA_ARGS__>     \
   __global__ void kernelName(KERNEL_PARAM_MODIFIER const Flash_fwd_params params)
 
-
-#ifdef ENABLE_FLASH_DEBUG
-extern __device__ volatile int flash_debug_block_sync;
-
-__device__ __forceinline__ int get_linear_block_id() {
-  dim3 gridDim_ = gridDim;
-  return blockIdx.x + blockIdx.y * gridDim_.x + blockIdx.z * gridDim_.x * gridDim_.y;
-}
-
-// Block sync helper (no actual work here)
-__device__ __forceinline__ void flash_debug_block_sync_wait(int my_block_id) {
-  if (threadIdx.x == 0) {
-    while (atomicAdd((int*)&flash_debug_block_sync, 0) != my_block_id) {
-#if __CUDA_ARCH__ >= 700
-      __nanosleep(1000);
-#endif
-    }
-    printf("FLASH block %d (%d,%d,%d) executing\n", my_block_id, blockIdx.x, blockIdx.y, blockIdx.z);
-  }
-  __syncthreads();
-}
-
-__device__ __forceinline__ void flash_debug_block_sync_advance() {
-  if (threadIdx.x == 0) {
-    __threadfence();
-    atomicAdd((int*)&flash_debug_block_sync, 1);
-  }
-}
-
-// Macro for debug-synchronized block execution
-#define FLASH_DEBUG_SYNC_RUN(block_id_expr, work_block) \
-  do {                                                  \
-    int __block_id = block_id_expr;                     \
-    flash_debug_block_sync_wait(__block_id);            \
-    work_block                                          \
-    flash_debug_block_sync_advance();                   \
-  } while (0)
-#endif
-
 DEFINE_FLASH_FORWARD_KERNEL(flash_fwd_kernel, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Return_softmax) {
 #if defined(ARCH_SUPPORTS_FLASH)
   static_assert(!(Is_causal && Is_local));  // Enforce constraints
-#ifndef ENABLE_FLASH_DEBUG
+  FLASH_DEBUG_BLOCK_SYNC_BEGIN
   flash::compute_attn<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Return_softmax>(params);
-#else
-  FLASH_DEBUG_SYNC_RUN(get_linear_block_id(), {
-    flash::compute_attn<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Return_softmax>(params);;
-  });
-#endif
+  FLASH_DEBUG_BLOCK_SYNC_END
 #else
   FLASH_UNSUPPORTED_ARCH
 #endif
@@ -87,14 +40,9 @@ DEFINE_FLASH_FORWARD_KERNEL(flash_fwd_kernel, bool Is_causal, bool Is_local, boo
 
 DEFINE_FLASH_FORWARD_KERNEL(flash_fwd_splitkv_kernel, bool Is_causal, bool Is_local, bool Has_alibi, bool Is_even_MN, bool Is_even_K, bool Is_softcap, bool Split, bool Append_KV) {
 #if defined(ARCH_SUPPORTS_FLASH)
-#ifndef ENABLE_FLASH_DEBUG
+  FLASH_DEBUG_BLOCK_SYNC_BEGIN
   flash::compute_attn_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi, Is_even_MN, Is_even_K, Is_softcap, Split, Append_KV>(params);
-#else
-  FLASH_DEBUG_SYNC_RUN(get_linear_block_id(), {
-    flash::compute_attn_splitkv<Kernel_traits, Is_causal, Is_local, Has_alibi,
-                                Is_even_MN, Is_even_K, Is_softcap, Split, Append_KV>(params);
-  });
-#endif
+  FLASH_DEBUG_BLOCK_SYNC_END
 #else
   FLASH_UNSUPPORTED_ARCH
 #endif

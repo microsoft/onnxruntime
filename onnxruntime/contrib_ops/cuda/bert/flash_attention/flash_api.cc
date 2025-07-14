@@ -433,7 +433,7 @@ Status mha_varlen_fwd(const cudaDeviceProp& dprops,
 }
 
 inline bool is_supported_head_size(size_t head_size) {
-  switch(head_size) {
+  switch (head_size) {
 #ifndef FAST_BUILD
     case 32:
     case 64:
@@ -443,7 +443,7 @@ inline bool is_supported_head_size(size_t head_size) {
     case 192:
     case 224:
     case 256:
-#else // fast build, only support 32 and 128 with fp16.
+#else  // fast build, only support 32 and 128 with fp16.
     case 32:
 #endif
       return true;

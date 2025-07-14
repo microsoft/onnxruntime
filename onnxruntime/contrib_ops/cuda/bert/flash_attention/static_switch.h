@@ -114,12 +114,12 @@
       return __VA_ARGS__();                \
     }                                      \
   }()
-#else // fast build
-#define HEADDIM_SWITCH(HEADDIM, ...)       \
-  [&] {                                    \
-    if (HEADDIM <= 32) {                   \
-      constexpr static int kHeadDim = 32;  \
-      return __VA_ARGS__();                \
-    }                                      \
+#else  // fast build
+#define HEADDIM_SWITCH(HEADDIM, ...)      \
+  [&] {                                   \
+    if (HEADDIM <= 32) {                  \
+      constexpr static int kHeadDim = 32; \
+      return __VA_ARGS__();               \
+    }                                     \
   }()
 #endif

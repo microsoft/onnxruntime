@@ -18,7 +18,6 @@ from dataclasses import dataclass
 
 import numpy
 import torch
-import torch.nn.functional as F
 from einops import rearrange, repeat
 from onnx import TensorProto, helper
 from parameterized import parameterized
@@ -1128,7 +1127,6 @@ def has_memory_efficient():
 
 @unittest.skipIf(not has_flash_attention(), "Flash Attention is not available, skipping tests.")
 class TestFlashGQA(unittest.TestCase):
-
     @parameterized.expand(gqa_cuda_prompt_test_cases())
     def test_gqa_prompt_flash_attention(self, name, config):
         os.environ["ORT_DISABLE_FLASH_ATTENTION"] = "0"
