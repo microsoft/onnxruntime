@@ -22,7 +22,8 @@ class CpuDetensorizer {
     _Inout_ BYTE* pData
   ) {
 #pragma warning(push)
-#pragma warning(disable : 26014 \
+#pragma warning(  \
+  disable : 26014 \
 )  // warning about possible out of bounds accesing pData, but input is checked for BGRA8 format, so uiCapacity should be in multiples of 4 \
     // output is BGRA8: so blue at i, green is at i + 1, red is at i + 2
 

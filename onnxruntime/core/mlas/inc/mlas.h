@@ -1020,6 +1020,7 @@ MlasComputeSoftmax(
     size_t D,
     bool LogSoftmax,
     bool SmoothSoftmax,
+    float Sink,
     MLAS_THREADPOOL* ThreadPool
     );
 
@@ -1221,6 +1222,21 @@ MlasQuantizeLinearS4(
     size_t N,
     float Scale,
     int8_t ZeroPoint
+    );
+
+//
+// Linear dequantization routines.
+//
+
+template<typename InputType>
+void
+MLASCALL
+MlasDequantizeLinear(
+    const InputType* Input,
+    float* Output,
+    size_t N,
+    float Scale,
+    InputType ZeroPoint
     );
 
 /**
