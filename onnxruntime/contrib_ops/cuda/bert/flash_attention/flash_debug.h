@@ -1,3 +1,6 @@
+// Copyright (c) Microsoft Corporation. All rights reserved.
+// Licensed under the MIT License.
+
 #pragma once
 
 #define ENABLE_FLASH_DEBUG 1
@@ -9,7 +12,7 @@
 namespace onnxruntime {
 namespace flash {
 
-extern __device__ volatile int flash_debug_block_sync;
+static __device__ volatile int flash_debug_block_sync = 0;
 
 __device__ __forceinline__ int get_linear_block_id() {
   dim3 gridDim_ = gridDim;
