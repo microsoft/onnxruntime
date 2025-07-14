@@ -10,6 +10,7 @@
 #include "QnnInterface.h"
 #include "nlohmann/json.hpp"
 
+#include "core/graph/ep_api_types.h"
 #include "core/providers/qnn-abi/ort_api.h"
 #include "core/providers/qnn-abi/builder/qnn_def.h"
 #include "core/providers/qnn-abi/builder/qnn_quant_params_wrapper.h"
@@ -25,7 +26,7 @@ struct TensorInfo {
   Qnn_DataType_t qnn_data_type;
   QnnQuantParamsWrapper quant_param;
   bool is_initializer;
-//   const ONNX_NAMESPACE::TensorProto* initializer_tensor;
+  const ONNX_NAMESPACE::TensorProto* initializer_tensor;
 };
 
 struct ModelSettings {
@@ -35,7 +36,7 @@ struct ModelSettings {
 
 class QnnModelWrapper {
  public:
-  QnnModelWrapper(const OrtGraph& ort_graph,
+  QnnModelWrapper(const GraphViewer& graph_viewer,
                   const logging::Logger& logger,
                   const QNN_INTERFACE_VER_TYPE& qnn_interface,
                   const Qnn_BackendHandle_t& backend_handle,
@@ -43,7 +44,7 @@ class QnnModelWrapper {
                   const std::unordered_map<std::string, size_t>& output_index_map,
                   QnnBackendType qnn_backend_type,
                   const ModelSettings& model_settings)
-      : ort_graph_(ort_graph),
+      : graph_viewer_(graph_viewer),
         logger_(logger),
         qnn_interface_(qnn_interface),
         backend_handle_(backend_handle),
@@ -112,27 +113,15 @@ class QnnModelWrapper {
     return std::move(model_output_tensor_wrappers_);
   }
 
-//   const OrtArrayOfConstObjects& GetInitializerTensors() const { return ep_graph_.GetInitializers(initializers); }
+  const InitializedTensorSet& GetInitializerTensors() const { return graph_viewer_.GetAllInitializedTensors(); }
 
-//   const EpValueInfo* GetConstantTensor(const std::string tensor_name) const {
-//     if (auto iter = ep_graph_.value_infos_.find(tensor_name);
-//         iter != value_infos_.end()) {
-//       auto status = iter->second.get().IsConstantInitializer(is_const_initializer);
-//       if (status == Status::OK() && is_const_initializer == true) {
-//         return iter->second.get();
-//       }
-//     }
-//     return nullptr;
-//   }
+  const ONNX_NAMESPACE::TensorProto* GetConstantTensor(const std::string& tensor_name) const {
+    return graph_viewer_.GetConstantInitializer(tensor_name);
+  }
 
-//   bool IsConstantInput(std::string input_name) const {
-//     if (auto iter = ep_graph_.value_infos_.find(input_name);
-//         iter != value_infos_.end()) {
-//       iter->second.get().IsOptionalGraphInput(is_optional_graph_input);
-//       return is_optional_graph_input;
-//     }
-//     return false;
-//   }
+  bool IsConstantInput(std::string input_name) const {
+    return graph_viewer_.IsConstantInitializer(input_name, true);
+  }
 
   static bool GetOnnxShape(const NodeArg& node_arg, std::vector<uint32_t>& shape);
 
@@ -150,17 +139,17 @@ class QnnModelWrapper {
     return json_qnn_graph_.Finalize();
   }
 
-//   Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
-//     if (IsConstantInput(tensor_name)) {
-//       return QNN_TENSOR_TYPE_STATIC;
-//     } else if (IsGraphInput(tensor_name)) {
-//       return QNN_TENSOR_TYPE_APP_WRITE;
-//     } else if (IsGraphOutput(tensor_name)) {
-//       return QNN_TENSOR_TYPE_APP_READ;
-//     } else {
-//       return QNN_TENSOR_TYPE_NATIVE;
-//     }
-//   }
+  Qnn_TensorType_t GetTensorType(const std::string& tensor_name) const {
+    if (IsConstantInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_STATIC;
+    } else if (IsGraphInput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_WRITE;
+    } else if (IsGraphOutput(tensor_name)) {
+      return QNN_TENSOR_TYPE_APP_READ;
+    } else {
+      return QNN_TENSOR_TYPE_NATIVE;
+    }
+  }
 
   Status GetTensorInfo(const NodeUnitIODef& input, TensorInfo& input_info) const;
 
@@ -265,12 +254,12 @@ class QnnModelWrapper {
     return Status::OK();
   }
 
-//   Status UnpackInitializerData(const EpValueInfo& initializer,
-//                                std::vector<uint8_t>& unpacked_tensor) const;
+  Status UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+                               std::vector<uint8_t>& unpacked_tensor) const;
 
   QnnBackendType GetQnnBackendType() const { return qnn_backend_type_; }
 
-//   const EpGraph& GetGraph() const { return ep_graph_; }
+  const GraphViewer& GetGraphViewer() const { return graph_viewer_; }
 
   // Unpack float scales from initializer (1 scale for per-tensor, > 1 for per-axis).
   Status UnpackScales(const std::string& initializer_name, std::vector<float>& scales) const;
@@ -316,7 +305,7 @@ class QnnModelWrapper {
   void GetGraphInputOutputTensorWrapper(const std::vector<std::string>& names,
                                         std::vector<QnnTensorWrapper>& wrappers_list);
 
-  const OrtGraph& ort_graph_;
+  const GraphViewer& graph_viewer_;
   const logging::Logger& logger_;
   const QNN_INTERFACE_VER_TYPE& qnn_interface_;
   const Qnn_BackendHandle_t& backend_handle_;
