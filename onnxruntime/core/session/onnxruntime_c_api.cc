@@ -3063,7 +3063,7 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetGraph, _In_ const OrtNode* node,
   API_IMPL_END
 }
 
-ORT_API_STATUS_IMPL(OrtApis::Node_GetEpType, _In_ const OrtNode* node,
+ORT_API_STATUS_IMPL(OrtApis::Node_GetEpName, _In_ const OrtNode* node,
                     _Outptr_result_maybenull_ const char** out) {
   API_IMPL_BEGIN
   if (out == nullptr) {
@@ -3072,10 +3072,10 @@ ORT_API_STATUS_IMPL(OrtApis::Node_GetEpType, _In_ const OrtNode* node,
 
   const EpNode* ep_node = EpNode::ToInternal(node);
   if (ep_node == nullptr) {
-    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetEpType.");
+    return OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT, "node is a ModelEditorNode which doesn't support Node_GetEpName.");
   }
 
-  *out = ep_node->GetEpType().c_str();
+  *out = ep_node->GetEpName().c_str();
   return nullptr;
   API_IMPL_END
 }
@@ -3993,7 +3993,7 @@ static constexpr OrtApi ort_api_1_to_23 = {
     &OrtApis::Node_GetNumSubgraphs,
     &OrtApis::Node_GetSubgraphs,
     &OrtApis::Node_GetGraph,
-    &OrtApis::Node_GetEpType,
+    &OrtApis::Node_GetEpName,
 
     &OrtApis::GetRunConfigEntry,
 

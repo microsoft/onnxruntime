@@ -6040,8 +6040,9 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
 
-  /** \brief Returns the execution provider type (name) that this node is assigned to run on.
+  /** \brief Returns the execution provider name that this node is assigned to run on.
    *         Returns NULL if the node has not been assigned to any execution provider yet.
+   *         For plugin execution providers, the name is the one returned by OrtEp::GetName.
    *
    * \param[in] node The OrtNode instance.
    * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
@@ -6050,7 +6051,7 @@ struct OrtApi {
    *
    * \since Version 1.23.
    */
-  ORT_API2_STATUS(Node_GetEpType, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
+  ORT_API2_STATUS(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
 
   /// @}
 
@@ -7037,6 +7038,24 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t flags);
+
+  /** Sets information related to EP context binary file.
+   *
+   * EP uses this information to decide the location and context binary file name.
+   * Used while compiling model with input and output in memory buffer
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] output_directory Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] model_name Null terminated string of the model name (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextBinaryInformation,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_directory,
+                  _In_ const ORTCHAR_T* model_name);
 };
 
 /*
