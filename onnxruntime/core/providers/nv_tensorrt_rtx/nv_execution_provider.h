@@ -153,6 +153,13 @@ struct TensorParams {
   }
 };
 
+// Struct to hold user weights when ModelProtos are serialized with external data
+struct TensorrtUserWeights {
+  std::string name{};
+  std::string data{};
+  int64_t size{};
+};
+
 // Information to construct kernel function state.
 struct TensorrtFuncState {
   AllocateFunc test_allocate_func = nullptr;
@@ -190,6 +197,7 @@ struct TensorrtFuncState {
   bool skip_io_binding_allowed = false;  // Indicates if input/output binding can be skipped
   IAllocatorUniquePtr<void> context_memory = nullptr;
   size_t context_memory_size = 0;
+  std::unique_ptr<std::vector<TensorrtUserWeights>> *userWeights = nullptr;
 };
 
 // Minimum information to construct kernel function state for direct engine load code path
@@ -364,6 +372,7 @@ class NvExecutionProvider : public IExecutionProvider {
   std::unordered_map<std::string, ShapeRangesMap> input_shape_ranges_;  // The profile shape ranges that the engine is built with
   std::unordered_map<std::string, std::vector<nvinfer1::IOptimizationProfile*>> profiles_;
   std::unordered_map<std::string, DDSOutputAllocatorMap> dds_output_allocator_maps_;
+  std::unordered_map<std::string, std::unique_ptr<std::vector<TensorrtUserWeights>>> weights_; // User provided weights
 
   // for external stream, we need to create its cudnn/cublass handle before cuda EP enable cuda graph capture
   cudnnHandle_t external_cudnn_handle_ = nullptr;
