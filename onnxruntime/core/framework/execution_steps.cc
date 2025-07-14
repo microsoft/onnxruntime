@@ -23,10 +23,10 @@ std::string BarrierStep::ToString() const {
   return MakeString("Barrier - BarrierId: ", barrier_id_, ", Count: ", 2);
 }
 
-WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle,
-                           NotificationIndex idx, NodeIndex node_index) : SequentialExecutionPlan::ExecutionStep(node_index),
-                                                                          wait_handle_(handle),
-                                                                          notification_idx_(idx) {}
+WaitOnEPStep::WaitOnEPStep(WaitNotificationFn handle, NotificationIndex idx, NodeIndex node_index)
+    : SequentialExecutionPlan::ExecutionStep(node_index),
+      wait_handle_(handle),
+      notification_idx_(idx) {}
 
 Status WaitOnEPStep::Execute(StreamExecutionContext& ctx,
                              size_t stream_idx,

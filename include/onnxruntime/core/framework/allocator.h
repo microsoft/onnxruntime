@@ -105,6 +105,9 @@ class IAllocator {
    */
   virtual void* Alloc(size_t size) = 0;
 
+  virtual bool IsStreamAware() const { return false; }
+  virtual void* AsyncAlloc(size_t size, Stream* /*stream*/) { return Alloc(size); }
+
   /**
    * Free memory at p.
    * If p is nullptr, do nothing.

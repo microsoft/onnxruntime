@@ -25,8 +25,10 @@ struct OrtAllocatorImplWrappingIAllocator final : public OrtAllocatorImpl {
   ~OrtAllocatorImplWrappingIAllocator() override = default;
 
   void* Alloc(size_t size);
+  void* AsyncAlloc(size_t size, OrtSyncStream* stream);
   void Free(void* p);
   void* Reserve(size_t size);
+  // bool IsStreamAware() const { return i_allocator_->IsStreamAware(); }
 
   const OrtMemoryInfo* Info() const;
 
@@ -55,6 +57,9 @@ class IAllocatorImplWrappingOrtAllocator final : public IAllocator {
   void* Alloc(size_t size) override;
   void Free(void* p) override;
   void* Reserve(size_t size) override;
+
+  bool IsStreamAware() const override;
+  void* AsyncAlloc(size_t size, Stream* stream) override;
 
   const OrtAllocator* GetWrappedOrtAllocator() const {
     return ort_allocator_.get();

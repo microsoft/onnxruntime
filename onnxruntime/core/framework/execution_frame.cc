@@ -441,12 +441,35 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
 #endif
               // the memory pattern buffer will leave in the whole execution.
 #ifdef ORT_ENABLE_STREAM
-              StreamAwareArena* stream_aware_alloc = AsStreamBasedAllocator(alloc);
-              if (stream_aware_alloc && device_streams_) {
+              StreamAwareArena* stream_aware_arena = AsStreamBasedAllocator(alloc);
+              bool stream_aware_allocator = alloc->IsStreamAware();
+              if ((stream_aware_arena || stream_aware_allocator) && device_streams_) {
                 Stream* mem_pattern_stream = device_streams_->GetRootStream();
-                buffer = stream_aware_alloc->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
-                for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
-                  stream_aware_alloc->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+
+                if (stream_aware_arena) {
+                  // ??? why do we do this. this buffer is allocated at the start of inferencing, so as long as we
+                  // use the same stream for the first step it should be fine.
+                  // I guess if you have parallel execution enabled multiple steps could run in parallel, but this
+                  // feels like a very heavy way to handle that if that is what we're doing.
+                  buffer = stream_aware_arena->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
+                  for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+                    stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);
+                  }
+                } else {
+                  buffer = alloc->AsyncAlloc(peak_size, mem_pattern_stream);
+                  const auto wait_on_chunk = [&mem_pattern_stream, this]() {
+                    for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
+                      auto* device_stream = device_streams_->GetStream(j);
+                      if (device_stream && device_stream != mem_pattern_stream) {
+                        auto notification = device_stream->CreateNotification(1);
+                        notification->ActivateAndUpdate();
+                        // ??? we don't pass in a wait function in the above call to WaitOnChunk, so there's
+                        // no actual wait on the event in the notification. What is it achieving in that case? We
+                        // add an event to the mem_pattern_stream, but the notification then is freed, so how does that
+                        // prevent another stream prematurely using the buffer?
+                      }
+                    }
+                  };
                 }
               } else {
                 buffer = alloc->Alloc(peak_size);
@@ -581,13 +604,20 @@ Status ExecutionFrame::AllocateMLValueTensorSelfOwnBufferHelper(OrtValue& ort_va
   Stream* current_stream = GetValueStream(ort_value_index);
   if (current_stream) {
 #ifdef ORT_ENABLE_STREAM
-    auto stream_aware_alloc = AsStreamBasedAllocator(alloc);
-    if (stream_aware_alloc) {
+    StreamAwareArena* stream_aware_arena = AsStreamBasedAllocator(alloc);
+    bool stream_aware_allocator = alloc->IsStreamAware();
+
+    if (stream_aware_arena || stream_aware_allocator) {
       size_t buffer_size = Tensor::CalculateTensorStorageSize(element_type, shape);
       // the reused memory must from same EP
-      auto wait_handle = this->session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(
-          current_stream->GetDevice(), current_stream->GetDevice());
-      void* p_data = stream_aware_alloc->AllocOnStream(buffer_size, current_stream, wait_handle);
+      auto wait_handle = session_state_.GetStreamHandleRegistryInstance().GetWaitHandle(current_stream->GetDevice(),
+                                                                                        current_stream->GetDevice());
+      void* p_data = nullptr;
+      if (stream_aware_arena) {
+        p_data = stream_aware_arena->AllocOnStream(buffer_size, current_stream, wait_handle);
+      } else {
+        p_data = alloc->AsyncAlloc(buffer_size, current_stream);
+      }
       Tensor::InitOrtValue(element_type, shape, p_data, std::move(alloc), ort_value);
     } else {
       Tensor::InitOrtValue(element_type, shape, std::move(alloc), ort_value);

@@ -880,12 +880,14 @@ void StreamAwareArena::WaitOnChunk(Stream* chunk_stream, Stream* consumer_stream
   if (chunk_stream && consumer_stream && chunk_stream != consumer_stream) {
     auto notification = chunk_stream->CreateNotification(1);
     // add event to the stream allocating the chunk
+    // this also adds an entry to the sync table in the notifaction for the producer stream with the new timestamp
     notification->ActivateAndUpdate();
     if (wait_fn) {
       // add a wait event to the consumer stream
       wait_fn(consumer_stream, *notification);
     }
 
+    // consumer stream now has copy of the stream sync table from the producer stream + the new entry for the producer stream
     consumer_stream->UpdateStreamClock(notification->GetStreamSyncTable());
   }
 }

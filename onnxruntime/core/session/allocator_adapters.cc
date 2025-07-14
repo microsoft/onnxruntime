@@ -10,6 +10,11 @@
 #include "core/session/ort_env.h"
 #include "core/session/ort_apis.h"
 
+// From #25254
+// #include "core/framework/plugin_ep_stream.h"
+#include "core/framework/stream_handles.h"
+struct OrtSyncStream : public onnxruntime::Stream {};
+
 namespace onnxruntime {
 
 namespace {
@@ -21,6 +26,7 @@ namespace {
 // `IAllocatorImplWrappingOrtAllocator` to ensure compatibility.
 constexpr uint32_t kOrtAllocatorReserveMinVersion = 18;
 constexpr uint32_t kOrtAllocatorStatsMinVersion = 23;
+constexpr uint32_t kOrtAllocatorAsyncAllocMinVersion = 23;
 }  // namespace
 
 OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxruntime::AllocatorPtr&& i_allocator)
@@ -52,6 +58,10 @@ OrtAllocatorImplWrappingIAllocator::OrtAllocatorImplWrappingIAllocator(onnxrunti
 
 void* OrtAllocatorImplWrappingIAllocator::Alloc(size_t size) {
   return i_allocator_->Alloc(size);
+}
+
+void* OrtAllocatorImplWrappingIAllocator::AsyncAlloc(size_t size, OrtSyncStream* stream) {
+  return i_allocator_->AsyncAlloc(size, static_cast<Stream*>(stream));
 }
 
 void* OrtAllocatorImplWrappingIAllocator::Reserve(size_t size) {
@@ -102,6 +112,18 @@ IAllocatorImplWrappingOrtAllocator::IAllocatorImplWrappingOrtAllocator(OrtAlloca
 }
 
 void* IAllocatorImplWrappingOrtAllocator::Alloc(size_t size) {
+  return ort_allocator_->Alloc(ort_allocator_.get(), size);
+}
+
+bool IAllocatorImplWrappingOrtAllocator::IsStreamAware() const {
+  return ort_allocator_->version >= kOrtAllocatorAsyncAllocMinVersion && ort_allocator_->AsyncAlloc != nullptr;
+}
+
+void* IAllocatorImplWrappingOrtAllocator::AsyncAlloc(size_t size, Stream* stream) {
+  if (ort_allocator_->version >= kOrtAllocatorAsyncAllocMinVersion && ort_allocator_->AsyncAlloc) {
+    return ort_allocator_->AsyncAlloc(ort_allocator_.get(), size, static_cast<OrtSyncStream*>(stream));
+  }
+
   return ort_allocator_->Alloc(ort_allocator_.get(), size);
 }
 

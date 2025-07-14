@@ -29,8 +29,11 @@ limitations under the License.
 
 // TEMPORARY: this is in #25254
 struct OrtSyncNotification {};
-// TEMPORARY: this is in #25254
-using WaitNotificationFn = std::function<void(OrtSyncStream*, OrtSyncNotification&)>;
+// TEMPORARY: this is in #25254 but possibly we don't want/need that if we use WaitOnStreamFn.
+//   using WaitNotificationFn = std::function<void(OrtSyncStream*, OrtSyncNotification&)>;
+// as we can get the WaitOnDeviceImpl from ep_stream_support.h I'm not sure there's any reason why it would need
+// to be passed in to the alloc function. i.e. AsyncAlloc with a stream is all we need.
+using WaitOnStreamFn = std::function<void(OrtSyncStream*, OrtSyncStream*)>;
 
 namespace onnxruntime {
 namespace ep_utils {
@@ -43,20 +46,20 @@ enum ArenaExtendStrategy {
 
 // copied from onnxruntime::OrtArenaCfg so the values and config key names match
 struct ArenaConfig {
-  static OrtStatus* FromKeyValuePairs(const OrtKeyValuePairs& kvps, ArenaConfig& cfg);
-
   ArenaConfig(size_t max_mem = 0,
               ArenaExtendStrategy arena_extend_strategy = ArenaExtendStrategy::kDefault,
               int initial_chunk_size_bytes = -1,
               int max_dead_bytes_per_chunk = -1,
               int initial_growth_chunk_size_bytes = -1,
-              int64_t max_power_of_two_extend_bytes = -1)
+              int64_t max_power_of_two_extend_bytes = -1,
+              bool enable_stream_sharing = false)  // default this to false until fully validated
       : max_mem(max_mem),
         arena_extend_strategy(arena_extend_strategy),
         initial_chunk_size_bytes(initial_chunk_size_bytes),
         max_dead_bytes_per_chunk(max_dead_bytes_per_chunk),
         initial_growth_chunk_size_bytes(initial_growth_chunk_size_bytes),
-        max_power_of_two_extend_bytes(max_power_of_two_extend_bytes) {
+        max_power_of_two_extend_bytes(max_power_of_two_extend_bytes),
+        enable_stream_sharing(enable_stream_sharing) {
   }
 
   size_t max_mem;  // use 0 for default
@@ -65,6 +68,9 @@ struct ArenaConfig {
   int max_dead_bytes_per_chunk;           // use -1 for default
   int initial_growth_chunk_size_bytes;    // use -1 for default
   int64_t max_power_of_two_extend_bytes;  // use -1 for default
+
+  // NEW
+  bool enable_stream_sharing;
 
   bool IsValid() {
     return initial_chunk_size_bytes >= -1 &&
@@ -81,6 +87,9 @@ struct ArenaConfig {
     static constexpr const char* InitialGrowthChunkSizeBytes = "arena.initial_growth_chunk_size_bytes";
     static constexpr const char* MaxPowerOfTwoExtendBytes = "arena.max_power_of_two_extend_bytes";
     static constexpr const char* MaxMem = "arena.max_mem";
+
+    // enable usage of a chunk from another Stream. adds an event+wait to connect the streams.
+    static constexpr const char* EnableStreamSharing = "arena.enable_stream_sharing";
   };
 
   static ArenaConfig FromKeyValuePairs(const OrtApi& api, const OrtKeyValuePairs* kvps) {
@@ -98,14 +107,21 @@ struct ArenaConfig {
     if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxDeadBytesPerChunk); value) {
       config.max_dead_bytes_per_chunk = std::stoi(std::string(value));
     }
+
     if (value = api.GetKeyValue(kvps, ConfigKeyNames::InitialGrowthChunkSizeBytes); value) {
       config.initial_growth_chunk_size_bytes = std::stoi(std::string(value));
     }
+
     if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxPowerOfTwoExtendBytes); value) {
       config.max_power_of_two_extend_bytes = std::stoll(value);
     }
+
     if (value = api.GetKeyValue(kvps, ConfigKeyNames::MaxMem); value) {
       config.max_mem = static_cast<size_t>(std::stoull(std::string(value)));
+    }
+
+    if (value = api.GetKeyValue(kvps, ConfigKeyNames::EnableStreamSharing); value) {
+      config.enable_stream_sharing = std::string(value) == "1" ? true : false;
     }
   }
 };
@@ -167,8 +183,6 @@ struct AllocatorStats {
 
 // implementation to provide virtual methods that derived classes can override
 
-// class StreamAwareArena;
-
 // A memory allocator that implements a 'best-fit with coalescing' algorithm.
 // This is essentially a very simple version of Doug Lea's malloc (dlmalloc).
 //
@@ -184,19 +198,17 @@ class ArenaImpl {
   static const int64_t DEFAULT_MAX_POWER_OF_TWO_EXTEND_BYTES = 1024 * 1024 * 1024;  // 1GB
   static const size_t DEFAULT_MAX_MEM = std::numeric_limits<size_t>::max();
 
-  enum ArenaType {
-    BaseArena,
-    StreamAwareArena,
-  };
-
   ArenaImpl(std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
             const OrtApi& api, const OrtLogger& logger);
+
   ~ArenaImpl();
 
   // If size is 0, then this function returns either NULL,
   // or a unique pointer value that can later be successfully
   // passed to free(). Whatever, do not dereference that pointer
   void* Alloc(size_t size);
+
+  void* AsyncAlloc(size_t size, OrtSyncStream* stream);
 
   // If p is NULL, no operation is performed.
   void Free(void* p);
@@ -217,35 +229,17 @@ class ArenaImpl {
 
   size_t AllocatedSize(const void* ptr);
 
-  ArenaType GetArenaType() const {
-    return arena_type_;
-  }
-
- protected:
-  virtual void WaitOnChunk(OrtSyncStream* /*chunk_stream*/,
-                           OrtSyncStream* /*target_stream*/,
-                           WaitNotificationFn /*wait_fn*/) const {
-  }
-
-  void* AllocateRawInternal(size_t num_bytes,
-                            bool dump_log_on_failure,
-                            OrtSyncStream* stream,
-                            bool enable_cross_stream_reusing,
-                            WaitNotificationFn wait_fn);
+  // This should be called from OrtSyncStreamImpl::OnSessionRunEnd.
+  //
   // for any chunk that associated with target stream, reset it to default (nullptr in stream, timestamp 0)
   // perform coalesce if coalesce_flag is true
-  void ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coalesce_flag);
-
-  ArenaImpl(ArenaType type, std::unique_ptr<OrtAllocator> base_allocator, const ArenaConfig& config,
-            const OrtApi& api, const OrtLogger& logger)
-      : ArenaImpl(std::move(base_allocator), config, api, logger) {
-    arena_type_ = type;
-  }
+  void ResetChunksUsingStream(const OrtSyncStream* stream);
+  // was: void ResetChunkOnTargetStream(OrtSyncStream* target_stream, bool coalesce_flag);
 
  private:
+  void* AllocateRawInternal(size_t num_bytes, OrtSyncStream* stream,
+                            bool dump_log_on_failure);
   void DeallocateRawInternal(void* ptr);
-
-  ArenaType arena_type_;
 
   // A ChunkHandle is an index into the chunks_ vector in BFCAllocator
   // kInvalidChunkHandle means an invalid chunk
@@ -292,7 +286,8 @@ class ArenaImpl {
 
     OrtSyncStream* stream = nullptr;
 
-    uint64_t stream_timestamp = 0;
+    // ??? Do we need this?
+    // uint64_t stream_timestamp = 0;
 
     bool in_use() const { return allocation_id != -1; }
 
@@ -497,12 +492,7 @@ class ArenaImpl {
 
   // Returns an underlying allocated chunk of size
   // 'rounded_bytes'.
-  ArenaImpl::Chunk* FindChunkPtr(BinNum bin_num,
-                                 size_t rounded_bytes,
-                                 size_t num_bytes,
-                                 OrtSyncStream* stream,
-                                 bool allow_chunk_from_different_stream,
-                                 WaitNotificationFn wait_fn = nullptr);
+  ArenaImpl::Chunk* FindChunkPtr(BinNum bin_num, size_t rounded_bytes, size_t num_bytes, OrtSyncStream* stream);
 
   // Splits the chunk specified by 'h' into two chunks, one at least
   // of size 'num_bytes'.
@@ -553,7 +543,7 @@ class ArenaImpl {
   };
 
   // Computes and returns a BinDebugInfo for each Bin.
-  std::array<BinDebugInfo, kNumBins> get_bin_debug_info();
+  std::array<BinDebugInfo, kNumBins> GetBinDebugInfo();
 
   int Log2FloorNonZeroSlow(uint64_t n) {
     int r = 0;
@@ -617,8 +607,7 @@ class ArenaImpl {
   RegionManager region_manager_;
   size_t curr_region_allocation_bytes_;
 
-  // Counter containing the next unique identifier to assign to a
-  // newly-created chunk.
+  // Counter containing the next unique identifier to assign to a newly-created chunk.
   int64_t next_allocation_id_;
 
   std::vector<Chunk> chunks_;
@@ -627,6 +616,9 @@ class ArenaImpl {
 
   // This is only relevant if Shrink() is invoked.
   bool consider_first_allocation_region_for_shrinkage_;
+
+  // chunks being used by a stream
+  std::unordered_map<const OrtSyncStream*, std::set<ChunkHandle>> stream_to_chunks_;
 
   AllocatorStats stats_;
 
@@ -637,30 +629,6 @@ class ArenaImpl {
   ArenaImpl& operator=(const ArenaImpl&) = delete;
   ArenaImpl(ArenaImpl&&) = delete;
   ArenaImpl& operator=(ArenaImpl&&) = delete;
-};
-
-class StreamAwareArena : public ArenaImpl {
- public:
-  StreamAwareArena(std::unique_ptr<OrtAllocator> allocator, const ArenaConfig& config,
-                   bool enable_cross_stream_sharing,
-                   const OrtApi& api, const OrtLogger& logger);
-
-  void* AllocOnStream(size_t size, OrtSyncStream* current_stream_id, WaitNotificationFn wait_fn);
-
-  // this iterates every single chunk and removes the Stream from Chunk
-  // can't we instead do this in Free?
-  void ReleaseStreamBuffers(OrtSyncStream* stream);
-
-  static StreamAwareArena* FromArenaImpl(ArenaImpl& arena) {
-    return arena.GetArenaType() == ArenaType::StreamAwareArena ? reinterpret_cast<StreamAwareArena*>(&arena)
-                                                               : nullptr;
-  }
-
-  virtual void WaitOnChunk(OrtSyncStream* chunk_stream, OrtSyncStream* consumer_stream,
-                           WaitNotificationFn wait_fn) const override;
-
- private:
-  bool enable_cross_stream_usage_;
 };
 
 struct ArenaAllocator : OrtAllocator {
@@ -704,11 +672,18 @@ struct ArenaAllocator : OrtAllocator {
     Free = FreeImpl;
     Info = InfoImpl;
     GetStats = GetStatsImpl;
+
+    AsyncAlloc = AsyncAllocImpl;
   }
 
   static void* ORT_API_CALL AllocImpl(struct OrtAllocator* this_, size_t size) {
     auto& arena = *static_cast<ArenaAllocator*>(this_);
     return arena.impl_->Alloc(size);
+  }
+
+  static void* ORT_API_CALL AsyncAllocImpl(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream) {
+    auto& arena = *static_cast<ArenaAllocator*>(this_);
+    return arena.impl_->AsyncAlloc(size, stream);
   }
 
   static void* ORT_API_CALL ReserveImpl(struct OrtAllocator* this_, size_t size) {

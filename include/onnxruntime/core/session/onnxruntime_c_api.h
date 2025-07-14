@@ -322,6 +322,7 @@ ORT_RUNTIME_CLASS(ModelCompilationOptions);
 ORT_RUNTIME_CLASS(HardwareDevice);
 ORT_RUNTIME_CLASS(EpDevice);
 ORT_RUNTIME_CLASS(KeyValuePairs);
+ORT_RUNTIME_CLASS(SyncStream);  // #25254
 
 #ifdef _MSC_VER
 typedef _Return_type_success_(return == 0) OrtStatus* OrtStatusPtr;
@@ -372,6 +373,24 @@ typedef struct OrtAllocator {
    * NOTE: If the allocator does not implement this function, the OrtKeyValuePairs instance will be empty.
    */
   ORT_API2_STATUS(GetStats, _In_ const struct OrtAllocator* this_, _Outptr_ OrtKeyValuePairs** out);
+
+  // TODO: We need to figure out what this should support. The ORT 'StreamAwareArena' isn't overly sophisticated and
+  //       there's no actual usage of things like cudaMallocAsync. It's more about assigning a chunk to a stream and
+  //       adding a wait if a different stream wants to use it. But even that is a little suspicious as it doesn't
+  //       change the assigned stream after the wait. Because there's no async allocation we're potentially over
+  //       allocating. e.g. if there are multiple allocations to do, a release from an allocation may happen prior to
+  //       having to do the async allocation vs. synchronously doing all allocations upfront (IIRC the context was
+  //       pipelining parts of a diffusion model but need to double check the scenarios where that would matter).
+  //
+  //       We could try to enable support for async alloc/free without an arena but not sure if that is meaningful
+  //       as we have always used the arena for GPU allocations for performance reasons. Would async alloc/free
+  //       provide the same performance as having the arena? Perf testing would be needed to determine that.
+  //
+  //       If the EP implements their own arena directly none of this is our concern, provided the API enables
+  //       everything. Possibly the biggest issue is that our arena is tracking the allocation:stream pairing. Do we
+  //       need to have an AsyncFree where the stream is passed in by ORT? If so we'd need to add the stream to the
+  //       OrtValue.
+  void*(ORT_API_CALL* AsyncAlloc)(struct OrtAllocator* this_, size_t size, OrtSyncStream* stream);
 } OrtAllocator;
 
 typedef void(ORT_API_CALL* OrtLoggingFunction)(
