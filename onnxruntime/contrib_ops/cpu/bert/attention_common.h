@@ -54,9 +54,9 @@ enum AttentionKernelType {
 };
 
 enum class QKOutputType : int {
-  NO_OUTPUT = -1,
-  BEFORE_SOFTMAX = 0,
-  AFTER_SOFTMAX = 1
+  NO_OUTPUT = 0,
+  BEFORE_SOFTMAX = 1,
+  AFTER_SOFTMAX = 2
 };
 
 constexpr bool LAYOUT_BSNH = false;

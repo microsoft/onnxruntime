@@ -45,9 +45,9 @@ class Formats(Enum):
 
 
 class QKOutputType(Enum):
-    NO_OUTPUT = -1
-    BEFORE_SOFTMAX = 0
-    AFTER_SOFTMAX = 1
+    NO_OUTPUT = 0
+    BEFORE_SOFTMAX = 1
+    AFTER_SOFTMAX = 2
 
 
 @dataclass
@@ -373,7 +373,7 @@ def create_group_query_attention_graph_prompt(
             helper.make_tensor_value_info(
                 "output_qk",
                 ort_type,
-                [config.batch_size, config.num_heads, config.kv_sequence_length, present_kv_seqlen],
+                [config.batch_size, config.num_heads, config.kv_sequence_length, config.kv_sequence_length],
             ),
         ]
 
@@ -1442,7 +1442,7 @@ def parity_check_gqa_prompt(
             config.batch_size,
             config.num_heads,
             config.kv_sequence_length,
-            config.buffer_sequence_length,
+            config.q_sequence_length,
             device="cpu",
             dtype=torch_type,
             requires_grad=False,
@@ -1542,7 +1542,7 @@ def parity_check_gqa_prompt(
         out_qk_ref = out_qk_ref.detach().cpu().numpy()
 
         for batch_idx in range(config.batch_size):
-            total_seqlen = cache_seqlens[batch_idx] + 1
+            total_seqlen = cache_seqlens[batch_idx]
             assert numpy.allclose(
                 out_qk[batch_idx, :, :, :total_seqlen],
                 out_qk_ref[batch_idx, :, :, :total_seqlen],
@@ -1802,7 +1802,7 @@ def parity_check_gqa_prompt_no_buff(
         out_qk_ref = out_qk_ref.detach().cpu().numpy()
 
         for batch_idx in range(config.batch_size):
-            total_seqlen = cache_seqlens[batch_idx] + 1
+            total_seqlen = cache_seqlens[batch_idx]
             assert numpy.allclose(
                 out_qk[batch_idx, :, :, :total_seqlen],
                 out_qk_ref[batch_idx, :, :, :total_seqlen],

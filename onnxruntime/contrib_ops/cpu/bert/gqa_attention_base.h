@@ -69,6 +69,7 @@ class GQAAttentionBase {
     const bool is_prompt = parameters.is_first_prompt;
     const int batch_size = parameters.batch_size;
     const int sequence_length = parameters.sequence_length;
+    const int total_sequence_length = parameters.total_sequence_length;
     const int head_size = parameters.head_size;
     const int hidden_size = parameters.hidden_size;
     const bool packed_qkv = parameters.is_packed_qkv;
@@ -104,9 +105,9 @@ class GQAAttentionBase {
 
     if (gqa_mlas_supported) {
       ComputeAttentionProbs(static_cast<T*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
-                            batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
-                            head_size, past_key_data, present_key_data, output_qk_buffer, past_present_share_buffer,
-                            packed_qkv, is_prompt, tp, allocator);
+                            batch_size, sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
+                            seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
+                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -117,9 +118,9 @@ class GQAAttentionBase {
                               is_prompt, tp, allocator);
     } else {
       ComputeAttentionProbs(static_cast<float*>(attention_probs), Q, k, head_sink, seqlens_k->Data<int32_t>(), attention_bias_data,
-                            batch_size, sequence_length, attention_bias_shape, seqlen_past_kv_cache, seqlen_present_kv_cache,
-                            head_size, past_key_data, present_key_data, output_qk_buffer, past_present_share_buffer,
-                            packed_qkv, is_prompt, tp, allocator);
+                            batch_size, sequence_length, total_sequence_length, attention_bias_shape, seqlen_past_kv_cache,
+                            seqlen_present_kv_cache, head_size, past_key_data, present_key_data, output_qk_buffer,
+                            past_present_share_buffer, packed_qkv, is_prompt, tp, allocator);
 
       // Compute the attentionScore * Value: out(B, N, S, H_v) = attention_probs(B, N, S, T) x V(B, N, T, H_v)
       const T* v = packed_qkv ? Q + (num_heads_ + kv_num_heads_) * sequence_length * head_size : V;
@@ -147,6 +148,7 @@ class GQAAttentionBase {
                              const T* attention_bias,                              // optional attention bias
                              const size_t batch_size,                              // batch size of self-attention
                              const size_t sequence_length,                         // sequence length of self-attention (S)
+                             const size_t total_sequence_length,                   // total sequence length (T)
                              const gsl::span<const int64_t> attention_bias_shape,  // shape of the attention bias
                              const size_t past_buffer_sequence_length,             // sequence length of past state
                              const size_t present_buffer_sequence_length,          // sequence length of present state
@@ -207,7 +209,7 @@ class GQAAttentionBase {
         U* output = attention_probs + output_offset;
         T* output_qk_thread = nullptr;
         if (output_qk != nullptr) {
-          const ptrdiff_t output_qk_offset = SafeInt<ptrdiff_t>(sequence_length) * present_buffer_sequence_length * (batch_index * num_heads_ + head_index);
+          const ptrdiff_t output_qk_offset = SafeInt<ptrdiff_t>(sequence_length) * total_sequence_length * (batch_index * num_heads_ + head_index);
           output_qk_thread = output_qk + output_qk_offset;
         }
 
@@ -332,14 +334,8 @@ class GQAAttentionBase {
             }
           }
 
-          // Only write output for current token being processed
           if (qk_output_ == static_cast<int>(QKOutputType::BEFORE_SOFTMAX)) {
-            T* output_qk_thread_seq = nullptr;
-            if (output_qk_thread != nullptr) {
-              const ptrdiff_t qk_seq_offset = SafeInt<ptrdiff_t>(seq) * present_buffer_sequence_length;
-              output_qk_thread_seq = output_qk_thread + qk_seq_offset;
-            }
-            WriteOutputQKHeadChunk(output_qk_thread_seq, output_softmax, 1 /* sequence_length */, present_buffer_sequence_length);
+            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_sequence_length);
           }
 
           if (use_smooth_softmax_ || head_sink != nullptr) {
@@ -349,15 +345,19 @@ class GQAAttentionBase {
             ComputeAttentionSoftmaxInplace(output_softmax + start_offset, 1, static_cast<int>(window_size), nullptr);
           }
 
+          if (qk_output_ == static_cast<int>(QKOutputType::AFTER_SOFTMAX)) {
+            WriteOutputQKHeadChunk(output_qk_thread, output_softmax, total_sequence_length);
+          }
+
           output_softmax += present_buffer_sequence_length;
 
           if (attention_bias_thread != nullptr) {
             attention_bias_thread += attention_total_seqlen;
           }
-        }
 
-        if (qk_output_ == static_cast<int>(QKOutputType::AFTER_SOFTMAX)) {
-          WriteOutputQKHeadChunk(output_qk_thread, output, sequence_length, present_buffer_sequence_length);
+          if (output_qk_thread != nullptr) {
+            output_qk_thread += total_sequence_length;
+          }
         }
       }
     });
@@ -485,17 +485,16 @@ class GQAAttentionBase {
   }
 
   template <typename T, typename U>
-  void WriteOutputQKHeadChunk(T* output_qk, const U* attention_probs, size_t sequence_length, size_t seqlen_present_kv_cache) const {
+  void WriteOutputQKHeadChunk(T* output_qk, const U* attention_probs, size_t total_sequence_length) const {
     if (output_qk == nullptr) {
       return;
     }
 
-    const size_t head_elements_count = SafeInt<size_t>(sequence_length) * seqlen_present_kv_cache;
     if constexpr (std::is_same_v<U, T>) {
-      std::memcpy(output_qk, attention_probs, SafeInt<size_t>(head_elements_count) * sizeof(T));
+      std::memcpy(output_qk, attention_probs, SafeInt<size_t>(total_sequence_length) * sizeof(T));
     } else {
       static_assert(std::is_same_v<U, float> && std::is_same_v<T, MLFloat16>);
-      MlasConvertFloatToHalfBuffer(static_cast<const float*>(attention_probs), output_qk, head_elements_count);
+      MlasConvertFloatToHalfBuffer(static_cast<const float*>(attention_probs), output_qk, total_sequence_length);
     }
   }
 };
