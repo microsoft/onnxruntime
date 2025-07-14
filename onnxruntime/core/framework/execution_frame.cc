@@ -447,10 +447,27 @@ ExecutionFrame::ExecutionFrame(gsl::span<const int> feed_mlvalue_idxs, gsl::span
                 Stream* mem_pattern_stream = device_streams_->GetRootStream();
 
                 if (stream_aware_arena) {
-                  // ??? why do we do this. this buffer is allocated at the start of inferencing, so as long as we
-                  // use the same stream for the first step it should be fine.
-                  // I guess if you have parallel execution enabled multiple steps could run in parallel, but this
-                  // feels like a very heavy way to handle that if that is what we're doing.
+                  // this will increase the timestamp in the mem_pattern_stream every time WaitOnChunk is called
+                  // as well as updating the last sync time in all the other streams. that will mean that the
+                  // stream->timestamp would always be < the last sync time for all streams, and FindChunkPtr
+                  // would let any stream use the buffer in the future due to this check:
+                  //   chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream)
+                  //
+                  // we're not passing a wait function in to AllocOnStream, so there's no actual wait in the device
+                  // streams to synchronize anything.
+                  //
+                  // this buffer is allocated at the start of inferencing, so if we use the same stream for the first
+                  // step is any of this required?
+                  //
+                  // when using the mem_pattern_buffer we're not calling the allocator, so that's another aspect where
+                  // it's not clear why we need to do this. we would release the buffer at the end of the graph exec
+                  // which would reset the stream to nullptr and mark it as free. I don't think there's any point where
+                  // another stream would be attempting to use the buffer within an inference.
+                  //
+                  // the graph exec it per graph/subgraph so possibly you can have re-use for different subgraphs,
+                  // however we call device_stream_collection->CleanUp (which releases all the chunks the stream
+                  // was associated with) at the end of each exec so the chunk would not be associated with a stream
+                  // at the start of the next subgraph's execution.
                   buffer = stream_aware_arena->AllocOnStream(peak_size, mem_pattern_stream, nullptr);
                   for (size_t j = 0; j < device_streams_->NumStreams(); j++) {
                     stream_aware_arena->WaitOnChunk(mem_pattern_stream, device_streams_->GetStream(j), nullptr);

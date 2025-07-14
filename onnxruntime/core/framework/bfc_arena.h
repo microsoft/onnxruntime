@@ -104,8 +104,8 @@ class BFCArena : public IAllocator {
   ArenaType GetArenaType() const { return arena_type_; }
 
   virtual void WaitOnChunk(Stream* /*chunk_stream*/,
-                              Stream* /*target_stream*/,
-                              WaitNotificationFn /*wait_fn*/) const {}
+                           Stream* /*target_stream*/,
+                           WaitNotificationFn /*wait_fn*/) const {}
 
  protected:
   void* AllocateRawInternal(size_t num_bytes,
