@@ -970,7 +970,7 @@ def get_cpu_rotary_options():
 
 
 def get_softmax_options():
-    return [(False, False), (False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
+    return [(True, False)] if pipeline_mode else [(False, False), (False, True), (True, False)]
 
 
 def gqa_cuda_prompt_test_cases():

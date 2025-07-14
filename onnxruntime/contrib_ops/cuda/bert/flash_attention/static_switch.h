@@ -54,6 +54,16 @@
 #define SOFTCAP_SWITCH BOOL_SWITCH
 #endif
 
+#ifdef FLASHATTENTION_DISABLE_SINK
+#define SINK_SWITCH(COND, CONST_NAME, ...)    \
+  [&] {                                       \
+    constexpr static bool CONST_NAME = false; \
+    return __VA_ARGS__();                     \
+  }()
+#else
+#define SINK_SWITCH BOOL_SWITCH
+#endif
+
 #ifdef FLASHATTENTION_DISABLE_LOCAL
 #define LOCAL_SWITCH(COND, CONST_NAME, ...)   \
   [&] {                                       \

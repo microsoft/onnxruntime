@@ -65,23 +65,25 @@ void run_flash_fwd(Flash_fwd_params& params, cudaStream_t stream) {
       LOCAL_SWITCH((params.window_size_left >= 0 || params.window_size_right >= 0) && !Is_causal, Is_local, [&] {
         ALIBI_SWITCH(params.alibi_slopes_ptr != nullptr, Has_alibi, [&] {
           SOFTCAP_SWITCH(params.softcap > 0.0, Is_softcap, [&] {
-            // Will only return softmax if dropout, to reduce compilation time.
-            // If not IsEvenKConst, we also set IsEvenMNConst to false to reduce number of templates.
-            // If head dim > 128, set IsEvenMNConst to false to reduce number of templates
-            // If Is_local, set Is_causal to false
-            auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, Is_local && !Is_causal, Has_alibi, IsEvenMNConst && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, Is_softcap, false > ;
-            // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
-            if (smem_size >= 48 * 1024) {
-              cudaFuncSetAttribute(
-                  kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
-              // ORT_ENFORCE(cudaFuncSetAttribute(
-              //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
-            }
-            // int ctas_per_sm;
-            // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
-            //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
-            //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
-            kernel<<<grid, Kernel_traits::kNThreads, static_cast<int>(smem_size), stream>>>(params);
+            // SINK_SWITCH(params.head_sink_ptr != nullptr || params.smooth_softmax, Has_sink, [&] {
+              // Will only return softmax if dropout, to reduce compilation time.
+              // If not IsEvenKConst, we also set IsEvenMNConst to false to reduce number of templates.
+              // If head dim > 128, set IsEvenMNConst to false to reduce number of templates
+              // If Is_local, set Is_causal to false
+              auto kernel = &flash_fwd_kernel < Kernel_traits, Is_causal, Is_local && !Is_causal, Has_alibi, IsEvenMNConst && IsEvenKConst && !Is_local && Kernel_traits::kHeadDim <= 128, IsEvenKConst, Is_softcap, false > ;
+              // auto kernel = &flash_fwd_kernel<Kernel_traits, Is_causal, IsEvenMNConst, true, ReturnSoftmaxConst>;
+              if (smem_size >= 48 * 1024) {
+                cudaFuncSetAttribute(
+                    kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, static_cast<int>(smem_size));
+                // ORT_ENFORCE(cudaFuncSetAttribute(
+                //     kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, smem_size));
+              }
+              // int ctas_per_sm;
+              // cudaError status_ = cudaOccupancyMaxActiveBlocksPerMultiprocessor(
+              //     &ctas_per_sm, kernel, Kernel_traits::kNThreads, smem_size);
+              //  printf("smem_size = %d, CTAs per SM = %d\n", int(smem_size), ctas_per_sm);
+              kernel<<<grid, Kernel_traits::kNThreads, static_cast<int>(smem_size), stream>>>(params);
+            // });
           });
         });
       });
