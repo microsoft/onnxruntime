@@ -952,8 +952,11 @@ class Graph {  // NOLINT(clang-analyzer-optin.performance.Padding): preserve exi
     return const_cast<Graph*>(this)->GetNodeArg(name);
   }
 
-  // search this and up through any parent_graph_ instance for a NodeArg
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding mutable NodeArg
   NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name);
+
+  // Searches for a NodeArg in the current graph and its parent graphs, and returns the corresponding const NodeArg
+  const NodeArg* GetNodeArgIncludingParentGraphs(const std::string& node_arg_name) const;
 
   /** Gets a mutable NodeArg by name. Creates a new NodeArg that is owned by this Graph if not found.
   @param name The NodeArg name.

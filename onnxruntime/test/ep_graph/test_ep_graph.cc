@@ -7,12 +7,15 @@
 #include <gsl/gsl>
 #include <memory>
 #include <vector>
+#include <fstream>
 
 #include "core/common/common.h"
 #include "core/framework/tensorprotoutils.h"
 #include "core/framework/tensor_type_and_shape.h"
 #include "core/framework/onnxruntime_typeinfo.h"
 #include "core/session/onnxruntime_cxx_api.h"
+#include "core/graph/ep_api_types.h"
+#include "core/graph/graph_proto_serializer.h"
 
 #define ORT_EP_UTILS_ORT_GRAPH_TO_PROTO_IMPL
 #include "core/providers/utils/ort_graph_to_proto.h"
@@ -31,6 +34,7 @@ namespace test {
 // forward-declaration for utility that uses public C APIs to check that an OrtGraph is equivalent
 // to a graph represented by the internal ORT GraphViewer class.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph);
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph);
 
 //
 //  Tests
@@ -68,6 +72,16 @@ TEST(EpGraphTest, Check3LayerNestedSubgraph) {
   // Inside the then-branch of 'graph_0__if_0', there is a nested 'If' node: 'graph_0__if_0__else__if_0'
   // This 3-layer nested graph consumes the same initializer in different subgraphs.
   auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph.onnx"));
+  ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
+
+  CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
+}
+
+TEST(EpGraphTest, Check3LayerNestedSubgraphV2) {
+  // The overall structure of this model is similar to the one used in "Check3LayerNestedSubgraph" test.
+  // The model consists of a graph with subgraphs nested across three levels.
+  // In this scenario, a third-layer subgraph consumes an input from the first-layer graph (not an initializer).
+  auto test_graph = TestGraph::Load(ORT_TSTR("testdata/three_layer_nested_subgraph_v2.onnx"));
   ASSERT_NE(test_graph, nullptr) << "Failed to load test model";
 
   CheckGraphCApi(test_graph->GetGraphViewer(), test_graph->GetOrtGraph());
@@ -474,6 +488,48 @@ static void CheckValueInfosCApi(const GraphViewer& graph_viewer, gsl::span<const
   }
 }
 
+// Checks the Graph_GetSubgraph C API
+static void Check_Graph_GetSubgraph(const OrtGraph& api_graph) {
+  const OrtApi& ort_api = Ort::GetApi();
+
+  // Get all the nodes
+  size_t num_nodes = 0;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNumNodes(&api_graph, &num_nodes));
+
+  std::vector<const OrtNode*> nodes(num_nodes);
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetNodes(&api_graph, nodes.data(), nodes.size()));
+
+  // Select a half of nodes to create a OrtGraph
+  size_t num_selected_nodes = std::max((nodes.size() >> 1), (size_t)1);
+  std::vector<const OrtNode*> selected_nodes(num_selected_nodes);
+
+  for (size_t i = 0; i < num_selected_nodes; i++) {
+    selected_nodes[i] = nodes[i];
+  }
+
+  OrtGraph* sub_graph;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetGraphView(&api_graph, selected_nodes.data(), selected_nodes.size(), &sub_graph));
+
+  // Convert OrtGraph/GraphViewer to ModelProto and dump it to disk.
+  // If the GraphViewer associated with the OrtGraph somehow is incorrect, GraphViewerToProto() will throw.
+  const GraphViewer& sub_graph_viewer = EpGraph::ToInternal(sub_graph)->GetGraphViewer();
+  std::unique_ptr<Model> model = std::make_unique<Model>(sub_graph_viewer.Name(), true, sub_graph_viewer.GetGraph().GetLogger());
+  auto model_proto = std::make_unique<ONNX_NAMESPACE::ModelProto>(model->ToProto());
+  GraphViewerToProto(sub_graph_viewer, *model_proto->mutable_graph(), true, true, static_cast<ExecutionOrder>(1));
+  model_proto->set_ir_version(ONNX_NAMESPACE::Version::IR_VERSION);
+
+  const char* graph_name = nullptr;
+  ASSERT_ORTSTATUS_OK(ort_api.Graph_GetName(&api_graph, &graph_name));
+  std::string name = graph_name;
+  name += "_half.onnx";
+
+  // Dump the graph for debugging
+  // std::fstream dump(name, std::ios::out | std::ios::trunc | std::ios::binary);
+  // model_proto->SerializeToOstream(&dump);
+
+  ort_api.ReleaseGraph(sub_graph);
+}
+
 // Checks that the contents of the original GraphViewer matches the contents of the OrtGraph.
 // Uses the public C APIs to traverse the OrtGraph.
 static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_graph) {
@@ -682,6 +738,9 @@ static void CheckGraphCApi(const GraphViewer& graph_viewer, const OrtGraph& api_
       }
     }
   }
+
+  // Check creating an OrtGraph from a subset of nodes in an OrtGraph
+  Check_Graph_GetSubgraph(api_graph);
 }
 
 }  // namespace test

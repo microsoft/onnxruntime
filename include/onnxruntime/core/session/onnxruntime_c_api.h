@@ -5748,6 +5748,24 @@ struct OrtApi {
    */
   ORT_API2_STATUS(Graph_GetParentNode, _In_ const OrtGraph* graph, _Outptr_result_maybenull_ const OrtNode** node);
 
+  /** \brief Returns an OrtGraph that contains a subset of nodes in the source OrtGraph.
+   *
+   * Note:
+   * The lifetime of "dst_graph" is tied to that of "src_graph", as they both internally reference
+   * the same underlying graph.
+   *
+   * \param[in] src_graph The source OrtGraph instance.
+   * \param[in] nodes A subset of the nodes/OrtNodes in 'graph'.
+   * \param[in] num_nodes Number of nodes.
+   * \param[out] dst_sub_graph An OrtGraph created from a given set of nodes. Must be released by calling ReleaseGraph.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Graph_GetGraphView, _In_ const OrtGraph* src_graph, _In_ const OrtNode** nodes,
+                  _In_ size_t num_nodes, _Outptr_ OrtGraph** dst_graph);
+
   /// @}
 
   /// \name OrtNode
@@ -6007,6 +6025,19 @@ struct OrtApi {
    * \since Version 1.23.
    */
   ORT_API2_STATUS(Node_GetGraph, _In_ const OrtNode* node, _Outptr_result_maybenull_ const OrtGraph** graph);
+
+  /** \brief Returns the execution provider name that this node is assigned to run on.
+   *         Returns NULL if the node has not been assigned to any execution provider yet.
+   *         For plugin execution providers, the name is the one returned by OrtEp::GetName.
+   *
+   * \param[in] node The OrtNode instance.
+   * \param[out] out Output execution provider type and can be NULL if node has not been assigned.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(Node_GetEpName, _In_ const OrtNode* node, _Outptr_result_maybenull_ const char** out);
 
   /// @}
 
@@ -6856,6 +6887,24 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t flags);
+
+  /** Sets information related to EP context binary file.
+   *
+   * EP uses this information to decide the location and context binary file name.
+   * Used while compiling model with input and output in memory buffer
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] output_directory Null terminated string of the path (wchar on Windows, char otherwise).
+   * \param[in] model_name Null terminated string of the model name (wchar on Windows, char otherwise).
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextBinaryInformation,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ const ORTCHAR_T* output_directory,
+                  _In_ const ORTCHAR_T* model_name);
 };
 
 /*

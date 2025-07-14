@@ -139,7 +139,7 @@ const std::unordered_map<std::string_view, WebnnOpInfo> op_inputs_map = {
     {"Mul", {"mul", {{0, "a"}, {1, "b"}}}},
     {"Pow", {"pow", {{0, "a"}, {1, "b"}}}},
     {"Concat", {"concat", {{0, "inputs"}}}},
-    {"Not", {"logicalNot", {{0, "input"}}}},
+    {"Not", {"logicalNot", {{0, "a"}}}},
     {"Flatten", {"reshape", {{0, "input"}}}},
     {"LpPool", {"l2Pool2d", {{0, "input"}}}},
     {"Reshape", {"reshape", {{0, "input"}}}},
