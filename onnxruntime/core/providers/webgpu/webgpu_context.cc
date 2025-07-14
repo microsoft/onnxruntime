@@ -409,13 +409,13 @@ Status WebGpuContext::Run(ComputeContext& context, const ProgramBase& program) {
         variable_size = 8;
       }
     } else {
-      if (length > 4) {
+      if (length > 3) {
         variable_alignment = 16;
         variable_size = 16 * ((length + 3) / 4);
-      } else if (length > 3) {
+      } else if (length > 2) {
         variable_alignment = 16;
         variable_size = 12;
-      } else if (length > 2) {
+      } else if (length > 1) {
         variable_alignment = 8;
         variable_size = 8;
       }
