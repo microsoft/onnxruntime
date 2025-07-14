@@ -342,7 +342,7 @@ void BaseGroupQueryAttentionTypeAndShapeInference(ONNX_NAMESPACE::InferenceConte
 
       if (output_qk_index >= 0) {
         const bool did_supply_qk_buffer = ctx.hasOutput(output_qk_index);
-        const int64_t qk_output_type = getAttribute(ctx, "qk_output", -1);
+        const int64_t qk_output_type = getAttribute(ctx, "qk_output", 0);
 
         if (qk_output_type == 0 && did_supply_qk_buffer) {
           fail_shape_inference("Output QK buffer was provided but qk_output attribute was not configured");
