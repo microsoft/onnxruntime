@@ -40,6 +40,7 @@ struct WebGpuContextConfig {
   const void* dawn_proc_table;
   ValidationMode validation_mode;
   bool preserve_device;
+  bool use_low_power_device;
 };
 
 struct WebGpuBufferCacheConfig {
@@ -70,10 +71,13 @@ class WebGpuContextFactory {
  private:
   WebGpuContextFactory() {}
 
+  static wgpu::Instance GetLowPowerInstance();
+
   static std::unordered_map<int32_t, WebGpuContextInfo> contexts_;
   static std::mutex mutex_;
   static std::once_flag init_default_flag_;
   static wgpu::Instance default_instance_;
+  static wgpu::Instance low_power_instance_;
 };
 
 // Class WebGpuContext includes all necessary resources for the context.

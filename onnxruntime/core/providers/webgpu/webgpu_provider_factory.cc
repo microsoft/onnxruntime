@@ -41,7 +41,7 @@ std::shared_ptr<IExecutionProviderFactory> WebGpuProviderFactoryCreator::Create(
       DataLayout::NHWC,
       // graph capture feature is disabled by default
       false,
-      // enable pix capture feature is diabled by default
+      // enable pix capture feature is disabled by default
       false,
   };
 

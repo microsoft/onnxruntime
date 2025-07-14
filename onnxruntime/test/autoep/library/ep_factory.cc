@@ -236,7 +236,7 @@ OrtStatus* ORT_API_CALL ExampleEpFactory::CreateSyncStreamForDeviceImpl(OrtEpFac
   auto& factory = *static_cast<const ExampleEpFactory*>(this_ptr);
   *stream = nullptr;
 
-  // we only need stream synchronization on the device stream
+  // we should only ever be called for the default memory type
   if (factory.ep_api.MemoryDevice_GetMemoryType(memory_device) == OrtDeviceMemoryType_DEFAULT) {
     auto sync_stream = std::make_unique<StreamImpl>(factory, ep, stream_options);
     *stream = sync_stream.release();
