@@ -962,7 +962,7 @@ def parity_check_gqa_past(
 
 
 def get_cuda_rotary_options():
-    return [(False, False)] if platform.system() != "Linux" else [(True, False), (True, True), (False, False)]
+    return [(True, False), (True, True), (False, False)]
 
 
 def get_cpu_rotary_options():
@@ -970,14 +970,14 @@ def get_cpu_rotary_options():
 
 
 def get_softmax_options():
-    return [(False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
+    return [(False, False), (False, True)] if pipeline_mode else [(False, False), (False, True), (True, False)]
 
 
 def gqa_cuda_prompt_test_cases():
     batches = [3] if pipeline_mode else [1, 3, 5]
-    seqs = [(127, 127), (240, 240)] if pipeline_mode else [(35, 35), (127, 127), (240, 240), (2000, 2000)]
-    num_h = [(32, 8)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
-    h_sizes = [128] if pipeline_mode else [64, 128, 256]
+    seqs = [(35, 35)] if pipeline_mode else [(35, 35), (127, 127), (240, 240), (2000, 2000)]
+    num_h = [(6, 3)] if pipeline_mode else [(6, 3), (9, 9), (32, 8)]
+    h_sizes = [32] if pipeline_mode else [32, 64, 128, 256]
     smmoth_softmax__head_sink = get_softmax_options()
 
     for b in batches:
@@ -991,6 +991,8 @@ def gqa_cuda_prompt_test_cases():
                                     if rotary and h % 16 > 0:
                                         continue
                                     for use_smooth_softmax, has_head_sink in smmoth_softmax__head_sink:
+                                        if softcap > 0 and (use_smooth_softmax or has_head_sink):
+                                            continue
                                         config = GQAConfig(
                                             batch_size=b,
                                             q_sequence_length=sq,

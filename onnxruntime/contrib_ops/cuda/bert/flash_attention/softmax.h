@@ -84,37 +84,6 @@ __forceinline__ __device__ void scale_apply_exp2(Tensor<Engine0, Layout0>& tenso
   }
 }
 
-// Apply the exp to all the elements.
-template <bool zero_init = true, typename Engine0, typename Layout0, typename Engine1, typename Layout1>
-__forceinline__ __device__ void max_scale_exp2_sum(Tensor<Engine0, Layout0>& tensor, Tensor<Engine1, Layout1>& max, Tensor<Engine1, Layout1>& sum, const float scale) {
-  static_assert(Layout0::rank == 2, "Only support 2D Tensor");
-  static_assert(Layout1::rank == 1, "Only support 1D Tensor");
-  CUTE_STATIC_ASSERT_V(size<0>(max) == size<0>(tensor));
-#pragma unroll
-  for (int mi = 0; mi < size<0>(tensor); ++mi) {
-    MaxOp<float> max_op;
-    max(mi) = zero_init ? tensor(mi, 0) : max_op(max(mi), tensor(mi, 0));
-#pragma unroll
-    for (int ni = 1; ni < size<1>(tensor); ni++) {
-      max(mi) = max_op(max(mi), tensor(mi, ni));
-    }
-    max(mi) = Allreduce<4>::run(max(mi), max_op);
-    // If max is -inf, then all elements must have been -inf (possibly due to masking).
-    // We don't want (-inf - (-inf)) since that would give NaN.
-    const float max_scaled = max(mi) == -kInfinity ? 0.f : max(mi) * scale;
-    sum(mi) = 0;
-#pragma unroll
-    for (int ni = 0; ni < size<1>(tensor); ++ni) {
-      // Instead of computing exp(x - max), we compute exp2(x * log_2(e) -
-      // max * log_2(e)) This allows the compiler to use the ffma
-      // instruction instead of fadd and fmul separately.
-      tensor(mi, ni) = exp2f(tensor(mi, ni) * scale - max_scaled);
-      sum(mi) += tensor(mi, ni);
-    }
-    SumOp<float> sum_op;
-    sum(mi) = Allreduce<4>::run(sum(mi), sum_op);
-  }
-}
 
 ////////////////////////////////////////////////////////////////////////////////////////////////////
 
@@ -130,10 +99,39 @@ struct Softmax {
     // Reshape acc_s from (MMA=4, MMA_M, MMA_N) to (nrow=(2, MMA_M), ncol=(2, MMA_N))
     Tensor scores = make_tensor(acc_s.data(), flash::convert_layout_acc_rowcol(acc_s.layout()));
     static_assert(decltype(size<0>(scores))::value == kNRows);
+
+    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+      if (Is_first)
+        printf("Softmax first iteration:\n");
+      else
+        printf("Softmax subsequent iteration:\n");
+
+      printf("row_max values:\n");
+      for (int mi = 0; mi < size<0>(row_max); ++mi) {
+        printf("%f ", (float)row_max(mi));
+      }
+      printf("\n");
+
+      printf("row_sum values:\n");
+      for (int mi = 0; mi < size<0>(row_sum); ++mi) {
+        printf("%f ", (float)row_sum(mi));
+      }
+      printf("\n");
+
+      printf("scores values:\n");
+      for (int mi = 0; mi < size<0>(scores); ++mi) {
+        for (int ni = 0; ni < size<1>(scores); ++ni) {
+          printf("%f ", (float)scores(mi, ni));
+        }
+        printf("\n");
+      }
+      printf("\n");
+    }
+
+    const bool use_sink = (sink != -kInfinity);
     if (Is_first) {
       flash::template reduce_max</*zero_init=*/true>(scores, row_max);
 
-      const bool use_sink = (sink != -kInfinity);
       if (use_sink) {
 #pragma unroll
         for (int mi = 0; mi < size<0>(row_max); ++mi) {
@@ -144,23 +142,33 @@ struct Softmax {
       flash::scale_apply_exp2(scores, row_max, softmax_scale_log2);
       flash::reduce_sum</*zero_init=*/true>(scores, row_sum);
 
-      if (use_sink) {
-#pragma unroll
-        for (int mi = 0; mi < size<0>(row_sum); ++mi) {
-          row_sum(mi) += exp2f((sink - row_max(mi)) * softmax_scale_log2);
-        }
-      }
+//       if (use_sink) {
+// #pragma unroll
+//         for (int mi = 0; mi < size<0>(row_sum); ++mi) {
+//           float sink_exp = exp2f((sink - row_max(mi)) * softmax_scale_log2);
+//           row_sum(mi) += sink_exp;
+//         }
+//       }
     } else {
       Tensor scores_max_prev = make_fragment_like(row_max);
       cute::copy(row_max, scores_max_prev);
 
       flash::template reduce_max</*zero_init=*/false>(scores, row_max);
 
+      if (use_sink) {
+  #pragma unroll
+          for (int mi = 0; mi < size<0>(row_max); ++mi) {
+              row_max(mi) = max(row_max(mi), sink);
+          }
+      }
+
       Tensor acc_o_rowcol = make_tensor(acc_o.data(), flash::convert_layout_acc_rowcol(acc_o.layout()));
       static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);
 
+
 #pragma unroll
       for (int mi = 0; mi < size<0>(row_max); ++mi) {
+        // TODO: set Check_inf to false when there is sink.
         float scores_max_cur = !Check_inf
                                    ? row_max(mi)
                                    : (row_max(mi) == -kInfinity ? 0.0f : row_max(mi));
@@ -177,19 +185,60 @@ struct Softmax {
       // We don't do the reduce across threads here since we don't need to use the row_sum.
       // We do that reduce at the end when we need to normalize the softmax.
       flash::reduce_sum</*zero_init=*/false>(scores, row_sum);
+
+//       if (use_sink) {
+//         const float sink_scaled = sink * softmax_scale_log2;
+// #pragma unroll
+//         for (int mi = 0; mi < size<0>(row_sum); ++mi) {
+//           const float max_scaled = row_max(mi) == -kInfinity ? 0.f : row_max(mi) * softmax_scale_log2;
+//           float sink_exp = exp2f(sink_scaled - max_scaled);
+//           row_sum(mi) += sink_exp;
+//         }
+//       }
+    }
+
+    if (blockIdx.x == 0 && blockIdx.y == 0 && blockIdx.z == 0 && threadIdx.x == 0 && threadIdx.y == 0 && threadIdx.z == 0) {
+      printf("updated row_max values:\n");
+      for (int mi = 0; mi < size<0>(row_max); ++mi) {
+        printf("%f ", (float)row_max(mi));
+      }
+      printf("\n");
+
+      printf("updated row_sum values:\n");
+      for (int mi = 0; mi < size<0>(row_sum); ++mi) {
+        printf("%f ", (float)row_sum(mi));
+      }
+      printf("\n");
+
+      printf("updated scores values:\n");
+      for (int mi = 0; mi < size<0>(scores); ++mi) {
+        for (int ni = 0; ni < size<1>(scores); ++ni) {
+          printf("%f ", (float)scores(mi, ni));
+        }
+        printf("\n");
+      }
+      printf("\n");
     }
   }
 
   template <bool Split = false, typename Tensor0>
-  __forceinline__ __device__ TensorT normalize_softmax_lse(Tensor0& acc_o, float softmax_scale) {
+  __forceinline__ __device__ TensorT normalize_softmax_lse(Tensor0& acc_o, float softmax_scale, float sink) {
     SumOp<float> sum_op;
     quad_allreduce_(row_sum, row_sum, sum_op);
     TensorT lse = make_fragment_like(row_sum);
     Tensor acc_o_rowcol = make_tensor(acc_o.data(), flash::convert_layout_acc_rowcol(acc_o.layout()));
     static_assert(decltype(size<0>(acc_o_rowcol))::value == kNRows);
+
+    const bool use_sink = (sink != -kInfinity);
+
 #pragma unroll
     for (int mi = 0; mi < size<0>(acc_o_rowcol); ++mi) {
       float sum = row_sum(mi);
+
+      if (use_sink) {
+        sum += expf((sink -row_max(mi)) * softmax_scale);
+      }
+
       float inv_sum = (sum == 0.f || sum != sum) ? 1.f : 1.f / sum;
       lse(mi) = (sum == 0.f || sum != sum)
                     ? (Split ? -kInfinity : kInfinity)

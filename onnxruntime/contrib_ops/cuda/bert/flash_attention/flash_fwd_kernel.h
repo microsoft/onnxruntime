@@ -262,9 +262,17 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q,
                                                    params.window_size_left, params.window_size_right, alibi_slope);
 
-  const float sink = (params.head_sink_ptr != nullptr)
+  float sink = (params.head_sink_ptr != nullptr)
                          ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
-                         : (params.smooth_softmax ? 0.0f : -std::numeric_limits<float>::infinity());
+                         : (params.smooth_softmax ? 0.0f : -kInfinity);
+  // if (tidx == 0) printf("# bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+  if constexpr (Is_softcap) {
+      if (params.head_sink_ptr != nullptr) {
+        sink = cutlass::fast_tanh(sink * params.softcap);
+      }
+  }
+
+
 
   // For performance reason, we separate out two kinds of iterations:
   // those that need masking on S, and those that don't.
@@ -373,7 +381,7 @@ inline __device__ void compute_attn_1rowblock(const Params& params, const int bi
   }
 
   // Epilogue
-  Tensor lse = softmax.template normalize_softmax_lse<>(acc_o, params.scale_softmax);
+  Tensor lse = softmax.template normalize_softmax_lse<>(acc_o, params.scale_softmax, sink);
 
   // Convert acc_o from fp32 to fp16/bf16
   Tensor rO = flash::convert_type<Element>(acc_o);
@@ -782,9 +790,17 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
                                        : reinterpret_cast<float*>(params.alibi_slopes_ptr)[bidb * params.alibi_slopes_batch_stride + bidh] / params.scale_softmax;
   flash::Mask<Is_causal, Is_local, Has_alibi> mask(binfo.actual_seqlen_k, binfo.actual_seqlen_q, params.window_size_left, params.window_size_right, alibi_slope);
 
-  const float sink = (params.head_sink_ptr != nullptr)
+  float sink = (params.head_sink_ptr != nullptr)
                          ? reinterpret_cast<Element*>(params.head_sink_ptr)[bidh]
                          : (params.smooth_softmax ? 0.0f : -std::numeric_limits<float>::infinity());
+  // if (cute::thread0()) printf("## bidb = %d, bidh = %d, sink = %f, y=%d, z=%d\n", bidb, bidh, sink, blockIdx.y, blockIdx.z);
+
+  if constexpr (Is_softcap) {
+      if (params.head_sink_ptr != nullptr) {
+        sink = cutlass::fast_tanh(sink * params.softcap);
+      }
+  }
+
 
   // For performance reason, we separate out two kinds of iterations:
   // those that need masking on S, and those that don't.
@@ -935,8 +951,7 @@ inline __device__ void compute_attn_1rowblock_splitkv(const Params& params, cons
   }
 
   // Epilogue
-
-  Tensor lse = softmax.template normalize_softmax_lse<Split>(acc_o, params.scale_softmax);
+  Tensor lse = softmax.template normalize_softmax_lse<Split>(acc_o, params.scale_softmax, sink);
 
   Tensor sOaccum = make_tensor(make_smem_ptr(reinterpret_cast<ElementO*>(smem_)), typename Kernel_traits::SmemLayoutO{});  // (SMEM_M,SMEM_N)
   // Partition sO to match the accumulator partitioning
