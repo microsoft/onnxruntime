@@ -560,6 +560,27 @@ struct OrtEp {
   OrtStatus*(ORT_API_CALL* GetCompiledModelCompatibility)(_In_ OrtEp* this_ptr,
                                                           _In_ const OrtGraph* graph,
                                                           _Out_ OrtCompiledModelCompatibility* model_compatibility);
+
+  /** \brief Generate a string with details about the EP stack used to produce a compiled model.
+   *
+   * This function generates a compatibility information string that contains details about the execution provider
+   * used to compile a given model. This string can later be used with ValidateCompiledModelCompatibilityInfo
+   * to determine if a compiled model is compatible with the EP.
+   * 
+   * The returned string should be a null-terminated, UTF-8 encoded string. ORT will copy it.
+   *
+   * \param[in] this_ptr The OrtEp instance.
+   * \param[in] graph The OrtGraph instance for which to generate compatibility information.
+   * \param[in] model_metadata The OrtModelMetadata instance containing model metadata.
+   * \return the compatibility information string produced by the EP
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  const char*(ORT_API_CALL* GenerateCompiledModelCompatibilityInfoString)(_In_ OrtEp* this_ptr,
+                                                                          _In_ const OrtGraph* graph,
+                                                                          _In_ const OrtModelMetadata* model_metadata);
 };
 
 /** \brief The function signature that ORT will call to create OrtEpFactory instances.
@@ -709,6 +730,24 @@ struct OrtEpFactory {
    * \since Version 1.23.
    */
   const char*(ORT_API_CALL* GetVersion)(_In_ const OrtEpFactory* this_ptr);
+
+  /** \brief Validate the compatibility of a compiled model with the execution provider.
+   *
+   * This function validates if a model produced with the supplied compatibility info string is supported by the underlying EP.
+   * The EP should check if a compiled model is compatible with the EP and set the model_compatibility parameter accordingly.
+   *
+   * \param[in] this_ptr The OrtEpFactory instance.
+   * \param[in] compatibility_info The compatibility information string that will be used 
+   * \param[out] model_compatibility Output parameter set to the OrtCompiledModelCompatibility enum value that
+   *                                 describes the compatibility of the model with the EP.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  OrtStatus*(ORT_API_CALL* ValidateCompiledModelCompatibilityInfoString)(_In_ OrtEpFactory* this_ptr,
+                                                                         _In_ const char* compatibility_info,
+                                                                         _Out_ OrtCompiledModelCompatibility* model_compatibility);
 
   /** \brief Create an OrtAllocator for the given OrtMemoryInfo.
    *
