@@ -276,7 +276,7 @@ const OrtOpAttr* EpNode::GetAttribute(const std::string& name) const {
   }
 }
 
-const std::string& EpNode::GetEpType() const {
+const std::string& EpNode::GetEpName() const {
   return node_.GetExecutionProviderType();
 }
 
