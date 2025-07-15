@@ -16,7 +16,7 @@ enum AttentionMaskType {
 
 enum AttentionType {
   kInvalid = 0,               // Invalid attention type
-  kMultiHeadedAttention = 1,  // Multi-headed attention (MHA)
+  kMultiHeadAttention = 1,  // Multi-headed attention (MHA)
   kGroupQueryAttention = 2,   // Group query attention (GQA)
   kMultiQueryAttention = 3,   // Multi-query attention (MQA)
 };
