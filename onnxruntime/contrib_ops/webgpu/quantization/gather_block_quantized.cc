@@ -21,6 +21,8 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   const auto& scales = shader.AddInput("scales", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias | ShaderUsage::UseValueTypeAlias);
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseShapeAndStride | ShaderUsage::UseValueTypeAlias);
 
+  bool is_4bit = bits_ == 4;
+
   shader.MainFunctionBody()
       << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
       << "let output_indices = " << output.OffsetToIndices("global_idx") << ";\n";
@@ -52,12 +54,23 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
   const std::string unpack = (is_signed_) ? "unpack4xI8" : "unpack4xU8";
 
   shader.MainFunctionBody()
-      << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n"
-      << "  let data_index = data_offset % 8;\n"
-      << "  let packed_4bit_quantized_data = " << x.GetByOffset("data_offset / 8") << ";\n"
-      << "  let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
-      << "  let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
-      << "  var quantized_data = quantized_data_vec[data_index / 2];\n";
+      << "  let data_offset = " << x_shape.IndicesToOffset("data_indices") << ";\n";
+
+  if (is_4bit) {
+    shader.MainFunctionBody()
+        << "  let data_index = data_offset % 8;\n"
+        << "  let packed_4bit_quantized_data = " << x.GetByOffset("data_offset / 8") << ";\n"
+        << "  let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
+        << "  let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
+        << "  var quantized_data = quantized_data_vec[data_index / 2];\n";
+  } else {
+    shader.MainFunctionBody()
+        << "  let data_index = data_offset % 4;\n"
+        << "  let packed_8bit_quantized_data = " << x.GetByOffset("data_offset / 4") << ";\n"
+        << "  let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
+        << "  var quantized_data = quantized_data_vec[data_index];\n";
+  }
+
   if (is_signed_) {
     shader.MainFunctionBody()
         << "  if((quantized_data & 0x8) != 0) { quantized_data = quantized_data - 16 ;};\n";
@@ -69,19 +82,28 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
       << "  var scale = " << scales.GetByIndices("scale_indices") << ";\n";
 
   if (!has_zeropoint_) {
-    const std::string default_zero_point = is_uint8_ ? "input_element_t(8)" : "input_element_t(0)";
+    const std::string default_zero_point = is_uint8_ ? is_4bit ? "input_element_t(8)" : "input_element_t(128)" : "input_element_t(0)";
     shader.MainFunctionBody()
         << "  let zero_point = " << default_zero_point << ";\n";
   } else {
     const auto& zero_point = shader.AddInput("zero_point", ShaderUsage::None);
     shader.MainFunctionBody()
         << "  let zero_point_indices = scale_indices;\n"
-        << "  let zero_point_offset = " << scales.IndicesToOffset("zero_point_indices") << ";\n"
+        << "  let zero_point_offset = " << scales.IndicesToOffset("zero_point_indices") << ";\n";
+    if (is_4bit) {
+      shader.MainFunctionBody()
         << "  let zero_point_index = zero_point_offset % 8;\n"
         << "  let packed_4bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 8") << ";\n"
         << "  let packed_8bit_zero_points = (packed_4bit_zero_points >> (4 * (zero_point_index % 2))) & 0x0f0f0f0f;\n"
         << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
         << "  var zero_point = zero_point_vec[zero_point_index / 2];\n";
+    } else {
+      shader.MainFunctionBody()
+        << "  let zero_point_index = zero_point_offset % 4;\n"
+        << "  let packed_8bit_zero_points = " << zero_point.GetByOffset("zero_point_offset / 4") << ";\n"
+        << "  let zero_point_vec = " << unpack << "(u32(packed_8bit_zero_points));\n"
+        << "  var zero_point = zero_point_vec[zero_point_index];\n";
+    }
     if (is_signed_) {
       shader.MainFunctionBody()
           << "  if((zero_point & 0x8) != 0) { zero_point = zero_point - 16 ;};\n";
@@ -119,46 +141,46 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   int64_t x_size = x->Shape().Size();
   int x_rank = static_cast<int>(x->Shape().NumDimensions());
   int64_t x_dtype = x->GetElementType();
+  bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
+  bool is_int8 = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
 
-  std::optional<Tensor> data_representation_4bit;
-  std::optional<Tensor> zero_points_representation_4bit;
-
-  if (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8) {
+  if (bits_ == 4 && is_int8) {
+    std::optional<Tensor> data_representation_4bit;
+    std::optional<Tensor> zero_points_representation_4bit;
     TensorShape data_representation_4bit_shape{x->Shape()};
-    data_representation_4bit_shape[x_rank - 1] = data_representation_4bit_shape[x_rank - 1] * 2;
-    data_representation_4bit.emplace(
-        x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>(),
-        data_representation_4bit_shape,
-        const_cast<void*>(x->DataRaw()),
-        OrtMemoryInfo{
+    MLDataType new_dtype = (x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8) ?
+      DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>();
+    auto memory_info = OrtMemoryInfo{
             "WebGPU_Buffer",
             OrtDeviceAllocator,
-            OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}});
+            OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}};
+
+    data_representation_4bit_shape[x_rank - 1] = data_representation_4bit_shape[x_rank - 1] * 2;
+    data_representation_4bit.emplace(
+        new_dtype,
+        data_representation_4bit_shape,
+        const_cast<void*>(x->DataRaw()),
+        memory_info);
 
     if (zero_points) {
       TensorShape zero_points_representation_4bit_shape{zero_points->Shape()};
       zero_points_representation_4bit_shape[zero_points->Shape().NumDimensions() - 1] =
           zero_points_representation_4bit_shape[zero_points->Shape().NumDimensions() - 1] * 2;
       zero_points_representation_4bit.emplace(
-          x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8 ? DataTypeImpl::GetType<UInt4x2>() : DataTypeImpl::GetType<Int4x2>(),
+          new_dtype,
           zero_points_representation_4bit_shape,
           const_cast<void*>(zero_points->DataRaw()),
-          OrtMemoryInfo{
-              "WebGPU_Buffer",
-              OrtDeviceAllocator,
-              OrtDevice{OrtDevice::GPU, OrtDevice::MemType::DEFAULT, OrtDevice::VendorIds::NONE, 0}});
+          memory_info);
     }
+    x = data_representation_4bit.has_value() ? &data_representation_4bit.value() : x;
+    zero_points = zero_points_representation_4bit.has_value() ? &zero_points_representation_4bit.value() : zero_points;
   }
 
-  x = data_representation_4bit.has_value() ? &data_representation_4bit.value() : x;
   const auto& x_shape = x->Shape();
-  zero_points = zero_points_representation_4bit.has_value() ? &zero_points_representation_4bit.value() : zero_points;
 
   size_t indices_rank = indices->Shape().NumDimensions();
   const auto scales_shape = scales->Shape();
   size_t scales_rank = scales_shape.NumDimensions();
-  bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
-  bool is_uint8 = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_UINT8;
   int gather_axis = (gather_axis_ >= 0) ? gather_axis_ : gather_axis_ + x_rank;
   int quantize_axis = (quantize_axis_ >= 0) ? quantize_axis_ : quantize_axis_ + x_rank;
 
@@ -171,17 +193,14 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
                       "data and scales do not match shapes.");
   }
 
-  // if (is_uint8) {
-  //   x_shape[x_rank - 1] = x_shape[x_rank - 1] * 2;
-  // }
   TensorShape output_shape = splice(x_shape.AsShapeVector(), gather_axis, 1, indices->Shape().AsShapeVector());
   int64_t output_size = output_shape.Size();
   auto* output_tensor = context.Output(0, output_shape);
 
-  GatherBlockQuantizedProgram program{is_signed, is_uint8, indices_rank, gather_axis, zero_points != nullptr, x_shape, output_shape};
+  GatherBlockQuantizedProgram program{is_signed, is_int8, indices_rank, gather_axis, bits_, zero_points != nullptr, x_shape, output_shape};
 
   program
-      .AddInputs({{x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, 8}})
+      .AddInputs({{x, ProgramTensorMetadataDependency::Type, ProgramInput::Flatten, (bits_ == 4) ? 8 : 4}})
       .AddIndices(x_shape)
       .AddInputs({{indices, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddInputs({{scales, ProgramTensorMetadataDependency::TypeAndRank}})
@@ -197,7 +216,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
     ORT_RETURN_IF_NOT(scales_shape == zero_points->Shape(),
                       "scales and zero_points must have the same shape.");
     auto zero_points_shape = zero_points->Shape();
-    program.AddInputs({{zero_points, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, 8}});
+    program.AddInputs({{zero_points, ProgramTensorMetadataDependency::None, ProgramInput::Flatten, (bits_ == 4) ? 8 : 4}});
   }
 
   return context.RunProgram(program);

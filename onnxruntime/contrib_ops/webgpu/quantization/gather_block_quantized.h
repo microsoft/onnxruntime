@@ -15,12 +15,13 @@ using onnxruntime::webgpu::ComputeContext;
 
 class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedProgram> {
  public:
-  GatherBlockQuantizedProgram(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, bool has_zeropoint,
+  GatherBlockQuantizedProgram(const bool is_signed, const bool is_uint8, size_t indices_rank, int gather_axis, int bits, bool has_zeropoint,
                               TensorShape x_shape, TensorShape output_shape) : Program<GatherBlockQuantizedProgram>{"GatherBlockQuantized"},
                                                                                is_signed_{is_signed},
                                                                                is_uint8_{is_uint8},
                                                                                indices_rank_{indices_rank},
                                                                                gather_axis_{gather_axis},
+                                                                               bits_{bits},
                                                                                has_zeropoint_{has_zeropoint},
                                                                                x_shape_{x_shape},
                                                                                output_shape_{output_shape} {}
@@ -37,6 +38,7 @@ class GatherBlockQuantizedProgram final : public Program<GatherBlockQuantizedPro
   bool is_uint8_;
   size_t indices_rank_;
   int gather_axis_;
+  int bits_;
   bool has_zeropoint_;
   TensorShape x_shape_;
   TensorShape output_shape_;
