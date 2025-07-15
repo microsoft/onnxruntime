@@ -132,8 +132,6 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
   const auto* scales = context.Input(2);
   const auto* zero_points = context.Input(3);
 
-  // auto x_shape = x->Shape();
-  int64_t x_size = x->Shape().Size();
   int x_rank = static_cast<int>(x->Shape().NumDimensions());
   int64_t x_dtype = x->GetElementType();
   bool is_signed = x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT8 || x_dtype == ONNX_TENSOR_ELEMENT_DATA_TYPE_INT4;
@@ -201,7 +199,7 @@ Status GatherBlockQuantized::ComputeInternal(ComputeContext& context) const {
       .AddInputs({{scales, ProgramTensorMetadataDependency::TypeAndRank}})
       .AddOutput({output_tensor, ProgramTensorMetadataDependency::None})
       .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({{static_cast<uint32_t>(x_size)}})
+      .AddUniformVariables({{static_cast<uint32_t>(output_size)}})
       .AddUniformVariables({{static_cast<uint32_t>(quantize_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(gather_axis)}})
       .AddUniformVariables({{static_cast<uint32_t>(block_size_)}})
