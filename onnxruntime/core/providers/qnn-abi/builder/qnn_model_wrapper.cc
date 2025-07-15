@@ -348,7 +348,7 @@ bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
 //   auto iter = graph_initializers.find(initializer_name);
 //   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for zero-point(s): ",
 //                 initializer_name.c_str());
-//   gsl::not_null<const onnx::TensorProto*> zp_tensor_proto = iter->second;
+//   gsl::not_null<OrtValueInfo*> zp_tensor_proto = iter->second;
 
 //   ORT_RETURN_IF_NOT(zp_tensor_proto->has_data_type(), "Expected zero-point initializer ", initializer_name.c_str(),
 //                     " to have a proto data type.");
@@ -435,7 +435,7 @@ bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
 //   auto iter = graph_initializers.find(initializer_name);
 //   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
 //                 initializer_name.c_str());
-//   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+//   gsl::not_null<OrtValueInfo*> scale_tensor_proto = iter->second;
 
 //   ORT_RETURN_IF_NOT(scale_tensor_proto->has_data_type(), "Expected scale initializer ", initializer_name.c_str(),
 //                     " to have a proto data type.");
@@ -467,7 +467,7 @@ bool QnnModelWrapper::ComposeQnnGraph(bool build_json_qnn_graph) {
 //   auto iter = graph_initializers.find(scale_name);
 //   ORT_RETURN_IF(iter == graph_initializers.end(), "Unable to find initializer for scale(s): ",
 //                 scale_name.c_str());
-//   gsl::not_null<const onnx::TensorProto*> scale_tensor_proto = iter->second;
+//   gsl::not_null<OrtValueInfo*> scale_tensor_proto = iter->second;
 //   TensorShape scale_shape(qnn::utils::GetInitializerShape<int64_t>(*scale_tensor_proto));
 
 //   // Check the number of scale values to determine if the tensor is per-channel.
@@ -631,10 +631,10 @@ void QnnModelWrapper::GetGraphInputOutputTensorWrapper(const std::vector<std::st
   return;
 }
 
-// Status QnnModelWrapper::UnpackInitializerData(const ONNX_NAMESPACE::TensorProto& initializer,
+// Status QnnModelWrapper::UnpackInitializerData(OrtValueInfo& initializer,
 //                                               std::vector<uint8_t>& unpacked_tensor) const {
 //   if (initializer.data_location() == onnx::TensorProto_DataLocation_EXTERNAL) {
-//     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, graph_viewer_.ModelPath(),
+//     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, ort_graph_.ModelPath(),
 //                                                                   unpacked_tensor));
 //   } else {
 //     ORT_RETURN_IF_ERROR(onnxruntime::utils::UnpackInitializerData(initializer, unpacked_tensor));
