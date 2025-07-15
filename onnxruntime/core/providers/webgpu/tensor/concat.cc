@@ -38,33 +38,6 @@ WEBGPU_CONCAT_VERSIONED_KERNEL(4, 10)
 WEBGPU_CONCAT_VERSIONED_KERNEL(11, 12)
 WEBGPU_CONCAT_KERNEL(13)
 
-void AppendCalCulateInputIndexFunction(std::ostream& os, size_t input_count) {
-  os << "fn calculate_input_index(index: u32) -> u32 {\n"
-     << "  for (var i = 0u; i < " << input_count << "; i = i + 1u) {\n"
-     << "    if (index < " << GetElementAt("uniforms.size_in_concat_axis", "i", input_count) << ") {\n"
-     << "      return i;\n"
-     << "    }\n"
-     << "  }\n"
-     << "  return " << input_count << ";\n"
-     << "}\n";
-}
-
-void AppendAssignOutputDataFunction(std::ostream& os, gsl::span<const ShaderVariableHelper*> inputs, const ShaderVariableHelper& output) {
-  os << "fn assign_output_data(global_idx: u32, input_index: u32, indices: output_indices_t) {\n";
-  for (size_t i = 0; i < inputs.size(); ++i) {
-    if (i == 0) {
-      os << "  if (input_index == 0u) {\n";
-    } else if (i == inputs.size() - 1) {
-      os << "  } else {\n";
-    } else {
-      os << "  } else if (input_index == " << i << "u) {\n";
-    }
-    os << "     " << output.SetByOffset("global_idx", inputs[i]->GetByIndices("indices")) << ";\n";
-  }
-  os << "  }\n"
-        "}\n";
-}
-
 Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   size_t input_count = Inputs().size();
   std::vector<const ShaderVariableHelper*> inputs;
@@ -74,40 +47,25 @@ Status ConcatProgram::GenerateShaderCode(ShaderHelper& shader) const {
   }
   const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
 
-  // add implementation of fn calculate_input_index
-  AppendCalCulateInputIndexFunction(shader.AdditionalImplementation(), input_count);
-  // add implementation of fn assign_output_data
-  AppendAssignOutputDataFunction(shader.AdditionalImplementation(), inputs, output);
-  const std::string size_in_concat_axis = GetElementAt("uniforms.size_in_concat_axis", "input_index - 1", input_count);
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  var indices = " << output.OffsetToIndices("global_idx") << ";\n"
-                            << "  let indices_axis = " << output.IndicesGet("indices", axis_) << ";\n"
-                            << "  let input_index = calculate_input_index(indices_axis);\n"
-                            << "  if (input_index != 0u) {\n"
-                            << "    " << output.IndicesSet("indices", axis_, "indices_axis - " + size_in_concat_axis) << ";\n"
-                            << "  }\n"
-                               "  assign_output_data(global_idx, input_index, indices);\n";
-  return Status::OK();
-}
+  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size");
+  for (size_t i = 0; i < input_count; ++i) {
+    const std::string output_indices_i = absl::StrCat("output_indices_", i);
+    const std::string output_indices_i_axis = output_indices_i + (inputs[i]->Rank() > 1 ? "[" + std::to_string(axis_) + "]" : "");
+    const std::string concat_axis_offset = GetElementAt("uniforms.sizes_in_concat_axis", std::to_string(i), input_count);
 
-Status ConcatProgramSingle::GenerateShaderCode(ShaderHelper& shader) const {
-  const auto& input = shader.AddInput("input", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const auto& output = shader.AddOutput("output", ShaderUsage::UseUniform | ShaderUsage::UseIndicesTypeAlias);
-  const std::string output_indices_str = "output_indices" + (input.Rank() > 1 ? "[" + std::to_string(axis_) + "]" : "");
-
-  shader.MainFunctionBody() << shader.GuardAgainstOutOfBoundsWorkgroupSizes("uniforms.output_size")
-                            << "  var output_indices = " << input.OffsetToIndices("global_idx") << ";\n"
-                            << "  " << output_indices_str << " += uniforms.concat_axis_offset;\n"
-                            << "  " << output.SetByIndices("output_indices", input.GetByOffset("global_idx")) << "\n";
+    shader.MainFunctionBody() << "    var " << output_indices_i << " = " << inputs[i]->OffsetToIndices("global_idx") << ";\n"
+                              << "    " << output_indices_i_axis << " += " << concat_axis_offset << ";\n"
+                              << "    " << output.SetByIndices(output_indices_i, inputs[i]->GetByOffset("global_idx")) << "\n";
+  }
 
   return Status::OK();
 }
 
 Status Concat::ComputeInternal(ComputeContext& context) const {
-  int input_count = context.InputCount();
+  uint32_t input_count = context.InputCount();
   InlinedTensorsVector input_tensors;
   input_tensors.reserve(input_count);
-  for (int i = 0; i < input_count; ++i) {
+  for (uint32_t i = 0; i < input_count; ++i) {
     input_tensors.push_back(context.Input<Tensor>(i));
   }
 
@@ -117,55 +75,52 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     return Status::OK();
   }
 
-  uint32_t output_size = onnxruntime::narrow<int32_t>(prepare.output_tensor->Shape().Size());
+  uint32_t axis = static_cast<uint32_t>(prepare.axis);
+  uint32_t max_inputs_per_concat = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;
 
-  size_t axis = static_cast<size_t>(prepare.axis);
-  ConcatProgram program{axis};
+  uint32_t input_index = 0;
+  uint32_t cumulative_output_size = 0;
+  uint32_t cumulative_size_in_concat_axis = 0;
 
-  std::vector<uint32_t> sizes_in_concat_axis;
-  sizes_in_concat_axis.reserve(input_count);
-  uint32_t sum = 0;
-  for (int i = 0; i < input_count; ++i) {
-    const auto& input = prepare.inputs[i];
-    if (input.tensor->Shape().Size() == 0) {
-      continue;
-    }
-    program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
+  while (input_index < input_count) {
+    ConcatProgram program{axis};
+    uint32_t num_inputs_this_concat = std::min(max_inputs_per_concat, input_count - input_index);
 
-    auto axis_size = input.tensor->Shape()[axis];
-    sum += static_cast<uint32_t>(axis_size);
-    sizes_in_concat_axis.push_back(sum);
-  }
+    std::vector<uint32_t> sizes;
+    std::vector<uint32_t> sizes_in_concat_axis;
+    sizes.reserve(num_inputs_this_concat + 1);
+    sizes_in_concat_axis.reserve(num_inputs_this_concat + 1);
 
-  size_t non_empty_input_count = sizes_in_concat_axis.size();
+    // Start with the cumulative size from previous dispatches
+    sizes.push_back(cumulative_output_size);
+    sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
 
-  if (non_empty_input_count + 1 > context.DeviceLimits().maxStorageBuffersPerShaderStage) {
-    LOGS_DEFAULT(WARNING) << "Storage buffer limit exceeded for Concat. Running operation one input at a time.";
-    uint32_t concat_axis_offset = 0;
-    for (uint32_t input_index = 0; input_index < static_cast<uint32_t>(input_count); input_index++) {
-      const auto& input = prepare.inputs[input_index];
-      auto axis_size = input.tensor->Shape()[axis];
+    uint32_t dispatch_size = 0;
+    for (uint32_t i = 0; i < num_inputs_this_concat; i++) {
+      auto& input = prepare.inputs[input_index + i];
+      program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
 
-      ConcatProgramSingle pass_program{axis};
-      pass_program.CacheHint(absl::StrJoin(std::make_tuple(prepare.axis), ","))
-          .AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank})
-          .AddOutputs({prepare.output_tensor})
-          .SetDispatchGroupSize((input.tensor->Shape().Size() + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-          .AddUniformVariables({output_size, concat_axis_offset});
-      ORT_RETURN_IF_ERROR(context.RunProgram(pass_program));
+      uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size());
+      uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]);
 
-      concat_axis_offset += static_cast<uint32_t>(axis_size);
+      cumulative_output_size += size;
+      dispatch_size += size;
+      sizes.push_back(cumulative_output_size);
+
+      cumulative_size_in_concat_axis += axis_size;
+      sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
 
-    return Status::OK();
+    program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
+        .AddOutputs({prepare.output_tensor})
+        .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), dispatch_size});
+    ORT_RETURN_IF_ERROR(context.RunProgram(program));
+
+    input_index += num_inputs_this_concat;
   }
 
-  program.CacheHint(absl::StrJoin(std::make_tuple(non_empty_input_count, prepare.axis), ","))
-      .AddOutputs({prepare.output_tensor})
-      .SetDispatchGroupSize((prepare.output_num_elements + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-      .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()),
-                            output_size});
-  return context.RunProgram(program);
+  return Status::OK();
 }
 
 }  // namespace webgpu

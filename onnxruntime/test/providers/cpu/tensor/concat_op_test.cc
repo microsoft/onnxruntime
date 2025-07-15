@@ -73,6 +73,7 @@ TEST(ConcatOpTest, Concat1D_2) {
   test.Run(OpTester::ExpectResult::kExpectSuccess, "",
            {kTensorrtExecutionProvider,  // TensorRT: no support for dynamic shape tensor
             kNnapiExecutionProvider,     // NNAPI: concat does not support 0 size input
+            kWebGpuExecutionProvider,    // WebGPU: concat does not support 0 size input
             kQnnExecutionProvider});     // QNN: not support dynamic shape tensor
 }
 

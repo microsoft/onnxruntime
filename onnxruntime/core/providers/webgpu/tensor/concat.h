@@ -17,21 +17,7 @@ class ConcatProgram final : public Program<ConcatProgram> {
 
   Status GenerateShaderCode(ShaderHelper& sh) const override;
 
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"size_in_concat_axis", ProgramUniformVariableDataType::Uint32},
-                                          {"output_size", ProgramUniformVariableDataType::Uint32});
-
- private:
-  size_t axis_;
-};
-
-class ConcatProgramSingle final : public Program<ConcatProgramSingle> {
- public:
-  ConcatProgramSingle(size_t axis) : Program{"Concat"}, axis_{axis} {
-  }
-
-  Status GenerateShaderCode(ShaderHelper& sh) const override;
-
-  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"concat_axis_offset", ProgramUniformVariableDataType::Uint32},
+  WEBGPU_PROGRAM_DEFINE_UNIFORM_VARIABLES({"sizes_in_concat_axis", ProgramUniformVariableDataType::Uint32},
                                           {"output_size", ProgramUniformVariableDataType::Uint32});
 
  private:
