@@ -223,10 +223,10 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
 
     if (mask_index->IsDataType<bool>()) {
       // Convert bool mask to 0/1
-      make_copy(mask_data, mask_index->Data<bool>(), mask_index->Shape().Size());
+      make_copy(mask_data, mask_index->Data<bool>(), SafeInt<size_t>(mask_index->Shape().Size()));
     } else if (mask_index != nullptr) {
       // We make a copy because causal is True.
-      make_copy(mask_data, mask_index->Data<T>(), mask_index->Shape().Size());
+      make_copy(mask_data, mask_index->Data<T>(), SafeInt<size_t>(mask_index->Shape().Size()));
     }
     if (causal) {
       // This loop could be parallelized.
