@@ -91,7 +91,6 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     sizes.reserve(num_inputs_this_concat + 1);
     sizes_in_concat_axis.reserve(num_inputs_this_concat + 1);
 
-    // Start with the cumulative size from previous dispatches
     sizes.push_back(cumulative_output_size);
     sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
 

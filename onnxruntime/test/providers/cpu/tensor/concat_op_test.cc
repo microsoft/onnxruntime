@@ -459,16 +459,16 @@ TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis0) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{0});
 
-  test.AddInput<int32_t>("input1", {1, 2}, {1, 1});
-  test.AddInput<int32_t>("input2", {1, 2}, {2, 2});
-  test.AddInput<int32_t>("input3", {1, 2}, {3, 3});
-  test.AddInput<int32_t>("input4", {1, 2}, {4, 4});
-  test.AddInput<int32_t>("input5", {1, 2}, {5, 5});
-  test.AddInput<int32_t>("input6", {1, 2}, {6, 6});
-  test.AddInput<int32_t>("input7", {1, 2}, {7, 7});
-  test.AddInput<int32_t>("input8", {1, 2}, {8, 8});
-  test.AddInput<int32_t>("input9", {1, 2}, {9, 9});
-  test.AddOutput<int32_t>("concat_result", {9, 2}, {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
+  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
+  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
+  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
+  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
+  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
+  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
+  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
+  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
+  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
+  test.AddOutput<int32_t>("concat_result", {9, 2}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   test.Run();
 }
 
@@ -477,16 +477,16 @@ TEST(ConcatOpTest, Concat2D_exceed_maxStorageBuffersPerShaderStage_axis1) {
   OpTester test("Concat");
   test.AddAttribute("axis", int64_t{1});
 
-  test.AddInput<int32_t>("input1", {1, 2}, {1, 1});
-  test.AddInput<int32_t>("input2", {1, 2}, {2, 2});
-  test.AddInput<int32_t>("input3", {1, 2}, {3, 3});
-  test.AddInput<int32_t>("input4", {1, 2}, {4, 4});
-  test.AddInput<int32_t>("input5", {1, 2}, {5, 5});
-  test.AddInput<int32_t>("input6", {1, 2}, {6, 6});
-  test.AddInput<int32_t>("input7", {1, 2}, {7, 7});
-  test.AddInput<int32_t>("input8", {1, 2}, {8, 8});
-  test.AddInput<int32_t>("input9", {1, 2}, {9, 9});
-  test.AddOutput<int32_t>("concat_result", {1, 18}, {1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6, 7, 7, 8, 8, 9, 9});
+  test.AddInput<int32_t>("input1", {1, 2}, {1, 2});
+  test.AddInput<int32_t>("input2", {1, 2}, {3, 4});
+  test.AddInput<int32_t>("input3", {1, 2}, {5, 6});
+  test.AddInput<int32_t>("input4", {1, 2}, {7, 8});
+  test.AddInput<int32_t>("input5", {1, 2}, {9, 10});
+  test.AddInput<int32_t>("input6", {1, 2}, {11, 12});
+  test.AddInput<int32_t>("input7", {1, 2}, {13, 14});
+  test.AddInput<int32_t>("input8", {1, 2}, {15, 16});
+  test.AddInput<int32_t>("input9", {1, 2}, {17, 18});
+  test.AddOutput<int32_t>("concat_result", {1, 18}, {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18});
   test.Run();
 }
 
