@@ -9,6 +9,7 @@
 #include "core/platform/threadpool.h"
 #include "core/util/math.h"
 #include "core/util/math_cpuonly.h"
+#include "core/providers/cpu/math/gemm.h"
 
 using onnxruntime::attention_helper::AttentionMaskType;
 using onnxruntime::attention_helper::AttentionParameters;
@@ -192,8 +193,9 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
     // No mask = null mask.
     if (causal) {
       size_t mask_data_bytes = SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T);
-      mask_data = static_cast<T*>(allocator->Alloc(mask_data_bytes));
-      memset(mask_data, 0, mask_data_bytes);
+      void* allocated_ptr = allocator->Alloc(mask_data_bytes);
+      memset(allocated_ptr, 0, mask_data_bytes);
+      mask_data = static_cast<T*>(allocated_ptr);
       for (int s_i = 0; s_i < parameters.q_sequence_length; s_i++) {
         for (int m_i = parameters.past_sequence_length + s_i + 1; m_i < total_sequence_length; m_i++) {
           mask_data[s_i * total_sequence_length + m_i] = std::numeric_limits<T>::lowest();
@@ -291,11 +293,29 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
                                   beta,
                                   output, nullptr);
       } else if constexpr (std::is_same<T, MLFloat16>::value) {
-        MlasGemm(CblasNoTrans, CblasTrans, parameters.q_sequence_length, total_sequence_length, parameters.head_size,
-                 Q + q_input_chunk_length * i, static_cast<int>(parameters.head_size), k,
-                 static_cast<int>(parameters.head_size), output,
-                 static_cast<int>(parameters.past_sequence_length + parameters.kv_sequence_length),
-                 MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
+        if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
+          MlasGemm(CblasNoTrans, CblasTrans,
+                   parameters.q_sequence_length, total_sequence_length, parameters.head_size,  // M,N,K
+                   Q + q_input_chunk_length * i,
+                   static_cast<int>(parameters.head_size),  // lda
+                   k,
+                   static_cast<int>(parameters.head_size),  // ldb
+                   output,
+                   static_cast<int>(parameters.past_sequence_length + parameters.kv_sequence_length),  // ldc
+                   MLFloat16(alpha).val, MLFloat16(beta).val, nullptr);
+        } else {
+          TensorShape c_shape({parameters.q_sequence_length, total_sequence_length});
+          Gemm_MLFloat16(CblasNoTrans, CblasTrans,                                                                                                                           // 0, 1
+                         static_cast<ptrdiff_t>(parameters.q_sequence_length), static_cast<ptrdiff_t>(total_sequence_length), static_cast<ptrdiff_t>(parameters.head_size),  // M,N,K, 2, 3, 4
+                         MLFloat16(alpha),                                                                                                                                   // 5
+                         Q + q_input_chunk_length * i,                                                                                                                       // 6
+                         k,                                                                                                                                                  // 7
+                         MLFloat16(beta),                                                                                                                                    // 8
+                         output,                                                                                                                                             // 9
+                         &c_shape,                                                                                                                                           // 10
+                         output,                                                                                                                                             // 11
+                         nullptr);                                                                                                                                           // 12
+        }
       } else {
         ORT_THROW("Unsupported data type for attention Q*K multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
       }
