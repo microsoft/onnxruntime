@@ -507,8 +507,9 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
                                                      _In_ const void* buffer,
                                                      _In_ size_t buffer_num_bytes);
 
-/** \brief Function called by ORT to allow user to specify how an initializer should be saved, either
- * written to an external file or stored within the model.
+/** \brief Function called by ORT to allow user to specify how an initializer should be saved, that is, either
+ * written to an external file or stored within the model. ORT calls this function for every initializer when
+ * generating a model.
  *
  * If the function sets the `is_external` output parameter to false, ORT stores initializer data within the model.
  *
@@ -516,9 +517,18 @@ typedef OrtStatus*(ORT_API_CALL* OrtWriteBufferFunc)(_In_ void* state,
  * In this case, ORT configures the model's initializer to point to the location and offset returned from this function
  * via the `location` and `offset` output parameters.
  *
- * \param state Opaque pointer holding the user's state.
- * \param buffer The buffer to write.
- * \param buffer_num_bytes The size of the buffer in bytes.
+ * \param[in] state Opaque pointer holding the user's state.
+ * \param[in] initializer_name The initializer's name as a null-terminated string.
+ * \param[in] initializer_data Pointer to the initializer's raw data (contiguous).
+ * \param[in] initializer_num_bytes The size in bytes of the initializer's data.
+ * \param[in] initializer_type The type and shape information for the initializer.
+ * \param[out] is_external Output parameter set to true if the initializer data is to be stored externally.
+ *                         The function implemented is responsible for writing the initializer data to file.
+ *                         If set to false, ORT stores the initializers within the model.
+ * \param[out] location Output parameter set to the location (i.e., file path) into which the initializer data is stored
+ *                      by the function implementer. Ignored if `is_external` is set to false.
+ * \param[out] offset Output parameter set to the location offset into which the initializer data is stored
+ *                    by the function implementer. Ignored if `is_external` is set to false.
  *
  * \return OrtStatus* Write status. Return nullptr on success.
  *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
@@ -531,6 +541,23 @@ typedef OrtStatus*(ORT_API_CALL* OrtHandleInitializerDataFunc)(_In_ void* state,
                                                                _In_ const OrtTypeInfo* initializer_type,
                                                                _Out_ bool* is_external,
                                                                _Out_ const ORTCHAR_T** location, _Out_ int64_t* offset);
+
+/** \brief Function called by ORT to write a EPContext binary data to a custom destination (e.g., file, stream, etc.).
+ *
+ * \param state Opaque pointer holding the user's state.
+ * \param buffer The buffer to write.
+ * \param buffer_num_bytes The size of the buffer in bytes.
+ * \param[out] location Output parameter set to the location (i.e., file path) into which the data is stored
+ *                      by the function implementer.
+ *
+ * \return OrtStatus* Write status. Return nullptr on success.
+ *                    Use CreateStatus to provide error info. Use ORT_FAIL as the error code.
+ *                    ORT will release the OrtStatus* if not null.
+ */
+typedef OrtStatus*(ORT_API_CALL* OrtWriteEpContextDataFunc)(_In_ void* state,
+                                                            _In_ const void* buffer,
+                                                            _In_ size_t buffer_num_bytes,
+                                                            _Out_ const ORTCHAR_T** location);
 
 /** \brief Algorithm to use for cuDNN Convolution Op
  */
@@ -6895,6 +6922,59 @@ struct OrtCompileApi {
    */
   ORT_API2_STATUS(ModelCompilationOptions_SetFlags, _In_ OrtModelCompilationOptions* model_compile_options,
                   size_t flags);
+
+  /** \brief Sets a OrtWriteBufferFunc function that is called by ORT to write out the output model's serialized
+   * ONNX bytes.
+   *
+   * The provided write function may be called repeatedly until then entire output model has been written out. Each call
+   * to the write function is expected to consume the entire input buffer.
+   *
+   * The output model's destination (e.g., file path, memory buffer, or stream) can be set with any of the functions
+   * that begin with ModelCompilationOptions_SetOutputModel____.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] write_func The OrtWriteBufferFunc function called by ORT when writing out the model.
+   * \param[in] state Opaque state passed as the first argument to OrtWriteBufferFunc. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWriteBufferFunc write_func, _In_ void* state);
+
+  /** \brief Sets a OrtHandleInitializerDataFunc function that is called by ORT for every initializer in the generated
+   * model. Allows implementer to specify whether initializers should be stored within the model or externally.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] write_func The OrtHandleInitializerDataFunc function called by ORT when writing out an initializer.
+   * \param[in] state Opaque state passed as the first argument to OrtHandleInitializerDataFunc. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetOutputModelHandleInitializerFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtHandleInitializerDataFunc handle_initializer_func, _In_ void* state);
+
+  /** \brief Sets a OrtWriteEpContextDataFunc function that is called by an execution provider to write out an
+   * an EPContext node's binary data, which is usually stored in the attribute named `ep_cache_context`.
+   *
+   * \note Not compatible with embed mode set to true via ModelCompilationOptions_SetEpContextEmbedMode.
+   *
+   * \param[in] model_compile_options The OrtModelCompilationOptions instance.
+   * \param[in] write_func The OrtWriteEpContextDataFunc function called by an EP to write out an EPContext node's data.
+   * \param[in] state Opaque state passed as the first argument to OrtWriteEpContextDataFunc. Can be NULL.
+   *
+   * \snippet{doc} snippets.dox OrtStatus Return Value
+   *
+   * \since Version 1.23.
+   */
+  ORT_API2_STATUS(ModelCompilationOptions_SetEpContextDataWriteFunc,
+                  _In_ OrtModelCompilationOptions* model_compile_options,
+                  _In_ OrtWriteEpContextDataFunc write_func, _In_ void* state);
 };
 
 /*
