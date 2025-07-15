@@ -83,13 +83,17 @@ bool IsSubgroupMatrixConfigSupportedOnIntel(onnxruntime::webgpu::ComputeContext&
 // d30, d31, | d32, d33,
 //
 // The layout program rearranges the input matrix A to be in the following order:
-// d00, d01, d10, d11,
-// -------------------
-// d02, d03, d12, d13,
-// -------------------
-// d20, d21, d30, d31,
-// -------------------
-// d22, d23, d32, d33,
+// d00, d01,
+// d10, d11,
+// ---------
+// d02, d03,
+// d12, d13,
+// ---------
+// d20, d21,
+// d30, d31,
+// ---------
+// d22, d23,
+// d32, d33,
 class LayoutProgram final : public Program<LayoutProgram> {
  public:
   LayoutProgram(uint32_t m, uint32_t k, std::string_view component_type) : Program{"SubgroupMatrixMatMulLayout"},
@@ -206,12 +210,13 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
         let a_global_base = workgroup_id.y * tile_rows;
         let b_global_base = workgroup_id.x * tile_cols;
 
-        let subgroup_id =  u32(local_idx / sg_size);
-        let a_subtile_num_per_tensor_row = u32(uniforms.K / k_dim);
-        let a_subtile_num_per_tile_col = u32(tile_rows / m_dim);
-        let a_subtile_id = (workgroup_id.y * a_subtile_num_per_tile_col + subgroup_id) * a_subtile_num_per_tensor_row;
-        let a_subtile_size = m_dim * k_dim;
-        var matrix_a_offset = a_subtile_id * a_subtile_size;
+        let subtile_id =  u32(local_idx / sg_size);
+        let subtile_a_num_per_tensor_row = u32(uniforms.K / k_dim);
+        let subtile_a_num_per_tile_col = u32(tile_rows / m_dim);
+        let subtile_a_id = (workgroup_id.y * subtile_a_num_per_tile_col + subtile_id) * subtile_a_num_per_tensor_row;
+
+        let subtile_a_size = m_dim * k_dim;
+        var matrix_a_offset = subtile_a_id * subtile_a_size;
 
         var matC00: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
         var matC01: subgroup_matrix_result<result_component_type, n_dim, m_dim>;
@@ -227,7 +232,7 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
                 // Load A from global memory.
                 // Syntax: subgroupMatrixLoad src_ptr, src_offset, is_col_major, src_stride
                 var matA0: subgroup_matrix_left<component_type, k_dim, m_dim> = subgroupMatrixLoad<subgroup_matrix_left<component_type, k_dim, m_dim>>(&input_a, matrix_a_offset, false, k_dim);
-                matrix_a_offset += a_subtile_size;
+                matrix_a_offset += subtile_a_size;
 
                 // Load B from shared local memory.
                 // tile_B is stored as column major.
@@ -250,10 +255,10 @@ Status GenerateShaderCodeOnIntel(ShaderHelper& shader, uint32_t nbits, int32_t c
 
         // Write out
         let matrix_c_offset = (a_global_base) * uniforms.N + b_global_base;
-        subgroupMatrixStore(&output, matrix_c_offset + subgroup_id * m_dim * uniforms.N, matC00, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subgroup_id * m_dim * uniforms.N + n_dim, matC01, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subgroup_id * m_dim * uniforms.N + 2 * n_dim, matC02, false, uniforms.N);
-        subgroupMatrixStore(&output, matrix_c_offset + subgroup_id * m_dim * uniforms.N + 3 * n_dim, matC03, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N, matC00, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + n_dim, matC01, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 2 * n_dim, matC02, false, uniforms.N);
+        subgroupMatrixStore(&output, matrix_c_offset + subtile_id * m_dim * uniforms.N + 3 * n_dim, matC03, false, uniforms.N);
     )MAIN_FN";
 
   return Status::OK();
