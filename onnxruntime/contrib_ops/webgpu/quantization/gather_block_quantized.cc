@@ -58,6 +58,10 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  let packed_8bit_quantized_data = (packed_4bit_quantized_data >> (4 * (data_index % 2))) & 0x0f0f0f0f;\n"
         << "  let quantized_data_vec = " << unpack << "(u32(packed_8bit_quantized_data));\n"
         << "  var quantized_data = quantized_data_vec[data_index / 2];\n";
+    if (is_signed_) {
+      shader.MainFunctionBody()
+          << "  if((quantized_data & 0x8) != 0) { quantized_data = quantized_data - 16 ;};\n";
+    }
   } else {
     shader.MainFunctionBody()
         << "  let data_index = data_offset % 4;\n"
@@ -66,10 +70,6 @@ Status GatherBlockQuantizedProgram::GenerateShaderCode(ShaderHelper& shader) con
         << "  var quantized_data = quantized_data_vec[data_index];\n";
   }
 
-  if (is_signed_) {
-    shader.MainFunctionBody()
-        << "  if((quantized_data & 0x8) != 0) { quantized_data = quantized_data - 16 ;};\n";
-  }
   shader.MainFunctionBody()
       << "  var scale_indices = data_indices;\n"
       << "  let quantize_axis_index = " << scales.IndicesGet("data_indices", "uniforms.quantize_axis") << "/ uniforms.block_size;\n  "
