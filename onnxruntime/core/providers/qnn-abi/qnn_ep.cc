@@ -8,6 +8,7 @@
 // #include "core/providers/qnn-abi/shared_context.h"
 #include "core/providers/qnn-abi/builder/qnn_backend_manager.h"
 // #include "core/providers/qnn-abi/builder/qnn_utils.h"
+#include "core/providers/qnn-abi/qnn_ep_utils.h"
 #include <unordered_map>
 #include <vector>
 #include <memory>
@@ -580,15 +581,15 @@ OrtStatus* ORT_API_CALL QnnEp::GetCapabilityImpl(OrtEp* this_ptr,
   const void* const* node_data = nullptr;
   RETURN_IF_ERROR(ep->ort_api.ArrayOfConstObjects_GetData(graph_nodes, &node_data));
 
-//   // Get QDQ node units for the ABI layer
-//   std::vector<std::unique_ptr<onnxruntime::NodeUnit>> node_unit_holder;
-//   std::unordered_map<const OrtNode*, const onnxruntime::NodeUnit*> node_unit_map;
+  // Get node units for the ABI layer
+  std::vector<std::unique_ptr<OrtNode>> node_unit_holder;
+  std::unordered_map<const OrtNode*, const OrtNode*> node_unit_map;
 
-//   std::tie(node_unit_holder, node_unit_map) = GetQDQNodeUnits(graph, logger);
+  std::tie(node_unit_holder, node_unit_map) = GetAllNodeUnits(this_ptr, graph, logger);
 
   // Analyze nodes for QNN support
-//   std::vector<const OrtNode*> supported_nodes = GetSupportedNodes(graph, node_unit_map, node_unit_holder.size(), logger);
-
+//   std::vector<const OrtNode*> supported_nodes = GetSupportedNodes(this_ptr, graph, node_unit_map, node_unit_holder.size(), logger);
+    std::vector<const OrtNode*> supported_nodes ;
     // Clean up intermediate resources
     ep->ort_api.ReleaseArrayOfConstObjects(graph_inputs);
     ep->ort_api.ReleaseArrayOfConstObjects(graph_outputs);
