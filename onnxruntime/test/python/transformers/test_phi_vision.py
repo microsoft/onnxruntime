@@ -270,8 +270,8 @@ class TestFusion(unittest.TestCase):
 
         batch, seq_len, dim = 1, 2, 20
         mask = torch.zeros(batch, 1, seq_len, seq_len)
-        mask[:, 1:] = float('-inf')
- 
+        mask[:, 1:] = float("-inf")
+
         inputs = (torch.randn(batch, seq_len, dim), mask)
         self.export(model, inputs)
         original_model = onnx.load(os.path.join(os.path.dirname(__file__), "export.onnx"))
