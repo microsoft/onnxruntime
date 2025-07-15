@@ -89,20 +89,6 @@ uint64_t GetLuidKey(LUID luid) {
   return (uint64_t(luid.HighPart) << 32) | luid.LowPart;
 }
 
-// Converts a wide string (up to 4 characters) representing a hardware ID component (e.g., "ABCD" from "VEN_ABCD")
-// into a uint32_t. The conversion is done in a little-endian manner, meaning the first character
-// of the string becomes the least significant byte of the integer, and the fourth character
-// becomes the most significant byte.
-uint32_t WStringToUint32Id(const std::wstring& vendor_name) {
-  uint32_t vendor_id = 0;
-  for (size_t i = 0; i < 4 && i < vendor_name.size(); ++i) {
-    // For little-endian, place each character at the appropriate byte position
-    // First character goes into lowest byte, last character into highest byte
-    vendor_id |= static_cast<unsigned char>(vendor_name[i] & 0xFF) << (i * 8);
-  }
-  return vendor_id;
-}
-
 // returns info for display and processor entries. key is (vendor_id << 32 | device_id)
 // npus: (vendor_id << 32 | device_id) for devices we think are NPUs from DXCORE
 std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unordered_set<uint64_t>& npus) {
@@ -151,8 +137,7 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoSetupApi(const std::unorde
           if (auto idx = hardware_id.find(prefix); idx != std::wstring::npos) {
             auto id = hardware_id.substr(idx + prefix.size(), 4);
             if (id.size() == 4) {
-              // DXCore reports vendor and device IDs as 32-bit integer representations of the ASCII string.
-              return WStringToUint32Id(id);
+              return static_cast<uint32_t>(std::stoul(id, nullptr, 16));
             }
           }
 
@@ -324,6 +309,12 @@ std::unordered_map<uint64_t, DeviceInfo> GetDeviceInfoD3D12() {
     if ((desc.Flags & DXGI_ADAPTER_FLAG_SOFTWARE) != 0 ||
         (desc.Flags & DXGI_ADAPTER_FLAG_REMOTE) != 0) {
       // software or remote. skip
+      continue;
+    }
+
+    ComPtr<IDXGIOutput> output;
+    if (adapter->EnumOutputs(0, &output) == DXGI_ERROR_NOT_FOUND) {
+      // D3D_DRIVER_TYPE_WARP. Software based. Most likely Microsoft Remote Display Adapter so we skip
       continue;
     }
 
