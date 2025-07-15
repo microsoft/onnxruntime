@@ -266,23 +266,13 @@ function(setup_mlas_source_for_windows)
 endfunction()
 
 function(setup_kleidiai)
-  # Top level src directory doesn't always start from top level, so need to check
-  if(EXISTS "${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
-    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/kleidiai")
-  elseif(EXISTS "${MLAS_SRC_DIR}/../kleidiai/sgemm_kleidiai.cpp")
-    set(KLEIDIAI_SRC_DIR "${MLAS_SRC_DIR}/../kleidiai")
-  else()
-    message(FATAL_ERROR "Cannot find ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp")
-  endif()
-
   target_sources(onnxruntime_mlas PRIVATE
     ${MLAS_SRC_DIR}/kai_ukernel_interface.cpp
-    ${KLEIDIAI_SRC_DIR}/sgemm_kleidiai.cpp
-    ${KLEIDIAI_SRC_DIR}/convolve_kleidiai.cpp
-    ${KLEIDIAI_SRC_DIR}/qgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/sgemm_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/convolve_kleidiai.cpp
+    ${MLAS_SRC_DIR}/kleidiai/qgemm_kleidiai.cpp
   )
   target_link_libraries(onnxruntime_mlas PRIVATE kleidiai)
-
   list(APPEND onnxruntime_EXTERNAL_LIBRARIES kleidiai)
   set(onnxruntime_EXTERNAL_LIBRARIES ${onnxruntime_EXTERNAL_LIBRARIES} PARENT_SCOPE)
 
@@ -292,20 +282,6 @@ function(setup_kleidiai)
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
     FRAMEWORK DESTINATION ${CMAKE_INSTALL_BINDIR})
-  endif()
-
-  if(MSVC)
-    set(KLEIDIAI_LIB "${CMAKE_BINARY_DIR}/_deps/kleidiai-build/${CMAKE_BUILD_TYPE}/kleidiai.lib")
-
-    if(EXISTS "${KLEIDIAI_LIB}")
-      message(STATUS "Linking KleidiAI static library for MSVC: ${KLEIDIAI_LIB}")
-      message(STATUS "CMAKE_BINARY_DIR: ${CMAKE_BINARY_DIR}")
-      message(STATUS "CMAKE_BUILD_TYPE: ${CMAKE_BUILD_TYPE}")
-      message(STATUS "Expected KleidiAI .lib path: ${KLEIDIAI_LIB}")
-      target_link_libraries(onnxruntime_mlas PRIVATE "${KLEIDIAI_LIB}")
-    else()
-      message(FATAL_ERROR "Expected KleidiAI .lib not found: ${KLEIDIAI_LIB}")
-    endif()
   endif()
 endfunction()
 

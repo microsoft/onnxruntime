@@ -652,17 +652,24 @@ else()
   endif()
 endif()
 
-if (onnxruntime_USE_KLEIDIAI AND NOT MSVC AND (
-    (onnxruntime_target_platform STREQUAL "aarch64") OR
-    (onnxruntime_target_platform STREQUAL "ARM64") OR
-    (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
-  check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
-  check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
-  if (NOT HAS_ARM64_DOTPROD)
-    message(FATAL_ERROR  "The compiler doesn't support dotprod")
-  endif()
-  if (NOT HAS_ARM64_I8MM)
-    message(FATAL_ERROR  "The compiler doesn't support i8mm")
+if (onnxruntime_USE_KLEIDIAI AND (
+      (onnxruntime_target_platform STREQUAL "aarch64") OR
+      (onnxruntime_target_platform STREQUAL "ARM64") OR
+      (APPLE AND CMAKE_SYSTEM_PROCESSOR STREQUAL "arm64")))
+
+  if(NOT MSVC)
+    check_cxx_compiler_flag(-march=armv8.2-a+dotprod HAS_ARM64_DOTPROD)
+    check_cxx_compiler_flag(-march=armv8.2-a+i8mm HAS_ARM64_I8MM)
+    if (NOT HAS_ARM64_DOTPROD)
+      message(FATAL_ERROR "The compiler doesn't support dotprod")
+    endif()
+    if (NOT HAS_ARM64_I8MM)
+      message(FATAL_ERROR "The compiler doesn't support i8mm")
+    endif()
+  else()
+    message(STATUS "Skipping -march= checks on MSVC (not supported), assuming dotprod/i8mm support manually.")
+    set(HAS_ARM64_DOTPROD TRUE)
+    set(HAS_ARM64_I8MM TRUE)
   endif()
 endif()
 
