@@ -48,11 +48,11 @@ std::string GetElementAt(std::string_view var, const TIdx& idx, TRank rank, bool
         } else {
           return MakeStringWithClassicLocale(var, "[(", idx, ") / 4][(", idx, ") % 4]");
         }
-      } else {
-        return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
       }
     }
   }
+
+  return rank > 1 ? MakeStringWithClassicLocale(var, "[", idx, "]") : std::string{var};
 }
 
 struct ShaderUsage {
