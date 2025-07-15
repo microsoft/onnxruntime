@@ -89,7 +89,7 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
     sizes_in_concat_axis.reserve(num_inputs_this_concat);
     sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
 
-    uint32_t dispatch_size = 0;
+    uint32_t output_size = 0;
     for (uint32_t i = 0; i < num_inputs_this_concat - 1; i++) {
       auto& input = prepare.inputs[input_index + i];
       program.AddInput({input.tensor, ProgramTensorMetadataDependency::TypeAndRank});
@@ -97,15 +97,15 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size());
       uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]);
 
-      dispatch_size += size;
+      output_size += size;
       cumulative_size_in_concat_axis += axis_size;
       sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
 
     program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
         .AddOutputs({prepare.output_tensor})
-        .SetDispatchGroupSize((dispatch_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
-        .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), dispatch_size});
+        .SetDispatchGroupSize((output_size + WORKGROUP_SIZE - 1) / WORKGROUP_SIZE)
+        .AddUniformVariables({gsl::span<const uint32_t>(sizes_in_concat_axis.data(), sizes_in_concat_axis.size()), output_size});
     ORT_RETURN_IF_ERROR(context.RunProgram(program));
 
     input_index += num_inputs_this_concat;
