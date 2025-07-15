@@ -61,8 +61,20 @@ void make_copy<MLFloat16, bool>(MLFloat16* mask_data, const bool* mask_index, si
 }
 
 template <typename T>
-inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp) {
+inline void ComputeAttentionSoftmaxInplace(T* score, int N, int D, ThreadPool* tp, AllocatorPtr) {
   MlasComputeSoftmax(score, score, N, D, false, false, 0.0f, tp);
+}
+
+template <>
+inline void ComputeAttentionSoftmaxInplace<MLFloat16>(MLFloat16* score, int N, int D, ThreadPool* tp, AllocatorPtr allocator) {
+  ORT_ENFORCE(tp == nullptr, "No parallelized version of softmax for float16.");
+  // Mlas Lacks kernels for fp16 softmax, we convert into float32 and call the float32 version.
+  void* allocated_ptr = allocator->Alloc(static_cast<size_t>(N * D * sizeof(float)));
+  BufferUniquePtr float_buffer(allocated_ptr, BufferDeleter(allocator));
+  float* ptr = reinterpret_cast<float*>(allocated_ptr);
+  MlasConvertHalfToFloatBuffer(score, ptr, N * D);
+  MlasComputeSoftmax(ptr, ptr, N, D, false, false, 0.0f, tp);
+  MlasConvertFloatToHalfBuffer(ptr, score, N * D);
 }
 
 template <typename T>
@@ -341,17 +353,15 @@ void AttentionBase<T>::ComputeAttentionProbs(T* attention_probs,                
       if (out_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftCap) {
         memcpy(out_qk, output, SafeInt<size_t>(probs_matrix_size) * sizeof(T));
       }
+      ComputeAttentionSoftmaxInplace(output, parameters.q_sequence_length, total_sequence_length, nullptr, allocator);
+
+      if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
+        memcpy(output_qk + output_offset, output, SafeInt<size_t>(parameters.q_sequence_length) * total_sequence_length * sizeof(T));
+      }
     }
   });
   if (delete_mask_data) {
     allocator->Free(mask_data);
-  }
-  const int N = parameters.batch_size * parameters.q_num_heads * parameters.q_sequence_length;
-  const int D = total_sequence_length;
-  ComputeAttentionSoftmaxInplace(attention_probs, N, D, tp);
-
-  if (output_qk != nullptr && parameters.qk_matmul_output_mode == attention_helper::QKMatMulOutputMode::kQKSoftMax) {
-    memcpy(output_qk, attention_probs, SafeInt<size_t>(parameters.batch_size) * parameters.q_num_heads * parameters.q_sequence_length * total_sequence_length * sizeof(T));
   }
 }
 
@@ -450,17 +460,30 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
               math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
                               attention_probs + attention_probs_offset, v, current_tmp_data, nullptr);
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
-              MlasGemm(CblasNoTrans, CblasNoTrans,
-                       sequence_length,        // M
-                       v_head_size,            // N
-                       total_sequence_length,  // K
-                       attention_probs + attention_probs_offset,
-                       total_sequence_length,  // lda
-                       v,
-                       static_cast<int>(v_head_size),  // ldb
-                       current_tmp_data,
-                       static_cast<int>(v_head_size),  // ldc
-                       MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
+              if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
+                MlasGemm(CblasNoTrans, CblasNoTrans,
+                         sequence_length,        // M
+                         v_head_size,            // N
+                         total_sequence_length,  // K
+                         attention_probs + attention_probs_offset,
+                         total_sequence_length,  // lda
+                         v,
+                         static_cast<int>(v_head_size),  // ldb
+                         current_tmp_data,
+                         static_cast<int>(v_head_size),  // ldc
+                         MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
+              } else {
+                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                                                                                                   // 0, 1
+                               static_cast<ptrdiff_t>(sequence_length), static_cast<ptrdiff_t>(v_head_size), static_cast<ptrdiff_t>(total_sequence_length),  // M,N,K, 2, 3, 4
+                               MLFloat16(1.f),                                                                                                               // 5
+                               attention_probs + attention_probs_offset,                                                                                     // 6
+                               v,                                                                                                                            // 7
+                               MLFloat16(0.f),                                                                                                               // 8
+                               nullptr,                                                                                                                      // 9
+                               nullptr,                                                                                                                      // 10
+                               current_tmp_data,                                                                                                             // 11
+                               nullptr);                                                                                                                     // 12
+              }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
             }
@@ -486,17 +509,30 @@ void AttentionBase<T>::ComputeVxAttentionScore(T* output,                 // buf
               math::MatMul<T>(sequence_length, v_head_size, total_sequence_length,
                               attention_probs + attention_probs_offset, v, dest, nullptr);
             } else if constexpr (std::is_same<T, MLFloat16>::value) {
-              MlasGemm(CblasNoTrans, CblasNoTrans,
-                       sequence_length,        // M
-                       v_head_size,            // N
-                       total_sequence_length,  // K
-                       attention_probs + attention_probs_offset,
-                       total_sequence_length,  // lda
-                       v,
-                       static_cast<int>(v_head_size),  // ldb
-                       dest,
-                       static_cast<int>(v_head_size),  // ldc
-                       MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
+              if (MlasHGemmSupported(CblasNoTrans, CblasTrans)) {
+                MlasGemm(CblasNoTrans, CblasNoTrans,
+                         sequence_length,        // M
+                         v_head_size,            // N
+                         total_sequence_length,  // K
+                         attention_probs + attention_probs_offset,
+                         total_sequence_length,  // lda
+                         v,
+                         static_cast<int>(v_head_size),  // ldb
+                         dest,
+                         static_cast<int>(v_head_size),  // ldc
+                         MLFloat16(1.f).val, MLFloat16(0.f).val, nullptr);
+              } else {
+                Gemm_MLFloat16(CblasNoTrans, CblasNoTrans,                                                                                                   // 0, 1
+                               static_cast<ptrdiff_t>(sequence_length), static_cast<ptrdiff_t>(v_head_size), static_cast<ptrdiff_t>(total_sequence_length),  // M,N,K, 2, 3, 4
+                               MLFloat16(1.f),                                                                                                               // 5
+                               attention_probs + attention_probs_offset,                                                                                     // 6
+                               v,                                                                                                                            // 7
+                               MLFloat16(0.f),                                                                                                               // 8
+                               nullptr,                                                                                                                      // 9
+                               nullptr,                                                                                                                      // 10
+                               dest,                                                                                                                         // 11
+                               nullptr);                                                                                                                     // 12
+              }
             } else {
               ORT_THROW("Unsupported data type for attention QK*V multiplication: ", DataTypeImpl::ToString(DataTypeImpl::GetType<T>()));
             }
