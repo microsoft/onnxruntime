@@ -404,6 +404,7 @@ static bool SessionHasEp(Ort::Session& session, const char* ep_name) {
   return has_ep;
 }
 
+#if defined(WIN32)
 // Tests autoEP feature to automatically select an EP that supports the GPU.
 // Currently only works on Windows.
 TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
@@ -428,6 +429,7 @@ TEST(NvExecutionProviderTest, AutoEp_PreferGpu) {
 
   env.UnregisterExecutionProviderLibrary(kNvTensorRTRTXExecutionProvider);
 }
+#endif // defined(WIN32)
 
 }  // namespace test
 }  // namespace onnxruntime
