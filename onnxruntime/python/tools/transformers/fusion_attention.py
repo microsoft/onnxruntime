@@ -5,6 +5,7 @@
 from logging import getLogger
 
 import numpy as np
+import onnx_ir as ir
 from fusion_base import Fusion
 from fusion_options import AttentionMaskFormat
 from fusion_utils import FusionUtils
