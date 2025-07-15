@@ -1165,7 +1165,7 @@ ONNX_MS_OPERATOR_SET_SCHEMA(
         .Attr("qk_output",
               "Output values of QK matrix multiplication before (1) or after (2) softmax normalization. Default value is 0 (don't output).",
               AttributeProto::INT,
-              static_cast<int64_t>(-1))
+              static_cast<int64_t>(QKOutputType::NO_OUTPUT))
         .Input(0,
                "query",
                "Query with shape (batch_size, sequence_length, hidden_size), or packed QKV with shape"
