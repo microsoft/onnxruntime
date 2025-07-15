@@ -51,7 +51,7 @@ struct AttentionParameters {
 
   AttentionType getAttentionType() const {
     if (q_num_heads == kv_num_heads) {
-      return AttentionType::kMultiHeadedAttention;
+      return AttentionType::kMultiHeadAttention;
     } else if (q_num_heads > kv_num_heads && q_num_heads % kv_num_heads == 0) {
       return AttentionType::kGroupQueryAttention;
     } else if (q_num_heads > kv_num_heads && kv_num_heads == 1) {
