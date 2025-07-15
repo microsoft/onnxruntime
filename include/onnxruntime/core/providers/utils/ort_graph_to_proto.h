@@ -684,6 +684,7 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
 
       auto* strs = attr_proto.mutable_strings();
 
+      // Strings are all in a single buffer, each separated with a '\0'.
       // Extract each string and add it to the STRINGS attribute array.
       char* at = chars.data();
       char* end = at + chars.size();
@@ -696,6 +697,10 @@ static Ort::Status OrtOpAttrToProto(const OrtOpAttr& ort_attr, onnx::AttributePr
         }
 
         strs->Add()->assign(str_begin, at - str_begin);
+        if (at < end) {
+          assert(*at == '\0');
+          at++;  // Skip '\0' to get to the beginning of the next string.
+        }
       }
 
       break;

@@ -449,7 +449,7 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
       case OrtOpAttrType::ORT_OP_ATTR_STRINGS: {
         const auto& ss = attr->strings();
         size_t num_bytes = 0;
-        for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size(); });
+        for_each(ss.begin(), ss.end(), [&num_bytes](const std::string& s) { num_bytes += s.size() + 1; });
 
         if (len < num_bytes) {
           ret = OrtApis::CreateStatus(OrtErrorCode::ORT_INVALID_ARGUMENT,
@@ -457,7 +457,10 @@ ORT_API_STATUS_IMPL(OrtApis::ReadOpAttr, _In_ const OrtOpAttr* op_attr, _In_ Ort
         } else {
           char* output_c = reinterpret_cast<char*>(data);
           for (const auto& s : ss) {
-            memcpy(output_c, s.data(), s.size());
+            for (char c : s) {
+              *output_c++ = c;
+            }
+            *output_c++ = '\0';
           }
         }
         *out = num_bytes;
