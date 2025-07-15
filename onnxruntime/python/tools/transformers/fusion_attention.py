@@ -10,7 +10,6 @@ from fusion_base import Fusion
 from fusion_options import AttentionMaskFormat
 from fusion_utils import FusionUtils
 from onnx import NodeProto, TensorProto, helper, numpy_helper
-import onnx_ir as ir
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
