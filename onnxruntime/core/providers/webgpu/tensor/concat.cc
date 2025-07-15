@@ -79,19 +79,14 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
   uint32_t max_inputs_per_concat = context.DeviceLimits().maxStorageBuffersPerShaderStage - 1;
 
   uint32_t input_index = 0;
-  uint32_t cumulative_output_size = 0;
   uint32_t cumulative_size_in_concat_axis = 0;
 
   while (input_index < input_count) {
     ConcatProgram program{axis};
     uint32_t num_inputs_this_concat = std::min(max_inputs_per_concat, input_count - input_index);
 
-    std::vector<uint32_t> sizes;
     std::vector<uint32_t> sizes_in_concat_axis;
-    sizes.reserve(num_inputs_this_concat + 1);
     sizes_in_concat_axis.reserve(num_inputs_this_concat + 1);
-
-    sizes.push_back(cumulative_output_size);
     sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
 
     uint32_t dispatch_size = 0;
@@ -102,16 +97,11 @@ Status Concat::ComputeInternal(ComputeContext& context) const {
       uint32_t size = onnxruntime::narrow<int32_t>(input.tensor->Shape().Size());
       uint32_t axis_size = static_cast<uint32_t>(input.tensor->Shape()[axis]);
 
-      cumulative_output_size += size;
       dispatch_size += size;
-      sizes.push_back(cumulative_output_size);
-
       cumulative_size_in_concat_axis += axis_size;
       sizes_in_concat_axis.push_back(cumulative_size_in_concat_axis);
     }
 
-    // Remove the last element from both vectors to prevent out of bounds writes
-    sizes.pop_back();
     sizes_in_concat_axis.pop_back();
 
     program.CacheHint(absl::StrJoin(std::make_tuple(num_inputs_this_concat, prepare.axis), ","))
