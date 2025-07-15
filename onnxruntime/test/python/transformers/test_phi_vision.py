@@ -194,7 +194,7 @@ class TestFusion(unittest.TestCase):
 
     def export(self, model, inputs):
         path = os.path.join(os.path.dirname(__file__), "export.onnx")
-      
+
         if len(inputs) == 2:
             torch.onnx.export(
                 model,
