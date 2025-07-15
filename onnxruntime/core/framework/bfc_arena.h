@@ -500,6 +500,11 @@ class BFCArena : public IAllocator {
   // newly-created chunk.
   int64_t next_allocation_id_;
 
+  // chunks being used by a stream. temporarily protected for testing
+ protected:
+  std::unordered_map<const Stream*, std::set<ChunkHandle>> stream_to_chunks_;
+
+ private:
   AllocatorStats stats_;
 
   std::unordered_map<void*, size_t> reserved_chunks_;

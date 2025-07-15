@@ -863,7 +863,8 @@ void ArenaImpl::ResetChunksUsingStream(const OrtSyncStream* stream) {
     const auto& chunk_handles = it->second;
     for (size_t handle : chunk_handles) {
       Chunk* c = ChunkFromHandle(handle);
-      assert(c->stream == stream);  // something is out of sync if this is not the case
+      assert(c->stream == stream);     // something is out of sync if this is not the case
+      assert(c->allocation_id == -1);  // should only be called on free chunks
       c->stream = nullptr;
     }
 

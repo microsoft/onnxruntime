@@ -252,8 +252,19 @@ BFCArena::ChunkHandle BFCArena::AllocateChunk() {
 void BFCArena::DeallocateChunk(ChunkHandle h) {
   Chunk* c = ChunkFromHandle(h);
   // clean the stream / timestamp when deallocate chunk
-  c->stream = nullptr;
-  c->stream_timestamp = 0;
+  // c->stream = nullptr;
+  // c->stream_timestamp = 0;
+
+  if (c->stream) {
+    if (auto it = stream_to_chunks_.find(c->stream); it != stream_to_chunks_.end()) {
+      size_t result = it->second.erase(h);
+      static_cast<void>(result);  // doesn't matter if it wasn't found
+    }
+
+    c->stream = nullptr;
+    // c->stream_timestamp = 0;
+  }
+
   c->next = free_chunks_list_;
   free_chunks_list_ = h;
 }
@@ -335,11 +346,11 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
 
   if (chunk != nullptr) {
     // if it is on default stream (the new allocate chunk), assign to current stream
-    if (chunk->stream == nullptr) {
-      chunk->stream = stream;
-      if (stream)
-        chunk->stream_timestamp = stream->GetCurrentTimestamp();
-    }
+    // if (chunk->stream == nullptr) {
+    //   chunk->stream = stream;
+    //   if (stream)
+    //     chunk->stream_timestamp = stream->GetCurrentTimestamp();
+    // }
     return chunk->ptr;
   }
 
@@ -352,9 +363,9 @@ void* BFCArena::AllocateRawInternal(size_t num_bytes,
     chunk = FindChunkPtr(bin_num, rounded_bytes, num_bytes, stream, false);
     if (chunk != nullptr) {
       // if it is on default stream (the new allocate chunk), assign to current stream
-      if (chunk->stream == nullptr && stream) {
-        chunk->stream = stream;
-      }
+      // if (chunk->stream == nullptr && stream) {
+      //   chunk->stream = stream;
+      // }
       return chunk->ptr;
     } else {
       status = ORT_MAKE_STATUS(ONNXRUNTIME, FAIL,
@@ -417,6 +428,8 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
                                         bool allow_chunk_from_different_stream,
                                         WaitNotificationFn wait_fn) {
   BFCArena::Chunk* other_stream_candidate = nullptr;
+  ChunkHandle other_stream_candidate_handle;
+
   // First identify the first bin that could satisfy rounded_bytes.
   for (; bin_num < kNumBins; bin_num++) {
     // Start searching from the first bin for the smallest chunk that fits
@@ -429,14 +442,24 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
       if (chunk->size >= rounded_bytes) {
         // We found an existing chunk that fits us that wasn't in use, now check the stream
         bool safe_to_use = chunk->stream == stream ||
-                           !chunk->stream ||
+                           !chunk->stream /*||
                            (stream && chunk->stream &&
-                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream));
+                            chunk->stream_timestamp < stream->GetLastSyncTimestampWithTargetStream(chunk->stream))*/
+            ;
         if (safe_to_use) {
           // the chunk with same stream has higher priority.
-          return SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+          // return SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+          auto* new_chunk = SplitFreeChunkFromBin(&b->free_chunks, citer, rounded_bytes, num_bytes);
+
+          if (stream) {
+            new_chunk->stream = stream;
+            stream_to_chunks_[stream].insert(h);
+          }
+
+          return new_chunk;
         } else if (allow_chunk_from_different_stream && !other_stream_candidate) {
           other_stream_candidate = chunk;
+          other_stream_candidate_handle = h;
         }
       }
     }
@@ -447,6 +470,10 @@ BFCArena::Chunk* BFCArena::FindChunkPtr(BinNum bin_num, size_t rounded_bytes,
     // if find some available chunk, make sure mark it as "being used" before return
     other_stream_candidate->allocation_id = next_allocation_id_++;
     other_stream_candidate->bin_num = kInvalidBinNum;
+
+    stream_to_chunks_[other_stream_candidate->stream].erase(other_stream_candidate_handle);
+    stream_to_chunks_[stream].insert(other_stream_candidate_handle);
+    other_stream_candidate->stream = stream;
   }
 
   return other_stream_candidate;
@@ -463,7 +490,7 @@ void BFCArena::SplitChunk(BFCArena::ChunkHandle h, size_t num_bytes) {
   BFCArena::Chunk* new_chunk = ChunkFromHandle(h_new_chunk);
   // set the new chunk's stream and timestamp
   new_chunk->stream = c->stream;
-  new_chunk->stream_timestamp = c->stream_timestamp;
+  // new_chunk->stream_timestamp = c->stream_timestamp;
 
   new_chunk->ptr = static_cast<void*>(static_cast<char*>(c->ptr) + num_bytes);
   region_manager_.set_handle(new_chunk->ptr, h_new_chunk);
@@ -608,7 +635,10 @@ void BFCArena::Merge(BFCArena::ChunkHandle h1,
 
   // Set the new size
   c1->size += c2->size;
-  c1->stream_timestamp = std::max(c1->stream_timestamp, c2->stream_timestamp);
+
+  // we only merge chunks that have the same stream
+  assert(c1->stream == c2->stream);
+  // c1->stream_timestamp = std::max(c1->stream_timestamp, c2->stream_timestamp);
 
   DeleteChunk(h2);
 }
@@ -808,19 +838,33 @@ void BFCArena::DumpMemoryLog(size_t num_bytes) {
 void BFCArena::ResetChunkOnTargetStream(Stream* target_stream, bool coalesce_flag) {
   std::lock_guard<std::mutex> lock(lock_);
 
-  for (const auto& region : region_manager_.regions()) {
-    ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
-    ChunkHandle h = region_begin_chunk;
-    while (h != kInvalidChunkHandle) {
-      Chunk* c = ChunkFromHandle(h);
-      if (c->stream == target_stream) {
-        c->stream = nullptr;
-        c->stream_timestamp = 0;
-      }
-      h = c->next;
+  auto it = stream_to_chunks_.find(target_stream);
+  if (it != stream_to_chunks_.end()) {
+    const auto& chunk_handles = it->second;
+    for (size_t handle : chunk_handles) {
+      Chunk* c = ChunkFromHandle(handle);
+      assert(c->stream == target_stream);  // something is out of sync if this is not the case
+      assert(c->allocation_id == -1);      // should only be called on free chunks
+      c->stream = nullptr;
     }
+
+    stream_to_chunks_.erase(it);
   }
 
+  // for (const auto& region : region_manager_.regions()) {
+  //   ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
+  //   ChunkHandle h = region_begin_chunk;
+  //   while (h != kInvalidChunkHandle) {
+  //     Chunk* c = ChunkFromHandle(h);
+  //     if (c->stream == target_stream) {
+  //       c->stream = nullptr;
+  //       // c->stream_timestamp = 0;
+  //     }
+  //     h = c->next;
+  //   }
+  // }
+
+  // coalesce
   if (coalesce_flag) {
     for (const auto& region : region_manager_.regions()) {
       ChunkHandle region_begin_chunk = region_manager_.get_handle(region.ptr());
@@ -868,6 +912,10 @@ StreamAwareArena::StreamAwareArena(std::unique_ptr<IAllocator> resource_allocato
 }
 
 void* StreamAwareArena::AllocOnStream(size_t size, Stream* current_stream, WaitNotificationFn wait_fn) {
+  if (stream_to_chunks_.find(current_stream) == stream_to_chunks_.end()) {
+    stream_to_chunks_.insert({current_stream, std::set<size_t>{}});
+  }
+
   return AllocateRawInternal(size, false, current_stream, enable_cross_stream_reusing_, wait_fn);
 }
 
