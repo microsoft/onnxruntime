@@ -7,11 +7,16 @@ from logging import getLogger
 import numpy as np
 from fusion_base import Fusion
 from fusion_options import AttentionMaskFormat
-from fusion_utils import FusionUtils, NumpyHelper
+from fusion_utils import FusionUtils
 from onnx import NodeProto, TensorProto, helper, numpy_helper
+import onnx_ir as ir
 from onnx_model import OnnxModel
 
 logger = getLogger(__name__)
+
+
+def to_array(tensor: TensorProto) -> np.ndarray:
+    return ir.from_proto(tensor).numpy()
 
 
 class AttentionMask:
@@ -362,15 +367,15 @@ class FusionAttention(Fusion):
         name_prefix: str,
     ) -> NodeProto | None:
         q_bias = self.model.get_initializer(q_add.input[1]) or self.model.get_initializer(q_add.input[0])
-        qb = NumpyHelper.to_array(q_bias)
+        qb = to_array(q_bias)
         kb = np.zeros_like(qb)
         vb = np.zeros_like(qb)
         if k_add is not None:
             k_bias = self.model.get_initializer(k_add.input[1]) or self.model.get_initializer(k_add.input[0])
-            kb = NumpyHelper.to_array(k_bias)
+            kb = to_array(k_bias)
         if v_add is not None:
             v_bias = self.model.get_initializer(v_add.input[1]) or self.model.get_initializer(v_add.input[0])
-            vb = NumpyHelper.to_array(v_bias)
+            vb = to_array(v_bias)
 
         qkv_bias = np.stack((qb, kb, vb), axis=0)
         qkv_bias_dim = 3 * np.prod(qb.shape)
@@ -420,9 +425,9 @@ class FusionAttention(Fusion):
         k_weight = self.model.get_initializer(k_matmul.input[1])
         v_weight = self.model.get_initializer(v_matmul.input[1])
 
-        qw = NumpyHelper.to_array(q_weight)
-        kw = NumpyHelper.to_array(k_weight)
-        vw = NumpyHelper.to_array(v_weight)
+        qw = to_array(q_weight)
+        kw = to_array(k_weight)
+        vw = to_array(v_weight)
 
         assert qw.shape == kw.shape and kw.shape == vw.shape
         d = qw.shape[0]
@@ -503,21 +508,21 @@ class FusionAttention(Fusion):
         if self.disable_multi_head_attention_bias:
             if q_add is not None:
                 initializer_input = 1 if self.model.get_initializer(q_add.input[1]) else 0
-                if np.any(NumpyHelper.to_array(self.model.get_initializer(q_add.input[initializer_input]))):
+                if np.any(to_array(self.model.get_initializer(q_add.input[initializer_input]))):
                     q_add.input[1 - initializer_input] = q_slice_output
                     q_output = q_add
                     qkv_nodes.append(q_add)
                     self.node_name_to_graph_name[q_add.name] = self.this_graph_name
             if k_add is not None:
                 initializer_input = 1 if self.model.get_initializer(k_add.input[1]) else 0
-                if np.any(NumpyHelper.to_array(self.model.get_initializer(k_add.input[initializer_input]))):
+                if np.any(to_array(self.model.get_initializer(k_add.input[initializer_input]))):
                     k_add.input[1 - initializer_input] = k_slice_output
                     k_output = k_add
                     qkv_nodes.append(k_add)
                     self.node_name_to_graph_name[k_add.name] = self.this_graph_name
             if v_add is not None:
                 initializer_input = 1 if self.model.get_initializer(v_add.input[1]) else 0
-                if np.any(NumpyHelper.to_array(self.model.get_initializer(v_add.input[initializer_input]))):
+                if np.any(to_array(self.model.get_initializer(v_add.input[initializer_input]))):
                     v_add.input[1 - initializer_input] = v_slice_output
                     v_output = v_add
                     qkv_nodes.append(v_add)
@@ -725,9 +730,9 @@ class FusionAttention(Fusion):
             )
             return None
 
-        qw = NumpyHelper.to_array(q_weight)
-        kw = NumpyHelper.to_array(k_weight)
-        vw = NumpyHelper.to_array(v_weight)
+        qw = to_array(q_weight)
+        kw = to_array(k_weight)
+        vw = to_array(v_weight)
 
         # assert q and k have same shape as expected
         assert qw.shape == kw.shape
@@ -768,9 +773,9 @@ class FusionAttention(Fusion):
         qkv_bias_dim = 0
         qkv_bias: np.ndarray | None = None
         if has_bias:
-            qb = NumpyHelper.to_array(q_bias)
-            kb = NumpyHelper.to_array(k_bias)
-            vb = NumpyHelper.to_array(v_bias)
+            qb = to_array(q_bias)
+            kb = to_array(k_bias)
+            vb = to_array(v_bias)
 
             q_bias_shape = np.prod(qb.shape)
             k_bias_shape = np.prod(kb.shape)
