@@ -305,7 +305,7 @@ Status MatMulNBits::ComputeInternal(onnxruntime::webgpu::ComputeContext& context
     if (has_zero_points) {
       program.AddInput({zero_points,
                         ProgramTensorMetadataDependency::TypeAndRank,
-                        {ceil_div(zero_points->Shape().Size(), 4LL)},
+                        {ceil_div(zero_points->Shape().Size(), static_cast<int64_t>(4))},
                         4});
     }
     program.AddOutput({y,
