@@ -23,9 +23,11 @@ Abstract:
 
 #include "mlasi.h"
 
+// Common implementation for NCHW and NCHWC convolution kernels
+template <bool IsNchwcFormat>
 void
     MLASCALL
-    MlasConvNchwFloatKernelNeon(
+    MlasConvFloatKernelNeonImpl(
         const float* Input,
         const float* Filter,
         float* Output,
@@ -90,23 +92,50 @@ void
                     const float* input_base = Input + output_idx * StrideWidthElements +
                                               kh * DilatedInputWidthElements + kw * DilationWidthElements;
 
-                    const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                    const float* input_row_end = input_row_start + InputWidthElements;
+                    if (IsNchwcFormat) {
+                        // NCHWC format - process each element in the block
+                        for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
+                            const float* input_element = input_base + filterBlock;
+                            const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                            const float* input_row_end = input_row_start + InputWidthElements;
 
-                    float input_value;
-                    if (is_main_region || (input_base >= input_row_start && input_base < input_row_end)) {
-                        input_value = *input_base;
+                            float input_value;
+                            if (is_main_region || (input_element >= input_row_start && input_element < input_row_end)) {
+                                input_value = *input_element;
+                            } else {
+                                input_value = 0.0f;
+                            }
+
+                            const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
+
+                            size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
+                                                     kw * (BlockSize * BlockSize) +
+                                                     filterBlock * BlockSize;
+
+                            const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos]);
+
+                            Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
+                        }
                     } else {
-                        input_value = 0.0f;
+                        // NCHW format - simpler processing
+                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
+                        const float* input_row_end = input_row_start + InputWidthElements;
+
+                        float input_value;
+                        if (is_main_region || (input_base >= input_row_start && input_base < input_row_end)) {
+                            input_value = *input_base;
+                        } else {
+                            input_value = 0.0f;
+                        }
+
+                        const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
+
+                        size_t kernel_base_pos = kh * KernelWidth + kw;
+
+                        const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize]);
+
+                        Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
                     }
-
-                    const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
-
-                    size_t kernel_base_pos = kh * KernelWidth + kw;
-
-                    const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos * BlockSize]);
-
-                    Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
                 }
             }
 
@@ -117,6 +146,53 @@ void
             MlasStoreFloat32x4(&output[output_idx * BlockSize], Accumulator);
         }
     }
+}
+
+void
+    MLASCALL
+    MlasConvNchwFloatKernelNeon(
+        const float* Input,
+        const float* Filter,
+        float* Output,
+        size_t StrideWidth,
+        size_t DilationWidth,
+        size_t FilterCount,
+        size_t InputStride,
+        size_t FilterStride,
+        size_t OutputStride,
+        size_t KernelHeight,
+        size_t KernelWidth,
+        const float* InputBase,
+        size_t InputWidth,
+        size_t DilatedInputWidth,
+        size_t OutputCountLeftPad,
+        size_t OutputCount,
+        size_t OutputCountRightPad,
+        const float* Bias,
+        unsigned KernelFlags
+    )
+{
+    MlasConvFloatKernelNeonImpl<false>(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
 }
 
 //
@@ -147,81 +223,27 @@ void
         unsigned KernelFlags
     )
 {
-    const bool AccumulateOutput = (KernelFlags & MLAS_CONV_KERNEL_FLAG_ACCUMULATE_OUTPUT) != 0;
-    const bool BiasAddition = (KernelFlags & MLAS_CONV_KERNEL_FLAG_BIAS_ADDITION) != 0;
-    const bool ReluActivation = (KernelFlags & MLAS_CONV_KERNEL_FLAG_RELU_ACTIVATION) != 0;
-
-    const size_t BlockSize = MlasNchwcGetBlockSize();
-    const float32x4_t ZeroVector = MlasBroadcastFloat32x4(0.0f);
-
-    const size_t StrideWidthElements = StrideWidth / sizeof(float);
-    const size_t DilationWidthElements = DilationWidth / sizeof(float);
-    const size_t FilterStrideElements = FilterStride / sizeof(float);
-    const size_t OutputStrideElements = OutputStride / sizeof(float);
-    const size_t InputWidthElements = InputWidth / sizeof(float);
-    const size_t DilatedInputWidthElements = DilatedInputWidth / sizeof(float);
-
-    (void)InputStride;
-
-    const size_t TotalOutputCount = OutputCountLeftPad + OutputCount + OutputCountRightPad;
-
-    for (size_t output_idx = 0; output_idx < TotalOutputCount; output_idx++) {
-        bool is_main_region = (output_idx >= OutputCountLeftPad && output_idx < OutputCountLeftPad + OutputCount);
-
-        for (size_t filterSetBlock = 0; filterSetBlock < FilterCount; filterSetBlock++) {
-            const float* filter = Filter + filterSetBlock * FilterStrideElements;
-            float* output = Output + filterSetBlock * OutputStrideElements;
-
-            float32x4_t Accumulator;
-
-            if (AccumulateOutput) {
-                Accumulator = MlasLoadFloat32x4(&output[output_idx * BlockSize]);
-            } else {
-                Accumulator = MlasBroadcastFloat32x4(0.0f);
-            }
-
-            if (BiasAddition) {
-                const float32x4_t BiasVector = MlasLoadFloat32x4(&Bias[filterSetBlock * BlockSize]);
-                Accumulator = MlasAddFloat32x4(Accumulator, BiasVector);
-            }
-
-            for (size_t kh = 0; kh < KernelHeight; kh++) {
-                for (size_t kw = 0; kw < KernelWidth; kw++) {
-                    const float* input_base = Input + output_idx * StrideWidthElements +
-                                              kh * DilatedInputWidthElements + kw * DilationWidthElements;
-
-                    for (size_t filterBlock = 0; filterBlock < BlockSize; filterBlock++) {
-                        const float* input_element = input_base + filterBlock;
-                        const float* input_row_start = InputBase + kh * DilatedInputWidthElements;
-                        const float* input_row_end = input_row_start + InputWidthElements;
-
-                        float input_value;
-                        if (is_main_region || (input_element >= input_row_start && input_element < input_row_end)) {
-                            input_value = *input_element;
-                        } else {
-                            input_value = 0.0f;
-                        }
-
-                        const float32x4_t InputVector = MlasBroadcastFloat32x4(input_value);
-
-                        size_t kernel_base_pos = kh * (KernelWidth * BlockSize * BlockSize) +
-                                                 kw * (BlockSize * BlockSize) +
-                                                 filterBlock * BlockSize;
-
-                        const float32x4_t FilterVector = MlasLoadFloat32x4(&filter[kernel_base_pos]);
-
-                        Accumulator = MlasMultiplyAddFloat32x4(InputVector, FilterVector, Accumulator);
-                    }
-                }
-            }
-
-            if (ReluActivation) {
-                Accumulator = MlasMaximumFloat32x4(Accumulator, ZeroVector);
-            }
-
-            MlasStoreFloat32x4(&output[output_idx * BlockSize], Accumulator);
-        }
-    }
+    MlasConvFloatKernelNeonImpl<true>(
+        Input,
+        Filter,
+        Output,
+        StrideWidth,
+        DilationWidth,
+        FilterCount,
+        InputStride,
+        FilterStride,
+        OutputStride,
+        KernelHeight,
+        KernelWidth,
+        InputBase,
+        InputWidth,
+        DilatedInputWidth,
+        OutputCountLeftPad,
+        OutputCount,
+        OutputCountRightPad,
+        Bias,
+        KernelFlags
+    );
 }
 
 //
