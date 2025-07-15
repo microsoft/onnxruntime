@@ -219,7 +219,8 @@ bool GruOpBuilder::HasSupportedInputsImpl(const GraphViewer&, const Node& node,
     return false;
   }
 
-  return IsInputRankSupportedByOp(node, wnn_limits, logger) && IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger);
+  return IsDataTypeSupportedByOp(op_type, input_X_type, wnn_limits, "input", "X", logger) &&
+         IsInputRankSupportedByOp(node, wnn_limits, logger);
 }
 
 bool GruOpBuilder::HasSupportedOutputsImpl(const Node& node,
