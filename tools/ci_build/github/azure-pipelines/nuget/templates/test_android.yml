@@ -10,6 +10,7 @@ stages:
   - job:  NuGet_Test_Android
     workspace:
       clean: all
+    timeoutInMinutes: 120
     pool: "${{ parameters.AgentPool }}"
 
     variables:
